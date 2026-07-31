@@ -111,4 +111,10 @@ describe('observesDstInYear', () => {
     expect(observesDstInYear('Europe/London', 2026)).toBe(true);
     expect(observesDstInYear('Australia/Sydney', 2026)).toBe(true);
   });
+
+  it('detects a temporary offset change outside the January/July comparison', () => {
+    // Casablanca is UTC+1 on both 15 January and 15 July 2026, but temporarily
+    // returns to UTC around Ramadan. A two-sample implementation misses it.
+    expect(observesDstInYear('Africa/Casablanca', 2026)).toBe(true);
+  });
 });

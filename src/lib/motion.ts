@@ -9,7 +9,7 @@
  * `prefers-reduced-motion` has two layers of defence:
  *   1. A global CSS rule in globals.css collapses every animation and
  *      transition duration. A component cannot forget this.
- *   2. Motion components additionally call `useReducedMotion()` so that
+ *   2. Motion components additionally call `usePrefersReducedMotion()` so
  *      layout animations are skipped outright rather than merely shortened.
  */
 
@@ -47,7 +47,7 @@ export const LAYOUT_SPRING = {
 
 /**
  * Returns transition props, or an instant transition when the user has asked
- * for reduced motion. Pass the value from Motion's `useReducedMotion()`.
+ * for reduced motion. Pass the value from `usePrefersReducedMotion()`.
  */
 export function transition(reduced: boolean | null, duration: number = DURATION.base) {
   if (reduced === true) {

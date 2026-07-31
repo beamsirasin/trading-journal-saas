@@ -99,7 +99,7 @@ Sanctioned: page and section transitions, animated drawers and dialogs, skeleton
 
 Avoided: heavy glass effects, glow, parallax, anything that moves while being read.
 
-**`prefers-reduced-motion` is honoured twice.** A global rule in `globals.css` collapses every animation and transition duration — a guard a component cannot forget. Motion components additionally call `useReducedMotion()` so layout animations are skipped outright rather than merely shortened. Enforced by e2e.
+**`prefers-reduced-motion` is honoured twice.** A global rule in `globals.css` collapses every animation and transition duration — a guard a component cannot forget. Motion components additionally use the SSR-safe `usePrefersReducedMotion()` hook so layout animations are skipped outright rather than merely shortened. Enforced against actual animated elements and the Motion branch by e2e.
 
 The `animate-rise` utility is the standard entrance: 12px upward, fading in, on a decelerating curve.
 
@@ -167,6 +167,7 @@ Every deviation from upstream carries a `PROJECT CUSTOMISATION` comment explaini
 Current deviations:
 
 - `dropdown-menu.tsx` — `checked` is spread conditionally instead of passed directly, because this project enables `exactOptionalPropertyTypes` and upstream passes an explicit `undefined`.
+- `dropdown-menu.tsx` and `sheet.tsx` — state animations live in `globals.css`, avoiding an otherwise unused animation-plugin dependency while keeping the global reduced-motion guard authoritative.
 
 Only components actually used are installed: `button`, `dropdown-menu`, `sheet`. A large unused component collection is dead code that still has to be maintained, typechecked, and audited.
 

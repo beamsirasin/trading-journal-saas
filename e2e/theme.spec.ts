@@ -141,12 +141,14 @@ test.describe('theme toggle', () => {
 });
 
 test.describe('motion', () => {
-  test('suppresses animation when reduced motion is requested', async ({ page }) => {
+  test('suppresses CSS and Motion animations when reduced motion is requested', async ({
+    page,
+  }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
 
     const duration = await page
-      .locator('header')
+      .locator('.animate-rise')
       .first()
       .evaluate((el) => getComputedStyle(el).animationDuration);
 
@@ -156,5 +158,33 @@ test.describe('motion', () => {
       ? Number.parseFloat(duration) / 1000
       : Number.parseFloat(duration);
     expect(seconds).toBeLessThan(0.001);
+
+    await page.goto('/app');
+    // The mobile project keeps the desktop sidebar in the DOM but hidden until
+    // its drawer opens, so assert branch selection rather than visibility.
+    await expect(page.locator('[data-active-indicator="static"]')).toHaveCount(1);
+    await expect(page.locator('[data-active-indicator="animated"]')).toHaveCount(0);
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    const sheetDuration = await page
+      .getByRole('dialog')
+      .evaluate((el) => getComputedStyle(el).animationDuration);
+    const sheetSeconds = sheetDuration.endsWith('ms')
+      ? Number.parseFloat(sheetDuration) / 1000
+      : Number.parseFloat(sheetDuration);
+    expect(sheetSeconds).toBeLessThan(0.001);
+  });
+
+  test('animates the drawer when reduced motion is not requested', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/app');
+    await page.getByRole('button', { name: /open navigation menu/i }).click();
+
+    const animationName = await page
+      .getByRole('dialog')
+      .evaluate((el) => getComputedStyle(el).animationName);
+    expect(animationName).toContain('sheet-content-in');
   });
 });

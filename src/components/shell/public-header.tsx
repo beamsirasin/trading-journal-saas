@@ -21,7 +21,7 @@ export function PublicHeader() {
         <Brand href="/" />
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <Button asChild size="sm">
+          <Button asChild size="sm" className="min-h-11">
             <Link href="/app">Open app</Link>
           </Button>
         </div>

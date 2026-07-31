@@ -40,6 +40,7 @@ export function ThemeToggle() {
       <Button
         variant="ghost"
         size="icon"
+        className="size-11"
         aria-label="Change theme"
         disabled
         // Hidden from assistive tech while inert, so it is not announced as a
@@ -56,7 +57,12 @@ export function ThemeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Change theme, currently ${theme}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-label={`Change theme, currently ${theme}`}
+        >
           <ActiveIcon className="size-4" />
         </Button>
       </DropdownMenuTrigger>

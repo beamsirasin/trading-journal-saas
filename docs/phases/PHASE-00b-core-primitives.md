@@ -24,7 +24,7 @@ Instant / CalendarDate / WallClock as distinct types. Native `Intl`, no bundled 
 
 DST is resolved explicitly: ambiguous times default to the earlier instant, nonexistent times skip forward past the gap.
 
-**77 tests** — UTC, Asia/Bangkok, America/New_York across both 2026 transitions, Australia/Sydney, half-hour and 45-minute offsets, date-boundary crossing, leap days, invalid zones and timestamps.
+**81 tests** — UTC, Asia/Bangkok, America/New_York across both 2026 transitions, Australia/Sydney, Morocco's temporary Ramadan offset, half-hour and 45-minute offsets, date-boundary crossing, leap days, impossible wall clocks, invalid zones and timestamps, and rejected sub-millisecond precision.
 
 See [ADR 0003](../decisions/0003-time-model.md).
 
@@ -58,11 +58,11 @@ See [ADR 0004](../decisions/0004-database-access.md).
 
 ### Health endpoint — `/api/health`
 
-Liveness only. No database check: liveness and readiness are different signals, and failing this on a database blip would make an orchestrator restart a healthy process. Returns exactly `status`, `timestamp`, `uptimeSeconds` — asserted by test, so any new field is deliberate.
+Liveness only. No database check: liveness and readiness are different signals, and failing this on a database blip would make an orchestrator restart a healthy process. Returns exactly `status` — asserted by test, so process uptime, server time, versions, and other reconnaissance data cannot be added accidentally.
 
 ### UI and motion
 
-shadcn/ui initialised with `button`, `dropdown-menu`, `sheet` — only what this phase uses. Motion appears in exactly one place: a shared `layoutId` on the sidebar's active indicator, which communicates the relationship between the previous and current section. Reduced motion is honoured globally in CSS and again per component.
+shadcn/ui initialised with `button`, `dropdown-menu`, `sheet` — only what this phase uses. Motion appears in exactly one place: a shared `layoutId` on the sidebar's active indicator, which communicates the relationship between the previous and current section. Reduced motion is honoured globally in CSS and again through an SSR-safe preference hook that renders a static indicator.
 
 ## Two bugs worth recording
 
@@ -79,11 +79,11 @@ All executed on 2026-07-31, exit codes checked individually.
 | `pnpm format:check` | pass                             |
 | `pnpm lint`         | pass                             |
 | `pnpm typecheck`    | pass                             |
-| `pnpm test`         | **229 passed**                   |
+| `pnpm test`         | **232 passed**                   |
 | `pnpm build`        | pass                             |
-| `pnpm test:e2e`     | **64 passed** (desktop + mobile) |
+| `pnpm test:e2e`     | **68 passed** (desktop + mobile) |
 
-`.next` was deleted before the final build and e2e run.
+Playwright rebuilt and served the optimized production output for the final e2e run.
 
 ## Deliberately deferred
 

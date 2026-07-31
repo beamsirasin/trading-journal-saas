@@ -71,6 +71,28 @@ test.describe('responsive navigation', () => {
     await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeVisible();
   });
 
+  test('keeps mobile shell controls at least 44px in each touch dimension', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/app');
+
+    const menuButton = await page
+      .getByRole('button', { name: /open navigation menu/i })
+      .boundingBox();
+    const themeButton = await page.getByRole('button', { name: /change theme/i }).boundingBox();
+
+    expect(menuButton?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(menuButton?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(themeButton?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(themeButton?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    const dashboardLink = await page.getByRole('link', { name: 'Dashboard' }).boundingBox();
+    const closeButton = await page.getByRole('button', { name: 'Close' }).boundingBox();
+    expect(dashboardLink?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(closeButton?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(closeButton?.height ?? 0).toBeGreaterThanOrEqual(44);
+  });
+
   test('mobile drawer opens, traps focus and closes on Escape', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/app');
@@ -103,12 +125,7 @@ test.describe('health endpoint', () => {
     expect(response.status()).toBe(200);
 
     const body: unknown = await response.json();
-    expect(body).toMatchObject({ status: 'ok' });
-    expect(Object.keys(body as Record<string, unknown>).sort()).toEqual([
-      'status',
-      'timestamp',
-      'uptimeSeconds',
-    ]);
+    expect(body).toEqual({ status: 'ok' });
   });
 
   test('leaks no environment values', async ({ request }) => {

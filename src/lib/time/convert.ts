@@ -183,8 +183,10 @@ export function dayRangeIn(
 }
 
 function isPlausibleWallClock(wall: WallClock): boolean {
-  return (
+  const componentsAreInRange =
     Number.isInteger(wall.year) &&
+    wall.year >= 0 &&
+    wall.year <= 9999 &&
     Number.isInteger(wall.month) &&
     Number.isInteger(wall.day) &&
     Number.isInteger(wall.hour) &&
@@ -199,8 +201,13 @@ function isPlausibleWallClock(wall: WallClock): boolean {
     wall.minute >= 0 &&
     wall.minute <= 59 &&
     wall.second >= 0 &&
-    wall.second <= 59
-  );
+    wall.second <= 59;
+
+  if (!componentsAreInRange) {
+    return false;
+  }
+
+  return wall.day <= daysInMonth(wall.year, wall.month);
 }
 
 const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -219,13 +226,19 @@ export function parseCalendarParts(
   if (month < 1 || month > 12) {
     return err('invalid_calendar_date', `Month out of range in ${date}.`);
   }
-  // Rejects 2026-02-30 and similar, by checking the date survives round-trip.
-  const probe = new Date(Date.UTC(year, month - 1, day));
-  if (probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+  if (day < 1 || day > daysInMonth(year, month)) {
     return err('invalid_calendar_date', `${date} is not a real calendar date.`);
   }
 
   return ok({ year, month, day });
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return isLeapYear ? 29 : 28;
+  }
+  return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
 }
 
 export function formatCalendarParts(year: number, month: number, day: number): CalendarDate {

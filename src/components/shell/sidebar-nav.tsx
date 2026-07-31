@@ -1,11 +1,12 @@
 'use client';
 
-import { motion, useReducedMotion } from 'motion/react';
+import { motion } from 'motion/react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { LAYOUT_SPRING } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 import { NAV_ITEMS } from './nav-items';
 
@@ -23,12 +24,12 @@ interface SidebarNavProps {
  * comprehension, not decoration.
  *
  * Reduced motion is honoured twice: the global CSS rule collapses durations,
- * and `useReducedMotion` swaps the animated indicator for a static one so no
- * layout animation is even scheduled.
+ * and the SSR-safe preference hook swaps the animated indicator for a static
+ * one so no layout animation is even scheduled.
  */
 export function SidebarNav({ onNavigate }: SidebarNavProps) {
   const pathname = usePathname();
-  const prefersReducedMotion = useReducedMotion();
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   return (
     <nav aria-label="Main" className="flex flex-col gap-1">
@@ -60,7 +61,7 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
             {...(onNavigate === undefined ? {} : { onClick: onNavigate })}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+              'relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
               isActive
                 ? 'text-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent',
@@ -68,9 +69,14 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
           >
             {isActive ? (
               prefersReducedMotion ? (
-                <span className="bg-accent absolute inset-0 rounded-md" aria-hidden="true" />
+                <span
+                  data-active-indicator="static"
+                  className="bg-accent absolute inset-0 rounded-md"
+                  aria-hidden="true"
+                />
               ) : (
                 <motion.span
+                  data-active-indicator="animated"
                   layoutId="sidebar-active-indicator"
                   className="bg-accent absolute inset-0 rounded-md"
                   transition={LAYOUT_SPRING}

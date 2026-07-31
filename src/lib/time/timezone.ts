@@ -107,7 +107,21 @@ export function offsetMinutesAt(instant: Date, timeZone: TimeZoneId): number {
 
 /** True when the zone observes a different offset at some point in the given year. */
 export function observesDstInYear(timeZone: TimeZoneId, year: number): boolean {
-  const january = new Date(Date.UTC(year, 0, 15));
-  const july = new Date(Date.UTC(year, 6, 15));
-  return offsetMinutesAt(january, timeZone) !== offsetMinutesAt(july, timeZone);
+  const firstDay = new Date(Date.UTC(year, 0, 1, 12));
+  const baseline = offsetMinutesAt(firstDay, timeZone);
+
+  // Sampling only January and July misses temporary changes such as Morocco's
+  // Ramadan suspension. Daily noon samples cover any real DST season without
+  // making assumptions about hemisphere or transition month.
+  for (let day = 1; day <= 366; day += 1) {
+    const sample = new Date(Date.UTC(year, 0, 1 + day, 12));
+    if (sample.getUTCFullYear() !== year) {
+      break;
+    }
+    if (offsetMinutesAt(sample, timeZone) !== baseline) {
+      return true;
+    }
+  }
+
+  return false;
 }

@@ -84,3 +84,4 @@ The toggle renders an inert placeholder until hydrated, using `useSyncExternalSt
 Current deviations:
 
 - `dropdown-menu.tsx` — `checked` is spread conditionally rather than passed directly, because this project enables `exactOptionalPropertyTypes` and upstream passes an explicit `undefined`.
+- `dropdown-menu.tsx` and `sheet.tsx` — state animations are defined in `globals.css` instead of relying on an otherwise unused Tailwind animation plugin. This also keeps the global reduced-motion guard authoritative.

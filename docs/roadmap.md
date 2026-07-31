@@ -32,7 +32,7 @@ No authentication, no database tables, no trading functionality — deliberately
 The technical foundations Phase 00's brief scoped out. Money and time primitives are load-bearing for every later calculation, so they landed before Phase 01 schema work rather than being improvised inside it.
 
 - `src/lib/money/` — integer minor units in `bigint`, currency-aware precision, strict parsing, 108 tests
-- `src/lib/time/` — UTC storage, IANA conversion, DST-correct day bucketing, 77 tests
+- `src/lib/time/` — UTC storage, IANA conversion, DST-correct day bucketing, 81 tests
 - Environment split into pure schemas, a `server-only` server module, and a client module
 - Theme precedence: saved choice → OS preference → dark fallback, with no flash
 - Application shell: route groups, landmarks, skip link, responsive drawer, loading and error boundaries

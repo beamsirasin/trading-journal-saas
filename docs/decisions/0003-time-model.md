@@ -36,6 +36,8 @@ Requires a full-ICU runtime. Node 14+ and every current browser qualify.
 
   This is the single most important rejection in the module. `new Date("2026-07-31T10:00:00")` interprets the string as **local time on whatever machine runs it**, so the same input produces different instants on a developer laptop, in CI, and in production. A timestamp without a zone is not an instant, and guessing one is the bug.
 
+- Fractional seconds are limited to milliseconds. JavaScript `Date` silently truncates finer precision, so accepting four to nine digits would violate the strict parser's no-silent-loss contract.
+
 - `toIsoUtc` is the only storage form. Locale-formatted strings are never persisted — they are lossy and unparseable.
 
 - `parseCalendarDate` rejects impossible dates. `new Date(2026, 1, 30)` silently becomes 2 March; this refuses it.
@@ -80,7 +82,7 @@ An inclusive end silently drops anything in the final second, and `>= start AND 
 **Positive**
 
 - No dependency; tz rules stay current with the runtime.
-- 77 unit tests, covering UTC, Asia/Bangkok (no DST), America/New_York (both transitions), Australia/Sydney (inverted DST), half-hour and 45-minute offsets, leap days, and year boundaries.
+- 81 unit tests, covering UTC, Asia/Bangkok (no DST), America/New_York (both transitions), Australia/Sydney (inverted DST), Morocco's temporary Ramadan offset, half-hour and 45-minute offsets, leap days, impossible wall clocks, millisecond precision, and year boundaries.
 - The type distinction makes "instant vs calendar date" a compile-time concern.
 
 **Negative / accepted**

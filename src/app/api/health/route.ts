@@ -21,18 +21,10 @@ export const revalidate = 0;
 
 export interface HealthResponse {
   readonly status: 'ok';
-  /** ISO 8601, UTC. */
-  readonly timestamp: string;
-  /** Whole seconds since process start. */
-  readonly uptimeSeconds: number;
 }
 
 export function GET(): NextResponse<HealthResponse> {
-  const body: HealthResponse = {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptimeSeconds: Math.floor(process.uptime()),
-  };
+  const body: HealthResponse = { status: 'ok' };
 
   return NextResponse.json(body, {
     status: 200,

@@ -21,8 +21,8 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: trading-os-postgres
-    restart: unless-stopped
+    # No container_name or restart policy: Compose namespaces this service per
+    # project, and an optional dev database must not auto-start after reboot.
     environment:
       # Development-only credentials. These are not secrets: the port is bound
       # to localhost, the data is disposable, and nothing real is stored here.
@@ -50,5 +50,5 @@ services:
       start_period: 10s
 
 volumes:
+  # Compose project-scopes the volume so parallel checkouts cannot share data.
   postgres-data:
-    name: trading-os-postgres-data

@@ -121,6 +121,21 @@ describe('wallClockToInstant', () => {
     );
     expect(expectErrCode(result)).toBe('invalid_wall_clock');
   });
+
+  it('rejects an impossible calendar date instead of treating it as a DST gap', () => {
+    const result = wallClockToInstant(
+      { year: 2026, month: 2, day: 30, hour: 10, minute: 0, second: 0 },
+      'UTC',
+    );
+    expect(expectErrCode(result)).toBe('invalid_wall_clock');
+  });
+
+  it('accepts a real leap-day wall clock', () => {
+    const instant = expectOk(
+      wallClockToInstant({ year: 2028, month: 2, day: 29, hour: 10, minute: 0, second: 0 }, 'UTC'),
+    );
+    expect(instant.toISOString()).toBe('2028-02-29T10:00:00.000Z');
+  });
 });
 
 describe('wallClockToInstant — DST edges', () => {

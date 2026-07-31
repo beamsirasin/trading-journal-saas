@@ -11,7 +11,10 @@ export function Brand({ href = '/', className }: { href?: string; className?: st
   return (
     <Link
       href={href}
-      className={cn('flex items-center gap-2 rounded-md font-semibold tracking-tight', className)}
+      className={cn(
+        'flex min-h-11 items-center gap-2 rounded-md font-semibold tracking-tight',
+        className,
+      )}
     >
       <span
         aria-hidden="true"

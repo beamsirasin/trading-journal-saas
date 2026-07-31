@@ -10,19 +10,15 @@ describe('GET /api/health', () => {
   it('returns the documented shape', async () => {
     const body = (await GET().json()) as HealthResponse;
     expect(body.status).toBe('ok');
-    expect(typeof body.timestamp).toBe('string');
-    expect(typeof body.uptimeSeconds).toBe('number');
-    expect(Number.isInteger(body.uptimeSeconds)).toBe(true);
-    expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0);
   });
 
-  it('returns exactly three fields, so nothing leaks by accident', () => {
+  it('returns only the liveness status, so process metadata cannot leak', () => {
     // A stricter assertion than checking for known-bad keys: any new field
     // has to be added here deliberately, which is the point.
     return GET()
       .json()
       .then((body: HealthResponse) => {
-        expect(Object.keys(body).sort()).toEqual(['status', 'timestamp', 'uptimeSeconds']);
+        expect(Object.keys(body)).toEqual(['status']);
       });
   });
 
@@ -37,12 +33,6 @@ describe('GET /api/health', () => {
     } finally {
       delete process.env.HEALTH_LEAK_CANARY;
     }
-  });
-
-  it('emits an ISO 8601 UTC timestamp', async () => {
-    const body = (await GET().json()) as HealthResponse;
-    expect(body.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
   });
 
   it('forbids caching, so the answer is never stale', () => {

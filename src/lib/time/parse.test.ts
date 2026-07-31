@@ -30,6 +30,11 @@ describe('parseInstant', () => {
     );
   });
 
+  it('rejects fractional precision that Date would silently truncate', () => {
+    expect(expectErrCode(parseInstant('2026-07-31T10:00:00.1234Z'))).toBe('invalid_timestamp');
+    expect(expectErrCode(parseInstant('2026-07-31T10:00:00.123456789Z'))).toBe('invalid_timestamp');
+  });
+
   it('parses a positive offset and normalises to UTC', () => {
     expect(expectOk(parseInstant('2026-07-31T17:00:00+07:00')).toISOString()).toBe(
       '2026-07-31T10:00:00.000Z',

@@ -40,6 +40,8 @@ src/
     mistakes.ts           Mistake taxonomy and weights       (planned)
   hooks/
     use-is-hydrated.ts    SSR-safe hydration detection
+    use-prefers-reduced-motion.ts
+                          SSR-safe accessibility preference
   lib/
     utils.ts              cn() and small shared helpers
     motion.ts             Duration and easing conventions
