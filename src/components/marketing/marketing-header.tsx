@@ -35,12 +35,13 @@ export function MarketingHeader() {
           margin so the fit isn't hairline-tight against browser/font
           rendering variance.
         */}
-        <nav aria-label="Site" className="ml-4 hidden items-center gap-1 md:flex">
+        <nav aria-label="Site" className="ml-4 hidden items-center gap-1 lg:flex">
           {MARKETING_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-9 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors"
+              {...(item.prefetch === false ? { prefetch: false } : {})}
+              className="text-muted-foreground hover:text-foreground hover:bg-accent flex min-h-11 min-w-11 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors"
             >
               {item.label}
             </Link>
@@ -50,11 +51,11 @@ export function MarketingHeader() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
 
-          <Button asChild variant="ghost" size="sm" className="hidden min-h-11 md:inline-flex">
-            <Link href="/login">Log in</Link>
+          <Button asChild variant="ghost" size="sm" className="hidden min-h-11 lg:inline-flex">
+            <Link href="/login">Login preview</Link>
           </Button>
-          <Button asChild size="sm" className="hidden min-h-11 md:inline-flex">
-            <Link href="/register">Start free trial</Link>
+          <Button asChild size="sm" className="hidden min-h-11 lg:inline-flex">
+            <Link href="/register">Registration preview</Link>
           </Button>
 
           <MarketingMobileNav />

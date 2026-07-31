@@ -42,7 +42,7 @@ export function MobileNav() {
       <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="border-b p-4">
           <SheetTitle asChild>
-            <Brand href="/app" />
+            <Brand href="/app" onClick={() => setOpen(false)} />
           </SheetTitle>
           <SheetDescription className="sr-only">
             Application sections. Every section is a preview built from demo data.

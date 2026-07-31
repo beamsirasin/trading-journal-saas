@@ -3,7 +3,7 @@
  *
  * INTENTIONALLY EMPTY. Phase 00b establishes the database boundary without
  * committing to any product schema — `users`, `workspaces`, `trades` and the
- * rest arrive in Phases 01–06, each with its own reviewed migration.
+ * rest arrive in later schema phases, each with its own reviewed migration.
  *
  * drizzle-kit requires this module to exist and to be resolvable, so it is a
  * real file rather than a missing path. Tables are added by re-exporting them

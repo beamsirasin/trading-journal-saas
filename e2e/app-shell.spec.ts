@@ -165,6 +165,26 @@ test.describe('responsive navigation', () => {
     await expect(page.getByRole('dialog')).toBeHidden();
   });
 
+  test('mobile drawer closes after following its wordmark', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/app/settings');
+
+    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    await page.getByRole('dialog').getByRole('link', { name: 'Trading OS' }).click();
+
+    await expect(page).toHaveURL(/\/app$/);
+    await expect(page.getByRole('dialog')).toBeHidden();
+  });
+
+  test('shared buttons keep the 44px touch-target minimum', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/app/settings');
+
+    const save = await page.getByRole('button', { name: 'Save changes' }).boundingBox();
+    expect(save?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(save?.height ?? 0).toBeGreaterThanOrEqual(44);
+  });
+
   test('has no horizontal overflow at 320px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto('/app');

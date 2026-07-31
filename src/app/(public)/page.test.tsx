@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { PLANS, TRIAL_DAYS } from '@/config/plans';
+import { PLANS } from '@/config/plans';
 
 import Home from './page';
 
@@ -32,7 +32,7 @@ describe('landing page', () => {
       /two sets of books/i,
       /six steps/i,
       /does one thing properly/i,
-      /three plans, one free trial/i,
+      /three planned tiers, one planned trial/i,
       /what this product does/i,
       /which problem you actually have/i,
     ]) {
@@ -55,7 +55,9 @@ describe('landing page', () => {
     // Scoped to the pricing region: the closing CTA also offers a trial link,
     // and counting across the whole page would silently pass if a fourth plan
     // card appeared.
-    const pricing = screen.getByRole('region', { name: /three plans, one free trial/i });
+    const pricing = screen.getByRole('region', {
+      name: /three planned tiers, one planned trial/i,
+    });
 
     for (const plan of PLANS) {
       expect(within(pricing).getByRole('heading', { name: plan.name })).toBeInTheDocument();
@@ -63,7 +65,7 @@ describe('landing page', () => {
 
     expect(within(pricing).getAllByText('Pricing to be confirmed')).toHaveLength(PLANS.length);
     expect(
-      within(pricing).getAllByRole('link', { name: `Start ${TRIAL_DAYS}-day free trial` }),
+      within(pricing).getAllByRole('link', { name: 'Preview trial registration' }),
     ).toHaveLength(PLANS.length);
   });
 
@@ -90,12 +92,24 @@ describe('landing page', () => {
   it('points its primary calls to action at real routes', () => {
     render(<Home />);
 
-    const hero = screen.getAllByRole('link', { name: /start free trial/i });
+    const hero = screen.getAllByRole('link', { name: /preview registration/i });
     expect(hero.length).toBeGreaterThan(0);
     expect(hero[0]).toHaveAttribute('href', '/register');
 
     const demo = screen.getByRole('link', { name: /see the demo dashboard/i });
     expect(demo).toHaveAttribute('href', '/demo');
+  });
+
+  it('does not imply that authentication or a trial can start today', () => {
+    render(<Home />);
+    expect(document.body).not.toHaveTextContent(/start (?:a )?(?:\d+-day )?free trial/i);
+    expect(screen.getAllByText(/registration is not live yet/i)).not.toHaveLength(0);
+  });
+
+  it('uses a server-rendered chart on the marketing page', () => {
+    const { container } = render(<Home />);
+    expect(container.querySelector('[data-static-cumulative-r]')).toBeInTheDocument();
+    expect(container.querySelector('.recharts-wrapper')).not.toBeInTheDocument();
   });
 
   it('explains the outcome matrix including both asymmetric cells', () => {

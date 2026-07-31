@@ -20,12 +20,12 @@ test.describe('pricing', () => {
     }
 
     await expect(pricing.getByText('Pricing to be confirmed')).toHaveCount(3);
-    await expect(pricing.getByRole('link', { name: /start 7-day free trial/i })).toHaveCount(3);
+    await expect(pricing.getByRole('link', { name: /preview trial registration/i })).toHaveCount(3);
   });
 
   test('states the seven-day trial', async ({ page }) => {
     await page.goto('/pricing');
-    await expect(page.getByText(/7-day trial is free and needs no card/i).first()).toBeVisible();
+    await expect(page.getByText(/7-day trial with no card is planned/i).first()).toBeVisible();
   });
 
   test('shows the account limits the plans gate on', async ({ page }) => {
@@ -83,7 +83,7 @@ test.describe('pricing', () => {
     ).toBeVisible();
 
     // No plan CTA may lead to a checkout. They all start a trial instead.
-    const ctas = page.getByRole('link', { name: /start 7-day free trial/i });
+    const ctas = page.getByRole('link', { name: /preview trial registration/i });
     const count = await ctas.count();
     for (let index = 0; index < count; index += 1) {
       await expect(ctas.nth(index)).toHaveAttribute('href', '/register');
@@ -91,6 +91,7 @@ test.describe('pricing', () => {
 
     const body = (await page.textContent('body')) ?? '';
     expect(body).not.toMatch(/enter card|card number|checkout now|buy now/i);
+    expect(body).not.toMatch(/start (?:a )?(?:7-day )?free trial/i);
   });
 });
 
@@ -162,7 +163,9 @@ test.describe('login and registration', () => {
       expect(email?.height ?? 0).toBeGreaterThanOrEqual(44);
 
       const submit = await page
-        .getByRole('button', { name: route === '/login' ? 'Log in' : 'Create account' })
+        .getByRole('button', {
+          name: route === '/login' ? 'Preview login' : 'Preview account creation',
+        })
         .boundingBox();
       expect(submit?.height ?? 0).toBeGreaterThanOrEqual(44);
     });
@@ -199,7 +202,7 @@ test.describe('login and registration', () => {
     await page.getByLabel('Name').fill('Demo Trader');
     await page.getByLabel('Email').fill('trader@example.com');
     await page.getByLabel('Password', { exact: true }).fill('a-sufficiently-long-password');
-    await page.getByRole('button', { name: 'Create account' }).click();
+    await page.getByRole('button', { name: 'Preview account creation' }).click();
 
     await expect(page).toHaveURL(/\/register$/);
     await expect(page.getByText('Nothing was submitted')).toBeVisible();

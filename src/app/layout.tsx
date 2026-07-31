@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 
+import { resolveSiteUrl } from '@/config/site-url';
 import { ThemeProvider } from '@/components/theme/theme-provider';
 
 import './globals.css';
@@ -9,20 +10,19 @@ import './globals.css';
  * that each page declares. Without it Next.js warns at build time and emits
  * relative OG URLs, which crawlers cannot follow.
  *
- * Vercel supplies the deployment host, so preview builds advertise themselves
- * rather than production. The localhost fallback keeps `next build` working
- * on a machine with no environment configured — this value is not a secret
- * and is deliberately not routed through `env.server.ts`, which would pull a
- * `server-only` module into a file that also renders on the client.
+ * `NEXT_PUBLIC_APP_URL` is the portable source of truth documented in
+ * `.env.example`. Vercel's deployment host is only a convenience fallback for
+ * an unconfigured preview; a VPS needs no provider-specific variable. The
+ * localhost fallback keeps an unconfigured local build working.
  */
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL !== undefined
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : 'http://localhost:3000');
+const siteUrl = resolveSiteUrl({
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  VERCEL_URL: process.env.VERCEL_URL,
+  VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+});
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: siteUrl,
   title: {
     default: 'Trading OS',
     template: '%s · Trading OS',

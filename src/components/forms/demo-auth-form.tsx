@@ -117,7 +117,7 @@ export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
         </div>
 
         <Button type="submit" className="min-h-11 w-full">
-          {isRegister ? 'Create account' : 'Log in'}
+          {isRegister ? 'Preview account creation' : 'Preview login'}
         </Button>
 
         {/*
@@ -135,7 +135,11 @@ export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
                 <p className="text-muted-foreground">
                   This is a design preview. Authentication, accounts and sessions arrive in Phase 2
                   — no data left your browser and no account was created. You can{' '}
-                  <Link href="/demo" className="text-primary underline underline-offset-4">
+                  <Link
+                    href="/demo"
+                    prefetch={false}
+                    className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+                  >
                     explore the demo dashboard
                   </Link>{' '}
                   in the meantime.

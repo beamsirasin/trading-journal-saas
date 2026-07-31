@@ -238,7 +238,7 @@ Modern professional SaaS. Not an admin template.
 - Identity: blue / navy / cyan. **Dark mode is the primary experience**; light mode is complete, not an afterthought.
 - Restrained gradients, clean layered surfaces, generous spacing, consistent radii, clear hierarchy.
 - Accessible contrast (WCAG AA minimum), visible focus rings, full keyboard operation, labelled form controls, semantic landmarks.
-- Animation earns its place: page/section transitions, animated drawers and dialogs, skeleton loading, subtle card hover, smooth chart transitions, animated KPI counters. No excessive glass, glow, or motion for its own sake. **Always honor `prefers-reduced-motion`.**
+- Animation earns its place: page/section transitions, animated drawers and dialogs, skeleton loading, subtle card hover, smooth chart transitions, and settled KPI-change feedback. KPI values must never count through false intermediate financial figures. No excessive glass, glow, or motion for its own sake. **Always honor `prefers-reduced-motion`.**
 - Responsive: desktop-first analytics, fully usable tablet, mobile quick-entry. **No horizontal page overflow at any breakpoint.** Charts degrade gracefully; wide tables scroll inside their own container.
 
 Every data surface ships four states: **loading, empty, error, success.** An empty state that just says "No data" is not done — it tells the user what to do next.

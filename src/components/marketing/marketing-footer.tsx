@@ -44,7 +44,8 @@ export function MarketingFooter() {
                     ) : (
                       <Link
                         href={item.href}
-                        className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+                        {...(item.prefetch === false ? { prefetch: false } : {})}
+                        className="text-muted-foreground hover:text-foreground inline-flex min-h-11 min-w-11 items-center text-sm transition-colors"
                       >
                         {item.label}
                       </Link>

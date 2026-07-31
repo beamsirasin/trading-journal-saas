@@ -2,7 +2,6 @@ import { ArrowRight } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { TRIAL_DAYS } from '@/config/plans';
 import { DemoDashboard } from '@/components/dashboard/demo-dashboard';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { PageHeader } from '@/components/product/page-header';
@@ -41,7 +40,7 @@ export default function DemoPage() {
           <>
             <Button asChild className="min-h-11">
               <Link href="/register">
-                Start {TRIAL_DAYS}-day free trial
+                Preview registration
                 <ArrowRight className="size-4" aria-hidden="true" />
               </Link>
             </Button>

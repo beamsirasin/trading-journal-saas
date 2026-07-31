@@ -12,7 +12,7 @@ export function SkipLink() {
   return (
     <a
       href={`#${MAIN_CONTENT_ID}`}
-      className="bg-primary text-primary-foreground focus:ring-ring sr-only rounded-md px-4 py-2 text-sm font-medium focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:ring-2 focus:ring-offset-2"
+      className="bg-primary text-primary-foreground focus:ring-ring sr-only min-h-11 min-w-11 items-center justify-center rounded-md px-4 py-2 text-sm font-medium focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:flex focus:ring-2 focus:ring-offset-2"
     >
       Skip to content
     </a>

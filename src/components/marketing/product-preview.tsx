@@ -48,7 +48,7 @@ export function ProductPreview({ className }: { className?: string }) {
     <div
       className={cn(
         'bg-card border-border overflow-hidden rounded-xl border',
-        'shadow-[0_2px_4px_rgba(0,0,0,0.04),0_24px_48px_-24px_rgba(0,0,0,0.4)]',
+        'shadow-elevated',
         className,
       )}
     >

@@ -13,7 +13,8 @@ import {
   type DemoRangeId,
 } from '@/lib/demo';
 import { formatMoney } from '@/lib/money';
-import { CumulativeRChart, CumulativeRTable } from '@/components/charts/cumulative-r-chart';
+import { CumulativeRChart } from '@/components/charts/cumulative-r-chart';
+import { CumulativeRTable } from '@/components/charts/cumulative-r-table';
 import { ChartContainer } from '@/components/product/chart-container';
 import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';
 import { DemoDataNotice } from '@/components/product/demo-badge';
@@ -215,7 +216,7 @@ export function DemoDashboard() {
             description="Log your first trade to see how much of your strategy's edge you are actually capturing."
             action={
               <Button asChild className="min-h-11">
-                <Link href="/register">Start a free trial</Link>
+                <Link href="/register">Preview registration</Link>
               </Button>
             }
           />

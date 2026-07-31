@@ -121,34 +121,3 @@ export function CumulativeRChart({
     </div>
   );
 }
-
-/**
- * The same numbers as a table.
- *
- * Rendered visually hidden inside `ChartContainer`, which is what makes the
- * chart genuinely reachable by a screen reader — an SVG decorated with ARIA
- * attributes is announced but cannot be explored.
- */
-export function CumulativeRTable({ points }: { points: readonly DemoEquityPoint[] }) {
-  return (
-    <table>
-      <caption>Cumulative R by week, system compared with actual</caption>
-      <thead>
-        <tr>
-          <th scope="col">Week</th>
-          <th scope="col">System cumulative R</th>
-          <th scope="col">Actual cumulative R</th>
-        </tr>
-      </thead>
-      <tbody>
-        {points.map((point) => (
-          <tr key={point.label}>
-            <th scope="row">{point.label}</th>
-            <td>{point.systemR}</td>
-            <td>{point.actualR}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}

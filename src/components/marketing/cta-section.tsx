@@ -28,24 +28,26 @@ export function CtaSection() {
             </h2>
 
             <p className="text-muted-foreground leading-relaxed text-pretty">
-              Fifty honestly recorded trades is usually enough to tell a strategy with no edge from
-              a strategy you are not following. Start with the trades you have already taken.
+              A meaningful sample of honestly recorded trades can separate a strategy problem from
+              an execution problem. Start with the trades you have already taken.
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg" className="min-h-11">
                 <Link href="/register">
-                  Start {TRIAL_DAYS}-day free trial
+                  Preview registration
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
               <Button asChild variant="outline" size="lg" className="min-h-11">
-                <Link href="/demo">Explore the demo first</Link>
+                <Link href="/demo" prefetch={false}>
+                  Explore the demo first
+                </Link>
               </Button>
             </div>
 
             <p className="text-muted-foreground text-sm">
-              No card required · no broker connection · cancel by not subscribing
+              Planned {TRIAL_DAYS}-day trial · no card required · registration is not live yet
             </p>
           </div>
         </div>

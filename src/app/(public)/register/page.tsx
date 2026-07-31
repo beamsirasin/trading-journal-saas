@@ -7,14 +7,14 @@ import { DemoAuthForm } from '@/components/forms/demo-auth-form';
 import { Container } from '@/components/shell/container';
 
 export const metadata: Metadata = {
-  title: 'Create your account',
-  description: `Start a ${TRIAL_DAYS}-day free trial of Trading OS. No card required.`,
+  title: 'Registration preview',
+  description: `Preview registration for the planned ${TRIAL_DAYS}-day Trading OS trial. Authentication and trial tracking are not live.`,
   alternates: { canonical: '/register' },
   robots: { index: false, follow: false },
 };
 
 const TRIAL_POINTS = [
-  `${TRIAL_DAYS} days, free`,
+  `Planned ${TRIAL_DAYS}-day trial`,
   'No card required',
   'Every plan feature unlocked during the trial',
   'Manual journal — no broker connection needed',
@@ -26,7 +26,7 @@ export default function RegisterPage() {
       <div className="mx-auto grid w-full max-w-4xl gap-12 lg:grid-cols-2 lg:gap-16">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <h1 className="text-page-title text-balance">Start your free trial</h1>
+            <h1 className="text-page-title text-balance">Registration preview</h1>
             <p className="text-muted-foreground text-sm leading-relaxed">
               This page is a design preview. Authentication is not implemented, so nothing you type
               is sent or stored.
@@ -61,8 +61,11 @@ export default function RegisterPage() {
 
           <p className="text-muted-foreground mt-8 text-center text-sm">
             Already have an account?{' '}
-            <Link href="/login" className="text-primary underline underline-offset-4">
-              Log in
+            <Link
+              href="/login"
+              className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+            >
+              Preview login
             </Link>
           </p>
         </div>

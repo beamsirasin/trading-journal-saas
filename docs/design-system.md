@@ -14,7 +14,7 @@ Dark is the primary experience; light is complete rather than an afterthought.
 
 ## 2. Tokens
 
-Call sites use **semantic** tokens only. Never a raw hex value, never a palette number. That indirection is what allows a re-theme and what stops light mode rotting.
+Call sites use **semantic** tokens only. Never a raw hex value, never a palette number. Raw colour and RGBA values belong only in the token declarations (plus browser metadata and static asset source files). That indirection is what allows a re-theme and what stops light mode rotting.
 
 ```
 ❌ text-[#93a4c0]   ❌ bg-blue-600
@@ -44,17 +44,19 @@ The vocabulary follows shadcn/ui's contract so vendored components work untouche
 
 ### Product tokens
 
-| Token               | Purpose                                        |
-| ------------------- | ---------------------------------------------- |
-| `brand`             | Cyan identity accent                           |
-| `surface`           | Section band, one step off the canvas          |
-| `surface-raised`    | Elevated elements, inline code, chips          |
-| `positive`          | Gains, wins                                    |
-| `negative`          | Losses                                         |
-| `warning`           | Caution, trial expiry, demo markers            |
-| `info`              | Neutral notices                                |
-| `chart-1`…`chart-4` | Categorical chart series, fixed order — see §9 |
-| `system` / `trader` | Semantic aliases of `chart-1` / `chart-2`      |
+| Token               | Purpose                                            |
+| ------------------- | -------------------------------------------------- |
+| `brand`             | Cyan identity accent                               |
+| `surface`           | Section band, one step off the canvas              |
+| `surface-raised`    | Elevated elements, inline code, chips              |
+| `positive`          | Gains, wins                                        |
+| `negative`          | Losses                                             |
+| `warning`           | Caution, trial expiry, demo markers                |
+| `info`              | Neutral notices                                    |
+| `overlay`           | Dialog and drawer scrim                            |
+| `shadow-*`          | Semantic control, card, elevated and popover depth |
+| `chart-1`…`chart-4` | Categorical chart series, fixed order — see §9     |
+| `system` / `trader` | Semantic aliases of `chart-1` / `chart-2`          |
 
 > **Trap.** `accent` is shadcn's subtle hover surface, not the cyan identity colour — that is `brand`. Mixing them produces components that look fine in isolation and wrong in context.
 
@@ -70,7 +72,7 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `foreground`       | `#e8edf7` | `#0b1220` |
 | `card`             | `#0d1424` | `#ffffff` |
 | `popover`          | `#141d33` | `#ffffff` |
-| `primary`          | `#3b82f6` | `#1d5fd8` |
+| `primary`          | `#2563eb` | `#1d5fd8` |
 | `secondary`        | `#141d33` | `#eef2f9` |
 | `muted`            | `#141d33` | `#eef2f9` |
 | `muted-foreground` | `#93a4c0` | `#55657f` |
@@ -83,7 +85,7 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `surface-raised`   | `#141d33` | `#ffffff` |
 | `positive`         | `#10b981` | `#047857` |
 | `negative`         | `#fb7185` | `#be123c` |
-| `warning`          | `#f59e0b` | `#b45309` |
+| `warning`          | `#f59e0b` | `#92400e` |
 | `info`             | `#56b6f7` | `#0369a1` |
 | `chart-1`          | `#0f9e8e` | `#0891b2` |
 | `chart-2`          | `#3b82f6` | `#1d4ed8` |
@@ -92,7 +94,7 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 
 `positive` and `negative` are never the only signal for a value's direction — sign, arrow, or label must carry it too, for red-green colour blindness.
 
-Measured text contrast on `card`, both themes: every status and text token clears 4.5:1. The one exception is light-mode `chart-1` at 3.68:1, which is why series colours never carry text (§9).
+Measured text contrast on the surfaces where each token is used, in both themes: every status and text token clears 4.5:1. Dark primary actions and light warning text are explicitly asserted by e2e. The one exception is light-mode `chart-1` at 3.68:1, which is why series colours never carry text (§9).
 
 ## 3. Theming
 
@@ -172,7 +174,7 @@ Touch targets ≥ 44px, including inputs — `Input` is `h-11` rather than shadc
 
 Animation must aid comprehension. No motion for decoration.
 
-Sanctioned and in use: hero entrance, sidebar and segmented-control active indicators, drawer and dialog entrance, skeleton loading, subtle card hover, KPI value transitions, chart entrance.
+Sanctioned and in use: hero entrance, sidebar and segmented-control active indicators, drawer and dialog entrance, skeleton loading, subtle card hover, settled KPI opacity feedback, chart entrance.
 
 Avoided: heavy glass, glow, parallax, permanent looping decoration, long stagger sequences, and anything that gates access to content.
 
@@ -189,19 +191,19 @@ Durations and easings live in [`src/lib/motion.ts`](../src/lib/motion.ts) so "ho
 | `instant` | 0.12    | Hover and press feedback               |
 | `fast`    | 0.18    | Small state changes, active indicators |
 | `base`    | 0.24    | Panels, drawers, dialogs               |
-| `slow`    | 0.36    | Large surfaces entering, KPI counters  |
+| `slow`    | 0.36    | Large surfaces entering                |
 
 Easing: `standard` `cubic-bezier(0.16, 1, 0.3, 1)` decelerates — fast out of the gate, gentle on arrival, so an element looks like it settled rather than stopped. `LAYOUT_SPRING` is the shared spring for layout transitions.
 
 ### Where Motion (the library) is used
 
-Three places, each a shared `layoutId` or a value animation that communicates something a hard cut cannot:
+Three places, each a shared `layoutId` or restrained feedback that communicates something a hard cut cannot:
 
 1. The sidebar's active-section indicator, travelling between items.
 2. The segmented control's indicator, same pattern.
-3. `AnimatedNumber`, counting a KPI to its value.
+3. `AnimatedNumber`, fading an already-settled KPI value into its changed state.
 
-`AnimatedNumber` drives a MotionValue rather than React state — a `setState` per frame would re-render the card sixty times a second. It takes an already-rounded string, animates only intermediate frames, and settles on characters identical to its input, so no financial value is ever produced by floating-point arithmetic. Under reduced motion it renders the value immediately: a number is information and must never be temporarily wrong.
+`AnimatedNumber` always renders characters identical to its already-rounded input and animates opacity only. A count-up temporarily presents invented financial values and delays access to the selected result; opacity changes neither the value nor layout. Under reduced motion it renders a plain span with no animation scheduled.
 
 Everything else is CSS.
 
@@ -235,7 +237,7 @@ Rules that follow from it:
 
 Every chart renders inside `ChartContainer`, which supplies three things structurally so they cannot be forgotten per-chart: a real `<figure>` with a `<figcaption>` stating what to take from it, a **visually-hidden data table** carrying the same numbers, and a legend pairing each swatch with its name and line style. An SVG decorated with ARIA is announced but not explorable; a table is.
 
-Charts are theme-aware for free — Recharts receives `var(--chart-1)` etc. as SVG attributes, so a theme switch repaints without re-rendering. Animation is disabled under reduced motion via `isAnimationActive`.
+Charts are theme-aware for free — both the server-rendered marketing SVG and interactive Recharts charts receive `var(--chart-1)` etc. as SVG attributes, so a theme switch repaints without re-rendering. Recharts is restricted to demo and application routes; the static landing route neither imports nor prefetches it. Interactive chart animation is disabled under reduced motion via `isAnimationActive`.
 
 Chart data conversion (fixture strings → JS numbers) happens once, at the plotting boundary, on values already rounded for display. It never feeds back into a calculation.
 
@@ -250,6 +252,7 @@ Current vendored deviations:
 
 - `dropdown-menu.tsx` — `checked` is spread conditionally instead of passed directly, because this project enables `exactOptionalPropertyTypes` and upstream passes an explicit `undefined`.
 - `dropdown-menu.tsx` and `sheet.tsx` — state animations live in `globals.css`, avoiding an otherwise unused animation-plugin dependency while keeping the global reduced-motion guard authoritative.
+- `button.tsx`, `card.tsx`, `dropdown-menu.tsx` and `sheet.tsx` — the shared 44px target minimum and semantic elevation tokens replace upstream size and raw shadow defaults.
 
 Only components actually used are installed. Where a native element does the job — `<details>` for the FAQ, `<select>` for the account picker, `<label htmlFor>` for form labels — the native element wins: it is keyboard correct, screen-reader correct, and works with JavaScript disabled, none of which a reimplementation gets for free.
 

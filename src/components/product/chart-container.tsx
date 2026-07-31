@@ -27,9 +27,9 @@ export interface ChartLegendItem {
  *    with its name, and line charts also name the stroke style, so the two
  *    series remain separable in greyscale, in print, and under CVD.
  *
- * The plot area has a fixed aspect/height rather than sizing to content:
- * Recharts' ResponsiveContainer measures its parent, and a parent that sizes
- * to its child collapses to zero.
+ * Interactive plots receive a fixed aspect/height at the call site because
+ * Recharts' ResponsiveContainer measures its parent. Static SVG plots may
+ * instead supply their own aspect ratio.
  */
 export function ChartContainer({
   title,

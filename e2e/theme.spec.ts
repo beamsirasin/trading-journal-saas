@@ -52,6 +52,50 @@ test.describe('theme precedence', () => {
   });
 });
 
+test.describe('theme contrast', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`${theme} action and status tokens meet AA text contrast`, async ({ page }) => {
+      await page.addInitScript(
+        ([key, value]) => window.localStorage.setItem(key as string, value as string),
+        [STORAGE_KEY, theme],
+      );
+      await page.goto('/');
+
+      const ratios = await page.evaluate(() => {
+        const style = getComputedStyle(document.documentElement);
+        const parse = (name: string) => {
+          const value = style.getPropertyValue(name).trim();
+          const matched = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+          if (matched === undefined) throw new Error(`${name} must resolve to a hex colour`);
+          const hex =
+            matched.length === 3 ? [...matched].map((digit) => digit + digit).join('') : matched;
+          return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+        };
+        const luminance = (rgb: number[]) => {
+          const channels = rgb.map((channel) => {
+            const value = channel / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+        };
+        const contrast = (foreground: string, background: string) => {
+          const first = luminance(parse(foreground));
+          const second = luminance(parse(background));
+          return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+        };
+
+        return {
+          primaryAction: contrast('--primary-foreground', '--primary'),
+          warningOnSurface: contrast('--warning', '--surface'),
+        };
+      });
+
+      expect(ratios.primaryAction).toBeGreaterThanOrEqual(4.5);
+      expect(ratios.warningOnSurface).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
 /**
  * The CSS-only path, with JavaScript disabled. next-themes cannot run, so no
  * class is set and the stylesheet alone decides — which is what a user sees

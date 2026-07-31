@@ -17,7 +17,7 @@ import { defineConfig } from 'drizzle-kit';
  * drizzle-kit is a standalone CLI outside the Next.js runtime, and importing
  * `server-only` from it would throw.
  *
- * NOTE: no schema tables exist yet. Phase 01 adds the first ones.
+ * NOTE: no schema tables exist yet. A later schema phase adds the first ones.
  */
 
 const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;

@@ -162,7 +162,10 @@ export default function SettingsPage() {
           <p className="text-muted-foreground text-sm leading-relaxed">
             Prices have not been set and nothing can be purchased. Billing, entitlement checks and
             trial tracking arrive in a later release.{' '}
-            <Link href="/pricing" className="text-primary underline underline-offset-4">
+            <Link
+              href="/pricing"
+              className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+            >
               See the plans
             </Link>
             .

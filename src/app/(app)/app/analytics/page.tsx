@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 
 import { demoBundle } from '@/lib/demo';
-import { CumulativeRChart, CumulativeRTable } from '@/components/charts/cumulative-r-chart';
+import { CumulativeRChart } from '@/components/charts/cumulative-r-chart';
+import { CumulativeRTable } from '@/components/charts/cumulative-r-table';
 import { MistakeSummary } from '@/components/dashboard/mistake-summary';
 import { ChartContainer } from '@/components/product/chart-container';
 import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';

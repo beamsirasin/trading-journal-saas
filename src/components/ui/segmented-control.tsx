@@ -82,7 +82,7 @@ export function SegmentedControl<T extends string>({
                     <span
                       data-segment-indicator="static"
                       aria-hidden="true"
-                      className="bg-card border-border absolute inset-0 rounded-md border shadow-xs"
+                      className="bg-card border-border shadow-control absolute inset-0 rounded-md border"
                     />
                   ) : (
                     <motion.span
@@ -90,7 +90,7 @@ export function SegmentedControl<T extends string>({
                       layoutId={layoutId}
                       aria-hidden="true"
                       transition={LAYOUT_SPRING}
-                      className="bg-card border-border absolute inset-0 rounded-md border shadow-xs"
+                      className="bg-card border-border shadow-control absolute inset-0 rounded-md border"
                     />
                   )
                 ) : null}

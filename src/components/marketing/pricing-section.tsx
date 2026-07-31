@@ -18,7 +18,7 @@ import { Section, SectionIntro } from './section';
  * making a claim about the product's readiness.
  */
 export function PricingSection({
-  title = 'Three plans, one free trial',
+  title = 'Three planned tiers, one planned trial',
   eyebrow = 'Pricing',
   tone = 'surface',
 }: {
@@ -41,7 +41,7 @@ export function PricingSection({
           `md:grid-cols-2` matters specifically at tablet (768px): without it,
           the grid stays single-column until `lg` (1024px), so a plan card
           stretches to the full ~700px content width with a full-width
-          "Start trial" button — noticeably wider than the same card ever
+          CTA — noticeably wider than the same card ever
           renders at mobile or desktop. Held at `md` rather than `sm` (640px)
           because each card carries up to six checklist items plus a button,
           which needs more than a 640px row split two ways. Elite sits alone
@@ -64,8 +64,8 @@ export function PricingSection({
             </p>
             <p className="text-muted-foreground">
               Prices have not been set, no card is collected, and nothing can be purchased. The{' '}
-              {TRIAL_DAYS}-day trial starts at first login and requires no payment details. Billing
-              arrives in a later release, and the amounts above will be published before it does.
+              planned {TRIAL_DAYS}-day trial will start at first login and require no payment
+              details. Authentication, trial tracking, and billing arrive in later releases.
             </p>
           </div>
         </div>

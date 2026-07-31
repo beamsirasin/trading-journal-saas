@@ -39,7 +39,7 @@ export function MarketingMobileNav() {
         <Button
           variant="ghost"
           size="icon"
-          className="size-11 md:hidden"
+          className="size-11 lg:hidden"
           aria-label="Open navigation menu"
         >
           <Menu className="size-5" />
@@ -49,7 +49,7 @@ export function MarketingMobileNav() {
       <SheetContent side="right" className="w-80 max-w-[85vw] p-0">
         <SheetHeader className="border-b p-4">
           <SheetTitle asChild>
-            <Brand href="/" />
+            <Brand href="/" onClick={close} />
           </SheetTitle>
           <SheetDescription className="sr-only">
             Site navigation and account links.
@@ -61,6 +61,7 @@ export function MarketingMobileNav() {
             <Link
               key={item.href}
               href={item.href}
+              {...(item.prefetch === false ? { prefetch: false } : {})}
               onClick={close}
               className="text-foreground hover:bg-accent flex min-h-11 items-center rounded-md px-3 text-sm font-medium transition-colors"
             >
@@ -71,12 +72,12 @@ export function MarketingMobileNav() {
           <div className="border-border mt-3 flex flex-col gap-2 border-t pt-4">
             <Button asChild variant="outline" className="min-h-11 w-full">
               <Link href="/login" onClick={close}>
-                Log in
+                Login preview
               </Link>
             </Button>
             <Button asChild className="min-h-11 w-full">
               <Link href="/register" onClick={close}>
-                Start free trial
+                Registration preview
               </Link>
             </Button>
           </div>

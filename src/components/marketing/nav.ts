@@ -9,13 +9,15 @@
 export interface MarketingNavItem {
   readonly href: string;
   readonly label: string;
+  /** Heavy interactive destinations are loaded only after explicit intent. */
+  readonly prefetch?: false;
 }
 
 export const MARKETING_NAV: readonly MarketingNavItem[] = [
   { href: '/#features', label: 'Features' },
   { href: '/#how-it-works', label: 'How it works' },
   { href: '/pricing', label: 'Pricing' },
-  { href: '/demo', label: 'Demo' },
+  { href: '/demo', label: 'Demo', prefetch: false },
 ];
 
 /**
@@ -28,7 +30,12 @@ export const MARKETING_NAV: readonly MarketingNavItem[] = [
  */
 export interface FooterGroup {
   readonly title: string;
-  readonly items: readonly { href: string; label: string; pending?: boolean }[];
+  readonly items: readonly {
+    href: string;
+    label: string;
+    pending?: boolean;
+    prefetch?: false;
+  }[];
 }
 
 export const FOOTER_GROUPS: readonly FooterGroup[] = [
@@ -39,15 +46,15 @@ export const FOOTER_GROUPS: readonly FooterGroup[] = [
       { href: '/#how-it-works', label: 'How it works' },
       { href: '/#attribution', label: 'System vs trader' },
       { href: '/pricing', label: 'Pricing' },
-      { href: '/demo', label: 'Demo dashboard' },
+      { href: '/demo', label: 'Demo dashboard', prefetch: false },
     ],
   },
   {
     title: 'Account',
     items: [
-      { href: '/login', label: 'Log in' },
-      { href: '/register', label: 'Create account' },
-      { href: '/app', label: 'Open the app preview' },
+      { href: '/login', label: 'Login preview' },
+      { href: '/register', label: 'Registration preview' },
+      { href: '/app', label: 'Open the app preview', prefetch: false },
     ],
   },
   {

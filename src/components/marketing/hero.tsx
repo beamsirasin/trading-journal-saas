@@ -53,13 +53,13 @@ export function Hero() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <Button asChild size="lg" className="min-h-11">
                 <Link href="/register">
-                  Start free trial
+                  Preview registration
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
 
               <Button asChild variant="outline" size="lg" className="min-h-11">
-                <Link href="/demo">
+                <Link href="/demo" prefetch={false}>
                   <PlayCircle className="size-4" aria-hidden="true" />
                   See the demo dashboard
                 </Link>
@@ -67,7 +67,7 @@ export function Hero() {
             </div>
 
             <p className="text-muted-foreground text-sm">
-              {TRIAL_DAYS}-day free trial · no card required · manual journal, no broker connection
+              Planned {TRIAL_DAYS}-day trial · no card required · registration is not live yet
             </p>
           </div>
 

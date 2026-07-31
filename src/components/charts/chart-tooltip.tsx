@@ -48,7 +48,7 @@ export function ChartTooltip({
     <div
       className={cn(
         'bg-popover text-popover-foreground border-border rounded-md border px-3 py-2',
-        'shadow-[0_8px_24px_-12px_rgba(0,0,0,0.45)]',
+        'shadow-popover',
       )}
     >
       {label === undefined ? null : (

@@ -91,7 +91,7 @@ src/
     theme/      Theme provider, header toggle, settings selector
     marketing/  Public-site sections and chrome
     product/    KPI cards, comparison metrics, chart frame
-    charts/     Recharts components
+    charts/     Static SVG and interactive Recharts components
     dashboard/  The demo attribution dashboard
     forms/      Visual-only form prototypes
   config/       Environment schemas (split server/client), plan definitions

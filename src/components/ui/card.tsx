@@ -9,7 +9,7 @@ export function Card({ className, ...props }: CardProps) {
     <div
       className={cn(
         'bg-card text-card-foreground border-border rounded-lg border',
-        'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.25)]',
+        'shadow-card',
         'transition-colors duration-200',
         className,
       )}

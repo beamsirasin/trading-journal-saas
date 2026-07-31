@@ -42,7 +42,7 @@ const STEPS: readonly Step[] = [
   },
   {
     title: 'Watch the pattern, not the trade',
-    body: 'One trade tells you nothing. Fifty tell you which mistake costs the most R, whether your edge is real, and whether your discipline is improving.',
+    body: 'One trade tells you nothing. A meaningful sample can show which mistake costs the most R, whether the strategy has held up, and whether discipline is improving.',
   },
 ];
 

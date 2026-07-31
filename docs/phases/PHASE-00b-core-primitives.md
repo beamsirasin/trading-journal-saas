@@ -91,8 +91,8 @@ Playwright rebuilt and served the optimized production output for the final e2e 
 | ------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------ |
 | `decimal.js`                                            | 06           | Minor units in `bigint` are exact; prices at `NUMERIC(20,10)` are what need it |
 | Multiplication, division, percentages                   | 06           | Need a documented rounding rule per formula                                    |
-| Product schema tables                                   | 01+          | Each arrives with its own reviewed migration                                   |
-| Auth, React Hook Form, Recharts                         | 02 / 04 / 08 | No code uses them yet                                                          |
+| Product schema tables                                   | 03+          | Each arrives with its own reviewed migration                                   |
+| Auth, React Hook Form, Recharts                         | 02 / 04 / 01 | None was used in Phase 00b                                                     |
 | Application Dockerfile                                  | 12           | Would require deciding a production architecture that has not been designed    |
 | Trading sessions, market hours, business-day arithmetic | later        | Not needed by any current phase                                                |
 | `/api/ready` (dependency readiness)                     | 12           | Distinct from liveness                                                         |
@@ -100,6 +100,6 @@ Playwright rebuilt and served the optimized production output for the final e2e 
 ## Open risks
 
 - **`docker-compose.yml` is unverified.** Docker is not installed on the machine used for this phase. The file is written from the documented schema but has never been started; validate before relying on it.
-- **`numeric`-as-string is asserted only by documentation.** The guarantee is real but untested until a database exists. Phase 01 must add a test proving a `numeric` column round-trips as a string.
+- **`numeric`-as-string is asserted only by documentation.** The guarantee is real but untested until a database and the first `numeric` column exist. The phase that introduces that column must add the round-trip test; the resequenced Phase 01 contains no schema.
 - **The app shell is unauthenticated.** `/app` is publicly reachable. Safe only because it holds no data; Phase 02 adds the guard.
 - **`Intl` depends on runtime ICU.** A small-icu Node build would break timezone conversion. Worth checking if the deployment target changes.

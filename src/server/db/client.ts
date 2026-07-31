@@ -23,7 +23,7 @@ import * as schema from './schema';
  * the portability requirement in CLAUDE.md §2. Revisit only if connection
  * latency is measured to be a real problem.
  *
- * NOTE: no tables exist yet. This is the boundary, ready for Phase 01.
+ * NOTE: no tables exist yet. This boundary is ready for the first schema phase.
  */
 
 export type Database = PostgresJsDatabase<typeof schema>;

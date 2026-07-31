@@ -107,6 +107,11 @@ test.describe('demo dashboard', () => {
 
     await selectRange(page, '30 days');
     await expect(leakage).toContainText('8.4');
+    await expect(leakage.locator('[data-animated-number]')).toHaveAttribute(
+      'data-animated-number',
+      '8.4',
+    );
+    await expect(leakage).not.toContainText(/21\.1|16\.7|9\.6/);
 
     await selectRange(page, '90 days');
     await expect(leakage).toContainText('19.3');

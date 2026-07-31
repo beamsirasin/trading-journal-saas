@@ -48,6 +48,13 @@
   --color-negative: var(--negative);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-overlay: var(--overlay);
+
+  /* Semantic elevation; call sites never invent an RGBA shadow. */
+  --shadow-control: var(--elevation-control);
+  --shadow-card: var(--elevation-card);
+  --shadow-elevated: var(--elevation-elevated);
+  --shadow-popover: var(--elevation-popover);
 
   /*
    * Chart series. A VALIDATED categorical theme, not hand-picked colours —
@@ -147,7 +154,7 @@
   --card-foreground: #e8edf7;
   --popover: #141d33;
   --popover-foreground: #e8edf7;
-  --primary: #3b82f6;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
   --secondary: #141d33;
   --secondary-foreground: #e8edf7;
@@ -168,6 +175,12 @@
   --negative: #fb7185;
   --warning: #f59e0b;
   --info: #56b6f7;
+
+  --overlay: rgb(0 0 0 / 0.55);
+  --elevation-control: 0 1px 2px rgb(0 0 0 / 0.22);
+  --elevation-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 24px -12px rgb(0 0 0 / 0.4);
+  --elevation-elevated: 0 2px 4px rgb(0 0 0 / 0.18), 0 24px 48px -24px rgb(0 0 0 / 0.55);
+  --elevation-popover: 0 8px 24px -12px rgb(0 0 0 / 0.55);
 
   --chart-1: #0f9e8e;
   --chart-2: #3b82f6;
@@ -205,8 +218,14 @@
     --brand: #0e7490;
     --positive: #047857;
     --negative: #be123c;
-    --warning: #b45309;
+    --warning: #92400e;
     --info: #0369a1;
+
+    --overlay: rgb(7 11 20 / 0.5);
+    --elevation-control: 0 1px 2px rgb(11 18 32 / 0.08);
+    --elevation-card: 0 1px 2px rgb(11 18 32 / 0.05), 0 8px 24px -12px rgb(11 18 32 / 0.24);
+    --elevation-elevated: 0 2px 4px rgb(11 18 32 / 0.06), 0 24px 48px -24px rgb(11 18 32 / 0.36);
+    --elevation-popover: 0 8px 24px -12px rgb(11 18 32 / 0.3);
 
     --chart-1: #0891b2;
     --chart-2: #1d4ed8;
@@ -244,8 +263,14 @@
   --brand: #0e7490;
   --positive: #047857;
   --negative: #be123c;
-  --warning: #b45309;
+  --warning: #92400e;
   --info: #0369a1;
+
+  --overlay: rgb(7 11 20 / 0.5);
+  --elevation-control: 0 1px 2px rgb(11 18 32 / 0.08);
+  --elevation-card: 0 1px 2px rgb(11 18 32 / 0.05), 0 8px 24px -12px rgb(11 18 32 / 0.24);
+  --elevation-elevated: 0 2px 4px rgb(11 18 32 / 0.06), 0 24px 48px -24px rgb(11 18 32 / 0.36);
+  --elevation-popover: 0 8px 24px -12px rgb(11 18 32 / 0.3);
 
   --chart-1: #0891b2;
   --chart-2: #1d4ed8;
@@ -262,7 +287,7 @@
   --card-foreground: #e8edf7;
   --popover: #141d33;
   --popover-foreground: #e8edf7;
-  --primary: #3b82f6;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
   --secondary: #141d33;
   --secondary-foreground: #e8edf7;
@@ -283,6 +308,12 @@
   --negative: #fb7185;
   --warning: #f59e0b;
   --info: #56b6f7;
+
+  --overlay: rgb(0 0 0 / 0.55);
+  --elevation-control: 0 1px 2px rgb(0 0 0 / 0.22);
+  --elevation-card: 0 1px 2px rgb(0 0 0 / 0.16), 0 8px 24px -12px rgb(0 0 0 / 0.4);
+  --elevation-elevated: 0 2px 4px rgb(0 0 0 / 0.18), 0 24px 48px -24px rgb(0 0 0 / 0.55);
+  --elevation-popover: 0 8px 24px -12px rgb(0 0 0 / 0.55);
 
   --chart-1: #0f9e8e;
   --chart-2: #3b82f6;

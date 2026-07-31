@@ -20,7 +20,7 @@ Two consequences worth stating plainly rather than burying:
 
 ### Design tokens
 
-Extended the Phase 00b vocabulary with `surface`, `info`, `chart-1`–`chart-4`, and the semantic `system` / `trader` aliases, across all four palette blocks. Added a typography scale (`text-display`, `text-page-title`, `text-section-title`, `text-card-title`, `text-metric`, `text-label`), the `numeric` utility for tabular figures, safe-area utilities, and `--shell-header-height` / `--shell-sidebar-width` so the shell's geometry is one decision.
+Extended the Phase 00b vocabulary with `surface`, `info`, `overlay`, `chart-1`–`chart-4`, semantic elevation, and the `system` / `trader` chart aliases, across all four palette blocks. Added a typography scale (`text-display`, `text-page-title`, `text-section-title`, `text-card-title`, `text-metric`, `text-label`), the `numeric` utility for tabular figures, safe-area utilities, and `--shell-header-height` / `--shell-sidebar-width` so the shell's geometry is one decision.
 
 ### Chart palette — validated, not chosen
 
@@ -39,7 +39,7 @@ The first four candidate palettes failed. Blue against violet collapsed to **ΔE
 
 ### Marketing site
 
-`/` (hero, problem, attribution, workflow, features, pricing, FAQ, CTA), `/pricing`, `/login`, `/register`, `/demo`.
+`/` (hero, problem, attribution, workflow, features, pricing, FAQ, CTA), `/pricing`, `/login`, `/register`, `/demo`. Registration, login, trial and pricing language is explicitly labelled as a preview or plan; no CTA claims that authentication, a trial or payment processing is live.
 
 The landing page argues rather than lists: it states the problem, shows that profit cannot resolve it, demonstrates the measurement, explains the work required, then prices it. The outcome matrix appears in full, including the two asymmetric cells that a conventional journal cannot express.
 
@@ -71,21 +71,27 @@ Five real routes: `/app`, `/app/trades`, `/app/strategies`, `/app/analytics`, `/
 
 **A comment claimed something false.** `TradesTable` documented that only one of its two presentations is "in the DOM at a time". Both are; the inactive one is `display:none`, which removes it from the accessibility tree but not from a DOM query. The accessibility claim was right and the DOM claim was wrong; a test scoped with `.first()` resolved to the hidden table and failed. Both the comment and the test are fixed, and each presentation now carries `data-trades-view`.
 
+## Independent hardening review
+
+The post-completion review confirmed and fixed: non-AA dark primary and light warning text, trial/authentication copy that read as live, false intermediate KPI values, undersized shared touch targets, drawer wordmarks that left their dialogs open, Recharts in the landing payload, raw overlay/elevation values at call sites, and metadata origin resolution that ignored the documented portable environment variable. Regression coverage exercises the rendered production UI, not only class names or source structure.
+
+The same review found no confirmed broken routes, hydration mismatch, horizontal overflow, mobile table/chart breakage, server secret leakage, build-time database initialization, unlabeled fixture data, expected-return claim, or unnecessary server-to-client component conversion.
+
 ## Verification
 
 All executed on 2026-07-31, exit codes checked individually.
 
-| Command               | Result                                          |
-| --------------------- | ----------------------------------------------- |
-| `pnpm format:check`   | pass                                            |
-| `pnpm lint`           | pass                                            |
-| `pnpm typecheck`      | pass                                            |
-| `pnpm test`           | **267 passed**                                  |
-| `pnpm build`          | pass, with no `DATABASE_URL` in the environment |
-| `pnpm scan:client`    | pass — 31 client assets, no server secrets      |
-| `pnpm test:e2e`       | **186 passed** (desktop + mobile)               |
-| `git diff --check`    | clean                                           |
-| Dev server, 13 routes | all HTTP 200                                    |
+| Command                               | Result                                          |
+| ------------------------------------- | ----------------------------------------------- |
+| `pnpm format:check`                   | pass                                            |
+| `pnpm lint`                           | pass                                            |
+| `pnpm typecheck`                      | pass                                            |
+| `pnpm test`                           | **274 passed**                                  |
+| `pnpm build`                          | pass, with no `DATABASE_URL` in the environment |
+| `pnpm scan:client`                    | pass — 29 client assets, no server secrets      |
+| `pnpm test:e2e`                       | **214 passed** (desktop + mobile)               |
+| `git diff --check`                    | clean                                           |
+| Production server, 13 required routes | all HTTP 200                                    |
 
 ## Deliberately deferred
 
@@ -103,6 +109,6 @@ All executed on 2026-07-31, exit codes checked individually.
 
 - **`/app` is still unauthenticated.** Carried forward from Phase 00b. Safe only because it holds fixtures rather than anyone's data. Phase 02 adds the guard.
 - **The account selector does not re-scope the metrics.** It filters the trade list and says so on the page. Making it appear to recompute would be faking the product's core calculation.
-- **Recharts is a substantial dependency** and is only used on the two dashboard charts. The hero preview deliberately uses a plain SVG polyline to keep it out of the first-load bundle; if chart usage does not grow by Phase 09, a lighter renderer is worth reconsidering.
+- **Recharts is a substantial dependency** and is restricted to interactive demo and application routes. The landing page uses server-rendered SVG and disables prefetch for chart-bearing destinations, keeping Recharts out of its initial client assets. If chart usage does not grow by Phase 09, a lighter renderer is worth reconsidering.
 - **Chart colours are validated against `card`, not every surface.** Charts currently render only on `card`. A chart placed on `surface` or `muted` needs its contrast re-checked.
 - **No visual regression testing.** Layout is asserted structurally (overflow, touch targets, landmarks) rather than by pixel comparison, which is deliberate — but it means a purely cosmetic regression would pass CI.

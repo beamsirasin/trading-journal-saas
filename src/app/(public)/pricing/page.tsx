@@ -7,11 +7,11 @@ import { Container } from '@/components/shell/container';
 
 export const metadata: Metadata = {
   title: 'Pricing',
-  description: `Three plans gated on how many trading accounts you journal, with a ${TRIAL_DAYS}-day free trial. Amounts are not set yet and no payment processing is connected.`,
+  description: `Preview three planned account-based tiers and a planned ${TRIAL_DAYS}-day trial. Prices, authentication, and payment processing are not live.`,
   alternates: { canonical: '/pricing' },
   openGraph: {
     title: 'Pricing · Trading OS',
-    description: `Three plans, a ${TRIAL_DAYS}-day free trial, and no card required.`,
+    description: `Preview three planned tiers and a planned ${TRIAL_DAYS}-day, no-card trial.`,
     url: '/pricing',
     type: 'website',
   },
@@ -33,7 +33,7 @@ export default function PricingPage() {
           <p className="text-muted-foreground leading-relaxed text-pretty">
             The three tiers below differ only in how many trading accounts you can journal. Amounts
             have not been approved and no payment provider is connected, so nothing on this page can
-            be purchased. The {TRIAL_DAYS}-day trial is free and needs no card.
+            be purchased. A {TRIAL_DAYS}-day trial with no card is planned but cannot start yet.
           </p>
         </div>
       </Container>

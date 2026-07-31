@@ -30,7 +30,7 @@ test.describe('landing page', () => {
       /two sets of books/i,
       /six steps/i,
       /does one thing properly/i,
-      /three plans, one free trial/i,
+      /three planned tiers, one planned trial/i,
       /what this product does/i,
     ]) {
       await expect(page.getByRole('heading', { level: 2, name: heading })).toBeVisible();
@@ -93,7 +93,7 @@ test.describe('public calls to action', () => {
   test('primary CTAs point at real routes', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('link', { name: /start free trial/i }).first()).toHaveAttribute(
+    await expect(page.getByRole('link', { name: /preview registration/i }).first()).toHaveAttribute(
       'href',
       '/register',
     );
@@ -101,6 +101,27 @@ test.describe('public calls to action', () => {
       'href',
       '/demo',
     );
+  });
+
+  test('does not claim that registration or a trial is active', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: /start free trial/i })).toHaveCount(0);
+    await expect(page.getByText(/registration is not live yet/i).first()).toBeVisible();
+  });
+
+  test('keeps Recharts out of the static landing route', async ({ page }) => {
+    const scripts: Promise<string>[] = [];
+    page.on('response', (response) => {
+      if (response.url().includes('/_next/static/') && response.url().endsWith('.js')) {
+        scripts.push(response.text().catch(() => ''));
+      }
+    });
+
+    await page.goto('/', { waitUntil: 'networkidle' });
+    await expect(page.locator('[data-static-cumulative-r]')).toBeVisible();
+    await expect(page.locator('.recharts-wrapper')).toHaveCount(0);
+    const bodies = await Promise.all(scripts);
+    expect(bodies.some((script) => script.includes('recharts'))).toBe(false);
   });
 
   test('every public route responds 200', async ({ page }) => {
@@ -140,9 +161,9 @@ test.describe('public calls to action', () => {
  * element rather than overflowing the page, so the bug is invisible to that
  * assertion and only shows up as a doubled line height.
  */
-test.describe('header layout at the md breakpoint', () => {
-  test('the wordmark and every nav link render on a single line at 768px', async ({ page }) => {
-    await page.setViewportSize({ width: 768, height: 1024 });
+test.describe('header layout at the navigation breakpoint', () => {
+  test('the wordmark and every nav link render on a single line at 1024px', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
     await page.goto('/');
 
     const wordmark = page.getByRole('banner').getByText('Trading OS', { exact: true });
@@ -152,7 +173,7 @@ test.describe('header layout at the md breakpoint', () => {
     // comfortably separates the two cases without hard-coding line-height.
     expect(wordmarkBox?.height ?? 0, 'wordmark should be one line, not two').toBeLessThan(30);
 
-    // Nav links are `h-9` (a fixed 36px flex container), so a wrapped label
+    // Nav links are fixed-height flex targets, so a wrapped label
     // would clip rather than grow the box — bounding-box height cannot
     // distinguish the two states here. `white-space` is the actual CSS
     // property the fix relies on, so it is what regresses if the class is
@@ -163,6 +184,19 @@ test.describe('header layout at the md breakpoint', () => {
         .getByRole('link', { name: label })
         .evaluate((el) => getComputedStyle(el).whiteSpace);
       expect(whiteSpace, `"${label}" should be whitespace-nowrap`).toBe('nowrap');
+    }
+  });
+
+  test('keeps desktop navigation targets at least 44px high', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto('/');
+
+    const links = page
+      .getByRole('banner')
+      .getByRole('navigation', { name: 'Site' })
+      .getByRole('link');
+    for (let index = 0; index < (await links.count()); index += 1) {
+      expect((await links.nth(index).boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
   });
 
@@ -220,6 +254,15 @@ test.describe('marketing mobile menu', () => {
     await expect(page.getByRole('dialog')).toBeHidden();
   });
 
+  test('closes after following the drawer wordmark', async ({ page }) => {
+    await page.goto('/pricing');
+    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    await page.getByRole('dialog').getByRole('link', { name: 'Trading OS' }).click();
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole('dialog')).toBeHidden();
+  });
+
   test('keeps the trigger and its links at 44px touch targets', async ({ page }) => {
     await page.goto('/');
 
@@ -237,6 +280,22 @@ test.describe('marketing mobile menu', () => {
     for (let index = 0; index < count; index += 1) {
       const box = await links.nth(index).boundingBox();
       expect(box?.height ?? 0, `drawer link ${index} height`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test('keeps the focused skip link and footer navigation at 44px', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('Tab');
+
+    const skipBox = await page.getByRole('link', { name: /skip to content/i }).boundingBox();
+    expect(skipBox?.width ?? 0).toBeGreaterThanOrEqual(44);
+    expect(skipBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    const footerLinks = page.getByRole('contentinfo').getByRole('link');
+    for (let index = 0; index < (await footerLinks.count()); index += 1) {
+      const box = await footerLinks.nth(index).boundingBox();
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
     }
   });
 });

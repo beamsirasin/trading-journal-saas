@@ -51,8 +51,8 @@ const FAQ: readonly FaqItem[] = [
       'You can paste the URL of a TradingView chart onto any trade, and the journal keeps it with that trade. It is a stored link, not an integration: nothing is read from TradingView, no chart images are captured, and no TradingView account is connected.',
   },
   {
-    question: 'Is there a free trial?',
-    answer: `Yes — ${TRIAL_DAYS} days, starting at first login, with no card required. Payment processing is not connected to the product yet, so nothing can be charged.`,
+    question: 'Is the free trial available now?',
+    answer: `Not yet. A ${TRIAL_DAYS}-day trial starting at first login, with no card required, is planned. Authentication and trial tracking are not implemented, and payment processing is not connected, so no account or trial can start today.`,
   },
   {
     question: 'Can I use it on my phone?',
@@ -62,7 +62,7 @@ const FAQ: readonly FaqItem[] = [
   {
     question: 'Does it use AI to analyse my trades?',
     answer:
-      'No. There is no AI analysis in this product. The metrics are defined formulas, documented in the repository and covered by tests, so you can check exactly how any number was produced.',
+      'No. There is no AI analysis in this product. The finished calculation engine will use defined formulas documented in the repository and covered by tests. Figures in this design preview are labelled fictional fixtures, not calculated results.',
   },
 ];
 

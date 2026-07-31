@@ -1,5 +1,6 @@
 import { demoBundle } from '@/lib/demo';
-import { CumulativeRChart, CumulativeRTable } from '@/components/charts/cumulative-r-chart';
+import { CumulativeRTable } from '@/components/charts/cumulative-r-table';
+import { StaticCumulativeRChart } from '@/components/charts/static-cumulative-r-chart';
 import { ChartContainer } from '@/components/product/chart-container';
 import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';
 import { DemoBadge } from '@/components/product/demo-badge';
@@ -124,7 +125,7 @@ export function AttributionSection() {
             ]}
             tableFallback={<CumulativeRTable points={equityCurve} />}
           >
-            <CumulativeRChart points={equityCurve} className="h-64 w-full sm:h-80" />
+            <StaticCumulativeRChart points={equityCurve} className="aspect-12/5 w-full" />
           </ChartContainer>
         </div>
 

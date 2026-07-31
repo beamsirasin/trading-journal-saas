@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { MouseEventHandler } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -8,18 +9,27 @@ import { cn } from '@/lib/utils';
  * replacing.
  *
  * `shrink-0` plus `whitespace-nowrap` on the text: without them, the header's
- * flex row runs out of room by a sub-pixel margin at exactly 768px (the `md`
- * breakpoint where the desktop nav first appears), and flexbox assigns the
+ * flex row can run out of room near the desktop-navigation breakpoint, and
+ * flexbox assigns the
  * entire shrink deficit to whichever item can still compress — normally that
  * is this text node, since nav links and buttons are already at their
  * minimum content width. The visible result was "OS" wrapping onto its own
  * line to recover a fraction of a pixel. Protecting the wordmark forces any
  * future shrinkage to land somewhere it is actually safe to absorb.
  */
-export function Brand({ href = '/', className }: { href?: string; className?: string }) {
+export function Brand({
+  href = '/',
+  className,
+  onClick,
+}: {
+  href?: string;
+  className?: string;
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
+}) {
   return (
     <Link
       href={href}
+      {...(onClick === undefined ? {} : { onClick })}
       className={cn(
         'flex min-h-11 shrink-0 items-center gap-2 rounded-md font-semibold tracking-tight',
         className,
@@ -27,7 +37,7 @@ export function Brand({ href = '/', className }: { href?: string; className?: st
     >
       <span
         aria-hidden="true"
-        className="from-primary to-brand inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-[11px] font-bold text-white"
+        className="from-primary to-brand text-primary-foreground inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-[11px] font-bold"
       >
         T
       </span>

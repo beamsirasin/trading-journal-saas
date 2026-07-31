@@ -14,9 +14,8 @@ import { Button } from '@/components/ui/button';
  * is indistinguishable from a real one once it has been screenshotted, and
  * "we'll change it before launch" is not a control.
  *
- * The call to action goes to `/register`, which starts a trial and takes no
- * payment details. Nothing on this card implies that a payment provider is
- * connected — because none is.
+ * The call to action goes to the registration preview. It does not claim to
+ * start a trial while authentication and trial tracking are unavailable.
  */
 export function PricingCard({ plan }: { plan: Plan }) {
   const headingId = `plan-${plan.id}-name`;
@@ -26,9 +25,7 @@ export function PricingCard({ plan }: { plan: Plan }) {
       aria-labelledby={headingId}
       className={cn(
         'flex flex-col gap-6 rounded-xl border p-6',
-        plan.featured
-          ? 'border-primary/50 bg-card shadow-[0_2px_4px_rgba(0,0,0,0.04),0_20px_44px_-24px_rgba(0,0,0,0.45)]'
-          : 'border-border bg-card',
+        plan.featured ? 'border-primary/50 bg-card shadow-elevated' : 'border-border bg-card',
       )}
     >
       <div className="flex flex-col gap-2">
@@ -44,7 +41,7 @@ export function PricingCard({ plan }: { plan: Plan }) {
       <div className="flex flex-col gap-1">
         <p className="text-foreground text-xl font-semibold">Pricing to be confirmed</p>
         <p className="text-muted-foreground text-xs leading-relaxed">
-          Amounts have not been set. The {TRIAL_DAYS}-day trial is free and needs no card.
+          Amounts have not been set. A {TRIAL_DAYS}-day, no-card trial is planned but not live.
         </p>
       </div>
 
@@ -68,7 +65,7 @@ export function PricingCard({ plan }: { plan: Plan }) {
       </ul>
 
       <Button asChild variant={plan.featured ? 'default' : 'outline'} className="min-h-11 w-full">
-        <Link href="/register">Start {TRIAL_DAYS}-day free trial</Link>
+        <Link href="/register">Preview trial registration</Link>
       </Button>
     </div>
   );
