@@ -13,10 +13,12 @@ import { NAV_ITEMS } from './nav-items';
 interface SidebarNavProps {
   /** Called after navigation, so the mobile drawer can close itself. */
   onNavigate?: () => void;
+  /** Shows the per-item description. Used in the drawer, where there is room. */
+  showDescriptions?: boolean;
 }
 
 /**
- * The one place Motion is used in this phase, and the justification:
+ * The one place Motion is used for navigation, and the justification:
  *
  * A shared `layoutId` makes the active indicator travel from the old item to
  * the new one. That movement communicates the relationship between the two
@@ -26,31 +28,19 @@ interface SidebarNavProps {
  * Reduced motion is honoured twice: the global CSS rule collapses durations,
  * and the SSR-safe preference hook swaps the animated indicator for a static
  * one so no layout animation is even scheduled.
+ *
+ * Active matching is EXACT, not `startsWith`. With a prefix match `/app`
+ * would light up on `/app/trades` and two items would claim to be the current
+ * page, which `aria-current="page"` must never do.
  */
-export function SidebarNav({ onNavigate }: SidebarNavProps) {
+export function SidebarNav({ onNavigate, showDescriptions = false }: SidebarNavProps) {
   const pathname = usePathname();
   const prefersReducedMotion = usePrefersReducedMotion();
 
   return (
     <nav aria-label="Main" className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ href, label, Icon, enabled }) => {
+      {NAV_ITEMS.map(({ href, label, Icon, description }) => {
         const isActive = pathname === href;
-
-        if (!enabled) {
-          return (
-            <span
-              key={href}
-              aria-disabled="true"
-              className="text-muted-foreground/60 flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm"
-            >
-              <Icon className="size-4 shrink-0" aria-hidden="true" />
-              <span>{label}</span>
-              <span className="border-border text-muted-foreground/70 ml-auto rounded border px-1.5 py-0.5 text-[10px] tracking-wide">
-                Soon
-              </span>
-            </span>
-          );
-        }
 
         return (
           <Link
@@ -84,8 +74,15 @@ export function SidebarNav({ onNavigate }: SidebarNavProps) {
                 />
               )
             ) : null}
+
             <Icon className="relative size-4 shrink-0" aria-hidden="true" />
-            <span className="relative">{label}</span>
+
+            <span className="relative flex min-w-0 flex-col">
+              <span className="font-medium">{label}</span>
+              {showDescriptions ? (
+                <span className="text-muted-foreground text-xs">{description}</span>
+              ) : null}
+            </span>
           </Link>
         );
       })}

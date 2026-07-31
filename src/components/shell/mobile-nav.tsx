@@ -45,11 +45,11 @@ export function MobileNav() {
             <Brand href="/app" />
           </SheetTitle>
           <SheetDescription className="sr-only">
-            Application sections. Most are not yet available.
+            Application sections. Every section is a preview built from demo data.
           </SheetDescription>
         </SheetHeader>
         <div className="p-3">
-          <SidebarNav onNavigate={() => setOpen(false)} />
+          <SidebarNav onNavigate={() => setOpen(false)} showDescriptions />
         </div>
       </SheetContent>
     </Sheet>

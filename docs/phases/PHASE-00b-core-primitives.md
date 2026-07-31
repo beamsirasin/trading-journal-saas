@@ -1,6 +1,6 @@
 # Phase 00b — Core Technical Primitives
 
-**Depends on:** 00 · **Blocks:** 01–08 · **Completed:** 2026-07-31
+**Depends on:** 00 · **Blocks:** 01–09 · **Completed:** 2026-07-31
 
 ## Goal
 

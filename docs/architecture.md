@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 00b. Directories marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
+**Status:** Phase 01. Directories marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
 
 ## 1. Shape
 
@@ -24,19 +24,26 @@ Next.js (App Router)
 ```
 src/
   app/
-    (public)/             Unauthenticated routes + chrome
-    (app)/                Authenticated shell (NO guard yet — Phase 02)
+    (public)/             Marketing site: /, /pricing, /login, /register, /demo
+    (app)/                Application shell (NO guard yet — Phase 02)
+      app/                /app, /trades, /strategies, /analytics, /settings
     api/health/           Liveness endpoint
+    robots.ts             Disallow-all while the product is a preview
+    icon.svg              Placeholder file-based icon
   components/
-    ui/                   Vendored shadcn primitives + project components
-    shell/                Layout: header, sidebar, drawer, container
-    theme/                Theme provider and selector
-    <feature>/            Composed, feature-specific UI      (planned)
+    ui/                   Vendored shadcn primitives + project-authored controls
+    shell/                Layout: app shell, sidebar, drawer, container, brand
+    theme/                Theme provider, header toggle, settings selector
+    marketing/            Public-site sections and chrome
+    product/              Reusable product UI: KPI, comparison, chart frame
+    charts/               Recharts components + shared tooltip
+    dashboard/            The demo attribution dashboard
+    forms/                Visual-only form prototypes
   config/
     env.schema.ts         Pure Zod schemas — testable
     env.server.ts         server-only; build fails if imported client-side
     env.client.ts         NEXT_PUBLIC_* only
-    plans.ts              Subscription plan definitions      (planned)
+    plans.ts              Plan definitions — PRESENTATION ONLY, not entitlements
     mistakes.ts           Mistake taxonomy and weights       (planned)
   hooks/
     use-is-hydrated.ts    SSR-safe hydration detection
@@ -47,12 +54,13 @@ src/
     motion.ts             Duration and easing conventions
     money/                Integer minor units, currency-aware
     time/                 UTC storage, IANA conversion, day bucketing
+    demo/                 Static fixtures for the Phase 01 prototype — NO formulas
     calc/                 PURE calculation engine            (planned)
     auth/                 Auth adapter                       (planned)
   server/
     db/
       client.ts           Drizzle handle, connects lazily
-      schema/             Table definitions — EMPTY until Phase 01
+      schema/             Table definitions — EMPTY until Phase 03
       queries/            Workspace-scoped query helpers     (planned)
     actions/              Server actions — guarded, validated (planned)
     services/             Business logic, tenant-aware        (planned)
@@ -69,6 +77,10 @@ drizzle/                  Generated SQL migrations           (planned)
 **`server/services/` holds business logic.** Tenant-aware, transaction-aware, calls into `lib/calc/` for arithmetic.
 
 **`server/db/queries/` is the only place raw database access is allowed.** Every helper takes a `WorkspaceContext` first and injects `workspace_id`. Writing an unscoped query should require deliberately bypassing this directory, not merely forgetting a filter.
+
+**`lib/demo/` contains no arithmetic.** It holds static presentation fixtures for the Phase 01 prototype. A formula written there to make a demo surface move would be a second implementation of the calculation engine, outside `lib/calc/`, untested and free to disagree with the real one. It is deleted or reduced to test fixtures once Phase 09 wires real data in. See [ADR 0006](decisions/0006-design-system-and-demo-data.md).
+
+**`config/plans.ts` is presentation only.** It renders the pricing page. It is not an entitlement source, and no server check reads it — Phase 04 owns entitlements, evaluated server-side in the same transaction as the write they gate.
 
 **Infrastructure sits behind adapters** — auth provider, email sender, payment provider. Swapping Neon for a VPS Postgres, or the mock payment provider for a real one, must not touch feature code.
 

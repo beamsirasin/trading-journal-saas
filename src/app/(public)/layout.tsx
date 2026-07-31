@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 
+import { MarketingFooter } from '@/components/marketing/marketing-footer';
+import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { MAIN_CONTENT_ID } from '@/components/shell/constants';
-import { PublicFooter } from '@/components/shell/public-footer';
-import { PublicHeader } from '@/components/shell/public-header';
 import { SkipLink } from '@/components/shell/skip-link';
 
 /**
@@ -16,11 +16,11 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <SkipLink />
-      <PublicHeader />
+      <MarketingHeader />
       <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1">
         {children}
       </main>
-      <PublicFooter />
+      <MarketingFooter />
     </div>
   );
 }

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Trading OS">
+  <!--
+    Placeholder identity, matching the typographic wordmark in `Brand`.
+    Deliberately not a bespoke logo: branding is a later decision, and a mark
+    designed now would have to be replaced rather than merely restyled.
+
+    Two ascending strokes on a brand gradient — the system line and the actual
+    line, diverging. It is the product thesis at 32 pixels.
+  -->
+  <defs>
+    <linearGradient id="tos" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#22d3ee" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#tos)" />
+  <path
+    d="M7 22 L13 15 L18 18 L25 9"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M7 24.5 L13 20 L18 21.5 L25 17"
+    fill="none"
+    stroke="#ffffff"
+    stroke-opacity="0.55"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-dasharray="3 2.5"
+  />
+</svg>

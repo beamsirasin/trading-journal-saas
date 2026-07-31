@@ -41,11 +41,30 @@
   --color-ring: var(--ring);
 
   /* Product tokens — trading domain. */
+  --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-brand: var(--brand);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  /*
+   * Chart series. A VALIDATED categorical theme, not hand-picked colours —
+   * see docs/design-system.md §9 for the recorded validator output. Slots are
+   * assigned in fixed order and never cycled; a fifth series folds into
+   * "Other" or becomes small multiples rather than inventing a hue.
+   *
+   * `system` and `trader` are semantic aliases of slots 1 and 2, because the
+   * system-versus-trader comparison is the product's central chart and must
+   * never be repainted by an unrelated change to series ordering.
+   */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-system: var(--chart-1);
+  --color-trader: var(--chart-2);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -57,6 +76,53 @@
     'Noto Sans', sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /*
+   * Typography scale. Roles, not sizes — a call site asks for `text-display`
+   * or `text-metric`, so changing what a role looks like is one edit here
+   * rather than a hunt through components.
+   *
+   * The three largest roles are fluid (clamp) so headings scale continuously
+   * between 320px and desktop instead of jumping at breakpoints. The lower
+   * bound is chosen to fit 320px without overflow.
+   */
+  --text-display: clamp(2.125rem, 1.35rem + 3.1vw, 3.5rem);
+  --text-display--line-height: 1.06;
+  --text-display--letter-spacing: -0.03em;
+  --text-display--font-weight: 600;
+
+  --text-page-title: clamp(1.625rem, 1.35rem + 1.1vw, 2rem);
+  --text-page-title--line-height: 1.15;
+  --text-page-title--letter-spacing: -0.02em;
+  --text-page-title--font-weight: 600;
+
+  --text-section-title: clamp(1.5rem, 1.25rem + 1vw, 1.875rem);
+  --text-section-title--line-height: 1.2;
+  --text-section-title--letter-spacing: -0.02em;
+  --text-section-title--font-weight: 600;
+
+  --text-card-title: 1rem;
+  --text-card-title--line-height: 1.4;
+  --text-card-title--letter-spacing: -0.01em;
+  --text-card-title--font-weight: 600;
+
+  --text-metric: clamp(1.5rem, 1.3rem + 0.85vw, 1.875rem);
+  --text-metric--line-height: 1.1;
+  --text-metric--letter-spacing: -0.02em;
+  --text-metric--font-weight: 600;
+
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.35;
+  --text-label--letter-spacing: 0.06em;
+  --text-label--font-weight: 500;
+
+  /*
+   * Layout rhythm. The shell reads these so the sticky header offset and the
+   * sidebar width are one decision rather than a magic number repeated in a
+   * dozen `top-14` / `w-60` utilities.
+   */
+  --shell-header-height: 3.5rem;
+  --shell-sidebar-width: 15rem;
 }
 
 /*
@@ -95,11 +161,18 @@
   --input: #1e2a45;
   --ring: #38bdf8;
 
+  --surface: #0a1020;
   --surface-raised: #141d33;
   --brand: #22d3ee;
   --positive: #10b981;
   --negative: #fb7185;
   --warning: #f59e0b;
+  --info: #56b6f7;
+
+  --chart-1: #0f9e8e;
+  --chart-2: #3b82f6;
+  --chart-3: #c2650f;
+  --chart-4: #b06ef0;
 }
 
 /* 2. OS preference — only when the user has made no explicit choice. */
@@ -127,11 +200,18 @@
     --input: #dbe3f0;
     --ring: #1d5fd8;
 
+    --surface: #eaf0f9;
     --surface-raised: #ffffff;
     --brand: #0e7490;
     --positive: #047857;
     --negative: #be123c;
     --warning: #b45309;
+    --info: #0369a1;
+
+    --chart-1: #0891b2;
+    --chart-2: #1d4ed8;
+    --chart-3: #c2570f;
+    --chart-4: #7c3aed;
   }
 }
 
@@ -159,11 +239,18 @@
   --input: #dbe3f0;
   --ring: #1d5fd8;
 
+  --surface: #eaf0f9;
   --surface-raised: #ffffff;
   --brand: #0e7490;
   --positive: #047857;
   --negative: #be123c;
   --warning: #b45309;
+  --info: #0369a1;
+
+  --chart-1: #0891b2;
+  --chart-2: #1d4ed8;
+  --chart-3: #c2570f;
+  --chart-4: #7c3aed;
 }
 
 .dark {
@@ -189,11 +276,18 @@
   --input: #1e2a45;
   --ring: #38bdf8;
 
+  --surface: #0a1020;
   --surface-raised: #141d33;
   --brand: #22d3ee;
   --positive: #10b981;
   --negative: #fb7185;
   --warning: #f59e0b;
+  --info: #56b6f7;
+
+  --chart-1: #0f9e8e;
+  --chart-2: #3b82f6;
+  --chart-3: #c2650f;
+  --chart-4: #b06ef0;
 }
 
 @layer base {
@@ -347,4 +441,30 @@
 
 @utility animate-rise {
   animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * Financial figures. Tabular numerals keep digits on a fixed advance width, so
+ * a column of R-multiples aligns on the decimal point and an animating KPI
+ * does not jitter as its digits change. Applied via a utility rather than a
+ * base rule because prose numerals should stay proportional.
+ */
+@utility numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/*
+ * Safe area. Only the bottom inset is claimed: the sticky header already sits
+ * below the notch in every supported orientation, whereas a bottom-anchored
+ * action on iOS lands under the home indicator without this.
+ */
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+@utility px-safe {
+  padding-left: max(env(safe-area-inset-left), 0px);
+  padding-right: max(env(safe-area-inset-right), 0px);
 }

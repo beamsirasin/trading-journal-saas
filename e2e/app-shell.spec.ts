@@ -1,9 +1,17 @@
 import { expect, test } from '@playwright/test';
 
+const APP_ROUTES = [
+  { href: '/app', name: 'Overview' },
+  { href: '/app/trades', name: 'Trades' },
+  { href: '/app/strategies', name: 'Strategies' },
+  { href: '/app/analytics', name: 'Analytics' },
+  { href: '/app/settings', name: 'Settings' },
+] as const;
+
 test.describe('application shell', () => {
-  test('renders the placeholder dashboard', async ({ page }) => {
+  test('renders the overview dashboard', async ({ page }) => {
     await page.goto('/app');
-    await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
   });
 
   test('exposes banner and main landmarks at every viewport', async ({ page }) => {
@@ -32,25 +40,58 @@ test.describe('application shell', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   });
 
-  test('marks the current page in the navigation', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/app');
-    await expect(page.locator('[aria-current="page"]').first()).toBeVisible();
-  });
-
-  test('marks unbuilt sections as unavailable rather than linking to 404s', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/app');
-    const disabled = page.locator('[aria-disabled="true"]');
-    expect(await disabled.count()).toBeGreaterThan(0);
-  });
-
   test('has no horizontal overflow', async ({ page }) => {
     await page.goto('/app');
     const overflows = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(overflows).toBe(false);
+  });
+});
+
+/**
+ * PHASE 01 CHANGE. Phase 00b asserted that unbuilt sections rendered as
+ * `aria-disabled` placeholders rather than links to 404s. All five routes now
+ * exist, so that guarantee is replaced by its successor: every nav item
+ * resolves, and exactly one is marked as the current page.
+ */
+test.describe('application navigation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  for (const route of APP_ROUTES) {
+    test(`marks ${route.href} as the current page when open`, async ({ page }) => {
+      await page.goto(route.href);
+
+      const nav = page.getByRole('navigation', { name: 'Main' });
+      const current = nav.locator('[aria-current="page"]');
+
+      // Exactly one. Prefix matching would light up `/app` on every child
+      // route and leave a screen reader with two "current page" claims.
+      await expect(current).toHaveCount(1);
+      await expect(current).toHaveAttribute('href', route.href);
+    });
+  }
+
+  test('every navigation item resolves to a real page', async ({ page }) => {
+    for (const route of APP_ROUTES) {
+      const response = await page.goto(route.href);
+      expect(response?.status(), `${route.href} should not 404`).toBe(200);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    }
+  });
+
+  test('navigating between sections keeps one main landmark', async ({ page }) => {
+    await page.goto('/app');
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('link', { name: 'Trades' })
+      .click();
+
+    await expect(page).toHaveURL(/\/app\/trades$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Trades' })).toBeVisible();
+    await expect(page.getByRole('main')).toHaveCount(1);
   });
 });
 
@@ -86,9 +127,10 @@ test.describe('responsive navigation', () => {
     expect(themeButton?.height ?? 0).toBeGreaterThanOrEqual(44);
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
-    const dashboardLink = await page.getByRole('link', { name: 'Dashboard' }).boundingBox();
+    const dialog = page.getByRole('dialog');
+    const overviewLink = await dialog.getByRole('link', { name: /Overview/ }).boundingBox();
     const closeButton = await page.getByRole('button', { name: 'Close' }).boundingBox();
-    expect(dashboardLink?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(overviewLink?.height ?? 0).toBeGreaterThanOrEqual(44);
     expect(closeButton?.width ?? 0).toBeGreaterThanOrEqual(44);
     expect(closeButton?.height ?? 0).toBeGreaterThanOrEqual(44);
   });
@@ -106,6 +148,21 @@ test.describe('responsive navigation', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeFocused();
+  });
+
+  test('mobile drawer closes after navigating', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/app');
+
+    await page.getByRole('button', { name: /open navigation menu/i }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('link', { name: /Analytics/ })
+      .click();
+
+    await expect(page).toHaveURL(/\/app\/analytics$/);
+    // Without an explicit close the drawer sits over the page it just opened.
+    await expect(page.getByRole('dialog')).toBeHidden();
   });
 
   test('has no horizontal overflow at 320px', async ({ page }) => {

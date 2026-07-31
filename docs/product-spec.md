@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phase 00 — nothing below is implemented yet.
+**Status:** Living document. Phase 01 — the product's surfaces exist and are populated by fictional demo fixtures. No authentication, no database, no real metric below is computed yet.
 
 ## 1. The problem
 
@@ -95,7 +95,7 @@ Mitigations: prefill the system outcome where plan and execution agree, keep the
 
 | #   | Question                                                                          | Needed by |
 | --- | --------------------------------------------------------------------------------- | --------- |
-| 1   | Do plan limits (1 / 3 / 10 accounts) match how traders actually segment accounts? | Phase 03  |
-| 2   | Is a 7-day trial long enough to accumulate a meaningful sample of trades?         | Phase 03  |
-| 3   | What is the minimum closed-trade count before a verdict may be stated?            | Phase 08  |
-| 4   | Should the default break-even tolerance be 0.05R?                                 | Phase 06  |
+| 1   | Do plan limits (1 / 3 / 10 accounts) match how traders actually segment accounts? | Phase 04  |
+| 2   | Is a 7-day trial long enough to accumulate a meaningful sample of trades?         | Phase 04  |
+| 3   | What is the minimum closed-trade count before a verdict may be stated?            | Phase 09  |
+| 4   | Should the default break-even tolerance be 0.05R?                                 | Phase 07  |

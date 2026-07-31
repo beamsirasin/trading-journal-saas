@@ -11,22 +11,56 @@ export interface NavItem {
   readonly href: string;
   readonly label: string;
   readonly Icon: LucideIcon;
-  /** Routes that do not exist yet render as disabled rather than 404ing. */
-  readonly enabled: boolean;
+  /** Longer wording for the mobile drawer, where there is room for it. */
+  readonly description: string;
 }
 
 /**
- * Placeholder navigation.
+ * Application navigation.
  *
- * Labels reflect the planned information architecture so the shell can be
- * laid out and tested, but only `/app` exists. Everything else is explicitly
- * disabled: a nav that links to 404s is worse than one that shows what is
- * coming, and it would make the shell's own e2e tests unreliable.
+ * PHASE 01 CHANGE — every item is now a real route. In Phase 00b these
+ * carried an `enabled` flag and all but the dashboard rendered as disabled
+ * placeholders, because linking to a 404 is worse than showing what is
+ * coming. That flag is gone: all five routes exist and render, so the reason
+ * for it does not. The corresponding e2e assertion moved from "unbuilt
+ * sections are marked unavailable" to "every nav item resolves".
+ *
+ * The pages behind Trades, Strategies and Analytics are previews built from
+ * demo fixtures — each says so on the page itself rather than in the nav,
+ * where a badge on four of five items would be noise.
+ *
+ * Only MVP sections appear here (docs/product-spec.md §4). A nav entry is a
+ * commitment, so nothing speculative is listed.
  */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { href: '/app', label: 'Dashboard', Icon: LayoutDashboard, enabled: true },
-  { href: '/app/trades', label: 'Trades', Icon: BookOpen, enabled: false },
-  { href: '/app/strategies', label: 'Strategies', Icon: Target, enabled: false },
-  { href: '/app/analytics', label: 'Analytics', Icon: BarChart3, enabled: false },
-  { href: '/app/settings', label: 'Settings', Icon: Settings, enabled: false },
+  {
+    href: '/app',
+    label: 'Overview',
+    Icon: LayoutDashboard,
+    description: 'Attribution at a glance',
+  },
+  {
+    href: '/app/trades',
+    label: 'Trades',
+    Icon: BookOpen,
+    description: 'The journal',
+  },
+  {
+    href: '/app/strategies',
+    label: 'Strategies',
+    Icon: Target,
+    description: 'Playbooks and versions',
+  },
+  {
+    href: '/app/analytics',
+    label: 'Analytics',
+    Icon: BarChart3,
+    description: 'System versus trader',
+  },
+  {
+    href: '/app/settings',
+    label: 'Settings',
+    Icon: Settings,
+    description: 'Profile and preferences',
+  },
 ];

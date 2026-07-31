@@ -3,7 +3,7 @@
 > This file is the standing contract for all work in this repository.
 > Read it before modifying code. Read the active phase document in [`docs/phases/`](docs/phases/) second.
 >
-> **Status:** Phase 00 (Foundation) complete. No product features implemented.
+> **Status:** Phases 00, 00b and 01 complete. The product has a full visual form driven by static demo fixtures; no authentication, database or product mutation exists.
 > **Last updated:** 2026-07-31
 >
 > The master product instructions this repository was commissioned under are preserved verbatim in [Appendix A](#appendix-a--master-instructions-verbatim). Where this document elaborates on them, the appendix governs intent and this document governs implementation.
@@ -288,14 +288,15 @@ Recorded here until validated. Each needs a decision before or during the phase 
 
 | #   | Assumption                                                                                    | Decide by |
 | --- | --------------------------------------------------------------------------------------------- | --------- |
-| A1  | Break-even tolerance defaults to `0.05R`, configurable per trading account                    | Phase 06  |
-| A2  | Mistake severity weights: minor 0.15 / moderate 0.35 / severe 0.60                            | Phase 06  |
-| A3  | Plan tiers gate primarily on trading-account count; exact limits set in Phase 03              | Phase 03  |
-| A4  | Trial is 7 days, no card required, starts at first login                                      | Phase 03  |
-| A5  | Personal workspace auto-created on signup; team invites deferred post-MVP                     | Phase 01  |
-| A6  | Strategy versions are immutable once a trade references them                                  | Phase 05  |
-| A7  | Deleted trades are soft-deleted to keep historical analytics stable                           | Phase 06  |
+| A1  | Break-even tolerance defaults to `0.05R`, configurable per trading account                    | Phase 07  |
+| A2  | Mistake severity weights: minor 0.15 / moderate 0.35 / severe 0.60                            | Phase 07  |
+| A3  | Plan tiers gate on trading-account count; 1 / 3 / 10 shown as provisional in Phase 01         | Phase 04  |
+| A4  | Trial is 7 days, no card required, starts at first login                                      | Phase 04  |
+| A5  | Personal workspace auto-created on signup; team invites deferred post-MVP                     | Phase 03  |
+| A6  | Strategy versions are immutable once a trade references them                                  | Phase 06  |
+| A7  | Deleted trades are soft-deleted to keep historical analytics stable                           | Phase 07  |
 | A8  | OS light preference is honoured over the dark-first identity — see `docs/design-system.md` §3 | Phase 00b |
+| A9  | Demo fixtures carry no formulas and are labelled at every render site — see ADR 0006          | Phase 09  |
 
 ---
 

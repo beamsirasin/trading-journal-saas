@@ -10,7 +10,16 @@ Most journals tell you your P&L. This one tells you where it came from:
 
 ## Status
 
-**Phase 00b — Core primitives.** Toolchain, money and time primitives, theming, application shell, and the database boundary. There is deliberately no authentication, no database schema, and no trading functionality yet. See [docs/roadmap.md](docs/roadmap.md).
+**Phase 01 — Design system, marketing site and application shell.** The product has its first complete visual form: a validated token set, a landing site that explains the thesis, and an application shell with five sections.
+
+Everything on screen is driven by **static demo fixtures** and is labelled as such. There is deliberately no authentication, no database schema, no payment processing, and no trading functionality. See [docs/roadmap.md](docs/roadmap.md).
+
+### Routes
+
+| Public                                       | Application                                         |
+| -------------------------------------------- | --------------------------------------------------- |
+| `/` landing · `/pricing` · `/demo` dashboard | `/app` overview · `/app/trades` · `/app/strategies` |
+| `/login` · `/register` (visual only)         | `/app/analytics` · `/app/settings`                  |
 
 ## Requirements
 
@@ -63,6 +72,7 @@ Prefer a Neon branch? Point `DATABASE_URL` at it and skip Docker entirely.
 | `pnpm db:reset`         | **Destroy local data** and start fresh                    |
 | `pnpm db:generate`      | Generate a migration from the schema                      |
 | `pnpm db:migrate`       | Apply migrations, over the direct connection              |
+| `pnpm scan:client`      | Fail if a server secret reached the client bundle         |
 | `pnpm check`            | Everything CI runs, in order                              |
 
 Run `pnpm check` before pushing.
@@ -72,45 +82,54 @@ Run `pnpm check` before pushing.
 ```
 src/
   app/
-    (public)/   Unauthenticated routes
-    (app)/      Authenticated shell — no guard yet, Phase 02 adds it
+    (public)/   Marketing site: /, /pricing, /login, /register, /demo
+    (app)/      Application shell — no guard yet, Phase 02 adds it
     api/health/ Liveness endpoint
   components/
-    ui/         Vendored shadcn primitives — project-owned code
-    shell/      Header, sidebar, drawer, container
-    theme/      Theme provider and selector
-  config/       Environment schemas, split server/client
+    ui/         shadcn primitives + project-authored controls
+    shell/      App shell, sidebar, drawer, container, brand
+    theme/      Theme provider, header toggle, settings selector
+    marketing/  Public-site sections and chrome
+    product/    KPI cards, comparison metrics, chart frame
+    charts/     Recharts components
+    dashboard/  The demo attribution dashboard
+    forms/      Visual-only form prototypes
+  config/       Environment schemas (split server/client), plan definitions
   hooks/        Shared React hooks
   lib/
     money/      Integer minor units — exact, never floating point
     time/       UTC storage, IANA conversion, DST-correct bucketing
+    demo/       Static fixtures for the prototype — NO formulas, ever
     motion.ts   Duration and easing conventions
-  server/db/    Drizzle boundary — schema is empty until Phase 01
+  server/db/    Drizzle boundary — schema is empty until Phase 03
 e2e/            Playwright specs
 docs/           Specifications, decisions, and phase plans
 ```
 
 Planned additions are described in [docs/architecture.md](docs/architecture.md); they do not exist yet.
 
-### Two rules worth knowing before writing code
+### Three rules worth knowing before writing code
 
 **Money never touches a float.** Amounts are `bigint` minor units with currency-aware precision, parsed and formatted by string arithmetic. `parseMoney` rejects ambiguous input rather than guessing, and rejects excess decimal places rather than rounding silently. See [ADR 0002](docs/decisions/0002-money-representation.md).
 
 **Timestamps always carry an explicit zone.** `parseInstant` refuses a timestamp without an offset, because `new Date("2026-07-31T10:00:00")` reads it as local time on whatever machine runs it. Day bucketing uses the user's IANA timezone, and is DST-correct. See [ADR 0003](docs/decisions/0003-time-model.md).
 
+**Demo data is fictional, labelled, and contains no formulas.** Everything under `src/lib/demo/` is a literal value. The real metrics arrive with the calculation engine; a formula written there to make a chart move would be a second, untested implementation of the product's defining logic. Every surface that renders a fixture carries a visible marker — enforced by tests, because an unlabelled screenshot of a rising equity curve reads as a performance claim. See [ADR 0006](docs/decisions/0006-design-system-and-demo-data.md).
+
 ## Documentation
 
-| Document                                             | What it covers                            |
-| ---------------------------------------------------- | ----------------------------------------- |
-| [CLAUDE.md](CLAUDE.md)                               | Engineering constitution — read first     |
-| [docs/product-spec.md](docs/product-spec.md)         | What the product does and why             |
-| [docs/architecture.md](docs/architecture.md)         | Structure, boundaries, data flow          |
-| [docs/data-dictionary.md](docs/data-dictionary.md)   | Planned schema and field meanings         |
-| [docs/calculation-spec.md](docs/calculation-spec.md) | Every financial formula, with edge cases  |
-| [docs/design-system.md](docs/design-system.md)       | Tokens, theming, motion, responsive rules |
-| [docs/roadmap.md](docs/roadmap.md)                   | Phase sequence and status                 |
-| [docs/decisions/](docs/decisions/)                   | Architecture decision records             |
-| [docs/phases/](docs/phases/)                         | Detailed per-phase scope                  |
+| Document                                                   | What it covers                           |
+| ---------------------------------------------------------- | ---------------------------------------- |
+| [CLAUDE.md](CLAUDE.md)                                     | Engineering constitution — read first    |
+| [docs/product-spec.md](docs/product-spec.md)               | What the product does and why            |
+| [docs/architecture.md](docs/architecture.md)               | Structure, boundaries, data flow         |
+| [docs/data-dictionary.md](docs/data-dictionary.md)         | Planned schema and field meanings        |
+| [docs/calculation-spec.md](docs/calculation-spec.md)       | Every financial formula, with edge cases |
+| [docs/design-system.md](docs/design-system.md)             | Tokens, typography, motion, charts, a11y |
+| [docs/ui-review-checklist.md](docs/ui-review-checklist.md) | What to check before a UI ships          |
+| [docs/roadmap.md](docs/roadmap.md)                         | Phase sequence and status                |
+| [docs/decisions/](docs/decisions/)                         | Architecture decision records            |
+| [docs/phases/](docs/phases/)                               | Detailed per-phase scope                 |
 
 ## Environment
 
@@ -135,7 +154,8 @@ The app talks to PostgreSQL through a standard `DATABASE_URL` (local Postgres in
 ## Testing
 
 - **Unit** — Vitest + React Testing Library, in `src/**/*.test.{ts,tsx}`.
-- **E2E** — Playwright, in `e2e/`, run against a real production build rather than the dev server. Covers a desktop and a mobile viewport, including horizontal-overflow, theming, and reduced-motion checks.
+- **E2E** — Playwright, in `e2e/`, run against a real production build rather than the dev server. Covers desktop and mobile projects, and asserts horizontal-overflow at five viewports, theming, reduced-motion branches, touch targets, focus management, and that nothing claims a capability the product lacks.
+- **Supply-chain canaries** — `pnpm build` must succeed with no `DATABASE_URL` set, and `pnpm scan:client` fails if a server-only variable name or a secret-shaped value reaches the client bundle. Both run in CI.
 
 Run `pnpm test:e2e:install` once before the first e2e run.
 

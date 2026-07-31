@@ -4,7 +4,7 @@
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
-> **Reading numeric columns.** The driver returns `numeric` and `bigint` as **strings**, which is what the money and price strategy requires. Coercing them to JS numbers would reintroduce the floating-point error the design exists to avoid — invisibly, and only for values large or precise enough to matter. Phase 01 must add a test asserting a `numeric` column round-trips as a string; until a database exists, the guarantee rests on documentation alone.
+> **Reading numeric columns.** The driver returns `numeric` and `bigint` as **strings**, which is what the money and price strategy requires. Coercing them to JS numbers would reintroduce the floating-point error the design exists to avoid — invisibly, and only for values large or precise enough to matter. Phase 03 must add a test asserting a `numeric` column round-trips as a string; until a database exists, the guarantee rests on documentation alone.
 
 ## Conventions
 
@@ -23,7 +23,7 @@ Applied to every business table without exception.
 
 ---
 
-## Phase 01 — Identity and tenancy
+## Phase 03 — Identity and tenancy
 
 ### `users`
 
@@ -34,7 +34,7 @@ Applied to every business table without exception.
 | `name`                    | text        | Display name                                               |
 | `image`                   | text        | Avatar URL, nullable                                       |
 | `timezone`                | text        | IANA, e.g. `Asia/Bangkok`. Drives all date bucketing       |
-| `is_platform_admin`       | boolean     | Default false. Granted only by direct DB update (Phase 10) |
+| `is_platform_admin`       | boolean     | Default false. Granted only by direct DB update (Phase 11) |
 | `onboarding_completed_at` | timestamptz | Nullable                                                   |
 
 ### `workspaces`
@@ -59,7 +59,7 @@ Unique on `(workspace_id, user_id)`.
 
 ---
 
-## Phase 03 — Billing
+## Phase 04 — Billing
 
 ### `subscriptions`
 
@@ -75,7 +75,7 @@ Unique on `(workspace_id, user_id)`.
 
 ---
 
-## Phase 04 — Trading accounts
+## Phase 05 — Trading accounts
 
 ### `trading_accounts`
 
@@ -94,7 +94,7 @@ Unique on `(workspace_id, user_id)`.
 
 ---
 
-## Phase 05 — Strategies
+## Phase 06 — Strategies
 
 ### `strategies`
 
@@ -123,7 +123,7 @@ Unique on `(workspace_id, user_id)`.
 
 ---
 
-## Phase 06 — Trades
+## Phase 07 — Trades
 
 ### `trades`
 
@@ -168,7 +168,7 @@ Join table, primary key `(trade_id, mistake_type_id)`, with an optional per-inst
 
 ---
 
-## Phase 10 — Administration
+## Phase 11 — Administration
 
 ### `admin_audit_log`
 

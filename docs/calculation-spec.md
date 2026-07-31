@@ -1,6 +1,6 @@
 # Calculation Specification
 
-**Status:** Specification. `src/lib/calc/` does not exist yet — it lands in Phase 06. This document is the contract that implementation must satisfy, and the reference its tests are written against.
+**Status:** Specification. `src/lib/calc/` does not exist yet — it lands in Phase 07. This document is the contract that implementation must satisfy, and the reference its tests are written against.
 
 **Implemented in Phase 00b:** the money and time primitives the engine builds on — [`src/lib/money/`](../src/lib/money/) and [`src/lib/time/`](../src/lib/time/). See [ADR 0002](decisions/0002-money-representation.md) and [ADR 0003](decisions/0003-time-model.md).
 
@@ -15,12 +15,12 @@ Every formula here must be implemented in `src/lib/calc/`, documented in code, a
 | Quantity                                      | Storage                              | In TypeScript         | Status       |
 | --------------------------------------------- | ------------------------------------ | --------------------- | ------------ |
 | Monetary amounts (P&L, fees, balances)        | `BIGINT` minor units + ISO-4217 code | `bigint`              | ✅ Phase 00b |
-| Instrument prices (entry, stop, target, exit) | `NUMERIC(20,10)`                     | `string` → decimal.js | Phase 06     |
-| R-multiples and ratios                        | `NUMERIC(12,4)`                      | decimal.js            | Phase 06     |
+| Instrument prices (entry, stop, target, exit) | `NUMERIC(20,10)`                     | `string` → decimal.js | Phase 07     |
+| R-multiples and ratios                        | `NUMERIC(12,4)`                      | decimal.js            | Phase 07     |
 
 Currency scale comes from a lookup, never a hardcoded `100` — JPY, KRW, VND and IDR have zero minor decimals. Rounding happens once, at the presentation boundary, never mid-calculation.
 
-**`decimal.js` is not yet a dependency.** Minor units in `bigint` are exact by construction, and the money module's parsing and formatting use string arithmetic with no intermediate `Number`. The library becomes justified in Phase 06, when `NUMERIC(20,10)` prices arrive — `1.08532` has no minor-unit representation and genuinely needs arbitrary-precision decimal arithmetic.
+**`decimal.js` is not yet a dependency.** Minor units in `bigint` are exact by construction, and the money module's parsing and formatting use string arithmetic with no intermediate `Number`. The library becomes justified in Phase 07, when `NUMERIC(20,10)` prices arrive — `1.08532` has no minor-unit representation and genuinely needs arbitrary-precision decimal arithmetic.
 
 **Available now:** `add`, `subtract`, `negate`, `absolute`, `sum`, `compare`, `equals`, and predicates. Mixing currencies is an error, never a silent coercion.
 

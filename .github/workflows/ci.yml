@@ -45,5 +45,11 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # No DATABASE_URL is set for this job. The build must therefore succeed
+      # with no database reachable, which is the property that keeps a preview
+      # deployment from failing on a connection at build time.
       - name: Production build
         run: pnpm build
+
+      - name: Scan client assets for server secrets
+        run: pnpm scan:client

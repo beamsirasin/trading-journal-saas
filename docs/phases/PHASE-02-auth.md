@@ -1,6 +1,6 @@
 # Phase 02 — Authentication & Session
 
-**Depends on:** 01 · **Blocks:** 03+
+**Depends on:** 00b · **Blocks:** 03+
 
 ## Goal
 
