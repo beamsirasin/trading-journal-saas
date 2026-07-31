@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 
+import { ThemeProvider } from '@/components/theme/theme-provider';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -20,7 +22,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  // Matches the dark-first identity so mobile browser chrome does not flash white.
+  // Matches the palette so mobile browser chrome does not flash the wrong colour.
   themeColor: [
     { media: '(prefers-color-scheme: dark)', color: '#070b14' },
     { media: '(prefers-color-scheme: light)', color: '#f6f8fc' },
@@ -33,10 +35,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // suppressHydrationWarning: the theme switcher (later phase) sets
-    // `data-theme` before hydration, which would otherwise mismatch.
+    // suppressHydrationWarning is required, not incidental: next-themes sets
+    // the theme class on <html> before hydration, which React would otherwise
+    // report as a mismatch it cannot reconcile.
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-dvh overflow-x-hidden antialiased">{children}</body>
+      <body className="min-h-dvh overflow-x-hidden antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

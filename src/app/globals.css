@@ -1,36 +1,56 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens — CLAUDE.md §8.
+ * Design tokens — see docs/design-system.md.
  *
- * Call sites use SEMANTIC tokens (`bg-surface`, `text-muted`) and never raw
- * palette values. That indirection is what lets the product be re-themed, and
- * what keeps light mode from rotting.
+ * Call sites use SEMANTIC tokens (`bg-card`, `text-muted-foreground`) and
+ * never raw palette values. That indirection is what allows a re-theme and
+ * what stops light mode rotting.
  *
- * Dark is the primary experience. Light mode is complete, not an afterthought.
- * Resolution order: dark by default -> OS preference -> explicit [data-theme]
- * override (used by the theme switcher in a later phase).
+ * The vocabulary follows shadcn/ui's contract (background, foreground, card,
+ * popover, primary, secondary, muted, accent, destructive, border, input,
+ * ring) so that vendored components work untouched, PLUS product tokens the
+ * trading domain needs (positive, negative, warning, brand, surface-raised).
+ *
+ * TRAP: `accent` is shadcn's subtle hover surface, NOT the cyan brand accent.
+ * The cyan identity colour is `brand`. Mixing these up produces components
+ * that look fine in isolation and wrong in context.
  */
 
-@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-surface-raised: var(--surface-raised);
-  --color-border-subtle: var(--border-subtle);
   --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Product tokens — trading domain. */
+  --color-surface-raised: var(--surface-raised);
+  --color-brand: var(--brand);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
-  --color-ring: var(--ring);
 
-  --radius-card: 0.875rem;
-  --radius-control: 0.5rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
@@ -39,86 +59,146 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
-/* Dark — the default experience. */
+/*
+ * Theme precedence (docs/design-system.md §3):
+ *   1. explicit user choice  -> .light / .dark set by next-themes
+ *   2. OS preference         -> the prefers-color-scheme block below
+ *   3. documented fallback   -> :root, which is DARK
+ *
+ * The :not() guards are what make this work without !important: when an
+ * explicit class is present the OS block stops matching entirely.
+ */
+
+/* 3. Fallback — dark. Also what the server renders before the theme script runs. */
 :root {
+  --radius: 0.75rem;
+
   color-scheme: dark;
 
   --background: #070b14;
-  --surface: #0d1424;
-  --surface-raised: #141d33;
-  --border-subtle: #1e2a45;
   --foreground: #e8edf7;
-  --muted: #93a4c0;
+  --card: #0d1424;
+  --card-foreground: #e8edf7;
+  --popover: #141d33;
+  --popover-foreground: #e8edf7;
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
-  --accent: #22d3ee;
+  --secondary: #141d33;
+  --secondary-foreground: #e8edf7;
+  --muted: #141d33;
+  --muted-foreground: #93a4c0;
+  --accent: #1a2540;
+  --accent-foreground: #e8edf7;
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
+  --border: #1e2a45;
+  --input: #1e2a45;
+  --ring: #38bdf8;
+
+  --surface-raised: #141d33;
+  --brand: #22d3ee;
   --positive: #10b981;
   --negative: #fb7185;
   --warning: #f59e0b;
-  --ring: #38bdf8;
 }
 
-/* Light — applied when the OS asks for it and no explicit override is set. */
+/* 2. OS preference — only when the user has made no explicit choice. */
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
+  :root:not(.dark):not(.light) {
     color-scheme: light;
 
     --background: #f6f8fc;
-    --surface: #ffffff;
-    --surface-raised: #ffffff;
-    --border-subtle: #dbe3f0;
     --foreground: #0b1220;
-    --muted: #55657f;
+    --card: #ffffff;
+    --card-foreground: #0b1220;
+    --popover: #ffffff;
+    --popover-foreground: #0b1220;
     --primary: #1d5fd8;
     --primary-foreground: #ffffff;
-    --accent: #0e7490;
+    --secondary: #eef2f9;
+    --secondary-foreground: #0b1220;
+    --muted: #eef2f9;
+    --muted-foreground: #55657f;
+    --accent: #e8eef8;
+    --accent-foreground: #0b1220;
+    --destructive: #be123c;
+    --destructive-foreground: #ffffff;
+    --border: #dbe3f0;
+    --input: #dbe3f0;
+    --ring: #1d5fd8;
+
+    --surface-raised: #ffffff;
+    --brand: #0e7490;
     --positive: #047857;
     --negative: #be123c;
     --warning: #b45309;
-    --ring: #1d5fd8;
   }
 }
 
-/* An explicit override wins over the OS preference. */
-[data-theme='light'] {
+/* 1. Explicit user choice — highest priority. Must come last. */
+.light {
   color-scheme: light;
 
   --background: #f6f8fc;
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --border-subtle: #dbe3f0;
   --foreground: #0b1220;
-  --muted: #55657f;
+  --card: #ffffff;
+  --card-foreground: #0b1220;
+  --popover: #ffffff;
+  --popover-foreground: #0b1220;
   --primary: #1d5fd8;
   --primary-foreground: #ffffff;
-  --accent: #0e7490;
+  --secondary: #eef2f9;
+  --secondary-foreground: #0b1220;
+  --muted: #eef2f9;
+  --muted-foreground: #55657f;
+  --accent: #e8eef8;
+  --accent-foreground: #0b1220;
+  --destructive: #be123c;
+  --destructive-foreground: #ffffff;
+  --border: #dbe3f0;
+  --input: #dbe3f0;
+  --ring: #1d5fd8;
+
+  --surface-raised: #ffffff;
+  --brand: #0e7490;
   --positive: #047857;
   --negative: #be123c;
   --warning: #b45309;
-  --ring: #1d5fd8;
 }
 
-[data-theme='dark'] {
+.dark {
   color-scheme: dark;
 
   --background: #070b14;
-  --surface: #0d1424;
-  --surface-raised: #141d33;
-  --border-subtle: #1e2a45;
   --foreground: #e8edf7;
-  --muted: #93a4c0;
+  --card: #0d1424;
+  --card-foreground: #e8edf7;
+  --popover: #141d33;
+  --popover-foreground: #e8edf7;
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
-  --accent: #22d3ee;
+  --secondary: #141d33;
+  --secondary-foreground: #e8edf7;
+  --muted: #141d33;
+  --muted-foreground: #93a4c0;
+  --accent: #1a2540;
+  --accent-foreground: #e8edf7;
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
+  --border: #1e2a45;
+  --input: #1e2a45;
+  --ring: #38bdf8;
+
+  --surface-raised: #141d33;
+  --brand: #22d3ee;
   --positive: #10b981;
   --negative: #fb7185;
   --warning: #f59e0b;
-  --ring: #38bdf8;
 }
 
 @layer base {
   * {
-    border-color: var(--border-subtle);
+    border-color: var(--border);
   }
 
   body {
@@ -129,7 +209,7 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Visible focus is non-negotiable (CLAUDE.md §8). */
+  /* Visible focus is non-negotiable. */
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -137,8 +217,10 @@
 }
 
 /*
- * Motion. Every animation in the product passes through this guard.
- * CLAUDE.md §8: always honor prefers-reduced-motion.
+ * Motion. Every animation in the product passes through this guard, so a
+ * component cannot forget to honour the preference.
+ *
+ * Durations and easing conventions live in src/lib/motion.ts.
  */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -3,6 +3,8 @@
 #
 #   sharp         - native image processing used by Next.js image optimization
 #   unrs-resolver - native module resolver used by the ESLint import resolver
+#   esbuild       - links its platform-native binary; pulled in by drizzle-kit
 allowBuilds:
+  esbuild: true
   sharp: true
   unrs-resolver: true

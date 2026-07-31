@@ -1,6 +1,10 @@
 # Data Dictionary
 
-**Status:** Planned schema. **No tables exist yet** — Drizzle is not wired and no migration has been written. This document defines intent so that field meanings are agreed before they are implemented, and it is updated as each phase lands its migration.
+**Status:** Planned schema. **No tables exist yet.** Phase 00b wired the Drizzle boundary — config, a lazily-connecting client, and an intentionally empty schema module — but created no tables and no migration. This document defines intent so field meanings are agreed before implementation, and is updated as each phase lands its migration.
+
+Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
+
+> **Reading numeric columns.** The driver returns `numeric` and `bigint` as **strings**, which is what the money and price strategy requires. Coercing them to JS numbers would reintroduce the floating-point error the design exists to avoid — invisibly, and only for values large or precise enough to matter. Phase 01 must add a test asserting a `numeric` column round-trips as a string; until a database exists, the guarantee rests on documentation alone.
 
 ## Conventions
 

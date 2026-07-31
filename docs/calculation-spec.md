@@ -1,6 +1,8 @@
 # Calculation Specification
 
-**Status:** Specification only. `src/lib/calc/` does not exist yet — it lands in Phase 06. This document is the contract that implementation must satisfy, and the reference its tests are written against.
+**Status:** Specification. `src/lib/calc/` does not exist yet — it lands in Phase 06. This document is the contract that implementation must satisfy, and the reference its tests are written against.
+
+**Implemented in Phase 00b:** the money and time primitives the engine builds on — [`src/lib/money/`](../src/lib/money/) and [`src/lib/time/`](../src/lib/time/). See [ADR 0002](decisions/0002-money-representation.md) and [ADR 0003](decisions/0003-time-model.md).
 
 Every formula here must be implemented in `src/lib/calc/`, documented in code, and unit-tested including the edge cases listed. Analytics may never reimplement a formula inline.
 
@@ -10,13 +12,37 @@ Every formula here must be implemented in `src/lib/calc/`, documented in code, a
 
 **Floating point is banned for financial values.**
 
-| Quantity                                      | Storage                              | In TypeScript         |
-| --------------------------------------------- | ------------------------------------ | --------------------- |
-| Monetary amounts (P&L, fees, balances)        | `BIGINT` minor units + ISO-4217 code | `bigint`              |
-| Instrument prices (entry, stop, target, exit) | `NUMERIC(20,10)`                     | `string` → decimal.js |
-| R-multiples and ratios                        | `NUMERIC(12,4)`                      | decimal.js            |
+| Quantity                                      | Storage                              | In TypeScript         | Status       |
+| --------------------------------------------- | ------------------------------------ | --------------------- | ------------ |
+| Monetary amounts (P&L, fees, balances)        | `BIGINT` minor units + ISO-4217 code | `bigint`              | ✅ Phase 00b |
+| Instrument prices (entry, stop, target, exit) | `NUMERIC(20,10)`                     | `string` → decimal.js | Phase 06     |
+| R-multiples and ratios                        | `NUMERIC(12,4)`                      | decimal.js            | Phase 06     |
 
-Currency scale comes from a lookup, never a hardcoded `100` — JPY has zero minor decimals. Rounding happens once, at the presentation boundary, never mid-calculation.
+Currency scale comes from a lookup, never a hardcoded `100` — JPY, KRW, VND and IDR have zero minor decimals. Rounding happens once, at the presentation boundary, never mid-calculation.
+
+**`decimal.js` is not yet a dependency.** Minor units in `bigint` are exact by construction, and the money module's parsing and formatting use string arithmetic with no intermediate `Number`. The library becomes justified in Phase 06, when `NUMERIC(20,10)` prices arrive — `1.08532` has no minor-unit representation and genuinely needs arbitrary-precision decimal arithmetic.
+
+**Available now:** `add`, `subtract`, `negate`, `absolute`, `sum`, `compare`, `equals`, and predicates. Mixing currencies is an error, never a silent coercion.
+
+**Deliberately absent:** multiplication, division, percentages. Each needs a rounding rule tied to a specific formula, so they belong in the engine rather than in a general-purpose money helper.
+
+### Reading money and time at the boundary
+
+```ts
+import { formatMoney, parseMoney } from '@/lib/money';
+import { calendarDateIn, dayRangeIn } from '@/lib/time';
+
+// User input -> storage. Rejects rather than rounding silently.
+const parsed = parseMoney('1,234.56', 'USD'); // -> 123456n
+
+// Which day does this trade belong to, for the user's timezone?
+const day = calendarDateIn(trade.exitedAt, user.timezone);
+
+// Half-open [start, end) range for a day's query.
+const range = dayRangeIn('2026-07-31', user.timezone);
+```
+
+Every one of these returns a discriminated result. There is no throwing variant, because these failures are routine rather than exceptional.
 
 ## 2. Per-trade primitives
 

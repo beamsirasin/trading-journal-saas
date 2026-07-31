@@ -1,0 +1,113 @@
+import type { TimeZoneId, WallClock } from './types';
+
+/**
+ * Timezone offset lookup, built on `Intl.DateTimeFormat`.
+ *
+ * No timezone database is bundled. The runtime's ICU data is the source of
+ * truth, which means offsets and DST rules stay current without a dependency
+ * that needs periodic updating — the usual failure mode of bundled tz data.
+ *
+ * Requires a full-ICU runtime. Node 14+ and every current browser ship one.
+ */
+
+const formatterCache = new Map<TimeZoneId, Intl.DateTimeFormat>();
+
+function getFormatter(timeZone: TimeZoneId): Intl.DateTimeFormat {
+  let formatter = formatterCache.get(timeZone);
+  if (formatter === undefined) {
+    formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      era: 'short',
+    });
+    formatterCache.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+/**
+ * Whether the runtime recognises this IANA identifier.
+ *
+ * `Intl.DateTimeFormat` throws a RangeError for unknown zones, which is the
+ * only reliable check available — there is no enumerable list guaranteed
+ * across runtimes.
+ */
+export function isValidTimeZone(timeZone: unknown): timeZone is TimeZoneId {
+  if (typeof timeZone !== 'string' || timeZone.trim() === '') {
+    return false;
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads the wall clock in `timeZone` at a given instant.
+ * Throws only if the zone is invalid — validate first.
+ */
+export function wallClockAt(instant: Date, timeZone: TimeZoneId): WallClock {
+  const parts = getFormatter(timeZone).formatToParts(instant);
+
+  const lookup = (type: Intl.DateTimeFormatPartTypes): string => {
+    const part = parts.find((candidate) => candidate.type === type);
+    return part === undefined ? '' : part.value;
+  };
+
+  const year = Number.parseInt(lookup('year'), 10);
+  // BC dates would otherwise silently read as positive years. Not expected in
+  // this product, but a wrong sign is worse than a rejected input.
+  const era = lookup('era');
+  const signedYear = era === 'BC' || era === 'B' ? -(year - 1) : year;
+
+  return {
+    year: signedYear,
+    month: Number.parseInt(lookup('month'), 10),
+    day: Number.parseInt(lookup('day'), 10),
+    hour: Number.parseInt(lookup('hour'), 10),
+    minute: Number.parseInt(lookup('minute'), 10),
+    second: Number.parseInt(lookup('second'), 10),
+  };
+}
+
+/** Milliseconds since the epoch for a wall clock interpreted as if it were UTC. */
+export function wallClockAsUtcMs(wall: WallClock): number {
+  const utc = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second);
+  // Date.UTC maps years 0-99 into 1900-1999. Undo that for correctness.
+  if (wall.year >= 0 && wall.year <= 99) {
+    const corrected = new Date(utc);
+    corrected.setUTCFullYear(wall.year);
+    return corrected.getTime();
+  }
+  return utc;
+}
+
+/**
+ * UTC offset in minutes at a given instant, positive east of Greenwich.
+ * `Asia/Bangkok` -> 420. `America/New_York` -> -300 or -240 depending on DST.
+ *
+ * Derived by formatting the instant into the zone's wall clock and measuring
+ * the difference from UTC. Sub-second precision is discarded because
+ * `formatToParts` has none, and no real zone has a sub-second offset.
+ */
+export function offsetMinutesAt(instant: Date, timeZone: TimeZoneId): number {
+  const wall = wallClockAt(instant, timeZone);
+  const asUtc = wallClockAsUtcMs(wall);
+  const instantSeconds = Math.floor(instant.getTime() / 1000) * 1000;
+  return (asUtc - instantSeconds) / 60_000;
+}
+
+/** True when the zone observes a different offset at some point in the given year. */
+export function observesDstInYear(timeZone: TimeZoneId, year: number): boolean {
+  const january = new Date(Date.UTC(year, 0, 15));
+  const july = new Date(Date.UTC(year, 6, 15));
+  return offsetMinutesAt(january, timeZone) !== offsetMinutesAt(july, timeZone);
+}

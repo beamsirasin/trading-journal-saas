@@ -8,7 +8,7 @@ export function Card({ className, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'bg-surface border-border-subtle rounded-card border',
+        'bg-card text-card-foreground border-border rounded-lg border',
         'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.25)]',
         'transition-colors duration-200',
         className,
@@ -27,7 +27,9 @@ export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingEle
 }
 
 export function CardDescription({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn('text-muted text-sm leading-relaxed', className)} {...props} />;
+  return (
+    <p className={cn('text-muted-foreground text-sm leading-relaxed', className)} {...props} />
+  );
 }
 
 export function CardContent({ className, ...props }: CardProps) {

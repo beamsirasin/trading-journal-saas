@@ -1,0 +1,54 @@
+# Local development PostgreSQL — DEVELOPMENT ONLY.
+#
+# Optional. Developers using a Neon branch can ignore this file entirely; set
+# DATABASE_URL to the Neon connection string and never run docker compose.
+# It exists so that a local, offline, disposable database is one command away,
+# and so the VPS target is exercised during development rather than only at
+# deployment.
+#
+# This is NOT a production deployment definition. Production hosting is
+# defined in Phase 12.
+#
+#   docker compose up -d          start, in the background
+#   docker compose ps             check health
+#   docker compose stop           stop, KEEPING data
+#   docker compose down           remove containers, KEEPING data
+#   docker compose down -v        remove containers AND DELETE ALL DATA
+#
+# `down -v` destroys the named volume. That is unrecoverable, and it is the
+# intended way to reset a corrupted local database — but only that.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: trading-os-postgres
+    restart: unless-stopped
+    environment:
+      # Development-only credentials. These are not secrets: the port is bound
+      # to localhost, the data is disposable, and nothing real is stored here.
+      # Overridable so two projects can coexist without colliding.
+      POSTGRES_USER: ${POSTGRES_USER:-trading_os}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trading_os_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-trading_os}
+      # Deterministic collation, so index ordering matches production rather
+      # than following the host machine's locale.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      # Bound to 127.0.0.1 explicitly: `5432:5432` would listen on all
+      # interfaces and expose the database to the local network.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone reports true while the init scripts are still
+      # running; naming the user and database waits for genuine readiness.
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-trading_os} -d ${POSTGRES_DB:-trading_os}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres-data:
+    name: trading-os-postgres-data

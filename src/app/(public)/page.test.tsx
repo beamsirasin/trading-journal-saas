@@ -26,8 +26,10 @@ describe('Home', () => {
     }
   });
 
-  it('exposes a main landmark', () => {
+  it('does not render its own main landmark', () => {
+    // `main` belongs to the (public) layout. Two of them would give screen
+    // reader users an ambiguous document structure.
     render(<Home />);
-    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.queryByRole('main')).not.toBeInTheDocument();
   });
 });

@@ -1,9 +1,10 @@
+import { Container } from '@/components/shell/container';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
- * Phase 00 placeholder. Its only jobs are to prove the toolchain renders and
- * to state the product thesis.
+ * Public placeholder. Its only jobs are to prove the toolchain renders and to
+ * state the product thesis.
  *
  * Deliberately shows no numbers. Plausible-looking sample metrics on a trading
  * product read as real performance, and there is no data behind this page.
@@ -14,9 +15,9 @@ const foundations = [
   'Next.js 16 · App Router · React 19',
   'TypeScript strict, with noUncheckedIndexedAccess',
   'Tailwind CSS 4 · semantic design tokens',
-  'ESLint · Prettier · sorted imports',
+  'Money in integer minor units · exact, never floating point',
+  'UTC storage with IANA timezone conversion',
   'Vitest · React Testing Library · Playwright',
-  'GitHub Actions CI',
 ];
 
 function CheckIcon() {
@@ -40,25 +41,25 @@ function CheckIcon() {
 
 export default function Home() {
   return (
-    <main className="relative isolate min-h-dvh">
+    <div className="relative isolate">
       {/* Restrained ambient wash — decorative only. */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
       >
         <div className="bg-primary/10 absolute -top-40 left-1/2 size-[36rem] -translate-x-1/2 rounded-full blur-3xl" />
-        <div className="bg-accent/10 absolute top-32 -right-32 size-[28rem] rounded-full blur-3xl" />
+        <div className="bg-brand/10 absolute top-32 -right-32 size-[28rem] rounded-full blur-3xl" />
       </div>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-16 sm:px-6 sm:py-24">
+      <Container className="flex flex-col gap-12 py-16 sm:py-24">
         <header className="animate-rise flex flex-col items-start gap-5">
-          <Badge variant="accent">Phase 00 · Foundation</Badge>
+          <Badge variant="brand">Phase 00b · Core primitives</Badge>
 
           <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
             Trading OS
           </h1>
 
-          <p className="text-muted max-w-2xl text-lg leading-relaxed text-pretty">
+          <p className="text-muted-foreground max-w-2xl text-lg leading-relaxed text-pretty">
             A trading journal that separates{' '}
             <span className="text-foreground font-medium">system performance</span> from{' '}
             <span className="text-foreground font-medium">trader execution</span> — so you know
@@ -71,7 +72,10 @@ export default function Home() {
           className="animate-rise flex flex-col gap-4"
           style={{ animationDelay: '80ms' }}
         >
-          <h2 id="attribution-heading" className="text-muted text-sm font-medium tracking-wide">
+          <h2
+            id="attribution-heading"
+            className="text-muted-foreground text-sm font-medium tracking-wide"
+          >
             The question this product answers
           </h2>
 
@@ -84,10 +88,12 @@ export default function Home() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted font-mono text-3xl" aria-label="No data yet">
+                <p className="text-muted-foreground font-mono text-3xl" aria-label="No data yet">
                   —
                 </p>
-                <p className="text-muted mt-2 text-xs">Awaiting the calculation engine</p>
+                <p className="text-muted-foreground mt-2 text-xs">
+                  Awaiting the calculation engine
+                </p>
               </CardContent>
             </Card>
 
@@ -99,15 +105,17 @@ export default function Home() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted font-mono text-3xl" aria-label="No data yet">
+                <p className="text-muted-foreground font-mono text-3xl" aria-label="No data yet">
                   —
                 </p>
-                <p className="text-muted mt-2 text-xs">Awaiting the calculation engine</p>
+                <p className="text-muted-foreground mt-2 text-xs">
+                  Awaiting the calculation engine
+                </p>
               </CardContent>
             </Card>
           </div>
 
-          <p className="text-muted text-sm">
+          <p className="text-muted-foreground text-sm">
             The gap between those two numbers is the entire product. No trades have been recorded
             yet, so there is nothing to compare.
           </p>
@@ -120,7 +128,7 @@ export default function Home() {
         >
           <Card>
             <CardHeader>
-              <CardTitle id="foundation-heading">Foundation verified</CardTitle>
+              <CardTitle id="foundation-heading">Foundations in place</CardTitle>
               <CardDescription>
                 This page renders, which means the toolchain below is wired correctly.
               </CardDescription>
@@ -130,23 +138,14 @@ export default function Home() {
                 {foundations.map((item) => (
                   <li key={item} className="flex items-start gap-2.5 text-sm">
                     <CheckIcon />
-                    <span className="text-muted">{item}</span>
+                    <span className="text-muted-foreground">{item}</span>
                   </li>
                 ))}
               </ul>
             </CardContent>
           </Card>
         </section>
-
-        <footer className="text-muted border-border-subtle border-t pt-6 text-sm">
-          No authentication, database tables, or trading functionality exist yet — that is
-          deliberate. See{' '}
-          <code className="bg-surface-raised rounded px-1.5 py-0.5 font-mono text-xs">
-            docs/roadmap.md
-          </code>{' '}
-          for what lands next.
-        </footer>
-      </div>
-    </main>
+      </Container>
+    </div>
   );
 }
