@@ -40,6 +40,41 @@ test.describe('pricing', () => {
     await expect(pricing.getByText('provisional', { exact: true })).toBeVisible();
   });
 
+  /**
+   * Regression: the plan grid stayed single-column until `lg` (1024px), so
+   * at a tablet viewport it rendered one plan card stretched to the full
+   * ~700px content width, with a full-width "Start trial" button — visibly
+   * wider than the same card at mobile or desktop. Fixed by stepping to two
+   * columns at `md`. Asserted by comparing row positions rather than a
+   * screenshot: Starter and Pro should sit side by side (equal top), with
+   * Elite wrapping to a second row (a lower top) rather than sitting to
+   * Pro's right in a phantom third column.
+   */
+  test('renders two plan cards per row at a tablet viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto('/pricing');
+
+    const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
+    const starterBox = await pricing.getByRole('heading', { name: 'Starter' }).boundingBox();
+    const proBox = await pricing.getByRole('heading', { name: 'Pro' }).boundingBox();
+    const eliteBox = await pricing.getByRole('heading', { name: 'Elite' }).boundingBox();
+
+    // A manual tolerance rather than `toBeCloseTo`: its precision digits
+    // round to whole pixels, which is tighter than the sub-pixel rendering
+    // variance between Playwright's desktop and mobile-emulation projects
+    // actually produces for two elements that are genuinely on the same row.
+    expect(Math.abs((starterBox?.y ?? 0) - (proBox?.y ?? -100))).toBeLessThan(5);
+    expect(eliteBox?.y ?? 0).toBeGreaterThan((starterBox?.y ?? 0) + 20);
+
+    // The card should no longer be stretched to the full content width.
+    // Selected via the card's own `aria-labelledby` id rather than walking up
+    // from the heading, which is both more robust and matches how
+    // `PricingCard` actually wires its accessible name.
+    const starterCard = pricing.locator('[aria-labelledby="plan-starter-name"]');
+    const cardBox = await starterCard.boundingBox();
+    expect(cardBox?.width ?? 0).toBeLessThan(500);
+  });
+
   test('does not present a working purchase path', async ({ page }) => {
     await page.goto('/pricing');
 
@@ -132,6 +167,31 @@ test.describe('login and registration', () => {
       expect(submit?.height ?? 0).toBeGreaterThanOrEqual(44);
     });
   }
+
+  /**
+   * Regression: the register page's two-column layout only applies at `lg`
+   * (1024px). Below that the columns stack, and the form's wrapping div had
+   * no max-width — so at a tablet viewport it stretched to the full grid
+   * track (~700px), producing input fields visibly wider than the same
+   * fields render on `/login`, which has always been `max-w-md`-constrained.
+   * Fixed by capping the form column the same way below `lg`.
+   */
+  test('keeps the registration form narrow at a tablet viewport, matching login', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+
+    await page.goto('/login');
+    const loginEmailWidth = (await page.getByLabel('Email').boundingBox())?.width ?? 0;
+
+    await page.goto('/register');
+    const registerEmailWidth = (await page.getByLabel('Email').boundingBox())?.width ?? 0;
+
+    expect(registerEmailWidth).toBeLessThan(500);
+    // Same form primitive, same constraint — the two should match closely
+    // rather than merely both happening to be "narrow enough".
+    expect(Math.abs(registerEmailWidth - loginEmailWidth)).toBeLessThan(10);
+  });
 
   test('registration does not create a session or navigate away', async ({ page }) => {
     await page.goto('/register');

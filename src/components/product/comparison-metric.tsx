@@ -3,6 +3,20 @@ import { cn } from '@/lib/utils';
 import { MetricLabel } from './metric';
 
 /**
+ * Converts an already-rounded metric string into bar-fill percentage (0–100).
+ *
+ * This is bar GEOMETRY, not a metric — it never computes anything a
+ * financial value depends on, only how wide to draw a `<div>`. Was
+ * copy-pasted identically into three call sites (the landing page, the demo
+ * dashboard, and the analytics page), each carrying a comment pointing at the
+ * others; consolidated here so a future change to the rounding or scale
+ * logic can't drift between copies.
+ */
+export function barPercent(value: string, scaleMax: number): number {
+  return (Number(value) / scaleMax) * 100;
+}
+
+/**
  * A coloured square identifying a series.
  *
  * The series colour lives on the swatch and never on the text beside it. Two

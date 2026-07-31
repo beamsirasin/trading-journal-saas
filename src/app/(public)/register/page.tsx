@@ -48,7 +48,15 @@ export default function RegisterPage() {
           </p>
         </div>
 
-        <div className="flex flex-col">
+        {/*
+          `max-w-md mx-auto` below `lg`: the two columns stack there, and this
+          div would otherwise take the full grid-track width — around 700px
+          at a tablet viewport — stretching every input far wider than the
+          same fields render on `/login`. `lg:max-w-none lg:mx-0` lifts the
+          cap once the two-column layout is active, where the `max-w-4xl`
+          grid already keeps the column near 416px.
+        */}
+        <div className="mx-auto flex w-full max-w-md flex-col lg:mx-0 lg:max-w-none">
           <DemoAuthForm mode="register" />
 
           <p className="text-muted-foreground mt-8 text-center text-sm">

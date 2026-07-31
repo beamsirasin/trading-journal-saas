@@ -26,12 +26,21 @@ export function MarketingHeader() {
       <Container className="flex h-14 items-center gap-4">
         <Brand href="/" />
 
-        <nav aria-label="Site" className="ml-6 hidden items-center gap-1 md:flex">
+        {/*
+          `whitespace-nowrap` on each link: without it, "How it works" wraps
+          mid-phrase at exactly 768px, where this nav first appears and the
+          header's content sits within a pixel of the available width. `Brand`
+          carries the same protection for the same reason — see its comment.
+          `ml-4` rather than the original `ml-6` reclaims a little of that
+          margin so the fit isn't hairline-tight against browser/font
+          rendering variance.
+        */}
+        <nav aria-label="Site" className="ml-4 hidden items-center gap-1 md:flex">
           {MARKETING_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors"
+              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-9 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors"
             >
               {item.label}
             </Link>

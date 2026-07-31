@@ -15,7 +15,7 @@ import {
 import { formatMoney } from '@/lib/money';
 import { CumulativeRChart, CumulativeRTable } from '@/components/charts/cumulative-r-chart';
 import { ChartContainer } from '@/components/product/chart-container';
-import { ComparisonMetric } from '@/components/product/comparison-metric';
+import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';
 import { DemoDataNotice } from '@/components/product/demo-badge';
 import { EmptyState } from '@/components/product/empty-state';
 import { KpiCard } from '@/components/product/kpi-card';
@@ -38,12 +38,16 @@ import { TradesTable } from './trades-table';
  * would be inventing a second implementation of the formulas that are the
  * whole point of this product, and it would not be tested.
  *
- * `barPercent` is bar geometry, not a metric. See the same note in
- * `attribution-section.tsx`.
+ * `barPercent` (imported) is bar geometry, not a metric — see its own doc
+ * comment.
+ *
+ * KPI grids are `grid-cols-2` from the smallest viewport up, not the more
+ * common `sm:grid-cols-2` (single column below 640px). A trading dashboard's
+ * KPI row reads as a real analytics surface at two-up even on a 375px phone;
+ * one full-width card per row for eight cards in a row turns a five-second
+ * glance into a long, sparse scroll. Card content (a short label, one number,
+ * one line of hint text) fits comfortably at half width.
  */
-function barPercent(value: string, scaleMax: number): number {
-  return (Number(value) / scaleMax) * 100;
-}
 
 export function DemoDashboard() {
   const [range, setRange] = useState<DemoRangeId>(DEMO_DEFAULT_RANGE);
@@ -74,7 +78,7 @@ export function DemoDashboard() {
           description={`${closedTrades} closed trades in the selected range.`}
         />
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <KpiCard
             label="Total net P&L"
             value={formatMoney(netPnl, { style: 'symbol', signDisplay: 'always' })}
@@ -110,7 +114,7 @@ export function DemoDashboard() {
           description="The system's result against yours, over the same trades."
         />
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <KpiCard
             label="System expectancy"
             value={attribution.systemExpectancyR}

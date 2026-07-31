@@ -128,6 +128,54 @@ test.describe('public calls to action', () => {
   });
 });
 
+/**
+ * Regression coverage for a real bug: at exactly 768px (the `md` breakpoint
+ * where the desktop nav first appears), the header's unwrapped content sits
+ * within a fraction of a pixel of the available width. Flexbox assigns the
+ * whole shrink deficit to whichever text node can still compress, and
+ * without explicit protection that was the brand wordmark ("Trading OS"
+ * wrapping to "Trading" / "OS") and then, once that was fixed, the first nav
+ * link long enough to wrap ("How it works" splitting mid-phrase). A plain
+ * "no horizontal overflow" check does not catch this: wrapping shrinks the
+ * element rather than overflowing the page, so the bug is invisible to that
+ * assertion and only shows up as a doubled line height.
+ */
+test.describe('header layout at the md breakpoint', () => {
+  test('the wordmark and every nav link render on a single line at 768px', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto('/');
+
+    const wordmark = page.getByRole('banner').getByText('Trading OS', { exact: true });
+    const wordmarkBox = await wordmark.boundingBox();
+    // The wordmark span has no fixed height, so a wrapped two-line label
+    // shows up directly as roughly double a single line's height. 30px
+    // comfortably separates the two cases without hard-coding line-height.
+    expect(wordmarkBox?.height ?? 0, 'wordmark should be one line, not two').toBeLessThan(30);
+
+    // Nav links are `h-9` (a fixed 36px flex container), so a wrapped label
+    // would clip rather than grow the box — bounding-box height cannot
+    // distinguish the two states here. `white-space` is the actual CSS
+    // property the fix relies on, so it is what regresses if the class is
+    // ever removed.
+    const nav = page.getByRole('banner').getByRole('navigation', { name: 'Site' });
+    for (const label of ['Features', 'How it works', 'Pricing', 'Demo']) {
+      const whiteSpace = await nav
+        .getByRole('link', { name: label })
+        .evaluate((el) => getComputedStyle(el).whiteSpace);
+      expect(whiteSpace, `"${label}" should be whitespace-nowrap`).toBe('nowrap');
+    }
+  });
+
+  test('has no horizontal overflow at 768px', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto('/');
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflows).toBe(false);
+  });
+});
+
 test.describe('marketing mobile menu', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });

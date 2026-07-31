@@ -164,6 +164,38 @@ test.describe('demo dashboard', () => {
     await expect(view).toHaveAttribute('data-trades-view', 'cards');
     await expect(view.getByText('EURUSD').first()).toBeVisible();
   });
+
+  /**
+   * Regression: the KPI grids used `sm:grid-cols-2`, which is a single
+   * column below 640px — so on a 375px phone, eight short, uniform cards
+   * (a label, one number, one line of hint text) rendered as eight
+   * full-width rows, turning a five-second glance into a long, sparse
+   * scroll. Fixed by starting at two columns from the smallest viewport.
+   * Asserted via each card's `data-kpi` attribute and comparing row
+   * position, which is what actually distinguishes "two-up" from "stacked"
+   * — text content alone would not catch a regression back to one column.
+   */
+  test('renders KPI cards two-up even at a 375px viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/demo');
+
+    const first = page.locator('[data-kpi="Total net P&L"]');
+    const second = page.locator('[data-kpi="Actual win rate"]');
+    const third = page.locator('[data-kpi="Actual average R"]');
+
+    const firstBox = await first.boundingBox();
+    const secondBox = await second.boundingBox();
+    const thirdBox = await third.boundingBox();
+
+    // Same row: equal top, second card to the right of the first. A manual
+    // tolerance rather than `toBeCloseTo`, whose precision digits round to
+    // whole pixels — tighter than genuine cross-project rendering variance.
+    expect(Math.abs((firstBox?.y ?? 0) - (secondBox?.y ?? -100))).toBeLessThan(5);
+    expect(secondBox?.x ?? 0).toBeGreaterThan(firstBox?.x ?? 0);
+
+    // Next row: a card three positions later has wrapped down, not sideways.
+    expect(thirdBox?.y ?? 0).toBeGreaterThan((firstBox?.y ?? 0) + 20);
+  });
 });
 
 test.describe('demo charts under reduced motion', () => {

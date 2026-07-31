@@ -37,7 +37,18 @@ export function PricingSection({
           align="center"
         />
 
-        <ul className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/*
+          `md:grid-cols-2` matters specifically at tablet (768px): without it,
+          the grid stays single-column until `lg` (1024px), so a plan card
+          stretches to the full ~700px content width with a full-width
+          "Start trial" button — noticeably wider than the same card ever
+          renders at mobile or desktop. Held at `md` rather than `sm` (640px)
+          because each card carries up to six checklist items plus a button,
+          which needs more than a 640px row split two ways. Elite sits alone
+          in the second row at this step, the normal shape for three items at
+          two columns.
+        */}
+        <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {PLANS.map((plan) => (
             <li key={plan.id} className="flex">
               <PricingCard plan={plan} />

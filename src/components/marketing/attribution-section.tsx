@@ -1,7 +1,7 @@
 import { demoBundle } from '@/lib/demo';
 import { CumulativeRChart, CumulativeRTable } from '@/components/charts/cumulative-r-chart';
 import { ChartContainer } from '@/components/product/chart-container';
-import { ComparisonMetric } from '@/components/product/comparison-metric';
+import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { KpiCard } from '@/components/product/kpi-card';
 
@@ -15,14 +15,10 @@ import { Section, SectionIntro } from './section';
  * trading numbers on a marketing page and an unlabelled screenshot of them
  * would read as a track record.
  *
- * `barPercent` is bar GEOMETRY, not a metric. It converts an already-rounded
- * display value into a pixel width against a stated scale. No metric is
- * derived here; the real formulas live in `src/lib/calc/` from Phase 07 and
- * this page will read their output instead of these fixtures.
+ * No metric is derived here; the real formulas live in `src/lib/calc/` from
+ * Phase 07 and this page will read their output instead of these fixtures.
+ * `barPercent` (imported) is bar geometry only — see its own doc comment.
  */
-function barPercent(value: string, scaleMax: number): number {
-  return (Number(value) / scaleMax) * 100;
-}
 
 export function AttributionSection() {
   const { attribution, equityCurve, closedTrades } = demoBundle('all');
@@ -44,7 +40,7 @@ export function AttributionSection() {
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <KpiCard
             label="Edge leakage"
             value={attribution.edgeLeakageR}

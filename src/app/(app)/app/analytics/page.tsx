@@ -4,7 +4,7 @@ import { demoBundle } from '@/lib/demo';
 import { CumulativeRChart, CumulativeRTable } from '@/components/charts/cumulative-r-chart';
 import { MistakeSummary } from '@/components/dashboard/mistake-summary';
 import { ChartContainer } from '@/components/product/chart-container';
-import { ComparisonMetric } from '@/components/product/comparison-metric';
+import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';
 import { DemoBadge, DemoDataNotice } from '@/components/product/demo-badge';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
@@ -12,11 +12,6 @@ import { Container } from '@/components/shell/container';
 export const metadata: Metadata = {
   title: 'Analytics',
 };
-
-/** Bar geometry against a stated scale, not a metric. See the dashboard. */
-function barPercent(value: string, scaleMax: number): number {
-  return (Number(value) / scaleMax) * 100;
-}
 
 /**
  * Analytics preview.
