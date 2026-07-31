@@ -1,0 +1,8 @@
+# Build scripts must be explicitly approved (pnpm blocks them by default).
+# Only add a package here after confirming why it needs a postinstall step.
+#
+#   sharp         - native image processing used by Next.js image optimization
+#   unrs-resolver - native module resolver used by the ESLint import resolver
+allowBuilds:
+  sharp: true
+  unrs-resolver: true

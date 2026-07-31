@@ -1,0 +1,19 @@
+# Normalise line endings to LF in the repository and in every working copy.
+# Without this, a clone on Windows checks out CRLF and `pnpm format:check`
+# fails on a fresh checkout, since Prettier is configured with endOfLine: 'lf'.
+* text=auto eol=lf
+
+# Lockfiles are generated — collapse them in diffs and reviews.
+pnpm-lock.yaml linguist-generated=true -diff
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.woff binary
+*.woff2 binary
+*.pdf binary

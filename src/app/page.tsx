@@ -1,0 +1,152 @@
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+/**
+ * Phase 00 placeholder. Its only jobs are to prove the toolchain renders and
+ * to state the product thesis.
+ *
+ * Deliberately shows no numbers. Plausible-looking sample metrics on a trading
+ * product read as real performance, and there is no data behind this page.
+ * Placeholders stay as em-dashes until Phase 06 computes something true.
+ */
+
+const foundations = [
+  'Next.js 16 · App Router · React 19',
+  'TypeScript strict, with noUncheckedIndexedAccess',
+  'Tailwind CSS 4 · semantic design tokens',
+  'ESLint · Prettier · sorted imports',
+  'Vitest · React Testing Library · Playwright',
+  'GitHub Actions CI',
+];
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      className="text-positive mt-0.5 size-4 shrink-0"
+    >
+      <path
+        d="M4.5 10.5l3.5 3.5 7.5-8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function Home() {
+  return (
+    <main className="relative isolate min-h-dvh">
+      {/* Restrained ambient wash — decorative only. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+      >
+        <div className="bg-primary/10 absolute -top-40 left-1/2 size-[36rem] -translate-x-1/2 rounded-full blur-3xl" />
+        <div className="bg-accent/10 absolute top-32 -right-32 size-[28rem] rounded-full blur-3xl" />
+      </div>
+
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-16 sm:px-6 sm:py-24">
+        <header className="animate-rise flex flex-col items-start gap-5">
+          <Badge variant="accent">Phase 00 · Foundation</Badge>
+
+          <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+            Trading OS
+          </h1>
+
+          <p className="text-muted max-w-2xl text-lg leading-relaxed text-pretty">
+            A trading journal that separates{' '}
+            <span className="text-foreground font-medium">system performance</span> from{' '}
+            <span className="text-foreground font-medium">trader execution</span> — so you know
+            whether to fix the strategy or fix the discipline.
+          </p>
+        </header>
+
+        <section
+          aria-labelledby="attribution-heading"
+          className="animate-rise flex flex-col gap-4"
+          style={{ animationDelay: '80ms' }}
+        >
+          <h2 id="attribution-heading" className="text-muted text-sm font-medium tracking-wide">
+            The question this product answers
+          </h2>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>System performance</CardTitle>
+                <CardDescription>
+                  What the strategy would have returned if its rules had been followed exactly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted font-mono text-3xl" aria-label="No data yet">
+                  —
+                </p>
+                <p className="text-muted mt-2 text-xs">Awaiting the calculation engine</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Trader performance</CardTitle>
+                <CardDescription>
+                  What actually happened, after real entries, exits, costs and mistakes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted font-mono text-3xl" aria-label="No data yet">
+                  —
+                </p>
+                <p className="text-muted mt-2 text-xs">Awaiting the calculation engine</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <p className="text-muted text-sm">
+            The gap between those two numbers is the entire product. No trades have been recorded
+            yet, so there is nothing to compare.
+          </p>
+        </section>
+
+        <section
+          aria-labelledby="foundation-heading"
+          className="animate-rise"
+          style={{ animationDelay: '160ms' }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle id="foundation-heading">Foundation verified</CardTitle>
+              <CardDescription>
+                This page renders, which means the toolchain below is wired correctly.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="grid grid-cols-1 gap-x-8 gap-y-3 md:grid-cols-2">
+                {foundations.map((item) => (
+                  <li key={item} className="flex items-start gap-2.5 text-sm">
+                    <CheckIcon />
+                    <span className="text-muted">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+
+        <footer className="text-muted border-border-subtle border-t pt-6 text-sm">
+          No authentication, database tables, or trading functionality exist yet — that is
+          deliberate. See{' '}
+          <code className="bg-surface-raised rounded px-1.5 py-0.5 font-mono text-xs">
+            docs/roadmap.md
+          </code>{' '}
+          for what lands next.
+        </footer>
+      </div>
+    </main>
+  );
+}
