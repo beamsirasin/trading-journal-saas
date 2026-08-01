@@ -1,12 +1,13 @@
 'use client';
 
 import { CircleAlert } from 'lucide-react';
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useId, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Link } from '@/i18n/navigation';
 
 /**
  * Login and registration, as a visual prototype.
@@ -31,6 +32,7 @@ import { Label } from '@/components/ui/label';
  * it earns its place when there is a server action to submit to.
  */
 export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
+  const t = useTranslations('auth');
   const [submitted, setSubmitted] = useState(false);
   const formId = useId();
   const isRegister = mode === 'register';
@@ -53,35 +55,35 @@ export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
           aria-describedby={`${formId}-google-note`}
         >
           <GoogleMark />
-          Continue with Google
+          {t('continueWithGoogle')}
         </Button>
         <p id={`${formId}-google-note`} className="text-muted-foreground text-center text-xs">
-          Google sign-in is not connected yet — coming in Phase 2.
+          {t('googleNotConnected')}
         </p>
       </div>
 
       <div className="flex items-center gap-3" aria-hidden="true">
         <span className="bg-border h-px flex-1" />
-        <span className="text-muted-foreground text-xs">or</span>
+        <span className="text-muted-foreground text-xs">{t('or')}</span>
         <span className="bg-border h-px flex-1" />
       </div>
 
       <form onSubmit={handleSubmit} noValidate={false} className="flex flex-col gap-4">
         {isRegister ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor={`${formId}-name`}>Name</Label>
+            <Label htmlFor={`${formId}-name`}>{t('name')}</Label>
             <Input
               id={`${formId}-name`}
               name="name"
               autoComplete="name"
               required
-              placeholder="Alex Chen"
+              placeholder={t('namePlaceholder')}
             />
           </div>
         ) : null}
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor={`${formId}-email`}>Email</Label>
+          <Label htmlFor={`${formId}-email`}>{t('email')}</Label>
           <Input
             id={`${formId}-email`}
             name="email"
@@ -89,15 +91,15 @@ export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
             inputMode="email"
             autoComplete="email"
             required
-            placeholder="you@example.com"
+            placeholder={t('emailPlaceholder')}
           />
         </div>
 
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between gap-3">
-            <Label htmlFor={`${formId}-password`}>Password</Label>
+            <Label htmlFor={`${formId}-password`}>{t('password')}</Label>
             {isRegister ? null : (
-              <span className="text-muted-foreground text-xs">Reset arrives with Phase 2</span>
+              <span className="text-muted-foreground text-xs">{t('resetNote')}</span>
             )}
           </div>
           <Input
@@ -111,13 +113,13 @@ export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
           />
           {isRegister ? (
             <p id={`${formId}-password-hint`} className="text-muted-foreground text-xs">
-              At least 12 characters.
+              {t('passwordHint')}
             </p>
           ) : null}
         </div>
 
         <Button type="submit" className="min-h-11 w-full">
-          {isRegister ? 'Preview account creation' : 'Preview login'}
+          {isRegister ? t('registerSubmit') : t('loginSubmit')}
         </Button>
 
         {/*
@@ -131,18 +133,19 @@ export function DemoAuthForm({ mode }: { mode: 'login' | 'register' }) {
             <div className="border-info/30 bg-info/10 flex gap-3 rounded-lg border p-4">
               <CircleAlert className="text-info size-5 shrink-0" aria-hidden="true" />
               <div className="flex flex-col gap-1 text-sm leading-relaxed">
-                <p className="text-foreground font-medium">Nothing was submitted</p>
+                <p className="text-foreground font-medium">{t('submittedTitle')}</p>
                 <p className="text-muted-foreground">
-                  This is a design preview. Authentication, accounts and sessions arrive in Phase 2
-                  — no data left your browser and no account was created. You can{' '}
-                  <Link
-                    href="/demo"
-                    prefetch={false}
-                    className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
-                  >
-                    explore the demo dashboard
-                  </Link>{' '}
-                  in the meantime.
+                  {t.rich('submittedBody', {
+                    demoLink: (chunks) => (
+                      <Link
+                        href="/demo"
+                        prefetch={false}
+                        className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+                      >
+                        {chunks}
+                      </Link>
+                    ),
+                  })}
                 </p>
               </div>
             </div>

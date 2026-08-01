@@ -1,11 +1,7 @@
+import { useTranslations } from 'next-intl';
+
 import type { DemoOutcome } from '@/lib/demo';
 import { cn } from '@/lib/utils';
-
-const OUTCOME_LABEL: Record<DemoOutcome, string> = {
-  win: 'Win',
-  loss: 'Loss',
-  break_even: 'Break-even',
-};
 
 const OUTCOME_CLASS: Record<DemoOutcome, string> = {
   win: 'border-positive/30 bg-positive/10 text-positive',
@@ -23,6 +19,11 @@ const OUTCOME_CLASS: Record<DemoOutcome, string> = {
  *
  * Break-even is a first-class outcome, not a rounding artefact of zero. It is
  * decided by an explicit tolerance band per trading account (CLAUDE.md §6).
+ *
+ * `axis` is the semantic side (`system` | `trader`), not display text — the
+ * translated label ("System" / "Actual") comes from `common.system` /
+ * `common.actual`, so this component works in either locale without its
+ * callers knowing the current language.
  */
 export function OutcomeBadge({
   outcome,
@@ -30,10 +31,14 @@ export function OutcomeBadge({
   className,
 }: {
   outcome: DemoOutcome;
-  /** Spoken prefix, e.g. "System" so it reads "System: Win". */
-  axis: 'System' | 'Actual';
+  axis: 'system' | 'trader';
   className?: string;
 }) {
+  const t = useTranslations('common');
+  const outcomeLabel =
+    outcome === 'win' ? t('win') : outcome === 'loss' ? t('loss') : t('breakEven');
+  const axisLabel = axis === 'system' ? t('system') : t('actual');
+
   return (
     <span
       className={cn(
@@ -42,8 +47,8 @@ export function OutcomeBadge({
         className,
       )}
     >
-      <span className="sr-only">{axis}: </span>
-      {OUTCOME_LABEL[outcome]}
+      <span className="sr-only">{axisLabel}: </span>
+      {outcomeLabel}
     </span>
   );
 }
@@ -64,25 +69,23 @@ export function QuadrantNote({
   actualOutcome: DemoOutcome;
   className?: string;
 }) {
-  const note = quadrantNote(systemOutcome, actualOutcome);
-  if (note === null) {
+  const t = useTranslations('trades.quadrantNotes');
+  const key = quadrantNoteKey(systemOutcome, actualOutcome);
+  if (key === null) {
     return null;
   }
 
   return (
-    <span className={cn('text-muted-foreground text-xs leading-relaxed', className)}>{note}</span>
+    <span className={cn('text-muted-foreground text-xs leading-relaxed', className)}>{t(key)}</span>
   );
 }
 
-function quadrantNote(system: DemoOutcome, actual: DemoOutcome): string | null {
-  if (system === 'win' && actual === 'loss') {
-    return 'The setup worked. The execution gave it back.';
-  }
-  if (system === 'loss' && actual === 'win') {
-    return 'Paid for breaking the rules — the habit, not the result, is the risk.';
-  }
-  if (system === 'win' && actual === 'break_even') {
-    return 'A winning setup closed flat.';
-  }
+function quadrantNoteKey(
+  system: DemoOutcome,
+  actual: DemoOutcome,
+): 'systemDamaged' | 'brokeRules' | 'closedFlat' | null {
+  if (system === 'win' && actual === 'loss') return 'systemDamaged';
+  if (system === 'loss' && actual === 'win') return 'brokeRules';
+  if (system === 'win' && actual === 'break_even') return 'closedFlat';
   return null;
 }

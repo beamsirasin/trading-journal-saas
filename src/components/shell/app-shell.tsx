@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
 import { DemoBadge } from '@/components/product/demo-badge';
@@ -5,6 +6,7 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 import { Brand } from './brand';
 import { MAIN_CONTENT_ID } from './constants';
+import { LanguageSwitcher } from './language-switcher';
 import { MobileNav } from './mobile-nav';
 import { SidebarNav } from './sidebar-nav';
 import { SkipLink } from './skip-link';
@@ -20,7 +22,9 @@ import { SkipLink } from './skip-link';
  * Landmarks are explicit — banner, navigation, main, contentinfo — so screen
  * reader users can jump between regions instead of traversing linearly.
  */
-export function AppShell({ children }: { children: ReactNode }) {
+export async function AppShell({ children }: { children: ReactNode }) {
+  const t = await getTranslations('appNav');
+
   return (
     <div className="min-h-dvh">
       <SkipLink />
@@ -34,6 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Brand href="/app" className="lg:hidden" />
           <div className="ml-auto flex items-center gap-2">
             <DemoBadge className="hidden sm:inline-flex" />
+            <LanguageSwitcher />
             <ThemeToggle />
           </div>
         </div>
@@ -56,10 +61,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Brand href="/app" className="px-2 py-2" />
             <SidebarNav />
             <div className="border-border text-muted-foreground mt-auto flex flex-col gap-1 border-t px-2 pt-3 text-xs">
-              <p className="text-warning font-medium">Demo data</p>
-              <p className="leading-relaxed">
-                A design preview. No account, no database, no saved trades.
-              </p>
+              <p className="text-warning font-medium">{t('demoNoteTitle')}</p>
+              <p className="leading-relaxed">{t('demoNote')}</p>
             </div>
           </div>
         </aside>

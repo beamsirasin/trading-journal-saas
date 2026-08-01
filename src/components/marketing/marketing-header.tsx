@@ -1,9 +1,11 @@
-import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 
 import { Brand } from '@/components/shell/brand';
 import { Container } from '@/components/shell/container';
+import { LanguageSwitcher } from '@/components/shell/language-switcher';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 import { MarketingMobileNav } from './marketing-mobile-nav';
 import { MARKETING_NAV } from './nav';
@@ -20,7 +22,9 @@ import { MARKETING_NAV } from './nav';
  * a small blur rather than a heavy glass panel — the design direction calls
  * for restraint, and text over a strongly blurred surface loses contrast.
  */
-export function MarketingHeader() {
+export async function MarketingHeader() {
+  const t = await getTranslations('nav');
+
   return (
     <header className="bg-background/85 border-border sticky top-0 z-40 border-b backdrop-blur-sm">
       <Container className="flex h-14 items-center gap-4">
@@ -35,7 +39,7 @@ export function MarketingHeader() {
           margin so the fit isn't hairline-tight against browser/font
           rendering variance.
         */}
-        <nav aria-label="Site" className="ml-4 hidden items-center gap-1 lg:flex">
+        <nav aria-label={t('siteNav')} className="ml-4 hidden items-center gap-1 lg:flex">
           {MARKETING_NAV.map((item) => (
             <Link
               key={item.href}
@@ -43,19 +47,20 @@ export function MarketingHeader() {
               {...(item.prefetch === false ? { prefetch: false } : {})}
               className="text-muted-foreground hover:text-foreground hover:bg-accent flex min-h-11 min-w-11 items-center rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors"
             >
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           ))}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <LanguageSwitcher />
           <ThemeToggle />
 
           <Button asChild variant="ghost" size="sm" className="hidden min-h-11 lg:inline-flex">
-            <Link href="/login">Login preview</Link>
+            <Link href="/login">{t('login')}</Link>
           </Button>
           <Button asChild size="sm" className="hidden min-h-11 lg:inline-flex">
-            <Link href="/register">Registration preview</Link>
+            <Link href="/register">{t('register')}</Link>
           </Button>
 
           <MarketingMobileNav />

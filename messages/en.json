@@ -1,0 +1,538 @@
+{
+  "metadata": {
+    "brandName": "Trading OS",
+    "title": "Trading OS — did the strategy fail, or did you?",
+    "description": "A trading journal that scores every trade twice: what the strategy would have produced, and what your execution actually produced."
+  },
+  "languageSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "th": "ไทย"
+  },
+  "nav": {
+    "features": "Features",
+    "howItWorks": "How it works",
+    "pricing": "Pricing",
+    "demo": "Demo",
+    "login": "Login preview",
+    "register": "Registration preview",
+    "openMenu": "Open navigation menu",
+    "siteNav": "Site",
+    "siteNavDescription": "Site navigation and account links.",
+    "mainNav": "Main"
+  },
+  "appNav": {
+    "items": {
+      "overview": "Overview",
+      "trades": "Trades",
+      "strategies": "Strategies",
+      "analytics": "Analytics",
+      "settings": "Settings"
+    },
+    "descriptions": {
+      "overview": "Attribution at a glance",
+      "trades": "The journal",
+      "strategies": "Playbooks and versions",
+      "analytics": "System versus trader",
+      "settings": "Profile and preferences"
+    },
+    "demoNoteTitle": "Demo data",
+    "demoNote": "A design preview. No account, no database, no saved trades.",
+    "drawerDescription": "Application sections. Every section is a preview built from demo data."
+  },
+  "footer": {
+    "tagline": "A trading journal that separates strategy edge from execution.",
+    "groups": {
+      "product": "Product",
+      "account": "Account",
+      "legal": "Legal"
+    },
+    "links": {
+      "features": "Features",
+      "howItWorks": "How it works",
+      "systemVsTrader": "System vs trader",
+      "pricing": "Pricing",
+      "demo": "Demo dashboard",
+      "login": "Login preview",
+      "register": "Registration preview",
+      "openApp": "Open the app preview",
+      "terms": "Terms of service",
+      "privacy": "Privacy policy",
+      "risk": "Risk disclosure"
+    },
+    "soon": "Soon",
+    "disclaimer1": "Trading OS is a journaling and analytics tool. It does not provide financial advice, execute orders, or connect to a broker. Trading involves risk of loss, and past performance does not indicate future results.",
+    "disclaimer2": "Product in active development. Figures shown anywhere on this site are fictional demo data."
+  },
+  "hero": {
+    "badge": "Attribution, not bookkeeping",
+    "title": "Know whether it was the strategy or you.",
+    "description": "Most journals record what happened, so they can only ever show profit and loss. Trading OS records what <em>should</em> have happened too — then measures the distance between them.",
+    "ctaPrimary": "Preview registration",
+    "ctaDemo": "See the demo dashboard",
+    "trialNote": "Planned {trialDays}-day trial · no card required · registration is not live yet"
+  },
+  "productPreview": {
+    "title": "Attribution overview",
+    "cumulativeR": "Cumulative R",
+    "system": "System",
+    "actual": "Actual",
+    "summary": "The strategy earned {systemTotalR}R. You kept {actualTotalR}R.",
+    "disciplineLine": "Discipline score {disciplineScore} · execution efficiency {executionEfficiencyPct}%",
+    "chartAriaLabel": "Cumulative R over time. The system reaches {systemTotalR}R while actual execution reaches {actualTotalR}R, a gap of {edgeLeakageR}R."
+  },
+  "problem": {
+    "eyebrow": "The problem",
+    "title": "Profit does not prove the trade was correct",
+    "description": "Two traders can end the month at the same balance while doing completely different things. One is running a system. The other is being rescued by luck. A journal that records only outcomes cannot separate them.",
+    "matrixTitle": "Every trade lands in one of four cells",
+    "matrixDescription": "System outcome and trader outcome are recorded separately, so the two most important cells stay visible instead of collapsing into a single profit figure.",
+    "quadrants": {
+      "goodSignal": {
+        "title": "Followed a good signal",
+        "body": "The setup worked and you took it as written. Repeatable, and the least interesting cell."
+      },
+      "systemDamaged": {
+        "title": "A working system, damaged",
+        "body": "The strategy was right and execution gave it back. Changing the strategy here would be the worst possible response."
+      },
+      "brokeRules": {
+        "title": "Paid for breaking the rules",
+        "body": "You made money by deviating. A journal that only tracks profit congratulates you, and you learn exactly the wrong lesson."
+      },
+      "badSignal": {
+        "title": "Followed a bad signal",
+        "body": "You did your job and the strategy did not. This is the cell that justifies changing the system."
+      }
+    },
+    "axisSystem": "System",
+    "axisTrader": "Trader",
+    "outcomeWin": "win",
+    "outcomeLoss": "loss"
+  },
+  "attribution": {
+    "eyebrow": "System vs trader",
+    "title": "One comparison, the whole product",
+    "description": "Every metric is computed twice: once from the strategy's plan, once from what you actually did. Both in R, so they stay comparable even when position size differed from the plan.",
+    "demoCaption": "Fictional account · {closedTrades} closed trades · not a performance claim",
+    "edgeLeakage": "Edge leakage",
+    "edgeLeakageHint": "System total R minus actual total R — the edge that existed and was not captured.",
+    "disciplineScore": "Discipline score",
+    "winRate": "Win rate",
+    "averageR": "Average R per trade",
+    "expectancy": "Expectancy",
+    "chartTitle": "Cumulative R over time",
+    "chartDescription": "The same trades, scored two ways.",
+    "chartCaption": "Demo data. Both series start at zero and share one axis in R. Weekly samples, so intra-week drawdowns are not visible here.",
+    "chartLegendSystem": "System — rules followed exactly",
+    "chartLegendActual": "Actual — what you did",
+    "closingNote": "The strategy has an edge; how much of it reaches the account depends on execution and discipline.",
+    "viewDetailedAnalytics": "View detailed analytics"
+  },
+  "workflow": {
+    "eyebrow": "How it works",
+    "title": "Six steps, entered by hand, on purpose",
+    "description": "The counterfactual — what the rules would have done — does not exist in any broker feed. Only you know it, so only you can record it.",
+    "steps": {
+      "record": {
+        "title": "Record the trade",
+        "body": "Entry, stop, target and what actually filled."
+      },
+      "attach": {
+        "title": "Attach a TradingView link",
+        "body": "Keep the marked-up chart with the trade."
+      },
+      "select": {
+        "title": "Select the strategy",
+        "body": "Trades attach to a specific playbook version."
+      },
+      "review": {
+        "title": "Review rule adherence",
+        "body": "Tag any deviation from a fixed list."
+      },
+      "compare": {
+        "title": "Compare system and actual",
+        "body": "The same trade, scored two ways, in R."
+      },
+      "learn": {
+        "title": "Learn from repeated patterns",
+        "body": "One trade tells you nothing. Many do."
+      }
+    }
+  },
+  "features": {
+    "eyebrow": "What you get",
+    "title": "A small product that does one thing properly",
+    "description": "Everything here exists to support one comparison, and nothing is included because a competitor has it.",
+    "items": {
+      "journal": {
+        "title": "Fast manual journal",
+        "body": "A keyboard-friendly entry form built for the two minutes after you close a position."
+      },
+      "playbooks": {
+        "title": "Strategy playbooks",
+        "body": "Write the rules down and version them, so past trades stay scored fairly."
+      },
+      "analytics": {
+        "title": "System vs trader analytics",
+        "body": "Win rate, average R and expectancy — computed twice, compared directly."
+      },
+      "discipline": {
+        "title": "Discipline and mistake tracking",
+        "body": "Tag rule breaks and see them ranked by cost in R, not by frequency."
+      }
+    },
+    "supportingNote": "Also included: TradingView chart links and a mobile-friendly logging flow.",
+    "excludedNote": "Not included in this release: broker connections, automated imports, or AI analysis."
+  },
+  "pricing": {
+    "eyebrow": "Pricing",
+    "title": "Three plans, one free trial",
+    "description": "Plans differ mainly by how many trading accounts you can journal.",
+    "tradingAccounts": "Trading accounts",
+    "provisional": "provisional",
+    "mostPopular": "Most popular",
+    "priceUnset": "Pricing to be confirmed",
+    "priceUnsetNote": "A {trialDays}-day, no-card trial is planned but not live.",
+    "cta": "Preview trial registration",
+    "plans": {
+      "starter": {
+        "tagline": "Prove whether your strategy has an edge.",
+        "features": [
+          "1 trading account",
+          "Manual journal & TradingView links",
+          "Full attribution analytics"
+        ]
+      },
+      "pro": {
+        "tagline": "Separate edge from execution across several accounts.",
+        "features": ["3 trading accounts", "Everything in Starter", "Per-account attribution"]
+      },
+      "elite": {
+        "tagline": "For traders running many accounts or a prop programme.",
+        "features": ["10 trading accounts", "Everything in Pro", "Data export"]
+      }
+    },
+    "paymentNoticeTitle": "No payment processing is connected to this product yet",
+    "paymentNoticeBody": "Prices have not been set, no card is collected, and nothing can be purchased. A {trialDays}-day trial with no payment details is planned. Billing arrives in a later release, and amounts will be published before it does."
+  },
+  "faq": {
+    "eyebrow": "Questions",
+    "title": "What this product does and does not do",
+    "items": {
+      "whyManual": {
+        "question": "Why is journal entry manual?",
+        "answer": "Because the number the product is built around — what the strategy's rules would have done — does not exist anywhere else. A broker feed knows what you filled; it does not know what your plan told you to do."
+      },
+      "brokerImport": {
+        "question": "Can I import trades from my broker?",
+        "answer": "No. There is no broker API integration, no MT4/MT5 sync, and no CSV import. Trades are entered by hand — a deliberate scope decision, not a feature in progress."
+      },
+      "systemPerformance": {
+        "question": "What is System Performance?",
+        "answer": "The result the strategy would have produced if its rules had been followed exactly. It answers \"does this strategy have an edge at all?\", independent of execution."
+      },
+      "traderPerformance": {
+        "question": "What is Trader Performance?",
+        "answer": "The result your actual decisions produced — real entry, stop, exit and costs. Compared with System Performance, it shows how much edge survived contact with you."
+      },
+      "tradingViewLinks": {
+        "question": "Can I attach TradingView charts?",
+        "answer": "You can paste a TradingView chart URL onto any trade. It is a stored link, not an integration — nothing is read from TradingView."
+      },
+      "freeTrial": {
+        "question": "Is the free trial available now?",
+        "answer": "Not yet. A {trialDays}-day trial with no card required is planned. Authentication and payment processing are not connected, so no trial can start today."
+      },
+      "mobile": {
+        "question": "Can I use it on my phone?",
+        "answer": "Yes. Logging a trade is designed for a phone. Analytics are designed for a desktop screen and stay readable on a tablet."
+      },
+      "aiAnalysis": {
+        "question": "Does it use AI to analyse my trades?",
+        "answer": "No. There is no AI analysis in this product. Figures shown in this preview are labelled fictional fixtures, not calculated results."
+      }
+    }
+  },
+  "cta": {
+    "title": "Find out which problem you actually have",
+    "description": "A meaningful sample of honestly recorded trades can separate a strategy problem from an execution problem.",
+    "ctaPrimary": "Preview registration",
+    "ctaSecondary": "Explore the demo first",
+    "trialNote": "Planned {trialDays}-day trial · no card required · registration is not live yet"
+  },
+  "demoData": {
+    "badge": "Demo data",
+    "noticeTitle": "Every figure on this page is fictional demo data",
+    "noticeBody": "It exists to show what the product measures. It is not a backtest, not a customer account, and not an expected result. Trading involves risk of loss."
+  },
+  "common": {
+    "viewDetails": "View details",
+    "viewAnalytics": "View analytics",
+    "showMore": "Show more",
+    "hideDetails": "Hide details",
+    "closedTrades": "Closed trades",
+    "demoDataShort": "Demo",
+    "system": "System",
+    "actual": "Actual",
+    "win": "Win",
+    "loss": "Loss",
+    "breakEven": "Break-even",
+    "rulesFollowed": "Rules followed",
+    "viewChart": "View chart",
+    "opensNewTab": "opens in a new tab",
+    "long": "Long",
+    "short": "Short",
+    "ofScale": "of {scaleMax}",
+    "dashedLine": "dashed line",
+    "solidLine": "solid line",
+    "close": "Close"
+  },
+  "dashboard": {
+    "title": "Overview",
+    "description": "What is happening with your trading right now.",
+    "netPnl": "Net P&L",
+    "netPnlHint": "After commission, fees and swap.",
+    "actualWinRate": "Actual Win Rate",
+    "actualWinRateHint": "Share of closed trades that were a win.",
+    "actualAverageR": "Actual Average R",
+    "actualAverageRHint": "Mean R per trade, as executed.",
+    "disciplineScore": "Discipline Score",
+    "disciplineScoreHint": "100 minus the weighted cost of recorded rule breaks.",
+    "filters": {
+      "tradingAccount": "Trading account",
+      "dateRange": "Date range",
+      "allAccounts": "All accounts",
+      "range30": "30 days",
+      "range30Full": "Last 30 days",
+      "range90": "90 days",
+      "range90Full": "Last 90 days",
+      "rangeAll": "All time",
+      "rangeAllFull": "All recorded trades"
+    },
+    "systemVsTrader": {
+      "title": "System vs trader",
+      "description": "The same trades, scored two ways.",
+      "winRate": "Win rate",
+      "averageR": "Average R",
+      "expectancy": "Expectancy",
+      "edgeLeakageInsight": "Edge leakage: {value}R not captured by execution.",
+      "viewDetailedAnalytics": "View detailed analytics"
+    },
+    "chart": {
+      "title": "Cumulative R",
+      "description": "System versus actual, over time.",
+      "caption": "Demo data. Weekly samples, so intra-week drawdowns are not visible here."
+    },
+    "recentTrades": {
+      "title": "Recent trades",
+      "description": "Newest first, across the selected account.",
+      "filteredTo": "Filtered to {account}, newest first.",
+      "allAccountsDescription": "Across all demo accounts, newest first.",
+      "footnote": "Headline figures cover all demo accounts for the selected range. Only this list responds to the account picker.",
+      "emptyTitle": "No trades in this account yet",
+      "emptyDescription": "Log your first trade to see how much of your strategy's edge you are actually capturing.",
+      "emptyCta": "Preview registration"
+    },
+    "mistakes": {
+      "title": "Common mistakes",
+      "description": "The three costliest habits, ranked by R.",
+      "viewDetailedAnalytics": "View detailed analytics",
+      "times": "{count, plural, one {# time} other {# times}}"
+    }
+  },
+  "trades": {
+    "title": "Trades",
+    "description": "Every trade scored twice — once against the strategy's rules, once against what you actually did.",
+    "logTrade": "Log a trade",
+    "logTradeNote": "Trade entry arrives with the journal release. This page is a layout preview.",
+    "allTradesTitle": "{count} closed trades",
+    "allTradesDescription": "Newest first. Both outcome columns are stored fields, never inferred from profit.",
+    "quadrantNotes": {
+      "systemDamaged": "The setup worked. The execution gave it back.",
+      "brokeRules": "Paid for breaking the rules — the habit, not the result, is the risk.",
+      "closedFlat": "A winning setup closed flat."
+    },
+    "table": {
+      "instrument": "Instrument",
+      "strategy": "Strategy",
+      "closed": "Closed",
+      "system": "System",
+      "actual": "Actual",
+      "systemR": "System R",
+      "actualR": "Actual R",
+      "net": "Net",
+      "mistakes": "Mistakes",
+      "timezoneCaption": "Demo data. Times shown in {timezone}; a real account uses your profile timezone.",
+      "viewChartFor": "for {symbol}",
+      "scrollRegionLabel": "Trade history table"
+    }
+  },
+  "strategies": {
+    "title": "Strategies",
+    "description": "Write the rules down, version them, and keep past trades scored against the version that was live when you took them.",
+    "newStrategy": "New strategy",
+    "newStrategyNote": "Strategy editing arrives with the playbook release. This page is a layout preview.",
+    "version": "Version",
+    "tradesShown": "Trades shown",
+    "rules": "Rules",
+    "active": "Active",
+    "retired": "Retired"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "description": "Every metric computed twice — once for the strategy, once for you.",
+    "systemVsActual": {
+      "title": "System against actual",
+      "description": "Across {closedTrades} closed trades. Both columns are normalised to R, which is what makes them comparable when position size differed from the plan.",
+      "winRate": "Win rate",
+      "averageR": "Average R",
+      "expectancy": "Expectancy",
+      "profitFactor": "Profit factor",
+      "totalR": "Total R",
+      "maxDrawdown": "Max drawdown",
+      "lowerIsBetter": "Lower is better on this row."
+    },
+    "cumulativeR": {
+      "title": "Cumulative R",
+      "chartTitle": "Cumulative R over time",
+      "chartDescription": "One axis in R. Both series start at zero.",
+      "caption": "Demo data. The gap between the lines is {edgeLeakage}R of edge leakage. Weekly samples, so intra-week drawdowns are not visible here."
+    },
+    "mistakeCost": {
+      "title": "Mistake cost"
+    }
+  },
+  "mistakes": {
+    "title": "What your mistakes cost",
+    "description": "Ranked by cost in R, not by how often they happen.",
+    "caption": "Demo data. These costs account for the full {edgeLeakage}R of edge leakage over the period.",
+    "occurrences": "{count, plural, one {# time} other {# times}}",
+    "severity": {
+      "minor": "Minor",
+      "moderate": "Moderate",
+      "severe": "Severe"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Appearance works today. Everything else is a preview of the surface.",
+    "appearance": {
+      "title": "Appearance",
+      "description": "This setting is live and persists in this browser.",
+      "theme": "Theme",
+      "light": "Light",
+      "lightHint": "Always light",
+      "dark": "Dark",
+      "darkHint": "Always dark",
+      "system": "System",
+      "systemHint": "Follow this device",
+      "note": "Saved in this browser. Without an explicit choice, your device preference is used; with no device preference, the interface stays dark.",
+      "toggleLabel": "Change theme",
+      "toggleLabelWithTheme": "Change theme, currently {theme}"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Choose English or Thai. Saved in this browser, and later synced to your account once sign-in exists."
+    },
+    "profile": {
+      "title": "Profile",
+      "description": "Preview only — there is no account behind these fields.",
+      "name": "Name",
+      "email": "Email",
+      "timezone": "Timezone",
+      "timezoneNote": "Timestamps are stored in UTC and displayed here. Daily analytics bucket by this zone, so a trade closed at 23:30 belongs to that local day.",
+      "currency": "Reporting currency",
+      "save": "Save changes",
+      "saveNote": "Saving requires an account, which arrives with authentication in Phase 2."
+    },
+    "accounts": {
+      "title": "Trading accounts",
+      "description": "Plans are gated primarily on how many of these you can keep.",
+      "add": "Add account",
+      "note": "Account management arrives with onboarding. These are demo fixtures."
+    },
+    "subscription": {
+      "title": "Subscription",
+      "description": "No payment provider is connected to this product.",
+      "planShown": "Plan shown",
+      "tradingAccounts": "Trading accounts",
+      "trialNotStarted": "{trialDays}-day trial · not started",
+      "note": "Prices have not been set and nothing can be purchased. Billing arrives in a later release.",
+      "seePlans": "See the plans"
+    }
+  },
+  "auth": {
+    "loginTitle": "Log in",
+    "loginPreviewNote": "This page is a design preview. Authentication is not implemented, so nothing you type is sent or stored.",
+    "registerTitle": "Start your free trial",
+    "registerPreviewNote": "This page is a design preview. Authentication is not implemented, so nothing you type is sent or stored.",
+    "trialPoints": [
+      "Planned {trialDays}-day trial",
+      "No card required",
+      "Every plan feature unlocked during the trial",
+      "Manual journal — no broker connection needed"
+    ],
+    "paymentNote": "Payment processing is not connected to this product. When billing ships, prices will be published before anything can be charged.",
+    "continueWithGoogle": "Continue with Google",
+    "googleNotConnected": "Google sign-in is not connected yet — coming in Phase 2.",
+    "or": "or",
+    "name": "Name",
+    "namePlaceholder": "Alex Chen",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordHint": "At least 12 characters.",
+    "resetNote": "Reset arrives with Phase 2",
+    "loginSubmit": "Log in",
+    "registerSubmit": "Create account",
+    "noAccount": "No account yet?",
+    "createOne": "Create one",
+    "haveAccount": "Already have an account?",
+    "loginLink": "Log in",
+    "submittedTitle": "Nothing was submitted",
+    "submittedBody": "This is a design preview. Authentication, accounts and sessions arrive in Phase 2 — no data left your browser and no account was created. You can <demoLink>explore the demo dashboard</demoLink> in the meantime."
+  },
+  "demoPage": {
+    "title": "Demo dashboard",
+    "description": "A fictional account with {closedTrades} closed trades. Change the range and the account to see the surface respond; every figure is a fixture, not a calculation.",
+    "ctaTrial": "Start {trialDays}-day free trial",
+    "ctaHowItWorks": "How it works"
+  },
+  "pricingPage": {
+    "title": "Plans are set. Prices are not, yet.",
+    "description": "The three tiers below differ only in how many trading accounts you can journal. Amounts have not been approved and no payment provider is connected, so nothing on this page can be purchased. A {trialDays}-day trial is planned, with no card.",
+    "sectionTitle": "Choose by how many accounts you trade"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "That page does not exist. Several sections of the product have not been built yet — the roadmap in the repository documents what is coming and when.",
+    "backHome": "Back to home"
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "description": "This section failed to load. The problem has been logged — trying again often resolves it.",
+    "unhandledDescription": "An unexpected error occurred. The problem has been logged.",
+    "reference": "Reference:",
+    "tryAgain": "Try again"
+  },
+  "loading": {
+    "label": "Loading"
+  },
+  "charts": {
+    "cumulativeRTable": {
+      "caption": "Cumulative R by week, system compared with actual",
+      "week": "Week",
+      "systemColumn": "System cumulative R",
+      "actualColumn": "Actual cumulative R"
+    },
+    "mistakeCostTable": {
+      "caption": "Cost in R by mistake, highest first",
+      "mistake": "Mistake",
+      "severity": "Severity",
+      "occurrences": "Occurrences",
+      "cost": "Cost in R"
+    },
+    "cost": "Cost"
+  }
+}

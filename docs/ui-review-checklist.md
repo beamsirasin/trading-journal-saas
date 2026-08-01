@@ -73,6 +73,20 @@ pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && p
 - [ ] Money is formatted from minor units; no float has touched it.
 - [ ] Timestamps display in a stated timezone, never the server's or browser's implicitly.
 
+## Localization
+
+Check in **both** `en` and `th` — a pass in one locale is not a pass. Full standard in [localization-glossary.md](localization-glossary.md); architecture in [ADR 0007](decisions/0007-i18n-architecture.md).
+
+- [ ] No hardcoded English string visible in either locale — including button text, aria-labels, placeholder text, empty states, and table headers. `messages/en.json` / `messages/th.json` have matching keys (enforced by `src/i18n/messages.test.ts`).
+- [ ] `html lang` matches the active locale on every route.
+- [ ] `LanguageSwitcher` shows text labels ("English" / "ไทย"), never a flag; reachable by keyboard; ≥44×44px touch target; accessible name states both the action and the current language.
+- [ ] Switching locale preserves the current route and query string — it is not a navigation to the home page.
+- [ ] Switching locale persists across a reload (cookie-based) and produces no hydration-mismatch console error.
+- [ ] Thai text does not clip vertically, overlap an icon, or overflow a card — check headings, KPI labels, nav items, and buttons specifically, since Thai strings are often longer than their English source.
+- [ ] Numbers use tabular figures in both locales; dates are locale-formatted with the Gregorian calendar in `th` (never the Buddhist year); money is unaffected by locale (currency follows the account, not the UI language).
+- [ ] Untranslated technical terms match the glossary's terminology policy (Average R, Expectancy, Edge Leakage, TradingView, R, symbol names, currency codes, plan names) — not translated by accident, and not translated inconsistently across screens.
+- [ ] Demo fixture content (trade symbols, strategy names, account nicknames) stays untranslated in both locales, per the glossary.
+
 ## Honesty
 
 The checks that stop the product claiming something it cannot do. Treat a failure here as a defect of the same severity as a crash.

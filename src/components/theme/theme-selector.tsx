@@ -1,16 +1,22 @@
 'use client';
 
 import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useId } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
 
-const OPTIONS: readonly { value: string; label: string; hint: string; Icon: LucideIcon }[] = [
-  { value: 'light', label: 'Light', hint: 'Always light', Icon: Sun },
-  { value: 'dark', label: 'Dark', hint: 'Always dark', Icon: Moon },
-  { value: 'system', label: 'System', hint: 'Follow this device', Icon: Monitor },
+const OPTIONS: readonly {
+  value: string;
+  labelKey: 'light' | 'dark' | 'system';
+  hintKey: 'lightHint' | 'darkHint' | 'systemHint';
+  Icon: LucideIcon;
+}[] = [
+  { value: 'light', labelKey: 'light', hintKey: 'lightHint', Icon: Sun },
+  { value: 'dark', labelKey: 'dark', hintKey: 'darkHint', Icon: Moon },
+  { value: 'system', labelKey: 'system', hintKey: 'systemHint', Icon: Monitor },
 ];
 
 /**
@@ -30,16 +36,17 @@ const OPTIONS: readonly { value: string; label: string; hint: string; Icon: Luci
  * placeholder keeps identical dimensions so nothing shifts when it swaps.
  */
 export function ThemeSelector() {
+  const t = useTranslations('settings.appearance');
   const { theme, setTheme } = useTheme();
   const isHydrated = useIsHydrated();
   const name = useId();
 
   return (
     <fieldset className="flex flex-col gap-3">
-      <legend className="text-foreground mb-1 text-sm font-medium">Theme</legend>
+      <legend className="text-foreground mb-1 text-sm font-medium">{t('theme')}</legend>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {OPTIONS.map(({ value, label, hint, Icon }) => {
+        {OPTIONS.map(({ value, labelKey, hintKey, Icon }) => {
           const id = `${name}-${value}`;
           const checked = isHydrated && theme === value;
 
@@ -68,19 +75,16 @@ export function ThemeSelector() {
               >
                 <span className="flex items-center gap-2">
                   <Icon className="text-muted-foreground size-4" aria-hidden="true" />
-                  <span className="text-foreground text-sm font-medium">{label}</span>
+                  <span className="text-foreground text-sm font-medium">{t(labelKey)}</span>
                 </span>
-                <span className="text-muted-foreground text-xs">{hint}</span>
+                <span className="text-muted-foreground text-xs">{t(hintKey)}</span>
               </label>
             </div>
           );
         })}
       </div>
 
-      <p className="text-muted-foreground text-xs leading-relaxed">
-        Saved in this browser. Without an explicit choice, your device preference is used; with no
-        device preference, the interface stays dark.
-      </p>
+      <p className="text-muted-foreground text-xs leading-relaxed">{t('note')}</p>
     </fieldset>
   );
 }

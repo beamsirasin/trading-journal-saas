@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { PLANS, TRIAL_DAYS } from '@/config/plans';
 
@@ -16,24 +17,31 @@ import { Section, SectionIntro } from './section';
  * The notice below the cards is not fine print to be minimised. Payment
  * processing does not exist, and a pricing page that does not say so is
  * making a claim about the product's readiness.
+ *
+ * `title`/`eyebrow` stay as overridable props, translated already by the
+ * caller: the landing page and `/pricing` show the same cards under
+ * different headings, and each caller resolves its own heading from its own
+ * translation namespace (`pricing.title` vs `pricingPage.sectionTitle`).
  */
 export function PricingSection({
-  title = 'Three planned tiers, one planned trial',
-  eyebrow = 'Pricing',
+  title,
+  eyebrow,
   tone = 'surface',
 }: {
   title?: string;
   eyebrow?: string;
   tone?: 'default' | 'surface';
 }) {
+  const t = useTranslations('pricing');
+
   return (
     <Section id="pricing" labelledBy="pricing-title" tone={tone}>
       <div className="flex flex-col gap-12">
         <SectionIntro
-          eyebrow={eyebrow}
-          title={title}
+          eyebrow={eyebrow ?? t('eyebrow')}
+          title={title ?? t('title')}
           titleId="pricing-title"
-          description="Plans differ by how many trading accounts you can journal. Every plan includes the full attribution engine — the analysis is the product, so it is not something to withhold from a cheaper tier."
+          description={t('description')}
           align="center"
         />
 
@@ -41,12 +49,9 @@ export function PricingSection({
           `md:grid-cols-2` matters specifically at tablet (768px): without it,
           the grid stays single-column until `lg` (1024px), so a plan card
           stretches to the full ~700px content width with a full-width
-          CTA — noticeably wider than the same card ever
-          renders at mobile or desktop. Held at `md` rather than `sm` (640px)
-          because each card carries up to six checklist items plus a button,
-          which needs more than a 640px row split two ways. Elite sits alone
-          in the second row at this step, the normal shape for three items at
-          two columns.
+          CTA — noticeably wider than the same card ever renders at mobile or
+          desktop. Elite sits alone in the second row at this step, the
+          normal shape for three items at two columns.
         */}
         <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {PLANS.map((plan) => (
@@ -59,13 +64,9 @@ export function PricingSection({
         <div className="border-border bg-card mx-auto flex max-w-3xl flex-col gap-3 rounded-lg border p-5 sm:flex-row sm:gap-4">
           <Info className="text-info size-5 shrink-0" aria-hidden="true" />
           <div className="flex flex-col gap-2 text-sm leading-relaxed">
-            <p className="text-foreground font-medium">
-              No payment processing is connected to this product yet
-            </p>
+            <p className="text-foreground font-medium">{t('paymentNoticeTitle')}</p>
             <p className="text-muted-foreground">
-              Prices have not been set, no card is collected, and nothing can be purchased. The{' '}
-              planned {TRIAL_DAYS}-day trial will start at first login and require no payment
-              details. Authentication, trial tracking, and billing arrive in later releases.
+              {t('paymentNoticeBody', { trialDays: TRIAL_DAYS })}
             </p>
           </div>
         </div>

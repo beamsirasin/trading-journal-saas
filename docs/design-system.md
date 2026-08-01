@@ -1,6 +1,6 @@
 # Design System
 
-**Status:** Phase 01. Tokens, typography, spacing, motion, charts and the component set used by the marketing site and application shell are implemented. Later phases add components when a phase needs them, not before.
+**Status:** Phase 01.1. Tokens, typography, spacing, motion, charts and the component set used by the marketing site and application shell are implemented. Later phases add components when a phase needs them, not before.
 
 ## 1. Principles
 
@@ -114,7 +114,7 @@ No flash of the wrong theme: next-themes injects a blocking script that sets the
 
 ## 4. Typography
 
-System font stack with a monospace stack for numbers. **No web font is loaded.** A webfont adds a build-time network dependency and a flash of unstyled text; the system stack costs nothing and renders natively on every target. Revisit only when a brand identity exists that a typeface is actually carrying.
+**`Noto Sans Thai`** (self-hosted via `next/font/google`), covering both Latin and Thai in one family, plus a monospace stack for numbers. This reverses the Phase 01 "no web font" default: the system font stack has no guaranteed Thai-covering face in the same family as its Latin face, and where the OS substitutes a different typeface for Thai glyphs mid-string, line-height and vertical metrics stop matching exactly at the script boundary this product's copy constantly crosses (a Thai sentence naming an untranslated English metric). `next/font` subsets and self-hosts at build time, so the reversal costs no runtime request to Google and no layout shift — the two properties that justified the original system-stack choice are preserved. **`Noto Sans Thai`, not `Noto Sans`** — Google ships Thai coverage as a separate family; `Noto Sans` alone has no `thai` subset. Full reasoning in [ADR 0007](decisions/0007-i18n-architecture.md) Decision 4.
 
 Roles, not sizes. A call site asks for `text-display`, so changing what a role looks like is one edit in `globals.css`.
 
@@ -284,3 +284,14 @@ Nothing may imply a capability that does not exist: no fake OAuth, no submit tha
 - A skip-to-content link is the first focusable element on every page, targeting a shared `MAIN_CONTENT_ID` constant.
 
 **Known and accepted:** below `lg` the sidebar is `display:none`, which removes it from the accessibility tree — so on mobile there is no `navigation` landmark until the drawer is opened. The trigger sits in the banner, which is the standard discoverable path for a drawer pattern. This is asserted by e2e so it stays deliberate.
+
+## 13. Internationalization
+
+Full architecture in [ADR 0007](decisions/0007-i18n-architecture.md); terminology and formatting standard in the [localization glossary](localization-glossary.md).
+
+- **`LanguageSwitcher` is text, never a flag.** "English" / "ไทย", not country icons — a flag names a country, and English and Thai are each spoken well beyond one. Present in the public header, public mobile drawer, app-shell sidebar, app-shell mobile drawer, and `/app/settings`.
+- **Same touch-target and keyboard rules as any other control.** ≥44px, reachable by Tab, operable with Enter/Space, and its trigger has an accessible name that states both the action and the current language (`"Language: English"` / `"ภาษา: ไทย"`) — never an unlabelled icon.
+- **Switching preserves the route.** A switch on `/en/app/trades` lands on `/th/app/trades`, not the Thai home page — a locale switch is not a navigation.
+- **No hydration mismatch.** The active locale comes from the URL segment next-intl already resolved server-side, not from `localStorage` or a media query, so it is identical on the server render and the first client render.
+- **Money stays locale-independent; dates read the locale.** Currency symbol and decimal scale follow the trading account's configured currency, never the UI language — Thai and English share the same digit-grouping convention for every currency in scope. Dates pin the Gregorian calendar explicitly, because `th` defaults to the Buddhist calendar under ICU otherwise. See ADR 0007 Decision 5.
+- **Demo fixture content is never translated** — trade symbols, strategy names, account nicknames — the same category as any other proper-noun-like content. See the glossary §2.

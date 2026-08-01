@@ -1,9 +1,10 @@
 import { ArrowRight } from 'lucide-react';
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 
 import { TRIAL_DAYS } from '@/config/plans';
 import { Container } from '@/components/shell/container';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 /**
  * Closing call to action.
@@ -14,6 +15,8 @@ import { Button } from '@/components/ui/button';
  * something the visitor will not find.
  */
 export function CtaSection() {
+  const t = useTranslations('cta');
+
   return (
     <section aria-labelledby="cta-title" className="py-16 sm:py-20">
       <Container>
@@ -24,30 +27,27 @@ export function CtaSection() {
 
           <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 text-center">
             <h2 id="cta-title" className="text-section-title text-balance">
-              Find out which problem you actually have
+              {t('title')}
             </h2>
 
-            <p className="text-muted-foreground leading-relaxed text-pretty">
-              A meaningful sample of honestly recorded trades can separate a strategy problem from
-              an execution problem. Start with the trades you have already taken.
-            </p>
+            <p className="text-muted-foreground leading-relaxed text-pretty">{t('description')}</p>
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button asChild size="lg" className="min-h-11">
                 <Link href="/register">
-                  Preview registration
+                  {t('ctaPrimary')}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
               <Button asChild variant="outline" size="lg" className="min-h-11">
                 <Link href="/demo" prefetch={false}>
-                  Explore the demo first
+                  {t('ctaSecondary')}
                 </Link>
               </Button>
             </div>
 
             <p className="text-muted-foreground text-sm">
-              Planned {TRIAL_DAYS}-day trial · no card required · registration is not live yet
+              {t('trialNote', { trialDays: TRIAL_DAYS })}
             </p>
           </div>
         </div>

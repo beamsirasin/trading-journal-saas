@@ -1,7 +1,8 @@
-import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 
 import { Brand } from '@/components/shell/brand';
 import { Container } from '@/components/shell/container';
+import { Link } from '@/i18n/navigation';
 
 import { FOOTER_GROUPS } from './nav';
 
@@ -16,29 +17,35 @@ import { FOOTER_GROUPS } from './nav';
  * Legal links are marked "Coming soon" and are not links at all, because a
  * link to a privacy policy that 404s is a stronger false claim than no link.
  */
-export function MarketingFooter() {
+export async function MarketingFooter() {
+  const t = await getTranslations('footer');
+
   return (
     <footer className="border-border bg-surface mt-auto border-t">
       <Container className="flex flex-col gap-10 py-12">
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
           <div className="col-span-2 flex flex-col gap-3 sm:col-span-1">
             <Brand href="/" />
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              A trading journal that separates strategy edge from execution.
-            </p>
+            <p className="text-muted-foreground text-sm leading-relaxed">{t('tagline')}</p>
           </div>
 
           {FOOTER_GROUPS.map((group) => (
-            <nav key={group.title} aria-label={group.title} className="flex flex-col gap-3">
-              <h2 className="text-foreground text-sm font-semibold">{group.title}</h2>
+            <nav
+              key={group.titleKey}
+              aria-label={t(`groups.${group.titleKey}`)}
+              className="flex flex-col gap-3"
+            >
+              <h2 className="text-foreground text-sm font-semibold">
+                {t(`groups.${group.titleKey}`)}
+              </h2>
               <ul className="flex flex-col gap-2">
                 {group.items.map((item) => (
                   <li key={item.href}>
                     {item.pending === true ? (
                       <span className="text-muted-foreground/70 inline-flex items-center gap-1.5 text-sm">
-                        {item.label}
+                        {t(`links.${item.labelKey}`)}
                         <span className="border-border text-muted-foreground/70 rounded border px-1 py-0.5 text-[10px]">
-                          Soon
+                          {t('soon')}
                         </span>
                       </span>
                     ) : (
@@ -47,7 +54,7 @@ export function MarketingFooter() {
                         {...(item.prefetch === false ? { prefetch: false } : {})}
                         className="text-muted-foreground hover:text-foreground inline-flex min-h-11 min-w-11 items-center text-sm transition-colors"
                       >
-                        {item.label}
+                        {t(`links.${item.labelKey}`)}
                       </Link>
                     )}
                   </li>
@@ -58,15 +65,8 @@ export function MarketingFooter() {
         </div>
 
         <div className="border-border text-muted-foreground flex flex-col gap-3 border-t pt-8 text-xs leading-relaxed">
-          <p>
-            Trading OS is a journaling and analytics tool. It does not provide financial advice,
-            execute orders, or connect to a broker. Trading involves risk of loss, and past
-            performance does not indicate future results.
-          </p>
-          <p>
-            Product in active development. Figures shown anywhere on this site are fictional demo
-            data.
-          </p>
+          <p>{t('disclaimer1')}</p>
+          <p>{t('disclaimer2')}</p>
         </div>
       </Container>
     </footer>

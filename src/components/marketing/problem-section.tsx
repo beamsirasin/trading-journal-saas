@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import { cn } from '@/lib/utils';
 
 import { Section, SectionIntro } from './section';
@@ -11,125 +13,72 @@ import { Section, SectionIntro } from './section';
  * repeat the mistake. That claim is the reason the schema stores system and
  * trader outcome as independent fields, so the marketing page and the data
  * model are making the same argument.
+ *
+ * PHASE 1.1 SIMPLIFICATION — this section used to open with three "+$320 /
+ * −$200 / ?" example cards ABOVE the quadrant grid, illustrating the same
+ * point twice in two visual formats before the reader reached the actual
+ * comparison. The Phase 1.1 brief asks for one strong comparison visual per
+ * idea; the quadrant grid is the stronger, more distinctive one — it is the
+ * outcome matrix that is the product's actual intellectual property — so the
+ * example cards are gone and the section goes straight from the claim to the
+ * matrix that proves it.
  */
 
-interface Quadrant {
-  readonly system: 'win' | 'loss';
-  readonly trader: 'win' | 'loss';
-  readonly title: string;
-  readonly body: string;
-  readonly emphasis: boolean;
-}
-
-const QUADRANTS: readonly Quadrant[] = [
-  {
-    system: 'win',
-    trader: 'win',
-    title: 'Followed a good signal',
-    body: 'The setup worked and you took it as written. Repeatable, and the least interesting cell.',
-    emphasis: false,
-  },
-  {
-    system: 'win',
-    trader: 'loss',
-    title: 'A working system, damaged',
-    body: 'The strategy was right and execution gave it back. Changing the strategy here would be the worst possible response.',
-    emphasis: true,
-  },
-  {
-    system: 'loss',
-    trader: 'win',
-    title: 'Paid for breaking the rules',
-    body: 'You made money by deviating. A journal that only tracks profit congratulates you, and you learn exactly the wrong lesson.',
-    emphasis: true,
-  },
-  {
-    system: 'loss',
-    trader: 'loss',
-    title: 'Followed a bad signal',
-    body: 'You did your job and the strategy did not. This is the cell that justifies changing the system.',
-    emphasis: false,
-  },
-];
-
-const EXAMPLES = [
-  {
-    result: '+$320',
-    resultTone: 'positive' as const,
-    headline: 'Profitable, and badly executed',
-    body: 'You entered late, moved the stop, and closed early. The rules were worth 3R. You captured 0.4R and the account still went up.',
-  },
-  {
-    result: '−$200',
-    resultTone: 'negative' as const,
-    headline: 'A loss, and perfectly executed',
-    body: 'The setup failed at its planned stop. Nothing went wrong that you control. This is the cost of doing business, not a mistake.',
-  },
-  {
-    result: '?',
-    resultTone: 'neutral' as const,
-    headline: 'Which one is the problem?',
-    body: 'Profit and loss cannot tell you. It reports the same number whether you followed the plan or abandoned it.',
-  },
-];
+const QUADRANT_KEYS = [
+  { key: 'goodSignal', system: 'win', trader: 'win', emphasis: false },
+  { key: 'systemDamaged', system: 'win', trader: 'loss', emphasis: true },
+  { key: 'brokeRules', system: 'loss', trader: 'win', emphasis: true },
+  { key: 'badSignal', system: 'loss', trader: 'loss', emphasis: false },
+] as const;
 
 export function ProblemSection() {
+  const t = useTranslations('problem');
+
   return (
     <Section id="the-problem" labelledBy="the-problem-title" tone="surface">
-      <div className="flex flex-col gap-12">
+      <div className="flex flex-col gap-8">
         <SectionIntro
-          eyebrow="The problem"
-          title="Profit does not prove the trade was correct"
+          eyebrow={t('eyebrow')}
+          title={t('title')}
           titleId="the-problem-title"
-          description="Two traders can end the month at the same balance while doing completely different things. One is running a system. The other is being rescued by luck. A journal that records only outcomes cannot separate them."
+          description={t('description')}
         />
-
-        <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {EXAMPLES.map((example) => (
-            <li
-              key={example.headline}
-              className="bg-card border-border flex flex-col gap-3 rounded-lg border p-5"
-            >
-              <span
-                className={cn(
-                  'numeric text-2xl font-semibold',
-                  example.resultTone === 'positive' && 'text-positive',
-                  example.resultTone === 'negative' && 'text-negative',
-                  example.resultTone === 'neutral' && 'text-muted-foreground',
-                )}
-              >
-                {example.result}
-              </span>
-              <h3 className="text-card-title">{example.headline}</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed">{example.body}</p>
-            </li>
-          ))}
-        </ul>
 
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <h3 className="text-card-title">Every trade lands in one of four cells</h3>
+            <h3 className="text-card-title">{t('matrixTitle')}</h3>
             <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed">
-              System outcome and trader outcome are recorded separately, so the two diagonals stay
-              visible instead of collapsing into a single profit figure.
+              {t('matrixDescription')}
             </p>
           </div>
 
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {QUADRANTS.map((quadrant) => (
+            {QUADRANT_KEYS.map((quadrant) => (
               <li
-                key={quadrant.title}
+                key={quadrant.key}
                 className={cn(
                   'flex flex-col gap-3 rounded-lg border p-5',
                   quadrant.emphasis ? 'border-brand/40 bg-brand/5' : 'border-border bg-card',
                 )}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <CellTag axis="System" outcome={quadrant.system} />
-                  <CellTag axis="Trader" outcome={quadrant.trader} />
+                  <CellTag
+                    axis={t('axisSystem')}
+                    outcome={quadrant.system}
+                    outcomeLabel={quadrant.system === 'win' ? t('outcomeWin') : t('outcomeLoss')}
+                  />
+                  <CellTag
+                    axis={t('axisTrader')}
+                    outcome={quadrant.trader}
+                    outcomeLabel={quadrant.trader === 'win' ? t('outcomeWin') : t('outcomeLoss')}
+                  />
                 </div>
-                <h4 className="text-foreground font-semibold">{quadrant.title}</h4>
-                <p className="text-muted-foreground text-sm leading-relaxed">{quadrant.body}</p>
+                <h4 className="text-foreground font-semibold">
+                  {t(`quadrants.${quadrant.key}.title`)}
+                </h4>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {t(`quadrants.${quadrant.key}.body`)}
+                </p>
               </li>
             ))}
           </ul>
@@ -143,7 +92,15 @@ export function ProblemSection() {
  * The axis name is always spoken, never implied by position or colour — "Win"
  * on its own is ambiguous when two different axes both use the word.
  */
-function CellTag({ axis, outcome }: { axis: string; outcome: 'win' | 'loss' }) {
+function CellTag({
+  axis,
+  outcome,
+  outcomeLabel,
+}: {
+  axis: string;
+  outcome: 'win' | 'loss';
+  outcomeLabel: string;
+}) {
   return (
     <span
       className={cn(
@@ -153,7 +110,7 @@ function CellTag({ axis, outcome }: { axis: string; outcome: 'win' | 'loss' }) {
           : 'border-negative/30 bg-negative/10 text-negative',
       )}
     >
-      {axis} {outcome === 'win' ? 'win' : 'loss'}
+      {axis} {outcomeLabel}
     </span>
   );
 }

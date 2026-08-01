@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import type { DemoMistake } from '@/lib/demo';
@@ -25,9 +26,6 @@ import { ChartTooltip } from './chart-tooltip';
  * loss colour makes the panel read as an alarm every time it is opened, and
  * the design system reserves red-green pairings for outcome direction.
  */
-
-const NAME_FOR = { costR: 'Cost' };
-
 export function MistakeCostChart({
   mistakes,
   className,
@@ -35,7 +33,9 @@ export function MistakeCostChart({
   mistakes: readonly DemoMistake[];
   className?: string;
 }) {
+  const t = useTranslations('charts');
   const prefersReducedMotion = usePrefersReducedMotion();
+  const nameFor = { costR: t('cost') };
 
   const data = mistakes.map((mistake) => ({
     label: mistake.label,
@@ -68,7 +68,7 @@ export function MistakeCostChart({
           />
 
           <Tooltip
-            content={<ChartTooltip nameFor={NAME_FOR} unit="R" decimals={1} />}
+            content={<ChartTooltip nameFor={nameFor} unit="R" decimals={1} />}
             cursor={{ fill: 'var(--accent)' }}
           />
 
@@ -88,22 +88,25 @@ export function MistakeCostChart({
 }
 
 export function MistakeCostTable({ mistakes }: { mistakes: readonly DemoMistake[] }) {
+  const t = useTranslations('charts.mistakeCostTable');
+  const tSeverity = useTranslations('mistakes.severity');
+
   return (
     <table>
-      <caption>Cost in R by mistake, highest first</caption>
+      <caption>{t('caption')}</caption>
       <thead>
         <tr>
-          <th scope="col">Mistake</th>
-          <th scope="col">Severity</th>
-          <th scope="col">Occurrences</th>
-          <th scope="col">Cost in R</th>
+          <th scope="col">{t('mistake')}</th>
+          <th scope="col">{t('severity')}</th>
+          <th scope="col">{t('occurrences')}</th>
+          <th scope="col">{t('cost')}</th>
         </tr>
       </thead>
       <tbody>
         {mistakes.map((mistake) => (
           <tr key={mistake.id}>
             <th scope="row">{mistake.label}</th>
-            <td>{mistake.severity}</td>
+            <td>{tSeverity(mistake.severity)}</td>
             <td>{mistake.occurrences}</td>
             <td>{mistake.costR}</td>
           </tr>

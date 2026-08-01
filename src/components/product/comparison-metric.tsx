@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import { cn } from '@/lib/utils';
 
 import { MetricLabel } from './metric';
@@ -79,6 +81,7 @@ export function ComparisonMetric({
   note?: string;
   className?: string;
 }) {
+  const t = useTranslations('common');
   const showBars = systemPercent !== undefined && actualPercent !== undefined;
 
   return (
@@ -86,21 +89,21 @@ export function ComparisonMetric({
       <div className="flex items-baseline justify-between gap-3">
         <MetricLabel>{label}</MetricLabel>
         {scaleMax === undefined ? null : (
-          <span className="text-muted-foreground text-xs">of {scaleMax}</span>
+          <span className="text-muted-foreground text-xs">{t('ofScale', { scaleMax })}</span>
         )}
       </div>
 
       <dl className="flex flex-col gap-2.5">
         <Row
           series="system"
-          name="System"
+          name={t('system')}
           value={systemValue}
           {...(unit === undefined ? {} : { unit })}
           {...(showBars ? { percent: systemPercent } : {})}
         />
         <Row
           series="trader"
-          name="Actual"
+          name={t('actual')}
           value={actualValue}
           {...(unit === undefined ? {} : { unit })}
           {...(showBars ? { percent: actualPercent } : {})}

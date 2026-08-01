@@ -61,6 +61,13 @@ export function formatInstant(
   const formatter = new Intl.DateTimeFormat(locale, {
     ...STYLE_OPTIONS[style],
     timeZone,
+    // Explicit rather than left to the locale's default calendar. `th`
+    // defaults to the Buddhist calendar (2026 → 2569) under ICU, which is
+    // correct Thai convention generally but not what this product wants: the
+    // storage model, every stored year, and the English UI are all Gregorian,
+    // and a year that silently shifts by 543 depending on locale would be a
+    // confusing, hard-to-notice defect rather than a display preference.
+    calendar: 'gregory',
   });
 
   return ok(formatter.format(instant));

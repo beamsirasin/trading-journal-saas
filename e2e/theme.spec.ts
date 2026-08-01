@@ -17,7 +17,7 @@ const STORAGE_KEY = 'trading-os-theme';
 test.describe('theme precedence', () => {
   test('2. follows the OS preference when the user has chosen nothing — dark', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto('/');
+    await page.goto('/en');
     await expect.poll(() => page.evaluate(resolvedColorScheme)).toBe('dark');
   });
 
@@ -25,7 +25,7 @@ test.describe('theme precedence', () => {
     page,
   }) => {
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto('/');
+    await page.goto('/en');
     // Light mode is a complete experience, not a degraded one: an explicit OS
     // preference wins over the dark-first identity.
     await expect.poll(() => page.evaluate(resolvedColorScheme)).toBe('light');
@@ -37,7 +37,7 @@ test.describe('theme precedence', () => {
       ([key, value]) => window.localStorage.setItem(key as string, value as string),
       [STORAGE_KEY, 'dark'],
     );
-    await page.goto('/');
+    await page.goto('/en');
     await expect.poll(() => page.evaluate(resolvedColorScheme)).toBe('dark');
   });
 
@@ -47,7 +47,7 @@ test.describe('theme precedence', () => {
       ([key, value]) => window.localStorage.setItem(key as string, value as string),
       [STORAGE_KEY, 'light'],
     );
-    await page.goto('/');
+    await page.goto('/en');
     await expect.poll(() => page.evaluate(resolvedColorScheme)).toBe('light');
   });
 });
@@ -59,7 +59,7 @@ test.describe('theme contrast', () => {
         ([key, value]) => window.localStorage.setItem(key as string, value as string),
         [STORAGE_KEY, theme],
       );
-      await page.goto('/');
+      await page.goto('/en');
 
       const ratios = await page.evaluate(() => {
         const style = getComputedStyle(document.documentElement);
@@ -114,20 +114,20 @@ test.describe('theme without JavaScript', () => {
 
   test('renders the dark palette from CSS alone when the OS prefers dark', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto('/');
+    await page.goto('/en');
     expect(await page.evaluate(resolvedColorScheme)).toBe('dark');
     expect(await page.evaluate(() => document.documentElement.className)).not.toContain('dark');
   });
 
   test('renders the light palette from CSS alone when the OS prefers light', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto('/');
+    await page.goto('/en');
     expect(await page.evaluate(resolvedColorScheme)).toBe('light');
   });
 
   test('still paints a complete theme rather than unstyled content', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await page.goto('/');
+    await page.goto('/en');
     const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     // The dark canvas, #070b14.
     expect(background).toBe('rgb(7, 11, 20)');
@@ -137,7 +137,7 @@ test.describe('theme without JavaScript', () => {
 test.describe('theme toggle', () => {
   test('persists a choice across a reload', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto('/');
+    await page.goto('/en');
 
     await page.getByRole('button', { name: /change theme/i }).click();
     await page.getByRole('menuitem', { name: 'Dark' }).click();
@@ -148,7 +148,7 @@ test.describe('theme toggle', () => {
   });
 
   test('offers system as a distinct option', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await page.getByRole('button', { name: /change theme/i }).click();
 
     await expect(page.getByRole('menuitem', { name: 'Light' })).toBeVisible();
@@ -158,7 +158,7 @@ test.describe('theme toggle', () => {
 
   test('returning to system re-follows the OS preference', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });
-    await page.goto('/');
+    await page.goto('/en');
 
     await page.getByRole('button', { name: /change theme/i }).click();
     await page.getByRole('menuitem', { name: 'Dark' }).click();
@@ -176,7 +176,7 @@ test.describe('theme toggle', () => {
       [STORAGE_KEY, 'dark'],
     );
 
-    await page.goto('/', { waitUntil: 'commit' });
+    await page.goto('/en', { waitUntil: 'commit' });
     // The blocking script next-themes injects runs before first paint, so the
     // class is present as soon as documentElement exists — no light flash.
     await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
@@ -189,7 +189,7 @@ test.describe('motion', () => {
     page,
   }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/');
+    await page.goto('/en');
 
     const duration = await page
       .locator('.animate-rise')
@@ -203,7 +203,7 @@ test.describe('motion', () => {
       : Number.parseFloat(duration);
     expect(seconds).toBeLessThan(0.001);
 
-    await page.goto('/app');
+    await page.goto('/en/app');
     // The mobile project keeps the desktop sidebar in the DOM but hidden until
     // its drawer opens, so assert branch selection rather than visibility.
     await expect(page.locator('[data-active-indicator="static"]')).toHaveCount(1);
@@ -223,7 +223,7 @@ test.describe('motion', () => {
   test('animates the drawer when reduced motion is not requested', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app');
+    await page.goto('/en/app');
     await page.getByRole('button', { name: /open navigation menu/i }).click();
 
     const animationName = await page

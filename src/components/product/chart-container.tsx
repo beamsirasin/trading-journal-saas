@@ -1,3 +1,4 @@
+import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -60,6 +61,8 @@ export function ChartContainer({
   className?: string | undefined;
   plotClassName?: string | undefined;
 }) {
+  const t = useTranslations('common');
+
   return (
     <figure
       className={cn(
@@ -86,7 +89,9 @@ export function ChartContainer({
               <SeriesSwatch series={item.series} />
               <span>{item.label}</span>
               {item.lineStyle === undefined ? null : (
-                <span className="text-muted-foreground/70">({item.lineStyle} line)</span>
+                <span className="text-muted-foreground/70">
+                  ({item.lineStyle === 'dashed' ? t('dashedLine') : t('solidLine')})
+                </span>
               )}
             </li>
           ))}

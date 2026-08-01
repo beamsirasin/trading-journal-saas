@@ -3,11 +3,19 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * The demo dashboard, on both routes that render it.
  *
- * `/demo` is public and `/app` is inside the shell, but both mount the same
- * component — so the suite runs the same checks against each and would catch
- * the two drifting apart.
+ * `/en/demo` is public and `/en/app` is inside the shell, but both mount the
+ * same component — so the suite runs the same checks against each and would
+ * catch the two drifting apart.
+ *
+ * PHASE 1.1. Locale-prefixed (`localePrefix: 'always'`) and dashboard-
+ * simplified: only four headline KPIs (Net P&L, Actual Win Rate, Actual
+ * Average R, Discipline Score) render as top-level cards here now. System
+ * Expectancy, Actual Expectancy, Profit Factor, Max Drawdown and Execution
+ * Efficiency moved to `/en/app/analytics` — see `src/components/dashboard/
+ * demo-dashboard.tsx`'s doc comment and its Vitest coverage in
+ * `demo-dashboard.test.tsx`.
  */
-const ROUTES = ['/demo', '/app'] as const;
+const ROUTES = ['/en/demo', '/en/app'] as const;
 
 /**
  * The trade list ships two presentations and hides one with CSS, so both are
@@ -41,19 +49,19 @@ test.describe('demo dashboard', () => {
       await expect(page.getByText(/not an expected result/i)).toBeVisible();
     });
 
-    test(`${route} shows the required attribution metrics`, async ({ page }) => {
+    /**
+     * PHASE 1.1 REWRITE. The dashboard shows exactly four headline KPIs now
+     * (`dashboard.netPnl` / `actualWinRate` / `actualAverageR` /
+     * `disciplineScore` in messages/en.json — note the title-case labels,
+     * not "Total net P&L" / "Actual win rate"). System Expectancy, Actual
+     * Expectancy, Profit Factor, Max Drawdown and Edge Leakage as a KPI are
+     * gone from this surface entirely — the full set now lives on
+     * `/en/app/analytics`, asserted separately below.
+     */
+    test(`${route} shows the four headline KPIs`, async ({ page }) => {
       await page.goto(route);
 
-      for (const label of [
-        'Total net P&L',
-        'Actual win rate',
-        'Actual average R',
-        'System expectancy',
-        'Actual expectancy',
-        'Edge leakage',
-        'Discipline score',
-        'Execution efficiency',
-      ]) {
+      for (const label of ['Net P&L', 'Actual Win Rate', 'Actual Average R', 'Discipline Score']) {
         await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
       }
     });
@@ -70,13 +78,21 @@ test.describe('demo dashboard', () => {
       await expect(figure.locator('svg.recharts-surface').first()).toBeVisible();
     });
 
-    test(`${route} shows a mistake summary ranked by cost`, async ({ page }) => {
+    /**
+     * PHASE 1.1 REWRITE. The dashboard's "Common mistakes" module is no
+     * longer a `<figure>` with a chart — it moved to a plain top-3 list
+     * (`dashboard.mistakes.*`), with the chart-backed "What your mistakes
+     * cost" figure now exclusive to `/en/app/analytics` (asserted below).
+     */
+    test(`${route} shows the top three mistakes ranked by cost`, async ({ page }) => {
       await page.goto(route);
 
-      const figure = page.getByRole('figure').filter({ hasText: 'What your mistakes cost' });
-      await expect(figure).toBeVisible();
-      await expect(figure.getByText('Moved stop').first()).toBeVisible();
-      await expect(figure.getByRole('table', { name: /cost in r by mistake/i })).toBeAttached();
+      const section = page.locator('section[aria-labelledby="mistakes-heading"]');
+      await expect(section.getByRole('heading', { name: 'Common mistakes' })).toBeVisible();
+      await expect(section.getByRole('listitem')).toHaveCount(3);
+      // The costliest mistake in every fixture bundle — see
+      // `src/lib/demo/fixtures.ts`.
+      await expect(section.getByText('Moved stop').first()).toBeVisible();
     });
 
     test(`${route} shows both outcome axes on recent trades`, async ({ page }) => {
@@ -93,32 +109,74 @@ test.describe('demo dashboard', () => {
     });
   }
 
-  test('date range control changes the figures', async ({ page }) => {
-    await page.goto('/demo');
+  /**
+   * PHASE 1.1 NEW COVERAGE. The full attribution metric set (System/Actual
+   * Expectancy, Profit Factor, Total R, Max Drawdown) that used to render on
+   * the dashboard now lives exclusively at `/en/app/analytics` — see
+   * `src/app/[locale]/(app)/app/analytics/page.tsx`.
+   */
+  test('/en/app/analytics shows the full system-vs-actual metric set', async ({ page }) => {
+    await page.goto('/en/app/analytics');
 
-    // Targeted by data attribute rather than text: the animated KPI renders
-    // its value twice by design, and the same number recurs in the chart
-    // caption, so a text locator would be ambiguous rather than wrong.
-    const leakage = page.locator('[data-kpi="Edge leakage"]');
-    await expect(leakage).toBeVisible();
+    for (const label of [
+      'Win rate',
+      'Average R',
+      'Expectancy',
+      'Profit factor',
+      'Total R',
+      'Max drawdown',
+    ]) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    }
+
+    const figure = page.getByRole('figure').filter({ hasText: 'Cumulative R over time' });
+    await expect(figure).toBeVisible();
+    await expect(figure.getByRole('table', { name: /cumulative r by week/i })).toBeAttached();
+  });
+
+  /**
+   * PHASE 1.1 NEW COVERAGE. The chart-backed mistake breakdown ("What your
+   * mistakes cost") that the dashboard used to show is now exclusive to the
+   * analytics page — the dashboard shows only the top-3 plain list (asserted
+   * above, per route).
+   */
+  test('/en/app/analytics shows the full mistake cost breakdown as a figure', async ({ page }) => {
+    await page.goto('/en/app/analytics');
+
+    const figure = page.getByRole('figure').filter({ hasText: 'What your mistakes cost' });
+    await expect(figure).toBeVisible();
+    await expect(figure.getByText('Moved stop').first()).toBeVisible();
+    await expect(figure.getByRole('table', { name: /cost in r by mistake/i })).toBeAttached();
+  });
+
+  /**
+   * PHASE 1.1 REWRITE. Edge Leakage is no longer a standalone KPI card on the
+   * dashboard — it survives as the reactive number inside the system-vs-
+   * trader insight sentence (`dashboard.systemVsTrader.edgeLeakageInsight`),
+   * which is what actually responds to the date-range control now. The
+   * underlying fixture values are unchanged (`src/lib/demo/fixtures.ts`), so
+   * this keeps the original numbers (27.9 / 8.4 / 19.3) — the test just
+   * targets where they now render.
+   */
+  test('date range control changes the figures', async ({ page }) => {
+    await page.goto('/en/demo');
+
+    const insight = page.getByText(/Edge leakage: [\d.]+R not captured by execution\./);
+    await expect(insight).toBeVisible();
 
     // All-time is the default bundle.
-    await expect(leakage).toContainText('27.9');
+    await expect(insight).toContainText('27.9');
 
     await selectRange(page, '30 days');
-    await expect(leakage).toContainText('8.4');
-    await expect(leakage.locator('[data-animated-number]')).toHaveAttribute(
-      'data-animated-number',
-      '8.4',
-    );
-    await expect(leakage).not.toContainText(/21\.1|16\.7|9\.6/);
+    await expect(insight).toContainText('8.4');
+    await expect(insight).not.toContainText(/21\.1|16\.7|9\.6|27\.9/);
 
     await selectRange(page, '90 days');
-    await expect(leakage).toContainText('19.3');
+    await expect(insight).toContainText('19.3');
   });
 
   test('account selector filters the trade list', async ({ page }) => {
-    await page.goto('/demo');
+    await page.goto('/en/demo');
 
     const selector = page.getByLabel('Trading account');
     await expect(selector).toBeVisible();
@@ -133,7 +191,7 @@ test.describe('demo dashboard', () => {
   });
 
   test('filters are reachable and operable by keyboard', async ({ page }) => {
-    await page.goto('/demo');
+    await page.goto('/en/demo');
 
     const thirtyDays = page.getByRole('radio', { name: 'Last 30 days' });
     await thirtyDays.focus();
@@ -144,7 +202,7 @@ test.describe('demo dashboard', () => {
 
   test('wide trade table scrolls inside its own container', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/app/trades');
+    await page.goto('/en/app/trades');
 
     const region = page.getByRole('region', { name: 'Trade history table' });
     await expect(region).toBeVisible();
@@ -159,7 +217,7 @@ test.describe('demo dashboard', () => {
 
   test('mobile shows record cards rather than a squeezed table', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app/trades');
+    await page.goto('/en/app/trades');
 
     // The table is present but display:none below `md`, which removes it from
     // the accessibility tree — so a screen reader is offered the trades once.
@@ -182,11 +240,13 @@ test.describe('demo dashboard', () => {
    */
   test('renders KPI cards two-up even at a 375px viewport', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/demo');
+    await page.goto('/en/demo');
 
-    const first = page.locator('[data-kpi="Total net P&L"]');
-    const second = page.locator('[data-kpi="Actual win rate"]');
-    const third = page.locator('[data-kpi="Actual average R"]');
+    // `data-kpi` carries the exact translated label (`dashboard.netPnl` etc
+    // in messages/en.json) — title-case now, not the old "Total net P&L".
+    const first = page.locator('[data-kpi="Net P&L"]');
+    const second = page.locator('[data-kpi="Actual Win Rate"]');
+    const third = page.locator('[data-kpi="Actual Average R"]');
 
     const firstBox = await first.boundingBox();
     const secondBox = await second.boundingBox();
@@ -206,7 +266,7 @@ test.describe('demo dashboard', () => {
 test.describe('demo charts under reduced motion', () => {
   test('renders without animation when reduced motion is requested', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/demo');
+    await page.goto('/en/demo');
 
     // The chart still renders; it simply does not animate in.
     await expect(page.locator('svg.recharts-surface').first()).toBeVisible();
@@ -217,7 +277,7 @@ test.describe('demo charts under reduced motion', () => {
 
   test('uses the animated indicator when motion is allowed', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await page.goto('/demo');
+    await page.goto('/en/demo');
 
     await expect(page.locator('[data-segment-indicator="animated"]')).toHaveCount(1);
     await expect(page.locator('[data-segment-indicator="static"]')).toHaveCount(0);

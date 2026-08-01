@@ -1,7 +1,7 @@
-import Link from 'next/link';
 import type { MouseEventHandler } from 'react';
 
 import { cn } from '@/lib/utils';
+import { Link } from '@/i18n/navigation';
 
 /**
  * Wordmark. Placeholder identity — final branding is a later phase, so this

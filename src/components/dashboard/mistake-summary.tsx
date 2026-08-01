@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import type { DemoMistake, DemoSeverity } from '@/lib/demo';
 import { cn } from '@/lib/utils';
 import { MistakeCostChart, MistakeCostTable } from '@/components/charts/mistake-cost-chart';
@@ -27,11 +29,13 @@ export function MistakeSummary({
   edgeLeakageR: string;
   className?: string;
 }) {
+  const t = useTranslations('mistakes');
+
   return (
     <ChartContainer
-      title="What your mistakes cost"
-      description="Ranked by cost in R, not by how often they happen."
-      caption={`Demo data. These costs account for the full ${edgeLeakageR}R of edge leakage over the period.`}
+      title={t('title')}
+      description={t('description')}
+      caption={t('caption', { edgeLeakage: edgeLeakageR })}
       tableFallback={<MistakeCostTable mistakes={mistakes} />}
       className={className}
     >
@@ -47,17 +51,17 @@ export function MistakeSummary({
               <div className="flex min-w-0 flex-col gap-1">
                 <span className="text-foreground text-sm font-medium">{mistake.label}</span>
                 <span className="text-muted-foreground text-xs">
-                  {mistake.occurrences} {mistake.occurrences === 1 ? 'time' : 'times'}
+                  {t('occurrences', { count: mistake.occurrences })}
                 </span>
               </div>
 
               <span
                 className={cn(
-                  'ml-auto rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize',
+                  'ml-auto rounded-full border px-2 py-0.5 text-[11px] font-medium',
                   SEVERITY_CLASS[mistake.severity],
                 )}
               >
-                {mistake.severity}
+                {t(`severity.${mistake.severity}`)}
               </span>
 
               <span className="numeric text-foreground w-14 text-right text-sm font-semibold">

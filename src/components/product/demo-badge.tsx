@@ -1,4 +1,5 @@
 import { FlaskConical } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/utils';
 
@@ -12,14 +13,13 @@ import { cn } from '@/lib/utils';
  *
  * The icon is `aria-hidden` and the text carries the meaning, so the warning
  * survives with images off and in a screen reader.
+ *
+ * `useTranslations` works directly in a Server Component here — no `'use
+ * client'` needed, and no prop threading text through nine call sites.
  */
-export function DemoBadge({
-  className,
-  children = 'Demo data',
-}: {
-  className?: string;
-  children?: string;
-}) {
+export function DemoBadge({ className }: { className?: string }) {
+  const t = useTranslations('demoData');
+
   return (
     <span
       className={cn(
@@ -29,7 +29,7 @@ export function DemoBadge({
       )}
     >
       <FlaskConical className="size-3.5" aria-hidden="true" />
-      {children}
+      {t('badge')}
     </span>
   );
 }
@@ -39,6 +39,8 @@ export function DemoBadge({
  * The badge alone says "this is demo data"; this says what that means.
  */
 export function DemoDataNotice({ className }: { className?: string }) {
+  const t = useTranslations('demoData');
+
   return (
     <div
       className={cn(
@@ -49,13 +51,8 @@ export function DemoDataNotice({ className }: { className?: string }) {
     >
       <FlaskConical className="text-warning size-4 shrink-0 sm:mt-0.5" aria-hidden="true" />
       <div className="flex flex-col gap-1">
-        <p className="text-foreground text-sm font-medium">
-          Every figure on this page is fictional demo data
-        </p>
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          It exists to show what the product measures. It is not a backtest, not a customer account,
-          and not an expected result. Trading involves risk of loss.
-        </p>
+        <p className="text-foreground text-sm font-medium">{t('noticeTitle')}</p>
+        <p className="text-muted-foreground text-sm leading-relaxed">{t('noticeBody')}</p>
       </div>
     </div>
   );

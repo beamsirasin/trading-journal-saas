@@ -40,10 +40,17 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  // Required rather than defaulted to an English literal: this is a generic
+  // primitive with no `next-intl` dependency of its own, so the
+  // locale-correct label is the caller's responsibility (both current
+  // callers pass `common.close`) — a default would silently ship English
+  // inside a translated shell.
+  closeLabel,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: 'top' | 'right' | 'bottom' | 'left';
   showCloseButton?: boolean;
+  closeLabel: string;
 }) {
   return (
     <SheetPortal>
@@ -68,7 +75,7 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-1.5 right-1.5 flex size-11 items-center justify-center rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
             <XIcon className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>

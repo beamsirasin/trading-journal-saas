@@ -15,21 +15,27 @@
  * Account limits come from the open product question in
  * docs/product-spec.md §9 (1 / 3 / 10) and are marked provisional until
  * Phase 04 validates them against real usage.
+ *
+ * PHASE 1.1 CHANGE — `tagline` and `features` moved to
+ * `messages/{locale}.json` under `pricing.plans.{id}`, since they are
+ * user-facing copy that must be translated. `name` stays here, untranslated,
+ * in both locales: the terminology glossary records product plan names as a
+ * deliberate exception to translation ("Starter", "Pro" and "Elite" are
+ * proper nouns, not descriptions).
  */
 
 export const TRIAL_DAYS = 7;
 
 export interface Plan {
   readonly id: 'starter' | 'pro' | 'elite';
+  /** Never translated — see the file header. */
   readonly name: string;
-  readonly tagline: string;
   /** Maximum trading accounts. The primary axis plans gate on. */
   readonly tradingAccounts: number;
   /** Renders a "provisional" marker next to the limit. */
   readonly limitProvisional: boolean;
   /** `null` until amounts are approved — never a placeholder number. */
   readonly price: null;
-  readonly features: readonly string[];
   /** Visually emphasised. Exactly one plan may set this. */
   readonly featured: boolean;
 }
@@ -38,49 +44,25 @@ export const PLANS: readonly Plan[] = [
   {
     id: 'starter',
     name: 'Starter',
-    tagline: 'Prove whether your strategy has an edge.',
     tradingAccounts: 1,
     limitProvisional: false,
     price: null,
-    features: [
-      'One trading account',
-      'Manual trade journal',
-      'TradingView chart links',
-      'Strategy playbooks with versions',
-      'System versus trader analytics',
-      'Mistake and discipline tracking',
-    ],
     featured: false,
   },
   {
     id: 'pro',
     name: 'Pro',
-    tagline: 'Separate edge from execution across several accounts.',
     tradingAccounts: 3,
     limitProvisional: false,
     price: null,
-    features: [
-      'Three trading accounts',
-      'Everything in Starter',
-      'Per-account attribution',
-      'Mistake cost ranked in R',
-      'Full analytics history',
-    ],
     featured: true,
   },
   {
     id: 'elite',
     name: 'Elite',
-    tagline: 'For traders running many accounts or a prop programme.',
     tradingAccounts: 10,
     limitProvisional: true,
     price: null,
-    features: [
-      'Ten trading accounts',
-      'Everything in Pro',
-      'Cross-account comparison',
-      'Data export',
-    ],
     featured: false,
   },
 ];

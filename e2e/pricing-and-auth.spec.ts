@@ -11,7 +11,7 @@ import { expect, test } from '@playwright/test';
 
 test.describe('pricing', () => {
   test('shows three plans with the trial and no invented prices', async ({ page }) => {
-    await page.goto('/pricing');
+    await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
 
@@ -24,12 +24,14 @@ test.describe('pricing', () => {
   });
 
   test('states the seven-day trial', async ({ page }) => {
-    await page.goto('/pricing');
-    await expect(page.getByText(/7-day trial with no card is planned/i).first()).toBeVisible();
+    await page.goto('/en/pricing');
+    // Current copy (`pricing.priceUnsetNote` in messages/en.json), not the
+    // old wording — "with no card is" never appears verbatim.
+    await expect(page.getByText(/7-day, no-card trial is planned/i).first()).toBeVisible();
   });
 
   test('shows the account limits the plans gate on', async ({ page }) => {
-    await page.goto('/pricing');
+    await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
     // `exact` matters: Playwright's string matcher is substring-and-
@@ -52,7 +54,7 @@ test.describe('pricing', () => {
    */
   test('renders two plan cards per row at a tablet viewport', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto('/pricing');
+    await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
     const starterBox = await pricing.getByRole('heading', { name: 'Starter' }).boundingBox();
@@ -76,17 +78,18 @@ test.describe('pricing', () => {
   });
 
   test('does not present a working purchase path', async ({ page }) => {
-    await page.goto('/pricing');
+    await page.goto('/en/pricing');
 
     await expect(
       page.getByText(/no payment processing is connected to this product yet/i),
     ).toBeVisible();
 
     // No plan CTA may lead to a checkout. They all start a trial instead.
+    // Suffix match: `Link` from `@/i18n/navigation` renders `/en/register`.
     const ctas = page.getByRole('link', { name: /preview trial registration/i });
     const count = await ctas.count();
     for (let index = 0; index < count; index += 1) {
-      await expect(ctas.nth(index)).toHaveAttribute('href', '/register');
+      await expect(ctas.nth(index)).toHaveAttribute('href', /\/register$/);
     }
 
     const body = (await page.textContent('body')) ?? '';
@@ -96,7 +99,7 @@ test.describe('pricing', () => {
 });
 
 test.describe('login and registration', () => {
-  for (const route of ['/login', '/register'] as const) {
+  for (const route of ['/en/login', '/en/register'] as const) {
     test(`${route} is operable with the keyboard alone`, async ({ page }) => {
       await page.goto(route);
 
@@ -106,7 +109,7 @@ test.describe('login and registration', () => {
       // Registration has a required Name field. Leaving it empty would make
       // the browser's own validation block submission — correct behaviour,
       // but it would stop this test reaching the thing it is checking.
-      if (route === '/register') {
+      if (route === '/en/register') {
         const name = page.getByLabel('Name');
         await name.focus();
         await page.keyboard.type('Demo Trader');
@@ -162,9 +165,12 @@ test.describe('login and registration', () => {
       const email = await page.getByLabel('Email').boundingBox();
       expect(email?.height ?? 0).toBeGreaterThanOrEqual(44);
 
+      // Current button text (`auth.loginSubmit` / `auth.registerSubmit` in
+      // messages/en.json) — the old "Preview login" / "Preview account
+      // creation" wording predates this component's copy pass.
       const submit = await page
         .getByRole('button', {
-          name: route === '/login' ? 'Preview login' : 'Preview account creation',
+          name: route === '/en/login' ? 'Log in' : 'Create account',
         })
         .boundingBox();
       expect(submit?.height ?? 0).toBeGreaterThanOrEqual(44);
@@ -184,10 +190,10 @@ test.describe('login and registration', () => {
   }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
 
-    await page.goto('/login');
+    await page.goto('/en/login');
     const loginEmailWidth = (await page.getByLabel('Email').boundingBox())?.width ?? 0;
 
-    await page.goto('/register');
+    await page.goto('/en/register');
     const registerEmailWidth = (await page.getByLabel('Email').boundingBox())?.width ?? 0;
 
     expect(registerEmailWidth).toBeLessThan(500);
@@ -197,12 +203,12 @@ test.describe('login and registration', () => {
   });
 
   test('registration does not create a session or navigate away', async ({ page }) => {
-    await page.goto('/register');
+    await page.goto('/en/register');
 
     await page.getByLabel('Name').fill('Demo Trader');
     await page.getByLabel('Email').fill('trader@example.com');
     await page.getByLabel('Password', { exact: true }).fill('a-sufficiently-long-password');
-    await page.getByRole('button', { name: 'Preview account creation' }).click();
+    await page.getByRole('button', { name: 'Create account' }).click();
 
     await expect(page).toHaveURL(/\/register$/);
     await expect(page.getByText('Nothing was submitted')).toBeVisible();

@@ -5,6 +5,13 @@
 #   unrs-resolver - native module resolver used by the ESLint import resolver
 #   esbuild       - links its platform-native binary; pulled in by drizzle-kit
 allowBuilds:
+  # @parcel/watcher - native filesystem watcher; postinstall just fetches a
+  #   prebuilt binary for the current platform, pulled in transitively by
+  #   tooling in this dependency tree.
+  # @swc/core       - Next.js's Rust-based compiler; postinstall fetches the
+  #   platform-native binary it requires to run at all.
+  '@parcel/watcher': true
+  '@swc/core': true
   esbuild: true
   sharp: true
   unrs-resolver: true

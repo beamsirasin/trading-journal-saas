@@ -1,7 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import en from '../../../messages/en.json';
 import { ThemeProvider } from './theme-provider';
 import { ThemeToggle } from './theme-toggle';
 
@@ -17,9 +19,11 @@ import { ThemeToggle } from './theme-toggle';
 
 function renderToggle() {
   return render(
-    <ThemeProvider>
-      <ThemeToggle />
-    </ThemeProvider>,
+    <NextIntlClientProvider locale="en" messages={en}>
+      <ThemeProvider>
+        <ThemeToggle />
+      </ThemeProvider>
+    </NextIntlClientProvider>,
   );
 }
 

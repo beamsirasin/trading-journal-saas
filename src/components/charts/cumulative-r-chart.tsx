@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import {
   CartesianGrid,
   Line,
@@ -39,11 +40,6 @@ import { ChartTooltip } from './chart-tooltip';
  * are already rounded for display and are never read back into a calculation.
  */
 
-const NAME_FOR = {
-  system: 'System',
-  actual: 'Actual',
-} as const;
-
 export function CumulativeRChart({
   points,
   className,
@@ -51,7 +47,9 @@ export function CumulativeRChart({
   points: readonly DemoEquityPoint[];
   className?: string;
 }) {
+  const t = useTranslations('common');
   const prefersReducedMotion = usePrefersReducedMotion();
+  const nameFor = { system: t('system'), actual: t('actual') };
 
   const data = points.map((point) => ({
     label: point.label,
@@ -92,7 +90,7 @@ export function CumulativeRChart({
           <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeWidth={1} />
 
           <Tooltip
-            content={<ChartTooltip nameFor={NAME_FOR} unit="R" decimals={1} />}
+            content={<ChartTooltip nameFor={nameFor} unit="R" decimals={1} />}
             cursor={{ stroke: 'var(--muted-foreground)', strokeWidth: 1, strokeDasharray: '3 3' }}
           />
 

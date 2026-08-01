@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import { cn } from '@/lib/utils';
 
 /**
@@ -20,7 +22,7 @@ export function Skeleton({ className }: { className?: string }) {
  * between them.
  */
 export function SkeletonSurface({
-  label = 'Loading',
+  label,
   className,
   children,
 }: {
@@ -28,10 +30,12 @@ export function SkeletonSurface({
   className?: string;
   children: React.ReactNode;
 }) {
+  const t = useTranslations('loading');
+
   return (
     <div className={className}>
       <span className="sr-only" role="status">
-        {label}
+        {label ?? t('label')}
       </span>
       {children}
     </div>

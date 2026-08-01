@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phase 01 — the product's surfaces exist and are populated by fictional demo fixtures. No authentication, no database, no real metric below is computed yet.
+**Status:** Living document. Phase 01.1 — the product's surfaces exist, are populated by fictional demo fixtures, and are available in English and Thai. No authentication, no database, no real metric below is computed yet.
 
 ## 1. The problem
 
@@ -60,7 +60,7 @@ Each trade may carry mistakes from a taxonomy (moved stop, early exit, oversized
 
 ## 4. MVP scope
 
-Landing page · Google and email authentication · 7-day trial · three plans gated primarily on trading-account count · mock payment · onboarding · trading-account management · strategy and strategy-version management · manual trade journal · TradingView chart URLs · system vs actual outcome · mistake and discipline tracking · dashboard · basic analytics · account, subscription and profile settings · basic SaaS administration · responsive desktop, tablet, and mobile.
+Landing page · Google and email authentication · 7-day trial · three plans gated primarily on trading-account count · mock payment · onboarding · trading-account management · strategy and strategy-version management · manual trade journal · TradingView chart URLs · system vs actual outcome · mistake and discipline tracking · dashboard · basic analytics · account, subscription and profile settings · basic SaaS administration · responsive desktop, tablet, and mobile · English and Thai localization.
 
 ## 5. Explicitly excluded from the MVP
 

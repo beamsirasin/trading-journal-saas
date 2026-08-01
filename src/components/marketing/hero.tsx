@@ -1,10 +1,11 @@
 import { ArrowRight, PlayCircle } from 'lucide-react';
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 
 import { TRIAL_DAYS } from '@/config/plans';
 import { Container } from '@/components/shell/container';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 import { ProductPreview } from './product-preview';
 
@@ -23,8 +24,15 @@ import { ProductPreview } from './product-preview';
  * Entrance motion is a short CSS `animate-rise` with a small stagger, not a
  * Motion sequence: content must not be gated behind an animation, and the
  * global reduced-motion rule collapses it to nothing.
+ *
+ * PHASE 1.1 — one badge, one headline, one description, two CTAs, one
+ * preview. This was already the shape before simplification; the density
+ * problem the phase brief names lives in `ProductPreview` and the sections
+ * below, not here.
  */
 export function Hero() {
+  const t = useTranslations('hero');
+
   return (
     <div className="relative isolate overflow-hidden">
       {/*
@@ -40,20 +48,20 @@ export function Hero() {
       <Container className="py-16 sm:py-20 lg:py-28">
         <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-16">
           <div className="animate-rise flex flex-col items-start gap-6">
-            <Badge variant="brand">Attribution, not bookkeeping</Badge>
+            <Badge variant="brand">{t('badge')}</Badge>
 
-            <h1 className="text-display text-balance">Know whether it was the strategy or you.</h1>
+            <h1 className="text-display text-balance">{t('title')}</h1>
 
             <p className="text-muted-foreground max-w-xl text-lg leading-relaxed text-pretty">
-              Most journals record what happened, so they can only ever show profit and loss.
-              Trading OS records what <em className="text-foreground not-italic">should</em> have
-              happened too — then measures the distance between them.
+              {t.rich('description', {
+                em: (chunks) => <em className="text-foreground not-italic">{chunks}</em>,
+              })}
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <Button asChild size="lg" className="min-h-11">
                 <Link href="/register">
-                  Preview registration
+                  {t('ctaPrimary')}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </Button>
@@ -61,13 +69,13 @@ export function Hero() {
               <Button asChild variant="outline" size="lg" className="min-h-11">
                 <Link href="/demo" prefetch={false}>
                   <PlayCircle className="size-4" aria-hidden="true" />
-                  See the demo dashboard
+                  {t('ctaDemo')}
                 </Link>
               </Button>
             </div>
 
             <p className="text-muted-foreground text-sm">
-              Planned {TRIAL_DAYS}-day trial · no card required · registration is not live yet
+              {t('trialNote', { trialDays: TRIAL_DAYS })}
             </p>
           </div>
 

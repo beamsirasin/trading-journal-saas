@@ -78,9 +78,16 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
+  /*
+   * `--font-sans` is deliberately an alias, not a literal stack (contrast
+   * `--font-mono` below). `next/font` sets the real value — Noto Sans,
+   * Latin + Thai — as a CSS variable of the same name on `<html>`
+   * (`app/[locale]/layout.tsx`); this line only registers the theme token so
+   * Tailwind emits `.font-sans` utilities, following the same
+   * alias-to-a-runtime-variable pattern already used for the colour tokens
+   * above. See ADR 0007 for why a web font was introduced at all.
+   */
+  --font-sans: var(--font-sans);
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 

@@ -1,4 +1,5 @@
 import { ExternalLink } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
 
 import type { DemoTrade } from '@/lib/demo';
 import { cn } from '@/lib/utils';
@@ -43,6 +44,11 @@ const R_TONE = {
  * P&L would be the conventional journal this product exists to replace.
  */
 export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
+  const t = useTranslations('trades.table');
+  const tCommon = useTranslations('common');
+  // `routing.locales` guarantees only 'en' | 'th' reach a rendered page.
+  const locale = useLocale() as 'en' | 'th';
+
   return (
     <>
       {/*
@@ -52,25 +58,23 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
         reader user with two indistinguishable "Recent trades" regions.
       */}
       <TableScroller
-        label="Trade history table"
+        label={t('scrollRegionLabel')}
         data-trades-view="table"
         className="hidden md:block"
       >
         <Table>
-          <TableCaption>
-            Demo data. Times shown in {DEMO_TIME_ZONE}; a real account uses your profile timezone.
-          </TableCaption>
+          <TableCaption>{t('timezoneCaption', { timezone: DEMO_TIME_ZONE })}</TableCaption>
           <TableHeader>
             <TableRow>
-              <TableHead>Instrument</TableHead>
-              <TableHead>Strategy</TableHead>
-              <TableHead>Closed</TableHead>
-              <TableHead>System</TableHead>
-              <TableHead>Actual</TableHead>
-              <TableHead className="text-right">System R</TableHead>
-              <TableHead className="text-right">Actual R</TableHead>
-              <TableHead className="text-right">Net</TableHead>
-              <TableHead>Mistakes</TableHead>
+              <TableHead>{t('instrument')}</TableHead>
+              <TableHead>{t('strategy')}</TableHead>
+              <TableHead>{t('closed')}</TableHead>
+              <TableHead>{t('system')}</TableHead>
+              <TableHead>{t('actual')}</TableHead>
+              <TableHead className="text-right">{t('systemR')}</TableHead>
+              <TableHead className="text-right">{t('actualR')}</TableHead>
+              <TableHead className="text-right">{t('net')}</TableHead>
+              <TableHead>{t('mistakes')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -80,7 +84,7 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
                   <div className="flex flex-col">
                     <span className="text-foreground font-medium">{trade.symbol}</span>
                     <span className="text-muted-foreground text-xs capitalize">
-                      {trade.direction}
+                      {trade.direction === 'long' ? tCommon('long') : tCommon('short')}
                     </span>
                   </div>
                 </TableCell>
@@ -93,15 +97,15 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
                 </TableCell>
 
                 <TableCell className="text-muted-foreground whitespace-nowrap">
-                  {formatTradeDate(trade.closedAt)}
+                  {formatTradeDate(trade.closedAt, locale)}
                 </TableCell>
 
                 <TableCell>
-                  <OutcomeBadge outcome={trade.systemOutcome} axis="System" />
+                  <OutcomeBadge outcome={trade.systemOutcome} axis="system" />
                 </TableCell>
 
                 <TableCell>
-                  <OutcomeBadge outcome={trade.actualOutcome} axis="Actual" />
+                  <OutcomeBadge outcome={trade.actualOutcome} axis="trader" />
                 </TableCell>
 
                 <TableCell className={cn('numeric text-right', R_TONE[toneForR(trade.systemR)])}>
@@ -140,7 +144,8 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
               <div className="flex flex-col">
                 <span className="text-foreground font-semibold">{trade.symbol}</span>
                 <span className="text-muted-foreground text-xs capitalize">
-                  {trade.direction} · {trade.strategy} {trade.strategyVersion}
+                  {trade.direction === 'long' ? tCommon('long') : tCommon('short')} ·{' '}
+                  {trade.strategy} {trade.strategyVersion}
                 </span>
               </div>
               <span
@@ -155,18 +160,18 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
 
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div className="flex flex-col gap-1">
-                <dt className="text-muted-foreground text-xs">System</dt>
+                <dt className="text-muted-foreground text-xs">{t('system')}</dt>
                 <dd className="flex items-center gap-2">
-                  <OutcomeBadge outcome={trade.systemOutcome} axis="System" />
+                  <OutcomeBadge outcome={trade.systemOutcome} axis="system" />
                   <span className={cn('numeric text-xs', R_TONE[toneForR(trade.systemR)])}>
                     {formatR(trade.systemR)}
                   </span>
                 </dd>
               </div>
               <div className="flex flex-col gap-1">
-                <dt className="text-muted-foreground text-xs">Actual</dt>
+                <dt className="text-muted-foreground text-xs">{t('actual')}</dt>
                 <dd className="flex items-center gap-2">
-                  <OutcomeBadge outcome={trade.actualOutcome} axis="Actual" />
+                  <OutcomeBadge outcome={trade.actualOutcome} axis="trader" />
                   <span className={cn('numeric text-xs', R_TONE[toneForR(trade.actualR)])}>
                     {formatR(trade.actualR)}
                   </span>
@@ -179,7 +184,7 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <MistakeList mistakes={trade.mistakes} />
               <span className="text-muted-foreground text-xs">
-                {formatTradeDate(trade.closedAt)}
+                {formatTradeDate(trade.closedAt, locale)}
               </span>
             </div>
 
@@ -194,8 +199,10 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
 }
 
 function MistakeList({ mistakes }: { mistakes: readonly string[] }) {
+  const t = useTranslations('common');
+
   if (mistakes.length === 0) {
-    return <span className="text-muted-foreground text-xs">Rules followed</span>;
+    return <span className="text-muted-foreground text-xs">{t('rulesFollowed')}</span>;
   }
 
   return (
@@ -218,6 +225,9 @@ function MistakeList({ mistakes }: { mistakes: readonly string[] }) {
  * the product entirely.
  */
 function ChartLink({ href, symbol }: { href: string; symbol: string }) {
+  const t = useTranslations('common');
+  const tTable = useTranslations('trades.table');
+
   return (
     <a
       href={href}
@@ -226,8 +236,10 @@ function ChartLink({ href, symbol }: { href: string; symbol: string }) {
       className="text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-1.5 text-xs transition-colors"
     >
       <ExternalLink className="size-3.5" aria-hidden="true" />
-      View chart
-      <span className="sr-only">for {symbol}, opens in a new tab</span>
+      {t('viewChart')}
+      <span className="sr-only">
+        {tTable('viewChartFor', { symbol })}, {t('opensNewTab')}
+      </span>
     </a>
   );
 }

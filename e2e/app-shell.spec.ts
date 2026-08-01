@@ -1,34 +1,38 @@
 import { expect, test } from '@playwright/test';
 
+// PHASE 1.1. Every route now lives under a locale prefix (`localePrefix:
+// 'always'`), so these target the `en` fallback explicitly. `Link` from
+// `@/i18n/navigation` renders the same prefix on `aria-current="page"`
+// hrefs, which is why the href values below carry it too.
 const APP_ROUTES = [
-  { href: '/app', name: 'Overview' },
-  { href: '/app/trades', name: 'Trades' },
-  { href: '/app/strategies', name: 'Strategies' },
-  { href: '/app/analytics', name: 'Analytics' },
-  { href: '/app/settings', name: 'Settings' },
+  { href: '/en/app', name: 'Overview' },
+  { href: '/en/app/trades', name: 'Trades' },
+  { href: '/en/app/strategies', name: 'Strategies' },
+  { href: '/en/app/analytics', name: 'Analytics' },
+  { href: '/en/app/settings', name: 'Settings' },
 ] as const;
 
 test.describe('application shell', () => {
   test('renders the overview dashboard', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto('/en/app');
     await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
   });
 
   test('exposes banner and main landmarks at every viewport', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto('/en/app');
     await expect(page.getByRole('banner')).toBeVisible();
     await expect(page.getByRole('main')).toBeVisible();
   });
 
   test('exposes a navigation landmark on desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/app');
+    await page.goto('/en/app');
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
   });
 
   test('reaches navigation through the drawer on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     // The sidebar is display:none below `lg`, which removes it from the
     // accessibility tree entirely — so on mobile there is deliberately NO
@@ -41,7 +45,7 @@ test.describe('application shell', () => {
   });
 
   test('has no horizontal overflow', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto('/en/app');
     const overflows = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
@@ -83,7 +87,7 @@ test.describe('application navigation', () => {
   });
 
   test('navigating between sections keeps one main landmark', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto('/en/app');
     await page
       .getByRole('navigation', { name: 'Main' })
       .getByRole('link', { name: 'Trades' })
@@ -98,7 +102,7 @@ test.describe('application navigation', () => {
 test.describe('responsive navigation', () => {
   test('shows a persistent sidebar on desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     await expect(page.getByRole('complementary')).toBeVisible();
     await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeHidden();
@@ -106,7 +110,7 @@ test.describe('responsive navigation', () => {
 
   test('shows a drawer trigger instead of a sidebar on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     await expect(page.getByRole('complementary')).toBeHidden();
     await expect(page.getByRole('button', { name: /open navigation menu/i })).toBeVisible();
@@ -114,7 +118,7 @@ test.describe('responsive navigation', () => {
 
   test('keeps mobile shell controls at least 44px in each touch dimension', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     const menuButton = await page
       .getByRole('button', { name: /open navigation menu/i })
@@ -137,7 +141,7 @@ test.describe('responsive navigation', () => {
 
   test('mobile drawer opens, traps focus and closes on Escape', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     const dialog = page.getByRole('dialog');
@@ -152,7 +156,7 @@ test.describe('responsive navigation', () => {
 
   test('mobile drawer closes after navigating', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     await page
@@ -167,7 +171,7 @@ test.describe('responsive navigation', () => {
 
   test('mobile drawer closes after following its wordmark', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app/settings');
+    await page.goto('/en/app/settings');
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     await page.getByRole('dialog').getByRole('link', { name: 'Trading OS' }).click();
@@ -178,7 +182,7 @@ test.describe('responsive navigation', () => {
 
   test('shared buttons keep the 44px touch-target minimum', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/app/settings');
+    await page.goto('/en/app/settings');
 
     const save = await page.getByRole('button', { name: 'Save changes' }).boundingBox();
     expect(save?.width ?? 0).toBeGreaterThanOrEqual(44);
@@ -187,7 +191,7 @@ test.describe('responsive navigation', () => {
 
   test('has no horizontal overflow at 320px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 720 });
-    await page.goto('/app');
+    await page.goto('/en/app');
 
     const overflows = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,

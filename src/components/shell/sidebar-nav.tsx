@@ -1,12 +1,12 @@
 'use client';
 
 import { motion } from 'motion/react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { LAYOUT_SPRING } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
+import { Link, usePathname } from '@/i18n/navigation';
 
 import { NAV_ITEMS } from './nav-items';
 
@@ -32,14 +32,20 @@ interface SidebarNavProps {
  * Active matching is EXACT, not `startsWith`. With a prefix match `/app`
  * would light up on `/app/trades` and two items would claim to be the current
  * page, which `aria-current="page"` must never do.
+ *
+ * `usePathname` is the locale-aware wrapper from `@/i18n/navigation`, which
+ * strips the `/en` or `/th` prefix before comparing — without that, this
+ * match would silently fail in every non-default locale.
  */
 export function SidebarNav({ onNavigate, showDescriptions = false }: SidebarNavProps) {
+  const t = useTranslations('appNav');
+  const tNav = useTranslations('nav');
   const pathname = usePathname();
   const prefersReducedMotion = usePrefersReducedMotion();
 
   return (
-    <nav aria-label="Main" className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ href, label, Icon, description }) => {
+    <nav aria-label={tNav('mainNav')} className="flex flex-col gap-1">
+      {NAV_ITEMS.map(({ href, key, Icon }) => {
         const isActive = pathname === href;
 
         return (
@@ -78,9 +84,9 @@ export function SidebarNav({ onNavigate, showDescriptions = false }: SidebarNavP
             <Icon className="relative size-4 shrink-0" aria-hidden="true" />
 
             <span className="relative flex min-w-0 flex-col">
-              <span className="font-medium">{label}</span>
+              <span className="font-medium">{t(`items.${key}`)}</span>
               {showDescriptions ? (
-                <span className="text-muted-foreground text-xs">{description}</span>
+                <span className="text-muted-foreground text-xs">{t(`descriptions.${key}`)}</span>
               ) : null}
             </span>
           </Link>

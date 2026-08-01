@@ -1,6 +1,7 @@
 'use client';
 
 import { Monitor, Moon, Sun } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 
 import { Button } from '@/components/ui/button';
@@ -13,9 +14,9 @@ import {
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
 
 const OPTIONS = [
-  { value: 'light', label: 'Light', Icon: Sun },
-  { value: 'dark', label: 'Dark', Icon: Moon },
-  { value: 'system', label: 'System', Icon: Monitor },
+  { value: 'light', labelKey: 'light', Icon: Sun },
+  { value: 'dark', labelKey: 'dark', Icon: Moon },
+  { value: 'system', labelKey: 'system', Icon: Monitor },
 ] as const;
 
 /**
@@ -32,6 +33,7 @@ const OPTIONS = [
  * placeholder keeps identical dimensions so nothing shifts when it swaps.
  */
 export function ThemeToggle() {
+  const t = useTranslations('settings.appearance');
   const { theme, setTheme, resolvedTheme } = useTheme();
   const isHydrated = useIsHydrated();
 
@@ -41,7 +43,7 @@ export function ThemeToggle() {
         variant="ghost"
         size="icon"
         className="size-11"
-        aria-label="Change theme"
+        aria-label={t('toggleLabel')}
         disabled
         // Hidden from assistive tech while inert, so it is not announced as a
         // broken control during the brief pre-hydration window.
@@ -53,6 +55,7 @@ export function ThemeToggle() {
   }
 
   const ActiveIcon = resolvedTheme === 'dark' ? Moon : Sun;
+  const themeLabel = t((theme ?? 'system') as 'light' | 'dark' | 'system');
 
   return (
     <DropdownMenu>
@@ -61,13 +64,13 @@ export function ThemeToggle() {
           variant="ghost"
           size="icon"
           className="size-11"
-          aria-label={`Change theme, currently ${theme}`}
+          aria-label={t('toggleLabelWithTheme', { theme: themeLabel })}
         >
           <ActiveIcon className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-36">
-        {OPTIONS.map(({ value, label, Icon }) => (
+        {OPTIONS.map(({ value, labelKey, Icon }) => (
           <DropdownMenuItem
             key={value}
             onSelect={() => setTheme(value)}
@@ -75,7 +78,7 @@ export function ThemeToggle() {
             className="gap-2"
           >
             <Icon className="size-4" aria-hidden="true" />
-            <span>{label}</span>
+            <span>{t(labelKey)}</span>
             {theme === value ? (
               <span className="text-muted-foreground ml-auto text-xs" aria-hidden="true">
                 ✓

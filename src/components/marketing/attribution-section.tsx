@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import { demoBundle } from '@/lib/demo';
 import { CumulativeRTable } from '@/components/charts/cumulative-r-table';
 import { StaticCumulativeRChart } from '@/components/charts/static-cumulative-r-chart';
@@ -19,109 +21,93 @@ import { Section, SectionIntro } from './section';
  * No metric is derived here; the real formulas live in `src/lib/calc/` from
  * Phase 07 and this page will read their output instead of these fixtures.
  * `barPercent` (imported) is bar geometry only — see its own doc comment.
+ *
+ * PHASE 1.1 SIMPLIFICATION — this used to show four mini KPI cards (edge
+ * leakage, execution efficiency, discipline score, closed trades) and four
+ * comparison rows (win rate, average R, expectancy, total R) beside the
+ * chart. That is analytics-page density on a marketing page. Trimmed to the
+ * two figures that best make the pitch (edge leakage, discipline score) and
+ * the three comparison rows the Phase 1.1 brief names explicitly for this
+ * exact module. Execution efficiency, total R and the closed-trade count
+ * still exist — on `/app/analytics` and the real dashboard, not here.
  */
-
 export function AttributionSection() {
+  const t = useTranslations('attribution');
   const { attribution, equityCurve, closedTrades } = demoBundle('all');
 
   return (
     <Section id="attribution" labelledBy="attribution-title">
-      <div className="flex flex-col gap-12">
+      <div className="flex flex-col gap-10">
         <SectionIntro
-          eyebrow="System vs trader"
-          title="Two sets of books for the same trades"
+          eyebrow={t('eyebrow')}
+          title={t('title')}
           titleId="attribution-title"
-          description="Every metric is computed twice: once from the strategy's planned entry, stop and rule-defined exit, and once from what you actually did. Both are expressed in R, which is what makes them comparable even when you sized the position differently from the plan."
+          description={t('description')}
         />
 
         <div className="flex flex-wrap items-center gap-3">
           <DemoBadge />
-          <p className="text-muted-foreground text-sm">
-            Fictional account · {closedTrades} closed trades · not a performance claim
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <KpiCard
-            label="Edge leakage"
-            value={attribution.edgeLeakageR}
-            suffix="R"
-            tone="warning"
-            animate={false}
-            hint="System total R minus actual total R. This much edge existed and was not captured."
-          />
-          <KpiCard
-            label="Execution efficiency"
-            value={attribution.executionEfficiencyPct}
-            suffix="%"
-            animate={false}
-            hint="The share of the system's edge that actually reached the account."
-          />
-          <KpiCard
-            label="Discipline score"
-            value={attribution.disciplineScore}
-            animate={false}
-            hint="100 minus the weighted cost of recorded rule breaks, averaged per trade."
-          />
-          <KpiCard
-            label="Closed trades"
-            value={String(closedTrades)}
-            animate={false}
-            hint="The sample the figures above are drawn from."
-          />
+          <p className="text-muted-foreground text-sm">{t('demoCaption', { closedTrades })}</p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
-          <div className="bg-card border-border flex flex-col gap-7 rounded-lg border p-5 sm:p-6">
-            <ComparisonMetric
-              label="Win rate"
-              systemValue={attribution.systemWinRatePct}
-              actualValue={attribution.actualWinRatePct}
-              unit="%"
-              scaleMax="100%"
-              systemPercent={barPercent(attribution.systemWinRatePct, 100)}
-              actualPercent={barPercent(attribution.actualWinRatePct, 100)}
-            />
+          <div className="flex flex-col gap-6">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <KpiCard
+                label={t('edgeLeakage')}
+                value={attribution.edgeLeakageR}
+                suffix="R"
+                tone="warning"
+                animate={false}
+                hint={t('edgeLeakageHint')}
+              />
+              <KpiCard
+                label={t('disciplineScore')}
+                value={attribution.disciplineScore}
+                animate={false}
+              />
+            </div>
 
-            <ComparisonMetric
-              label="Average R per trade"
-              systemValue={attribution.systemAvgR}
-              actualValue={attribution.actualAvgR}
-              unit="R"
-              scaleMax="0.50R"
-              systemPercent={barPercent(attribution.systemAvgR, 0.5)}
-              actualPercent={barPercent(attribution.actualAvgR, 0.5)}
-            />
+            <div className="bg-card border-border flex flex-col gap-7 rounded-lg border p-5 sm:p-6">
+              <ComparisonMetric
+                label={t('winRate')}
+                systemValue={attribution.systemWinRatePct}
+                actualValue={attribution.actualWinRatePct}
+                unit="%"
+                scaleMax="100%"
+                systemPercent={barPercent(attribution.systemWinRatePct, 100)}
+                actualPercent={barPercent(attribution.actualWinRatePct, 100)}
+              />
 
-            <ComparisonMetric
-              label="Expectancy"
-              systemValue={attribution.systemExpectancyR}
-              actualValue={attribution.actualExpectancyR}
-              unit="R"
-              scaleMax="0.50R"
-              systemPercent={barPercent(attribution.systemExpectancyR, 0.5)}
-              actualPercent={barPercent(attribution.actualExpectancyR, 0.5)}
-              note="Expectancy is the mean R per trade, so it equals average R by definition in this model. Both are shown because traders look for each by name."
-            />
+              <ComparisonMetric
+                label={t('averageR')}
+                systemValue={attribution.systemAvgR}
+                actualValue={attribution.actualAvgR}
+                unit="R"
+                scaleMax="0.50R"
+                systemPercent={barPercent(attribution.systemAvgR, 0.5)}
+                actualPercent={barPercent(attribution.actualAvgR, 0.5)}
+              />
 
-            <ComparisonMetric
-              label="Total R"
-              systemValue={attribution.systemTotalR}
-              actualValue={attribution.actualTotalR}
-              unit="R"
-              scaleMax="40R"
-              systemPercent={barPercent(attribution.systemTotalR, 40)}
-              actualPercent={barPercent(attribution.actualTotalR, 40)}
-            />
+              <ComparisonMetric
+                label={t('expectancy')}
+                systemValue={attribution.systemExpectancyR}
+                actualValue={attribution.actualExpectancyR}
+                unit="R"
+                scaleMax="0.50R"
+                systemPercent={barPercent(attribution.systemExpectancyR, 0.5)}
+                actualPercent={barPercent(attribution.actualExpectancyR, 0.5)}
+              />
+            </div>
           </div>
 
           <ChartContainer
-            title="Cumulative R over time"
-            description="The same trades, scored two ways."
-            caption={`Demo data. Both series start at zero and share one axis in R. The widening gap is the ${attribution.edgeLeakageR}R of edge leakage. Weekly samples, so intra-week drawdowns are not visible here.`}
+            title={t('chartTitle')}
+            description={t('chartDescription')}
+            caption={t('chartCaption')}
             legend={[
-              { series: 'system', label: 'System — rules followed exactly', lineStyle: 'dashed' },
-              { series: 'trader', label: 'Actual — what you did', lineStyle: 'solid' },
+              { series: 'system', label: t('chartLegendSystem'), lineStyle: 'dashed' },
+              { series: 'trader', label: t('chartLegendActual'), lineStyle: 'solid' },
             ]}
             tableFallback={<CumulativeRTable points={equityCurve} />}
           >
@@ -130,9 +116,7 @@ export function AttributionSection() {
         </div>
 
         <p className="text-muted-foreground border-border max-w-3xl border-l-2 pl-4 text-sm leading-relaxed">
-          Read together, these say something a profit figure cannot: the strategy has an edge, the
-          account is up, and roughly three quarters of what the system offered never arrived. That
-          is a discipline problem, and rewriting the strategy would make it worse.
+          {t('closingNote')}
         </p>
       </div>
     </Section>

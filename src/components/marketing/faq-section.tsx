@@ -1,4 +1,5 @@
 import { ChevronDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { TRIAL_DAYS } from '@/config/plans';
 
@@ -19,66 +20,28 @@ import { Section, SectionIntro } from './section';
  * implied roadmap commitment.
  */
 
-interface FaqItem {
-  readonly question: string;
-  readonly answer: string;
-}
-
-const FAQ: readonly FaqItem[] = [
-  {
-    question: 'Why is journal entry manual?',
-    answer:
-      'Because the number the product is built around does not exist anywhere else. A broker feed knows what you filled; it does not know what your strategy told you to do. That counterfactual only exists in your head, so it has to be typed in. Automating the half that can be automated would not remove the step that matters.',
-  },
-  {
-    question: 'Can I import trades from my broker?',
-    answer:
-      'No. There is no broker API integration, no MT4 or MT5 synchronisation, and no CSV import. Trades are entered by hand. This is a deliberate scope decision for this release, not a feature in progress.',
-  },
-  {
-    question: 'What is System Performance?',
-    answer:
-      'The result the strategy would have produced if its rules had been followed exactly — scored from your planned entry, your planned stop, and the exit the rules define. It answers the question "does this strategy have an edge at all?", independently of how well you traded it.',
-  },
-  {
-    question: 'What is Trader Performance?',
-    answer:
-      'The result your actual decisions produced — real entry, real stop, real exit, and real costs including commission, fees and swap. Compared with system performance it shows how much of the strategy’s edge survived contact with you.',
-  },
-  {
-    question: 'Can I attach TradingView charts?',
-    answer:
-      'You can paste the URL of a TradingView chart onto any trade, and the journal keeps it with that trade. It is a stored link, not an integration: nothing is read from TradingView, no chart images are captured, and no TradingView account is connected.',
-  },
-  {
-    question: 'Is the free trial available now?',
-    answer: `Not yet. A ${TRIAL_DAYS}-day trial starting at first login, with no card required, is planned. Authentication and trial tracking are not implemented, and payment processing is not connected, so no account or trial can start today.`,
-  },
-  {
-    question: 'Can I use it on my phone?',
-    answer:
-      'Yes. Logging a trade is designed for a phone, since that is usually where you are when you close one. The heavier analytics are designed for a desktop screen and stay readable on a tablet; wide tables scroll inside their own area rather than forcing the page sideways.',
-  },
-  {
-    question: 'Does it use AI to analyse my trades?',
-    answer:
-      'No. There is no AI analysis in this product. The finished calculation engine will use defined formulas documented in the repository and covered by tests. Figures in this design preview are labelled fictional fixtures, not calculated results.',
-  },
-];
+const FAQ_KEYS = [
+  'whyManual',
+  'brokerImport',
+  'systemPerformance',
+  'traderPerformance',
+  'tradingViewLinks',
+  'freeTrial',
+  'mobile',
+  'aiAnalysis',
+] as const;
 
 export function FaqSection() {
+  const t = useTranslations('faq');
+
   return (
     <Section id="faq" labelledBy="faq-title" width="prose">
       <div className="flex flex-col gap-10">
-        <SectionIntro
-          eyebrow="Questions"
-          title="What this product does and does not do"
-          titleId="faq-title"
-        />
+        <SectionIntro eyebrow={t('eyebrow')} title={t('title')} titleId="faq-title" />
 
         <ul className="flex flex-col gap-3">
-          {FAQ.map((item) => (
-            <li key={item.question}>
+          {FAQ_KEYS.map((key) => (
+            <li key={key}>
               <details className="group border-border bg-card rounded-lg border">
                 <summary className={cnSummary}>
                   {/*
@@ -88,7 +51,7 @@ export function FaqSection() {
                     each question reachable by heading navigation. h3 sits
                     correctly under the section's h2.
                   */}
-                  <h3 className="text-foreground font-medium">{item.question}</h3>
+                  <h3 className="text-foreground font-medium">{t(`items.${key}.question`)}</h3>
                   <ChevronDown
                     aria-hidden="true"
                     className="text-muted-foreground size-4 shrink-0 transition-transform group-open:rotate-180"
@@ -98,7 +61,9 @@ export function FaqSection() {
                       some browsers, hence the explicit ::-webkit rule. */}
                 </summary>
                 <p className="text-muted-foreground px-5 pb-5 text-sm leading-relaxed">
-                  {item.answer}
+                  {key === 'freeTrial'
+                    ? t('items.freeTrial.answer', { trialDays: TRIAL_DAYS })
+                    : t(`items.${key}.answer`)}
                 </p>
               </details>
             </li>

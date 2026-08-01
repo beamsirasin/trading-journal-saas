@@ -5,19 +5,25 @@
  * than bare fragments (`#features`) so the same nav works from `/pricing` and
  * `/login`, where a bare fragment would resolve against the current route and
  * scroll nowhere.
+ *
+ * PHASE 1.1 CHANGE — `label`/`title` became `labelKey`/`titleKey`. This data
+ * is now consumed by components rendered in both locales, so the display
+ * text lives in `messages/{locale}.json` (`nav.*` and `footer.*`) instead of
+ * being a literal string here.
  */
 export interface MarketingNavItem {
   readonly href: string;
-  readonly label: string;
+  /** Key under the `nav` translation namespace. */
+  readonly labelKey: 'features' | 'howItWorks' | 'pricing' | 'demo';
   /** Heavy interactive destinations are loaded only after explicit intent. */
   readonly prefetch?: false;
 }
 
 export const MARKETING_NAV: readonly MarketingNavItem[] = [
-  { href: '/#features', label: 'Features' },
-  { href: '/#how-it-works', label: 'How it works' },
-  { href: '/pricing', label: 'Pricing' },
-  { href: '/demo', label: 'Demo', prefetch: false },
+  { href: '/#features', labelKey: 'features' },
+  { href: '/#how-it-works', labelKey: 'howItWorks' },
+  { href: '/pricing', labelKey: 'pricing' },
+  { href: '/demo', labelKey: 'demo', prefetch: false },
 ];
 
 /**
@@ -28,11 +34,26 @@ export const MARKETING_NAV: readonly MarketingNavItem[] = [
  * or a support email would be fabricating facts about a business, which is
  * worse than an honest "not written yet".
  */
+export type FooterLinkKey =
+  | 'features'
+  | 'howItWorks'
+  | 'systemVsTrader'
+  | 'pricing'
+  | 'demo'
+  | 'login'
+  | 'register'
+  | 'openApp'
+  | 'terms'
+  | 'privacy'
+  | 'risk';
+
 export interface FooterGroup {
-  readonly title: string;
+  /** Key under `footer.groups`. */
+  readonly titleKey: 'product' | 'account' | 'legal';
   readonly items: readonly {
     href: string;
-    label: string;
+    /** Key under `footer.links`. */
+    labelKey: FooterLinkKey;
     pending?: boolean;
     prefetch?: false;
   }[];
@@ -40,29 +61,29 @@ export interface FooterGroup {
 
 export const FOOTER_GROUPS: readonly FooterGroup[] = [
   {
-    title: 'Product',
+    titleKey: 'product',
     items: [
-      { href: '/#features', label: 'Features' },
-      { href: '/#how-it-works', label: 'How it works' },
-      { href: '/#attribution', label: 'System vs trader' },
-      { href: '/pricing', label: 'Pricing' },
-      { href: '/demo', label: 'Demo dashboard', prefetch: false },
+      { href: '/#features', labelKey: 'features' },
+      { href: '/#how-it-works', labelKey: 'howItWorks' },
+      { href: '/#attribution', labelKey: 'systemVsTrader' },
+      { href: '/pricing', labelKey: 'pricing' },
+      { href: '/demo', labelKey: 'demo', prefetch: false },
     ],
   },
   {
-    title: 'Account',
+    titleKey: 'account',
     items: [
-      { href: '/login', label: 'Login preview' },
-      { href: '/register', label: 'Registration preview' },
-      { href: '/app', label: 'Open the app preview', prefetch: false },
+      { href: '/login', labelKey: 'login' },
+      { href: '/register', labelKey: 'register' },
+      { href: '/app', labelKey: 'openApp', prefetch: false },
     ],
   },
   {
-    title: 'Legal',
+    titleKey: 'legal',
     items: [
-      { href: '/terms', label: 'Terms of service', pending: true },
-      { href: '/privacy', label: 'Privacy policy', pending: true },
-      { href: '/risk', label: 'Risk disclosure', pending: true },
+      { href: '/terms', labelKey: 'terms', pending: true },
+      { href: '/privacy', labelKey: 'privacy', pending: true },
+      { href: '/risk', labelKey: 'risk', pending: true },
     ],
   },
 ];

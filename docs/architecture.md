@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 01. Directories marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
+**Status:** Phase 01.1. Directories marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
 
 ## 1. Shape
 
@@ -24,12 +24,21 @@ Next.js (App Router)
 ```
 src/
   app/
-    (public)/             Marketing site: /, /pricing, /login, /register, /demo
-    (app)/                Application shell (NO guard yet — Phase 02)
-      app/                /app, /trades, /strategies, /analytics, /settings
+    [locale]/             Every route is locale-prefixed — /en/... or /th/...
+      (public)/           Marketing site: /, /pricing, /login, /register, /demo
+      (app)/              Application shell (NO guard yet — Phase 02)
+        app/              /app, /trades, /strategies, /analytics, /settings
+      layout.tsx           Root <html>/<body>, generateMetadata, font
+      not-found.tsx        Translated 404
+    global-error.tsx      Fallback for a failed [locale] layout — deliberately English-only
     api/health/           Liveness endpoint
     robots.ts             Disallow-all while the product is a preview
     icon.svg              Placeholder file-based icon
+  i18n/
+    routing.ts            Locales, default locale, localePrefix ('always')
+    navigation.ts         Locale-aware Link/redirect/usePathname/useRouter
+    request.ts            Per-request message catalog loader
+  middleware.ts            Locale detection precedence and cookie sync
   components/
     ui/                   Vendored shadcn primitives + project-authored controls
     shell/                Layout: app shell, sidebar, drawer, container, brand
@@ -83,6 +92,8 @@ drizzle/                  Generated SQL migrations           (planned)
 **`config/plans.ts` is presentation only.** It renders the pricing page. It is not an entitlement source, and no server check reads it — Phase 04 owns entitlements, evaluated server-side in the same transaction as the write they gate.
 
 **Infrastructure sits behind adapters** — auth provider, email sender, payment provider. Swapping Neon for a VPS Postgres, or the mock payment provider for a real one, must not touch feature code.
+
+**`src/i18n/` is the only place that imports `next/navigation` or `next/link` directly.** Every other file imports `Link`, `redirect`, `usePathname`, `useRouter` from `@/i18n/navigation` instead — that layer is what prepends the locale segment to a route, so bypassing it produces a link with no locale prefix. See [ADR 0007](decisions/0007-i18n-architecture.md).
 
 ## 4. Request flow for a mutation _(planned)_
 

@@ -4,22 +4,23 @@ Fourteen phases to MVP. Each is dependency-ordered, independently reviewable, an
 
 ## Status
 
-| #                                            | Phase                            | Status          | Ships                                               |
-| -------------------------------------------- | -------------------------------- | --------------- | --------------------------------------------------- |
-| [00](phases/PHASE-00-foundation.md)          | Foundation & Conventions         | ✅ **Complete** | Toolchain, CI, design tokens, placeholder page      |
-| [00b](phases/PHASE-00b-core-primitives.md)   | Core Technical Primitives        | ✅ **Complete** | Money, time, theme, shell, Drizzle boundary, health |
-| [01](phases/PHASE-01-design-system.md)       | Design System, Marketing & Shell | ✅ **Complete** | Tokens, landing site, demo dashboard, app shell     |
-| [02](phases/PHASE-02-auth.md)                | Authentication & Session         | ⬜ Not started  | Google + email auth, sessions                       |
-| [03](phases/PHASE-03-tenancy.md)             | Data Model & Tenancy Core        | ⬜ Not started  | Workspaces, membership, scoped queries              |
-| [04](phases/PHASE-04-billing.md)             | Plans, Trial & Entitlements      | ⬜ Not started  | Three plans, 7-day trial, mock payment              |
-| [05](phases/PHASE-05-onboarding-accounts.md) | Onboarding & Trading Accounts    | ⬜ Not started  | Wizard, account CRUD, limit enforcement             |
-| [06](phases/PHASE-06-strategies.md)          | Strategies & Versions            | ⬜ Not started  | Strategy CRUD, immutable versioning                 |
-| [07](phases/PHASE-07-calc-engine.md)         | Trade Model & Calculation Engine | ⬜ Not started  | Schema plus the pure R-multiple engine              |
-| [08](phases/PHASE-08-journal.md)             | Trade Journal                    | ⬜ Not started  | Manual entry, system vs actual, mistakes            |
-| [09](phases/PHASE-09-analytics.md)           | Dashboard & Analytics            | ⬜ Not started  | Real attribution data behind the Phase 01 surfaces  |
-| [10](phases/PHASE-10-settings.md)            | Settings                         | ⬜ Not started  | Profile, workspace, subscription, export            |
-| [11](phases/PHASE-11-admin.md)               | SaaS Administration              | ⬜ Not started  | Admin role, oversight, audit log                    |
-| [12](phases/PHASE-12-hardening.md)           | Hardening & Launch               | ⬜ Not started  | Security, a11y, performance, deploy                 |
+| #                                                | Phase                                         | Status          | Ships                                                    |
+| ------------------------------------------------ | --------------------------------------------- | --------------- | -------------------------------------------------------- |
+| [00](phases/PHASE-00-foundation.md)              | Foundation & Conventions                      | ✅ **Complete** | Toolchain, CI, design tokens, placeholder page           |
+| [00b](phases/PHASE-00b-core-primitives.md)       | Core Technical Primitives                     | ✅ **Complete** | Money, time, theme, shell, Drizzle boundary, health      |
+| [01](phases/PHASE-01-design-system.md)           | Design System, Marketing & Shell              | ✅ **Complete** | Tokens, landing site, demo dashboard, app shell          |
+| [01.1](phases/PHASE-01-1-simplification-i18n.md) | UI Simplification & Thai/English Localization | ✅ **Complete** | Simplified dashboard/landing, next-intl, `/en` and `/th` |
+| [02](phases/PHASE-02-auth.md)                    | Authentication & Session                      | ⬜ Not started  | Google + email auth, sessions                            |
+| [03](phases/PHASE-03-tenancy.md)                 | Data Model & Tenancy Core                     | ⬜ Not started  | Workspaces, membership, scoped queries                   |
+| [04](phases/PHASE-04-billing.md)                 | Plans, Trial & Entitlements                   | ⬜ Not started  | Three plans, 7-day trial, mock payment                   |
+| [05](phases/PHASE-05-onboarding-accounts.md)     | Onboarding & Trading Accounts                 | ⬜ Not started  | Wizard, account CRUD, limit enforcement                  |
+| [06](phases/PHASE-06-strategies.md)              | Strategies & Versions                         | ⬜ Not started  | Strategy CRUD, immutable versioning                      |
+| [07](phases/PHASE-07-calc-engine.md)             | Trade Model & Calculation Engine              | ⬜ Not started  | Schema plus the pure R-multiple engine                   |
+| [08](phases/PHASE-08-journal.md)                 | Trade Journal                                 | ⬜ Not started  | Manual entry, system vs actual, mistakes                 |
+| [09](phases/PHASE-09-analytics.md)               | Dashboard & Analytics                         | ⬜ Not started  | Real attribution data behind the Phase 01 surfaces       |
+| [10](phases/PHASE-10-settings.md)                | Settings                                      | ⬜ Not started  | Profile, workspace, subscription, export                 |
+| [11](phases/PHASE-11-admin.md)                   | SaaS Administration                           | ⬜ Not started  | Admin role, oversight, audit log                         |
+| [12](phases/PHASE-12-hardening.md)               | Hardening & Launch                            | ⬜ Not started  | Security, a11y, performance, deploy                      |
 
 ## What Phase 00 delivered
 
@@ -51,6 +52,17 @@ The product's first complete visual form, on static fixtures only.
 - 267 unit tests, 186 e2e tests across desktop and mobile
 
 No authentication, no database, no product mutations. Full detail: [PHASE-01-design-system.md](phases/PHASE-01-design-system.md).
+
+## What Phase 01.1 delivered
+
+The dashboard and landing page reduced to what a first glance needs, and the entire product made legible in Thai as well as English.
+
+- Dashboard: eight KPI cards and four comparison rows reduced to four KPI cards, a three-row system-vs-trader module, one chart, and the top three mistakes by cost. The moved metrics live on `/app/analytics`, not gone.
+- Landing page: product preview, attribution section and feature list each reduced to their single strongest version — see [PHASE-01-1-simplification-i18n.md](phases/PHASE-01-1-simplification-i18n.md) for the full list.
+- `next-intl`-based localization: `/en` and `/th`, `localePrefix: 'always'`, cookie-based detection precedence, a text-only `LanguageSwitcher` in every shell, `Noto Sans Thai` typography, and a full [localization glossary](../localization-glossary.md) governing terminology.
+- 365 matching message keys across both locales, parity enforced by a dedicated unit test.
+
+No authentication, no database, no product mutations — unchanged from Phase 01. Full detail: [PHASE-01-1-simplification-i18n.md](phases/PHASE-01-1-simplification-i18n.md), [ADR 0007](decisions/0007-i18n-architecture.md).
 
 ## Sequencing rationale
 

@@ -10,16 +10,20 @@ Most journals tell you your P&L. This one tells you where it came from:
 
 ## Status
 
-**Phase 01 — Design system, marketing site and application shell.** The product has its first complete visual form: a validated token set, a landing site that explains the thesis, and an application shell with five sections.
+**Phase 01.1 — UI simplification and Thai/English localization**, on top of Phase 01's design system, marketing site and application shell. The dashboard and landing page are trimmed to what a first glance needs, and the whole product is available in English and Thai.
 
 Everything on screen is driven by **static demo fixtures** and is labelled as such. There is deliberately no authentication, no database schema, no payment processing, and no trading functionality. See [docs/roadmap.md](docs/roadmap.md).
 
 ### Routes
 
-| Public                                       | Application                                         |
-| -------------------------------------------- | --------------------------------------------------- |
-| `/` landing · `/pricing` · `/demo` dashboard | `/app` overview · `/app/trades` · `/app/strategies` |
-| `/login` · `/register` (visual only)         | `/app/analytics` · `/app/settings`                  |
+Every route lives under a locale prefix — `/en/...` or `/th/...` (`en` is the default fallback locale; there is no unprefixed route). See [ADR 0007](docs/decisions/0007-i18n-architecture.md).
+
+| Public                                               | Application                                                  |
+| ---------------------------------------------------- | ------------------------------------------------------------ |
+| `/en` landing · `/en/pricing` · `/en/demo` dashboard | `/en/app` overview · `/en/app/trades` · `/en/app/strategies` |
+| `/en/login` · `/en/register` (visual only)           | `/en/app/analytics` · `/en/app/settings`                     |
+
+Swap `/en` for `/th` for the Thai version of any route.
 
 ## Requirements
 
@@ -82,9 +86,12 @@ Run `pnpm check` before pushing.
 ```
 src/
   app/
-    (public)/   Marketing site: /, /pricing, /login, /register, /demo
-    (app)/      Application shell — no guard yet, Phase 02 adds it
+    [locale]/
+      (public)/ Marketing site: /, /pricing, /login, /register, /demo
+      (app)/    Application shell — no guard yet, Phase 02 adds it
     api/health/ Liveness endpoint
+  i18n/         next-intl routing, navigation, and request config
+  middleware.ts Locale detection and cookie sync
   components/
     ui/         shadcn primitives + project-authored controls
     shell/      App shell, sidebar, drawer, container, brand
@@ -116,20 +123,23 @@ Planned additions are described in [docs/architecture.md](docs/architecture.md);
 
 **Demo data is fictional, labelled, and contains no formulas.** Everything under `src/lib/demo/` is a literal value. The real metrics arrive with the calculation engine; a formula written there to make a chart move would be a second, untested implementation of the product's defining logic. Every surface that renders a fixture carries a visible marker — enforced by tests, because an unlabelled screenshot of a rising equity curve reads as a performance claim. See [ADR 0006](docs/decisions/0006-design-system-and-demo-data.md).
 
+**Every route is locale-prefixed, and internal links use the locale-aware `Link`.** `/en/...` or `/th/...` — never a bare route. Internal navigation imports `Link`/`usePathname`/`useRouter` from `@/i18n/navigation`, never `next/link` or `next/navigation` directly, or the locale prefix silently drops. See [ADR 0007](docs/decisions/0007-i18n-architecture.md).
+
 ## Documentation
 
-| Document                                                   | What it covers                           |
-| ---------------------------------------------------------- | ---------------------------------------- |
-| [CLAUDE.md](CLAUDE.md)                                     | Engineering constitution — read first    |
-| [docs/product-spec.md](docs/product-spec.md)               | What the product does and why            |
-| [docs/architecture.md](docs/architecture.md)               | Structure, boundaries, data flow         |
-| [docs/data-dictionary.md](docs/data-dictionary.md)         | Planned schema and field meanings        |
-| [docs/calculation-spec.md](docs/calculation-spec.md)       | Every financial formula, with edge cases |
-| [docs/design-system.md](docs/design-system.md)             | Tokens, typography, motion, charts, a11y |
-| [docs/ui-review-checklist.md](docs/ui-review-checklist.md) | What to check before a UI ships          |
-| [docs/roadmap.md](docs/roadmap.md)                         | Phase sequence and status                |
-| [docs/decisions/](docs/decisions/)                         | Architecture decision records            |
-| [docs/phases/](docs/phases/)                               | Detailed per-phase scope                 |
+| Document                                                       | What it covers                                   |
+| -------------------------------------------------------------- | ------------------------------------------------ |
+| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first            |
+| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                    |
+| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                 |
+| [docs/data-dictionary.md](docs/data-dictionary.md)             | Planned schema and field meanings                |
+| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases         |
+| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y         |
+| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard |
+| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                  |
+| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                        |
+| [docs/decisions/](docs/decisions/)                             | Architecture decision records                    |
+| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                         |
 
 ## Environment
 

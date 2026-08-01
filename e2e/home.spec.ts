@@ -9,36 +9,47 @@ const VIEWPORTS = [
   { name: 'wide desktop', width: 1920, height: 1080 },
 ] as const;
 
-const PUBLIC_ROUTES = ['/', '/pricing', '/demo', '/login', '/register'] as const;
+/**
+ * PHASE 1.1. Every route now lives under a locale prefix
+ * (`localePrefix: 'always'` — see `src/i18n/routing.ts`), so these routes
+ * target the `en` fallback locale explicitly. Locale switching itself is
+ * covered separately in `e2e/i18n.spec.ts`.
+ */
+const PUBLIC_ROUTES = ['/en', '/en/pricing', '/en/demo', '/en/login', '/en/register'] as const;
 const APP_ROUTES = [
-  '/app',
-  '/app/trades',
-  '/app/strategies',
-  '/app/analytics',
-  '/app/settings',
+  '/en/app',
+  '/en/app/trades',
+  '/en/app/strategies',
+  '/en/app/analytics',
+  '/en/app/settings',
 ] as const;
 
 test.describe('landing page', () => {
   test('renders the major sections', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
     await expect(page.getByRole('heading', { level: 1 })).toContainText(/strategy/i);
 
+    // PHASE 1.1 REWRITE. Copy comes from `messages/en.json` now; the old
+    // "two sets of books" / "three planned tiers, one planned trial" headings
+    // no longer exist (see `attribution.title` / `pricing.title`). The CTA
+    // section heading is new coverage, matching `src/app/[locale]/(public)/page.test.tsx`.
     for (const heading of [
       /profit does not prove/i,
-      /two sets of books/i,
+      /one comparison, the whole product/i,
       /six steps/i,
       /does one thing properly/i,
-      /three planned tiers, one planned trial/i,
+      /three plans, one free trial/i,
       /what this product does/i,
+      /which problem you actually have/i,
     ]) {
       await expect(page.getByRole('heading', { level: 2, name: heading })).toBeVisible();
     }
   });
 
   test('makes the system-versus-trader distinction visible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
     // The product thesis. If these labels disappear the page has stopped
     // making the argument the whole product rests on.
@@ -48,30 +59,42 @@ test.describe('landing page', () => {
   });
 
   test('labels its figures as demo data', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await expect(page.getByText('Demo data').first()).toBeVisible();
     await expect(page.getByText(/not a performance claim/i)).toBeVisible();
   });
 
+  /**
+   * PHASE 1.1 REWRITE. "Paste a TradingView chart link" was never a real
+   * heading in the current copy and "not included, and not planned" does not
+   * appear anywhere in `messages/en.json` — both assertions were stale even
+   * before the locale prefix broke routing. The workflow step ("Attach a
+   * TradingView link") and the FAQ answer are what actually make this point
+   * now (`workflow.steps.attach.title`, `faq.items.tradingViewLinks.answer`,
+   * `features.excludedNote`).
+   */
   test('describes the manual, TradingView-link workflow accurately', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
-    await expect(
-      page.getByRole('heading', { name: /paste a tradingview chart link/i }),
-    ).toBeVisible();
-    // A stored link, not an integration. `.first()` because the FAQ makes the
-    // same point again further down the page, which is deliberate.
+    await expect(page.getByRole('heading', { name: /attach a tradingview link/i })).toBeVisible();
+
+    // "Nothing is read from TradingView" only exists in the FAQ answer, and
+    // native <details> renders it collapsed until opened — clicking the
+    // question (bubbles to the enclosing <summary>) is what a real reader
+    // does to reach it.
+    await page.getByRole('heading', { name: /can i attach tradingview charts/i }).click();
     await expect(page.getByText(/nothing is read from tradingview/i).first()).toBeVisible();
-    await expect(page.getByText(/not included, and not planned/i).first()).toBeVisible();
+
+    await expect(page.getByText(/not included in this release/i).first()).toBeVisible();
   });
 
   test('exposes exactly one main landmark', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await expect(page.getByRole('main')).toHaveCount(1);
   });
 
   test('skip link is the first focusable element and reveals on focus', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await page.keyboard.press('Tab');
 
     const skipLink = page.getByRole('link', { name: /skip to content/i });
@@ -82,7 +105,7 @@ test.describe('landing page', () => {
   });
 
   test('skip link moves focus to main content', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await page.keyboard.press('Tab');
     await page.keyboard.press('Enter');
     await expect(page.getByRole('main')).toBeFocused();
@@ -91,20 +114,22 @@ test.describe('landing page', () => {
 
 test.describe('public calls to action', () => {
   test('primary CTAs point at real routes', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
+    // Suffix match rather than an exact string: `Link` from `@/i18n/navigation`
+    // prepends the active locale segment, so the rendered href is `/en/register`.
     await expect(page.getByRole('link', { name: /preview registration/i }).first()).toHaveAttribute(
       'href',
-      '/register',
+      /\/register$/,
     );
     await expect(page.getByRole('link', { name: /see the demo dashboard/i })).toHaveAttribute(
       'href',
-      '/demo',
+      /\/demo$/,
     );
   });
 
   test('does not claim that registration or a trial is active', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await expect(page.getByRole('link', { name: /start free trial/i })).toHaveCount(0);
     await expect(page.getByText(/registration is not live yet/i).first()).toBeVisible();
   });
@@ -117,7 +142,7 @@ test.describe('public calls to action', () => {
       }
     });
 
-    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.goto('/en', { waitUntil: 'networkidle' });
     await expect(page.locator('[data-static-cumulative-r]')).toBeVisible();
     await expect(page.locator('.recharts-wrapper')).toHaveCount(0);
     const bodies = await Promise.all(scripts);
@@ -134,7 +159,7 @@ test.describe('public calls to action', () => {
 
   test('desktop header navigation reaches pricing and the demo', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/');
+    await page.goto('/en');
 
     const nav = page.getByRole('banner').getByRole('navigation', { name: 'Site' });
     await nav.getByRole('link', { name: 'Pricing' }).click();
@@ -164,7 +189,7 @@ test.describe('public calls to action', () => {
 test.describe('header layout at the navigation breakpoint', () => {
   test('the wordmark and every nav link render on a single line at 1024px', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
-    await page.goto('/');
+    await page.goto('/en');
 
     const wordmark = page.getByRole('banner').getByText('Trading OS', { exact: true });
     const wordmarkBox = await wordmark.boundingBox();
@@ -189,7 +214,7 @@ test.describe('header layout at the navigation breakpoint', () => {
 
   test('keeps desktop navigation targets at least 44px high', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/');
+    await page.goto('/en');
 
     const links = page
       .getByRole('banner')
@@ -202,7 +227,7 @@ test.describe('header layout at the navigation breakpoint', () => {
 
   test('has no horizontal overflow at 768px', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    await page.goto('/');
+    await page.goto('/en');
     const overflows = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
@@ -216,7 +241,7 @@ test.describe('marketing mobile menu', () => {
   });
 
   test('opens, traps focus, and closes on Escape restoring focus', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
     const trigger = page.getByRole('button', { name: /open navigation menu/i });
     await expect(trigger).toBeVisible();
@@ -237,7 +262,7 @@ test.describe('marketing mobile menu', () => {
   });
 
   test('is operable by keyboard alone', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
     const trigger = page.getByRole('button', { name: /open navigation menu/i });
     await trigger.focus();
@@ -246,7 +271,7 @@ test.describe('marketing mobile menu', () => {
   });
 
   test('closes after following a link', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     await page.getByRole('dialog').getByRole('link', { name: 'Pricing' }).click();
 
@@ -255,16 +280,16 @@ test.describe('marketing mobile menu', () => {
   });
 
   test('closes after following the drawer wordmark', async ({ page }) => {
-    await page.goto('/pricing');
+    await page.goto('/en/pricing');
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     await page.getByRole('dialog').getByRole('link', { name: 'Trading OS' }).click();
 
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/en$/);
     await expect(page.getByRole('dialog')).toBeHidden();
   });
 
   test('keeps the trigger and its links at 44px touch targets', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
 
     const trigger = page.getByRole('button', { name: /open navigation menu/i });
     const triggerBox = await trigger.boundingBox();
@@ -284,7 +309,7 @@ test.describe('marketing mobile menu', () => {
   });
 
   test('keeps the focused skip link and footer navigation at 44px', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     await page.keyboard.press('Tab');
 
     const skipBox = await page.getByRole('link', { name: /skip to content/i }).boundingBox();
@@ -329,15 +354,29 @@ test.describe('no horizontal overflow', () => {
 });
 
 test.describe('404 handling', () => {
-  test('renders a not-found page for an unknown route', async ({ page }) => {
-    const response = await page.goto('/this-route-does-not-exist');
-    expect(response?.status()).toBe(404);
-    await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
+  /**
+   * `src/app/[locale]/[...rest]/page.tsx` is a catch-all that calls
+   * `notFound()` unconditionally, so a genuinely unmatched path still enters
+   * the `[locale]` subtree and throws into this segment's own translated
+   * `not-found.tsx` — never Next's generic, unstyled, English-only root
+   * `_not-found` boundary. Checked in both locales because the whole point
+   * is that the 404 a real visitor reaches is translated, not just present.
+   */
+  test('renders the translated not-found page for an unknown route', async ({ page }) => {
+    const enResponse = await page.goto('/en/this-route-does-not-exist');
+    expect(enResponse?.status()).toBe(404);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/page not found/i);
+
+    const thResponse = await page.goto('/th/this-route-does-not-exist');
+    expect(thResponse?.status()).toBe(404);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ไม่พบหน้านี้');
   });
 });
 
 test.describe('robots policy', () => {
   test('disallows crawling while the product is a preview', async ({ request }) => {
+    // Excluded from the locale middleware matcher (`src/middleware.ts`), so
+    // this stays unprefixed — a crawler requests it at the bare path.
     const response = await request.get('/robots.txt');
     expect(response.status()).toBe(200);
 
@@ -347,7 +386,7 @@ test.describe('robots policy', () => {
   });
 
   test('public pages carry a noindex directive', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/en');
     const robots = page.locator('meta[name="robots"]');
     await expect(robots).toHaveAttribute('content', /noindex/);
   });

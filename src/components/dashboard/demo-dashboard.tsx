@@ -1,7 +1,7 @@
 'use client';
 
 import { BookOpen } from 'lucide-react';
-import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import {
@@ -22,9 +22,9 @@ import { EmptyState } from '@/components/product/empty-state';
 import { KpiCard } from '@/components/product/kpi-card';
 import { SectionHeader } from '@/components/product/page-header';
 import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 import { DashboardFilters } from './dashboard-filters';
-import { MistakeSummary } from './mistake-summary';
 import { TradesTable } from './trades-table';
 
 /**
@@ -39,23 +39,35 @@ import { TradesTable } from './trades-table';
  * would be inventing a second implementation of the formulas that are the
  * whole point of this product, and it would not be tested.
  *
+ * Kept deliberately shallow per the Phase 1.1 dashboard-simplification rule:
+ * the dashboard answers "what is happening right now", not "why" — that is
+ * `/app/analytics`'s job. Only four headline KPIs render as top-level cards;
+ * System Expectancy, Actual Expectancy, Profit Factor, Max Drawdown and
+ * Execution Efficiency are analytics-depth figures and live there instead.
+ * The system-vs-trader module below shows only Win Rate / Average R /
+ * Expectancy, with Edge Leakage folded into one insight sentence rather than
+ * its own card, and a link out to the full breakdown.
+ *
  * `barPercent` (imported) is bar geometry, not a metric — see its own doc
  * comment.
  *
  * KPI grids are `grid-cols-2` from the smallest viewport up, not the more
  * common `sm:grid-cols-2` (single column below 640px). A trading dashboard's
  * KPI row reads as a real analytics surface at two-up even on a 375px phone;
- * one full-width card per row for eight cards in a row turns a five-second
+ * one full-width card per row for four cards in a row turns a five-second
  * glance into a long, sparse scroll. Card content (a short label, one number,
  * one line of hint text) fits comfortably at half width.
  */
 
 export function DemoDashboard() {
+  const t = useTranslations('dashboard');
+  const tCommon = useTranslations('common');
   const [range, setRange] = useState<DemoRangeId>(DEMO_DEFAULT_RANGE);
   const [accountId, setAccountId] = useState<string>(DEMO_DEFAULT_ACCOUNT);
 
   const bundle = demoBundle(range);
   const { attribution, equityCurve, mistakes, netPnl, closedTrades } = bundle;
+  const topMistakes = mistakes.slice(0, 3);
 
   const trades = demoTradesForAccount(accountId);
   const account = DEMO_ACCOUNTS.find((candidate) => candidate.id === accountId);
@@ -75,112 +87,88 @@ export function DemoDashboard() {
       <section aria-labelledby="headline-metrics" className="flex flex-col gap-4">
         <SectionHeader
           id="headline-metrics"
-          title="Headline"
-          description={`${closedTrades} closed trades in the selected range.`}
+          title={t('title')}
+          description={`${closedTrades} ${tCommon('closedTrades').toLowerCase()}`}
         />
 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <KpiCard
-            label="Total net P&L"
+            label={t('netPnl')}
             value={formatMoney(netPnl, { style: 'symbol', signDisplay: 'always' })}
             tone={netPnl.amountMinor >= 0n ? 'positive' : 'negative'}
             animate={false}
-            hint="After commission, fees and swap."
+            hint={t('netPnlHint')}
           />
           <KpiCard
-            label="Actual win rate"
+            label={t('actualWinRate')}
             value={attribution.actualWinRatePct}
             suffix="%"
-            hint={`The system's rules won ${attribution.systemWinRatePct}% of the time.`}
+            hint={t('actualWinRateHint')}
           />
           <KpiCard
-            label="Actual average R"
+            label={t('actualAverageR')}
             value={attribution.actualAvgR}
             suffix="R"
-            hint={`The system averaged ${attribution.systemAvgR}R per trade.`}
+            hint={t('actualAverageRHint')}
           />
           <KpiCard
-            label="Discipline score"
+            label={t('disciplineScore')}
             value={attribution.disciplineScore}
             tone="warning"
-            hint="100 minus the weighted cost of recorded rule breaks."
+            hint={t('disciplineScoreHint')}
           />
         </div>
       </section>
 
       <section aria-labelledby="attribution-metrics" className="flex flex-col gap-4">
-        <SectionHeader
-          id="attribution-metrics"
-          title="Where the edge went"
-          description="The system's result against yours, over the same trades."
-        />
+        <div className="bg-card border-border grid gap-4 rounded-lg border p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+          <div className="flex flex-col gap-5">
+            <SectionHeader
+              id="attribution-metrics"
+              title={t('systemVsTrader.title')}
+              description={t('systemVsTrader.description')}
+            />
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <KpiCard
-            label="System expectancy"
-            value={attribution.systemExpectancyR}
-            suffix="R"
-            hint="Mean R per trade if the rules had been followed exactly."
-          />
-          <KpiCard
-            label="Actual expectancy"
-            value={attribution.actualExpectancyR}
-            suffix="R"
-            hint="Mean R per trade as actually executed."
-          />
-          <KpiCard
-            label="Edge leakage"
-            value={attribution.edgeLeakageR}
-            suffix="R"
-            tone="warning"
-            hint="System total R minus actual total R."
-          />
-          <KpiCard
-            label="Execution efficiency"
-            value={attribution.executionEfficiencyPct}
-            suffix="%"
-            hint="The share of available edge that reached the account."
-          />
-        </div>
+            <div className="flex flex-col gap-6">
+              <ComparisonMetric
+                label={t('systemVsTrader.winRate')}
+                systemValue={attribution.systemWinRatePct}
+                actualValue={attribution.actualWinRatePct}
+                unit="%"
+                scaleMax="100%"
+                systemPercent={barPercent(attribution.systemWinRatePct, 100)}
+                actualPercent={barPercent(attribution.actualWinRatePct, 100)}
+              />
+              <ComparisonMetric
+                label={t('systemVsTrader.averageR')}
+                systemValue={attribution.systemAvgR}
+                actualValue={attribution.actualAvgR}
+                unit="R"
+              />
+              <ComparisonMetric
+                label={t('systemVsTrader.expectancy')}
+                systemValue={attribution.systemExpectancyR}
+                actualValue={attribution.actualExpectancyR}
+                unit="R"
+              />
+            </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
-          <div className="bg-card border-border flex flex-col gap-7 rounded-lg border p-5">
-            <ComparisonMetric
-              label="Win rate"
-              systemValue={attribution.systemWinRatePct}
-              actualValue={attribution.actualWinRatePct}
-              unit="%"
-              scaleMax="100%"
-              systemPercent={barPercent(attribution.systemWinRatePct, 100)}
-              actualPercent={barPercent(attribution.actualWinRatePct, 100)}
-            />
-            <ComparisonMetric
-              label="Profit factor"
-              systemValue={attribution.systemProfitFactor}
-              actualValue={attribution.actualProfitFactor}
-              scaleMax="3.00"
-              systemPercent={barPercent(attribution.systemProfitFactor, 3)}
-              actualPercent={barPercent(attribution.actualProfitFactor, 3)}
-            />
-            <ComparisonMetric
-              label="Max drawdown"
-              systemValue={attribution.systemMaxDrawdownR}
-              actualValue={attribution.actualMaxDrawdownR}
-              unit="R"
-              scaleMax="8R"
-              systemPercent={barPercent(attribution.systemMaxDrawdownR, 8)}
-              actualPercent={barPercent(attribution.actualMaxDrawdownR, 8)}
-              note="Lower is better on this row — the actual drawdown is the deeper one."
-            />
+            <p className="text-warning text-sm leading-relaxed">
+              {t('systemVsTrader.edgeLeakageInsight', { value: attribution.edgeLeakageR })}
+            </p>
+
+            <Button asChild variant="outline" className="min-h-11 self-start">
+              <Link href="/app/analytics">{t('systemVsTrader.viewDetailedAnalytics')}</Link>
+            </Button>
           </div>
 
           <ChartContainer
-            title="Cumulative R"
-            description="Both series in R, on one axis."
-            caption={`Demo data. The gap between the lines is ${attribution.edgeLeakageR}R of edge that the strategy offered and execution did not capture. Weekly samples, so intra-week drawdowns are not visible.`}
+            title={t('chart.title')}
+            description={t('chart.description')}
+            caption={t('chart.caption')}
             legend={[
-              { series: 'system', label: 'System', lineStyle: 'dashed' },
-              { series: 'trader', label: 'Actual', lineStyle: 'solid' },
+              { series: 'system', label: tCommon('system'), lineStyle: 'dashed' },
+              { series: 'trader', label: tCommon('actual'), lineStyle: 'solid' },
             ]}
             tableFallback={<CumulativeRTable points={equityCurve} />}
           >
@@ -192,31 +180,54 @@ export function DemoDashboard() {
       <section aria-labelledby="mistakes-heading" className="flex flex-col gap-4">
         <SectionHeader
           id="mistakes-heading"
-          title="Mistake summary"
-          description="The habits behind the leakage."
+          title={t('mistakes.title')}
+          description={t('mistakes.description')}
         />
-        <MistakeSummary mistakes={mistakes} edgeLeakageR={attribution.edgeLeakageR} />
+
+        <ul className="flex flex-col gap-2">
+          {topMistakes.map((mistake) => (
+            <li
+              key={mistake.id}
+              className="border-border flex items-center gap-3 rounded-md border p-3"
+            >
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="text-foreground text-sm font-medium">{mistake.label}</span>
+                <span className="text-muted-foreground text-xs">
+                  {t('mistakes.times', { count: mistake.occurrences })}
+                </span>
+              </div>
+
+              <span className="numeric text-foreground ml-auto w-14 text-right text-sm font-semibold">
+                −{mistake.costR}R
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <Button asChild variant="ghost" className="min-h-11 self-start">
+          <Link href="/app/analytics">{t('mistakes.viewDetailedAnalytics')}</Link>
+        </Button>
       </section>
 
       <section aria-labelledby="recent-trades" className="flex flex-col gap-4">
         <SectionHeader
           id="recent-trades"
-          title="Recent trades"
+          title={t('recentTrades.title')}
           description={
             isCombined
-              ? 'Across all demo accounts, newest first.'
-              : `Filtered to ${account?.name ?? 'this account'}, newest first.`
+              ? t('recentTrades.allAccountsDescription')
+              : t('recentTrades.filteredTo', { account: account?.name ?? '' })
           }
         />
 
         {trades.length === 0 ? (
           <EmptyState
             icon={BookOpen}
-            title="No trades in this account yet"
-            description="Log your first trade to see how much of your strategy's edge you are actually capturing."
+            title={t('recentTrades.emptyTitle')}
+            description={t('recentTrades.emptyDescription')}
             action={
               <Button asChild className="min-h-11">
-                <Link href="/register">Preview registration</Link>
+                <Link href="/register">{t('recentTrades.emptyCta')}</Link>
               </Button>
             }
           />
@@ -225,9 +236,7 @@ export function DemoDashboard() {
         )}
 
         <p className="text-muted-foreground text-xs leading-relaxed">
-          The headline and attribution figures above cover all demo accounts for the selected range.
-          Only this trade list responds to the account picker — per-account attribution arrives with
-          the real calculation engine.
+          {t('recentTrades.footnote')}
         </p>
       </section>
     </div>

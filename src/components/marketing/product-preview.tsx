@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import { demoBundle } from '@/lib/demo';
 import { cn } from '@/lib/utils';
 import { DemoBadge } from '@/components/product/demo-badge';
@@ -14,10 +16,18 @@ import { MetricLabel } from '@/components/product/metric';
  *
  * It is a static composition, not a screenshot: a screenshot goes stale the
  * moment the design system changes and cannot follow the reader's theme.
+ *
+ * PHASE 1.1 SIMPLIFICATION — this used to open with a three-card stat grid
+ * (system total R / actual total R / edge leakage) above the chart. That put
+ * four competing numeric surfaces in the first thing a visitor sees: the
+ * three cards, then the chart repeating two of the same figures. The cards
+ * are gone; the one chart plus the one summary sentence below it carry the
+ * whole message now — "one primary product preview" per the Phase 1.1 brief,
+ * not one preview built from four.
  */
 
 const VIEW_WIDTH = 320;
-const VIEW_HEIGHT = 96;
+const VIEW_HEIGHT = 110;
 
 function toPolyline(values: readonly string[], min: number, max: number): string {
   const span = max - min || 1;
@@ -31,6 +41,7 @@ function toPolyline(values: readonly string[], min: number, max: number): string
 }
 
 export function ProductPreview({ className }: { className?: string }) {
+  const t = useTranslations('productPreview');
   const bundle = demoBundle('all');
   const { attribution, equityCurve } = bundle;
 
@@ -58,34 +69,22 @@ export function ProductPreview({ className }: { className?: string }) {
           <span className="bg-muted-foreground/30 size-2.5 rounded-full" />
           <span className="bg-muted-foreground/30 size-2.5 rounded-full" />
         </span>
-        <p className="text-muted-foreground ml-1 text-xs font-medium">Attribution overview</p>
+        <p className="text-muted-foreground ml-1 text-xs font-medium">{t('title')}</p>
         <DemoBadge className="ml-auto" />
       </div>
 
       <div className="flex flex-col gap-5 p-4 sm:p-5">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <PreviewStat label="System total R" value={attribution.systemTotalR} suffix="R" />
-          <PreviewStat label="Actual total R" value={attribution.actualTotalR} suffix="R" />
-          <PreviewStat
-            label="Edge leakage"
-            value={attribution.edgeLeakageR}
-            suffix="R"
-            tone="warning"
-            className="col-span-2 sm:col-span-1"
-          />
-        </div>
-
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <MetricLabel>Cumulative R</MetricLabel>
+            <MetricLabel>{t('cumulativeR')}</MetricLabel>
             <span className="text-muted-foreground flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5">
                 <span className="bg-system size-2 rounded-[2px]" aria-hidden="true" />
-                System
+                {t('system')}
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="bg-trader size-2 rounded-[2px]" aria-hidden="true" />
-                Actual
+                {t('actual')}
               </span>
             </span>
           </div>
@@ -93,9 +92,13 @@ export function ProductPreview({ className }: { className?: string }) {
           <svg
             viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
             preserveAspectRatio="none"
-            className="h-24 w-full"
+            className="h-28 w-full"
             role="img"
-            aria-label={`Cumulative R over time. The system reaches ${attribution.systemTotalR}R while actual execution reaches ${attribution.actualTotalR}R, a gap of ${attribution.edgeLeakageR}R.`}
+            aria-label={t('chartAriaLabel', {
+              systemTotalR: attribution.systemTotalR,
+              actualTotalR: attribution.actualTotalR,
+              edgeLeakageR: attribution.edgeLeakageR,
+            })}
           >
             {/* Dashed for the system line because it is hypothetical, solid
                 for what actually happened — the same encoding as the real
@@ -120,52 +123,19 @@ export function ProductPreview({ className }: { className?: string }) {
 
         <div className="border-border bg-surface flex flex-col gap-1 rounded-lg border p-3">
           <p className="text-foreground text-sm font-medium">
-            The strategy earned {attribution.systemTotalR}R. You kept {attribution.actualTotalR}R.
+            {t('summary', {
+              systemTotalR: attribution.systemTotalR,
+              actualTotalR: attribution.actualTotalR,
+            })}
           </p>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            Discipline score {attribution.disciplineScore} · execution efficiency{' '}
-            {attribution.executionEfficiencyPct}%
+            {t('disciplineLine', {
+              disciplineScore: attribution.disciplineScore,
+              executionEfficiencyPct: attribution.executionEfficiencyPct,
+            })}
           </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-function PreviewStat({
-  label,
-  value,
-  suffix,
-  tone = 'neutral',
-  className,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  tone?: 'neutral' | 'warning';
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        'border-border bg-surface flex flex-col gap-1 rounded-lg border p-3',
-        className,
-      )}
-    >
-      <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-        {label}
-      </span>
-      <span
-        className={cn(
-          'numeric text-lg font-semibold',
-          tone === 'warning' ? 'text-warning' : 'text-foreground',
-        )}
-      >
-        {value}
-        {suffix === undefined ? null : (
-          <span className="text-muted-foreground ml-0.5 text-xs">{suffix}</span>
-        )}
-      </span>
     </div>
   );
 }

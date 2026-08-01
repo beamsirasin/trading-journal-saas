@@ -11,6 +11,15 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     css: true,
+    // `next-intl`'s navigation module resolves `next/navigation` through
+    // Node's own ESM loader when left externalized, and that loader (unlike
+    // Vite's) does not resolve the extensionless specifier. Inlining forces
+    // Vite to transform the package instead, which resolves it correctly.
+    server: {
+      deps: {
+        inline: [/next-intl/],
+      },
+    },
     // `e2e/` belongs to Playwright. Without this split, Vitest would try to
     // execute Playwright specs and fail confusingly.
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
