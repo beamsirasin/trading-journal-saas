@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
@@ -19,8 +20,19 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'strategies' });
-  return { title: t('title') };
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'strategies' });
+  return {
+    title: t('title'),
+    description: t('description'),
+    alternates: localizedAlternates(appLocale, '/app/strategies'),
+    openGraph: {
+      title: t('title'),
+      description: t('description'),
+      type: 'website',
+      ...localizedOpenGraph(appLocale, '/app/strategies'),
+    },
+  };
 }
 
 /**

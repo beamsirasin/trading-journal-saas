@@ -9,6 +9,7 @@ import { Hero } from '@/components/marketing/hero';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { ProblemSection } from '@/components/marketing/problem-section';
 import { WorkflowSection } from '@/components/marketing/workflow-section';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
@@ -19,7 +20,8 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'metadata' });
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'metadata' });
 
   return {
     // The root layout's template appends "· Trading OS". The home page owns
@@ -27,12 +29,12 @@ export async function generateMetadata({
     // "Trading OS · Trading OS".
     title: { absolute: t('title') },
     description: t('description'),
-    alternates: { canonical: '/' },
+    alternates: localizedAlternates(appLocale, '/'),
     openGraph: {
       title: t('title'),
       description: t('description'),
-      url: '/',
       type: 'website',
+      ...localizedOpenGraph(appLocale, '/'),
     },
   };
 }

@@ -1,9 +1,10 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import type { DemoMistake } from '@/lib/demo';
+import { useDemoMistakeLabel } from '@/components/product/demo-mistake-label';
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 import { ChartTooltip } from './chart-tooltip';
@@ -34,11 +35,13 @@ export function MistakeCostChart({
   className?: string;
 }) {
   const t = useTranslations('charts');
+  const locale = useLocale();
+  const mistakeLabel = useDemoMistakeLabel();
   const prefersReducedMotion = usePrefersReducedMotion();
   const nameFor = { costR: t('cost') };
 
   const data = mistakes.map((mistake) => ({
-    label: mistake.label,
+    label: mistakeLabel(mistake.label),
     costR: Number(mistake.costR),
   }));
 
@@ -64,7 +67,7 @@ export function MistakeCostChart({
             tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
             tickLine={false}
             axisLine={false}
-            width={104}
+            width={locale === 'th' ? 136 : 104}
           />
 
           <Tooltip
@@ -90,6 +93,7 @@ export function MistakeCostChart({
 export function MistakeCostTable({ mistakes }: { mistakes: readonly DemoMistake[] }) {
   const t = useTranslations('charts.mistakeCostTable');
   const tSeverity = useTranslations('mistakes.severity');
+  const mistakeLabel = useDemoMistakeLabel();
 
   return (
     <table>
@@ -105,7 +109,7 @@ export function MistakeCostTable({ mistakes }: { mistakes: readonly DemoMistake[
       <tbody>
         {mistakes.map((mistake) => (
           <tr key={mistake.id}>
-            <th scope="row">{mistake.label}</th>
+            <th scope="row">{mistakeLabel(mistake.label)}</th>
             <td>{tSeverity(mistake.severity)}</td>
             <td>{mistake.occurrences}</td>
             <td>{mistake.costR}</td>

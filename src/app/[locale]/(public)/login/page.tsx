@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { DemoAuthForm } from '@/components/forms/demo-auth-form';
 import { Container } from '@/components/shell/container';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
@@ -14,12 +15,19 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'auth' });
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'auth' });
 
   return {
     title: t('loginTitle'),
     description: t('loginPreviewNote'),
-    alternates: { canonical: '/login' },
+    alternates: localizedAlternates(appLocale, '/login'),
+    openGraph: {
+      title: t('loginTitle'),
+      description: t('loginPreviewNote'),
+      type: 'website',
+      ...localizedOpenGraph(appLocale, '/login'),
+    },
     // A sign-in page has no business in an index even once it works.
     robots: { index: false, follow: false },
   };

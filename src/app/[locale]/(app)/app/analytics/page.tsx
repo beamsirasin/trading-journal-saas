@@ -10,6 +10,7 @@ import { barPercent, ComparisonMetric } from '@/components/product/comparison-me
 import { DemoBadge, DemoDataNotice } from '@/components/product/demo-badge';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
@@ -20,8 +21,19 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'analytics' });
-  return { title: t('title') };
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'analytics' });
+  return {
+    title: t('title'),
+    description: t('description'),
+    alternates: localizedAlternates(appLocale, '/app/analytics'),
+    openGraph: {
+      title: t('title'),
+      description: t('description'),
+      type: 'website',
+      ...localizedOpenGraph(appLocale, '/app/analytics'),
+    },
+  };
 }
 
 /**

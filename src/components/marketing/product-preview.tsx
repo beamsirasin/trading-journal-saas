@@ -121,17 +121,11 @@ export function ProductPreview({ className }: { className?: string }) {
           </svg>
         </div>
 
-        <div className="border-border bg-surface flex flex-col gap-1 rounded-lg border p-3">
+        <div className="border-border bg-surface rounded-lg border p-3">
           <p className="text-foreground text-sm font-medium">
             {t('summary', {
               systemTotalR: attribution.systemTotalR,
               actualTotalR: attribution.actualTotalR,
-            })}
-          </p>
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            {t('disciplineLine', {
-              disciplineScore: attribution.disciplineScore,
-              executionEfficiencyPct: attribution.executionEfficiencyPct,
             })}
           </p>
         </div>

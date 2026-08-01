@@ -12,17 +12,24 @@ const VIEWPORTS = [
 /**
  * PHASE 1.1. Every route now lives under a locale prefix
  * (`localePrefix: 'always'` — see `src/i18n/routing.ts`), so these routes
- * target the `en` fallback locale explicitly. Locale switching itself is
- * covered separately in `e2e/i18n.spec.ts`.
+ * cover both supported locales. Locale switching itself is covered
+ * separately in `e2e/i18n.spec.ts`.
  */
-const PUBLIC_ROUTES = ['/en', '/en/pricing', '/en/demo', '/en/login', '/en/register'] as const;
-const APP_ROUTES = [
-  '/en/app',
-  '/en/app/trades',
-  '/en/app/strategies',
-  '/en/app/analytics',
-  '/en/app/settings',
+const LOCALES = ['en', 'th'] as const;
+const PUBLIC_PATHS = ['', '/pricing', '/demo', '/login', '/register'] as const;
+const APP_PATHS = [
+  '/app',
+  '/app/trades',
+  '/app/strategies',
+  '/app/analytics',
+  '/app/settings',
 ] as const;
+const PUBLIC_ROUTES = LOCALES.flatMap((locale) =>
+  PUBLIC_PATHS.map((pathname) => `/${locale}${pathname}`),
+);
+const APP_ROUTES = LOCALES.flatMap((locale) =>
+  APP_PATHS.map((pathname) => `/${locale}${pathname}`),
+);
 
 test.describe('landing page', () => {
   test('renders the major sections', async ({ page }) => {
@@ -55,7 +62,7 @@ test.describe('landing page', () => {
     // making the argument the whole product rests on.
     await expect(page.getByText('Edge leakage').first()).toBeVisible();
     await expect(page.getByText('Discipline score').first()).toBeVisible();
-    await expect(page.getByText(/execution efficiency/i).first()).toBeVisible();
+    await expect(page.getByText(/execution efficiency/i)).toHaveCount(0);
   });
 
   test('labels its figures as demo data', async ({ page }) => {

@@ -56,6 +56,25 @@ test.describe('locale rendering', () => {
     ).toBeVisible();
   });
 
+  test('/th/app localizes the overview page and fixed mistake taxonomy', async ({ page }) => {
+    await page.goto('/th/app');
+
+    await expect(page.getByRole('heading', { level: 1, name: 'ภาพรวม' })).toBeVisible();
+    await expect(page.getByText('ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง')).toBeVisible();
+    await expect(page.getByText('ขยับจุดตัดขาดทุน').first()).toBeVisible();
+    await expect(page.getByText('Overview', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Moved stop', { exact: true })).toHaveCount(0);
+  });
+
+  test('/th/app/analytics localizes chart and accessible-table mistake labels', async ({
+    page,
+  }) => {
+    await page.goto('/th/app/analytics');
+
+    await expect(page.getByText('ขยับจุดตัดขาดทุน').first()).toBeVisible();
+    await expect(page.getByText('Moved stop', { exact: true })).toHaveCount(0);
+  });
+
   test('sets html[lang] to match the URL locale', async ({ page }) => {
     await page.goto('/en');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -128,6 +147,17 @@ test.describe('language switcher', () => {
 
     await expect(page).toHaveURL(/\/th\/app\/trades$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+  });
+
+  test('switching locale preserves query parameters without changing their order or values', async ({
+    page,
+  }) => {
+    await page.goto('/en/app/trades?account=acc-live&range=30d');
+
+    await languageTrigger(page).click();
+    await page.getByRole('menuitem', { name: 'ไทย' }).click();
+
+    await expect(page).toHaveURL(/\/th\/app\/trades\?account=acc-live&range=30d$/);
   });
 
   test('persists the switched locale across a reload via the NEXT_LOCALE cookie', async ({
@@ -238,4 +268,93 @@ test.describe('no redirect loops or hydration mismatches', () => {
     const hydrationIssues = consoleIssues.filter((text) => /hydration/i.test(text));
     expect(hydrationIssues, hydrationIssues.join('\n')).toEqual([]);
   });
+});
+
+test.describe('localized metadata', () => {
+  test('uses locale-prefixed canonical, route-specific alternates and valid Open Graph locales', async ({
+    page,
+  }) => {
+    await page.goto('/th/pricing');
+
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', /\/th\/pricing$/);
+    await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute(
+      'href',
+      /\/en\/pricing$/,
+    );
+    await expect(page.locator('link[rel="alternate"][hreflang="th"]')).toHaveAttribute(
+      'href',
+      /\/th\/pricing$/,
+    );
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute(
+      'content',
+      /\/th\/pricing$/,
+    );
+    await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'th_TH');
+  });
+
+  test('localizes the app overview title', async ({ page }) => {
+    await page.goto('/th/app');
+    await expect(page).toHaveTitle(/^ภาพรวม · Trading OS$/);
+  });
+});
+
+test.describe('Thai responsive typography', () => {
+  test('gives wrapped Thai headings script-appropriate line height and tracking', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto('/th');
+
+    const typography = await page.getByRole('heading', { level: 1 }).evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        fontSize: Number.parseFloat(style.fontSize),
+        lineHeight: Number.parseFloat(style.lineHeight),
+        letterSpacingPx:
+          style.letterSpacing === 'normal' ? 0 : Number.parseFloat(style.letterSpacing),
+      };
+    });
+
+    expect(typography.lineHeight / typography.fontSize).toBeGreaterThanOrEqual(1.2);
+    expect(typography.letterSpacingPx).toBe(0);
+  });
+
+  test('keeps Thai desktop navigation inside the header at 1024px', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.goto('/th');
+
+    const header = page.getByRole('banner');
+    const headerBox = await header.boundingBox();
+    const targets = header.locator('button:visible');
+
+    for (let index = 0; index < (await targets.count()); index += 1) {
+      const box = await targets.nth(index).boundingBox();
+      expect(box?.x ?? -1).toBeGreaterThanOrEqual(headerBox?.x ?? 0);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
+        (headerBox?.x ?? 0) + (headerBox?.width ?? 0) + 1,
+      );
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  for (const width of [320, 768] as const) {
+    test(`keeps Thai pricing cards and CTAs contained at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1024 });
+      await page.goto('/th/pricing');
+
+      const cards = page.locator('[aria-labelledby^="plan-"]');
+      await expect(cards).toHaveCount(3);
+      for (let index = 0; index < (await cards.count()); index += 1) {
+        const contained = await cards
+          .nth(index)
+          .evaluate(
+            (card) =>
+              card.scrollWidth <= card.clientWidth && card.scrollHeight <= card.clientHeight,
+          );
+        expect(contained, `Thai pricing card ${index} should not clip or overflow`).toBe(true);
+        const ctaBox = await cards.nth(index).getByRole('link').boundingBox();
+        expect(ctaBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+      }
+    });
+  }
 });

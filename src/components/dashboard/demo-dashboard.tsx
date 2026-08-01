@@ -18,6 +18,7 @@ import { CumulativeRTable } from '@/components/charts/cumulative-r-table';
 import { ChartContainer } from '@/components/product/chart-container';
 import { barPercent, ComparisonMetric } from '@/components/product/comparison-metric';
 import { DemoDataNotice } from '@/components/product/demo-badge';
+import { useDemoMistakeLabel } from '@/components/product/demo-mistake-label';
 import { EmptyState } from '@/components/product/empty-state';
 import { KpiCard } from '@/components/product/kpi-card';
 import { SectionHeader } from '@/components/product/page-header';
@@ -62,6 +63,7 @@ import { TradesTable } from './trades-table';
 export function DemoDashboard() {
   const t = useTranslations('dashboard');
   const tCommon = useTranslations('common');
+  const mistakeLabel = useDemoMistakeLabel();
   const [range, setRange] = useState<DemoRangeId>(DEMO_DEFAULT_RANGE);
   const [accountId, setAccountId] = useState<string>(DEMO_DEFAULT_ACCOUNT);
 
@@ -171,6 +173,7 @@ export function DemoDashboard() {
               { series: 'trader', label: tCommon('actual'), lineStyle: 'solid' },
             ]}
             tableFallback={<CumulativeRTable points={equityCurve} />}
+            className="border-0 bg-transparent p-0 sm:p-0"
           >
             <CumulativeRChart points={equityCurve} className="h-64 w-full sm:h-72" />
           </ChartContainer>
@@ -191,7 +194,9 @@ export function DemoDashboard() {
               className="border-border flex items-center gap-3 rounded-md border p-3"
             >
               <div className="flex min-w-0 flex-col gap-1">
-                <span className="text-foreground text-sm font-medium">{mistake.label}</span>
+                <span className="text-foreground text-sm font-medium">
+                  {mistakeLabel(mistake.label)}
+                </span>
                 <span className="text-muted-foreground text-xs">
                   {t('mistakes.times', { count: mistake.occurrences })}
                 </span>

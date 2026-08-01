@@ -4,6 +4,7 @@ import type { DemoMistake, DemoSeverity } from '@/lib/demo';
 import { cn } from '@/lib/utils';
 import { MistakeCostChart, MistakeCostTable } from '@/components/charts/mistake-cost-chart';
 import { ChartContainer } from '@/components/product/chart-container';
+import { useDemoMistakeLabel } from '@/components/product/demo-mistake-label';
 
 const SEVERITY_CLASS: Record<DemoSeverity, string> = {
   minor: 'border-border bg-muted text-muted-foreground',
@@ -30,6 +31,7 @@ export function MistakeSummary({
   className?: string;
 }) {
   const t = useTranslations('mistakes');
+  const mistakeLabel = useDemoMistakeLabel();
 
   return (
     <ChartContainer
@@ -49,7 +51,9 @@ export function MistakeSummary({
               className="border-border flex items-center gap-3 rounded-md border p-3"
             >
               <div className="flex min-w-0 flex-col gap-1">
-                <span className="text-foreground text-sm font-medium">{mistake.label}</span>
+                <span className="text-foreground text-sm font-medium">
+                  {mistakeLabel(mistake.label)}
+                </span>
                 <span className="text-muted-foreground text-xs">
                   {t('occurrences', { count: mistake.occurrences })}
                 </span>

@@ -164,7 +164,7 @@ The app talks to PostgreSQL through a standard `DATABASE_URL` (local Postgres in
 ## Testing
 
 - **Unit** — Vitest + React Testing Library, in `src/**/*.test.{ts,tsx}`.
-- **E2E** — Playwright, in `e2e/`, run against a real production build rather than the dev server. Covers desktop and mobile projects, and asserts horizontal-overflow at five viewports, theming, reduced-motion branches, touch targets, focus management, and that nothing claims a capability the product lacks.
+- **E2E** — Playwright, in `e2e/`, run against a real production build rather than the dev server. Covers both locales in desktop and mobile projects, and asserts horizontal-overflow at five viewports, theming, reduced-motion branches, touch targets, focus management, localized metadata, and that nothing claims a capability the product lacks.
 - **Supply-chain canaries** — `pnpm build` must succeed with no `DATABASE_URL` set, and `pnpm scan:client` fails if a server-only variable name or a secret-shaped value reaches the client bundle. Both run in CI.
 
 Run `pnpm test:e2e:install` once before the first e2e run.

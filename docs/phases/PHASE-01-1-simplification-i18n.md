@@ -40,15 +40,16 @@ One idea per section, in argument order: problem → why system/trader separatio
 
 Full architecture, URL strategy, and rationale in [ADR 0007](../decisions/0007-i18n-architecture.md). Summary:
 
-- **`next-intl` 4.13.4**, message catalogs at `messages/en.json` / `messages/th.json`, 365 matching leaf keys, parity enforced by `src/i18n/messages.test.ts`.
+- **`next-intl` 4.13.4**, message catalogs at `messages/en.json` / `messages/th.json`, 370 matching leaf keys, parity enforced by `src/i18n/messages.test.ts`.
 - **Every route lives under a locale prefix** — `/en/...` or `/th/...`, no unprefixed route (`localePrefix: 'always'`). `routing.defaultLocale` is `'en'`.
 - **Detection precedence**: explicit selection (persisted in the `NEXT_LOCALE` cookie) → cookie → `Accept-Language` → `en` fallback. No `localStorage` involvement — the cookie is readable on the very first server render, so there is no post-hydration locale flash.
 - **`LanguageSwitcher`** (`src/components/shell/language-switcher.tsx`) in the public header, public mobile drawer, app-shell sidebar, app-shell mobile drawer, and now also in `/app/settings` under a new Language section. Text labels only ("English" / "ไทย"), never flags. Preserves the current route and query string across a switch.
-- **Typography**: `Noto Sans Thai` replaces the Phase 01 "no web font" system stack — see ADR 0007 Decision 4 for why the system stack does not reliably cover Thai within one line of mixed-script text.
+- **Localized metadata**: every page emits a locale-prefixed, route-specific canonical URL, matching English/Thai hreflang alternatives, and valid `en_US`/`th_TH` Open Graph locale values through `src/i18n/metadata.ts`.
+- **Typography**: `Noto Sans Thai` replaces the Phase 01 "no web font" system stack, and Thai heading/label roles use script-appropriate line heights with no Latin-style tracking — see ADR 0007 Decision 4.
 - **Number/date/currency**: money formatting is unchanged and deliberately locale-independent (ADR 0007 Decision 5); date formatting reads the active locale and pins the Gregorian calendar explicitly, because `th` defaults to the Buddhist calendar under ICU otherwise.
 - **Terminology**: governed by the [localization glossary](../localization-glossary.md) — which technical terms stay in English inside Thai copy (Average R, Expectancy, Edge Leakage, TradingView, R, symbol names, currency codes, plan names) and which translate cleanly (System, Trader, Win Rate, Discipline Score).
 - **Translation coverage**: every visible string on every public route and every mock app route, including nav, footer, empty states, table headers, filters, a11y labels, and the `not-found`/error/loading boundaries for the `(app)` group. `global-error.tsx` is the sole deliberate exception — see its inline comment; it stays hardcoded English because it is the fallback for when the locale layout itself fails to render, and a translation lookup inside that boundary could compound the original failure.
-- **Demo fixture content stays untranslated** — trade symbols, strategy names, demo account nicknames, and the standalone `STRATEGIES` fixture on `/app/strategies` are treated the same as any other proper-noun-like fixture data, per the glossary's terminology policy.
+- **User-authored-like demo fixture content stays untranslated** — trade symbols, strategy names, demo account nicknames, and the standalone `STRATEGIES` fixture on `/app/strategies` are treated like real user content. Fixed product taxonomy such as mistake labels is localized.
 
 ## Decisions worth recording
 
@@ -58,7 +59,9 @@ Full architecture, URL strategy, and rationale in [ADR 0007](../decisions/0007-i
 
 **Money formatting was audited and left unchanged.** Every locale-sensitive display primitive was checked against `src/lib/money/` and `src/lib/time/`; only date formatting needed a change. See ADR 0007 Decision 5 for the full reasoning — this was a deliberate non-change, not an oversight.
 
-**Two hardcoded-English gaps found by a dedicated audit, not by inspection alone.** `ThemeToggle`'s dropdown labels and aria-labels, and `ui/sheet.tsx`'s default screen-reader-only "Close" text, were still English literals after the main translation pass — both outside the set of files the pass had explicitly targeted. Fixed: `ThemeToggle` now shares the `settings.appearance` translation keys with `ThemeSelector`; `SheetContent` gained a required `closeLabel` prop (no English default) so a generic, `next-intl`-independent UI primitive cannot silently ship untranslated text.
+**Independent hardening found further coverage gaps.** In addition to the original `ThemeToggle` and `SheetContent` gaps, `/th/app` still had an English page title, description, and metadata, while fixed mistake taxonomy rendered in English throughout Thai dashboard, trade, chart, and accessible-table views. Those product-owned labels now use shared catalog keys, with unknown/user-authored labels deliberately passed through unchanged.
+
+**The hardening review also corrected claims and hierarchy.** The hero preview no longer repeats advanced discipline/execution metrics, pricing no longer advertises account-level attribution or export before those phases exist, and the dashboard chart no longer places a fully styled card inside another card.
 
 ## Verification
 
@@ -69,12 +72,12 @@ All executed on 2026-08-01, exit codes checked individually.
 | `pnpm format:check`                              | pass                                            |
 | `pnpm lint`                                      | pass                                            |
 | `pnpm typecheck`                                 | pass                                            |
-| `pnpm test`                                      | **284 passed**                                  |
+| `pnpm test`                                      | **289 passed**                                  |
 | `pnpm build`                                     | pass, with no `DATABASE_URL` in the environment |
 | `pnpm scan:client`                               | pass                                            |
-| `pnpm test:e2e`                                  | see commit report                               |
+| `pnpm test:e2e`                                  | **260 passed**                                  |
 | `git diff --check`                               | clean                                           |
-| Production server, required routes, both locales | see commit report                               |
+| Production server, required routes, both locales | pass                                            |
 
 ## Deliberately deferred
 

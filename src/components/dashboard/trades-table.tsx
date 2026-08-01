@@ -3,6 +3,7 @@ import { useLocale, useTranslations } from 'next-intl';
 
 import type { DemoTrade } from '@/lib/demo';
 import { cn } from '@/lib/utils';
+import { useDemoMistakeLabel } from '@/components/product/demo-mistake-label';
 import { OutcomeBadge, QuadrantNote } from '@/components/product/outcome-badge';
 import {
   Table,
@@ -200,6 +201,7 @@ export function TradesTable({ trades }: { trades: readonly DemoTrade[] }) {
 
 function MistakeList({ mistakes }: { mistakes: readonly string[] }) {
   const t = useTranslations('common');
+  const mistakeLabel = useDemoMistakeLabel();
 
   if (mistakes.length === 0) {
     return <span className="text-muted-foreground text-xs">{t('rulesFollowed')}</span>;
@@ -212,7 +214,7 @@ function MistakeList({ mistakes }: { mistakes: readonly string[] }) {
           key={mistake}
           className="border-warning/30 bg-warning/10 text-warning rounded border px-1.5 py-0.5 text-[11px] font-medium"
         >
-          {mistake}
+          {mistakeLabel(mistake)}
         </li>
       ))}
     </ul>

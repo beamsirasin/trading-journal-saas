@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 
 import { resolveSiteUrl } from '@/config/site-url';
 import { ThemeProvider } from '@/components/theme/theme-provider';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { routing } from '@/i18n/routing';
 
 import '../globals.css';
@@ -56,7 +57,8 @@ export async function generateMetadata({
     notFound();
   }
 
-  const t = await getTranslations({ locale, namespace: 'metadata' });
+  const appLocale = locale as (typeof routing.locales)[number];
+  const t = await getTranslations({ locale: appLocale, namespace: 'metadata' });
 
   /**
    * `metadataBase` resolves the relative `canonical` and `openGraph.url`
@@ -82,11 +84,9 @@ export async function generateMetadata({
     openGraph: {
       siteName: t('brandName'),
       type: 'website',
-      locale,
+      ...localizedOpenGraph(appLocale, '/'),
     },
-    alternates: {
-      languages: Object.fromEntries(routing.locales.map((l) => [l, `/${l}`])),
-    },
+    alternates: localizedAlternates(appLocale, '/'),
     robots: {
       // The product is a design preview: the routes exist, the data is
       // fictional, and nothing is purchasable. Indexing it would put a

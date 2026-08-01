@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
@@ -26,8 +27,19 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'settings' });
-  return { title: t('title') };
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'settings' });
+  return {
+    title: t('title'),
+    description: t('description'),
+    alternates: localizedAlternates(appLocale, '/app/settings'),
+    openGraph: {
+      title: t('title'),
+      description: t('description'),
+      type: 'website',
+      ...localizedOpenGraph(appLocale, '/app/settings'),
+    },
+  };
 }
 
 /**

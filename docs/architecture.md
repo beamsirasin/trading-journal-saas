@@ -38,6 +38,7 @@ src/
     routing.ts            Locales, default locale, localePrefix ('always')
     navigation.ts         Locale-aware Link/redirect/usePathname/useRouter
     request.ts            Per-request message catalog loader
+    metadata.ts           Route-specific canonical, hreflang and Open Graph locale helpers
   middleware.ts            Locale detection precedence and cookie sync
   components/
     ui/                   Vendored shadcn primitives + project-authored controls
@@ -139,12 +140,12 @@ Record IDs are UUIDv7 — sortable and non-enumerable. Unguessable IDs are defen
 
 ## 7. Testing strategy
 
-| Layer      | Tool                   | Covers                                                                    |
-| ---------- | ---------------------- | ------------------------------------------------------------------------- |
-| Pure logic | Vitest                 | The calculation engine — golden fixtures, property tests, every edge case |
-| Components | Vitest + RTL           | Rendering, accessible roles, state handling                               |
-| Tenancy    | Vitest + real Postgres | Cross-workspace isolation, asserted directly _(planned)_                  |
-| E2E        | Playwright             | Critical flows against a production build, desktop and mobile             |
+| Layer      | Tool                   | Covers                                                                      |
+| ---------- | ---------------------- | --------------------------------------------------------------------------- |
+| Pure logic | Vitest                 | The calculation engine — golden fixtures, property tests, every edge case   |
+| Components | Vitest + RTL           | Rendering, accessible roles, state handling                                 |
+| Tenancy    | Vitest + real Postgres | Cross-workspace isolation, asserted directly _(planned)_                    |
+| E2E        | Playwright             | Critical flows against a production build, both locales, desktop and mobile |
 
 The engine's purity is what allows its tests to be exhaustive without fixtures, mocks, or a database.
 

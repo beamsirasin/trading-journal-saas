@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { TRIAL_DAYS } from '@/config/plans';
 import { DemoAuthForm } from '@/components/forms/demo-auth-form';
 import { Container } from '@/components/shell/container';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
@@ -16,12 +17,19 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'auth' });
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'auth' });
 
   return {
     title: t('registerTitle'),
     description: t('registerPreviewNote'),
-    alternates: { canonical: '/register' },
+    alternates: localizedAlternates(appLocale, '/register'),
+    openGraph: {
+      title: t('registerTitle'),
+      description: t('registerPreviewNote'),
+      type: 'website',
+      ...localizedOpenGraph(appLocale, '/register'),
+    },
     robots: { index: false, follow: false },
   };
 }

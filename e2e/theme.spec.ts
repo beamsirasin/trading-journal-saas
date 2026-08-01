@@ -179,7 +179,7 @@ test.describe('theme toggle', () => {
     await page.goto('/en', { waitUntil: 'commit' });
     // The blocking script next-themes injects runs before first paint, so the
     // class is present as soon as documentElement exists — no light flash.
-    await page.waitForFunction(() => document.documentElement.classList.contains('dark'));
+    await page.waitForFunction(() => document.documentElement?.classList.contains('dark'));
     expect(await page.evaluate(resolvedColorScheme)).toBe('dark');
   });
 });

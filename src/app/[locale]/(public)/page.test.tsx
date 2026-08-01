@@ -120,6 +120,12 @@ describe('landing page', () => {
     expect(body).toMatch(/no broker api|not included/i);
     expect(screen.getByRole('heading', { name: /can i import trades/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /does it use ai/i })).toBeInTheDocument();
+    expect(body).not.toMatch(/per-account attribution|data export/i);
+  });
+
+  it('keeps analytics-depth metrics out of the hero preview', async () => {
+    await renderHome();
+    expect(document.body).not.toHaveTextContent(/execution efficiency/i);
   });
 
   it('points its primary calls to action at real routes', async () => {

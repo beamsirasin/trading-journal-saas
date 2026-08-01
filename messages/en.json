@@ -78,7 +78,6 @@
     "system": "System",
     "actual": "Actual",
     "summary": "The strategy earned {systemTotalR}R. You kept {actualTotalR}R.",
-    "disciplineLine": "Discipline score {disciplineScore} · execution efficiency {executionEfficiencyPct}%",
     "chartAriaLabel": "Cumulative R over time. The system reaches {systemTotalR}R while actual execution reaches {actualTotalR}R, a gap of {edgeLeakageR}R."
   },
   "problem": {
@@ -201,16 +200,16 @@
         "features": [
           "1 trading account",
           "Manual journal & TradingView links",
-          "Full attribution analytics"
+          "System-vs-trader comparison"
         ]
       },
       "pro": {
         "tagline": "Separate edge from execution across several accounts.",
-        "features": ["3 trading accounts", "Everything in Starter", "Per-account attribution"]
+        "features": ["3 trading accounts", "Everything in Starter", "Mistake-cost breakdown"]
       },
       "elite": {
         "tagline": "For traders running many accounts or a prop programme.",
-        "features": ["10 trading accounts", "Everything in Pro", "Data export"]
+        "features": ["10 trading accounts", "Everything in Pro", "Full attribution analytics"]
       }
     },
     "paymentNoticeTitle": "No payment processing is connected to this product yet",
@@ -287,6 +286,14 @@
     "dashedLine": "dashed line",
     "solidLine": "solid line",
     "close": "Close"
+  },
+  "mistakeLabels": {
+    "movedStop": "Moved stop",
+    "exitedEarly": "Exited early",
+    "ignoredExitRule": "Ignored exit rule",
+    "oversized": "Oversized",
+    "revengeTrade": "Revenge trade",
+    "chasedEntry": "Chased entry"
   },
   "dashboard": {
     "title": "Overview",

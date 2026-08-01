@@ -1,12 +1,35 @@
 import type { Metadata } from 'next';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { DemoDashboard } from '@/components/dashboard/demo-dashboard';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
+import type { AppLocale } from '@/i18n/routing';
 
-export const metadata: Metadata = {
-  title: 'Overview',
-};
+type PageParams = { locale: string };
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<PageParams>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'dashboard' });
+
+  return {
+    title: t('title'),
+    description: t('description'),
+    alternates: localizedAlternates(appLocale, '/app'),
+    openGraph: {
+      title: t('title'),
+      description: t('description'),
+      type: 'website',
+      ...localizedOpenGraph(appLocale, '/app'),
+    },
+  };
+}
 
 /**
  * Application overview.
@@ -20,13 +43,14 @@ export const metadata: Metadata = {
  * recorded as an open risk in the phase document; it is safe today only
  * because the page holds fixtures rather than anyone's data.
  */
-export default function AppOverviewPage() {
+export default async function AppOverviewPage({ params }: { params: Promise<PageParams> }) {
+  const { locale } = await params;
+  setRequestLocale(locale as AppLocale);
+  const t = await getTranslations('dashboard');
+
   return (
     <Container width="wide" className="flex flex-col gap-8 py-8">
-      <PageHeader
-        title="Overview"
-        description="How much of your strategy's edge actually reached the account."
-      />
+      <PageHeader title={t('title')} description={t('description')} />
       <DemoDashboard />
     </Container>
   );

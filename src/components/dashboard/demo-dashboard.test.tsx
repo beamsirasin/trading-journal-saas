@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { DEMO_DEFAULT_RANGE, demoBundle } from '@/lib/demo';
 
 import en from '../../../messages/en.json';
+import th from '../../../messages/th.json';
 import { DemoDashboard } from './demo-dashboard';
 
 /**
@@ -15,9 +16,9 @@ import { DemoDashboard } from './demo-dashboard';
  * requires directly, so a future edit that quietly re-adds a fifth KPI card
  * or a second chart fails here rather than only being caught by eye.
  */
-function renderDashboard() {
+function renderDashboard(locale: 'en' | 'th' = 'en', messages: typeof en | typeof th = en) {
   return render(
-    <NextIntlClientProvider locale="en" messages={en}>
+    <NextIntlClientProvider locale={locale} messages={messages}>
       <DemoDashboard />
     </NextIntlClientProvider>,
   );
@@ -56,6 +57,7 @@ describe('DemoDashboard simplification', () => {
   it('renders exactly one primary performance chart', () => {
     renderDashboard();
     expect(document.querySelectorAll('figure')).toHaveLength(1);
+    expect(document.querySelector('figure')).toHaveClass('border-0', 'bg-transparent');
   });
 
   it('includes a system-vs-trader module with win rate, average R and expectancy, plus an edge-leakage insight and an analytics link', () => {
@@ -109,5 +111,11 @@ describe('DemoDashboard simplification', () => {
     renderDashboard();
     expect(document.querySelector('[data-trades-view="table"]')).toBeInTheDocument();
     expect(document.querySelector('[data-trades-view="cards"]')).toBeInTheDocument();
+  });
+
+  it('translates fixed mistake taxonomy labels in Thai', () => {
+    renderDashboard('th', th);
+    expect(screen.getAllByText(th.mistakeLabels.movedStop).length).toBeGreaterThan(0);
+    expect(screen.queryByText(en.mistakeLabels.movedStop)).not.toBeInTheDocument();
   });
 });

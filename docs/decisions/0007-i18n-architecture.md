@@ -25,7 +25,7 @@ Phase 1.1 adds a second locale (Thai) to a product that previously had every str
 **Rejected: `localePrefix: 'as-needed'`** (default locale unprefixed, `/pricing` in English but `/th/pricing` in Thai). This was the more common choice and was rejected for two concrete reasons:
 
 1. **Ambiguity at the root.** `/` would need to resolve to a locale via detection alone, with no URL signal — the exact redirect-loop and hydration-mismatch surface the phase brief calls out by name. `always` makes the resolved locale a plain, inspectable fact of the URL on every request, including the first one.
-2. **Canonical URLs and metadata.** `alternates.languages` in `generateMetadata` needs one predictable shape per locale (`/${locale}`) rather than a special case for the default. `always` means `/en` and `/th` are exactly symmetric — no route is "the real one" with the other as a variant.
+2. **Canonical URLs and metadata.** `alternates.languages` in `generateMetadata` needs one predictable locale-prefixed shape rather than a special case for the default. `src/i18n/metadata.ts` builds route-specific canonical, hreflang, and Open Graph URLs, so `/th/pricing` points to `/th/pricing` and its `/en/pricing` equivalent rather than inheriting home-page URLs. `always` means `/en` and `/th` are exactly symmetric — no route is "the real one" with the other as a variant.
 
 The cost is that `/en/...` is one segment longer than plain English routers ship. That cost is paid once, in `src/middleware.ts`'s matcher and `src/i18n/routing.ts`'s config, and never again per-route.
 
@@ -52,7 +52,7 @@ This precedence is entirely middleware-level and cookie-based — never `localSt
 
 **Chosen: `next/font/google`'s `Noto Sans Thai`**, not `Noto Sans`. These are two distinct font families in Google's catalog, not one family with a Thai subset — confirmed against `next/font`'s own compiled subset manifest (`next/dist/compiled/@next/font/dist/google/font-data.json`): `"Noto Sans"` lists `["cyrillic", "cyrillic-ext", "devanagari", "greek", "greek-ext", "latin", "latin-ext", "vietnamese"]`, no `thai`; `"Noto Sans Thai"` lists `["latin", "latin-ext", "thai"]`. `Noto Sans Thai`'s inclusion of `latin` is what makes it sufficient alone — one family covers both scripts, so nothing needs pairing at a script boundary. Subsetted and self-hosted at build time by `next/font`, exactly as the rest of the stack already assumes: no runtime request to Google, no layout shift, no dependency on the visitor's OS having a Thai face installed. `display: 'swap'` and `weight: ['400','500','600','700']` cover every weight the type scale (design-system.md §4) uses.
 
-**Consequence.** `--font-sans` in `globals.css` changed from a hardcoded system-font stack literal to `var(--font-sans)`, set by the `notoSansThai.variable` class on `<html>` in `src/app/[locale]/layout.tsx`. `docs/design-system.md` §4 is updated to record this as the current typography stack, not a system-font default any more.
+**Consequence.** `--font-sans` in `globals.css` changed from a hardcoded system-font stack literal to `var(--font-sans)`, set by the `notoSansThai.variable` class on `<html>` in `src/app/[locale]/layout.tsx`. Thai display/title roles also use taller line heights and zero letter spacing so combining marks remain intact when text wraps. `docs/design-system.md` §4 records the current typography stack and locale-specific rhythm.
 
 ## Decision 5 — Money formatting stays locale-independent; only date formatting reads the locale
 

@@ -5,6 +5,7 @@ import { TRIAL_DAYS } from '@/config/plans';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { Container } from '@/components/shell/container';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
@@ -15,18 +16,19 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'pricingPage' });
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'pricingPage' });
   const description = t('description', { trialDays: TRIAL_DAYS });
 
   return {
     title: t('title'),
     description,
-    alternates: { canonical: '/pricing' },
+    alternates: localizedAlternates(appLocale, '/pricing'),
     openGraph: {
       title: t('title'),
       description,
-      url: '/pricing',
       type: 'website',
+      ...localizedOpenGraph(appLocale, '/pricing'),
     },
   };
 }

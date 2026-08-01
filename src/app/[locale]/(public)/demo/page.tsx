@@ -9,6 +9,7 @@ import { DemoBadge } from '@/components/product/demo-badge';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { Button } from '@/components/ui/button';
+import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
@@ -20,7 +21,8 @@ export async function generateMetadata({
   params: Promise<PageParams>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const t = await getTranslations({ locale, namespace: 'demoPage' });
+  const appLocale = locale as AppLocale;
+  const t = await getTranslations({ locale: appLocale, namespace: 'demoPage' });
   const description = t('description', {
     closedTrades: demoBundle(DEMO_DEFAULT_RANGE).closedTrades,
   });
@@ -28,12 +30,12 @@ export async function generateMetadata({
   return {
     title: t('title'),
     description,
-    alternates: { canonical: '/demo' },
+    alternates: localizedAlternates(appLocale, '/demo'),
     openGraph: {
       title: t('title'),
       description,
-      url: '/demo',
       type: 'website',
+      ...localizedOpenGraph(appLocale, '/demo'),
     },
   };
 }

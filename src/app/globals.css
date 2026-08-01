@@ -80,7 +80,7 @@
 
   /*
    * `--font-sans` is deliberately an alias, not a literal stack (contrast
-   * `--font-mono` below). `next/font` sets the real value — Noto Sans,
+   * `--font-mono` below). `next/font` sets the real value — Noto Sans Thai,
    * Latin + Thai — as a CSS variable of the same name on `<html>`
    * (`app/[locale]/layout.tsx`); this line only registers the theme token so
    * Tailwind emits `.font-sans` utilities, following the same
@@ -137,6 +137,37 @@
    */
   --shell-header-height: 3.5rem;
   --shell-sidebar-width: 15rem;
+}
+
+/*
+ * Thai combining marks need more vertical room than the Latin display scale,
+ * and Latin-style negative/tracked letter spacing makes Thai clusters look
+ * broken. Keep the same font sizes and hierarchy while giving wrapped Thai
+ * headings and labels script-appropriate rhythm.
+ */
+html[lang='th'] .text-display {
+  line-height: 1.22;
+  letter-spacing: 0;
+}
+
+html[lang='th'] .text-page-title {
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+html[lang='th'] .text-section-title {
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+html[lang='th'] .text-card-title {
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+html[lang='th'] .text-label {
+  line-height: 1.5;
+  letter-spacing: 0;
 }
 
 /*

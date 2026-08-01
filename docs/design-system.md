@@ -133,6 +133,8 @@ Roles, not sizes. A call site asks for `text-display`, so changing what a role l
 
 The three largest roles are **fluid** (`clamp`), so headings scale continuously between 320px and desktop instead of jumping at breakpoints. The lower bound is chosen to fit 320px without overflow.
 
+Thai pages retain the same sizes and hierarchy but override the display, title, card-title, and label rhythm in `globals.css`: line heights are at least `1.22` for display text and Latin-style tracking is removed. This prevents Thai combining marks from clipping or separating visually at narrow widths.
+
 **Every financial figure uses `numeric`.** Tabular numerals keep digits on a fixed advance width, so a column of R-multiples aligns on the decimal point and an animating KPI does not jitter as digits change. Prose numerals stay proportional, which is why this is a utility and not a base rule.
 
 ## 5. Spacing and layout
@@ -162,7 +164,7 @@ Desktop-first for analytics, fully usable on tablet, quick-entry on mobile.
 | 1024px (`lg`)  | Small laptop — sidebar appears here  |
 | 1280px+ (`xl`) | Full analytics                       |
 
-**No horizontal page overflow at any width.** Wide content — tables, charts — scrolls inside its own container. Enforced by e2e across five viewports (320 / 375 / 768 / 1280 / 1920) on every public and application route.
+**No horizontal page overflow at any width.** Wide content — tables, charts — scrolls inside its own container. Enforced for both English and Thai by e2e across five viewports (320 / 375 / 768 / 1280 / 1920) on every public and application route.
 
 **Wide tables get two presentations, not one squeezed one.** A real `<table>` from `md` up, record cards below it. Both are in the DOM; the inactive one is `display:none`, which removes it from the accessibility tree so a screen reader is offered the trades once. Each carries `data-trades-view` so tests scope to the active one.
 
@@ -291,7 +293,7 @@ Full architecture in [ADR 0007](decisions/0007-i18n-architecture.md); terminolog
 
 - **`LanguageSwitcher` is text, never a flag.** "English" / "ไทย", not country icons — a flag names a country, and English and Thai are each spoken well beyond one. Present in the public header, public mobile drawer, app-shell sidebar, app-shell mobile drawer, and `/app/settings`.
 - **Same touch-target and keyboard rules as any other control.** ≥44px, reachable by Tab, operable with Enter/Space, and its trigger has an accessible name that states both the action and the current language (`"Language: English"` / `"ภาษา: ไทย"`) — never an unlabelled icon.
-- **Switching preserves the route.** A switch on `/en/app/trades` lands on `/th/app/trades`, not the Thai home page — a locale switch is not a navigation.
+- **Switching preserves the route and query.** A switch on `/en/app/trades?range=30d` lands on `/th/app/trades?range=30d`, not the Thai home page and not a reset view — a locale switch only changes locale.
 - **No hydration mismatch.** The active locale comes from the URL segment next-intl already resolved server-side, not from `localStorage` or a media query, so it is identical on the server render and the first client render.
 - **Money stays locale-independent; dates read the locale.** Currency symbol and decimal scale follow the trading account's configured currency, never the UI language — Thai and English share the same digit-grouping convention for every currency in scope. Dates pin the Gregorian calendar explicitly, because `th` defaults to the Buddhist calendar under ICU otherwise. See ADR 0007 Decision 5.
 - **Demo fixture content is never translated** — trade symbols, strategy names, account nicknames — the same category as any other proper-noun-like content. See the glossary §2.
