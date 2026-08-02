@@ -129,7 +129,7 @@ test.describe('public calls to action', () => {
 
     // Suffix match rather than an exact string: `Link` from `@/i18n/navigation`
     // prepends the active locale segment, so the rendered href is `/en/register`.
-    await expect(page.getByRole('link', { name: /preview registration/i }).first()).toHaveAttribute(
+    await expect(page.getByRole('link', { name: /^sign up$/i }).first()).toHaveAttribute(
       'href',
       /\/register$/,
     );
@@ -139,10 +139,15 @@ test.describe('public calls to action', () => {
     );
   });
 
-  test('does not claim that registration or a trial is active', async ({ page }) => {
+  /**
+   * Phase 2 made registration real (Better Auth) — the page must not claim
+   * otherwise. Billing/subscriptions remain unimplemented, so it still must
+   * not imply a paid trial starts automatically.
+   */
+  test('offers real sign-up without implying a paid trial is active', async ({ page }) => {
     await page.goto('/en');
     await expect(page.getByRole('link', { name: /start free trial/i })).toHaveCount(0);
-    await expect(page.getByText(/registration is not live yet/i).first()).toBeVisible();
+    await expect(page.getByText(/registration is not live yet/i)).toHaveCount(0);
   });
 
   test('keeps Recharts out of the static landing route', async ({ page }) => {

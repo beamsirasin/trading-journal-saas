@@ -59,8 +59,8 @@
       "systemVsTrader": "System vs trader",
       "pricing": "Pricing",
       "demo": "Demo dashboard",
-      "login": "Login preview",
-      "register": "Registration preview",
+      "login": "Log in",
+      "register": "Sign up",
       "openApp": "Open the app preview",
       "terms": "Terms of service",
       "privacy": "Privacy policy",
@@ -74,9 +74,9 @@
     "badge": "Attribution, not bookkeeping",
     "title": "Know whether it was the strategy or you.",
     "description": "Most journals record what happened, so they can only ever show profit and loss. Trading OS records what <em>should</em> have happened too — then measures the distance between them.",
-    "ctaPrimary": "Preview registration",
+    "ctaPrimary": "Sign up",
     "ctaDemo": "See the demo dashboard",
-    "trialNote": "Planned {trialDays}-day trial · no card required · registration is not live yet"
+    "trialNote": "Planned {trialDays}-day trial · no card required"
   },
   "productPreview": {
     "title": "Attribution overview",
@@ -199,7 +199,7 @@
     "mostPopular": "Most popular",
     "priceUnset": "Pricing to be confirmed",
     "priceUnsetNote": "A {trialDays}-day, no-card trial is planned but not live.",
-    "cta": "Preview trial registration",
+    "cta": "Sign up",
     "plans": {
       "starter": {
         "tagline": "Prove whether your strategy has an edge.",
@@ -262,9 +262,9 @@
   "cta": {
     "title": "Find out which problem you actually have",
     "description": "A meaningful sample of honestly recorded trades can separate a strategy problem from an execution problem.",
-    "ctaPrimary": "Preview registration",
+    "ctaPrimary": "Sign up",
     "ctaSecondary": "Explore the demo first",
-    "trialNote": "Planned {trialDays}-day trial · no card required · registration is not live yet"
+    "trialNote": "Planned {trialDays}-day trial · no card required"
   },
   "demoData": {
     "badge": "Demo data",
@@ -345,7 +345,7 @@
       "footnote": "Headline figures cover all demo accounts for the selected range. Only this list responds to the account picker.",
       "emptyTitle": "No trades in this account yet",
       "emptyDescription": "Log your first trade to see how much of your strategy's edge you are actually capturing.",
-      "emptyCta": "Preview registration"
+      "emptyCta": "Sign up"
     },
     "mistakes": {
       "title": "Common mistakes",
