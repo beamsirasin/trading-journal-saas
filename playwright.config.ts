@@ -47,7 +47,11 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    stdout: 'ignore',
+    // CI pipes stdout too: Better Auth/Next.js server errors (e.g. a 500 from
+    // an API route) log there, and CI has no other way to see them — a local
+    // run stays quiet since a developer can already see the same errors in
+    // their own terminal.
+    stdout: process.env.CI ? 'pipe' : 'ignore',
     stderr: 'pipe',
   },
 });
