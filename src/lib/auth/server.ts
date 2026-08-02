@@ -11,6 +11,7 @@ import { getDb } from '@/server/db/client';
 import * as schema from '@/server/db/schema';
 import { ensurePersonalWorkspace } from '@/server/services/workspace-provisioning';
 
+import { logDispatchStage } from './dispatch-log';
 import { getEmailAdapter } from './email';
 import { resolveSupportedEmailLocale } from './email-templates';
 import {
@@ -255,7 +256,21 @@ export function buildAuth(options?: {
       // retry also issue a fresh link rather than requiring a separate
       // "resend" step the user has to find.
       sendOnSignIn: true,
+      // The one authoritative callback: both automatic dispatch
+      // (sendOnSignUp/sendOnSignIn) and the explicit resend endpoint
+      // (`/send-verification-email`, called by
+      // `src/components/auth/resend-verification-button.tsx`) invoke this
+      // exact function — Better Auth does not have a second hook for either
+      // path. `user` and `url` both come from Better Auth itself; `user.email`
+      // is the ONLY recipient source here and is never replaced by the
+      // configured sender address, which `getEmailAdapter()` uses solely as
+      // its `from` header (see `src/lib/auth/email.ts`).
       sendVerificationEmail: async ({ user, url }) => {
+        logDispatchStage('verification.callback.enter');
+        if (typeof user.email !== 'string' || user.email.trim().length === 0) {
+          throw new Error('Better Auth invoked sendVerificationEmail without a user email.');
+        }
+        logDispatchStage('verification.callback.recipient-valid');
         const locale = await resolveRequestEmailLocale();
         await getEmailAdapter().sendVerificationEmail({ to: user.email, url, locale });
       },

@@ -90,11 +90,12 @@ describe('getEmailAdapter selection', () => {
     createTransportMock.mockClear();
   });
 
-  it('uses the deterministic in-memory adapter in test', () => {
+  it('uses the deterministic in-memory adapter in test, and never opens a real network connection', () => {
     setNodeEnv('test');
     resetServerEnvCache();
     resetEmailAdapterCache();
     expect(getEmailAdapter()).toBeInstanceOf(TestEmailAdapter);
+    expect(createTransportMock).not.toHaveBeenCalled();
   });
 
   it('stays fail-closed in production even when EMAIL_PROVIDER/SMTP env vars are fully configured', async () => {
@@ -169,6 +170,25 @@ describe('getEmailAdapter selection', () => {
     resetEmailAdapterCache();
 
     expect(getEmailAdapter()).toBeInstanceOf(SmtpEmailAdapter);
+  });
+
+  it('reports the selected adapter type, and the specific fallback reason, to the dev-only dispatch log', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1025';
+    process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
+    setNodeEnv('development');
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+    getEmailAdapter();
+
+    const line = info.mock.calls[0]?.[0];
+    expect(line).toContain('email.adapter.selected');
+    expect(line).toContain('ConsoleEmailAdapter');
+    expect(line).toContain('not-opted-in');
+
+    info.mockRestore();
   });
 });
 
@@ -263,24 +283,38 @@ describe('SmtpEmailAdapter', () => {
     );
   });
 
-  it('never logs the raw verification/reset URL or token', async () => {
+  it('never logs the raw verification/reset URL, token, or recipient — including the dev-only dispatch stages', async () => {
+    setNodeEnv('development');
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
     const adapter = new SmtpEmailAdapter(baseConfig);
+    const email = 'private-recipient@example.test';
     const url = 'https://app.test/verify?token=must-not-be-logged-anywhere';
-    await adapter.sendVerificationEmail({ to: 'user@example.test', url });
+    await adapter.sendVerificationEmail({ to: email, url });
 
-    const allOutput = [...logSpy.mock.calls, ...warnSpy.mock.calls, ...errorSpy.mock.calls]
+    const allOutput = [
+      ...logSpy.mock.calls,
+      ...warnSpy.mock.calls,
+      ...errorSpy.mock.calls,
+      ...infoSpy.mock.calls,
+    ]
       .flat()
       .join(' ');
     expect(allOutput).not.toContain('must-not-be-logged-anywhere');
     expect(allOutput).not.toContain(url);
+    expect(allOutput).not.toContain(email);
+    // Proves the dispatch-log instrumentation actually fired during this
+    // call rather than the assertions above passing vacuously on empty spies.
+    expect(infoSpy).toHaveBeenCalled();
 
     logSpy.mockRestore();
     warnSpy.mockRestore();
     errorSpy.mockRestore();
+    infoSpy.mockRestore();
+    setNodeEnv(originalNodeEnv);
   });
 
   it('rejects a malformed sender address at construction', () => {
@@ -326,5 +360,65 @@ describe('SmtpEmailAdapter', () => {
       }),
     ).rejects.toThrow(/recipient address/);
     expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Regression test for the exact failure class this investigation was
+   * chasing: the sender (`EMAIL_FROM_ADDRESS`, here `no-reply@trading-os.local`)
+   * must never appear as the recipient, regardless of which user address is
+   * passed in, and the recipient must never leak into the `from` field either.
+   */
+  it('always sends "to" the passed recipient and "from" the configured sender — the two never substitute for each other', async () => {
+    const adapter = new SmtpEmailAdapter(baseConfig);
+    const registeredUserEmail = 'real-registered-user@example.test';
+
+    await adapter.sendVerificationEmail({
+      to: registeredUserEmail,
+      url: 'https://app.test/verify?token=abc',
+    });
+
+    const call = sendMailMock.mock.calls[0]?.[0];
+    expect(call.to).toBe(registeredUserEmail);
+    expect(call.to).not.toBe(baseConfig.fromAddress);
+    expect(call.from).toEqual({ name: baseConfig.fromName, address: baseConfig.fromAddress });
+  });
+
+  it('propagates an SMTP send failure rather than swallowing it — resend must see a real rejection, not a false success', async () => {
+    sendMailMock.mockRejectedValueOnce(
+      Object.assign(new Error('connect refused'), { code: 'ECONNREFUSED' }),
+    );
+    const adapter = new SmtpEmailAdapter(baseConfig);
+
+    await expect(
+      adapter.sendVerificationEmail({
+        to: 'user@example.test',
+        url: 'https://app.test/verify?token=abc',
+      }),
+    ).rejects.toThrow('connect refused');
+  });
+
+  it('logs a sanitized failure stage in development when SMTP send fails, never the raw error', async () => {
+    setNodeEnv('development');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    sendMailMock.mockRejectedValueOnce(
+      Object.assign(new Error('ECONNREFUSED 127.0.0.1:1025'), { code: 'ECONNREFUSED' }),
+    );
+
+    const adapter = new SmtpEmailAdapter(baseConfig);
+    await expect(
+      adapter.sendVerificationEmail({
+        to: 'user@example.test',
+        url: 'https://app.test/verify?token=abc',
+      }),
+    ).rejects.toThrow();
+
+    const lines = info.mock.calls.map((call) => call[0]).join(' ');
+    expect(lines).toContain('smtp.send.failed');
+    expect(lines).toContain('ECONNREFUSED');
+    expect(lines).not.toContain('127.0.0.1');
+    expect(lines).not.toContain('user@example.test');
+
+    info.mockRestore();
+    setNodeEnv(originalNodeEnv);
   });
 });

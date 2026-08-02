@@ -32,6 +32,8 @@
     "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
     "db:test:prepare": "node scripts/prepare-test-db.mjs",
+    "email:verify": "node scripts/email-verify.mjs",
+    "email:smoke": "node scripts/email-smoke.mjs",
     "scan:client": "node scripts/scan-client-assets.mjs",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm scan:client"
   },

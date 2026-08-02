@@ -4,12 +4,14 @@ import nodemailer from 'nodemailer';
 
 import { getServerEnv } from '@/config/env.server';
 
+import { logDispatchStage, sanitizeErrorCode } from './dispatch-log';
 import {
   buildPasswordResetEmail,
   buildVerificationEmail,
   type RenderedEmail,
   type SupportedEmailLocale,
 } from './email-templates';
+import { resolveSmtpConfigFromEnv, type SmtpAdapterConfig } from './smtp-config';
 
 /**
  * The one seam every outbound auth email goes through.
@@ -141,21 +143,15 @@ function assertSafeHeaderValue(value: string, field: string): string {
   return value;
 }
 
-export interface SmtpAdapterConfig {
-  readonly host: string;
-  readonly port: number;
-  readonly secure: boolean;
-  readonly username: string | undefined;
-  readonly password: string | undefined;
-  readonly fromAddress: string;
-  readonly fromName: string | undefined;
-}
-
 /**
- * Development only, and only once fully configured (see `resolveSmtpConfig`).
- * Built for a local, unauthenticated, non-TLS sink such as Mailpit — never
- * selected in `test` (deterministic `TestEmailAdapter`) or `production`
- * (fail-closed `ProductionEmailAdapter`) regardless of these env vars.
+ * Development only, and only once fully configured (see `resolveSmtpConfigFromEnv`
+ * in `./smtp-config`). Built for a local, unauthenticated, non-TLS sink such
+ * as Mailpit — never selected in `test` (deterministic `TestEmailAdapter`) or
+ * `production` (fail-closed `ProductionEmailAdapter`) regardless of these env
+ * vars. The recipient (`to`) always comes from the caller's `to` parameter —
+ * which `src/lib/auth/server.ts` always sets to Better Auth's own `user.email`
+ * — and `config.fromAddress`/`fromName` are used ONLY in the `from` field
+ * below; the two never merge or substitute for each other.
  */
 export class SmtpEmailAdapter implements EmailDeliveryAdapter {
   private transport: ReturnType<typeof nodemailer.createTransport> | undefined;
@@ -192,77 +188,56 @@ export class SmtpEmailAdapter implements EmailDeliveryAdapter {
   }
 
   private getTransport(): ReturnType<typeof nodemailer.createTransport> {
-    this.transport ??= nodemailer.createTransport({
-      host: this.config.host,
-      port: this.config.port,
-      secure: this.config.secure,
-      auth:
-        this.config.username !== undefined && this.config.password !== undefined
-          ? { user: this.config.username, pass: this.config.password }
-          : undefined,
-    });
+    if (this.transport === undefined) {
+      this.transport = nodemailer.createTransport({
+        host: this.config.host,
+        port: this.config.port,
+        secure: this.config.secure,
+        auth:
+          this.config.username !== undefined && this.config.password !== undefined
+            ? { user: this.config.username, pass: this.config.password }
+            : undefined,
+      });
+      logDispatchStage('smtp.transport.created');
+    }
     return this.transport;
   }
 
   private async deliver(to: string, content: RenderedEmail): Promise<void> {
     const recipient = assertSafeEmailAddress(to, 'recipient address');
-    await this.getTransport().sendMail({
-      from:
-        this.config.fromName !== undefined
-          ? { name: this.config.fromName, address: this.config.fromAddress }
-          : this.config.fromAddress,
-      to: recipient,
-      subject: content.subject,
-      text: content.text,
-      html: content.html,
-    });
+    const transport = this.getTransport();
+    logDispatchStage('smtp.send.started');
+    try {
+      await transport.sendMail({
+        // `from` is the ONLY place `config.fromAddress`/`fromName` appear —
+        // never as `to`, never merged with the recipient.
+        from:
+          this.config.fromName !== undefined
+            ? { name: this.config.fromName, address: this.config.fromAddress }
+            : this.config.fromAddress,
+        to: recipient,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
+      });
+      logDispatchStage('smtp.send.succeeded');
+    } catch (error) {
+      logDispatchStage('smtp.send.failed', sanitizeErrorCode(error));
+      throw error;
+    }
   }
 }
 
-/**
- * `undefined` unless `EMAIL_PROVIDER=smtp` is explicitly set AND every
- * required value (host, port, from address) is present — a partially-set
- * SMTP config, or a fully-set one missing the explicit opt-in, falls back to
- * `ConsoleEmailAdapter` rather than attempting a connection that was never
- * really intended. The explicit opt-in matters independently of the
- * presence check: a `.env.local` copied from another machine (or a leftover
- * `SMTP_HOST` from earlier local testing) must not silently start sending
- * mail just because the values happen to still be there. Username/password
- * must be set together or not at all; one without the other is treated the
- * same as fully unconfigured, since Mailpit's unauthenticated default only
- * makes sense with both absent.
- */
-function resolveSmtpConfig(): SmtpAdapterConfig | undefined {
-  const env = getServerEnv();
-  if (
-    env.EMAIL_PROVIDER !== 'smtp' ||
-    env.SMTP_HOST === undefined ||
-    env.SMTP_PORT === undefined ||
-    env.EMAIL_FROM_ADDRESS === undefined
-  ) {
-    return undefined;
+function buildDevelopmentAdapter(): { adapter: EmailDeliveryAdapter; detail: string } {
+  const result = resolveSmtpConfigFromEnv(getServerEnv());
+  if (result.ok) {
+    return { adapter: new SmtpEmailAdapter(result.config), detail: 'SmtpEmailAdapter' };
   }
-  if ((env.SMTP_USERNAME === undefined) !== (env.SMTP_PASSWORD === undefined)) {
-    console.warn(
-      '[email:dev] SMTP_USERNAME and SMTP_PASSWORD must both be set or both be unset; falling back to the non-delivering diagnostic adapter.',
-    );
-    return undefined;
-  }
-
-  return {
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_SECURE === 'true',
-    username: env.SMTP_USERNAME,
-    password: env.SMTP_PASSWORD,
-    fromAddress: env.EMAIL_FROM_ADDRESS,
-    fromName: env.EMAIL_FROM_NAME,
-  };
-}
-
-function buildDevelopmentAdapter(): EmailDeliveryAdapter {
-  const config = resolveSmtpConfig();
-  return config === undefined ? new ConsoleEmailAdapter() : new SmtpEmailAdapter(config);
+  // Distinguishes, in dev-only logs, "never opted in", "partially
+  // configured", and "opted in with a broken username/password pairing" —
+  // all three fall back to the same non-delivering diagnostic adapter, but
+  // they are different operator mistakes worth telling apart when debugging.
+  return { adapter: new ConsoleEmailAdapter(), detail: `ConsoleEmailAdapter(${result.reason})` };
 }
 
 let adapter: EmailDeliveryAdapter | undefined;
@@ -275,10 +250,14 @@ export function getEmailAdapter(): EmailDeliveryAdapter {
 
   if (process.env.NODE_ENV === 'production') {
     adapter = new ProductionEmailAdapter();
+    logDispatchStage('email.adapter.selected', 'ProductionEmailAdapter');
   } else if (process.env.NODE_ENV === 'test') {
     adapter = new TestEmailAdapter();
+    logDispatchStage('email.adapter.selected', 'TestEmailAdapter');
   } else {
-    adapter = buildDevelopmentAdapter();
+    const selection = buildDevelopmentAdapter();
+    adapter = selection.adapter;
+    logDispatchStage('email.adapter.selected', selection.detail);
   }
 
   return adapter;
