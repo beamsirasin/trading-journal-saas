@@ -6,14 +6,14 @@ How verification and password-reset emails are sent, and what is required to mak
 
 `src/lib/auth/email.ts` selects an `EmailDeliveryAdapter` implementation by `NODE_ENV`:
 
-| `NODE_ENV`                                                                                    | Adapter                  | Behavior                                                                                                                                                                                                                        |
-| --------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `development` (`next dev`), SMTP fully configured                                             | `SmtpEmailAdapter`       | Sends the real Better Auth verification/reset email through a local SMTP sink (e.g. Mailpit) — see below.                                                                                                                       |
-| `development` (`next dev`), SMTP not configured                                               | `ConsoleEmailAdapter`    | Warns that delivery is unavailable without logging the recipient or bearer URL.                                                                                                                                                 |
-| `test` (Vitest only — unreachable from any running app instance)                              | `TestEmailAdapter`       | Captures sent emails in memory for assertions.                                                                                                                                                                                  |
-| `production` (`next build` + `next start` — **always**, including this repo's own CI e2e run) | `ProductionEmailAdapter` | **Throws**, regardless of whether SMTP env vars happen to be set. No email is sent. Sign-up/reset itself still succeeds (Better Auth treats the send as a background task — see ADR 0013) but the user never receives anything. |
+| `NODE_ENV`                                                                                    | Adapter                  | Behavior                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `development` (`next dev`), `EMAIL_PROVIDER=smtp` and SMTP fully configured                   | `SmtpEmailAdapter`       | Sends the real Better Auth verification/reset email through a local SMTP sink (e.g. Mailpit) — see below.                                                                                                                                            |
+| `development` (`next dev`), `EMAIL_PROVIDER` unset or SMTP incomplete                         | `ConsoleEmailAdapter`    | Warns that delivery is unavailable without logging the recipient or bearer URL.                                                                                                                                                                      |
+| `test` (Vitest only — unreachable from any running app instance)                              | `TestEmailAdapter`       | Captures sent emails in memory for assertions.                                                                                                                                                                                                       |
+| `production` (`next build` + `next start` — **always**, including this repo's own CI e2e run) | `ProductionEmailAdapter` | **Throws**, regardless of whether `EMAIL_PROVIDER`/`SMTP_*` env vars happen to be set. No email is sent. Sign-up/reset itself still succeeds (Better Auth treats the send as a background task — see ADR 0013) but the user never receives anything. |
 
-**Selection is by `NODE_ENV` alone, never by the presence of `SMTP_*` variables.** A production deployment that accidentally carries a leftover `SMTP_HOST` still gets `ProductionEmailAdapter` — the local SMTP adapter is structurally unreachable outside `next dev`.
+**Selection is by `NODE_ENV` alone, never by the presence of `EMAIL_PROVIDER`/`SMTP_*` variables.** A production deployment that accidentally carries a leftover `SMTP_HOST` (or even `EMAIL_PROVIDER=smtp`) still gets `ProductionEmailAdapter` — the local SMTP adapter is structurally unreachable outside `next dev`. Within development, `EMAIL_PROVIDER=smtp` is itself an explicit opt-in, not implied by the other variables being present — see below.
 
 **No real users should be allowed to register against a production deployment until a real provider is configured.** This is a hard prerequisite for launch, not a nice-to-have — tracked in `docs/roadmap.md`.
 
@@ -30,19 +30,20 @@ How verification and password-reset emails are sent, and what is required to mak
 3. **Open `http://127.0.0.1:8025`.** This is the web inbox — every email your local app sends will appear here in real time.
 4. **Configure local SMTP environment variables.** In `.env.local` (never committed):
    ```
+   EMAIL_PROVIDER=smtp
    SMTP_HOST=127.0.0.1
    SMTP_PORT=1025
    SMTP_SECURE=false
    EMAIL_FROM_ADDRESS=no-reply@trading-os.local
    EMAIL_FROM_NAME=Trading OS
    ```
-   Leave `SMTP_USERNAME`/`SMTP_PASSWORD` unset — Mailpit does not require authentication, and setting only one of the two falls back to the non-delivering `ConsoleEmailAdapter` rather than guessing.
+   `EMAIL_PROVIDER=smtp` is the explicit opt-in — the adapter never activates on the presence of `SMTP_HOST` etc. alone, so a stale value left over from earlier local testing can never silently start sending mail. Leave `SMTP_USERNAME`/`SMTP_PASSWORD` unset — Mailpit does not require authentication, and setting only one of the two falls back to the non-delivering `ConsoleEmailAdapter` rather than guessing.
 5. **Restart the Next.js development server** (`pnpm dev`) so the new environment variables are picked up.
-6. **Register an account** at `/en/register` (or `/th/register`) with any email address — Mailpit accepts mail to any address, real or not.
-7. **Open the captured email** in the Mailpit web inbox (`http://127.0.0.1:8025`).
-8. **Follow the verification link.** It completes the same `requireEmailVerification` flow a real provider would, entirely locally.
+6. **Test registration:** go to `/en/register` (or `/th/register`) and sign up with any email address — Mailpit accepts mail to any address, real or not. You land on the "check your email" page, and exactly one message appears in the Mailpit web inbox (`http://127.0.0.1:8025`). Open it and follow the verification link — it completes the same `requireEmailVerification` flow a real provider would, entirely locally, and you can then log in.
+7. **Test resend verification:** register again with a fresh address but don't click the link. On the "check your email" page, click **Resend email**. A second message for that same address appears in Mailpit — the resend button calls Better Auth's real `sendVerificationEmail` endpoint, not a stub.
+8. **Test password reset:** from `/en/login`, follow "Forgot password?", submit a registered (and verified) email, and open the resulting message in Mailpit. Following its link lets you set a new password and signs you out of other sessions.
 
-The same setup delivers password-reset emails through the "forgot password" flow.
+Password-reset and registration both go through the same `SmtpEmailAdapter` — nothing else to configure per-flow.
 
 ## What "resolved" looks like
 

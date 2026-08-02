@@ -26,7 +26,8 @@ import {
  * `test` gets an in-memory adapter assertions can inspect, `production`
  * always gets an adapter that fails loudly rather than pretending to send
  * (SMTP env vars, even if present, are never consulted in production), and
- * `development` gets a local SMTP adapter when fully configured or otherwise
+ * `development` gets a local SMTP adapter only when `EMAIL_PROVIDER=smtp` is
+ * explicitly set AND the rest of the SMTP config is complete, or otherwise
  * the same non-delivering diagnostic as before. None exposes recipient data
  * or verification/reset credentials in logs or HTTP responses.
  */
@@ -219,16 +220,22 @@ export class SmtpEmailAdapter implements EmailDeliveryAdapter {
 }
 
 /**
- * `undefined` unless every required value (host, port, from address) is
- * present — a partially-set SMTP config falls back to `ConsoleEmailAdapter`
- * rather than attempting a connection that was never really configured.
- * Username/password must be set together or not at all; one without the
- * other is treated the same as fully unconfigured, since Mailpit's
- * unauthenticated default only makes sense with both absent.
+ * `undefined` unless `EMAIL_PROVIDER=smtp` is explicitly set AND every
+ * required value (host, port, from address) is present — a partially-set
+ * SMTP config, or a fully-set one missing the explicit opt-in, falls back to
+ * `ConsoleEmailAdapter` rather than attempting a connection that was never
+ * really intended. The explicit opt-in matters independently of the
+ * presence check: a `.env.local` copied from another machine (or a leftover
+ * `SMTP_HOST` from earlier local testing) must not silently start sending
+ * mail just because the values happen to still be there. Username/password
+ * must be set together or not at all; one without the other is treated the
+ * same as fully unconfigured, since Mailpit's unauthenticated default only
+ * makes sense with both absent.
  */
 function resolveSmtpConfig(): SmtpAdapterConfig | undefined {
   const env = getServerEnv();
   if (
+    env.EMAIL_PROVIDER !== 'smtp' ||
     env.SMTP_HOST === undefined ||
     env.SMTP_PORT === undefined ||
     env.EMAIL_FROM_ADDRESS === undefined

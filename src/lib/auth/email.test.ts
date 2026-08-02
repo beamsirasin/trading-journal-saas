@@ -25,6 +25,7 @@ const {
 const { resetServerEnvCache } = await import('@/config/env.server');
 
 const SMTP_ENV_KEYS = [
+  'EMAIL_PROVIDER',
   'SMTP_HOST',
   'SMTP_PORT',
   'SMTP_SECURE',
@@ -96,7 +97,8 @@ describe('getEmailAdapter selection', () => {
     expect(getEmailAdapter()).toBeInstanceOf(TestEmailAdapter);
   });
 
-  it('stays fail-closed in production even when SMTP env vars are fully configured', async () => {
+  it('stays fail-closed in production even when EMAIL_PROVIDER/SMTP env vars are fully configured', async () => {
+    process.env.EMAIL_PROVIDER = 'smtp';
     process.env.SMTP_HOST = '127.0.0.1';
     process.env.SMTP_PORT = '1025';
     process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
@@ -120,6 +122,7 @@ describe('getEmailAdapter selection', () => {
   });
 
   it('falls back to the diagnostic adapter when only one of SMTP_USERNAME/SMTP_PASSWORD is set', () => {
+    process.env.EMAIL_PROVIDER = 'smtp';
     process.env.SMTP_HOST = '127.0.0.1';
     process.env.SMTP_PORT = '1025';
     process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
@@ -133,7 +136,31 @@ describe('getEmailAdapter selection', () => {
     warn.mockRestore();
   });
 
-  it('selects the SMTP adapter in development only once host, port, and from-address are all configured', () => {
+  it('falls back to the diagnostic adapter when EMAIL_PROVIDER is unset, even though host/port/from are fully configured', () => {
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1025';
+    process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
+    setNodeEnv('development');
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+
+    expect(getEmailAdapter()).toBeInstanceOf(ConsoleEmailAdapter);
+  });
+
+  it('falls back to the diagnostic adapter when EMAIL_PROVIDER is set to something other than smtp', () => {
+    process.env.EMAIL_PROVIDER = 'not-a-real-provider';
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1025';
+    process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
+    setNodeEnv('development');
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+
+    expect(getEmailAdapter()).toBeInstanceOf(ConsoleEmailAdapter);
+  });
+
+  it('selects the SMTP adapter in development only once EMAIL_PROVIDER=smtp and host/port/from-address are all configured', () => {
+    process.env.EMAIL_PROVIDER = 'smtp';
     process.env.SMTP_HOST = '127.0.0.1';
     process.env.SMTP_PORT = '1025';
     process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';

@@ -69,6 +69,18 @@ export const serverEnvSchema = z.object({
   // production build always selects `ProductionEmailAdapter` regardless of
   // whether these are set, so an operator error can never make a real
   // deployment silently use a local, unauthenticated relay.
+  /**
+   * Explicit opt-in to the local SMTP adapter — `src/lib/auth/email.ts`
+   * requires this to be exactly `"smtp"`. Deliberately a plain optional
+   * string, not a `z.enum`: a typo'd value must fall back to the
+   * non-delivering diagnostic adapter (the same as leaving it unset), not
+   * crash `getServerEnv()` for every request in the app over a dev-only
+   * convenience variable. Merely setting SMTP_HOST/PORT/etc without this is
+   * not enough, so a `.env.local` copied from another machine (with stale
+   * SMTP values but no intent to use them) can never silently start sending
+   * mail.
+   */
+  EMAIL_PROVIDER: optionalString,
   /** SMTP host for local/dev email testing (e.g. Mailpit at 127.0.0.1). */
   SMTP_HOST: optionalString,
   /** SMTP port for local/dev email testing (e.g. 1025 for Mailpit). */
