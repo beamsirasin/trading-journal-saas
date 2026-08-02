@@ -52,6 +52,17 @@ export const serverEnvSchema = z.object({
   BETTER_AUTH_TRUSTED_ORIGINS: optionalString,
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
+  /**
+   * Relaxes the per-route auth rate limits (never disables them — see
+   * src/lib/auth/server.ts). Better Auth keys its database-backed rate
+   * limiter by IP + route only, not by account, so an e2e suite driving many
+   * legitimate sign-ins from one CI runner shares the exact same bucket a
+   * real attacker would — the production limit is deliberately too strict
+   * for that traffic pattern to also work as a security control. Set only in
+   * `.github/workflows/ci.yml`'s `e2e` job; a real deployment must never set
+   * this.
+   */
+  E2E_TEST_MODE: optionalString,
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;

@@ -112,6 +112,41 @@ function buildSocialProviders(): Parameters<typeof betterAuth>[0]['socialProvide
 }
 
 /**
+ * Better Auth's database-backed rate limiter keys on IP + route only, never
+ * the account being signed into — so a real attacker hammering `/sign-in/email`
+ * from one IP and an e2e suite legitimately signing in many times from one CI
+ * runner IP are, to the limiter, indistinguishable. The production numbers
+ * below are a real security control and stay in force everywhere except when
+ * `E2E_TEST_MODE=true` (set only by `.github/workflows/ci.yml`'s `e2e` job —
+ * a real deployment must never set it), where they widen enough for the
+ * suite's own traffic without disabling the feature the suite is also there
+ * to exercise.
+ */
+function buildRateLimitCustomRules(): Record<string, { window: number; max: number }> {
+  const isE2eTestMode = getServerEnv().E2E_TEST_MODE === 'true';
+
+  if (isE2eTestMode) {
+    return {
+      '/sign-in/email': { window: 60, max: 50 },
+      '/sign-up/email': { window: 60, max: 50 },
+      '/forget-password': { window: 60, max: 50 },
+      '/reset-password': { window: 60, max: 50 },
+      '/send-verification-email': { window: 60, max: 50 },
+      '/sign-in/social': { window: 60, max: 50 },
+    };
+  }
+
+  return {
+    '/sign-in/email': { window: 60, max: 5 },
+    '/sign-up/email': { window: 60, max: 5 },
+    '/forget-password': { window: 60, max: 3 },
+    '/reset-password': { window: 60, max: 5 },
+    '/send-verification-email': { window: 60, max: 3 },
+    '/sign-in/social': { window: 60, max: 10 },
+  };
+}
+
+/**
  * Extracted into its own function so `ReturnType<typeof buildAuth>` below
  * captures the exact type this specific config literal produces. Caching
  * via `ReturnType<typeof betterAuth>` directly does not typecheck: that
@@ -207,14 +242,7 @@ function buildAuth() {
       modelName: 'rateLimits',
       window: 60,
       max: 100,
-      customRules: {
-        '/sign-in/email': { window: 60, max: 5 },
-        '/sign-up/email': { window: 60, max: 5 },
-        '/forget-password': { window: 60, max: 3 },
-        '/reset-password': { window: 60, max: 5 },
-        '/send-verification-email': { window: 60, max: 3 },
-        '/sign-in/social': { window: 60, max: 10 },
-      },
+      customRules: buildRateLimitCustomRules(),
     },
 
     databaseHooks: {
