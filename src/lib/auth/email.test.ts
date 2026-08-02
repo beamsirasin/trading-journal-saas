@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EmailDeliveryAdapter } from './email';
+import type * as SmtpConfigModule from './smtp-config';
 
 vi.mock('server-only', () => ({}));
 
@@ -13,6 +14,26 @@ const { sendMailMock, createTransportMock } = vi.hoisted(() => {
 vi.mock('nodemailer', () => ({
   default: { createTransport: createTransportMock },
 }));
+
+const { resolveSmtpConfigFromEnvSpy } = vi.hoisted(() => ({
+  resolveSmtpConfigFromEnvSpy: vi.fn(),
+}));
+
+// Wraps the REAL `resolveSmtpConfigFromEnv` rather than replacing it, so
+// `getEmailAdapter()`'s actual selection behavior is untouched — this only
+// lets a test inspect exactly what was passed in, to prove `getEmailAdapter()`
+// forwards the complete validated environment object rather than a
+// hand-picked subset.
+vi.mock('./smtp-config', async (importOriginal) => {
+  const actual = await importOriginal<typeof SmtpConfigModule>();
+  return {
+    ...actual,
+    resolveSmtpConfigFromEnv: (env: SmtpConfigModule.SmtpConfigEnv) => {
+      resolveSmtpConfigFromEnvSpy(env);
+      return actual.resolveSmtpConfigFromEnv(env);
+    },
+  };
+});
 
 const {
   ConsoleEmailAdapter,
@@ -187,6 +208,101 @@ describe('getEmailAdapter selection', () => {
     expect(line).toContain('email.adapter.selected');
     expect(line).toContain('ConsoleEmailAdapter');
     expect(line).toContain('not-opted-in');
+
+    info.mockRestore();
+  });
+
+  /**
+   * Regression test for the leading hypothesis of this investigation:
+   * `getEmailAdapter()` passing only PART of the validated environment into
+   * `resolveSmtpConfigFromEnv()` (e.g. missing `EMAIL_PROVIDER`) would make a
+   * fully-configured `.env.local` still resolve to `ConsoleEmailAdapter`.
+   * Wraps the real resolver (see the `vi.mock('./smtp-config', ...)` above)
+   * so this exercises the actual selection path, not the resolver in
+   * isolation.
+   */
+  it('passes the complete validated server environment into resolveSmtpConfigFromEnv — never a partial object', () => {
+    process.env.EMAIL_PROVIDER = 'smtp';
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1025';
+    process.env.SMTP_SECURE = 'false';
+    process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
+    process.env.EMAIL_FROM_NAME = 'Trading OS';
+    setNodeEnv('development');
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+    resolveSmtpConfigFromEnvSpy.mockClear();
+
+    expect(getEmailAdapter()).toBeInstanceOf(SmtpEmailAdapter);
+
+    expect(resolveSmtpConfigFromEnvSpy).toHaveBeenCalledTimes(1);
+    const passedEnv = resolveSmtpConfigFromEnvSpy.mock.calls[0]?.[0];
+    expect(passedEnv.EMAIL_PROVIDER).toBe('smtp');
+    expect(passedEnv.SMTP_HOST).toBe('127.0.0.1');
+    expect(passedEnv.SMTP_PORT).toBe(1025);
+    expect(passedEnv.SMTP_SECURE).toBe('false');
+    expect(passedEnv.EMAIL_FROM_ADDRESS).toBe('no-reply@trading-os.local');
+    expect(passedEnv.EMAIL_FROM_NAME).toBe('Trading OS');
+    // Confirms it is the SAME validated object `getServerEnv()` produces
+    // (e.g. NODE_ENV is present too), not a hand-picked SMTP-only subset.
+    expect(passedEnv.NODE_ENV).toBe('development');
+  });
+
+  it('picks up a corrected local environment after a cache reset — a stale ConsoleEmailAdapter never survives a dev-server restart', () => {
+    // Simulates the exact reported symptom: SMTP looked unconfigured (or
+    // .env.local was edited while the process was already warm), so the
+    // singleton locked in ConsoleEmailAdapter.
+    setNodeEnv('development');
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+    expect(getEmailAdapter()).toBeInstanceOf(ConsoleEmailAdapter);
+
+    // A real restart re-reads .env.local from scratch; resetEmailAdapterCache
+    // + resetServerEnvCache is the equivalent for this process.
+    process.env.EMAIL_PROVIDER = 'smtp';
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1025';
+    process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+
+    expect(getEmailAdapter()).toBeInstanceOf(SmtpEmailAdapter);
+  });
+
+  it('reports the full structured adapter-selection diagnostics object, with only booleans/short enums — never a configured value', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    process.env.EMAIL_PROVIDER = 'smtp';
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1025';
+    process.env.EMAIL_FROM_ADDRESS = 'no-reply@trading-os.local';
+    process.env.EMAIL_FROM_NAME = 'Trading OS';
+    setNodeEnv('development');
+    resetServerEnvCache();
+    resetEmailAdapterCache();
+    getEmailAdapter();
+
+    const diagnosticsLine = info.mock.calls.find((call) =>
+      String(call[0]).includes('adapter-selection-diagnostics'),
+    );
+    expect(diagnosticsLine).toBeDefined();
+    const payload = JSON.parse(String(diagnosticsLine?.[1]));
+    expect(payload).toEqual({
+      nodeEnv: 'development',
+      provider: 'smtp',
+      smtpHostConfigured: true,
+      smtpPortConfigured: true,
+      smtpSecureConfigured: false,
+      smtpUsernameConfigured: false,
+      smtpPasswordConfigured: false,
+      fromAddressConfigured: true,
+      fromNameConfigured: true,
+      resolution: 'ready',
+      selectedAdapter: 'smtp',
+    });
+    // Never the actual host/address values — only presence booleans.
+    expect(String(diagnosticsLine?.[1])).not.toContain('127.0.0.1');
+    expect(String(diagnosticsLine?.[1])).not.toContain('no-reply@trading-os.local');
 
     info.mockRestore();
   });

@@ -4,14 +4,22 @@ import nodemailer from 'nodemailer';
 
 import { getServerEnv } from '@/config/env.server';
 
-import { logDispatchStage, sanitizeErrorCode } from './dispatch-log';
+import {
+  logAdapterSelectionDiagnostics,
+  logDispatchStage,
+  sanitizeErrorCode,
+} from './dispatch-log';
 import {
   buildPasswordResetEmail,
   buildVerificationEmail,
   type RenderedEmail,
   type SupportedEmailLocale,
 } from './email-templates';
-import { resolveSmtpConfigFromEnv, type SmtpAdapterConfig } from './smtp-config';
+import {
+  resolveSmtpConfigFromEnv,
+  type SmtpAdapterConfig,
+  type SmtpConfigResult,
+} from './smtp-config';
 
 /**
  * The one seam every outbound auth email goes through.
@@ -228,8 +236,10 @@ export class SmtpEmailAdapter implements EmailDeliveryAdapter {
   }
 }
 
-function buildDevelopmentAdapter(): { adapter: EmailDeliveryAdapter; detail: string } {
-  const result = resolveSmtpConfigFromEnv(getServerEnv());
+function buildDevelopmentAdapter(result: SmtpConfigResult): {
+  adapter: EmailDeliveryAdapter;
+  detail: string;
+} {
   if (result.ok) {
     return { adapter: new SmtpEmailAdapter(result.config), detail: 'SmtpEmailAdapter' };
   }
@@ -248,17 +258,44 @@ export function getEmailAdapter(): EmailDeliveryAdapter {
     return adapter;
   }
 
+  // Computed unconditionally — cheap, pure, no side effects — so the
+  // dev-only diagnostic below can report the SMTP-completeness reason
+  // regardless of which branch actually wins (`NODE_ENV` decides that, not
+  // this result). `getServerEnv()` is the exact same validated environment
+  // `resolveSmtpConfigFromEnv` receives in every other caller (this file,
+  // `pnpm email:verify`/`email:smoke`), never a hand-picked subset.
+  const env = getServerEnv();
+  const smtpResult = resolveSmtpConfigFromEnv(env);
+
+  let selectedAdapter: 'smtp' | 'console' | 'test' | 'production';
   if (process.env.NODE_ENV === 'production') {
     adapter = new ProductionEmailAdapter();
+    selectedAdapter = 'production';
     logDispatchStage('email.adapter.selected', 'ProductionEmailAdapter');
   } else if (process.env.NODE_ENV === 'test') {
     adapter = new TestEmailAdapter();
+    selectedAdapter = 'test';
     logDispatchStage('email.adapter.selected', 'TestEmailAdapter');
   } else {
-    const selection = buildDevelopmentAdapter();
+    const selection = buildDevelopmentAdapter(smtpResult);
     adapter = selection.adapter;
+    selectedAdapter = smtpResult.ok ? 'smtp' : 'console';
     logDispatchStage('email.adapter.selected', selection.detail);
   }
+
+  logAdapterSelectionDiagnostics({
+    nodeEnv: process.env.NODE_ENV,
+    provider: env.EMAIL_PROVIDER ?? null,
+    smtpHostConfigured: env.SMTP_HOST !== undefined,
+    smtpPortConfigured: env.SMTP_PORT !== undefined,
+    smtpSecureConfigured: env.SMTP_SECURE !== undefined,
+    smtpUsernameConfigured: env.SMTP_USERNAME !== undefined,
+    smtpPasswordConfigured: env.SMTP_PASSWORD !== undefined,
+    fromAddressConfigured: env.EMAIL_FROM_ADDRESS !== undefined,
+    fromNameConfigured: env.EMAIL_FROM_NAME !== undefined,
+    resolution: smtpResult.ok ? 'ready' : smtpResult.reason,
+    selectedAdapter,
+  });
 
   return adapter;
 }

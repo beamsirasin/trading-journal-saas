@@ -51,3 +51,32 @@ export function logDispatchStage(stage: DispatchStage, detail?: string): void {
     detail !== undefined ? `[email:dispatch] ${stage} (${detail})` : `[email:dispatch] ${stage}`,
   );
 }
+
+/**
+ * Structured, dev-only snapshot of the adapter-selection decision — every
+ * field is a boolean/short-enum presence check, never a configured value.
+ * Exists to answer, at a glance, exactly which of the three primary
+ * hypotheses (wrong `NODE_ENV`, incomplete SMTP config, wrong opt-in value)
+ * explains a `ConsoleEmailAdapter`/`ProductionEmailAdapter` selection that a
+ * developer didn't expect.
+ */
+export interface AdapterSelectionDiagnostics {
+  readonly nodeEnv: string | undefined;
+  readonly provider: string | null;
+  readonly smtpHostConfigured: boolean;
+  readonly smtpPortConfigured: boolean;
+  readonly smtpSecureConfigured: boolean;
+  readonly smtpUsernameConfigured: boolean;
+  readonly smtpPasswordConfigured: boolean;
+  readonly fromAddressConfigured: boolean;
+  readonly fromNameConfigured: boolean;
+  readonly resolution: string;
+  readonly selectedAdapter: 'smtp' | 'console' | 'test' | 'production';
+}
+
+export function logAdapterSelectionDiagnostics(diagnostics: AdapterSelectionDiagnostics): void {
+  if (process.env.NODE_ENV !== 'development') {
+    return;
+  }
+  console.info('[email:dispatch] adapter-selection-diagnostics', JSON.stringify(diagnostics));
+}
