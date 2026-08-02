@@ -23,15 +23,20 @@
     "test:e2e:install": "playwright install --with-deps chromium",
     "test:money": "vitest run src/lib/money",
     "test:time": "vitest run src/lib/time",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:check": "drizzle-kit check",
+    "db:studio": "drizzle-kit studio",
+    "db:test:prepare": "node scripts/prepare-test-db.mjs",
     "scan:client": "node scripts/scan-client-assets.mjs",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm scan:client"
   },
   "dependencies": {
+    "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
@@ -47,6 +52,7 @@
     "recharts": "^3.10.1",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
+    "uuidv7": "^1.2.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -31,21 +31,27 @@ export const clientEnvSchema = z.object({
 export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-  // Phase 01 — database. Becomes required once queries exist.
+  // Phase 00b/02 — database.
   DATABASE_URL: optionalString,
   /**
-   * Direct (unpooled) connection, used only for migrations. Pooled endpoints
-   * can break DDL and advisory locks; see docs/architecture.md §9.
+   * Direct (unpooled) connection, used only for migrations and database
+   * administration. Pooled endpoints can break DDL and advisory locks; see
+   * docs/architecture.md §9. Named for what it is used FOR (migrations), not
+   * for the connection topology (unpooled) — the topology is an
+   * implementation detail of *why* migrations need it, not what a reader
+   * reaches for this variable to do.
    */
-  DATABASE_URL_UNPOOLED: optionalString,
+  DATABASE_MIGRATION_URL: optionalString,
 
-  // Phase 02 — authentication.
-  AUTH_SECRET: optionalString,
-  AUTH_URL: optionalUrl,
-  AUTH_GOOGLE_ID: optionalString,
-  AUTH_GOOGLE_SECRET: optionalString,
-  AUTH_EMAIL_FROM: optionalString,
-  AUTH_RESEND_KEY: optionalString,
+  // Phase 02 — Better Auth.
+  /** Session/cookie signing key. Rejected if weak or placeholder-shaped in production — see src/lib/auth/server.ts. */
+  BETTER_AUTH_SECRET: optionalString,
+  /** Canonical URL Better Auth uses to build callback and cookie URLs. */
+  BETTER_AUTH_URL: optionalUrl,
+  /** Comma-separated additional origins, beyond BETTER_AUTH_URL, allowed to receive auth responses (e.g. a Vercel preview domain). */
+  BETTER_AUTH_TRUSTED_ORIGINS: optionalString,
+  GOOGLE_CLIENT_ID: optionalString,
+  GOOGLE_CLIENT_SECRET: optionalString,
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;

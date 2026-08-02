@@ -46,7 +46,7 @@ describe('serverEnvSchema', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.DATABASE_URL).toBeUndefined();
-      expect(result.data.AUTH_SECRET).toBeUndefined();
+      expect(result.data.BETTER_AUTH_SECRET).toBeUndefined();
     }
   });
 
@@ -54,11 +54,12 @@ describe('serverEnvSchema', () => {
     const result = serverEnvSchema.safeParse({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgresql://user:pass@host:5432/db',
-      DATABASE_URL_UNPOOLED: 'postgresql://user:pass@host:5432/db',
-      AUTH_SECRET: 'a-secret',
-      AUTH_URL: 'https://example.com',
-      AUTH_GOOGLE_ID: 'id',
-      AUTH_GOOGLE_SECRET: 'secret',
+      DATABASE_MIGRATION_URL: 'postgresql://user:pass@host:5432/db',
+      BETTER_AUTH_SECRET: 'a-secret',
+      BETTER_AUTH_URL: 'https://example.com',
+      BETTER_AUTH_TRUSTED_ORIGINS: 'https://preview.example.com,https://staging.example.com',
+      GOOGLE_CLIENT_ID: 'id',
+      GOOGLE_CLIENT_SECRET: 'secret',
     });
     expect(result.success).toBe(true);
   });

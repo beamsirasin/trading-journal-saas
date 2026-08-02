@@ -32,15 +32,19 @@ export function getDatabaseUrl(): string {
 }
 
 /**
- * The direct (unpooled) connection string, for migrations only.
+ * The direct (unpooled) connection string, for migrations and database
+ * administration only.
  *
  * Falls back to `DATABASE_URL` because a plain PostgreSQL server — the VPS
  * target — has no separate pooled endpoint, and requiring both there would be
- * pointless ceremony. On Neon the two genuinely differ.
+ * pointless ceremony. On Neon the two genuinely differ, and this fallback
+ * must never be silent in a context where it matters: `docs/migration-runbook.md`
+ * documents that Neon deployments MUST set `DATABASE_MIGRATION_URL` explicitly,
+ * and `drizzle.config.ts` prints which variable it resolved before running.
  */
 export function getMigrationDatabaseUrl(): string {
   const env = getServerEnv();
-  return requireEnv('DATABASE_URL_UNPOOLED', env.DATABASE_URL_UNPOOLED ?? env.DATABASE_URL);
+  return requireEnv('DATABASE_MIGRATION_URL', env.DATABASE_MIGRATION_URL ?? env.DATABASE_URL);
 }
 
 /** Test seam: clears the memoised parse so a test can vary `process.env`. */

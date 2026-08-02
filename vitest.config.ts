@@ -21,9 +21,12 @@ export default defineConfig({
       },
     },
     // `e2e/` belongs to Playwright. Without this split, Vitest would try to
-    // execute Playwright specs and fail confusingly.
+    // execute Playwright specs and fail confusingly. `*.integration.test.ts`
+    // belongs to `vitest.integration.config.ts` — those hit a real database
+    // and import `server-only` modules that throw outside a server-like
+    // environment, so they must never run under this jsdom config.
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules/**', '.next/**', 'e2e/**'],
+    exclude: ['node_modules/**', '.next/**', 'e2e/**', 'src/**/*.integration.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
