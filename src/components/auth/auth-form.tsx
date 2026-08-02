@@ -6,6 +6,7 @@ import { useId, useState, type FormEvent } from 'react';
 
 import { safeCallbackPath } from '@/lib/auth/callback-url';
 import { signIn, signUp } from '@/lib/auth/client';
+import { mapGenericError } from '@/lib/auth/client-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -208,22 +209,6 @@ export function AuthForm({
       </form>
     </div>
   );
-}
-
-interface AuthErrorLike {
-  code?: string | undefined;
-  status?: number | undefined;
-}
-
-function mapGenericError(
-  error: AuthErrorLike,
-  defaultMessage: string,
-  rateLimitMessage: string,
-): string {
-  if (error.status === 429) {
-    return rateLimitMessage;
-  }
-  return defaultMessage;
 }
 
 /** Inline mark so the button does not depend on a remote image. */

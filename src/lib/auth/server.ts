@@ -236,6 +236,18 @@ export function buildAuth(options?: {
     verification: { modelName: 'verifications' },
 
     emailVerification: {
+      // Sends exactly one verification email automatically as part of
+      // POST /sign-up/email itself — confirmed against the installed
+      // better-auth@1.6.25 source (`dist/api/routes/sign-up.mjs`): it awaits
+      // `ctx.context.runInBackgroundOrAwait(sendVerificationEmail(...))`
+      // before the route returns, and that helper only defers to a
+      // fire-and-forget task if `advanced.backgroundTasks.handler` is set
+      // below (it is not), otherwise it plainly `await`s the send. Do not
+      // add a `backgroundTasks.handler` (e.g. a serverless `waitUntil`) to
+      // "speed up" sign-up without also making the response wait for the
+      // outcome some other way — deferring the send past the HTTP response
+      // is exactly the "serverless runtime terminates the send prematurely"
+      // failure mode this phase's brief calls out.
       sendOnSignUp: true,
       // Recovery path for an expired verification link: since sign-in itself
       // is refused for an unverified user (requireEmailVerification below),

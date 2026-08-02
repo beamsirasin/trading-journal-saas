@@ -111,4 +111,40 @@ describe('Better Auth verification email delivery (real database)', () => {
     expect(sentAfterResend).toHaveLength(2);
     expect(sentAfterResend.every((message) => message.kind === 'verification')).toBe(true);
   });
+
+  it('keeps the resend endpoint rate limited (buildRateLimitCustomRules: max 3 per 60s)', async () => {
+    const auth = getAuth();
+    const email = `verify-ratelimit-${crypto.randomUUID()}@example.test`;
+
+    await auth.api.signUpEmail({
+      body: { name: 'Rate Limited', email, password: 'correct-horse-battery-staple' },
+      headers: new Headers({ origin: 'http://localhost:3000' }),
+    });
+
+    const db = getTestDb();
+    const user = await db.query.users.findFirst({ where: eq(users.email, email) });
+    expect(user).toBeDefined();
+    if (user !== undefined) createdUserIds.push(user.id);
+    testAdapter().reset();
+
+    // The unauthenticated resend path enforces a >=500ms constant-time floor
+    // per call (email-verification.mjs) so this loop is inherently slow —
+    // acceptable for an integration test, not for the unit suite.
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const response = await auth.api.sendVerificationEmail({
+        body: { email, callbackURL: '/verify-email/complete' },
+        headers: new Headers({ origin: 'http://localhost:3000' }),
+        asResponse: true,
+      });
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toContain(429);
+    // A blocked (429) attempt must never have reached the email adapter —
+    // only genuinely accepted (200) attempts may have sent anything.
+    const acceptedCount = statuses.filter((status) => status === 200).length;
+    const deliveredCount = testAdapter().sent.filter((message) => message.to === email).length;
+    expect(deliveredCount).toBe(acceptedCount);
+  });
 });
