@@ -3,8 +3,8 @@
 > This file is the standing contract for all work in this repository.
 > Read it before modifying code. Read the active phase document in [`docs/phases/`](docs/phases/) second.
 >
-> **Status:** Phases 00, 00b and 01 complete. The product has a full visual form driven by static demo fixtures; no authentication, database or product mutation exists.
-> **Last updated:** 2026-07-31
+> **Status:** Phases 00, 00b and 01 complete. Phase 02 (Neon PostgreSQL, Better Auth, user preferences, tenant-isolated workspace foundation) implemented on branch `phase/02-auth-tenancy`, not yet merged to `main`. Authentication (Google OAuth + email/password), a real database, and one personal workspace per user now exist; trading accounts, strategies, trades, analytics calculations, subscriptions, and payments remain fixture-driven or absent.
+> **Last updated:** 2026-08-02
 >
 > The master product instructions this repository was commissioned under are preserved verbatim in [Appendix A](#appendix-a--master-instructions-verbatim). Where this document elaborates on them, the appendix governs intent and this document governs implementation.
 
@@ -39,22 +39,22 @@ Everything in the schema, the calculation engine, and the analytics UI serves th
 
 Fixed for the MVP. Changing any of these requires an explicit decision recorded in this file.
 
-| Concern         | Decision                                          | Notes                                                                                         |
-| --------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Framework       | **Next.js 16.2.12**, App Router, React 19.2.4     | Pinned exactly at Phase 00 init. Upgrade deliberately, never by floating range.               |
-| Language        | **TypeScript 5.9.3**, `strict: true`              | Plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`.        |
-| Package manager | **pnpm 11.17.0**                                  | Lockfile committed. Build scripts approved explicitly in `pnpm-workspace.yaml`.               |
-| Database        | PostgreSQL via standard `DATABASE_URL`            | **Local Postgres in development; Neon for deployment.** No Vercel-only or Neon-only features. |
-| ORM             | Drizzle ORM + drizzle-kit                         | Migrations are generated SQL, committed, forward-only.                                        |
-| Validation      | Zod                                               | At every boundary: server actions, route handlers, env, external payloads.                    |
-| Auth            | Auth.js (NextAuth v5) — Google OAuth + email      | Behind `src/lib/auth/` adapter.                                                               |
-| UI              | Tailwind CSS + shadcn/ui (Radix primitives)       | Accessible primitives; no admin-template kits.                                                |
-| Motion          | `motion` (Framer Motion)                          | Must respect `prefers-reduced-motion`.                                                        |
-| Charts          | Recharts                                          | Load the `dataviz` skill before writing any chart code.                                       |
-| Unit tests      | **Vitest 4.1.10** + React Testing Library         | Calculation engine requires near-total coverage.                                              |
-| E2E tests       | **Playwright 1.62.0**                             | Wired in Phase 00; desktop + mobile viewports. Flows grow per phase.                          |
-| Formatting      | **Prettier 3.9.6**                                | Also owns import ordering and Tailwind class sorting. CI runs `format:check`.                 |
-| Money math      | `decimal.js` for prices; `bigint` for minor units | See §5. **Never `number` for financial values.**                                              |
+| Concern         | Decision                                                  | Notes                                                                                                                              |
+| --------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Framework       | **Next.js 16.2.12**, App Router, React 19.2.4             | Pinned exactly at Phase 00 init. Upgrade deliberately, never by floating range.                                                    |
+| Language        | **TypeScript 5.9.3**, `strict: true`                      | Plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`.                                             |
+| Package manager | **pnpm 11.17.0**                                          | Lockfile committed. Build scripts approved explicitly in `pnpm-workspace.yaml`.                                                    |
+| Database        | PostgreSQL via standard `DATABASE_URL`                    | **Local Postgres in development; Neon for deployment.** No Vercel-only or Neon-only features.                                      |
+| ORM             | Drizzle ORM + drizzle-kit                                 | Migrations are generated SQL, committed, forward-only.                                                                             |
+| Validation      | Zod                                                       | At every boundary: server actions, route handlers, env, external payloads.                                                         |
+| Auth            | Better Auth (self-hosted) — Google OAuth + email/password | Drizzle adapter, database-backed sessions. Behind `src/lib/auth/`. See [ADR 0009](docs/decisions/0009-self-hosted-better-auth.md). |
+| UI              | Tailwind CSS + shadcn/ui (Radix primitives)               | Accessible primitives; no admin-template kits.                                                                                     |
+| Motion          | `motion` (Framer Motion)                                  | Must respect `prefers-reduced-motion`.                                                                                             |
+| Charts          | Recharts                                                  | Load the `dataviz` skill before writing any chart code.                                                                            |
+| Unit tests      | **Vitest 4.1.10** + React Testing Library                 | Calculation engine requires near-total coverage.                                                                                   |
+| E2E tests       | **Playwright 1.62.0**                                     | Wired in Phase 00; desktop + mobile viewports. Flows grow per phase.                                                               |
+| Formatting      | **Prettier 3.9.6**                                        | Also owns import ordering and Tailwind class sorting. CI runs `format:check`.                                                      |
+| Money math      | `decimal.js` for prices; `bigint` for minor units         | See §5. **Never `number` for financial values.**                                                                                   |
 
 ### Mutations
 
@@ -69,18 +69,22 @@ src/
   app/                  # routes only — thin, no business logic
   components/           # presentational + composed UI
   server/
-    actions/            # server actions (guarded, Zod-validated)
-    services/           # business logic, tenant-aware
+    actions/            # server actions (guarded, Zod-validated) — e.g. preferences.ts
+    auth/                # server-only session/workspace authorization DAL (dal.ts)
+    services/           # business logic, tenant-aware — e.g. workspace-provisioning.ts, audit-log.ts
     db/
-      schema/           # drizzle tables
-      queries/          # scoped query helpers
+      schema/           # drizzle tables — auth.ts, workspaces.ts, user-preferences.ts, audit-logs.ts
+      queries/          # scoped query helpers (introduced once product tables exist)
   lib/
     calc/               # PURE deterministic calculation engine — no I/O, no db
-    auth/               # auth adapter
+    auth/               # Better Auth instance, client, email-delivery adapter — see ADR 0009, ADR 0013
+    identifiers.ts       # the one ID generator — see ADR 0008
     money/              # decimal + minor-unit primitives
     time/               # UTC storage, tz-aware display
-  config/               # plan definitions, mistake taxonomy, constants
+  config/               # plan definitions, mistake taxonomy, audit-action allowlist, constants
+  proxy.ts               # optimistic locale + session-cookie-presence redirect (Next.js 16 convention; not the auth boundary)
 drizzle/                # generated migrations (committed)
+docs/decisions/          # architecture decision records
 docs/phases/            # phase documents
 ```
 
@@ -286,17 +290,17 @@ When requirements are ambiguous: choose the **smallest safe implementation** tha
 
 Recorded here until validated. Each needs a decision before or during the phase noted.
 
-| #   | Assumption                                                                                    | Decide by |
-| --- | --------------------------------------------------------------------------------------------- | --------- |
-| A1  | Break-even tolerance defaults to `0.05R`, configurable per trading account                    | Phase 07  |
-| A2  | Mistake severity weights: minor 0.15 / moderate 0.35 / severe 0.60                            | Phase 07  |
-| A3  | Plan tiers gate on trading-account count; 1 / 3 / 10 shown as provisional in Phase 01         | Phase 04  |
-| A4  | Trial is 7 days, no card required, starts at first login                                      | Phase 04  |
-| A5  | Personal workspace auto-created on signup; team invites deferred post-MVP                     | Phase 03  |
-| A6  | Strategy versions are immutable once a trade references them                                  | Phase 06  |
-| A7  | Deleted trades are soft-deleted to keep historical analytics stable                           | Phase 07  |
-| A8  | OS light preference is honoured over the dark-first identity — see `docs/design-system.md` §3 | Phase 00b |
-| A9  | Demo fixtures carry no formulas and are labelled at every render site — see ADR 0006          | Phase 09  |
+| #   | Assumption                                                                                                                                                                                                                    | Decide by  |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| A1  | Break-even tolerance defaults to `0.05R`, configurable per trading account                                                                                                                                                    | Phase 07   |
+| A2  | Mistake severity weights: minor 0.15 / moderate 0.35 / severe 0.60                                                                                                                                                            | Phase 07   |
+| A3  | Plan tiers gate on trading-account count; 1 / 3 / 10 shown as provisional in Phase 01                                                                                                                                         | Phase 04   |
+| A4  | Trial is 7 days, no card required, starts at first login                                                                                                                                                                      | Phase 04   |
+| A5  | Personal workspace auto-created on signup; team invites deferred post-MVP — **decided in Phase 02**: implemented via `ensurePersonalWorkspace()`, see [ADR 0011](docs/decisions/0011-tenant-workspace-authorization-model.md) | Phase 02 ✓ |
+| A6  | Strategy versions are immutable once a trade references them                                                                                                                                                                  | Phase 06   |
+| A7  | Deleted trades are soft-deleted to keep historical analytics stable                                                                                                                                                           | Phase 07   |
+| A8  | OS light preference is honoured over the dark-first identity — see `docs/design-system.md` §3                                                                                                                                 | Phase 00b  |
+| A9  | Demo fixtures carry no formulas and are labelled at every render site — see ADR 0006                                                                                                                                          | Phase 09   |
 
 ---
 

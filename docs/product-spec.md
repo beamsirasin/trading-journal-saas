@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phase 01.1 — the product's surfaces exist, are populated by fictional demo fixtures, and are available in English and Thai. No authentication, no database, no real metric below is computed yet.
+**Status:** Living document. Phase 02 — every surface still renders from fictional demo fixtures and is labelled as such, but authentication (Google OAuth + email/password) and a real, tenant-isolated database now exist behind them. A user's account, sign-in, and personal workspace are real; no real metric below is computed yet.
 
 ## 1. The problem
 

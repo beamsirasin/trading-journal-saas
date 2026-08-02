@@ -10,20 +10,21 @@ Most journals tell you your P&L. This one tells you where it came from:
 
 ## Status
 
-**Phase 01.1 — UI simplification and Thai/English localization**, on top of Phase 01's design system, marketing site and application shell. The dashboard and landing page are trimmed to what a first glance needs, and the whole product is available in English and Thai.
+**Phase 02 — Neon PostgreSQL, Better Auth, user preferences, tenant-isolated workspace foundation** (branch `phase/02-auth-tenancy`, not yet merged to `main`), on top of Phase 01/01.1's design system, marketing site and application shell.
 
-Everything on screen is driven by **static demo fixtures** and is labelled as such. There is deliberately no authentication, no database schema, no payment processing, and no trading functionality. See [docs/roadmap.md](docs/roadmap.md).
+Authentication (Google OAuth + email/password, via self-hosted Better Auth) and a real, migrated PostgreSQL database now exist. Every visitor to `/{locale}/app/*` is a genuinely authenticated user with one personal workspace, verified server-side on every request — not a mock session. Trading accounts, strategies, trades, analytics calculations, subscriptions, and payment processing remain **static demo fixtures**, clearly labelled as such (`appNav.demoNote`: "Your account and sign-in are real. Trading data shown here is still a fixture preview."). See [docs/roadmap.md](docs/roadmap.md).
 
 ### Routes
 
 Every route lives under a locale prefix — `/en/...` or `/th/...` (`en` is the default fallback locale; there is no unprefixed route). See [ADR 0007](docs/decisions/0007-i18n-architecture.md).
 
-| Public                                               | Application                                                  |
-| ---------------------------------------------------- | ------------------------------------------------------------ |
-| `/en` landing · `/en/pricing` · `/en/demo` dashboard | `/en/app` overview · `/en/app/trades` · `/en/app/strategies` |
-| `/en/login` · `/en/register` (visual only)           | `/en/app/analytics` · `/en/app/settings`                     |
+| Public                                                                               | Application                                                  |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `/en` landing · `/en/pricing` · `/en/demo` dashboard                                 | `/en/app` overview · `/en/app/trades` · `/en/app/strategies` |
+| `/en/login` · `/en/register`                                                         | `/en/app/analytics` · `/en/app/settings`                     |
+| `/en/verify-email` · `/en/forgot-password` · `/en/reset-password` · `/en/auth-error` |                                                              |
 
-Swap `/en` for `/th` for the Thai version of any route.
+An unauthenticated visitor to any `/en/app/*` route is redirected to `/en/login?callbackUrl=...`; an authenticated visitor to `/en/login` or `/en/register` is redirected to `/en/app`. Swap `/en` for `/th` for the Thai version of any route.
 
 ## Requirements
 
@@ -34,23 +35,24 @@ Swap `/en` for `/th` for the Thai version of any route.
 
 ## Getting started
 
+The marketing site and demo pages render with no database configured. **Login, registration, and every `/app/*` route need a real, migrated PostgreSQL database** — they call `getOptionalSession()` unconditionally (session-check-and-redirect), which opens a real connection.
+
 ```bash
 pnpm install
-cp .env.example .env.local   # every variable is still optional
+cp .env.example .env.local   # fill in DATABASE_URL at minimum — see below
+pnpm db:up                   # start Postgres in Docker (or point DATABASE_URL at a Neon branch instead)
+pnpm db:migrate              # apply migrations — see docs/migration-runbook.md
 pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-A local PostgreSQL is **optional** and nothing uses it yet:
-
 ```bash
-pnpm db:up     # start Postgres in Docker
-pnpm db:down   # stop it, keeping data
+pnpm db:down   # stop Postgres, keeping data
 pnpm db:reset  # DESTROY all local data and start fresh
 ```
 
-Prefer a Neon branch? Point `DATABASE_URL` at it and skip Docker entirely.
+Google sign-in stays truthfully disabled until `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are set — see [docs/google-oauth-setup.md](docs/google-oauth-setup.md). No transactional email provider is configured yet — verification/reset links print to the server console in development (`ConsoleEmailAdapter`); see [docs/email-delivery-setup.md](docs/email-delivery-setup.md).
 
 ## Scripts
 
@@ -76,6 +78,10 @@ Prefer a Neon branch? Point `DATABASE_URL` at it and skip Docker entirely.
 | `pnpm db:reset`         | **Destroy local data** and start fresh                    |
 | `pnpm db:generate`      | Generate a migration from the schema                      |
 | `pnpm db:migrate`       | Apply migrations, over the direct connection              |
+| `pnpm db:check`         | Fail if the schema and migration history have drifted     |
+| `pnpm db:studio`        | Drizzle Studio (local schema/data browser)                |
+| `pnpm db:test:prepare`  | Apply migrations to `TEST_DATABASE_URL` (safety-checked)  |
+| `pnpm test:integration` | Integration tests against a real, disposable Postgres     |
 | `pnpm scan:client`      | Fail if a server secret reached the client bundle         |
 | `pnpm check`            | Everything CI runs, in order                              |
 
@@ -87,11 +93,12 @@ Run `pnpm check` before pushing.
 src/
   app/
     [locale]/
-      (public)/ Marketing site: /, /pricing, /login, /register, /demo
-      (app)/    Application shell — no guard yet, Phase 02 adds it
+      (public)/ Marketing site: /, /pricing, /login, /register, /demo, /verify-email, ...
+      (app)/    Application shell — real server-verified guard (Phase 02)
     api/health/ Liveness endpoint
+    api/auth/   Better Auth's Next.js route handler
   i18n/         next-intl routing, navigation, and request config
-  middleware.ts Locale detection and cookie sync
+  proxy.ts      Locale detection + optimistic session-cookie-presence redirect
   components/
     ui/         shadcn primitives + project-authored controls
     shell/      App shell, sidebar, drawer, container, brand
@@ -127,19 +134,23 @@ Planned additions are described in [docs/architecture.md](docs/architecture.md);
 
 ## Documentation
 
-| Document                                                       | What it covers                                   |
-| -------------------------------------------------------------- | ------------------------------------------------ |
-| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first            |
-| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                    |
-| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                 |
-| [docs/data-dictionary.md](docs/data-dictionary.md)             | Planned schema and field meanings                |
-| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases         |
-| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y         |
-| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard |
-| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                  |
-| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                        |
-| [docs/decisions/](docs/decisions/)                             | Architecture decision records                    |
-| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                         |
+| Document                                                       | What it covers                                    |
+| -------------------------------------------------------------- | ------------------------------------------------- |
+| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first             |
+| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                     |
+| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                  |
+| [docs/data-dictionary.md](docs/data-dictionary.md)             | Schema and field meanings                         |
+| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases          |
+| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y          |
+| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard  |
+| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                   |
+| [docs/migration-runbook.md](docs/migration-runbook.md)         | Database migration commands, per environment      |
+| [docs/neon-setup.md](docs/neon-setup.md)                       | Manual Neon project/branch setup                  |
+| [docs/google-oauth-setup.md](docs/google-oauth-setup.md)       | Manual Google OAuth client setup                  |
+| [docs/email-delivery-setup.md](docs/email-delivery-setup.md)   | Email adapter boundary and what is/isn't verified |
+| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                         |
+| [docs/decisions/](docs/decisions/)                             | Architecture decision records                     |
+| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                          |
 
 ## Environment
 
@@ -159,7 +170,7 @@ Validation is split so secrets cannot leak into the browser:
 | **Preview**    | A non-production database, always         | Hosting platform store                        |
 | **Production** | Neon production                           | Hosting platform store, rotated independently |
 
-The app talks to PostgreSQL through a standard `DATABASE_URL` (local Postgres in development, Neon in deployment) so it stays portable to a plain VPS. `DATABASE_URL_UNPOOLED` is used only for migrations — see [ADR 0004](docs/decisions/0004-database-access.md).
+The app talks to PostgreSQL through a standard `DATABASE_URL` (local Postgres in development, Neon in deployment) so it stays portable to a plain VPS. `DATABASE_MIGRATION_URL` is used only for migrations — see [ADR 0004](docs/decisions/0004-database-access.md) and [docs/migration-runbook.md](docs/migration-runbook.md).
 
 ## Testing
 

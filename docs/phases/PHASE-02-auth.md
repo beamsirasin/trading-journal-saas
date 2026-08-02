@@ -1,5 +1,7 @@
 # Phase 02 — Authentication & Session
 
+> **Superseded.** The commissioning brief for Phase 02 combined authentication with tenancy and specified Better Auth rather than Auth.js. See [`PHASE-02-auth-tenancy.md`](PHASE-02-auth-tenancy.md) for what was actually built, and [ADR 0009](../decisions/0009-self-hosted-better-auth.md) for why. This document is preserved as the historical record of the original plan below.
+
 **Depends on:** 00b · **Blocks:** 03+
 
 ## Goal

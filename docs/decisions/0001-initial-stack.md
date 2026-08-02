@@ -1,8 +1,10 @@
 # ADR 0001 — Initial stack
 
-- **Status:** Accepted
+- **Status:** Accepted (auth row superseded — see below)
 - **Date:** 2026-07-31
 - **Phase:** 00 — Foundation
+
+> **2026-08-02:** The "Auth.js (NextAuth v5)" row below was a Phase 00 placeholder, recorded before Phase 02 requirements were specified. Phase 02 selected Better Auth instead, for reasons this ADR did not consider — see [ADR 0009](0009-self-hosted-better-auth.md).
 
 ## Context
 
