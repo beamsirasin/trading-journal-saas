@@ -16,6 +16,12 @@ jobs:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Build-time canaries: scan-client-assets checks these exact values, not
+      # merely secret-looking strings or environment-variable names.
+      BETTER_AUTH_SECRET: client-bundle-auth-secret-canary-7f28f151
+      GOOGLE_CLIENT_SECRET: client-bundle-google-secret-canary-b94fc913
+      SMTP_PASSWORD: client-bundle-smtp-password-canary-2c6e9a41
 
     steps:
       - name: Checkout
@@ -53,3 +59,138 @@ jobs:
 
       - name: Scan client assets for server secrets
         run: pnpm scan:client
+
+      # A second canary: even when DATABASE_URL IS set, but points nowhere
+      # reachable, the build must still succeed — proving Next.js's static
+      # generation never opens a connection on its own (src/server/db/client.ts's
+      # "no connection at import time" guarantee), not merely that an absent
+      # variable happens to avoid the attempt.
+      - name: Production build (invalid database host canary)
+        env:
+          DATABASE_URL: postgresql://user:pass@invalid-host-does-not-exist.invalid:5432/db
+        run: pnpm build
+
+  integration:
+    name: Database migrations and integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: trading_os
+          POSTGRES_PASSWORD: trading_os_ci
+          POSTGRES_DB: trading_os_integration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading_os -d trading_os_integration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # TEST_DATABASE_URL is the only database input to this job. Setup binds
+      # the real DAL to it after normalizing aliases, requiring a test-like
+      # database name, and checking the explicit disposable-data acknowledgement.
+      TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os_integration_test
+      TEST_DATABASE_ACK: I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Proves the committed migrations create a complete schema from
+      # nothing — never `drizzle-kit push` (CLAUDE.md §5), always the
+      # tracked SQL files under drizzle/.
+      - name: Apply migrations to a fresh database
+        run: pnpm db:test:prepare
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+  e2e:
+    name: Playwright end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: trading_os
+          POSTGRES_PASSWORD: trading_os_ci
+          POSTGRES_DB: trading_os_e2e_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading_os -d trading_os_e2e_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os_e2e_test
+      TEST_DATABASE_ACK: I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE
+      # Fixed, obviously-non-production value. Never used outside this
+      # workflow; irrelevant to resolveAuthSecret()'s production fail-closed
+      # check, since `next build`/`next start` here never run with a
+      # production-shaped secret expectation beyond "present and long enough".
+      BETTER_AUTH_SECRET: ci-github-actions-only-secret-never-used-in-production-00
+      BETTER_AUTH_URL: http://127.0.0.1:3100
+      # Widens (never disables) the per-route auth rate limits — see
+      # src/lib/auth/server.ts's buildRateLimitCustomRules(). Every real
+      # sign-in this suite performs shares one IP (this runner), which the
+      # rate limiter cannot distinguish from a single attacker; a real
+      # deployment must never set this.
+      E2E_TEST_MODE: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm test:e2e:install
+
+      - name: Apply migrations
+        run: pnpm db:test:prepare
+
+      # No Google credentials, no email provider — every DB-dependent auth
+      # spec exercises the real email/password flow only; Google-button and
+      # email-delivery specs assert the truthful "not configured" states
+      # (see e2e/pricing-and-auth.spec.ts, e2e/auth-authorization.spec.ts).
+      - name: Playwright tests
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

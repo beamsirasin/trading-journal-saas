@@ -4,23 +4,23 @@ Fourteen phases to MVP. Each is dependency-ordered, independently reviewable, an
 
 ## Status
 
-| #                                                | Phase                                         | Status          | Ships                                                    |
-| ------------------------------------------------ | --------------------------------------------- | --------------- | -------------------------------------------------------- |
-| [00](phases/PHASE-00-foundation.md)              | Foundation & Conventions                      | ✅ **Complete** | Toolchain, CI, design tokens, placeholder page           |
-| [00b](phases/PHASE-00b-core-primitives.md)       | Core Technical Primitives                     | ✅ **Complete** | Money, time, theme, shell, Drizzle boundary, health      |
-| [01](phases/PHASE-01-design-system.md)           | Design System, Marketing & Shell              | ✅ **Complete** | Tokens, landing site, demo dashboard, app shell          |
-| [01.1](phases/PHASE-01-1-simplification-i18n.md) | UI Simplification & Thai/English Localization | ✅ **Complete** | Simplified dashboard/landing, next-intl, `/en` and `/th` |
-| [02](phases/PHASE-02-auth.md)                    | Authentication & Session                      | ⬜ Not started  | Google + email auth, sessions                            |
-| [03](phases/PHASE-03-tenancy.md)                 | Data Model & Tenancy Core                     | ⬜ Not started  | Workspaces, membership, scoped queries                   |
-| [04](phases/PHASE-04-billing.md)                 | Plans, Trial & Entitlements                   | ⬜ Not started  | Three plans, 7-day trial, mock payment                   |
-| [05](phases/PHASE-05-onboarding-accounts.md)     | Onboarding & Trading Accounts                 | ⬜ Not started  | Wizard, account CRUD, limit enforcement                  |
-| [06](phases/PHASE-06-strategies.md)              | Strategies & Versions                         | ⬜ Not started  | Strategy CRUD, immutable versioning                      |
-| [07](phases/PHASE-07-calc-engine.md)             | Trade Model & Calculation Engine              | ⬜ Not started  | Schema plus the pure R-multiple engine                   |
-| [08](phases/PHASE-08-journal.md)                 | Trade Journal                                 | ⬜ Not started  | Manual entry, system vs actual, mistakes                 |
-| [09](phases/PHASE-09-analytics.md)               | Dashboard & Analytics                         | ⬜ Not started  | Real attribution data behind the Phase 01 surfaces       |
-| [10](phases/PHASE-10-settings.md)                | Settings                                      | ⬜ Not started  | Profile, workspace, subscription, export                 |
-| [11](phases/PHASE-11-admin.md)                   | SaaS Administration                           | ⬜ Not started  | Admin role, oversight, audit log                         |
-| [12](phases/PHASE-12-hardening.md)               | Hardening & Launch                            | ⬜ Not started  | Security, a11y, performance, deploy                      |
+| #                                                | Phase                                                      | Status                                                           | Ships                                                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [00](phases/PHASE-00-foundation.md)              | Foundation & Conventions                                   | ✅ **Complete**                                                  | Toolchain, CI, design tokens, placeholder page                                                   |
+| [00b](phases/PHASE-00b-core-primitives.md)       | Core Technical Primitives                                  | ✅ **Complete**                                                  | Money, time, theme, shell, Drizzle boundary, health                                              |
+| [01](phases/PHASE-01-design-system.md)           | Design System, Marketing & Shell                           | ✅ **Complete**                                                  | Tokens, landing site, demo dashboard, app shell                                                  |
+| [01.1](phases/PHASE-01-1-simplification-i18n.md) | UI Simplification & Thai/English Localization              | ✅ **Complete**                                                  | Simplified dashboard/landing, next-intl, `/en` and `/th`                                         |
+| [02](phases/PHASE-02-auth-tenancy.md)            | Auth, Neon Postgres & Tenant-Isolated Workspace Foundation | ✅ **Complete** (branch `phase/02-auth-tenancy`, not yet merged) | Better Auth (Google + email/password), database-backed sessions, one personal workspace per user |
+| ~~03~~                                           | ~~Data Model & Tenancy Core~~                              | **Superseded** — absorbed into Phase 02                          | See [PHASE-02-auth-tenancy.md](phases/PHASE-02-auth-tenancy.md)                                  |
+| [04](phases/PHASE-04-billing.md)                 | Plans, Trial & Entitlements                                | ⬜ Not started                                                   | Three plans, 7-day trial, mock payment                                                           |
+| [05](phases/PHASE-05-onboarding-accounts.md)     | Onboarding & Trading Accounts                              | ⬜ Not started                                                   | Wizard, account CRUD, limit enforcement                                                          |
+| [06](phases/PHASE-06-strategies.md)              | Strategies & Versions                                      | ⬜ Not started                                                   | Strategy CRUD, immutable versioning                                                              |
+| [07](phases/PHASE-07-calc-engine.md)             | Trade Model & Calculation Engine                           | ⬜ Not started                                                   | Schema plus the pure R-multiple engine                                                           |
+| [08](phases/PHASE-08-journal.md)                 | Trade Journal                                              | ⬜ Not started                                                   | Manual entry, system vs actual, mistakes                                                         |
+| [09](phases/PHASE-09-analytics.md)               | Dashboard & Analytics                                      | ⬜ Not started                                                   | Real attribution data behind the Phase 01 surfaces                                               |
+| [10](phases/PHASE-10-settings.md)                | Settings                                                   | ⬜ Not started                                                   | Profile, workspace, subscription, export                                                         |
+| [11](phases/PHASE-11-admin.md)                   | SaaS Administration                                        | ⬜ Not started                                                   | Admin role, oversight, audit log                                                                 |
+| [12](phases/PHASE-12-hardening.md)               | Hardening & Launch                                         | ⬜ Not started                                                   | Security, a11y, performance, deploy                                                              |
 
 ## What Phase 00 delivered
 
@@ -64,11 +64,23 @@ The dashboard and landing page reduced to what a first glance needs, and the ent
 
 No authentication, no database, no product mutations — unchanged from Phase 01. Full detail: [PHASE-01-1-simplification-i18n.md](phases/PHASE-01-1-simplification-i18n.md), [ADR 0007](decisions/0007-i18n-architecture.md).
 
+## What Phase 02 delivered
+
+Real users, a real database, and a real tenant boundary — while every trading-product surface stays exactly the fixture-driven preview Phase 01/01.1 shipped, clearly labelled as such.
+
+- **Authentication:** self-hosted Better Auth — Google OAuth (truthfully disabled when unconfigured) and email/password (real hashing, email verification required, database-backed rate limiting). See [ADR 0009](decisions/0009-self-hosted-better-auth.md).
+- **Database:** Neon-compatible PostgreSQL via Drizzle, committed migrations (`drizzle/0000_init_auth_tenancy.sql`), pooled/direct connection split (`DATABASE_URL`/`DATABASE_MIGRATION_URL`). See [ADR 0012](decisions/0012-migration-strategy.md).
+- **Tenancy:** exactly one personal workspace per user, database-enforced (partial unique index), provisioned idempotently and safe under concurrency. `requireWorkspaceMembership`/`requireWorkspaceRole` ready for team workspaces without a schema change. See [ADR 0011](decisions/0011-tenant-workspace-authorization-model.md).
+- **Authorization boundary:** `src/server/auth/dal.ts`, re-verified against the database on every call — `src/proxy.ts`'s cookie-presence check is optimistic only, never the real boundary. See [ADR 0010](decisions/0010-database-backed-sessions.md).
+- **Tests:** a real-Postgres integration suite (authorization matrix, provisioning idempotency/concurrency) and two new e2e specs (route protection, session forgery/revocation, cross-user isolation) — both wired into CI against a fresh `postgres:17-alpine` service container on every push.
+
+Full detail, assumptions, and known limitations: [PHASE-02-auth-tenancy.md](phases/PHASE-02-auth-tenancy.md).
+
 ## Sequencing rationale
 
 **Design system early (01).** A token set that nothing consumes cannot be reviewed. Building the marketing site and the application shell against it exercises every token, every state, and every breakpoint before any of it is load-bearing for real data — and it is far cheaper to change a token now than after eight phases depend on it.
 
-**Auth before tenancy (02 → 03).** This reverses the Phase 00b order, and the reversal is only safe because of a specific fact: **no tenant-scoped records exist before Phase 05**. The original rationale — that scope retrofitted onto existing queries reliably leaves gaps — still holds, so the obligation transfers rather than disappearing. Phase 03 must ship cross-workspace isolation tests before any business table lands, and Phase 02 may not write a product query. See [ADR 0006](decisions/0006-design-system-and-demo-data.md).
+**Auth and tenancy together (02).** The originally-planned split — auth in 02, tenancy in 03 — was superseded by this phase's actual commissioning brief, which combined them: a workspace has to exist the moment a user does, so provisioning one is naturally part of authentication's own transaction (`ensurePersonalWorkspace`, wired to Better Auth's user-creation hook), not a separately-sequenced concern. The original rationale for ordering tenancy before any business table still holds and is unaffected: **no tenant-scoped product records exist before Phase 05**, and Phase 02 writes no product query. See [ADR 0011](decisions/0011-tenant-workspace-authorization-model.md).
 
 **Calculation engine before journal UI (07 → 08).** The engine is pure and fully testable with no UI. Building forms first would bake formula assumptions into them and force rework.
 
@@ -79,6 +91,8 @@ No authentication, no database, no product mutations — unchanged from Phase 01
 ## Superseded
 
 **Phase 11 — Landing & Marketing** was folded into Phase 01 and its document removed. It was originally scheduled last because it depends on final pricing and real screenshots. It shipped early without either: prices are shown as "to be confirmed" rather than invented, and the product preview is a live composition of demo fixtures rather than a screenshot.
+
+**Phase 03 — Data Model & Tenancy Core** was folded into Phase 02; its document is preserved (not removed) as the historical record of the original two-phase split, with a superseded notice pointing to [PHASE-02-auth-tenancy.md](phases/PHASE-02-auth-tenancy.md). Unlike Phase 11, this one also changed a technical decision, not just timing — see [ADR 0009](decisions/0009-self-hosted-better-auth.md) for why Better Auth replaced the originally-planned Auth.js.
 
 ## Out of scope for the MVP
 

@@ -1,10 +1,10 @@
 # Data Dictionary
 
-**Status:** Planned schema. **No tables exist yet.** Phase 00b wired the Drizzle boundary — config, a lazily-connecting client, and an intentionally empty schema module — but created no tables and no migration. This document defines intent so field meanings are agreed before implementation, and is updated as each phase lands its migration.
+**Status:** Phase 02 tables are real, migrated, and documented below under [Phase 02 — Auth and tenancy](#phase-02--auth-and-tenancy-implemented). Everything under Phase 04 onward remains **planned schema** — not yet implemented — recorded here so field meanings are agreed before implementation, and updated as each phase lands its migration.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
-> **Reading numeric columns.** The driver returns `numeric` and `bigint` as **strings**, which is what the money and price strategy requires. Coercing them to JS numbers would reintroduce the floating-point error the design exists to avoid — invisibly, and only for values large or precise enough to matter. Phase 03 must add a test asserting a `numeric` column round-trips as a string; until a database exists, the guarantee rests on documentation alone.
+> **Reading numeric columns.** Financial `numeric` and `bigint` columns stay strings; coercing them to JS numbers would reintroduce floating-point loss. The sole Phase 2 exception is Better Auth's `rate_limits.last_request`: it is SQL `bigint` with Drizzle `mode: 'number'` because the installed library consumes epoch milliseconds as a number, still safely below `Number.MAX_SAFE_INTEGER`. A dedicated financial `numeric` contract test lands with the first product column in Phase 07.
 
 ## Conventions
 
@@ -23,39 +23,82 @@ Applied to every business table without exception.
 
 ---
 
-## Phase 03 — Identity and tenancy
+## Phase 02 — Auth and tenancy (implemented)
 
-### `users`
+Migration: [`drizzle/0000_init_auth_tenancy.sql`](../drizzle/0000_init_auth_tenancy.sql). Identifier boundary (`text` under Better Auth, `uuid` under the app) explained in [ADR 0008](decisions/0008-identifier-strategy.md); authorization model in [ADR 0011](decisions/0011-tenant-workspace-authorization-model.md).
 
-| Column                    | Type        | Notes                                                      |
-| ------------------------- | ----------- | ---------------------------------------------------------- |
-| `id`                      | uuid        | UUIDv7                                                     |
-| `email`                   | citext      | Unique                                                     |
-| `name`                    | text        | Display name                                               |
-| `image`                   | text        | Avatar URL, nullable                                       |
-| `timezone`                | text        | IANA, e.g. `Asia/Bangkok`. Drives all date bucketing       |
-| `is_platform_admin`       | boolean     | Default false. Granted only by direct DB update (Phase 11) |
-| `onboarding_completed_at` | timestamptz | Nullable                                                   |
+### `users` (Better Auth — owns this table)
 
-### `workspaces`
+| Column                      | Type        | Notes                                                                     |
+| --------------------------- | ----------- | ------------------------------------------------------------------------- |
+| `id`                        | text        | UUIDv7 (ADR 0008)                                                         |
+| `name`                      | text        |                                                                           |
+| `email`                     | text        | Unique (`users_email_idx`)                                                |
+| `email_verified`            | boolean     | Default false. Sign-in is blocked until true (`requireEmailVerification`) |
+| `image`                     | text        | Nullable — OAuth avatar URL                                               |
+| `created_at` / `updated_at` | timestamptz |                                                                           |
 
-| Column          | Type        | Notes                                 |
-| --------------- | ----------- | ------------------------------------- |
-| `id`            | uuid        |                                       |
-| `name`          | text        |                                       |
-| `slug`          | text        | Unique; used in URLs                  |
-| `owner_user_id` | uuid        | Billing subject                       |
-| `deleted_at`    | timestamptz | 30-day soft delete before hard delete |
+Note: this table does **not** carry `timezone`/`is_platform_admin`/`onboarding_completed_at` — those were part of an earlier, superseded plan. Timezone lives on `user_preferences` (below); platform-admin and onboarding-completion tracking are deferred to the phases that need them (Phase 11, and a future onboarding-UI phase, respectively).
 
-### `workspace_members`
+### `sessions`, `accounts`, `verifications`, `rate_limits` (Better Auth — owns these tables)
 
-| Column         | Type | Notes                          |
-| -------------- | ---- | ------------------------------ |
-| `workspace_id` | uuid |                                |
-| `user_id`      | uuid |                                |
-| `role`         | enum | `owner` \| `admin` \| `member` |
+| Table           | Key columns                                                                                                                                 | Notes                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `sessions`      | `id`, `user_id` (FK, cascade delete), `token` (unique), `expires_at`, `ip_address`, `user_agent`                                            | Database-backed session store — [ADR 0010](decisions/0010-database-backed-sessions.md). Indexed on `user_id`. |
+| `accounts`      | `id`, `user_id` (FK, cascade delete), `account_id`, `provider_id`, `password` (hashed credential, nullable), OAuth token columns (nullable) | One row per sign-in method per user. Unique on `(provider_id, account_id)`.                                   |
+| `verifications` | `id`, `identifier`, `value`, `expires_at`                                                                                                   | Email-verification and password-reset tokens. Indexed on `identifier`.                                        |
+| `rate_limits`   | `id`, `key` (unique), `count` (integer), `last_request` (`bigint`, epoch-ms read as JS number)                                              | Database-backed rate limiting — never in-memory, never Redis this phase.                                      |
 
-Unique on `(workspace_id, user_id)`.
+### `workspaces` (application-owned)
+
+| Column                      | Type        | Notes                                                                                            |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
+| `id`                        | uuid        | UUIDv7                                                                                           |
+| `name`                      | text        | `'Personal workspace'` for every workspace created this phase                                    |
+| `slug`                      | text        | Unique; `personal-{userId}` this phase — not yet used for routing                                |
+| `kind`                      | text        | `'personal'` is the only value written this phase (not a Postgres enum — cheaper to widen later) |
+| `personal_owner_user_id`    | text        | FK → `users.id`, nullable — set only for `kind = 'personal'`                                     |
+| `created_at` / `updated_at` | timestamptz |                                                                                                  |
+
+**Partial unique index** `workspaces_personal_owner_idx ON workspaces (personal_owner_user_id) WHERE kind = 'personal'` — the database-enforced "exactly one personal workspace per user" guarantee.
+
+### `workspace_members` (application-owned)
+
+| Column                      | Type        | Notes                                            |
+| --------------------------- | ----------- | ------------------------------------------------ |
+| `id`                        | uuid        |                                                  |
+| `workspace_id`              | uuid        | FK → `workspaces.id`                             |
+| `user_id`                   | text        | FK → `users.id`                                  |
+| `role`                      | text        | `'owner'` \| `'member'` this phase (not an enum) |
+| `status`                    | text        | Default `'active'`                               |
+| `created_at` / `updated_at` | timestamptz |                                                  |
+
+Unique on `(workspace_id, user_id)`. Indexed on `user_id` alone (resolving "which workspaces does this session belong to").
+
+### `user_preferences` (application-owned)
+
+| Column                      | Type        | Notes                                                                                        |
+| --------------------------- | ----------- | -------------------------------------------------------------------------------------------- |
+| `user_id`                   | text        | Primary key, FK → `users.id` — one row per user                                              |
+| `active_workspace_id`       | uuid        | FK → `workspaces.id`, nullable — repaired via `ensurePersonalWorkspace()` if missing/invalid |
+| `locale`                    | text        | `CHECK IN ('en', 'th')` — matches `routing.locales`                                          |
+| `theme`                     | text        | `CHECK IN ('light', 'dark', 'system')` — matches `next-themes` values                        |
+| `timezone`                  | text        | IANA zone. Default `'UTC'` this phase — no timezone-detection UI exists yet                  |
+| `created_at` / `updated_at` | timestamptz |                                                                                              |
+
+### `audit_logs` (application-owned, append-only)
+
+| Column                      | Type        | Notes                                                            |
+| --------------------------- | ----------- | ---------------------------------------------------------------- |
+| `id`                        | uuid        |                                                                  |
+| `workspace_id`              | uuid        | Nullable                                                         |
+| `actor_user_id`             | text        | Nullable                                                         |
+| `action`                    | text        | Checked against a typed allowlist, `src/config/audit-actions.ts` |
+| `entity_type` / `entity_id` | text        | Nullable                                                         |
+| `metadata`                  | jsonb       | `{}` in Phase 2; the insert API accepts no arbitrary metadata    |
+| `created_at`                | timestamptz |                                                                  |
+
+Append-only by construction: `src/server/services/audit-log.ts` exposes only `insertAuditLog()` — no update/delete function exists anywhere in the codebase. Current logged actions: `workspace.personal_created`, `workspace_member.owner_created`, `user_preferences.active_workspace_initialized`, plus locale/theme-change events from `src/server/actions/preferences.ts`.
 
 ---
 
@@ -180,12 +223,19 @@ Every platform-admin mutation writes a row. Non-negotiable: admins act on other 
 
 ## Index plan
 
-| Table               | Index                                               |
-| ------------------- | --------------------------------------------------- |
-| `trades`            | `(workspace_id, trading_account_id, exited_at)`     |
-| `trades`            | `(workspace_id, strategy_version_id)`               |
-| `trades`            | `(workspace_id, status)`                            |
-| `workspace_members` | `(user_id)` — resolving a session to its workspaces |
-| `trade_mistakes`    | `(mistake_type_id)` — mistake cost ranking          |
+| Table               | Index                                                                                 | Status                 |
+| ------------------- | ------------------------------------------------------------------------------------- | ---------------------- |
+| `users`             | `(email)` unique — `users_email_idx`                                                  | Implemented (Phase 02) |
+| `sessions`          | `(token)` unique, `(user_id)`                                                         | Implemented (Phase 02) |
+| `accounts`          | `(user_id)`, `(provider_id, account_id)` unique                                       | Implemented (Phase 02) |
+| `verifications`     | `(identifier)`                                                                        | Implemented (Phase 02) |
+| `rate_limits`       | `(key)` unique                                                                        | Implemented (Phase 02) |
+| `workspaces`        | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                    | Implemented (Phase 02) |
+| `workspace_members` | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces | Implemented (Phase 02) |
+| `audit_logs`        | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                     | Implemented (Phase 02) |
+| `trades`            | `(workspace_id, trading_account_id, exited_at)`                                       | Planned (Phase 07)     |
+| `trades`            | `(workspace_id, strategy_version_id)`                                                 | Planned (Phase 07)     |
+| `trades`            | `(workspace_id, status)`                                                              | Planned (Phase 07)     |
+| `trade_mistakes`    | `(mistake_type_id)` — mistake cost ranking                                            | Planned (Phase 07)     |
 
 Verify with `EXPLAIN ANALYZE` rather than assuming these are used.

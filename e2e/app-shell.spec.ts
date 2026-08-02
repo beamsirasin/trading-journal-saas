@@ -1,5 +1,18 @@
 import { expect, test } from '@playwright/test';
 
+import { authStateFile } from './support/auth-state';
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
+// Phase 02: every `/app/*` page now performs a real, database-verified
+// session check (src/server/auth/dal.ts) — these Phase-1-era specs assume an
+// already-authenticated visitor, via the storage state e2e/auth.setup.ts
+// produces (see playwright.config.ts's `setup` project), and skip outright
+// when no database is configured to authenticate against at all.
+test.use({ storageState: authStateFile });
+test.beforeEach(() => {
+  test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+});
+
 // PHASE 1.1. Every route now lives under a locale prefix (`localePrefix:
 // 'always'`), so these target the `en` fallback explicitly. `Link` from
 // `@/i18n/navigation` renders the same prefix on `aria-current="page"`
@@ -125,18 +138,26 @@ test.describe('responsive navigation', () => {
       .boundingBox();
     const themeButton = await page.getByRole('button', { name: /change theme/i }).boundingBox();
 
-    expect(menuButton?.width ?? 0).toBeGreaterThanOrEqual(44);
-    expect(menuButton?.height ?? 0).toBeGreaterThanOrEqual(44);
-    expect(themeButton?.width ?? 0).toBeGreaterThanOrEqual(44);
-    expect(themeButton?.height ?? 0).toBeGreaterThanOrEqual(44);
+    // Rounded to the nearest CSS pixel before comparing: every control here
+    // is authored at exactly `size-11` (44px) in Tailwind. `boundingBox()`
+    // reads getBoundingClientRect(), whose sub-pixel layout rounding can
+    // return e.g. 43.99999237060547 for a genuinely-44px box — a rendering
+    // artifact invisible to any real user, not a shrunk touch target.
+    // Rounding still fails a real regression (43px rounds to 43).
+    const round = (value: number | undefined) => Math.round(value ?? 0);
+
+    expect(round(menuButton?.width)).toBeGreaterThanOrEqual(44);
+    expect(round(menuButton?.height)).toBeGreaterThanOrEqual(44);
+    expect(round(themeButton?.width)).toBeGreaterThanOrEqual(44);
+    expect(round(themeButton?.height)).toBeGreaterThanOrEqual(44);
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     const dialog = page.getByRole('dialog');
     const overviewLink = await dialog.getByRole('link', { name: /Overview/ }).boundingBox();
     const closeButton = await page.getByRole('button', { name: 'Close' }).boundingBox();
-    expect(overviewLink?.height ?? 0).toBeGreaterThanOrEqual(44);
-    expect(closeButton?.width ?? 0).toBeGreaterThanOrEqual(44);
-    expect(closeButton?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect(round(overviewLink?.height)).toBeGreaterThanOrEqual(44);
+    expect(round(closeButton?.width)).toBeGreaterThanOrEqual(44);
+    expect(round(closeButton?.height)).toBeGreaterThanOrEqual(44);
   });
 
   test('mobile drawer opens, traps focus and closes on Escape', async ({ page }) => {

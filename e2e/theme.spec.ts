@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+import { authStateFile } from './support/auth-state';
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
+// The `motion` describe block below also visits `/en/app`, which Phase 02
+// made a real, database-verified page — storageState is harmless for every
+// other test in this file (none of them touch /login or /register), and the
+// two motion tests skip outright when no database is configured.
+test.use({ storageState: authStateFile });
+
 /**
  * Theme precedence, exercised where it can actually be exercised.
  *
@@ -188,6 +197,7 @@ test.describe('motion', () => {
   test('suppresses CSS and Motion animations when reduced motion is requested', async ({
     page,
   }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/en');
 
@@ -221,6 +231,7 @@ test.describe('motion', () => {
   });
 
   test('animates the drawer when reduced motion is not requested', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app');

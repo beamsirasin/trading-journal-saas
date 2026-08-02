@@ -16,15 +16,29 @@ import { Link } from '@/i18n/navigation';
  * minimum content width. The visible result was "OS" wrapping onto its own
  * line to recover a fraction of a pixel. Protecting the wordmark forces any
  * future shrinkage to land somewhere it is actually safe to absorb.
+ *
+ * `compact`: the application shell's header row (unlike the drawer or the
+ * marketing header) packs this alongside four other fixed-size 44px touch
+ * targets with nothing else left that is safe to shrink — at a 320px
+ * viewport their combined minimum content width is provably wider than the
+ * viewport itself with the wordmark included. Rather than shrinking any
+ * touch target below the required 44px, `compact` hides the wordmark text
+ * (keeping the icon badge, so brand identity is not lost, only the label)
+ * below 400px — comfortably past every viewport this row must fit — and
+ * restores it once there is room. Callers with their own width (the
+ * desktop sidebar, the mobile drawer, the marketing header/footer) leave
+ * this at its default and always show the full wordmark.
  */
 export function Brand({
   href = '/',
   className,
   onClick,
+  compact = false,
 }: {
   href?: string;
   className?: string;
   onClick?: MouseEventHandler<HTMLAnchorElement>;
+  compact?: boolean;
 }) {
   return (
     <Link
@@ -41,7 +55,9 @@ export function Brand({
       >
         T
       </span>
-      <span className="whitespace-nowrap">Trading OS</span>
+      <span className={cn('whitespace-nowrap', compact && 'hidden min-[400px]:inline')}>
+        Trading OS
+      </span>
     </Link>
   );
 }

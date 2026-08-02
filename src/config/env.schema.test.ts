@@ -26,6 +26,22 @@ describe('clientEnvSchema', () => {
       clientEnvSchema.safeParse({ NEXT_PUBLIC_APP_URL: 'http://localhost:3000' }).success,
     ).toBe(true);
   });
+
+  it('never validates SMTP or email-provider variables — they must stay server-only', () => {
+    const result = clientEnvSchema.safeParse({
+      NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+      EMAIL_PROVIDER: 'smtp',
+      SMTP_HOST: '127.0.0.1',
+      SMTP_PASSWORD: 'hunter2',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Zod strips unknown keys by default — proves these names simply are
+      // not part of the client-exposed shape, not merely unused here.
+      expect(result.data).toEqual({ NEXT_PUBLIC_APP_URL: 'http://localhost:3000' });
+      expect(result.data).not.toHaveProperty('SMTP_PASSWORD');
+    }
+  });
 });
 
 describe('serverEnvSchema', () => {
@@ -46,7 +62,7 @@ describe('serverEnvSchema', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.DATABASE_URL).toBeUndefined();
-      expect(result.data.AUTH_SECRET).toBeUndefined();
+      expect(result.data.BETTER_AUTH_SECRET).toBeUndefined();
     }
   });
 
@@ -54,12 +70,47 @@ describe('serverEnvSchema', () => {
     const result = serverEnvSchema.safeParse({
       NODE_ENV: 'production',
       DATABASE_URL: 'postgresql://user:pass@host:5432/db',
-      DATABASE_URL_UNPOOLED: 'postgresql://user:pass@host:5432/db',
-      AUTH_SECRET: 'a-secret',
-      AUTH_URL: 'https://example.com',
-      AUTH_GOOGLE_ID: 'id',
-      AUTH_GOOGLE_SECRET: 'secret',
+      DATABASE_MIGRATION_URL: 'postgresql://user:pass@host:5432/db',
+      BETTER_AUTH_SECRET: 'a-secret',
+      BETTER_AUTH_URL: 'https://example.com',
+      BETTER_AUTH_TRUSTED_ORIGINS: 'https://preview.example.com,https://staging.example.com',
+      GOOGLE_CLIENT_ID: 'id',
+      GOOGLE_CLIENT_SECRET: 'secret',
     });
+    expect(result.success).toBe(true);
+  });
+
+  it('validates every SMTP/email-provider variable and coerces SMTP_PORT to a number', () => {
+    const result = serverEnvSchema.safeParse({
+      NODE_ENV: 'development',
+      EMAIL_PROVIDER: 'smtp',
+      SMTP_HOST: '127.0.0.1',
+      SMTP_PORT: '1025',
+      SMTP_SECURE: 'false',
+      SMTP_USERNAME: 'mailbox',
+      SMTP_PASSWORD: 'hunter2',
+      EMAIL_FROM_ADDRESS: 'no-reply@trading-os.local',
+      EMAIL_FROM_NAME: 'Trading OS',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.EMAIL_PROVIDER).toBe('smtp');
+      expect(result.data.SMTP_HOST).toBe('127.0.0.1');
+      expect(result.data.SMTP_PORT).toBe(1025);
+      expect(typeof result.data.SMTP_PORT).toBe('number');
+      expect(result.data.SMTP_SECURE).toBe('false');
+      expect(result.data.SMTP_USERNAME).toBe('mailbox');
+      expect(result.data.SMTP_PASSWORD).toBe('hunter2');
+      expect(result.data.EMAIL_FROM_ADDRESS).toBe('no-reply@trading-os.local');
+      expect(result.data.EMAIL_FROM_NAME).toBe('Trading OS');
+    }
+  });
+
+  it('leaves an unrecognized EMAIL_PROVIDER value parseable rather than crashing env validation', () => {
+    // src/lib/auth/email.ts's own comment explains why: a typo'd dev-only
+    // convenience variable must fall back to the diagnostic adapter, not
+    // take down getServerEnv() for every request in the app.
+    const result = serverEnvSchema.safeParse({ EMAIL_PROVIDER: 'not-a-real-provider' });
     expect(result.success).toBe(true);
   });
 

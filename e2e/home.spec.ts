@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
 /** Representative viewports. Wide desktop catches max-width regressions. */
 const VIEWPORTS = [
   { name: 'mobile portrait', width: 320, height: 720 },
@@ -25,7 +27,9 @@ const APP_PATHS = [
   '/app/settings',
 ] as const;
 const PUBLIC_ROUTES = LOCALES.flatMap((locale) =>
-  PUBLIC_PATHS.map((pathname) => `/${locale}${pathname}`),
+  PUBLIC_PATHS.filter(
+    (pathname) => hasE2eDatabase || (pathname !== '/login' && pathname !== '/register'),
+  ).map((pathname) => `/${locale}${pathname}`),
 );
 const APP_ROUTES = LOCALES.flatMap((locale) =>
   APP_PATHS.map((pathname) => `/${locale}${pathname}`),
@@ -125,7 +129,7 @@ test.describe('public calls to action', () => {
 
     // Suffix match rather than an exact string: `Link` from `@/i18n/navigation`
     // prepends the active locale segment, so the rendered href is `/en/register`.
-    await expect(page.getByRole('link', { name: /preview registration/i }).first()).toHaveAttribute(
+    await expect(page.getByRole('link', { name: /^sign up$/i }).first()).toHaveAttribute(
       'href',
       /\/register$/,
     );
@@ -135,10 +139,15 @@ test.describe('public calls to action', () => {
     );
   });
 
-  test('does not claim that registration or a trial is active', async ({ page }) => {
+  /**
+   * Phase 2 made registration real (Better Auth) — the page must not claim
+   * otherwise. Billing/subscriptions remain unimplemented, so it still must
+   * not imply a paid trial starts automatically.
+   */
+  test('offers real sign-up without implying a paid trial is active', async ({ page }) => {
     await page.goto('/en');
     await expect(page.getByRole('link', { name: /start free trial/i })).toHaveCount(0);
-    await expect(page.getByText(/registration is not live yet/i).first()).toBeVisible();
+    await expect(page.getByText(/registration is not live yet/i)).toHaveCount(0);
   });
 
   test('keeps Recharts out of the static landing route', async ({ page }) => {
@@ -347,6 +356,7 @@ test.describe('no horizontal overflow', () => {
     });
 
     test(`application routes at ${viewport.name} (${viewport.width}px)`, async ({ page }) => {
+      test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
       for (const route of APP_ROUTES) {

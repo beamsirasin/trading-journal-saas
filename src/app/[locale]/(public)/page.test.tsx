@@ -97,9 +97,7 @@ describe('landing page', () => {
     }
 
     expect(within(pricing).getAllByText('Pricing to be confirmed')).toHaveLength(PLANS.length);
-    expect(
-      within(pricing).getAllByRole('link', { name: 'Preview trial registration' }),
-    ).toHaveLength(PLANS.length);
+    expect(within(pricing).getAllByRole('link', { name: 'Sign up' })).toHaveLength(PLANS.length);
   });
 
   it('states that payment processing is not connected', async () => {
@@ -131,7 +129,7 @@ describe('landing page', () => {
   it('points its primary calls to action at real routes', async () => {
     await renderHome();
 
-    const hero = screen.getAllByRole('link', { name: /preview registration/i });
+    const hero = screen.getAllByRole('link', { name: /^sign up$/i });
     expect(hero.length).toBeGreaterThan(0);
     expect(hero[0]).toHaveAttribute('href', expect.stringMatching(/\/register$/));
 
@@ -139,10 +137,18 @@ describe('landing page', () => {
     expect(demo).toHaveAttribute('href', expect.stringMatching(/\/demo$/));
   });
 
-  it('does not imply that authentication or a trial can start today', async () => {
+  /**
+   * Phase 2 made registration and login real (Better Auth) — the page must
+   * no longer claim otherwise. What remains genuinely unimplemented is
+   * billing: there is no real paid trial or subscription, so the page must
+   * not imply one starts automatically, and pricing stays explicitly
+   * unconfirmed.
+   */
+  it('does not imply that a paid trial or subscription can start today, while no longer claiming registration is fake', async () => {
     await renderHome();
     expect(document.body).not.toHaveTextContent(/start (?:a )?(?:\d+-day )?free trial/i);
-    expect(screen.getAllByText(/registration is not live yet/i)).not.toHaveLength(0);
+    expect(document.body).not.toHaveTextContent(/registration is not live yet/i);
+    expect(screen.getAllByText('Pricing to be confirmed').length).toBeGreaterThan(0);
   });
 
   it('uses a server-rendered chart on the marketing page', async () => {

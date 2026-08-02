@@ -1,12 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { authStateFile } from './support/auth-state';
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
 /**
  * Localization (Phase 1.1).
  *
- * Locale is resolved by `createMiddleware(routing)` in `src/middleware.ts`
- * with precedence: explicit choice (persisted in the `NEXT_LOCALE` cookie) >
- * cookie > `Accept-Language` > `en` fallback (see `src/i18n/routing.ts` —
- * `locales: ['en', 'th']`, `defaultLocale: 'en'`, `localePrefix: 'always'`).
+ * Locale is resolved by `createMiddleware(routing)` in `src/proxy.ts`
+ * (renamed from `middleware.ts` in Phase 02) with precedence: explicit
+ * choice (persisted in the `NEXT_LOCALE` cookie) > cookie > `Accept-Language`
+ * > `en` fallback (see `src/i18n/routing.ts` — `locales: ['en', 'th']`,
+ * `defaultLocale: 'en'`, `localePrefix: 'always'`).
  *
  * The switcher itself (`src/components/shell/language-switcher.tsx`) is an
  * icon-only button whose accessible name is `${label}: ${currentLanguage}`
@@ -16,7 +20,14 @@ import { expect, test, type Page } from '@playwright/test';
  * visible, with no responsive hiding, so `page.getByRole('banner')` reliably
  * scopes to the one instance that is always mounted (the drawer's copy only
  * exists in the DOM once its Sheet is open).
+ *
+ * A handful of tests below also touch `/app*` routes, which Phase 02 made
+ * real, database-verified pages — those use the authenticated storage state
+ * `e2e/auth.setup.ts` produces and skip outright when no database is
+ * configured (`hasE2eDatabase`); every purely public-route test in this file
+ * is unaffected either way.
  */
+test.use({ storageState: authStateFile });
 
 const languageTrigger = (page: Page) =>
   page.getByRole('banner').getByRole('button', { name: /language|ภาษา/i });
@@ -57,6 +68,7 @@ test.describe('locale rendering', () => {
   });
 
   test('/th/app localizes the overview page and fixed mistake taxonomy', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
 
     await expect(page.getByRole('heading', { level: 1, name: 'ภาพรวม' })).toBeVisible();
@@ -69,6 +81,7 @@ test.describe('locale rendering', () => {
   test('/th/app/analytics localizes chart and accessible-table mistake labels', async ({
     page,
   }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app/analytics');
 
     await expect(page.getByText('ขยับจุดตัดขาดทุน').first()).toBeVisible();
@@ -76,6 +89,7 @@ test.describe('locale rendering', () => {
   });
 
   test('sets html[lang] to match the URL locale', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/en');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 
@@ -140,6 +154,7 @@ test.describe('language switcher', () => {
   });
 
   test('switching locale preserves the current route', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/en/app/trades');
 
     await languageTrigger(page).click();
@@ -152,6 +167,7 @@ test.describe('language switcher', () => {
   test('switching locale preserves query parameters without changing their order or values', async ({
     page,
   }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/en/app/trades?account=acc-live&range=30d');
 
     await languageTrigger(page).click();
@@ -260,7 +276,9 @@ test.describe('no redirect loops or hydration mismatches', () => {
       consoleIssues.push(error.message);
     });
 
-    for (const route of ['/', '/en', '/th', '/en/app/trades', '/th/app/trades', '/en/pricing']) {
+    const publicRoutes = ['/', '/en', '/th', '/en/pricing'];
+    const databaseRoutes = ['/en/app/trades', '/th/app/trades'];
+    for (const route of [...publicRoutes, ...(hasE2eDatabase ? databaseRoutes : [])]) {
       const response = await page.goto(route, { timeout: 10_000 });
       expect(response?.status(), `${route} should respond`).toBeLessThan(400);
     }
@@ -293,6 +311,7 @@ test.describe('localized metadata', () => {
   });
 
   test('localizes the app overview title', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
     await expect(page).toHaveTitle(/^ภาพรวม · Trading OS$/);
   });

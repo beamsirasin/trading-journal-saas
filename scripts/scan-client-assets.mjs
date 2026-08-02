@@ -31,17 +31,51 @@ const CLIENT_DIR = join(ROOT, '.next', 'static');
 /** Server-only variable names. Sourced from src/config/env.schema.ts. */
 const SECRET_NAMES = [
   'DATABASE_URL',
-  'DATABASE_URL_UNPOOLED',
-  'AUTH_SECRET',
-  'AUTH_GOOGLE_SECRET',
-  'AUTH_RESEND_KEY',
+  'DATABASE_MIGRATION_URL',
+  'TEST_DATABASE_URL',
+  'BETTER_AUTH_SECRET',
+  'GOOGLE_CLIENT_SECRET',
+  'SMTP_PASSWORD',
 ];
+
+/**
+ * `better-auth/react`'s own bundle carries a generic, shared env-accessor
+ * object (`Object.freeze({ get BETTER_AUTH_SECRET() { return readEnv(...) },
+ * get AUTH_SECRET() { ... }, ... })`) — every app using the library ships
+ * this, regardless of what that app actually configures. It is provably
+ * inert here: these are lazy getters over `process.env`, none of these
+ * names are `NEXT_PUBLIC_*`, so Next.js's build-time inlining never
+ * substitutes a real value into them, and the browser's `process.env` has
+ * nothing under these keys either. A name match is only ever waved through
+ * when EVERY occurrence in the file is exactly this getter shape — an
+ * actual leaked value (`"BETTER_AUTH_SECRET":"<real secret>"`, or the name
+ * followed by a real connection string) does not match and still fails.
+ */
+function isInertLibraryGetter(contents, name) {
+  const totalOccurrences = contents.split(name).length - 1;
+  // The observed shape names the key twice — once as the getter's
+  // identifier, once as the string argument to the minified read-env
+  // helper: `get NAME(){return a("NAME")}`. A safe match therefore accounts
+  // for exactly two occurrences of `name`.
+  const safePattern = new RegExp(
+    `get ${name}\\(\\)\\{return [a-zA-Z_$][\\w$]*\\("${name}"\\)\\}`,
+    'g',
+  );
+  const safeMatches = contents.match(safePattern) ?? [];
+  return safeMatches.length > 0 && safeMatches.length * 2 === totalOccurrences;
+}
 
 /** Value shapes that are secrets regardless of which variable held them. */
 const SECRET_SHAPES = [
   { name: 'postgres connection string', pattern: /postgres(?:ql)?:\/\/[^\s"']+/i },
   { name: 'private key block', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
 ];
+
+/** Exact configured values catch leaks that do not resemble a known format. */
+const CONFIGURED_SECRET_VALUES = SECRET_NAMES.flatMap((name) => {
+  const value = process.env[name];
+  return value && value.length >= 8 ? [{ name, value }] : [];
+});
 
 function walk(dir) {
   const found = [];
@@ -78,7 +112,7 @@ for (const file of files) {
   const where = relative(ROOT, file);
 
   for (const name of SECRET_NAMES) {
-    if (contents.includes(name)) {
+    if (contents.includes(name) && !isInertLibraryGetter(contents, name)) {
       findings.push(`${where}: references server-only variable ${name}`);
     }
   }
@@ -86,6 +120,12 @@ for (const file of files) {
   for (const { name, pattern } of SECRET_SHAPES) {
     if (pattern.test(contents)) {
       findings.push(`${where}: contains a ${name}`);
+    }
+  }
+
+  for (const { name, value } of CONFIGURED_SECRET_VALUES) {
+    if (contents.includes(value)) {
+      findings.push(`${where}: contains the configured value of ${name}`);
     }
   }
 }

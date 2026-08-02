@@ -31,21 +31,73 @@ export const clientEnvSchema = z.object({
 export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-  // Phase 01 — database. Becomes required once queries exist.
+  // Phase 00b/02 — database.
   DATABASE_URL: optionalString,
   /**
-   * Direct (unpooled) connection, used only for migrations. Pooled endpoints
-   * can break DDL and advisory locks; see docs/architecture.md §9.
+   * Direct (unpooled) connection, used only for migrations and database
+   * administration. Pooled endpoints can break DDL and advisory locks; see
+   * docs/architecture.md §9. Named for what it is used FOR (migrations), not
+   * for the connection topology (unpooled) — the topology is an
+   * implementation detail of *why* migrations need it, not what a reader
+   * reaches for this variable to do.
    */
-  DATABASE_URL_UNPOOLED: optionalString,
+  DATABASE_MIGRATION_URL: optionalString,
 
-  // Phase 02 — authentication.
-  AUTH_SECRET: optionalString,
-  AUTH_URL: optionalUrl,
-  AUTH_GOOGLE_ID: optionalString,
-  AUTH_GOOGLE_SECRET: optionalString,
-  AUTH_EMAIL_FROM: optionalString,
-  AUTH_RESEND_KEY: optionalString,
+  // Phase 02 — Better Auth.
+  /** Session/cookie signing key. Rejected if weak or placeholder-shaped in production — see src/lib/auth/server.ts. */
+  BETTER_AUTH_SECRET: optionalString,
+  /** Canonical URL Better Auth uses to build callback and cookie URLs. */
+  BETTER_AUTH_URL: optionalUrl,
+  /** Comma-separated additional origins, beyond BETTER_AUTH_URL, allowed to receive auth responses (e.g. a Vercel preview domain). */
+  BETTER_AUTH_TRUSTED_ORIGINS: optionalString,
+  GOOGLE_CLIENT_ID: optionalString,
+  GOOGLE_CLIENT_SECRET: optionalString,
+  /**
+   * Relaxes the per-route auth rate limits (never disables them — see
+   * src/lib/auth/server.ts). Better Auth keys its database-backed rate
+   * limiter by IP + route only, not by account, so an e2e suite driving many
+   * legitimate sign-ins from one CI runner shares the exact same bucket a
+   * real attacker would — the production limit is deliberately too strict
+   * for that traffic pattern to also work as a security control. Set only in
+   * `.github/workflows/ci.yml`'s `e2e` job; a real deployment must never set
+   * this.
+   */
+  E2E_TEST_MODE: optionalString,
+
+  // Phase 02 — local development email delivery (e.g. Mailpit). Consulted
+  // only in `development` (src/lib/auth/email.ts's `getEmailAdapter`) — a
+  // production build always selects `ProductionEmailAdapter` regardless of
+  // whether these are set, so an operator error can never make a real
+  // deployment silently use a local, unauthenticated relay.
+  /**
+   * Explicit opt-in to the local SMTP adapter — `src/lib/auth/email.ts`
+   * requires this to be exactly `"smtp"`. Deliberately a plain optional
+   * string, not a `z.enum`: a typo'd value must fall back to the
+   * non-delivering diagnostic adapter (the same as leaving it unset), not
+   * crash `getServerEnv()` for every request in the app over a dev-only
+   * convenience variable. Merely setting SMTP_HOST/PORT/etc without this is
+   * not enough, so a `.env.local` copied from another machine (with stale
+   * SMTP values but no intent to use them) can never silently start sending
+   * mail.
+   */
+  EMAIL_PROVIDER: optionalString,
+  /** SMTP host for local/dev email testing (e.g. Mailpit at 127.0.0.1). */
+  SMTP_HOST: optionalString,
+  /** SMTP port for local/dev email testing (e.g. 1025 for Mailpit). */
+  SMTP_PORT: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().max(65535).optional(),
+  ),
+  /** Whether the SMTP connection uses implicit TLS. Local dev sinks (Mailpit) use "false". */
+  SMTP_SECURE: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
+  /** Optional SMTP username — omit for an unauthenticated local sink like Mailpit. */
+  SMTP_USERNAME: optionalString,
+  /** Optional SMTP password — omit for an unauthenticated local sink like Mailpit. Never logged. */
+  SMTP_PASSWORD: optionalString,
+  /** From address for outbound auth emails. Required alongside SMTP_HOST for the dev SMTP adapter to activate. */
+  EMAIL_FROM_ADDRESS: z.preprocess(emptyToUndefined, z.email().optional()),
+  /** Optional display name for the From header (e.g. "Trading OS"). */
+  EMAIL_FROM_NAME: optionalString,
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;

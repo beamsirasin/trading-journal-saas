@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 01.1. Directories marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
+**Status:** Phase 02 (`phase/02-auth-tenancy`, not yet merged to `main`). Authentication, database-backed sessions, and the tenant/workspace foundation are real. Directories still marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
 
 ## 1. Shape
 
@@ -11,12 +11,13 @@ Browser
   │  RSC payloads + server action calls
   ▼
 Next.js (App Router)
+  ├── proxy.ts      optimistic locale + session-cookie-presence redirect
   ├── app/          routes, thin
-  ├── server/       actions -> services -> queries       (planned)
-  └── lib/          pure logic: calc, money, time        (partly planned)
+  ├── server/       auth (DAL) + actions -> services -> queries (queries planned)
+  └── lib/          pure logic: calc (planned), money, time, auth (Better Auth)
                           │
                           ▼
-                    PostgreSQL (Drizzle)                 (planned)
+                    PostgreSQL (Drizzle) — Better Auth tables + workspaces/preferences/audit
 ```
 
 ## 2. Directory layout
@@ -25,11 +26,13 @@ Next.js (App Router)
 src/
   app/
     [locale]/             Every route is locale-prefixed — /en/... or /th/...
-      (public)/           Marketing site: /, /pricing, /login, /register, /demo
-      (app)/              Application shell (NO guard yet — Phase 02)
+      (public)/           Marketing site: /, /pricing, /login, /register, /demo,
+                          /verify-email, /forgot-password, /reset-password, /auth-error
+      (app)/              Application shell — REAL server-verified guard (Phase 02)
         app/              /app, /trades, /strategies, /analytics, /settings
       layout.tsx           Root <html>/<body>, generateMetadata, font
       not-found.tsx        Translated 404
+    api/auth/[...all]/    Better Auth's Next.js route handler (lazy per-request)
     global-error.tsx      Fallback for a failed [locale] layout — deliberately English-only
     api/health/           Liveness endpoint
     robots.ts             Disallow-all while the product is a preview
@@ -39,7 +42,8 @@ src/
     navigation.ts         Locale-aware Link/redirect/usePathname/useRouter
     request.ts            Per-request message catalog loader
     metadata.ts           Route-specific canonical, hreflang and Open Graph locale helpers
-  middleware.ts            Locale detection precedence and cookie sync
+  proxy.ts                 Locale detection + optimistic session-cookie-presence redirect
+                           (renamed from middleware.ts — Next.js 16 convention)
   components/
     ui/                   Vendored shadcn primitives + project-authored controls
     shell/                Layout: app shell, sidebar, drawer, container, brand
@@ -66,16 +70,19 @@ src/
     time/                 UTC storage, IANA conversion, day bucketing
     demo/                 Static fixtures for the Phase 01 prototype — NO formulas
     calc/                 PURE calculation engine            (planned)
-    auth/                 Auth adapter                       (planned)
+    auth/                 Better Auth instance (server.ts), client, email adapter (email.ts)
+    identifiers.ts        The one ID generator — UUIDv7, see ADR 0008
   server/
+    auth/
+      dal.ts               Server-only session/workspace authorization DAL — the real boundary
     db/
       client.ts           Drizzle handle, connects lazily
-      schema/             Table definitions — EMPTY until Phase 03
-      queries/            Workspace-scoped query helpers     (planned)
-    actions/              Server actions — guarded, validated (planned)
-    services/             Business logic, tenant-aware        (planned)
-e2e/                      Playwright specs
-drizzle/                  Generated SQL migrations           (planned)
+      schema/             auth.ts, workspaces.ts, user-preferences.ts, audit-logs.ts
+      queries/            Workspace-scoped query helpers     (planned — Phase 03+)
+    actions/              Server actions — guarded, validated. e.g. preferences.ts
+    services/             Business logic, tenant-aware. e.g. workspace-provisioning.ts, audit-log.ts
+e2e/                      Playwright specs (+ support/ — global-setup fixtures for auth specs)
+drizzle/                  Generated SQL migrations — 0000_init_auth_tenancy.sql
 ```
 
 ## 3. Layer rules
@@ -116,9 +123,14 @@ Scoped query helper  ──►  PostgreSQL
 
 Client-side validation improves the experience. It is never the enforcement point. Every rule is re-checked server-side.
 
-## 5. Multi-tenancy
+## 5. Authentication and multi-tenancy
 
-Every business record carries `workspace_id`. Scope is derived from the authenticated session, never from a request body, query string, hidden field, or URL segment.
+**Authentication** is Better Auth (self-hosted, Drizzle adapter, database-backed sessions) — see [ADR 0009](decisions/0009-self-hosted-better-auth.md) and [ADR 0010](decisions/0010-database-backed-sessions.md). Two layers, two different jobs:
+
+- `src/proxy.ts` — optimistic, cookie-presence-only check (`getSessionCookie`). Redirects an unauthenticated visitor away from `/{locale}/app/*` before they reach a page that would reject them anyway. Never validates the cookie; never the real authorization boundary.
+- `src/server/auth/dal.ts` — server-only, re-verifies against the database on every call (`getOptionalSession`/`requireSession`, via `auth.api.getSession` with `disableCookieCache: true`). This is where a forged, expired, cached-but-revoked cookie is rejected. Every protected layout, page, and server action calls this module.
+
+**Multi-tenancy**: every business record carries `workspace_id`. Scope is derived from the authenticated session (`getActiveWorkspaceContext()`), never from a request body, query string, hidden field, or URL segment. See [ADR 0011](decisions/0011-tenant-workspace-authorization-model.md) for the full model — `workspaces`/`workspace_members`/`user_preferences` schema, the partial-unique-index guarantee behind "exactly one personal workspace per user," and `requireWorkspaceMembership`/`requireWorkspaceRole` as the functions any future client-supplied workspace ID must pass through.
 
 Five checks on every protected read and write:
 
@@ -128,7 +140,11 @@ Five checks on every protected read and write:
 4. Record ownership / workspace scope
 5. Subscription entitlement, where the action consumes a limited resource
 
-Record IDs are UUIDv7 — sortable and non-enumerable. Unguessable IDs are defence in depth, never the authorization mechanism.
+Checks 1–3 are implemented today (`src/server/auth/dal.ts`); 4–5 apply once Phase 03+ introduces workspace-scoped product records and entitlements.
+
+Every new user is provisioned exactly one personal workspace via `ensurePersonalWorkspace()` (`src/server/services/workspace-provisioning.ts`) — idempotent, safe under concurrency (the database's unique constraints do the real work, not a check-then-insert), called both from a Better Auth `databaseHooks.user.create.after` hook and, defensively, from `getActiveWorkspaceContext()` itself, in case the hook ever fails independently.
+
+Record IDs are UUIDv7 — sortable and non-enumerable ([ADR 0008](decisions/0008-identifier-strategy.md)). Unguessable IDs are defence in depth, never the authorization mechanism.
 
 ## 6. Data integrity
 
@@ -140,12 +156,12 @@ Record IDs are UUIDv7 — sortable and non-enumerable. Unguessable IDs are defen
 
 ## 7. Testing strategy
 
-| Layer      | Tool                   | Covers                                                                      |
-| ---------- | ---------------------- | --------------------------------------------------------------------------- |
-| Pure logic | Vitest                 | The calculation engine — golden fixtures, property tests, every edge case   |
-| Components | Vitest + RTL           | Rendering, accessible roles, state handling                                 |
-| Tenancy    | Vitest + real Postgres | Cross-workspace isolation, asserted directly _(planned)_                    |
-| E2E        | Playwright             | Critical flows against a production build, both locales, desktop and mobile |
+| Layer      | Tool                   | Covers                                                                                                                                                                                                                                |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pure logic | Vitest                 | The calculation engine — golden fixtures, property tests, every edge case                                                                                                                                                             |
+| Components | Vitest + RTL           | Rendering, accessible roles, state handling                                                                                                                                                                                           |
+| Tenancy    | Vitest + real Postgres | Cross-workspace isolation, session/authorization matrix — `src/server/auth/dal.integration.test.ts`, `src/server/services/workspace-provisioning.integration.test.ts`. Gated on `TEST_DATABASE_URL`; see `docs/migration-runbook.md`. |
+| E2E        | Playwright             | Critical flows against a production build, both locales, desktop and mobile                                                                                                                                                           |
 
 The engine's purity is what allows its tests to be exhaustive without fixtures, mocks, or a database.
 
@@ -159,14 +175,14 @@ Migrations run as an explicit, reviewed step — never automatically on boot.
 
 ## 9. Database connections
 
-Full reasoning in [decisions/0004-database-access.md](decisions/0004-database-access.md).
+Full reasoning in [decisions/0004-database-access.md](decisions/0004-database-access.md) and [decisions/0012-migration-strategy.md](decisions/0012-migration-strategy.md). Operational detail: [migration-runbook.md](migration-runbook.md).
 
-| Variable                | Used by             | Why                                       |
-| ----------------------- | ------------------- | ----------------------------------------- |
-| `DATABASE_URL`          | Application queries | Pooled endpoint; many short-lived queries |
-| `DATABASE_URL_UNPOOLED` | Migrations only     | Direct connection                         |
+| Variable                 | Used by             | Why                                       |
+| ------------------------ | ------------------- | ----------------------------------------- |
+| `DATABASE_URL`           | Application queries | Pooled endpoint; many short-lived queries |
+| `DATABASE_MIGRATION_URL` | Migrations only     | Direct connection                         |
 
-Transaction poolers do not hold advisory locks across a connection. Drizzle's migrator uses one to serialise runs, so migrating through a pooler lets two concurrent runs interleave and corrupt the journal. `DATABASE_URL_UNPOOLED` falls back to `DATABASE_URL`, because a plain PostgreSQL server has only one endpoint.
+Transaction poolers do not hold advisory locks across a connection. Drizzle's migrator uses one to serialise runs, so migrating through a pooler lets two concurrent runs interleave and corrupt the journal. `DATABASE_MIGRATION_URL` falls back to `DATABASE_URL`, because a plain PostgreSQL server has only one endpoint — renamed from the earlier placeholder `DATABASE_URL_UNPOOLED` in Phase 02 to name what the variable is _for_, not the connection topology.
 
 Three properties the client must keep:
 
