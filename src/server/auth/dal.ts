@@ -75,14 +75,19 @@ function toSessionUser(user: {
 }
 
 /**
- * The only place `auth.api.getSession` is called. Re-verifies against the
- * database (or the short-lived cookie cache — never trusted alone for an
- * authorization decision, only as a read optimization Better Auth manages
- * internally) on every call; there is no memoization here that could serve a
- * revoked session past its actual expiry.
+ * The only place `auth.api.getSession` is called. Every call bypasses Better
+ * Auth's signed cookie cache and re-verifies against PostgreSQL; no memoized
+ * value can authorize a revoked session past its database deletion.
  */
 export async function getOptionalSession(): Promise<AuthSession | null> {
-  const result = await getAuth().api.getSession({ headers: await headers() });
+  const result = await getAuth().api.getSession({
+    headers: await headers(),
+    // Better Auth 1.6.25 returns the signed `session_data` cookie before it
+    // queries PostgreSQL unless this is set. DAL calls authorize protected
+    // reads and writes, so they must observe revocation immediately rather
+    // than accepting a cached session for up to cookieCache.maxAge seconds.
+    query: { disableCookieCache: true },
+  });
   if (result === null) {
     return null;
   }
@@ -149,7 +154,9 @@ export async function getActiveWorkspaceContext(): Promise<WorkspaceContext> {
   // No valid active workspace found — repair via the same idempotent path a
   // fresh sign-up uses, then re-read. `ensurePersonalWorkspace` never
   // creates a second personal workspace for a user who already has one.
-  const { workspaceId } = await ensurePersonalWorkspace(user.id);
+  const { workspaceId } = await ensurePersonalWorkspace(user.id, {
+    repairActiveWorkspace: true,
+  });
   const repaired = await db
     .select({ workspaceName: workspaces.name, role: workspaceMembers.role })
     .from(workspaces)

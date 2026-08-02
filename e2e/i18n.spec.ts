@@ -276,7 +276,9 @@ test.describe('no redirect loops or hydration mismatches', () => {
       consoleIssues.push(error.message);
     });
 
-    for (const route of ['/', '/en', '/th', '/en/app/trades', '/th/app/trades', '/en/pricing']) {
+    const publicRoutes = ['/', '/en', '/th', '/en/pricing'];
+    const databaseRoutes = ['/en/app/trades', '/th/app/trades'];
+    for (const route of [...publicRoutes, ...(hasE2eDatabase ? databaseRoutes : [])]) {
       const response = await page.goto(route, { timeout: 10_000 });
       expect(response?.status(), `${route} should respond`).toBeLessThan(400);
     }

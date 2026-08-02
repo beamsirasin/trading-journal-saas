@@ -52,10 +52,12 @@ Better Auth's core tables (`users`, `sessions`, `accounts`, `verifications`, `ra
 
 ### Tests
 
-- Unit (Vitest, `pnpm test`): env schema, identifier format, callback-URL safety, audit-action allowlist, and existing suites — 300 tests, all passing.
-- Integration (Vitest + real Postgres, `pnpm test:integration`, gated on `TEST_DATABASE_URL`): `src/server/services/workspace-provisioning.integration.test.ts` (5 tests — idempotency, concurrency, audit events) and `src/server/auth/dal.integration.test.ts` (8 tests — the authorization matrix: cross-user workspace access, membership/role checks, session resolution).
-- E2E (Playwright, `pnpm test:e2e`): `e2e/pricing-and-auth.spec.ts` reworked for real auth (real registration, real invalid-credentials error, anti-enumeration, Google-disabled state, accessibility); new `e2e/auth-authorization.spec.ts` (route protection with callback-path preservation, fabricated-cookie rejection, logout server-side invalidation, authenticated-visitor redirect away from login/register, cross-user session isolation). Both gated on `DATABASE_URL` being set — every page under test now opens a real database connection.
+- Unit (Vitest, `pnpm test`): env/runtime auth config, identifier format, callback-URL safety, test-database safety, response/log secret redaction, audit-action allowlist, and existing suites — 312 tests, all passing in the independent review.
+- Integration (Vitest + real Postgres, `pnpm test:integration`, gated on guarded `TEST_DATABASE_URL`): workspace provisioning, DAL authorization/tenant isolation, persisted preference repair, real Better Auth cookie-cache revocation, and transactional signup-hook recovery.
+- E2E (Playwright, `pnpm test:e2e`): real registration/sign-in, anti-enumeration, route protection, fabricated-cookie rejection, replay of both revoked session cookies, authenticated redirects, accessibility, and cross-user isolation. Database-backed cases are gated on guarded `TEST_DATABASE_URL`; only that validated URL is passed to the app as `DATABASE_URL`.
 - CI (`.github/workflows/ci.yml`): `integration` and `e2e` jobs each spin up a fresh `postgres:17-alpine` service container and apply the committed migrations before running — proving they produce a complete, working schema from nothing, on every push. A second build canary proves the app still builds cleanly even when `DATABASE_URL` is set but unreachable, not just when it's absent.
+
+The independent review's confirmed findings, root causes, and fixes are recorded in [`docs/reviews/phase-02-independent-review.md`](../reviews/phase-02-independent-review.md).
 
 ## Assumptions recorded during this phase
 
@@ -70,7 +72,7 @@ Better Auth's core tables (`users`, `sessions`, `accounts`, `verifications`, `ra
 ## Known limitations / deferred to Phase 3+
 
 - No team workspaces, no invitations, no role-management UI (schema is ready; the brief explicitly deferred the UI).
-- No real email provider — verification/reset links are never actually delivered outside local development's console log.
+- No real email provider — verification/reset links are not delivered, and are deliberately never printed to runtime logs.
 - No Google OAuth credentials configured in this environment — the button is truthfully disabled everywhere this was implemented; real-provider verification is outstanding.
 - No Neon project configured in this environment — schema and migrations are complete and structurally verified (CI's fresh-Postgres-service jobs), but Neon-specific deployment has not been directly observed.
 - Workspace-ID-in-URL/payload authorization has a DAL-level integration test but no e2e counterpart yet (no route accepts one).

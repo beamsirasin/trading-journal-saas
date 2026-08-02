@@ -1,5 +1,6 @@
 import { toNextJsHandler } from 'better-auth/next-js';
 
+import { redactAuthResponse } from '@/lib/auth/response';
 import { getAuth } from '@/lib/auth/server';
 
 /**
@@ -15,9 +16,9 @@ import { getAuth } from '@/lib/auth/server';
  * calling it per-request costs nothing worth avoiding.
  */
 export async function GET(request: Request): Promise<Response> {
-  return toNextJsHandler(getAuth()).GET(request);
+  return redactAuthResponse(await toNextJsHandler(getAuth()).GET(request));
 }
 
 export async function POST(request: Request): Promise<Response> {
-  return toNextJsHandler(getAuth()).POST(request);
+  return redactAuthResponse(await toNextJsHandler(getAuth()).POST(request));
 }

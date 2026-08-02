@@ -62,19 +62,24 @@ A Preview deployment's `DATABASE_URL`/`DATABASE_MIGRATION_URL` should point at a
 
 ## GitHub Actions CI
 
-`.github/workflows/ci.yml`'s `integration` and `e2e` jobs each start a fresh `postgres:17-alpine` service container and run `pnpm db:migrate` against it before running tests — proving the committed migrations produce a complete, working schema from nothing, on every push. This never touches Neon and needs no secrets.
+`.github/workflows/ci.yml`'s `integration` and `e2e` jobs each start a fresh `postgres:17-alpine` service container and run the guarded `pnpm db:test:prepare` command before tests — proving the committed migrations produce a complete schema from nothing. This never touches Neon and needs no secrets.
 
 ## Test database safety
 
-`src/test/integration-db.ts` (`resolveTestDatabaseUrl()`) and `scripts/prepare-test-db.mjs` share the same three guards, so integration tests can never accidentally reset a real database:
+`scripts/test-database-safety.mjs` is the single guard used by migration preparation, Vitest, Playwright, and direct E2E provisioning. It requires an unmistakably disposable database name containing a `test` or `e2e` segment and the explicit acknowledgement `TEST_DATABASE_ACK=I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE` for every target, including localhost.
 
 1. **`TEST_DATABASE_URL` must be set.** There is no fallback to `DATABASE_URL` — a missing test database fails loudly, never falls through.
-2. **It must not be identical to `DATABASE_URL`.** Catches the most likely real mistake (copy-pasting the wrong variable) without needing to parse either string.
-3. **A non-local host requires an explicit acknowledgement**: `TEST_DATABASE_ACK=I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE`. A hostname allowlist alone cannot distinguish a Neon test branch from a Neon production database — both live under `neon.tech` — so the real guarantee is an unmissable, deliberately-worded opt-in for anyone pointing this at a remote host, not a regex.
+2. **It must not resolve to the same database as `DATABASE_URL` or `DATABASE_MIGRATION_URL`.** Comparison normalizes schemes, default ports, credentials/query strings, and loopback aliases.
+3. **Every host requires an explicit acknowledgement**: `TEST_DATABASE_ACK=I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE`. This is deliberately required even on localhost.
+4. **The database name must contain a `test` or `e2e` segment.** A target named like a production database is rejected before any connection.
+
+Vitest validates the original environment before binding the real DAL's `DATABASE_URL` to the guarded test URL. Playwright applies the same rule to its production web server, so fixtures and application code cannot silently use different databases.
 
 ```bash
-# Local Postgres (docker compose up -d) — no ACK needed, host is localhost.
-TEST_DATABASE_URL=postgresql://trading_os:trading_os_dev@localhost:5432/trading_os_test pnpm test:integration
+# Local Postgres (docker compose up -d). The acknowledgement is required here too.
+TEST_DATABASE_URL=postgresql://trading_os:trading_os_dev@localhost:5432/trading_os_test \
+TEST_DATABASE_ACK=I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE \
+pnpm test:integration
 
 # A dedicated Neon test branch — ACK required.
 TEST_DATABASE_URL=postgresql://...@ep-test-branch....neon.tech/trading_os \

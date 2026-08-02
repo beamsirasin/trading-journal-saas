@@ -133,6 +133,22 @@ describe('server/auth/dal (authorization matrix)', () => {
     await expect(requireWorkspaceMembership(workspaceB)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
+  it('User A cannot pass the owner mutation boundary for User B workspace', async () => {
+    const userA = await createUser(db, 'mutation-a');
+    const userB = await createUser(db, 'mutation-b');
+    createdUserIds.push(userA, userB);
+    const workspaceB = await createWorkspaceWithOwner(db, userB);
+
+    currentSession = sessionFor(userA);
+    await expect(requireWorkspaceRole(workspaceB, 'owner')).rejects.toBeInstanceOf(ForbiddenError);
+
+    const [unchanged] = await db
+      .select({ name: workspaces.name })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceB));
+    expect(unchanged?.name).toBe('Test workspace');
+  });
+
   it('a non-member is rejected even with a valid session', async () => {
     const stranger = await createUser(db, 'stranger');
     const owner = await createUser(db, 'owner2');
@@ -184,5 +200,28 @@ describe('server/auth/dal (authorization matrix)', () => {
       .where(eq(workspaces.personalOwnerUserId, userId));
     expect(workspaceRows).toHaveLength(1);
     expect(workspaceRows[0]?.id).toBe(context.workspaceId);
+  });
+
+  it('persists repair when active_workspace_id points at another user workspace', async () => {
+    const userA = await createUser(db, 'invalid-active-a');
+    const userB = await createUser(db, 'invalid-active-b');
+    createdUserIds.push(userA, userB);
+    const workspaceA = await createWorkspaceWithOwner(db, userA);
+    const workspaceB = await createWorkspaceWithOwner(db, userB);
+
+    await db
+      .update(userPreferences)
+      .set({ activeWorkspaceId: workspaceB })
+      .where(eq(userPreferences.userId, userA));
+    currentSession = sessionFor(userA);
+
+    const context = await getActiveWorkspaceContext();
+    expect(context.workspaceId).toBe(workspaceA);
+
+    const [preference] = await db
+      .select({ activeWorkspaceId: userPreferences.activeWorkspaceId })
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userA));
+    expect(preference?.activeWorkspaceId).toBe(workspaceA);
   });
 });

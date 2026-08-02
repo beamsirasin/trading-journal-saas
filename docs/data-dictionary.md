@@ -4,7 +4,7 @@
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
-> **Reading numeric columns.** The driver returns `numeric` and `bigint` as **strings**, which is what the money and price strategy requires. Coercing them to JS numbers would reintroduce the floating-point error the design exists to avoid — invisibly, and only for values large or precise enough to matter. Phase 02 exercises this directly against a real driver in `src/server/auth/dal.integration.test.ts`/`workspace-provisioning.integration.test.ts` (e.g. `rate_limits.last_request` as `bigint`); a dedicated `numeric`-column contract test lands with the first `NUMERIC` product column in Phase 07.
+> **Reading numeric columns.** Financial `numeric` and `bigint` columns stay strings; coercing them to JS numbers would reintroduce floating-point loss. The sole Phase 2 exception is Better Auth's `rate_limits.last_request`: it is SQL `bigint` with Drizzle `mode: 'number'` because the installed library consumes epoch milliseconds as a number, still safely below `Number.MAX_SAFE_INTEGER`. A dedicated financial `numeric` contract test lands with the first product column in Phase 07.
 
 ## Conventions
 
@@ -47,7 +47,7 @@ Note: this table does **not** carry `timezone`/`is_platform_admin`/`onboarding_c
 | `sessions`      | `id`, `user_id` (FK, cascade delete), `token` (unique), `expires_at`, `ip_address`, `user_agent`                                            | Database-backed session store — [ADR 0010](decisions/0010-database-backed-sessions.md). Indexed on `user_id`. |
 | `accounts`      | `id`, `user_id` (FK, cascade delete), `account_id`, `provider_id`, `password` (hashed credential, nullable), OAuth token columns (nullable) | One row per sign-in method per user. Unique on `(provider_id, account_id)`.                                   |
 | `verifications` | `id`, `identifier`, `value`, `expires_at`                                                                                                   | Email-verification and password-reset tokens. Indexed on `identifier`.                                        |
-| `rate_limits`   | `id`, `key` (unique), `count` (integer), `last_request` (`bigint`, epoch-ms)                                                                | Database-backed rate limiting — never in-memory, never Redis this phase.                                      |
+| `rate_limits`   | `id`, `key` (unique), `count` (integer), `last_request` (`bigint`, epoch-ms read as JS number)                                              | Database-backed rate limiting — never in-memory, never Redis this phase.                                      |
 
 ### `workspaces` (application-owned)
 
@@ -95,7 +95,7 @@ Unique on `(workspace_id, user_id)`. Indexed on `user_id` alone (resolving "whic
 | `actor_user_id`             | text        | Nullable                                                         |
 | `action`                    | text        | Checked against a typed allowlist, `src/config/audit-actions.ts` |
 | `entity_type` / `entity_id` | text        | Nullable                                                         |
-| `metadata`                  | jsonb       | Sanitized — never tokens, secrets, headers, or database URLs     |
+| `metadata`                  | jsonb       | `{}` in Phase 2; the insert API accepts no arbitrary metadata    |
 | `created_at`                | timestamptz |                                                                  |
 
 Append-only by construction: `src/server/services/audit-log.ts` exposes only `insertAuditLog()` — no update/delete function exists anywhere in the codebase. Current logged actions: `workspace.personal_created`, `workspace_member.owner_created`, `user_preferences.active_workspace_initialized`, plus locale/theme-change events from `src/server/actions/preferences.ts`.

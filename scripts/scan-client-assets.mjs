@@ -70,6 +70,12 @@ const SECRET_SHAPES = [
   { name: 'private key block', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
 ];
 
+/** Exact configured values catch leaks that do not resemble a known format. */
+const CONFIGURED_SECRET_VALUES = SECRET_NAMES.flatMap((name) => {
+  const value = process.env[name];
+  return value && value.length >= 8 ? [{ name, value }] : [];
+});
+
 function walk(dir) {
   const found = [];
   let entries;
@@ -113,6 +119,12 @@ for (const file of files) {
   for (const { name, pattern } of SECRET_SHAPES) {
     if (pattern.test(contents)) {
       findings.push(`${where}: contains a ${name}`);
+    }
+  }
+
+  for (const { name, value } of CONFIGURED_SECRET_VALUES) {
+    if (contents.includes(value)) {
+      findings.push(`${where}: contains the configured value of ${name}`);
     }
   }
 }

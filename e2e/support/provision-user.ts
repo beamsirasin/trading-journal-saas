@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
+import { validateTestDatabaseEnvironment } from '../../scripts/test-database-safety.mjs';
 import { generateId } from '../../src/lib/identifiers';
 import { accounts, users } from '../../src/server/db/schema';
 
@@ -27,6 +28,10 @@ export async function provisionVerifiedUser(
   connectionUrl: string,
   { email, password, name }: { email: string; password: string; name: string },
 ): Promise<{ id: string; email: string; password: string; name: string }> {
+  const guardedUrl = validateTestDatabaseEnvironment().testUrl;
+  if (connectionUrl !== guardedUrl) {
+    throw new Error('Refusing to provision a user outside the guarded TEST_DATABASE_URL.');
+  }
   const client = postgres(connectionUrl, { max: 1 });
   const db = drizzle(client, { schema: { users, accounts } });
 

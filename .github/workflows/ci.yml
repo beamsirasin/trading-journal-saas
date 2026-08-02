@@ -16,6 +16,11 @@ jobs:
     name: Lint, typecheck, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Build-time canaries: scan-client-assets checks these exact values, not
+      # merely secret-looking strings or environment-variable names.
+      BETTER_AUTH_SECRET: client-bundle-auth-secret-canary-7f28f151
+      GOOGLE_CLIENT_SECRET: client-bundle-google-secret-canary-b94fc913
 
     steps:
       - name: Checkout
@@ -75,35 +80,21 @@ jobs:
         env:
           POSTGRES_USER: trading_os
           POSTGRES_PASSWORD: trading_os_ci
-          POSTGRES_DB: trading_os
+          POSTGRES_DB: trading_os_integration_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U trading_os -d trading_os"
+          --health-cmd "pg_isready -U trading_os -d trading_os_integration_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      # DATABASE_URL IS needed here, despite this job never running the app:
-      # src/server/auth/dal.ts and src/server/services/workspace-provisioning.ts
-      # call the real getDb() singleton directly (only Better Auth's session
-      # lookup is mocked in the integration tests — see
-      # src/server/auth/dal.integration.test.ts), so exercising the actual
-      # authorization boundary under test requires a working DATABASE_URL,
-      # not just TEST_DATABASE_URL.
-      #
-      # resolveTestDatabaseUrl() (src/test/integration-db.ts) refuses to run
-      # when TEST_DATABASE_URL is byte-for-byte identical to DATABASE_URL —
-      # the guard against accidentally testing against a real database. Both
-      # variables below resolve to the SAME disposable service container
-      # (127.0.0.1 and localhost both reach it), deliberately spelled
-      # differently so that guard passes without weakening it: there is
-      # nothing here for it to protect against — this is the one and only
-      # database that exists in this job, not a shared or production one.
-      DATABASE_URL: postgresql://trading_os:trading_os_ci@127.0.0.1:5432/trading_os
-      DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@127.0.0.1:5432/trading_os
-      TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      # TEST_DATABASE_URL is the only database input to this job. Setup binds
+      # the real DAL to it after normalizing aliases, requiring a test-like
+      # database name, and checking the explicit disposable-data acknowledgement.
+      TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os_integration_test
+      TEST_DATABASE_ACK: I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE
 
     steps:
       - name: Checkout
@@ -125,7 +116,7 @@ jobs:
       # nothing — never `drizzle-kit push` (CLAUDE.md §5), always the
       # tracked SQL files under drizzle/.
       - name: Apply migrations to a fresh database
-        run: pnpm db:migrate
+        run: pnpm db:test:prepare
 
       - name: Integration tests
         run: pnpm test:integration
@@ -141,18 +132,18 @@ jobs:
         env:
           POSTGRES_USER: trading_os
           POSTGRES_PASSWORD: trading_os_ci
-          POSTGRES_DB: trading_os
+          POSTGRES_DB: trading_os_e2e_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U trading_os -d trading_os"
+          --health-cmd "pg_isready -U trading_os -d trading_os_e2e_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
-      DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os_e2e_test
+      TEST_DATABASE_ACK: I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE
       # Fixed, obviously-non-production value. Never used outside this
       # workflow; irrelevant to resolveAuthSecret()'s production fail-closed
       # check, since `next build`/`next start` here never run with a
@@ -186,7 +177,7 @@ jobs:
         run: pnpm test:e2e:install
 
       - name: Apply migrations
-        run: pnpm db:migrate
+        run: pnpm db:test:prepare
 
       # No Google credentials, no email provider — every DB-dependent auth
       # spec exercises the real email/password flow only; Google-button and

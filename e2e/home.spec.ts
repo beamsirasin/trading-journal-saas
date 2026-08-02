@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
 /** Representative viewports. Wide desktop catches max-width regressions. */
 const VIEWPORTS = [
   { name: 'mobile portrait', width: 320, height: 720 },
@@ -25,7 +27,9 @@ const APP_PATHS = [
   '/app/settings',
 ] as const;
 const PUBLIC_ROUTES = LOCALES.flatMap((locale) =>
-  PUBLIC_PATHS.map((pathname) => `/${locale}${pathname}`),
+  PUBLIC_PATHS.filter(
+    (pathname) => hasE2eDatabase || (pathname !== '/login' && pathname !== '/register'),
+  ).map((pathname) => `/${locale}${pathname}`),
 );
 const APP_ROUTES = LOCALES.flatMap((locale) =>
   APP_PATHS.map((pathname) => `/${locale}${pathname}`),
@@ -347,6 +351,7 @@ test.describe('no horizontal overflow', () => {
     });
 
     test(`application routes at ${viewport.name} (${viewport.width}px)`, async ({ page }) => {
+      test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
       for (const route of APP_ROUTES) {

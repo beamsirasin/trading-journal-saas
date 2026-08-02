@@ -11,6 +11,12 @@ import * as schema from '@/server/db/schema';
 import { ensurePersonalWorkspace } from '@/server/services/workspace-provisioning';
 
 import { getEmailAdapter } from './email';
+import {
+  isLoopbackUrl,
+  resolveAuthBaseUrl,
+  resolveTrustedOrigins,
+  shouldUseSecureCookies,
+} from './runtime-config';
 
 /**
  * The one authoritative Better Auth instance (ADR 0008).
@@ -42,6 +48,13 @@ function buildDatabaseAdapter() {
   return drizzleAdapter(getDb(), {
     provider: 'pg',
     schema,
+    // Better Auth wraps sign-up in runWithTransaction(). Without adapter
+    // transaction support, the user-create hook runs before the credential
+    // account insert; a provisioning failure then strands a user who cannot
+    // sign in or register again. With this enabled, user + account commit
+    // atomically and the after-hook runs afterward, so the DAL repair path
+    // can recover on the next sign-in.
+    transaction: true,
   });
 }
 
@@ -72,17 +85,6 @@ function resolveAuthSecret(): string {
   }
 
   return secret;
-}
-
-/** Beyond `BETTER_AUTH_URL`/`NEXT_PUBLIC_APP_URL` (always trusted), operators opt in explicitly per environment. */
-function resolveTrustedOrigins(): string[] {
-  const extra = getServerEnv().BETTER_AUTH_TRUSTED_ORIGINS;
-  return extra === undefined
-    ? []
-    : extra
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter((origin) => origin.length > 0);
 }
 
 /**
@@ -123,7 +125,9 @@ function buildSocialProviders(): Parameters<typeof betterAuth>[0]['socialProvide
  * to exercise.
  */
 function buildRateLimitCustomRules(): Record<string, { window: number; max: number }> {
-  const isE2eTestMode = getServerEnv().E2E_TEST_MODE === 'true';
+  const env = getServerEnv();
+  const baseUrl = resolveAuthBaseUrl(env.BETTER_AUTH_URL, env.NODE_ENV);
+  const isE2eTestMode = env.E2E_TEST_MODE === 'true' && isLoopbackUrl(new URL(baseUrl));
 
   if (isE2eTestMode) {
     return {
@@ -153,12 +157,17 @@ function buildRateLimitCustomRules(): Record<string, { window: number; max: numb
  * resolves against `betterAuth`'s generic default rather than this call's
  * inferred options type, and the two are not assignable to each other.
  */
-function buildAuth() {
+export function buildAuth(options?: {
+  readonly afterUserCreated?: ((userId: string) => Promise<void>) | undefined;
+}) {
+  const env = getServerEnv();
+  const baseURL = resolveAuthBaseUrl(env.BETTER_AUTH_URL, env.NODE_ENV);
+
   return betterAuth({
     database: buildDatabaseAdapter(),
     secret: resolveAuthSecret(),
-    baseURL: getServerEnv().BETTER_AUTH_URL ?? 'http://localhost:3000',
-    trustedOrigins: resolveTrustedOrigins(),
+    baseURL,
+    trustedOrigins: resolveTrustedOrigins(env.BETTER_AUTH_TRUSTED_ORIGINS, env.NODE_ENV),
 
     // Replaces Better Auth's own built-in `/api/auth/error` page (unstyled,
     // English-only) with the app's localized one — this is what a cancelled
@@ -168,6 +177,10 @@ function buildAuth() {
     },
 
     advanced: {
+      // Better Auth 1.6.25 otherwise derives this from baseURL. Keeping the
+      // decision explicit makes the production invariant reviewable while
+      // still permitting the loopback HTTP server used by Playwright.
+      useSecureCookies: shouldUseSecureCookies(baseURL),
       database: {
         // A GenerateIdFn — the `model`/`size` parameter Better Auth passes is
         // irrelevant here since every table uses the same UUIDv7 strategy
@@ -249,13 +262,11 @@ function buildAuth() {
       user: {
         create: {
           after: async (user) => {
-            // This hook runs after Better Auth's own user-creation write
-            // completes; it is NOT guaranteed to share that transaction (not
-            // documented either way by the installed version), so
-            // `ensurePersonalWorkspace` owns its own transaction and is
-            // idempotent — safe to also re-run from `requireSession()` if
-            // this hook ever fails independently (Phase 2 brief §12).
-            await ensurePersonalWorkspace(user.id);
+            // The adapter commits Better Auth's user + credential account
+            // transaction before this after-hook runs. Workspace provisioning
+            // owns its own transaction and stays idempotent so a hook failure
+            // is repaired on the next authoritative DAL session lookup.
+            await (options?.afterUserCreated ?? ensurePersonalWorkspace)(user.id);
           },
         },
       },

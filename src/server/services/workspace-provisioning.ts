@@ -27,7 +27,10 @@ import { insertAuditLog } from './audit-log';
  * `src/server/auth/dal.ts` relies on exactly that to repair a session whose
  * `databaseHooks.user.create.after` call failed independently (brief §12).
  */
-export async function ensurePersonalWorkspace(userId: string): Promise<{ workspaceId: string }> {
+export async function ensurePersonalWorkspace(
+  userId: string,
+  options?: { readonly repairActiveWorkspace?: boolean | undefined },
+): Promise<{ workspaceId: string }> {
   const db = getDb();
   const { locale } = await readPreLoginCookiePreferences();
 
@@ -108,10 +111,12 @@ export async function ensurePersonalWorkspace(userId: string): Promise<{ workspa
         .update(userPreferences)
         .set({ activeWorkspaceId: workspaceId })
         .where(
-          and(
-            eq(userPreferences.userId, userId),
-            sql`${userPreferences.activeWorkspaceId} IS NULL`,
-          ),
+          options?.repairActiveWorkspace === true
+            ? eq(userPreferences.userId, userId)
+            : and(
+                eq(userPreferences.userId, userId),
+                sql`${userPreferences.activeWorkspaceId} IS NULL`,
+              ),
         );
     }
 

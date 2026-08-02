@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { FullConfig } from '@playwright/test';
 
+import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
 import { authStateFile } from './support/auth-state';
 import { E2E_USER_A, E2E_USER_B } from './support/fixtures';
 import { provisionVerifiedUser } from './support/provision-user';
@@ -28,11 +29,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   await mkdir(path.dirname(authStateFile), { recursive: true });
   await writeFile(authStateFile, JSON.stringify({ cookies: [], origins: [] }));
 
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl === undefined || databaseUrl === '') {
+  if (!process.env.TEST_DATABASE_URL) {
     return;
   }
 
-  await provisionVerifiedUser(databaseUrl, E2E_USER_A);
-  await provisionVerifiedUser(databaseUrl, E2E_USER_B);
+  const { testUrl } = validateTestDatabaseEnvironment();
+
+  await provisionVerifiedUser(testUrl, E2E_USER_A);
+  await provisionVerifiedUser(testUrl, E2E_USER_B);
 }

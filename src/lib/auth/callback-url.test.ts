@@ -19,6 +19,11 @@ describe('safeCallbackPath', () => {
     expect(safeCallbackPath('//evil.example/en/app')).toBeNull();
   });
 
+  it('rejects backslash variants that URL parsing resolves off-origin', () => {
+    expect(safeCallbackPath('/\\evil.example/en/app')).toBeNull();
+    expect(safeCallbackPath('/\\\\evil.example/en/app')).toBeNull();
+  });
+
   it('accepts a relative path whose query value happens to contain a scheme', () => {
     // The path itself resolves same-origin regardless of what its query
     // string contains — only what the path itself STARTS with matters.

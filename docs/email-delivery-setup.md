@@ -8,7 +8,7 @@ How verification and password-reset emails are sent, and what is required to mak
 
 | `NODE_ENV`                                                                                    | Adapter                  | Behavior                                                                                                                                                                  |
 | --------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `development` (`next dev`)                                                                    | `ConsoleEmailAdapter`    | Logs the verification/reset link to the server console. Click it directly from your terminal during local development.                                                    |
+| `development` (`next dev`)                                                                    | `ConsoleEmailAdapter`    | Warns that delivery is unavailable without logging the recipient or bearer URL.                                                                                           |
 | `test` (Vitest only — unreachable from any running app instance)                              | `TestEmailAdapter`       | Captures sent emails in memory for assertions.                                                                                                                            |
 | `production` (`next build` + `next start` — **always**, including this repo's own CI e2e run) | `ProductionEmailAdapter` | **Throws.** No email is sent. Sign-up/reset itself still succeeds (Better Auth treats the send as a background task — see ADR 0013) but the user never receives anything. |
 
@@ -33,5 +33,7 @@ Not verified, and cannot be verified without a real provider:
 - An email actually arriving in an inbox.
 - Clicking a real verification link and completing the flow to a logged-in, verified state.
 - Password-reset delivery.
+
+Development deliberately does not print verification or reset links. Console logs are routinely persisted or aggregated; treating them as a credential-delivery channel would leak bearer tokens outside the email boundary.
 
 Do not treat any claim of "registration works end-to-end" elsewhere in this repo's docs as covering actual email delivery unless a specific report states a real provider was configured and observed.

@@ -19,7 +19,7 @@ export interface EmailDeliveryAdapter {
 }
 ```
 
-- **`ConsoleEmailAdapter`** (`development` — `next dev`) — logs the link server-side (`console.log`) so a developer can click it. Never returned in an API response, never reaches a browser.
+- **`ConsoleEmailAdapter`** (`development` — `next dev`) — warns that no provider is configured, but never logs the recipient or bearer URL. Local verification requires a real development mail sink/provider.
 - **`TestEmailAdapter`** (`test` — Vitest only; `next build`/`next start` always force `NODE_ENV=production`, so this branch is unreachable from any running instance of the app itself) — captures every call in memory, for a test to assert an email was "sent" and extract the link's token without a network call.
 - **`ProductionEmailAdapter`** (`production` — every `next build`/`next start` invocation, including this phase's own e2e run in CI) — **throws** a clear, caught, sanitized error rather than pretending to send.
 
@@ -33,7 +33,7 @@ export interface EmailDeliveryAdapter {
 
 - Registration, password-reset request, and resend-verification UI are all real and testable end-to-end (`e2e/pricing-and-auth.spec.ts`) — including in CI, which runs a genuine production build with zero email provider configured — without the product ever claiming an email was delivered when it was not.
 - Dropping in a real provider later (Resend, SES, Postfix relay — undecided) touches exactly one file (`ProductionEmailAdapter`'s two methods), not `src/lib/auth/server.ts` or any UI component.
-- No verification or reset token is ever exposed in an HTTP response or client-visible log — only in a server-side console line (`ConsoleEmailAdapter`) a developer reads directly off their own machine, or in `TestEmailAdapter`'s in-memory array a test reads directly.
+- No verification or reset token is exposed in an HTTP response or runtime log. Only `TestEmailAdapter`'s process-local in-memory array exposes it to unit tests.
 
 **Negative / accepted**
 

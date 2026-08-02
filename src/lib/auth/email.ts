@@ -13,9 +13,8 @@ import 'server-only';
  * Selection is by `NODE_ENV`, never by anything a client could influence:
  * `test` gets an in-memory adapter assertions can inspect, `production` gets
  * an adapter that fails loudly rather than pretending to send, and anything
- * else (development) gets a console-only adapter. None of these ever expose
- * a verification or reset token in an HTTP response — only in a server-side
- * log line that a developer reads directly off their own machine.
+ * else (development) gets a diagnostic adapter. None exposes recipient data
+ * or verification/reset credentials in logs or HTTP responses.
  */
 export interface EmailDeliveryAdapter {
   sendVerificationEmail(params: { to: string; url: string }): Promise<void>;
@@ -23,17 +22,18 @@ export interface EmailDeliveryAdapter {
 }
 
 /**
- * Development only. Logs the link server-side so a developer can click it —
- * never returned in an API response, never written where a browser could see
- * it. This is a convenience for local development, not a delivery mechanism.
+ * Development only. Reports that delivery is unavailable without logging the
+ * recipient or bearer URL. This is a diagnostic, not a delivery mechanism.
  */
 export class ConsoleEmailAdapter implements EmailDeliveryAdapter {
-  async sendVerificationEmail({ to, url }: { to: string; url: string }): Promise<void> {
-    console.log(`[email:dev] Verification link for ${to}: ${url}`);
+  async sendVerificationEmail(_params: { to: string; url: string }): Promise<void> {
+    console.warn('[email:dev] Verification email not delivered: configure a local email provider.');
   }
 
-  async sendPasswordResetEmail({ to, url }: { to: string; url: string }): Promise<void> {
-    console.log(`[email:dev] Password reset link for ${to}: ${url}`);
+  async sendPasswordResetEmail(_params: { to: string; url: string }): Promise<void> {
+    console.warn(
+      '[email:dev] Password-reset email not delivered: configure a local email provider.',
+    );
   }
 }
 

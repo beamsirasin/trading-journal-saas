@@ -1,7 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { validateTestDatabaseEnvironment } from './scripts/test-database-safety.mjs';
+
 const PORT = 3100;
 const baseURL = `http://127.0.0.1:${PORT}`;
+const guardedDatabase = process.env.TEST_DATABASE_URL
+  ? validateTestDatabaseEnvironment()
+  : undefined;
 
 /**
  * E2E runs against a real production build, not the dev server — dev-only
@@ -53,5 +58,12 @@ export default defineConfig({
     // their own terminal.
     stdout: process.env.CI ? 'pipe' : 'ignore',
     stderr: 'pipe',
+    env: {
+      ...process.env,
+      BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? baseURL,
+      BETTER_AUTH_SECRET:
+        process.env.BETTER_AUTH_SECRET ?? 'playwright-loopback-only-secret-never-use-in-production',
+      ...(guardedDatabase ? { DATABASE_URL: guardedDatabase.testUrl } : {}),
+    },
   },
 });

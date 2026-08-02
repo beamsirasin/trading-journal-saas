@@ -20,5 +20,18 @@ export function safeCallbackPath(candidate: string | null | undefined): string |
   if (!candidate.startsWith('/') || candidate.startsWith('//')) {
     return null;
   }
+
+  // WHATWG URL parsing treats backslashes as path separators for HTTP(S).
+  // Consequently `/\\evil.example` resolves off-origin even though it
+  // appears to begin with a single slash. Canonicalize before accepting.
+  try {
+    const sentinel = 'https://callback.invalid';
+    if (new URL(candidate, sentinel).origin !== sentinel) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
   return candidate;
 }

@@ -85,8 +85,13 @@ test.describe('route protection and session authorization', () => {
     await loginAs(page, E2E_USER_B);
 
     const cookiesBeforeLogout = await context.cookies();
-    const sessionCookie = cookiesBeforeLogout.find((cookie) => cookie.name === SESSION_COOKIE_NAME);
-    expect(sessionCookie, 'expected a real session cookie after login').toBeDefined();
+    const sessionCookies = cookiesBeforeLogout.filter((cookie) =>
+      cookie.name.startsWith('better-auth.session_'),
+    );
+    expect(
+      sessionCookies.some((cookie) => cookie.name === SESSION_COOKIE_NAME),
+      'expected a real session cookie after login',
+    ).toBe(true);
 
     await page.getByRole('button', { name: 'Account menu' }).click();
     await page.getByRole('menuitem', { name: 'Log out' }).click();
@@ -97,7 +102,7 @@ test.describe('route protection and session authorization', () => {
     // — proving the point requires putting the real (soon-to-be-revoked)
     // token back and confirming the server itself now rejects it.
     await context.clearCookies();
-    await context.addCookies([{ ...sessionCookie!, domain: '127.0.0.1' }]);
+    await context.addCookies(sessionCookies.map((cookie) => ({ ...cookie, domain: '127.0.0.1' })));
     await page.goto('/en/app');
     await expect(page).toHaveURL(/\/en\/login/);
   });
