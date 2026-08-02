@@ -24,7 +24,20 @@ setup('authenticate as E2E_USER_A', async ({ page }) => {
   await page.goto('/en/login');
   await page.getByLabel('Email').fill(E2E_USER_A.email);
   await page.getByLabel('Password', { exact: true }).fill(E2E_USER_A.password);
-  await page.getByRole('button', { name: 'Log in' }).click();
+
+  // Waits for the actual sign-in response rather than the URL alone, so a
+  // failure reports the real server-side reason (rate limited, invalid
+  // credentials, etc.) instead of an opaque "URL never changed" timeout.
+  const [response] = await Promise.all([
+    page.waitForResponse((res) => res.url().includes('/api/auth/sign-in/email')),
+    page.getByRole('button', { name: 'Log in' }).click(),
+  ]);
+
+  if (!response.ok()) {
+    const body = await response.text();
+    throw new Error(`Sign-in for ${E2E_USER_A.email} failed: HTTP ${response.status()} — ${body}`);
+  }
+
   await page.waitForURL(/\/app$/);
 
   await page.context().storageState({ path: authStateFile });
