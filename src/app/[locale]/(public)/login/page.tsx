@@ -1,13 +1,17 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { DemoAuthForm } from '@/components/forms/demo-auth-form';
+import { safeCallbackPath } from '@/lib/auth/callback-url';
+import { isGoogleSignInConfigured } from '@/lib/auth/server';
+import { getOptionalSession } from '@/server/auth/dal';
+import { AuthForm } from '@/components/auth/auth-form';
 import { Container } from '@/components/shell/container';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
-import { Link } from '@/i18n/navigation';
+import { Link, redirect } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
+type PageSearchParams = { callbackUrl?: string };
 
 export async function generateMetadata({
   params,
@@ -20,11 +24,9 @@ export async function generateMetadata({
 
   return {
     title: t('loginTitle'),
-    description: t('loginPreviewNote'),
     alternates: localizedAlternates(appLocale, '/login'),
     openGraph: {
       title: t('loginTitle'),
-      description: t('loginPreviewNote'),
       type: 'website',
       ...localizedOpenGraph(appLocale, '/login'),
     },
@@ -33,20 +35,38 @@ export async function generateMetadata({
   };
 }
 
-export default async function LoginPage({ params }: { params: Promise<PageParams> }) {
+export default async function LoginPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<PageParams>;
+  searchParams: Promise<PageSearchParams>;
+}) {
   const { locale } = await params;
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('auth');
+
+  // Defence in depth alongside `src/proxy.ts`'s optimistic redirect: a
+  // genuinely authenticated visitor never sees the login form at all.
+  const session = await getOptionalSession();
+  const { callbackUrl } = await searchParams;
+  const destination = safeCallbackPath(callbackUrl) ?? '/app';
+  if (session !== null) {
+    redirect({ href: destination, locale: locale as AppLocale });
+  }
 
   return (
     <Container width="prose" className="flex flex-col items-center py-16 sm:py-24">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col gap-2">
           <h1 className="text-page-title">{t('loginTitle')}</h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">{t('loginPreviewNote')}</p>
         </div>
 
-        <DemoAuthForm mode="login" />
+        <AuthForm
+          mode="login"
+          googleEnabled={isGoogleSignInConfigured()}
+          callbackUrl={callbackUrl}
+        />
 
         <p className="text-muted-foreground mt-8 text-center text-sm">
           {t('noAccount')}{' '}

@@ -14,12 +14,13 @@
     "howItWorks": "How it works",
     "pricing": "Pricing",
     "demo": "Demo",
-    "login": "Login preview",
-    "register": "Registration preview",
+    "login": "Log in",
+    "register": "Sign up",
     "openMenu": "Open navigation menu",
     "siteNav": "Site",
     "siteNavDescription": "Site navigation and account links.",
-    "mainNav": "Main"
+    "mainNav": "Main",
+    "account": "Account"
   },
   "appNav": {
     "items": {
@@ -37,8 +38,13 @@
       "settings": "Profile and preferences"
     },
     "demoNoteTitle": "Demo data",
-    "demoNote": "A design preview. No account, no database, no saved trades.",
-    "drawerDescription": "Application sections. Every section is a preview built from demo data."
+    "demoNote": "Your account and sign-in are real. Trading data shown here is still a fixture preview.",
+    "drawerDescription": "Application sections. Every section is a preview built from demo data.",
+    "account": {
+      "menuLabel": "Account menu",
+      "workspace": "Workspace",
+      "logout": "Log out"
+    }
   },
   "footer": {
     "tagline": "A trading journal that separates strategy edge from execution.",
@@ -444,14 +450,14 @@
     },
     "profile": {
       "title": "Profile",
-      "description": "Preview only — there is no account behind these fields.",
+      "description": "Your account details. Editing arrives in a later release.",
       "name": "Name",
       "email": "Email",
       "timezone": "Timezone",
       "timezoneNote": "Timestamps are stored in UTC and displayed here. Daily analytics bucket by this zone, so a trade closed at 23:30 belongs to that local day.",
       "currency": "Reporting currency",
       "save": "Save changes",
-      "saveNote": "Saving requires an account, which arrives with authentication in Phase 2."
+      "saveNote": "Profile editing arrives in a later release."
     },
     "accounts": {
       "title": "Trading accounts",
@@ -471,9 +477,7 @@
   },
   "auth": {
     "loginTitle": "Log in",
-    "loginPreviewNote": "This page is a design preview. Authentication is not implemented, so nothing you type is sent or stored.",
     "registerTitle": "Start your free trial",
-    "registerPreviewNote": "This page is a design preview. Authentication is not implemented, so nothing you type is sent or stored.",
     "trialPoints": [
       "Planned {trialDays}-day trial",
       "No card required",
@@ -482,7 +486,7 @@
     ],
     "paymentNote": "Payment processing is not connected to this product. When billing ships, prices will be published before anything can be charged.",
     "continueWithGoogle": "Continue with Google",
-    "googleNotConnected": "Google sign-in is not connected yet — coming in Phase 2.",
+    "googleNotConnected": "Google sign-in is not available right now.",
     "or": "or",
     "name": "Name",
     "namePlaceholder": "Alex Chen",
@@ -490,15 +494,49 @@
     "emailPlaceholder": "you@example.com",
     "password": "Password",
     "passwordHint": "At least 12 characters.",
-    "resetNote": "Reset arrives with Phase 2",
     "loginSubmit": "Log in",
     "registerSubmit": "Create account",
     "noAccount": "No account yet?",
     "createOne": "Create one",
     "haveAccount": "Already have an account?",
     "loginLink": "Log in",
-    "submittedTitle": "Nothing was submitted",
-    "submittedBody": "This is a design preview. Authentication, accounts and sessions arrive in Phase 2 — no data left your browser and no account was created. You can <demoLink>explore the demo dashboard</demoLink> in the meantime."
+    "loginError": "Invalid email or password.",
+    "registerError": "Something went wrong. Please try again.",
+    "genericError": "Something went wrong. Please try again.",
+    "rateLimitedError": "Too many attempts. Please wait a moment and try again.",
+    "forgotPasswordLink": "Forgot password?",
+    "forgotPasswordTitle": "Reset your password",
+    "forgotPasswordDescription": "Enter your email and we'll send you a link to reset your password.",
+    "forgotPasswordSubmit": "Send reset link",
+    "forgotPasswordSentTitle": "Check your email",
+    "forgotPasswordSentBody": "If an account exists for that email, a reset link is on its way.",
+    "backToLogin": "Back to log in",
+    "resetPasswordTitle": "Set a new password",
+    "resetPasswordDescription": "Choose a new password for your account.",
+    "newPassword": "New password",
+    "resetPasswordSubmit": "Reset password",
+    "resetPasswordSuccessTitle": "Password updated",
+    "resetPasswordSuccessBody": "Your password has been changed, and you've been signed out of other sessions.",
+    "resetPasswordSuccessCta": "Log in",
+    "resetPasswordInvalidTitle": "This link has expired",
+    "resetPasswordInvalidBody": "Password reset links expire after an hour. Request a new one.",
+    "resetPasswordInvalidCta": "Request a new link",
+    "verifyEmailPendingTitle": "Verify your email",
+    "verifyEmailPendingBody": "We sent a verification link to {email}. Click it to activate your account.",
+    "verifyEmailResend": "Resend email",
+    "verifyEmailResendSuccess": "Verification email sent.",
+    "verifyEmailSuccessTitle": "Email verified",
+    "verifyEmailSuccessBody": "Your email is confirmed. You can now log in.",
+    "verifyEmailSuccessCta": "Log in",
+    "verifyEmailInvalidTitle": "This link has expired",
+    "verifyEmailInvalidBody": "Verification links expire after an hour. Log in to request a new one.",
+    "authErrorTitle": "Sign-in didn't work",
+    "authErrorDescription": "Something went wrong during sign-in. You can try again.",
+    "authErrorBackToLogin": "Back to log in",
+    "googleCancelled": "Sign-in was cancelled.",
+    "googleAccessDenied": "Access was denied.",
+    "googleError": "Something went wrong with Google sign-in.",
+    "verifyEmailPendingFallback": "Check your inbox for a verification link."
   },
   "demoPage": {
     "title": "Demo dashboard",

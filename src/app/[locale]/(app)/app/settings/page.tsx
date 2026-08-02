@@ -4,7 +4,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { PLANS, TRIAL_DAYS } from '@/config/plans';
 import { DEMO_ACCOUNTS } from '@/lib/demo';
-import { DEMO_TIME_ZONE } from '@/components/dashboard/format';
+import { getCurrentUser, getCurrentUserPreferences } from '@/server/auth/dal';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
@@ -62,6 +62,8 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   const tLanguageSwitcher = await getTranslations('languageSwitcher');
   const tradingAccounts = DEMO_ACCOUNTS.filter((account) => account.id !== 'all');
   const currentPlan = PLANS.find((plan) => plan.featured) ?? PLANS[0];
+  const user = await getCurrentUser();
+  const preferences = await getCurrentUserPreferences();
 
   return (
     <Container className="flex flex-col gap-10 py-8">
@@ -100,15 +102,15 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           <div className="grid gap-5 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label htmlFor="settings-name">{t('profile.name')}</Label>
-              <Input id="settings-name" defaultValue="Demo trader" readOnly />
+              <Input id="settings-name" defaultValue={user.name} readOnly />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="settings-email">{t('profile.email')}</Label>
-              <Input id="settings-email" type="email" defaultValue="demo@example.com" readOnly />
+              <Input id="settings-email" type="email" defaultValue={user.email} readOnly />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="settings-timezone">{t('profile.timezone')}</Label>
-              <Input id="settings-timezone" defaultValue={DEMO_TIME_ZONE} readOnly />
+              <Input id="settings-timezone" defaultValue={preferences.timezone} readOnly />
               <p className="text-muted-foreground text-xs leading-relaxed">
                 {t('profile.timezoneNote')}
               </p>
