@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { authStateFile } from './support/auth-state';
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
+// `/en/app*` routes need a real, database-verified session (Phase 02); `/en/demo`
+// does not. storageState is harmless for `/en/demo` (a public route, indifferent
+// to auth state), so it is set file-wide; the DB-availability skip below is
+// applied per-test, only for the routes that actually need it.
+test.use({ storageState: authStateFile });
+
 /**
  * The demo dashboard, on both routes that render it.
  *
@@ -37,6 +46,7 @@ const selectRange = async (page: Page, label: string) => {
 test.describe('demo dashboard', () => {
   for (const route of ROUTES) {
     test(`${route} is explicitly labelled as demo data`, async ({ page }) => {
+      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       // The full notice, not just the badge: the badge is hidden below `sm`
@@ -59,6 +69,7 @@ test.describe('demo dashboard', () => {
      * `/en/app/analytics`, asserted separately below.
      */
     test(`${route} shows the four headline KPIs`, async ({ page }) => {
+      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       for (const label of ['Net P&L', 'Actual Win Rate', 'Actual Average R', 'Discipline Score']) {
@@ -67,6 +78,7 @@ test.describe('demo dashboard', () => {
     });
 
     test(`${route} renders the cumulative R chart with an accessible table`, async ({ page }) => {
+      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       const figure = page.getByRole('figure').filter({ hasText: 'Cumulative R' }).first();
@@ -85,6 +97,7 @@ test.describe('demo dashboard', () => {
      * cost" figure now exclusive to `/en/app/analytics` (asserted below).
      */
     test(`${route} shows the top three mistakes ranked by cost`, async ({ page }) => {
+      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       const section = page.locator('section[aria-labelledby="mistakes-heading"]');
@@ -96,6 +109,7 @@ test.describe('demo dashboard', () => {
     });
 
     test(`${route} shows both outcome axes on recent trades`, async ({ page }) => {
+      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       // A recent-trades list showing only P&L would be the conventional
@@ -116,6 +130,7 @@ test.describe('demo dashboard', () => {
    * `src/app/[locale]/(app)/app/analytics/page.tsx`.
    */
   test('/en/app/analytics shows the full system-vs-actual metric set', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/en/app/analytics');
 
     for (const label of [
@@ -141,6 +156,7 @@ test.describe('demo dashboard', () => {
    * above, per route).
    */
   test('/en/app/analytics shows the full mistake cost breakdown as a figure', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/en/app/analytics');
 
     const figure = page.getByRole('figure').filter({ hasText: 'What your mistakes cost' });
@@ -201,6 +217,7 @@ test.describe('demo dashboard', () => {
   });
 
   test('wide trade table scrolls inside its own container', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/en/app/trades');
 
@@ -216,6 +233,7 @@ test.describe('demo dashboard', () => {
   });
 
   test('mobile shows record cards rather than a squeezed table', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app/trades');
 

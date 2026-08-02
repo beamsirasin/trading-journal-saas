@@ -85,15 +85,24 @@ jobs:
           --health-retries 10
 
     env:
-      # No DATABASE_URL here deliberately: this job never runs the app, only
-      # `db:migrate` (reads DATABASE_MIGRATION_URL) and `test:integration`
-      # (reads TEST_DATABASE_URL). resolveTestDatabaseUrl() refuses to run
-      # when TEST_DATABASE_URL === DATABASE_URL — the safety guard against
-      # accidentally testing against a real database — so leaving
-      # DATABASE_URL unset here is what lets that guard pass rather than
-      # trip on itself. localhost means the non-local-host guard (which would
-      # otherwise require TEST_DATABASE_ACK) does not apply either.
-      DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      # DATABASE_URL IS needed here, despite this job never running the app:
+      # src/server/auth/dal.ts and src/server/services/workspace-provisioning.ts
+      # call the real getDb() singleton directly (only Better Auth's session
+      # lookup is mocked in the integration tests — see
+      # src/server/auth/dal.integration.test.ts), so exercising the actual
+      # authorization boundary under test requires a working DATABASE_URL,
+      # not just TEST_DATABASE_URL.
+      #
+      # resolveTestDatabaseUrl() (src/test/integration-db.ts) refuses to run
+      # when TEST_DATABASE_URL is byte-for-byte identical to DATABASE_URL —
+      # the guard against accidentally testing against a real database. Both
+      # variables below resolve to the SAME disposable service container
+      # (127.0.0.1 and localhost both reach it), deliberately spelled
+      # differently so that guard passes without weakening it: there is
+      # nothing here for it to protect against — this is the one and only
+      # database that exists in this job, not a shared or production one.
+      DATABASE_URL: postgresql://trading_os:trading_os_ci@127.0.0.1:5432/trading_os
+      DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@127.0.0.1:5432/trading_os
       TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
 
     steps:

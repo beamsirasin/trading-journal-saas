@@ -1,5 +1,18 @@
 import { expect, test } from '@playwright/test';
 
+import { authStateFile } from './support/auth-state';
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+
+// Phase 02: every `/app/*` page now performs a real, database-verified
+// session check (src/server/auth/dal.ts) — these Phase-1-era specs assume an
+// already-authenticated visitor, via the storage state e2e/auth.setup.ts
+// produces (see playwright.config.ts's `setup` project), and skip outright
+// when no database is configured to authenticate against at all.
+test.use({ storageState: authStateFile });
+test.beforeEach(() => {
+  test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+});
+
 // PHASE 1.1. Every route now lives under a locale prefix (`localePrefix:
 // 'always'`), so these target the `en` fallback explicitly. `Link` from
 // `@/i18n/navigation` renders the same prefix on `aria-current="page"`

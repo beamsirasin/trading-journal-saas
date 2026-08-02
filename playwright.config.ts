@@ -27,10 +27,19 @@ export default defineConfig({
   },
 
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Playwright's own documented pattern for a mixed authenticated/
+    // unauthenticated suite: this project only runs e2e/auth.setup.ts (real
+    // login, saved session), and `chromium`/`mobile-chrome` depend on it so
+    // it always completes first. It does NOT set `storageState` itself —
+    // most specs (pricing, login/register, route-protection) must still
+    // start unauthenticated; only the Phase-1-era specs that assume an
+    // already-authenticated `/app/*` opt in per-file via
+    // `test.use({ storageState: authStateFile })`.
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, dependencies: ['setup'] },
     // Mobile viewport is a first-class target (CLAUDE.md §8), so it is part of
     // the default run rather than an optional extra.
-    { name: 'mobile-chrome', use: { ...devices['Pixel 7'] } },
+    { name: 'mobile-chrome', use: { ...devices['Pixel 7'] }, dependencies: ['setup'] },
   ],
 
   webServer: {
