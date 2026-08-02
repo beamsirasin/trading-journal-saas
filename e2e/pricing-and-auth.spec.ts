@@ -25,7 +25,18 @@ test.describe('pricing', () => {
     }
 
     await expect(pricing.getByText('Pricing to be confirmed')).toHaveCount(3);
-    await expect(pricing.getByRole('link', { name: /preview trial registration/i })).toHaveCount(3);
+
+    // Each plan card's own registration CTA, selected by the card's
+    // `aria-labelledby` id (how `PricingCard` actually wires it — see the
+    // tablet-viewport test below and `e2e/i18n.spec.ts`'s Thai equivalent)
+    // rather than by CTA copy. The copy is translated and has already
+    // changed once (Phase 1.1's "preview" wording → Phase 2's real
+    // registration), so asserting the destination rather than the label is
+    // what keeps this test meaningful across that kind of rename.
+    for (const id of ['starter', 'pro', 'elite']) {
+      const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
+      await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
+    }
   });
 
   test('states the seven-day trial', async ({ page }) => {
@@ -85,16 +96,19 @@ test.describe('pricing', () => {
   test('does not present a working purchase path', async ({ page }) => {
     await page.goto('/en/pricing');
 
+    const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
+
     await expect(
       page.getByText(/no payment processing is connected to this product yet/i),
     ).toBeVisible();
 
-    // No plan CTA may lead to a checkout. They all start a trial instead.
+    // No plan CTA may lead to a checkout. They all go to real registration
+    // instead. Selected by each card's `aria-labelledby` id rather than CTA
+    // copy — see the "shows three plans" test above for why.
     // Suffix match: `Link` from `@/i18n/navigation` renders `/en/register`.
-    const ctas = page.getByRole('link', { name: /preview trial registration/i });
-    const count = await ctas.count();
-    for (let index = 0; index < count; index += 1) {
-      await expect(ctas.nth(index)).toHaveAttribute('href', /\/register$/);
+    for (const id of ['starter', 'pro', 'elite']) {
+      const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
+      await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
     }
 
     const body = (await page.textContent('body')) ?? '';

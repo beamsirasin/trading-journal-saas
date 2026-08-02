@@ -15,8 +15,9 @@ import { Link } from '@/i18n/navigation';
  * is indistinguishable from a real one once it has been screenshotted, and
  * "we'll change it before launch" is not a control.
  *
- * The call to action goes to the registration preview. It does not claim to
- * start a trial while authentication and trial tracking are unavailable.
+ * The call to action goes to real registration (Phase 2). It does not claim
+ * to start a trial, since billing and trial-entitlement tracking are still
+ * unimplemented — only account creation is real today.
  *
  * PHASE 1.1 SIMPLIFICATION — feature lists trimmed to three bullets per
  * plan (translated, under `pricing.plans.{id}.features`), leading with the
