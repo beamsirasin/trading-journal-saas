@@ -85,10 +85,14 @@ jobs:
           --health-retries 10
 
     env:
-      # A fixed, disposable, single-purpose service container — never a real
-      # database. localhost, so src/test/integration-db.ts's non-local-host
-      # guard (which would otherwise require TEST_DATABASE_ACK) does not apply.
-      DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      # No DATABASE_URL here deliberately: this job never runs the app, only
+      # `db:migrate` (reads DATABASE_MIGRATION_URL) and `test:integration`
+      # (reads TEST_DATABASE_URL). resolveTestDatabaseUrl() refuses to run
+      # when TEST_DATABASE_URL === DATABASE_URL — the safety guard against
+      # accidentally testing against a real database — so leaving
+      # DATABASE_URL unset here is what lets that guard pass rather than
+      # trip on itself. localhost means the non-local-host guard (which would
+      # otherwise require TEST_DATABASE_ACK) does not apply either.
       DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
       TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
 
