@@ -194,7 +194,17 @@ function buildAuth() {
     rateLimit: {
       enabled: true,
       storage: 'database',
-      modelName: 'rate_limits',
+      // Must match the schema's actual export name (`rateLimits`,
+      // src/server/db/schema/auth.ts), not the SQL table name (`rate_limits`)
+      // — the Drizzle adapter's getSchema(model) does a plain `schema[model]`
+      // lookup against the JS module's export keys, not against column/table
+      // identifiers. Getting this wrong silently 500s every rate-limited
+      // request (i.e. every real auth call) with an empty response body —
+      // only surfaced by running against a real database in CI, not by
+      // typecheck/lint/unit tests. `user`/`session`/`account`/`verification`
+      // above happen to avoid this because their plural modelName override
+      // coincides with their schema export name; `rateLimit`'s does not.
+      modelName: 'rateLimits',
       window: 60,
       max: 100,
       customRules: {
