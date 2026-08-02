@@ -11,22 +11,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Fixed, obviously-non-production values shared by the jobs below that boot
-# the app against a real (disposable, service-container) database. Never
-# used outside this workflow, never close enough to a real secret to trip
-# `scripts/scan-client-assets.mjs`'s placeholder heuristics, and irrelevant
-# to `resolveAuthSecret()`'s production fail-closed check (these jobs never
-# run with NODE_ENV=production set by anything other than `next build`
-# itself, which this repo's own architecture treats as a hard boundary, not
-# a secret this workflow needs to protect).
-env:
-  CI_POSTGRES_USER: trading_os
-  CI_POSTGRES_PASSWORD: trading_os_ci
-  CI_POSTGRES_DB: trading_os
-  CI_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
-  CI_BETTER_AUTH_SECRET: ci-github-actions-only-secret-never-used-in-production-00
-  CI_BETTER_AUTH_URL: http://127.0.0.1:3100
-
 jobs:
   verify:
     name: Lint, typecheck, test, build
@@ -89,9 +73,9 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: ${{ env.CI_POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ env.CI_POSTGRES_DB }}
+          POSTGRES_USER: trading_os
+          POSTGRES_PASSWORD: trading_os_ci
+          POSTGRES_DB: trading_os
         ports:
           - 5432:5432
         options: >-
@@ -101,13 +85,12 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
-      DATABASE_MIGRATION_URL: ${{ env.CI_DATABASE_URL }}
-      # localhost, so src/test/integration-db.ts's non-local-host guard
-      # (which would otherwise require TEST_DATABASE_ACK) does not apply —
-      # this is a fresh, disposable, single-purpose service container, never
-      # anything resembling a real database.
-      TEST_DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      # A fixed, disposable, single-purpose service container — never a real
+      # database. localhost, so src/test/integration-db.ts's non-local-host
+      # guard (which would otherwise require TEST_DATABASE_ACK) does not apply.
+      DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      TEST_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
 
     steps:
       - name: Checkout
@@ -143,9 +126,9 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: ${{ env.CI_POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ env.CI_POSTGRES_DB }}
+          POSTGRES_USER: trading_os
+          POSTGRES_PASSWORD: trading_os_ci
+          POSTGRES_DB: trading_os
         ports:
           - 5432:5432
         options: >-
@@ -155,10 +138,14 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
-      DATABASE_MIGRATION_URL: ${{ env.CI_DATABASE_URL }}
-      BETTER_AUTH_SECRET: ${{ env.CI_BETTER_AUTH_SECRET }}
-      BETTER_AUTH_URL: ${{ env.CI_BETTER_AUTH_URL }}
+      DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      DATABASE_MIGRATION_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+      # Fixed, obviously-non-production value. Never used outside this
+      # workflow; irrelevant to resolveAuthSecret()'s production fail-closed
+      # check, since `next build`/`next start` here never run with a
+      # production-shaped secret expectation beyond "present and long enough".
+      BETTER_AUTH_SECRET: ci-github-actions-only-secret-never-used-in-production-00
+      BETTER_AUTH_URL: http://127.0.0.1:3100
 
     steps:
       - name: Checkout
