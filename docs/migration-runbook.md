@@ -11,6 +11,8 @@ How schema changes move from a developer's machine to every environment this pro
 
 `drizzle.config.ts` reads `DATABASE_MIGRATION_URL`, falling back to `DATABASE_URL` when the former is unset — logged (`[drizzle.config] using ...`) but never the URL itself. The fallback is fine for a plain Postgres server (local Docker, a VPS) that only has one endpoint. **Never rely on the fallback against Neon** — Neon's pooled endpoint is PgBouncer in transaction mode, which does not reliably hold the advisory locks migrations need; set `DATABASE_MIGRATION_URL` to Neon's direct connection string explicitly.
 
+**`.env.local` is loaded explicitly, not automatically.** `next dev`/`next build`/`next start` load `.env.local` (and `.env`, etc.) themselves, via `@next/env`, before any application code runs. `drizzle-kit` — and therefore every `pnpm db:generate`/`db:migrate`/`db:check` command below — is a standalone CLI outside that runtime, so nothing loads `.env.local` for it on its own. `drizzle.config.ts` calls `loadEnvConfig(process.cwd())` from `@next/env` itself (the same package and file precedence Next.js uses) before reading either variable, so `cp .env.example .env.local` genuinely is enough — no separate `export`, `dotenv -e`, or shell profile edit needed.
+
 ## Commands
 
 | Command                | What it does                                                                                                                                                                   |

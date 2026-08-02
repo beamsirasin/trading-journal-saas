@@ -1,4 +1,7 @@
+import { loadEnvConfig } from '@next/env';
 import { defineConfig } from 'drizzle-kit';
+
+import { resolveMigrationUrl } from './src/config/migration-env';
 
 /**
  * Drizzle Kit configuration.
@@ -15,26 +18,24 @@ import { defineConfig } from 'drizzle-kit';
  * deployments must set `DATABASE_MIGRATION_URL` explicitly rather than rely
  * on the fallback.
  *
- * Read directly from process.env rather than through the validated env module:
+ * Read from `process.env` rather than through the validated env module:
  * drizzle-kit is a standalone CLI outside the Next.js runtime, and importing
  * `server-only` from it would throw.
+ *
+ * That same "outside the Next.js runtime" fact is also why `.env.local`
+ * needs to be loaded explicitly here. `next dev`/`next build`/`next start`
+ * load it (and `.env`, `.env.production(.local)`, etc.) automatically via
+ * `@next/env` before any application code runs; `drizzle-kit` has no such
+ * bootstrap, so without this call `process.env` here is exactly what the
+ * invoking shell already had — never what a developer's `.env.local` says —
+ * and every `pnpm db:migrate`/`db:generate`/`db:check` would silently miss
+ * it. `loadEnvConfig` is the identical mechanism and file precedence Next.js
+ * itself uses, not a reimplementation of it.
  */
 
-const migrationUrlSource =
-  process.env.DATABASE_MIGRATION_URL !== undefined && process.env.DATABASE_MIGRATION_URL !== ''
-    ? 'DATABASE_MIGRATION_URL'
-    : 'DATABASE_URL';
-const url = process.env.DATABASE_MIGRATION_URL || process.env.DATABASE_URL;
+loadEnvConfig(process.cwd());
 
-if (url === undefined || url === '') {
-  // A clear message beats drizzle-kit's own failure, which is opaque about
-  // which variable it wanted.
-  throw new Error(
-    'drizzle-kit requires DATABASE_URL (or DATABASE_MIGRATION_URL) to be set.\n' +
-      'For local development: copy .env.example to .env.local and start Postgres with `docker compose up -d`.\n' +
-      'See docs/migration-runbook.md.',
-  );
-}
+const { source: migrationUrlSource, url } = resolveMigrationUrl(process.env);
 
 // Never logs the URL itself (it carries a password) — only which variable
 // resolved, so a fallback to DATABASE_URL is visible rather than silent.
