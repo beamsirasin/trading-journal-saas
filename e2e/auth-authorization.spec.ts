@@ -52,9 +52,14 @@ test.describe('route protection and session authorization', () => {
     await loginAs(page, E2E_USER_A);
 
     await page.getByRole('button', { name: 'Account menu' }).click();
-    await expect(page.getByText(E2E_USER_A.name)).toBeVisible();
-    await expect(page.getByText(E2E_USER_A.email)).toBeVisible();
-    await expect(page.getByText('Personal workspace')).toBeVisible();
+    // Scoped to the open dropdown: the trigger button's own truncated name
+    // span stays mounted (just hidden below `sm`) while the menu is open, so
+    // an unscoped getByText resolves to two elements — the trigger and the
+    // menu's own label — a strict-mode violation, not a real ambiguity.
+    const menu = page.getByRole('menu');
+    await expect(menu.getByText(E2E_USER_A.name)).toBeVisible();
+    await expect(menu.getByText(E2E_USER_A.email)).toBeVisible();
+    await expect(menu.getByText('Personal workspace')).toBeVisible();
   });
 
   test('a fabricated session cookie grants nothing', async ({ page, context }) => {

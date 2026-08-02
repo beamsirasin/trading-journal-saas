@@ -26,13 +26,25 @@ import { routing, type AppLocale } from '@/i18n/routing';
  *    cookie passes this check and is rejected there — this file only saves
  *    an unauthenticated visitor the round trip of reaching a page that would
  *    reject them anyway.
+ *
+ * Deliberately NOT here: an optimistic "cookie present at /login or
+ * /register -> redirect to /app" check. An earlier version had one, and a
+ * forged or stale-but-present cookie sent it into an infinite redirect loop
+ * against this same layer's unauthenticated-visitor check on `/app` (proxy
+ * bounces /app -> /login on cookie presence alone; the database-verified
+ * layout then bounces the still-invalid-cookie visitor straight back to
+ * /login; proxy sees the cookie is still present and bounces to /app again).
+ * `login/page.tsx` and `register/page.tsx` already perform this exact
+ * redirect themselves, using `getOptionalSession()` — a real, database-
+ * verified check that correctly falls through to rendering the form instead
+ * of looping when the cookie is invalid. That is the only place this
+ * redirect needs to happen.
  */
 
 const intlMiddleware = createMiddleware(routing);
 
 const LOCALE_PATTERN = routing.locales.join('|');
 const APP_PATH_PATTERN = new RegExp(`^/(${LOCALE_PATTERN})/app(/|$)`);
-const AUTH_ONLY_PATH_PATTERN = new RegExp(`^/(${LOCALE_PATTERN})/(login|register)(/|$)`);
 
 function localeFromPathname(pathname: string): AppLocale {
   const first = pathname.split('/')[1];
@@ -64,11 +76,6 @@ export default function proxy(request: NextRequest): NextResponse {
     // themselves attacker-writable once the URL exists).
     loginUrl.searchParams.set('callbackUrl', pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
-  }
-
-  if (AUTH_ONLY_PATH_PATTERN.test(pathname) && hasSessionCookie) {
-    const locale = localeFromPathname(pathname);
-    return NextResponse.redirect(new URL(`/${locale}/app`, request.url));
   }
 
   return response;
