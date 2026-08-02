@@ -3,6 +3,7 @@ import 'server-only';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
+import { cookies } from 'next/headers';
 
 import { getServerEnv } from '@/config/env.server';
 import { generateId as newId } from '@/lib/identifiers';
@@ -11,12 +12,32 @@ import * as schema from '@/server/db/schema';
 import { ensurePersonalWorkspace } from '@/server/services/workspace-provisioning';
 
 import { getEmailAdapter } from './email';
+import { resolveSupportedEmailLocale } from './email-templates';
 import {
   isLoopbackUrl,
   resolveAuthBaseUrl,
   resolveTrustedOrigins,
   shouldUseSecureCookies,
 } from './runtime-config';
+
+/**
+ * Best-effort locale for an outbound auth email. Mirrors
+ * `ensurePersonalWorkspace`'s `readPreLoginCookiePreferences`
+ * (`src/server/services/workspace-provisioning.ts`) — the `NEXT_LOCALE`
+ * cookie next-intl's middleware already manages is the one "request locale"
+ * signal available inside a Better Auth callback, which runs as part of
+ * handling the sign-up/forget-password HTTP request itself. Falls back to
+ * English on any error (e.g. called outside a request scope) rather than
+ * failing the send.
+ */
+async function resolveRequestEmailLocale() {
+  try {
+    const cookieStore = await cookies();
+    return resolveSupportedEmailLocale(cookieStore.get('NEXT_LOCALE')?.value);
+  } catch {
+    return resolveSupportedEmailLocale(undefined);
+  }
+}
 
 /**
  * The one authoritative Better Auth instance (ADR 0008).
@@ -223,7 +244,8 @@ export function buildAuth(options?: {
       // "resend" step the user has to find.
       sendOnSignIn: true,
       sendVerificationEmail: async ({ user, url }) => {
-        await getEmailAdapter().sendVerificationEmail({ to: user.email, url });
+        const locale = await resolveRequestEmailLocale();
+        await getEmailAdapter().sendVerificationEmail({ to: user.email, url, locale });
       },
     },
 
@@ -233,7 +255,8 @@ export function buildAuth(options?: {
       minPasswordLength: 12,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
-        await getEmailAdapter().sendPasswordResetEmail({ to: user.email, url });
+        const locale = await resolveRequestEmailLocale();
+        await getEmailAdapter().sendPasswordResetEmail({ to: user.email, url, locale });
       },
     },
 

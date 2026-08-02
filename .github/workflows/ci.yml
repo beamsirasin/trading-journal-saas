@@ -21,6 +21,7 @@ jobs:
       # merely secret-looking strings or environment-variable names.
       BETTER_AUTH_SECRET: client-bundle-auth-secret-canary-7f28f151
       GOOGLE_CLIENT_SECRET: client-bundle-google-secret-canary-b94fc913
+      SMTP_PASSWORD: client-bundle-smtp-password-canary-2c6e9a41
 
     steps:
       - name: Checkout

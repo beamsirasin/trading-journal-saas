@@ -63,6 +63,29 @@ export const serverEnvSchema = z.object({
    * this.
    */
   E2E_TEST_MODE: optionalString,
+
+  // Phase 02 — local development email delivery (e.g. Mailpit). Consulted
+  // only in `development` (src/lib/auth/email.ts's `getEmailAdapter`) — a
+  // production build always selects `ProductionEmailAdapter` regardless of
+  // whether these are set, so an operator error can never make a real
+  // deployment silently use a local, unauthenticated relay.
+  /** SMTP host for local/dev email testing (e.g. Mailpit at 127.0.0.1). */
+  SMTP_HOST: optionalString,
+  /** SMTP port for local/dev email testing (e.g. 1025 for Mailpit). */
+  SMTP_PORT: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().max(65535).optional(),
+  ),
+  /** Whether the SMTP connection uses implicit TLS. Local dev sinks (Mailpit) use "false". */
+  SMTP_SECURE: z.preprocess(emptyToUndefined, z.enum(['true', 'false']).optional()),
+  /** Optional SMTP username — omit for an unauthenticated local sink like Mailpit. */
+  SMTP_USERNAME: optionalString,
+  /** Optional SMTP password — omit for an unauthenticated local sink like Mailpit. Never logged. */
+  SMTP_PASSWORD: optionalString,
+  /** From address for outbound auth emails. Required alongside SMTP_HOST for the dev SMTP adapter to activate. */
+  EMAIL_FROM_ADDRESS: z.preprocess(emptyToUndefined, z.email().optional()),
+  /** Optional display name for the From header (e.g. "Trading OS"). */
+  EMAIL_FROM_NAME: optionalString,
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;
