@@ -11,6 +11,22 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Fixed, obviously-non-production values shared by the jobs below that boot
+# the app against a real (disposable, service-container) database. Never
+# used outside this workflow, never close enough to a real secret to trip
+# `scripts/scan-client-assets.mjs`'s placeholder heuristics, and irrelevant
+# to `resolveAuthSecret()`'s production fail-closed check (these jobs never
+# run with NODE_ENV=production set by anything other than `next build`
+# itself, which this repo's own architecture treats as a hard boundary, not
+# a secret this workflow needs to protect).
+env:
+  CI_POSTGRES_USER: trading_os
+  CI_POSTGRES_PASSWORD: trading_os_ci
+  CI_POSTGRES_DB: trading_os
+  CI_DATABASE_URL: postgresql://trading_os:trading_os_ci@localhost:5432/trading_os
+  CI_BETTER_AUTH_SECRET: ci-github-actions-only-secret-never-used-in-production-00
+  CI_BETTER_AUTH_URL: http://127.0.0.1:3100
+
 jobs:
   verify:
     name: Lint, typecheck, test, build
@@ -53,3 +69,130 @@ jobs:
 
       - name: Scan client assets for server secrets
         run: pnpm scan:client
+
+      # A second canary: even when DATABASE_URL IS set, but points nowhere
+      # reachable, the build must still succeed — proving Next.js's static
+      # generation never opens a connection on its own (src/server/db/client.ts's
+      # "no connection at import time" guarantee), not merely that an absent
+      # variable happens to avoid the attempt.
+      - name: Production build (invalid database host canary)
+        env:
+          DATABASE_URL: postgresql://user:pass@invalid-host-does-not-exist.invalid:5432/db
+        run: pnpm build
+
+  integration:
+    name: Database migrations and integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ${{ env.CI_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.CI_POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading_os -d trading_os"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      DATABASE_MIGRATION_URL: ${{ env.CI_DATABASE_URL }}
+      # localhost, so src/test/integration-db.ts's non-local-host guard
+      # (which would otherwise require TEST_DATABASE_ACK) does not apply —
+      # this is a fresh, disposable, single-purpose service container, never
+      # anything resembling a real database.
+      TEST_DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Proves the committed migrations create a complete schema from
+      # nothing — never `drizzle-kit push` (CLAUDE.md §5), always the
+      # tracked SQL files under drizzle/.
+      - name: Apply migrations to a fresh database
+        run: pnpm db:migrate
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+  e2e:
+    name: Playwright end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ${{ env.CI_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.CI_POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.CI_POSTGRES_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading_os -d trading_os"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      DATABASE_MIGRATION_URL: ${{ env.CI_DATABASE_URL }}
+      BETTER_AUTH_SECRET: ${{ env.CI_BETTER_AUTH_SECRET }}
+      BETTER_AUTH_URL: ${{ env.CI_BETTER_AUTH_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm test:e2e:install
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+
+      # No Google credentials, no email provider — every DB-dependent auth
+      # spec exercises the real email/password flow only; Google-button and
+      # email-delivery specs assert the truthful "not configured" states
+      # (see e2e/pricing-and-auth.spec.ts, e2e/auth-authorization.spec.ts).
+      - name: Playwright tests
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
