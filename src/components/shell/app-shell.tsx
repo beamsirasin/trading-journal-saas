@@ -52,7 +52,7 @@ export async function AppShell({
           style={{ height: 'var(--shell-header-height)' }}
         >
           <MobileNav />
-          <Brand href="/app" className="lg:hidden" />
+          <Brand href="/app" className="lg:hidden" compact />
           <div className="ml-auto flex items-center gap-2">
             <DemoBadge className="hidden sm:inline-flex" />
             <LanguageSwitcher />
