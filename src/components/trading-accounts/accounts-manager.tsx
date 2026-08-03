@@ -165,12 +165,13 @@ function AccountCard({
   const t = useTranslations('accounts');
   const tOnboarding = useTranslations('onboarding');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const headingId = `account-card-heading-${account.id}`;
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card role="region" aria-labelledby={headingId} className="flex h-full flex-col">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>{account.name}</CardTitle>
+          <CardTitle id={headingId}>{account.name}</CardTitle>
           {isActive ? (
             <Badge variant="brand">
               <CircleCheck className="size-3.5" aria-hidden="true" />
@@ -264,12 +265,13 @@ function ArchivedAccountCard({
 }) {
   const t = useTranslations('accounts');
   const tOnboarding = useTranslations('onboarding');
+  const headingId = `archived-account-card-heading-${account.id}`;
 
   return (
-    <Card className="bg-muted/30 flex h-full flex-col">
+    <Card role="region" aria-labelledby={headingId} className="bg-muted/30 flex h-full flex-col">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle>{account.name}</CardTitle>
+          <CardTitle id={headingId}>{account.name}</CardTitle>
           <Badge variant="neutral">
             <ArchiveRestore className="size-3.5" aria-hidden="true" />
             {t('archivedStatus')}

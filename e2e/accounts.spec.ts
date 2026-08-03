@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -64,6 +64,17 @@ async function countAccounts(workspaceId: string): Promise<number> {
   });
 }
 
+/**
+ * Logs in and waits for the resulting redirect to the authenticated app to
+ * actually land before returning. Without this, a caller's immediate
+ * `page.goto('/en/app/accounts')` can race the login form's own client-side
+ * redirect: if the navigation away starts before the session cookie is set,
+ * the browser is sent back to the login page instead, and every subsequent
+ * selector on the intended page times out. `provisionOnboardedUser` users
+ * always land on `/app` (never `/app/onboarding`, since they are provisioned
+ * pre-onboarded), so waiting for that URL is a safe, deterministic signal
+ * that the session is genuinely established.
+ */
 async function loginAs(
   page: Page,
   locale: 'en' | 'th',
@@ -75,6 +86,36 @@ async function loginAs(
     .getByLabel(locale === 'en' ? 'Password' : 'รหัสผ่าน', { exact: true })
     .fill(user.password);
   await page.getByRole('button', { name: locale === 'en' ? 'Log in' : 'เข้าสู่ระบบ' }).click();
+  await page.waitForURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
+}
+
+/**
+ * Every account card (active or archived) is its own accessible region,
+ * `aria-labelledby` the card's own heading — whose text is the account's
+ * name (`src/components/trading-accounts/accounts-manager.tsx`). Scoping to
+ * this region is what distinguishes an account's card from the SAME name
+ * appearing again in the app-shell switcher trigger (`hidden sm:flex` on
+ * mobile, otherwise visible) — an unscoped `getByText`/`.first()` can
+ * silently resolve to either, which is exactly the class of bug this file
+ * was previously written with.
+ */
+function accountRegion(page: Page, name: string): Locator {
+  return page.getByRole('region', { name });
+}
+
+async function expectAccountActive(page: Page, name: string): Promise<void> {
+  await expect(accountRegion(page, name).getByRole('heading', { name })).toBeVisible();
+  await expect(accountRegion(page, name).getByText('Active', { exact: true })).toBeVisible();
+}
+
+async function expectAccountNotActive(page: Page, name: string): Promise<void> {
+  await expect(accountRegion(page, name).getByRole('heading', { name })).toBeVisible();
+  await expect(accountRegion(page, name).getByText('Active', { exact: true })).toHaveCount(0);
+}
+
+async function expectArchived(page: Page, name: string): Promise<void> {
+  const archivedSection = page.getByRole('list', { name: 'Archived accounts' });
+  await expect(archivedSection.getByRole('heading', { name })).toBeVisible();
 }
 
 test.describe('trading account management', () => {
@@ -98,8 +139,7 @@ test.describe('trading account management', () => {
 
     await page.goto('/en/app/accounts');
     await expect(page.getByRole('heading', { level: 1, name: 'Trading accounts' })).toBeVisible();
-    await expect(page.getByText('Main Trading Account')).toBeVisible();
-    await expect(page.getByText('Active', { exact: true })).toBeVisible();
+    await expectAccountActive(page, 'Main Trading Account');
 
     // Create a second account without activating it.
     await page.getByRole('link', { name: 'Create account' }).click();
@@ -115,28 +155,31 @@ test.describe('trading account management', () => {
     await page.getByRole('button', { name: 'Create account' }).click();
 
     await expect(page).toHaveURL(/\/en\/app\/accounts\?status=created$/);
-    await expect(page.getByText('Account created.')).toBeVisible();
-    await expect(page.getByText('Second Account')).toBeVisible();
-
+    await expectAccountNotActive(page, 'Second Account');
     // The original account remains active.
-    const mainCard = page.locator('li', { hasText: 'Main Trading Account' });
-    await expect(mainCard.getByText('Active', { exact: true })).toBeVisible();
+    await expectAccountActive(page, 'Main Trading Account');
 
     // Edit the second account.
-    const secondCard = page.locator('li', { hasText: 'Second Account' });
-    await secondCard.getByRole('link', { name: 'Edit' }).click();
+    await accountRegion(page, 'Second Account').getByRole('link', { name: 'Edit' }).click();
     await expect(page.getByRole('heading', { name: 'Edit trading account' })).toBeVisible();
     await expect(page.getByLabel('Trading account name')).toHaveValue('Second Account');
     await page.getByLabel('Trading account name').fill('Second Account Renamed');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page).toHaveURL(/\/en\/app\/accounts\?status=updated$/);
-    await expect(page.getByText('Account updated.')).toBeVisible();
+    await expect(
+      accountRegion(page, 'Second Account Renamed').getByRole('heading', {
+        name: 'Second Account Renamed',
+      }),
+    ).toBeVisible();
 
-    // Set the renamed account active.
-    const renamedCard = page.locator('li', { hasText: 'Second Account Renamed' });
-    await renamedCard.getByRole('button', { name: 'Set as active' }).click();
-    await expect(page.getByText('Active account changed.')).toBeVisible();
-    await expect(renamedCard.getByText('Active', { exact: true })).toBeVisible();
+    // Set the renamed account active — asserted via the real, refreshed DOM
+    // state (both cards' status), not the (client-state, not reset by
+    // `router.refresh()`) success toast alone.
+    await accountRegion(page, 'Second Account Renamed')
+      .getByRole('button', { name: 'Set as active' })
+      .click();
+    await expectAccountActive(page, 'Second Account Renamed');
+    await expectAccountNotActive(page, 'Main Trading Account');
 
     // The dashboard reflects the newly active account.
     await page.goto('/en/app');
@@ -173,71 +216,98 @@ test.describe('trading account management', () => {
     ).toBeVisible();
   });
 
-  test('archive confirmation, archiving the active account chooses a fallback, and the final account cannot be archived', async ({
+  test('archive confirmation, archiving the active account chooses a fallback, restore, and the final account cannot be archived', async ({
     page,
   }) => {
     const user = await provisionOnboardedUser('e2e-accounts-archive');
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts');
+    await expect(page.getByRole('heading', { level: 1, name: 'Trading accounts' })).toBeVisible();
+
+    // Create "Second Account" (inactive). Two usable accounts now exist.
     await page.getByRole('link', { name: 'Create account' }).click();
+    await expect(page.getByRole('heading', { name: 'Create trading account' })).toBeVisible();
     await page.getByLabel('Trading account name').fill('Second Account');
     await page.getByLabel('Starting balance').fill('1000');
     await page.getByRole('button', { name: 'Create account' }).click();
     await expect(page).toHaveURL(/status=created$/);
+    await expectAccountNotActive(page, 'Second Account');
 
-    // Archive the non-active account: requires confirmation.
-    const secondCard = page.locator('li', { hasText: 'Second Account' });
-    await secondCard.getByRole('button', { name: 'Archive' }).click();
+    // Archive confirmation is required: opening the dialog and cancelling
+    // must not archive anything.
+    const secondRegion = accountRegion(page, 'Second Account');
+    await secondRegion.getByRole('button', { name: 'Archive' }).click();
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toContainText('Archive Second Account?');
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
+    await expect(secondRegion.getByRole('heading', { name: 'Second Account' })).toBeVisible();
 
-    await secondCard.getByRole('button', { name: 'Archive' }).click();
+    // Archive the non-active account for real.
+    await secondRegion.getByRole('button', { name: 'Archive' }).click();
     await page.getByRole('button', { name: 'Archive account' }).click();
-    await expect(page.getByText('Account archived.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Archived accounts' })).toBeVisible();
+    await expectArchived(page, 'Second Account');
+    // Still active, still the only usable account left on screen right now.
+    await expectAccountActive(page, 'Main Trading Account');
 
-    // It disappears from the switcher and from the active section, and
-    // appears in the archived section.
+    // It disappears from the switcher.
     await page.getByRole('button', { name: 'Switch trading account' }).click();
     await expect(page.getByRole('menuitem', { name: /Second Account/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('heading', { name: 'Archived accounts' })).toBeVisible();
-    const archivedSection = page.getByRole('list', { name: 'Archived accounts' });
-    await expect(archivedSection.getByText('Second Account')).toBeVisible();
 
-    // Archive the active (main) account: the only remaining non-archived
-    // account is deterministically activated.
-    const mainCard = page.locator('li', { hasText: 'Main Trading Account' });
-    await mainCard.getByRole('button', { name: 'Archive' }).click();
-    await page.getByRole('button', { name: 'Archive account' }).click();
-    await expect(page.getByText('Account archived.')).toBeVisible();
+    // Create "Third Account" so archiving the active account below has a
+    // real fallback candidate — Second Account is already archived, so
+    // without a third account Main would be the LAST usable one, and
+    // archiving it would correctly be rejected instead of falling back.
+    await page.getByRole('link', { name: 'Create account' }).click();
+    await page.getByLabel('Trading account name').fill('Third Account');
+    await page.getByLabel('Starting balance').fill('750');
+    await page.getByRole('button', { name: 'Create account' }).click();
+    await expect(page).toHaveURL(/status=created$/);
+    await expectAccountNotActive(page, 'Third Account');
 
-    // Restore the archived "Second Account" and confirm it can be selected.
-    const restoredRow = page.getByRole('list', { name: 'Archived accounts' }).locator('li');
-    await restoredRow
-      .filter({ hasText: 'Second Account' })
-      .getByRole('button', { name: 'Restore' })
+    // Archive the active (main) account: the deterministic (oldest
+    // remaining) fallback — "Third Account" — becomes active atomically.
+    await accountRegion(page, 'Main Trading Account')
+      .getByRole('button', { name: 'Archive' })
       .click();
-    await expect(page.getByText('Account restored.')).toBeVisible();
+    await page.getByRole('button', { name: 'Archive account' }).click();
+    await expectArchived(page, 'Main Trading Account');
+    await expectAccountActive(page, 'Third Account');
 
-    const restoredCard = page.locator('li', { hasText: 'Second Account' }).first();
-    await restoredCard.getByRole('button', { name: 'Set as active' }).click();
-    await expect(page.getByText('Active account changed.')).toBeVisible();
-
-    // Attempting to archive the only usable account is blocked.
-    const onlyCard = page.locator('li', { hasText: 'Second Account' }).first();
-    await onlyCard.getByRole('button', { name: 'Archive' }).click();
+    // The final usable account cannot be archived.
+    await accountRegion(page, 'Third Account').getByRole('button', { name: 'Archive' }).click();
     await page.getByRole('button', { name: 'Archive account' }).click();
     await expect(
       page.getByText(
         'You cannot archive your last trading account. Create another trading account first.',
       ),
     ).toBeVisible();
+    // No partial write: Third remains active and non-archived.
+    await expectAccountActive(page, 'Third Account');
+
+    // Restore "Main Trading Account" — it does not automatically become
+    // active (Third remains active) per the restore contract.
+    const archivedSection = page.getByRole('list', { name: 'Archived accounts' });
+    await archivedSection
+      .getByRole('region', { name: 'Main Trading Account' })
+      .getByRole('button', { name: 'Restore' })
+      .click();
+    await expectAccountNotActive(page, 'Main Trading Account');
+    await expectAccountActive(page, 'Third Account');
+
+    // Explicitly setting it active works.
+    await accountRegion(page, 'Main Trading Account')
+      .getByRole('button', { name: 'Set as active' })
+      .click();
+    await expectAccountActive(page, 'Main Trading Account');
+    await expectAccountNotActive(page, 'Third Account');
 
     const workspaceId = await getWorkspaceId(user.id);
-    expect(await countAccounts(workspaceId)).toBe(2);
+    // Main, Second (archived), Third — three accounts total, none lost.
+    expect(await countAccounts(workspaceId)).toBe(3);
   });
 
   test('rapid double-submit on create creates exactly one account', async ({ page }) => {
@@ -245,16 +315,30 @@ test.describe('trading account management', () => {
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts/new');
+    await expect(page.getByRole('heading', { name: 'Create trading account' })).toBeVisible();
     await page.getByLabel('Trading account name').fill('Double Click Account');
     await page.getByLabel('Starting balance').fill('500');
 
+    // Two sequential `locator.click()` calls never actually race — Playwright
+    // waits for the first click's actionability and resulting navigation
+    // before dispatching the second, by which point the button is already
+    // gone. Firing two native `.click()` calls from a single `evaluate`
+    // executes them back-to-back in one browser task, before React's
+    // `status === 'pending'` guard has re-rendered the button as disabled —
+    // the same race a genuine double-click or duplicate network request
+    // would produce. The server-side `(workspace_id, mutation_key)` unique
+    // index, not this client-side guard, is what must make the outcome safe.
     const createButton = page.getByRole('button', { name: 'Create account' });
     await createButton.evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
     });
 
-    await expect(page).toHaveURL(/status=created$/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/en\/app\/accounts\?status=created$/, { timeout: 10000 });
+    await expectAccountNotActive(page, 'Double Click Account');
+    // No duplicate card for the same account.
+    await expect(page.getByRole('region', { name: 'Double Click Account' })).toHaveCount(1);
+
     const workspaceId = await getWorkspaceId(user.id);
     // The seed account plus exactly one new one — never two.
     expect(await countAccounts(workspaceId)).toBe(2);
@@ -265,7 +349,9 @@ test.describe('trading account management', () => {
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts');
+    await expect(page.getByRole('heading', { level: 1, name: 'Trading accounts' })).toBeVisible();
     await page.getByRole('link', { name: 'Create account' }).click();
+    await expect(page.getByRole('heading', { name: 'Create trading account' })).toBeVisible();
     await page.getByLabel('Trading account name').fill('Second Account');
     await page.getByLabel('Starting balance').fill('1000');
     await page.getByRole('button', { name: 'Create account' }).click();
@@ -279,8 +365,7 @@ test.describe('trading account management', () => {
     await expect(page.getByRole('menu')).toHaveCount(0);
 
     // Keyboard: open the archive confirmation and cancel with Escape.
-    const secondCard = page.locator('li', { hasText: 'Second Account' });
-    await secondCard.getByRole('button', { name: 'Archive' }).focus();
+    await accountRegion(page, 'Second Account').getByRole('button', { name: 'Archive' }).focus();
     await page.keyboard.press('Enter');
     await expect(page.getByRole('alertdialog')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -312,9 +397,12 @@ test.describe('trading account management', () => {
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts');
+    await expect(page.getByRole('heading', { level: 1, name: 'Trading accounts' })).toBeVisible();
     await expect(page.locator('[data-kpi]')).toHaveCount(0);
     await expect(page.locator('.recharts-wrapper')).toHaveCount(0);
-    await expect(page.getByText('Starting balance', { exact: true }).first()).toBeVisible();
+    await expect(
+      accountRegion(page, 'Main Trading Account').getByText('Starting balance', { exact: true }),
+    ).toBeVisible();
   });
 
   test('completes the create/edit/set-active flow in Thai', async ({ page }) => {
@@ -331,11 +419,16 @@ test.describe('trading account management', () => {
     await page.getByRole('button', { name: 'สร้างบัญชี' }).click();
 
     await expect(page).toHaveURL(/status=created$/);
-    await expect(page.getByText('สร้างบัญชีเรียบร้อยแล้ว')).toBeVisible();
+    await expect(
+      accountRegion(page, 'บัญชีที่สอง').getByRole('heading', { name: 'บัญชีที่สอง' }),
+    ).toBeVisible();
 
-    const secondCard = page.locator('li', { hasText: 'บัญชีที่สอง' });
-    await secondCard.getByRole('button', { name: 'ตั้งเป็นบัญชีที่ใช้งาน' }).click();
-    await expect(page.getByText('เปลี่ยนบัญชีที่ใช้งานเรียบร้อยแล้ว')).toBeVisible();
+    await accountRegion(page, 'บัญชีที่สอง')
+      .getByRole('button', { name: 'ตั้งเป็นบัญชีที่ใช้งาน' })
+      .click();
+    await expect(
+      accountRegion(page, 'บัญชีที่สอง').getByText('ใช้งานอยู่', { exact: true }),
+    ).toBeVisible();
 
     await page.goto('/th/app');
     await expect(
