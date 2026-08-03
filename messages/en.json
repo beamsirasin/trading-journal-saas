@@ -312,6 +312,7 @@
     "title": "Overview",
     "description": "What is happening with your trading right now.",
     "activeAccountSubtitle": "Your active trading account",
+    "activeAccountRegionLabel": "Active trading account summary",
     "accountModeLabel": "Account mode",
     "accountModeValues": {
       "live": "Live",

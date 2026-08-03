@@ -78,7 +78,13 @@ test.describe('locale rendering', () => {
     // and every other pre-existing authenticated-shell test keeps working.
     await expect(page.getByRole('heading', { level: 1, name: 'ภาพรวม' })).toBeVisible();
     await expect(page.getByText('ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง')).toBeVisible();
-    await expect(page.getByText('บัญชีจริง', { exact: true }).first()).toBeVisible();
+    // Scoped to the dashboard's own labelled region rather than `.first()`:
+    // `TradingAccountIndicator` in the header repeats the same account mode
+    // text and is hidden below the `sm` breakpoint (`hidden sm:flex`), so an
+    // unscoped `.first()` can resolve to that invisible copy on a mobile
+    // viewport (see `e2e/onboarding.spec.ts` for the same fix).
+    const accountRegion = page.getByRole('region', { name: 'สรุปบัญชีเทรดที่ใช้งานอยู่' });
+    await expect(accountRegion.getByText('บัญชีจริง', { exact: true })).toBeVisible();
     await expect(page.getByText('ยังไม่มีการบันทึกเทรด')).toBeVisible();
     await expect(page.getByText('Overview', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Live', { exact: true })).toHaveCount(0);

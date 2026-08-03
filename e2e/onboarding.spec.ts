@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
-import { tradingAccounts, workspaces } from '../src/server/db/schema';
+import { tradingAccounts, userPreferences, workspaces } from '../src/server/db/schema';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
@@ -47,6 +47,49 @@ async function countTradingAccountsForUser(userId: string): Promise<number> {
       .from(tradingAccounts)
       .where(eq(tradingAccounts.workspaceId, workspaceId));
     return accountRows.length;
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * The full server-side idempotency contract a double-submission must
+ * satisfy — not just "one row", but that onboarding actually completed and
+ * an active account was actually selected, mirroring what
+ * `trading-account.integration.test.ts` already proves against the real
+ * transaction. This is a browser-level confirmation of the same guarantee,
+ * not a replacement for it.
+ */
+async function getOnboardingState(userId: string): Promise<{
+  accountCount: number;
+  onboardingCompleted: boolean;
+  activeTradingAccountId: string | null;
+}> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  try {
+    const db = drizzle(client, { schema: { tradingAccounts, workspaces, userPreferences } });
+    const workspaceRows = await db
+      .select({ id: workspaces.id, onboardingCompletedAt: workspaces.onboardingCompletedAt })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    const workspace = workspaceRows[0];
+    if (workspace === undefined) {
+      return { accountCount: 0, onboardingCompleted: false, activeTradingAccountId: null };
+    }
+    const accountRows = await db
+      .select()
+      .from(tradingAccounts)
+      .where(eq(tradingAccounts.workspaceId, workspace.id));
+    const preferenceRows = await db
+      .select({ activeTradingAccountId: userPreferences.activeTradingAccountId })
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId));
+    return {
+      accountCount: accountRows.length,
+      onboardingCompleted: workspace.onboardingCompletedAt !== null,
+      activeTradingAccountId: preferenceRows[0]?.activeTradingAccountId ?? null,
+    };
   } finally {
     await client.end();
   }
@@ -114,18 +157,31 @@ test.describe('onboarding', () => {
     // Completion redirects to /app.
     await expect(page).toHaveURL(/\/en\/app$/);
 
-    // Active account is visible, with no fabricated performance metrics.
-    await expect(page.getByText('My First Account').first()).toBeVisible();
-    await expect(page.getByText('Live', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('USD', { exact: false }).first()).toBeVisible();
+    // Active account is visible — scoped to the dashboard's own labelled
+    // region rather than `.first()`. `TradingAccountIndicator` in the header
+    // renders the same account name and mode again (`sm:flex`, hidden below
+    // the `sm` breakpoint), so an unscoped `.first()` picks whichever copy
+    // happens to come first in the DOM — the header's, which is invisible on
+    // the Mobile Chrome project and made the assertion flaky there.
+    const accountRegion = page.getByRole('region', { name: 'Active trading account summary' });
+    await expect(accountRegion.getByRole('heading', { name: 'My First Account' })).toBeVisible();
+    await expect(accountRegion.getByText('Live', { exact: true })).toBeVisible();
+    await expect(accountRegion.getByText('USD', { exact: true })).toBeVisible();
     await expect(page.getByText('No trades recorded yet')).toBeVisible();
-    const body = (await page.textContent('body')) ?? '';
-    expect(body).not.toMatch(/win rate|expectancy|profit factor|net p&l/i);
+
+    // No fabricated performance metrics — structural, not a whole-page text
+    // regex. The empty-state copy is allowed to say "no win rate is
+    // available yet"; what it must never do is render an actual KPI card or
+    // chart. `[data-kpi]` is `KpiCard`'s own test hook and `.recharts-wrapper`
+    // is Recharts' own render marker — both are exactly what `DemoDashboard`
+    // renders and this real dashboard must not.
+    await expect(page.locator('[data-kpi]')).toHaveCount(0);
+    await expect(page.locator('.recharts-wrapper')).toHaveCount(0);
 
     // Returning user does not see onboarding again.
     await page.reload();
     await expect(page).toHaveURL(/\/en\/app$/);
-    await expect(page.getByText('My First Account').first()).toBeVisible();
+    await expect(accountRegion.getByRole('heading', { name: 'My First Account' })).toBeVisible();
 
     const accountCount = await countTradingAccountsForUser(user.id);
     expect(accountCount).toBe(1);
@@ -147,7 +203,8 @@ test.describe('onboarding', () => {
     await page.getByRole('button', { name: 'เสร็จสิ้น' }).click();
 
     await expect(page).toHaveURL(/\/th\/app$/);
-    await expect(page.getByText('บัญชีแรกของฉัน').first()).toBeVisible();
+    const accountRegion = page.getByRole('region', { name: 'สรุปบัญชีเทรดที่ใช้งานอยู่' });
+    await expect(accountRegion.getByRole('heading', { name: 'บัญชีแรกของฉัน' })).toBeVisible();
     await expect(page.getByText('ยังไม่มีการบันทึกเทรด')).toBeVisible();
   });
 
@@ -162,12 +219,30 @@ test.describe('onboarding', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByRole('heading', { name: 'Risk preferences' })).toBeVisible();
 
+    // Two sequential `locator.click()` calls never actually race: Playwright
+    // waits for the first click's actionability and the resulting navigation
+    // before dispatching the second, so by then the button is gone and the
+    // second click times out — it doesn't reproduce a genuine double
+    // submission at all. Firing two native `.click()` calls from a single
+    // `evaluate` executes them back-to-back in one browser task, before
+    // React's `status === 'pending'` guard has re-rendered the button as
+    // disabled — the same race a real double-click or duplicate network
+    // request would produce. The server-side transaction lock in
+    // `completeOnboarding` (already covered in
+    // `trading-account.integration.test.ts`), not this client-side guard, is
+    // what must make the outcome safe.
     const finishButton = page.getByRole('button', { name: 'Finish' });
-    await Promise.all([finishButton.click(), finishButton.click({ force: true }).catch(() => {})]);
+    await finishButton.evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
 
-    await expect(page).toHaveURL(/\/en\/app$/);
-    const accountCount = await countTradingAccountsForUser(user.id);
-    expect(accountCount).toBe(1);
+    await expect(page).toHaveURL(/\/en\/app$/, { timeout: 10000 });
+
+    const state = await getOnboardingState(user.id);
+    expect(state.accountCount).toBe(1);
+    expect(state.onboardingCompleted).toBe(true);
+    expect(state.activeTradingAccountId).not.toBeNull();
   });
 
   test('is fully keyboard operable', async ({ page }) => {

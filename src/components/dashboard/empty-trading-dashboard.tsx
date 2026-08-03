@@ -1,5 +1,5 @@
 import { Rocket } from 'lucide-react';
-import { getTranslations } from 'next-intl/server';
+import { useTranslations } from 'next-intl';
 
 import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,13 +12,18 @@ import { Link } from '@/i18n/navigation';
  * chart, which is exactly what the fixture-driven demo shows instead. Trade
  * journaling itself is Phase 08+; this makes that explicit rather than
  * leaving an empty gap or, worse, a fabricated number.
+ *
+ * `useTranslations` rather than `getTranslations` — same reasoning as
+ * `TradingAccountIndicator`: `account` is already resolved by the caller, so
+ * nothing here needs to be async, and staying synchronous keeps this
+ * directly unit-testable without an RSC request context.
  */
-export async function EmptyTradingDashboard({ account }: { account: ActiveTradingAccountSummary }) {
-  const t = await getTranslations('dashboard');
+export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccountSummary }) {
+  const t = useTranslations('dashboard');
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
+      <Card role="region" aria-label={t('activeAccountRegionLabel')}>
         <CardHeader>
           <CardTitle>{account.name}</CardTitle>
           <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
@@ -66,8 +71,8 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
  * the safe fallback until then, rather than rendering a page as if an
  * account existed when none does.
  */
-export async function NoActiveTradingAccountRecovery() {
-  const t = await getTranslations('dashboard');
+export function NoActiveTradingAccountRecovery() {
+  const t = useTranslations('dashboard');
 
   return (
     <div className="border-border bg-card flex flex-col items-start gap-3 rounded-lg border p-6">
