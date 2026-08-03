@@ -2,6 +2,7 @@ import 'server-only';
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
 import { cookies } from 'next/headers';
 
@@ -14,12 +15,65 @@ import { ensurePersonalWorkspace } from '@/server/services/workspace-provisionin
 import { logDispatchStage } from './dispatch-log';
 import { getEmailAdapter } from './email';
 import { resolveSupportedEmailLocale } from './email-templates';
+import { evaluatePasswordPolicy } from './password-policy';
 import {
   isLoopbackUrl,
   resolveAuthBaseUrl,
   resolveTrustedOrigins,
   shouldUseSecureCookies,
 } from './runtime-config';
+
+/**
+ * Server-side enforcement of the shared password-complexity policy
+ * (`src/lib/auth/password-policy.ts`) — the security boundary; the
+ * registration form's real-time checklist is UX only and cannot be trusted
+ * on its own (a request can always bypass client JavaScript entirely).
+ *
+ * Wired as the ROOT-level `hooks.before` because Better Auth 1.6.25 exposes
+ * exactly one such slot per `betterAuth()` instance (typed `AuthMiddleware`,
+ * singular — not the array-of-`{matcher,handler}` shape plugin-level hooks
+ * use). Confirmed via `dist/api/dispatch.mjs`'s `getHooks()`: a root
+ * `hooks.before` is registered with `matcher: () => true` and therefore
+ * runs before EVERY endpoint, which is why this handler checks `ctx.path`
+ * itself rather than relying on any framework-level path scoping — exactly
+ * as required: it must affect `/sign-up/email` only, never `/sign-in/email`,
+ * password verification, or Google OAuth (none of which pass through this
+ * `if` at all).
+ *
+ * Runs strictly before Better Auth's own user-creation and
+ * verification-email dispatch inside `signUpEmail` (`dist/api/routes/sign-up.mjs`):
+ * `runBeforeHooks` executes ahead of the endpoint body, and a thrown
+ * `APIError` here propagates out of that call entirely — the endpoint body
+ * (and therefore `internalAdapter.createUser` and
+ * `emailVerification.sendVerificationEmail`) never runs. `hooks.before`
+ * itself is unaffected by `rateLimit` (a separate, router-level concern
+ * that still applies before this handler is ever reached via the real HTTP
+ * path), so this hook can neither strengthen nor weaken it.
+ *
+ * `ctx.body` here is the RAW pre-`zod`-validated request body (validation
+ * happens inside the endpoint itself, which this hook runs ahead of), so
+ * `password` is read defensively rather than assumed to be a string —
+ * anything that is not a non-empty string is left for Better Auth's own
+ * `INVALID_PASSWORD`/`PASSWORD_TOO_SHORT` checks to handle, rather than
+ * duplicated here.
+ */
+const enforceSignUpPasswordPolicy = createAuthMiddleware(async (ctx) => {
+  if (ctx.path !== '/sign-up/email') return;
+
+  const password: unknown = (ctx.body as Record<string, unknown> | undefined)?.password;
+  if (typeof password !== 'string' || password.length === 0) return;
+
+  const policy = evaluatePasswordPolicy(password);
+  if (policy.valid) return;
+
+  // Sanitized, stable error: no password value, no per-category detail that
+  // could help an attacker fingerprint the policy beyond what the public
+  // registration form already discloses in its own checklist copy.
+  throw new APIError('BAD_REQUEST', {
+    code: 'WEAK_PASSWORD',
+    message: 'Password does not meet the required complexity policy.',
+  });
+});
 
 /**
  * Best-effort locale for an outbound auth email. Mirrors
@@ -279,12 +333,33 @@ export function buildAuth(options?: {
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
+      // Kept in sync with src/lib/auth/password-policy.ts's own
+      // PASSWORD_MIN_LENGTH/PASSWORD_MAX_LENGTH constants — this is only
+      // the length floor/ceiling Better Auth itself enforces inside
+      // signUpEmail; character-class complexity (upper/lower/number/
+      // special) is NOT something Better Auth checks natively, which is
+      // exactly what `enforceSignUpPasswordPolicy` above adds.
       minPasswordLength: 12,
+      maxPasswordLength: 128,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         const locale = await resolveRequestEmailLocale();
         await getEmailAdapter().sendPasswordResetEmail({ to: user.email, url, locale });
       },
+      // `onExistingUserSignUp` (confirmed present in better-auth@1.6.25,
+      // dist/api/routes/sign-up.mjs — fires only on the synthetic-duplicate
+      // path, backgrounded via the same runInBackgroundOrAwait helper the
+      // verification email already uses) is DELIBERATELY not implemented
+      // this phase. Better Auth's own `/sign-up/email` rate limit is keyed
+      // by IP, not by the targeted recipient: an attacker who already knows
+      // a victim's email could rotate source IPs (or simply wait out each
+      // 60s window) and repeatedly trigger a "someone tried to register
+      // with your email" notification indefinitely. Sending one safely
+      // requires a PER-RECIPIENT throttle independent of the existing
+      // per-IP signup limit, which needs its own persistent counter this
+      // phase does not build — deferred rather than shipping an
+      // email-flooding vector. Tracked as a follow-up alongside the real
+      // production email provider (docs/email-delivery-setup.md).
     },
 
     socialProviders: buildSocialProviders(),
@@ -320,6 +395,10 @@ export function buildAuth(options?: {
           },
         },
       },
+    },
+
+    hooks: {
+      before: enforceSignUpPasswordPolicy,
     },
 
     // Must be last in the plugins array per Better Auth's own Next.js

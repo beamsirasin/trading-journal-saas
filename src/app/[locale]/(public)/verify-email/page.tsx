@@ -42,20 +42,32 @@ export default async function VerifyEmailPendingPage({
     <Container width="prose" className="flex flex-col items-center py-16 sm:py-24">
       <div className="flex w-full max-w-md flex-col items-center gap-5 text-center">
         <h1 className="text-page-title">{t('verifyEmailPendingTitle')}</h1>
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {email !== undefined
-            ? t('verifyEmailPendingBody', { email })
-            : t('verifyEmailPendingFallback')}
+        {/*
+          Deliberately the SAME generic message regardless of whether the
+          registered email exists — CLAUDE.md's account-enumeration rule.
+          `whitespace-pre-line` renders the message's embedded newline
+          without needing a second translation key per sentence.
+        */}
+        <p className="text-muted-foreground text-sm leading-relaxed whitespace-pre-line">
+          {t('verifyEmailPendingBody')}
         </p>
 
         {email !== undefined ? <ResendVerificationButton email={email} /> : null}
 
-        <Link
-          href="/login"
-          className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center text-sm underline underline-offset-4"
-        >
-          {t('backToLogin')}
-        </Link>
+        <div className="flex flex-col items-center gap-2">
+          <Link
+            href="/login"
+            className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center text-sm underline underline-offset-4"
+          >
+            {t('backToLogin')}
+          </Link>
+          <Link
+            href="/forgot-password"
+            className="text-muted-foreground inline-flex min-h-11 min-w-11 items-center justify-center text-xs underline underline-offset-4"
+          >
+            {t('forgotPasswordLink')}
+          </Link>
+        </div>
       </div>
     </Container>
   );

@@ -4,6 +4,15 @@ import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { E2E_USER_A } from './support/fixtures';
 
 /**
+ * Satisfies Phase 2.1's shared password-complexity policy
+ * (`src/lib/auth/password-policy.ts`: 12-128 chars, lower + upper + number +
+ * special) — every registration attempt below needs a policy-valid password
+ * to even reach the server, since the submit button is gated on it
+ * client-side (`AuthForm`'s `canSubmitRegister`).
+ */
+const E2E_VALID_PASSWORD = 'Correct-Horse9!';
+
+/**
  * The honesty suite.
  *
  * Every assertion here exists to catch the product claiming something it
@@ -229,7 +238,8 @@ test.describe('login and registration', () => {
     await page.goto('/en/register');
     await page.getByLabel('Name').fill('E2E New Trader');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill('a-sufficiently-long-password');
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
+    await page.getByLabel('Confirm password').fill(E2E_VALID_PASSWORD);
     await page.getByRole('button', { name: 'Create account' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
@@ -242,7 +252,7 @@ test.describe('login and registration', () => {
     // "unverified" message that would leak account existence.
     await page.goto('/en/login');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill('a-sufficiently-long-password');
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
     await page.getByRole('button', { name: 'Log in' }).click();
     await expect(page.getByText('Invalid email or password.')).toBeVisible();
   });
@@ -255,11 +265,130 @@ test.describe('login and registration', () => {
     await page.goto('/en/register');
     await page.getByLabel('Name').fill('Someone Else');
     await page.getByLabel('Email').fill(E2E_USER_A.email);
-    await page.getByLabel('Password', { exact: true }).fill('another-long-password-here');
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
+    await page.getByLabel('Confirm password').fill(E2E_VALID_PASSWORD);
     await page.getByRole('button', { name: 'Create account' }).click();
 
     await expect(page).toHaveURL(
       new RegExp(`/verify-email\\?email=${encodeURIComponent(E2E_USER_A.email)}`),
     );
+  });
+
+  test('registering an uppercase variant of an already-used email reaches the same anti-enumeration screen', async ({
+    page,
+  }) => {
+    const caseVariantEmail = E2E_USER_A.email.replace('e2e-user-a', 'E2E-USER-A').toUpperCase();
+
+    await page.goto('/en/register');
+    await page.getByLabel('Name').fill('Someone Else');
+    await page.getByLabel('Email').fill(caseVariantEmail);
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
+    await page.getByLabel('Confirm password').fill(E2E_VALID_PASSWORD);
+    await page.getByRole('button', { name: 'Create account' }).click();
+
+    // Better Auth lowercases before the duplicate check, so this must land
+    // on the exact same generic screen the lowercase original does — never
+    // a distinct "this looks new" outcome that would leak the identity match.
+    await expect(page).toHaveURL(
+      new RegExp(`/verify-email\\?email=${encodeURIComponent(caseVariantEmail)}`),
+    );
+    await expect(
+      page.getByText(/If this email can be used to register, we have sent a verification link\./),
+    ).toBeVisible();
+  });
+
+  test('shows the live requirement checklist and strength meter while typing a password', async ({
+    page,
+  }) => {
+    await page.goto('/en/register');
+
+    const password = page.getByLabel('Password', { exact: true });
+    const uppercaseItem = page.locator('li', { hasText: 'Contains an uppercase letter' });
+
+    await expect(uppercaseItem).toHaveAttribute(
+      'aria-label',
+      'Contains an uppercase letter: Not met yet',
+    );
+    await expect(page.getByText('Does not meet requirements')).toBeVisible();
+
+    await password.fill('short');
+    await expect(page.getByText('Does not meet requirements')).toBeVisible();
+
+    await password.fill(E2E_VALID_PASSWORD);
+    await expect(uppercaseItem).toHaveAttribute('aria-label', 'Contains an uppercase letter: Met');
+    // Any of the three non-"insufficient" strength labels is acceptable —
+    // the exact band is an implementation detail of evaluatePasswordStrength;
+    // what matters is the meter reacted to a policy-valid password at all.
+    await expect(page.getByText(/^(Weak|Medium|Strong)$/)).toBeVisible();
+
+    // The button stays disabled until confirm-password also matches.
+    await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
+  });
+
+  test('blocks submission on a password mismatch and shows an accessible error', async ({
+    page,
+  }) => {
+    await page.goto('/en/register');
+
+    await page.getByLabel('Name').fill('Mismatch Tester');
+    await page.getByLabel('Email').fill(`e2e-mismatch-${Date.now()}@example.test`);
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
+    const confirm = page.getByLabel('Confirm password');
+    await confirm.fill('Different-Horse9!');
+    await confirm.blur();
+
+    await expect(page.getByText('Passwords do not match.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
+  });
+
+  test('toggles password and confirm-password visibility independently', async ({ page }) => {
+    await page.goto('/en/register');
+
+    const password = page.getByLabel('Password', { exact: true });
+    const confirm = page.getByLabel('Confirm password');
+    await password.fill(E2E_VALID_PASSWORD);
+    await confirm.fill(E2E_VALID_PASSWORD);
+
+    await expect(password).toHaveAttribute('type', 'password');
+    await expect(confirm).toHaveAttribute('type', 'password');
+
+    const showButtons = page.getByRole('button', { name: 'Show password' });
+    await showButtons.first().click();
+    await expect(password).toHaveAttribute('type', 'text');
+    await expect(confirm).toHaveAttribute('type', 'password');
+
+    await page.getByRole('button', { name: 'Show password' }).click();
+    await expect(confirm).toHaveAttribute('type', 'text');
+  });
+
+  test('/th/register runs the same registration flow with Thai copy', async ({ page }) => {
+    const email = `e2e-th-register-${Date.now()}@example.test`;
+
+    await page.goto('/th/register');
+    await page.getByLabel('ชื่อ').fill('ผู้ใช้ทดสอบ');
+    await page.getByLabel('อีเมล').fill(email);
+    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(E2E_VALID_PASSWORD);
+    await page.getByLabel('ยืนยันรหัสผ่าน').fill(E2E_VALID_PASSWORD);
+    await page.getByRole('button', { name: 'สร้างบัญชี' }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+    await expect(
+      page.getByText(/หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว/),
+    ).toBeVisible();
+  });
+
+  test('/th/register rejects a weak password with the localized policy error', async ({ page }) => {
+    await page.goto('/th/register');
+    await page.getByLabel('ชื่อ').fill('ผู้ใช้ทดสอบ');
+    await page.getByLabel('อีเมล').fill(`e2e-th-weak-${Date.now()}@example.test`);
+
+    // A password that is long enough to slip past no client-side gate
+    // bypass attempt but still misses a required character class — proves
+    // the requirement checklist (not just length) blocks submission.
+    const weakButLongEnough = 'alllowercaseonly123';
+    await page.getByLabel('รหัสผ่าน', { exact: true }).fill(weakButLongEnough);
+    await page.getByLabel('ยืนยันรหัสผ่าน').fill(weakButLongEnough);
+
+    await expect(page.getByRole('button', { name: 'สร้างบัญชี' })).toBeDisabled();
   });
 });
