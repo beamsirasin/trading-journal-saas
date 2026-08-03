@@ -61,9 +61,22 @@ export function AccountSwitcher({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
+        {/*
+          Below `sm`, this must cost the header exactly the same 44px budget
+          as its icon-only siblings (`LanguageSwitcher`, `ThemeToggle`,
+          `AccountMenu` on mobile) — `size="icon"` + `size-11` is that same
+          shared pattern. The bordered pill with name/mode text and a chevron
+          only appears at `sm:` and up (`sm:w-auto sm:border sm:bg-muted/50
+          sm:px-2.5`); at the smallest viewports (Brand's own doc comment
+          already documents this header row as having no width left to
+          spare), the extra ~20px this control used to cost unconditionally
+          — even with its name/mode text already hidden — was enough on its
+          own to push the header wider than the viewport.
+        */}
         <Button
           variant="ghost"
-          className="border-border bg-muted/50 min-h-11 gap-2 border px-2.5"
+          size="icon"
+          className="sm:border-border sm:bg-muted/50 size-11 gap-2 sm:h-11 sm:w-auto sm:justify-start sm:border sm:px-2.5"
           aria-label={t('menuLabel')}
         >
           <Wallet className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
@@ -77,7 +90,10 @@ export function AccountSwitcher({
             </span>
           </span>
           <span className="sr-only">{activeAccount.name}</span>
-          <ChevronDown className="text-muted-foreground size-3.5 shrink-0" aria-hidden="true" />
+          <ChevronDown
+            className="text-muted-foreground hidden size-3.5 shrink-0 sm:block"
+            aria-hidden="true"
+          />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-64">
