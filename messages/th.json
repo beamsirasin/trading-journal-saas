@@ -25,6 +25,7 @@
   "appNav": {
     "items": {
       "overview": "ภาพรวม",
+      "accounts": "บัญชี",
       "trades": "ออเดอร์",
       "strategies": "กลยุทธ์",
       "analytics": "การวิเคราะห์",
@@ -32,6 +33,7 @@
     },
     "descriptions": {
       "overview": "สรุปผลการวัดผลอย่างย่อ",
+      "accounts": "จัดการบัญชีเทรดของคุณ",
       "trades": "สมุดบันทึกออเดอร์",
       "strategies": "คู่มือกลยุทธ์และเวอร์ชัน",
       "analytics": "ระบบเทียบกับเทรดเดอร์",
@@ -535,6 +537,66 @@
     },
     "submitValidationError": "ข้อมูลบางส่วนไม่ถูกต้อง กรุณาตรวจสอบแบบฟอร์มแล้วลองใหม่อีกครั้ง",
     "submitUnexpectedError": "เกิดข้อผิดพลาดขณะตั้งค่าเสร็จสิ้น กรุณาลองใหม่อีกครั้ง"
+  },
+  "accounts": {
+    "title": "บัญชีเทรด",
+    "description": "ดู สร้าง และจัดการบัญชีเทรดทั้งหมดในพื้นที่ทำงานนี้",
+    "createAccount": "สร้างบัญชี",
+    "createAccountTitle": "สร้างบัญชีเทรด",
+    "createAccountDescription": "เพิ่มบัญชีเทรดอีกบัญชีในพื้นที่ทำงานนี้",
+    "editAccountTitle": "แก้ไขบัญชีเทรด",
+    "editAccountDescription": "แก้ไขรายละเอียดของบัญชีเทรดนี้",
+    "cannotEditArchivedTitle": "บัญชีนี้ถูกเก็บเข้าคลังแล้ว",
+    "cannotEditArchivedDescription": "กรุณากู้คืนก่อน จึงจะสามารถแก้ไขรายละเอียดได้",
+    "backToAccounts": "กลับไปหน้าบัญชี",
+    "activeSectionTitle": "บัญชีที่ใช้งานอยู่",
+    "archivedSectionTitle": "บัญชีที่เก็บเข้าคลัง",
+    "archivedSectionDescription": "กู้คืนบัญชีเพื่อให้กลับมาใช้งานได้อีกครั้ง",
+    "noArchivedAccounts": "ไม่มีบัญชีที่เก็บเข้าคลัง",
+    "activeStatus": "ใช้งานอยู่",
+    "archivedStatus": "เก็บเข้าคลังแล้ว",
+    "setActive": "ตั้งเป็นบัญชีที่ใช้งาน",
+    "setActiveOnCreate": "ตั้งเป็นบัญชีที่ใช้งาน",
+    "edit": "แก้ไข",
+    "archive": "เก็บเข้าคลัง",
+    "restore": "กู้คืน",
+    "cancel": "ยกเลิก",
+    "save": "บันทึก",
+    "create": "สร้างบัญชี",
+    "archiveDialogTitle": "เก็บ {name} เข้าคลังหรือไม่?",
+    "archiveDialogDescription": "คุณสามารถกู้คืนได้ภายหลังจากส่วนบัญชีที่เก็บเข้าคลัง",
+    "archiveConfirm": "เก็บบัญชีเข้าคลัง",
+    "field": {
+      "broker": "โบรกเกอร์",
+      "platform": "แพลตฟอร์ม",
+      "mode": "โหมด",
+      "currency": "สกุลเงิน",
+      "startingBalance": "ยอดเงินเริ่มต้น",
+      "riskPerTrade": "ความเสี่ยงต่อออเดอร์",
+      "maximumDailyLoss": "ขาดทุนสูงสุดต่อวัน"
+    },
+    "feedback": {
+      "created": "สร้างบัญชีเรียบร้อยแล้ว",
+      "updated": "อัปเดตบัญชีเรียบร้อยแล้ว",
+      "activated": "เปลี่ยนบัญชีที่ใช้งานเรียบร้อยแล้ว",
+      "archived": "เก็บบัญชีเข้าคลังเรียบร้อยแล้ว",
+      "restored": "กู้คืนบัญชีเรียบร้อยแล้ว"
+    },
+    "errors": {
+      "validation": "ข้อมูลบางส่วนไม่ถูกต้อง กรุณาตรวจสอบแบบฟอร์มแล้วลองใหม่อีกครั้ง",
+      "unexpected": "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+      "not_found": "ไม่พบบัญชีเทรดนี้",
+      "forbidden": "คุณไม่มีสิทธิ์ดำเนินการนี้",
+      "archived": "ไม่สามารถตั้งบัญชีที่เก็บเข้าคลังให้ใช้งานได้ กรุณากู้คืนก่อน",
+      "last_account": "คุณไม่สามารถเก็บบัญชีเทรดสุดท้ายเข้าคลังได้ กรุณาสร้างบัญชีเทรดอื่นก่อน"
+    },
+    "switcher": {
+      "menuLabel": "สลับบัญชีเทรด",
+      "accountsHeading": "บัญชีเทรด",
+      "currentAccount": "บัญชีปัจจุบัน",
+      "manageAccounts": "จัดการบัญชี",
+      "createAccount": "สร้างบัญชี"
+    }
   },
   "auth": {
     "loginTitle": "เข้าสู่ระบบ",

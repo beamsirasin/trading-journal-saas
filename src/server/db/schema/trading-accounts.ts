@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -72,6 +73,19 @@ export const tradingAccounts = pgTable(
     riskPerTradePercent: numeric('risk_per_trade_percent', { precision: 12, scale: 4 }),
     maximumDailyLossPercent: numeric('maximum_daily_loss_percent', { precision: 12, scale: 4 }),
     isArchived: boolean('is_archived').notNull().default(false),
+    /**
+     * Phase 3B's creation-idempotency boundary (`trading-account-management.ts`'s
+     * `createTradingAccount`). The client generates one UUID per logical "create
+     * this account" intent and resubmits the SAME value on a retry; the unique
+     * index below is what actually makes a duplicate submission a no-op rather
+     * than a second row — `INSERT ... ON CONFLICT DO NOTHING` on this column
+     * pair, then re-reading the existing row when the insert reports a conflict.
+     * `$defaultFn(generateId)` covers every OTHER insert path (Phase 3A's
+     * onboarding-driven first account) that has no client-supplied key at all:
+     * each gets its own random, never-colliding value, so "two different
+     * creation requests may create two accounts" holds trivially for them.
+     */
+    mutationKey: uuid('mutation_key').notNull().$defaultFn(generateId),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -81,6 +95,10 @@ export const tradingAccounts = pgTable(
     // first, so it is the leading index column.
     index('trading_accounts_workspace_idx').on(table.workspaceId),
     index('trading_accounts_workspace_archived_idx').on(table.workspaceId, table.isArchived),
+    uniqueIndex('trading_accounts_workspace_mutation_key_idx').on(
+      table.workspaceId,
+      table.mutationKey,
+    ),
     check(
       'trading_accounts_account_mode_check',
       sql`${table.accountMode} IN ('live', 'demo', 'prop', 'backtest')`,

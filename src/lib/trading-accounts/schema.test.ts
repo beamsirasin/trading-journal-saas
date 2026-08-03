@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { OnboardingStepOneSchema, OnboardingStepTwoSchema, OnboardingSubmitSchema } from './schema';
+import {
+  CreateAccountSchema,
+  OnboardingStepOneSchema,
+  OnboardingStepTwoSchema,
+  OnboardingSubmitSchema,
+  UpdateAccountSchema,
+} from './schema';
 
 const VALID_STEP_ONE = {
   name: 'My Trading Account',
@@ -152,5 +158,87 @@ describe('OnboardingSubmitSchema', () => {
       expect(result.data).not.toHaveProperty('workspaceId');
       expect(result.data).not.toHaveProperty('userId');
     }
+  });
+});
+
+const VALID_MUTATION_KEY = '0198c1b4-5b2b-7000-8000-000000000001';
+
+describe('CreateAccountSchema', () => {
+  it('accepts a valid payload with a UUID mutation key', () => {
+    const result = CreateAccountSchema.safeParse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      mutationKey: VALID_MUTATION_KEY,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('defaults setActive to false when omitted', () => {
+    const result = CreateAccountSchema.parse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      mutationKey: VALID_MUTATION_KEY,
+    });
+    expect(result.setActive).toBe(false);
+  });
+
+  it('rejects a mutation key that is not a valid UUID', () => {
+    const result = CreateAccountSchema.safeParse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      mutationKey: 'not-a-uuid',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a missing mutation key', () => {
+    const result = CreateAccountSchema.safeParse({ ...VALID_STEP_ONE, ...VALID_STEP_TWO });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an attempt to smuggle workspaceId, isArchived, or activeTradingAccountId — .strict() fails outright rather than silently stripping', () => {
+    const result = CreateAccountSchema.safeParse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      mutationKey: VALID_MUTATION_KEY,
+      workspaceId: 'forged-workspace-id',
+      isArchived: false,
+      activeTradingAccountId: 'forged-account-id',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('UpdateAccountSchema', () => {
+  it('accepts the same field set as onboarding/create', () => {
+    const result = UpdateAccountSchema.safeParse({ ...VALID_STEP_ONE, ...VALID_STEP_TWO });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an attempt to set isArchived directly through edit', () => {
+    const result = UpdateAccountSchema.safeParse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      isArchived: true,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an attempt to set activeTradingAccountId through general edit', () => {
+    const result = UpdateAccountSchema.safeParse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      activeTradingAccountId: 'forged-account-id',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a forged workspaceId field outright', () => {
+    const result = UpdateAccountSchema.safeParse({
+      ...VALID_STEP_ONE,
+      ...VALID_STEP_TWO,
+      workspaceId: 'forged-workspace-id',
+    });
+    expect(result.success).toBe(false);
   });
 });

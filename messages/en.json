@@ -25,6 +25,7 @@
   "appNav": {
     "items": {
       "overview": "Overview",
+      "accounts": "Accounts",
       "trades": "Trades",
       "strategies": "Strategies",
       "analytics": "Analytics",
@@ -32,6 +33,7 @@
     },
     "descriptions": {
       "overview": "Attribution at a glance",
+      "accounts": "Manage your trading accounts",
       "trades": "The journal",
       "strategies": "Playbooks and versions",
       "analytics": "System versus trader",
@@ -535,6 +537,66 @@
     },
     "submitValidationError": "Some details are not valid. Please check the form and try again.",
     "submitUnexpectedError": "Something went wrong finishing setup. Please try again."
+  },
+  "accounts": {
+    "title": "Trading accounts",
+    "description": "View, create and manage every trading account in this workspace.",
+    "createAccount": "Create account",
+    "createAccountTitle": "Create trading account",
+    "createAccountDescription": "Add another trading account to this workspace.",
+    "editAccountTitle": "Edit trading account",
+    "editAccountDescription": "Update this trading account's details.",
+    "cannotEditArchivedTitle": "This account is archived",
+    "cannotEditArchivedDescription": "Restore it first, then you can edit its details.",
+    "backToAccounts": "Back to accounts",
+    "activeSectionTitle": "Active accounts",
+    "archivedSectionTitle": "Archived accounts",
+    "archivedSectionDescription": "Restore an account to make it available again.",
+    "noArchivedAccounts": "No archived accounts.",
+    "activeStatus": "Active",
+    "archivedStatus": "Archived",
+    "setActive": "Set as active",
+    "setActiveOnCreate": "Set as active account",
+    "edit": "Edit",
+    "archive": "Archive",
+    "restore": "Restore",
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create account",
+    "archiveDialogTitle": "Archive {name}?",
+    "archiveDialogDescription": "You can restore it later from the archived accounts section.",
+    "archiveConfirm": "Archive account",
+    "field": {
+      "broker": "Broker",
+      "platform": "Platform",
+      "mode": "Mode",
+      "currency": "Currency",
+      "startingBalance": "Starting balance",
+      "riskPerTrade": "Risk per trade",
+      "maximumDailyLoss": "Maximum daily loss"
+    },
+    "feedback": {
+      "created": "Account created.",
+      "updated": "Account updated.",
+      "activated": "Active account changed.",
+      "archived": "Account archived.",
+      "restored": "Account restored."
+    },
+    "errors": {
+      "validation": "Some details are not valid. Please check the form and try again.",
+      "unexpected": "Something went wrong. Please try again.",
+      "not_found": "This trading account could not be found.",
+      "forbidden": "You do not have permission to do that.",
+      "archived": "An archived account cannot be made active. Restore it first.",
+      "last_account": "You cannot archive your last trading account. Create another trading account first."
+    },
+    "switcher": {
+      "menuLabel": "Switch trading account",
+      "accountsHeading": "Trading accounts",
+      "currentAccount": "Current account",
+      "manageAccounts": "Manage accounts",
+      "createAccount": "Create account"
+    }
   },
   "auth": {
     "loginTitle": "Log in",

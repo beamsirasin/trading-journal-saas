@@ -7,13 +7,13 @@ import { DemoBadge } from '@/components/product/demo-badge';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 import { AccountMenu } from './account-menu';
+import { AccountSwitcher } from './account-switcher';
 import { Brand } from './brand';
 import { MAIN_CONTENT_ID } from './constants';
 import { LanguageSwitcher } from './language-switcher';
 import { MobileNav } from './mobile-nav';
 import { SidebarNav } from './sidebar-nav';
 import { SkipLink } from './skip-link';
-import { TradingAccountIndicator } from './trading-account-indicator';
 
 /**
  * Authenticated application shell.
@@ -34,6 +34,7 @@ export async function AppShell({
   dbTheme,
   dbLocale,
   activeAccount,
+  switchableAccounts,
 }: {
   children: ReactNode;
   user: SessionUser;
@@ -42,6 +43,8 @@ export async function AppShell({
   dbLocale: string;
   /** `null` while onboarding is incomplete — no trading account exists yet. */
   activeAccount: ActiveTradingAccountSummary | null;
+  /** Every non-archived account in the active workspace — the switcher's menu. Empty/unused while `activeAccount` is `null`. */
+  switchableAccounts: readonly ActiveTradingAccountSummary[];
 }) {
   const t = await getTranslations('appNav');
 
@@ -58,7 +61,9 @@ export async function AppShell({
           <MobileNav />
           <Brand href="/app" className="lg:hidden" compact />
           <div className="ml-auto flex items-center gap-2">
-            {activeAccount === null ? null : <TradingAccountIndicator account={activeAccount} />}
+            {activeAccount === null ? null : (
+              <AccountSwitcher activeAccount={activeAccount} accounts={switchableAccounts} />
+            )}
             <DemoBadge className="hidden sm:inline-flex" />
             <LanguageSwitcher />
             <ThemeToggle />

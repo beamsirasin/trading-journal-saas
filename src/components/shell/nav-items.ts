@@ -4,10 +4,12 @@ import {
   LayoutDashboard,
   Settings,
   Target,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
-export type NavItemKey = 'overview' | 'trades' | 'strategies' | 'analytics' | 'settings';
+export type NavItemKey =
+  'overview' | 'accounts' | 'trades' | 'strategies' | 'analytics' | 'settings';
 
 export interface NavItem {
   readonly href: string;
@@ -29,6 +31,7 @@ export interface NavItem {
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/app', key: 'overview', Icon: LayoutDashboard },
+  { href: '/app/accounts', key: 'accounts', Icon: Wallet },
   { href: '/app/trades', key: 'trades', Icon: BookOpen },
   { href: '/app/strategies', key: 'strategies', Icon: Target },
   { href: '/app/analytics', key: 'analytics', Icon: BarChart3 },

@@ -8,12 +8,29 @@ import type { Database } from '../db/client';
 /** Structurally matches both Database and a Drizzle transaction handle. */
 type Executor = Pick<Database, 'insert'>;
 
+/**
+ * The complete, closed set of metadata fields any caller may ever record —
+ * Phase 3B's approved widening of the boundary the schema comment on
+ * `auditLogs` warned about ("a future structured schema must explicitly
+ * allow fields before this boundary is widened"). Every field here is a safe
+ * identifier or a field NAME, never a value: no balance, no percentage, no
+ * form payload, no credential. Adding a new field to this interface is
+ * itself the review point for whether it is safe to log.
+ */
+export interface AuditLogMetadata {
+  /** Names of fields that changed in an update — never their old/new values. */
+  readonly changedFields?: readonly string[];
+  readonly previousActiveTradingAccountId?: string;
+  readonly newActiveTradingAccountId?: string;
+}
+
 export interface AuditLogInput {
   action: AuditAction;
   workspaceId?: string;
   actorUserId?: string;
   entityType?: string;
   entityId?: string;
+  metadata?: AuditLogMetadata;
 }
 
 /** The only application path that inserts an append-only audit row. */
@@ -28,8 +45,6 @@ export async function insertAuditLog(db: Executor, input: AuditLogInput): Promis
     actorUserId: input.actorUserId,
     entityType: input.entityType,
     entityId: input.entityId,
-    // No approved metadata schema exists yet; accepting arbitrary objects
-    // would make token/secret leakage a caller-by-caller convention.
-    metadata: {},
+    metadata: input.metadata ?? {},
   });
 }
