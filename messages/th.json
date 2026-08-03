@@ -543,6 +543,8 @@
     "verifyEmailPendingBody": "หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว\nหากคุณมีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบหรือรีเซ็ตรหัสผ่าน",
     "verifyEmailResend": "ส่งอีเมลอีกครั้ง",
     "verifyEmailResendSuccess": "ส่งอีเมลยืนยันแล้ว",
+    "verifyEmailRateLimited": "มีการขอส่งอีเมลหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
+    "verifyEmailDeliveryFailed": "ยังไม่สามารถส่งอีเมลยืนยันได้ กรุณาลองส่งอีกครั้ง",
     "verifyEmailSuccessTitle": "ยืนยันอีเมลแล้ว",
     "verifyEmailSuccessBody": "ยืนยันอีเมลของคุณเรียบร้อยแล้ว ตอนนี้คุณเข้าสู่ระบบได้เลย",
     "verifyEmailSuccessCta": "เข้าสู่ระบบ",

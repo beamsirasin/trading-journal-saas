@@ -543,6 +543,8 @@
     "verifyEmailPendingBody": "If this email can be used to register, we have sent a verification link.\nIf you already have an account, sign in or reset your password.",
     "verifyEmailResend": "Resend email",
     "verifyEmailResendSuccess": "Verification email sent.",
+    "verifyEmailRateLimited": "Too many verification emails were requested. Please wait a moment and try again.",
+    "verifyEmailDeliveryFailed": "We couldn't send the verification email yet. Please try again.",
     "verifyEmailSuccessTitle": "Email verified",
     "verifyEmailSuccessBody": "Your email is confirmed. You can now log in.",
     "verifyEmailSuccessCta": "Log in",

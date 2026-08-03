@@ -8,6 +8,7 @@ import { AuthForm } from './auth-form';
 
 const pushMock = vi.fn();
 const signUpEmailMock = vi.fn();
+const sendVerificationEmailMock = vi.fn();
 
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -19,9 +20,11 @@ vi.mock('@/i18n/navigation', () => ({
 vi.mock('@/lib/auth/client', () => ({
   signIn: { email: vi.fn(), social: vi.fn() },
   signUp: { email: (...args: unknown[]) => signUpEmailMock(...args) },
+  sendVerificationEmail: (...args: unknown[]) => sendVerificationEmailMock(...args),
 }));
 
 const VALID_PASSWORD = 'Correct-Horse9';
+const REGISTERED_EMAIL = 'jane@example.test';
 
 function renderRegisterForm() {
   return render(
@@ -33,7 +36,7 @@ function renderRegisterForm() {
 
 function fillCore() {
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Jane Doe' } });
-  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jane@example.test' } });
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: REGISTERED_EMAIL } });
 }
 
 function fillValidPasswords() {
@@ -48,6 +51,8 @@ function fillValidPasswords() {
 function submitButton() {
   return screen.getByRole('button', { name: 'Create account' });
 }
+
+const EXPECTED_VERIFY_EMAIL_URL = `/verify-email?email=${encodeURIComponent(REGISTERED_EMAIL)}`;
 
 /**
  * `AuthForm` has no locale-branching logic of its own — it redirects through
@@ -67,6 +72,8 @@ describe('AuthForm registration redirect', () => {
   beforeEach(() => {
     pushMock.mockClear();
     signUpEmailMock.mockReset();
+    sendVerificationEmailMock.mockReset();
+    sendVerificationEmailMock.mockResolvedValue({ data: { status: true }, error: null });
   });
 
   it('redirects to the locale-neutral verification-pending route on a successful sign-up', async () => {
@@ -78,9 +85,7 @@ describe('AuthForm registration redirect', () => {
     fireEvent.click(submitButton());
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
-    expect(pushMock).toHaveBeenCalledWith(
-      `/verify-email?email=${encodeURIComponent('jane@example.test')}`,
-    );
+    expect(pushMock).toHaveBeenCalledWith(EXPECTED_VERIFY_EMAIL_URL);
   });
 
   it('routes an already-registered email to the same verification-pending route (anti-enumeration)', async () => {
@@ -95,9 +100,7 @@ describe('AuthForm registration redirect', () => {
     fireEvent.click(submitButton());
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
-    expect(pushMock).toHaveBeenCalledWith(
-      `/verify-email?email=${encodeURIComponent('jane@example.test')}`,
-    );
+    expect(pushMock).toHaveBeenCalledWith(EXPECTED_VERIFY_EMAIL_URL);
   });
 
   it('routes the rare concurrent-signup race (FAILED_TO_CREATE_USER) to the same non-enumerating outcome', async () => {
@@ -112,9 +115,7 @@ describe('AuthForm registration redirect', () => {
     fireEvent.click(submitButton());
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
-    expect(pushMock).toHaveBeenCalledWith(
-      `/verify-email?email=${encodeURIComponent('jane@example.test')}`,
-    );
+    expect(pushMock).toHaveBeenCalledWith(EXPECTED_VERIFY_EMAIL_URL);
   });
 
   it('never navigates with the password in the URL — only the email is ever passed to router.push', async () => {
@@ -167,6 +168,8 @@ describe('AuthForm password confirmation and strength UX', () => {
   beforeEach(() => {
     pushMock.mockClear();
     signUpEmailMock.mockReset();
+    sendVerificationEmailMock.mockReset();
+    sendVerificationEmailMock.mockResolvedValue({ data: { status: true }, error: null });
   });
 
   it('renders an independent confirm-password field', () => {
@@ -283,5 +286,171 @@ describe('AuthForm password confirmation and strength UX', () => {
 
     resolveSignUp({ data: {}, error: null });
     await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+
+    // The second click while pending must not have queued a second signup
+    // or a second verification-email dispatch once the first resolved.
+    expect(signUpEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Phase 2.1 follow-up: a re-registration of an existing-but-unverified email
+ * must automatically get a fresh verification message, without the browser
+ * ever learning whether the email was new, already registered, or already
+ * verified. `src/lib/auth/server.ts`'s `sendOnSignUp` is now off, so this
+ * dispatch step is the ONLY thing that ever sends one — these tests are the
+ * unit-level proof of that sequencing.
+ */
+describe('AuthForm post-registration verification dispatch', () => {
+  beforeEach(() => {
+    pushMock.mockClear();
+    signUpEmailMock.mockReset();
+    sendVerificationEmailMock.mockReset();
+  });
+
+  it('calls sendVerificationEmail exactly once after a genuine new signup', async () => {
+    signUpEmailMock.mockResolvedValue({ data: {}, error: null });
+    sendVerificationEmailMock.mockResolvedValue({ data: { status: true }, error: null });
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+    expect(signUpEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendVerificationEmailMock).toHaveBeenCalledWith({
+      email: REGISTERED_EMAIL,
+      callbackURL: '/verify-email/complete',
+    });
+  });
+
+  it('calls sendVerificationEmail exactly once after an accepted duplicate-signup outcome', async () => {
+    signUpEmailMock.mockResolvedValue({
+      data: null,
+      error: { code: 'USER_ALREADY_EXISTS', status: 422 },
+    });
+    sendVerificationEmailMock.mockResolvedValue({ data: { status: true }, error: null });
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+    expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('awaits sendVerificationEmail before navigating', async () => {
+    signUpEmailMock.mockResolvedValue({ data: {}, error: null });
+    let resolveDispatch: (value: { data: unknown; error: null }) => void = () => {};
+    sendVerificationEmailMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDispatch = resolve;
+      }),
+    );
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1));
+    // The dispatch call is still pending — navigation must not have happened yet.
+    expect(pushMock).not.toHaveBeenCalled();
+
+    resolveDispatch({ data: { status: true }, error: null });
+    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not call sendVerificationEmail when signup itself fails with a weak password', async () => {
+    signUpEmailMock.mockResolvedValue({
+      data: null,
+      error: { code: 'WEAK_PASSWORD', status: 400 },
+    });
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await screen.findByRole('status');
+    expect(sendVerificationEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('does not call sendVerificationEmail when signup fails for any other genuine reason', async () => {
+    signUpEmailMock.mockResolvedValue({
+      data: null,
+      error: { code: 'INTERNAL_SERVER_ERROR', status: 500 },
+    });
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(signUpEmailMock).toHaveBeenCalledTimes(1));
+    expect(sendVerificationEmailMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('navigates with a rate-limited notice when the dispatch itself is rate-limited (429)', async () => {
+    signUpEmailMock.mockResolvedValue({ data: {}, error: null });
+    sendVerificationEmailMock.mockResolvedValue({
+      data: null,
+      error: { code: 'TOO_MANY_REQUESTS', status: 429 },
+    });
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+    expect(pushMock).toHaveBeenCalledWith(`${EXPECTED_VERIFY_EMAIL_URL}&notice=rate-limited`);
+  });
+
+  it('navigates with a delivery-failed notice when the dispatch fails for any other reason', async () => {
+    signUpEmailMock.mockResolvedValue({ data: {}, error: null });
+    sendVerificationEmailMock.mockResolvedValue({
+      data: null,
+      error: { code: 'INTERNAL_SERVER_ERROR', status: 500 },
+    });
+    renderRegisterForm();
+
+    fillCore();
+    fillValidPasswords();
+    fireEvent.click(submitButton());
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+    expect(pushMock).toHaveBeenCalledWith(`${EXPECTED_VERIFY_EMAIL_URL}&notice=delivery-failed`);
+  });
+
+  it('navigates to the same plain URL (no notice) for new, duplicate, and rate-limited-race outcomes alike', async () => {
+    sendVerificationEmailMock.mockResolvedValue({ data: { status: true }, error: null });
+
+    for (const signUpError of [
+      null,
+      { code: 'USER_ALREADY_EXISTS', status: 422 },
+      { code: 'FAILED_TO_CREATE_USER', status: 422 },
+    ] as const) {
+      pushMock.mockClear();
+      signUpEmailMock.mockReset();
+      signUpEmailMock.mockResolvedValue({
+        data: signUpError === null ? {} : null,
+        error: signUpError,
+      });
+      const { unmount } = renderRegisterForm();
+
+      fillCore();
+      fillValidPasswords();
+      fireEvent.click(submitButton());
+
+      await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
+      expect(pushMock).toHaveBeenCalledWith(EXPECTED_VERIFY_EMAIL_URL);
+      unmount();
+    }
   });
 });

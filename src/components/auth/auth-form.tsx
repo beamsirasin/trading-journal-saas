@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useId, useState, type FormEvent } from 'react';
 
 import { safeCallbackPath } from '@/lib/auth/callback-url';
-import { signIn, signUp } from '@/lib/auth/client';
+import { sendVerificationEmail, signIn, signUp } from '@/lib/auth/client';
 import { mapGenericError } from '@/lib/auth/client-error';
 import { evaluatePasswordPolicy, evaluatePasswordStrength } from '@/lib/auth/password-policy';
 import { Button } from '@/components/ui/button';
@@ -56,6 +56,13 @@ const NON_ENUMERATING_SIGNUP_ERROR_CODES = new Set([
  * `/sign-up/email` before-hook runs the identical shared policy server-side
  * and is the actual security boundary. `confirmPassword` exists only in
  * this component's local state; it is never sent to `signUp.email(...)`.
+ *
+ * Verification dispatch (Phase 2.1 follow-up): every ACCEPTED `signUp.email`
+ * outcome (a genuine new account or the anti-enumeration synthetic-duplicate
+ * response) is followed by exactly one `sendVerificationEmail(...)` call,
+ * awaited before navigating — see `src/lib/auth/server.ts`'s `sendOnSignUp`
+ * comment for why the automatic dispatch had to move here instead of relying
+ * on Better Auth's own on-signup hook.
  */
 export function AuthForm({
   mode,
@@ -126,38 +133,54 @@ export function AuthForm({
         return;
       }
 
-      // Unprefixed path: next-intl's own middleware (src/proxy.ts) resolves
-      // it to the visitor's actual locale (cookie, then Accept-Language,
-      // then default) the moment the emailed link is opened — the same
-      // precedence every other unauthenticated route already follows, so
-      // this does not need to duplicate that logic. `confirmPassword` is
-      // deliberately not part of this call.
-      const result = await signUp.email({
+      // `confirmPassword` is deliberately not part of this call. No
+      // `callbackURL` here: `sendOnSignUp` is off (`src/lib/auth/server.ts`),
+      // so a real signup no longer sends anything on its own — the
+      // `sendVerificationEmail` call below is what actually dispatches, for
+      // every accepted outcome, and owns the callback URL itself.
+      const signUpResult = await signUp.email({ email, password, name });
+
+      if (signUpResult.error) {
+        const code = signUpResult.error.code;
+        const isAcceptedDuplicateOutcome =
+          code !== undefined && NON_ENUMERATING_SIGNUP_ERROR_CODES.has(code);
+        if (!isAcceptedDuplicateOutcome) {
+          if (code === 'WEAK_PASSWORD') {
+            setStatus('error');
+            setErrorMessage(t('passwordPolicyError'));
+            return;
+          }
+          setStatus('error');
+          setErrorMessage(
+            mapGenericError(signUpResult.error, t('registerError'), t('rateLimitedError')),
+          );
+          return;
+        }
+        // Else: an anti-enumeration-safe duplicate/race outcome — fall
+        // through to the same dispatch+navigate path a genuine signup takes.
+      }
+
+      // Reached for a genuine new signup AND for an accepted duplicate/race
+      // outcome — this browser cannot tell them apart, and does not need to.
+      // `sendVerificationEmail` (the same public, already anti-enumeration-safe
+      // `/send-verification-email` endpoint `ResendVerificationButton` calls)
+      // decides silently whether a real message goes out: yes for a
+      // brand-new or still-unverified existing account, a no-op (identical
+      // response shape and timing) for an already-verified one.
+      const dispatchResult = await sendVerificationEmail({
         email,
-        password,
-        name,
         callbackURL: '/verify-email/complete',
       });
 
-      if (result.error) {
-        const code = result.error.code;
-        if (code !== undefined && NON_ENUMERATING_SIGNUP_ERROR_CODES.has(code)) {
-          // Anti-enumeration: identical outcome to a genuine signup.
-          setStatus('idle');
-          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-          return;
-        }
-        if (code === 'WEAK_PASSWORD') {
-          setStatus('error');
-          setErrorMessage(t('passwordPolicyError'));
-          return;
-        }
-        setStatus('error');
-        setErrorMessage(mapGenericError(result.error, t('registerError'), t('rateLimitedError')));
-        return;
+      setStatus('idle');
+      const params = new URLSearchParams({ email });
+      if (dispatchResult.error) {
+        params.set(
+          'notice',
+          dispatchResult.error.status === 429 ? 'rate-limited' : 'delivery-failed',
+        );
       }
-
-      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+      router.push(`/verify-email?${params.toString()}`);
       return;
     }
 

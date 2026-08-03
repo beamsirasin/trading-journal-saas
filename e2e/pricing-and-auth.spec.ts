@@ -1,7 +1,30 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { E2E_USER_A } from './support/fixtures';
+
+/**
+ * Counts real requests to the public `/send-verification-email` endpoint —
+ * the one `AuthForm` calls itself after every accepted `signUp.email`
+ * outcome (`src/components/auth/auth-form.tsx`), and the one the manual
+ * Resend button also calls. Counting network calls, rather than asserting a
+ * particular delivery outcome, is what keeps these assertions valid whether
+ * or not a real email provider is configured for this environment — see
+ * `src/lib/auth/email.ts`'s `ProductionEmailAdapter`: this project has no
+ * production email provider yet, so the `next build && next start` server
+ * this suite runs against always genuinely fails delivery (a real, fully
+ * deterministic failure, not flakiness) — the request still happens exactly
+ * once either way, which is what these tests exist to prove.
+ */
+function countVerificationDispatchRequests(page: Page): { count: () => number } {
+  let count = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('/send-verification-email') && request.method() === 'POST') {
+      count += 1;
+    }
+  });
+  return { count: () => count };
+}
 
 /**
  * Satisfies Phase 2.1's shared password-complexity policy
@@ -262,6 +285,8 @@ test.describe('login and registration', () => {
   }) => {
     // E2E_USER_A is provisioned (already verified) by e2e/global-setup.ts —
     // a real Better Auth USER_ALREADY_EXISTS response for this attempt.
+    const dispatchRequests = countVerificationDispatchRequests(page);
+
     await page.goto('/en/register');
     await page.getByLabel('Name').fill('Someone Else');
     await page.getByLabel('Email').fill(E2E_USER_A.email);
@@ -271,6 +296,16 @@ test.describe('login and registration', () => {
 
     await expect(page).toHaveURL(
       new RegExp(`/verify-email\\?email=${encodeURIComponent(E2E_USER_A.email)}`),
+    );
+    // Exactly one dispatch request fires, and — because E2E_USER_A is
+    // already verified, so `/send-verification-email`'s fast path never
+    // touches the (unconfigured, always-failing in this build) email
+    // adapter at all — it succeeds, landing on the plain URL with no
+    // `notice` suffix, unlike a still-unverified account's dispatch below.
+    await expect.poll(() => dispatchRequests.count()).toBe(1);
+    expect(page.url()).not.toContain('notice=');
+    expect(await page.textContent('body')).not.toMatch(
+      /email already exists|this email is registered/i,
     );
   });
 
@@ -295,6 +330,84 @@ test.describe('login and registration', () => {
     await expect(
       page.getByText(/If this email can be used to register, we have sent a verification link\./),
     ).toBeVisible();
+  });
+
+  test('sends exactly one verification-email dispatch request per registration attempt, including a re-registration of the same still-unverified email', async ({
+    page,
+  }) => {
+    const email = `e2e-resend-dup-${Date.now()}@example.test`;
+    const dispatchRequests = countVerificationDispatchRequests(page);
+
+    await page.goto('/en/register');
+    await page.getByLabel('Name').fill('E2E New Trader');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
+    await page.getByLabel('Confirm password').fill(E2E_VALID_PASSWORD);
+    await page.getByRole('button', { name: 'Create account' }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+    await expect.poll(() => dispatchRequests.count()).toBe(1);
+    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
+
+    // The account still exists and is still unverified — re-submitting
+    // registration for it must send exactly one FRESH dispatch request
+    // (bringing the running total to 2) and land on the identical generic
+    // page, never a distinguishable "this email already exists" outcome.
+    await page.goto('/en/register');
+    await page.getByLabel('Name').fill('Someone Else Entirely');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
+    await page.getByLabel('Confirm password').fill(E2E_VALID_PASSWORD);
+    await page.getByRole('button', { name: 'Create account' }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+    await expect.poll(() => dispatchRequests.count()).toBe(2);
+    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
+
+    const body = (await page.textContent('body')) ?? '';
+    expect(body).not.toMatch(/email already exists|this email is registered/i);
+  });
+
+  test('shows a localized, accessible notice and a disabled Resend button when the verify-email page carries a rate-limited dispatch notice', async ({
+    page,
+  }) => {
+    const email = `e2e-notice-rate-${Date.now()}@example.test`;
+    await page.goto(`/en/verify-email?email=${encodeURIComponent(email)}&notice=rate-limited`);
+
+    await expect(
+      page.getByText(
+        'Too many verification emails were requested. Please wait a moment and try again.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resend email' })).toBeDisabled();
+  });
+
+  test('shows a localized delivery-failed notice with a still-usable Resend button', async ({
+    page,
+  }) => {
+    const email = `e2e-notice-delivery-${Date.now()}@example.test`;
+    await page.goto(`/en/verify-email?email=${encodeURIComponent(email)}&notice=delivery-failed`);
+
+    await expect(
+      page.getByText("We couldn't send the verification email yet. Please try again."),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resend email' })).not.toBeDisabled();
+  });
+
+  test('/th/verify-email shows the localized Thai rate-limited and delivery-failed notices', async ({
+    page,
+  }) => {
+    const email = `e2e-th-notice-${Date.now()}@example.test`;
+
+    await page.goto(`/th/verify-email?email=${encodeURIComponent(email)}&notice=rate-limited`);
+    await expect(
+      page.getByText('มีการขอส่งอีเมลหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).toBeDisabled();
+
+    await page.goto(`/th/verify-email?email=${encodeURIComponent(email)}&notice=delivery-failed`);
+    await expect(page.getByText('ยังไม่สามารถส่งอีเมลยืนยันได้ กรุณาลองส่งอีกครั้ง')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).not.toBeDisabled();
   });
 
   test('shows the live requirement checklist and strength meter while typing a password', async ({
