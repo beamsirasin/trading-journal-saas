@@ -1,120 +1,55 @@
-'use client';
+﻿'use client';
 
 import { CircleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
-import { isValidTimeZone } from '@/lib/time/timezone';
+import { detectBrowserTimeZone, listSupportedTimeZones } from '@/lib/time/timezone';
 import {
   ACCOUNT_MODES,
   DEFAULT_BASE_CURRENCY,
   DEFAULT_MAXIMUM_DAILY_LOSS_PERCENT,
   DEFAULT_RISK_PER_TRADE_PERCENT,
-  NAME_MAX_LENGTH,
-  OPTIONAL_TEXT_MAX_LENGTH,
   SUGGESTED_BASE_CURRENCIES,
   type AccountMode,
 } from '@/lib/trading-accounts/constants';
 import {
-  hasNoControlOrHtmlCharacters,
-  isValidBaseCurrency,
-  isValidPercent,
-  isValidStartingBalance,
-} from '@/lib/trading-accounts/validation';
+  pickFormErrors,
+  validateAccountFields,
+  type AccountFormValues,
+} from '@/lib/trading-accounts/form-validation';
 import { completeOnboardingAction } from '@/server/actions/onboarding';
+import { AccountField } from '@/components/trading-accounts/account-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useRouter } from '@/i18n/navigation';
 
-interface FormValues {
-  name: string;
-  brokerName: string;
-  platformName: string;
+interface FormValues extends AccountFormValues {
   accountMode: AccountMode;
-  baseCurrency: string;
-  startingBalance: string;
-  timezone: string;
-  riskPerTradePercent: string;
-  maximumDailyLossPercent: string;
 }
 
-type StepOneField = 'name' | 'brokerName' | 'platformName' | 'baseCurrency' | 'startingBalance';
-type StepTwoField = 'timezone' | 'riskPerTradePercent' | 'maximumDailyLossPercent';
-type FieldErrors = Partial<Record<StepOneField | StepTwoField, string>>;
+const STEP_ONE_FIELDS = [
+  'name',
+  'brokerName',
+  'platformName',
+  'baseCurrency',
+  'startingBalance',
+] as const;
+const STEP_TWO_FIELDS = ['timezone', 'riskPerTradePercent', 'maximumDailyLossPercent'] as const;
 
-/**
- * Supported IANA identifiers straight from the runtime's own ICU data —
- * matching `src/lib/time/timezone.ts`'s "no bundled timezone database"
- * philosophy. `Intl.supportedValuesOf` is not guaranteed on every runtime
- * (`isValidTimeZone`'s own comment), so a plain validated text input is the
- * fallback rather than a broken dropdown.
- */
-function listTimeZones(): string[] | null {
-  try {
-    const supported = (
-      Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
-    ).supportedValuesOf?.('timeZone');
-    return supported !== undefined && supported.length > 0 ? supported : null;
-  } catch {
-    return null;
-  }
-}
+type FieldErrors = Partial<
+  Record<(typeof STEP_ONE_FIELDS)[number] | (typeof STEP_TWO_FIELDS)[number], string>
+>;
 
-function detectBrowserTimeZone(): string | null {
-  try {
-    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return isValidTimeZone(detected) ? detected : null;
-  } catch {
-    return null;
-  }
-}
-
+/** The shared validator (`src/lib/trading-accounts/form-validation.ts`) checks every field at once; each step only surfaces the errors for the fields it actually shows. */
 function validateStepOne(values: FormValues): FieldErrors {
-  const errors: FieldErrors = {};
-  const name = values.name.trim();
-  if (name.length === 0) {
-    errors.name = 'required';
-  } else if (name.length > NAME_MAX_LENGTH || !hasNoControlOrHtmlCharacters(name)) {
-    errors.name = 'invalidCharacters';
-  }
-  if (values.brokerName.trim().length > 0) {
-    const broker = values.brokerName.trim();
-    if (broker.length > OPTIONAL_TEXT_MAX_LENGTH || !hasNoControlOrHtmlCharacters(broker)) {
-      errors.brokerName = 'invalidCharacters';
-    }
-  }
-  if (values.platformName.trim().length > 0) {
-    const platform = values.platformName.trim();
-    if (platform.length > OPTIONAL_TEXT_MAX_LENGTH || !hasNoControlOrHtmlCharacters(platform)) {
-      errors.platformName = 'invalidCharacters';
-    }
-  }
-  if (!isValidBaseCurrency(values.baseCurrency)) {
-    errors.baseCurrency = 'invalidBaseCurrency';
-  }
-  if (!isValidStartingBalance(values.startingBalance)) {
-    errors.startingBalance = 'invalidBalance';
-  }
-  return errors;
+  return pickFormErrors(validateAccountFields(values), STEP_ONE_FIELDS);
 }
 
 function validateStepTwo(values: FormValues): FieldErrors {
-  const errors: FieldErrors = {};
-  if (!isValidTimeZone(values.timezone)) {
-    errors.timezone = 'invalidTimezone';
-  }
-  if (values.riskPerTradePercent.trim().length > 0 && !isValidPercent(values.riskPerTradePercent)) {
-    errors.riskPerTradePercent = 'invalidPercent';
-  }
-  if (
-    values.maximumDailyLossPercent.trim().length > 0 &&
-    !isValidPercent(values.maximumDailyLossPercent)
-  ) {
-    errors.maximumDailyLossPercent = 'invalidPercent';
-  }
-  return errors;
+  return pickFormErrors(validateAccountFields(values), STEP_TWO_FIELDS);
 }
 
 /**
@@ -133,7 +68,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
   const t = useTranslations('onboarding');
   const router = useRouter();
   const formId = useId();
-  const [timeZones] = useState<string[] | null>(() => listTimeZones());
+  const [timeZones] = useState<string[] | null>(() => listSupportedTimeZones());
 
   const [step, setStep] = useState<1 | 2>(1);
   const [values, setValues] = useState<FormValues>(() => ({
@@ -265,7 +200,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
               {t('stepOneTitle')}
             </h2>
 
-            <Field
+            <AccountField
               id={`${formId}-name`}
               label={t('nameLabel')}
               error={errors.name === undefined ? undefined : t(`errors.${errors.name}`)}
@@ -278,9 +213,9 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                 aria-describedby={errors.name === undefined ? undefined : `${formId}-name-error`}
                 required
               />
-            </Field>
+            </AccountField>
 
-            <Field
+            <AccountField
               id={`${formId}-broker`}
               label={t('brokerLabel')}
               optional
@@ -295,9 +230,9 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                   errors.brokerName === undefined ? undefined : `${formId}-broker-error`
                 }
               />
-            </Field>
+            </AccountField>
 
-            <Field
+            <AccountField
               id={`${formId}-platform`}
               label={t('platformLabel')}
               optional
@@ -314,7 +249,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                   errors.platformName === undefined ? undefined : `${formId}-platform-error`
                 }
               />
-            </Field>
+            </AccountField>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor={`${formId}-account-mode`}>{t('accountModeLabel')}</Label>
@@ -356,7 +291,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                 )}
               </div>
 
-              <Field
+              <AccountField
                 id={`${formId}-balance`}
                 label={t('startingBalanceLabel')}
                 error={
@@ -376,7 +311,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                   }
                   required
                 />
-              </Field>
+              </AccountField>
             </div>
 
             <div className="flex justify-end">
@@ -433,7 +368,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <Field
+              <AccountField
                 id={`${formId}-risk`}
                 label={t('riskPerTradeLabel')}
                 optional
@@ -462,9 +397,9 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                     %
                   </span>
                 </div>
-              </Field>
+              </AccountField>
 
-              <Field
+              <AccountField
                 id={`${formId}-max-loss`}
                 label={t('maximumDailyLossLabel')}
                 optional
@@ -495,7 +430,7 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
                     %
                   </span>
                 </div>
-              </Field>
+              </AccountField>
             </div>
 
             <div className="flex justify-between">
@@ -524,38 +459,6 @@ export function OnboardingWizard({ defaultTimezone }: { defaultTimezone: string 
           ) : null}
         </div>
       </form>
-    </div>
-  );
-}
-
-function Field({
-  id,
-  label,
-  optional = false,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  optional?: boolean;
-  error?: string | undefined;
-  children: ReactNode;
-}) {
-  const t = useTranslations('onboarding');
-  return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor={id}>
-        {label}
-        {optional ? (
-          <span className="text-muted-foreground ml-1 font-normal"> {t('optionalSuffix')}</span>
-        ) : null}
-      </Label>
-      {children}
-      {error === undefined ? null : (
-        <p id={`${id}-error`} role="alert" className="text-destructive text-xs">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   getActiveWorkspaceContext,
   getCurrentUserPreferences,
   getOptionalSession,
+  listSwitchableTradingAccounts,
 } from '@/server/auth/dal';
 import { AppShell } from '@/components/shell/app-shell';
 import { redirect } from '@/i18n/navigation';
@@ -51,9 +52,14 @@ export default async function AppLayout({
   const workspace = await getActiveWorkspaceContext();
   const preferences = await getCurrentUserPreferences();
   // `null` while onboarding is incomplete (no account exists yet) — AppShell
-  // simply omits the indicator rather than rendering a placeholder for
-  // something that does not exist.
-  const activeAccount = await getActiveTradingAccount();
+  // simply omits the switcher rather than rendering one for something that
+  // does not exist. `switchableAccounts` is fetched unconditionally (a cheap
+  // query even when unused) rather than made conditional on `activeAccount`
+  // — the two are independent reads and cannot silently drift out of sync.
+  const [activeAccount, switchableAccounts] = await Promise.all([
+    getActiveTradingAccount(),
+    listSwitchableTradingAccounts(),
+  ]);
 
   return (
     <AppShell
@@ -62,6 +68,7 @@ export default async function AppLayout({
       dbTheme={preferences.theme}
       dbLocale={preferences.locale}
       activeAccount={activeAccount}
+      switchableAccounts={switchableAccounts}
     >
       {children}
     </AppShell>

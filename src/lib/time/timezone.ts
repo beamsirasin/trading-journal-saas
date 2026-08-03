@@ -105,6 +105,36 @@ export function offsetMinutesAt(instant: Date, timeZone: TimeZoneId): number {
   return (asUtc - instantSeconds) / 60_000;
 }
 
+/**
+ * Supported IANA identifiers straight from the runtime's own ICU data — no
+ * bundled timezone dataset, matching this module's own "no bundled tz
+ * database" philosophy. `Intl.supportedValuesOf` is not guaranteed on every
+ * runtime, so `null` signals "fall back to a plain validated text input"
+ * rather than a broken dropdown. Shared by every timezone `<select>` in the
+ * product (onboarding, account create/edit) so the fallback behavior can
+ * never drift between them.
+ */
+export function listSupportedTimeZones(): string[] | null {
+  try {
+    const supported = (
+      Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
+    ).supportedValuesOf?.('timeZone');
+    return supported !== undefined && supported.length > 0 ? supported : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A UX suggestion only — always re-validated against `isValidTimeZone` before use, never trusted as-is. */
+export function detectBrowserTimeZone(): string | null {
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return isValidTimeZone(detected) ? detected : null;
+  } catch {
+    return null;
+  }
+}
+
 /** True when the zone observes a different offset at some point in the given year. */
 export function observesDstInYear(timeZone: TimeZoneId, year: number): boolean {
   const firstDay = new Date(Date.UTC(year, 0, 1, 12));

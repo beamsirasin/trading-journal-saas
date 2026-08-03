@@ -375,3 +375,128 @@ function toActiveTradingAccountSummary(account: {
     startingBalance: account.startingBalance,
   };
 }
+
+/**
+ * Every field the Phase 3B account-management UI displays or edits — richer
+ * than `ActiveTradingAccountSummary` (which only carries what the dashboard
+ * and switcher need). Decimal/percentage fields stay strings end to end
+ * (CLAUDE.md §5); `null` on the optional ones is a real "not set" that the
+ * form and list page must render as absent, not as an empty string.
+ */
+export interface TradingAccountRecord {
+  readonly id: string;
+  readonly name: string;
+  readonly brokerName: string | null;
+  readonly platformName: string | null;
+  readonly accountMode: AccountMode;
+  readonly baseCurrency: string;
+  readonly startingBalance: string;
+  readonly timezone: string;
+  readonly riskPerTradePercent: string | null;
+  readonly maximumDailyLossPercent: string | null;
+  readonly isArchived: boolean;
+  readonly createdAt: Date;
+}
+
+function toTradingAccountRecord(account: {
+  id: string;
+  name: string;
+  brokerName: string | null;
+  platformName: string | null;
+  accountMode: string;
+  baseCurrency: string;
+  startingBalance: string;
+  timezone: string;
+  riskPerTradePercent: string | null;
+  maximumDailyLossPercent: string | null;
+  isArchived: boolean;
+  createdAt: Date;
+}): TradingAccountRecord {
+  return {
+    id: account.id,
+    name: account.name,
+    brokerName: account.brokerName,
+    platformName: account.platformName,
+    accountMode: account.accountMode as AccountMode,
+    baseCurrency: account.baseCurrency,
+    startingBalance: account.startingBalance,
+    timezone: account.timezone,
+    riskPerTradePercent: account.riskPerTradePercent,
+    maximumDailyLossPercent: account.maximumDailyLossPercent,
+    isArchived: account.isArchived,
+    createdAt: account.createdAt,
+  };
+}
+
+/**
+ * Every trading account (active and archived) in the caller's active
+ * workspace — the account-management page's one data source for both its
+ * "active accounts" and "archived accounts" sections. Ordered oldest first,
+ * matching the same deterministic ordering `getActiveTradingAccount`'s
+ * fallback and the archive service's fallback selection already use.
+ */
+export async function listWorkspaceTradingAccounts(): Promise<TradingAccountRecord[]> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const rows = await db.query.tradingAccounts.findMany({
+    where: eq(tradingAccounts.workspaceId, workspaceId),
+    orderBy: [asc(tradingAccounts.createdAt), asc(tradingAccounts.id)],
+  });
+
+  return rows.map(toTradingAccountRecord);
+}
+
+/**
+ * A single account, authorized against the caller's active workspace.
+ * Returns `null` both when the ID does not exist at all AND when it belongs
+ * to another workspace — deliberately indistinguishable, so the edit page
+ * can render an ordinary "not found" without ever revealing that a given ID
+ * belongs to someone else's tenant.
+ */
+export async function getWorkspaceTradingAccountById(
+  accountId: string,
+): Promise<TradingAccountRecord | null> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const account = await db.query.tradingAccounts.findFirst({
+    where: and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)),
+  });
+
+  return account === undefined ? null : toTradingAccountRecord(account);
+}
+
+/**
+ * Non-archived accounts in the caller's active workspace, for the app-shell
+ * account switcher — an archived account must never appear as a selectable
+ * option (Phase 3B brief). Same summary shape as `getActiveTradingAccount`
+ * since the switcher shows exactly those fields (name, mode, currency).
+ */
+export async function listSwitchableTradingAccounts(): Promise<ActiveTradingAccountSummary[]> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const rows = await db.query.tradingAccounts.findMany({
+    where: and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
+    orderBy: [asc(tradingAccounts.createdAt), asc(tradingAccounts.id)],
+  });
+
+  return rows.map(toActiveTradingAccountSummary);
+}
+
+/**
+ * The one centralized permission decision behind every trading-account
+ * mutation (create/edit/activate/archive/restore) — Phase 3B brief's "Role
+ * authorization" section. Currently just `requireWorkspaceRole(workspaceId,
+ * 'member')`: this project's only role in active use is `'owner'` (every
+ * personal workspace's sole member — ADR 0011), and nothing in current
+ * policy distinguishes owner-only vs member-permitted account actions, so
+ * `'member'` is the least-restrictive boundary consistent with "preserve
+ * existing policy." A future shared-workspace policy that wants e.g.
+ * archiving restricted to `'owner'` changes this ONE function, not every
+ * action that calls it.
+ */
+export async function requireTradingAccountManagement(workspaceId: string): Promise<WorkspaceRole> {
+  return requireWorkspaceRole(workspaceId, 'member');
+}

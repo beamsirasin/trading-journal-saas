@@ -59,3 +59,38 @@ export type OnboardingStepOneInput = z.input<typeof OnboardingStepOneSchema>;
 export type OnboardingStepTwoInput = z.input<typeof OnboardingStepTwoSchema>;
 export type OnboardingSubmitInput = z.input<typeof OnboardingSubmitSchema>;
 export type OnboardingSubmitData = z.output<typeof OnboardingSubmitSchema>;
+
+/**
+ * Phase 3B reuses this exact field set for creating and editing any trading
+ * account beyond onboarding's first one — same name/broker/platform/mode/
+ * currency/balance/timezone/risk/max-loss shape, same validators. Aliased
+ * rather than redefined so the two phases can never silently drift apart;
+ * `AccountFieldsSchema` is the name account-management code reaches for so it
+ * reads as what it is, not as "reusing onboarding's schema."
+ */
+export const AccountFieldsSchema = OnboardingSubmitSchema;
+export type AccountFieldsInput = OnboardingSubmitInput;
+export type AccountFieldsData = OnboardingSubmitData;
+
+/**
+ * `.strict()` on both: an update/create payload that carries an unexpected
+ * key (`isArchived`, `activeTradingAccountId`, `workspaceId`, anything not
+ * one of the fields above) fails validation outright rather than silently
+ * stripping it. Onboarding's own `OnboardingSubmitSchema` deliberately stays
+ * non-strict (Zod's default "strip unknown keys" already made a forged
+ * `workspaceId` harmless there — see its action's own doc comment); Phase 3B
+ * additionally requires REJECTING such a payload outright, so the two
+ * schemas are not merged into one `.strict()` definition.
+ */
+export const CreateAccountSchema = AccountFieldsSchema.extend({
+  /** Client-generated once per creation intent; validated as a UUID, never trusted as an authorization boundary — see `trading-account-management.ts`. */
+  mutationKey: z.string().uuid(),
+  setActive: z.boolean().optional().default(false),
+}).strict();
+
+export const UpdateAccountSchema = AccountFieldsSchema.strict();
+
+export type CreateAccountInput = z.input<typeof CreateAccountSchema>;
+export type CreateAccountData = z.output<typeof CreateAccountSchema>;
+export type UpdateAccountInput = z.input<typeof UpdateAccountSchema>;
+export type UpdateAccountData = z.output<typeof UpdateAccountSchema>;
