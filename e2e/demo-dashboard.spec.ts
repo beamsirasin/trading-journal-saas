@@ -10,11 +10,16 @@ import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 test.use({ storageState: authStateFile });
 
 /**
- * The demo dashboard, on both routes that render it.
+ * The demo dashboard, on the one route that still renders it.
  *
- * `/en/demo` is public and `/en/app` is inside the shell, but both mount the
- * same component — so the suite runs the same checks against each and would
- * catch the two drifting apart.
+ * `/en/app` used to mount this same fixture-driven component (Phase 1.1),
+ * but Phase 3A replaced it with a real, honest dashboard
+ * (`src/components/dashboard/empty-trading-dashboard.tsx`) once a genuine
+ * trading account exists — no invented P&L, win rate, or chart. `/en/demo`
+ * (public, marketing) is the only surviving consumer of `DemoDashboard`,
+ * so this array is now a single-element list rather than a two-route
+ * parameterization; kept as an array (not inlined) so a future public demo
+ * variant can rejoin it the same way `/en/app` used to.
  *
  * PHASE 1.1. Locale-prefixed (`localePrefix: 'always'`) and dashboard-
  * simplified: only four headline KPIs (Net P&L, Actual Win Rate, Actual
@@ -24,7 +29,7 @@ test.use({ storageState: authStateFile });
  * demo-dashboard.tsx`'s doc comment and its Vitest coverage in
  * `demo-dashboard.test.tsx`.
  */
-const ROUTES = ['/en/demo', '/en/app'] as const;
+const ROUTES = ['/en/demo'] as const;
 
 /**
  * The trade list ships two presentations and hides one with CSS, so both are
@@ -46,7 +51,6 @@ const selectRange = async (page: Page, label: string) => {
 test.describe('demo dashboard', () => {
   for (const route of ROUTES) {
     test(`${route} is explicitly labelled as demo data`, async ({ page }) => {
-      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       // The full notice, not just the badge: the badge is hidden below `sm`
@@ -69,7 +73,6 @@ test.describe('demo dashboard', () => {
      * `/en/app/analytics`, asserted separately below.
      */
     test(`${route} shows the four headline KPIs`, async ({ page }) => {
-      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       for (const label of ['Net P&L', 'Actual Win Rate', 'Actual Average R', 'Discipline Score']) {
@@ -78,7 +81,6 @@ test.describe('demo dashboard', () => {
     });
 
     test(`${route} renders the cumulative R chart with an accessible table`, async ({ page }) => {
-      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       const figure = page.getByRole('figure').filter({ hasText: 'Cumulative R' }).first();
@@ -97,7 +99,6 @@ test.describe('demo dashboard', () => {
      * cost" figure now exclusive to `/en/app/analytics` (asserted below).
      */
     test(`${route} shows the top three mistakes ranked by cost`, async ({ page }) => {
-      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       const section = page.locator('section[aria-labelledby="mistakes-heading"]');
@@ -109,7 +110,6 @@ test.describe('demo dashboard', () => {
     });
 
     test(`${route} shows both outcome axes on recent trades`, async ({ page }) => {
-      test.skip(route === '/en/app' && !hasE2eDatabase, E2E_SKIP_REASON);
       await page.goto(route);
 
       // A recent-trades list showing only P&L would be the conventional

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { check, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 import { users } from './auth';
+import { tradingAccounts } from './trading-accounts';
 import { workspaces } from './workspaces';
 
 /**
@@ -28,6 +29,20 @@ export const userPreferences = pgTable(
       .primaryKey()
       .references(() => users.id, { onDelete: 'cascade' }),
     activeWorkspaceId: uuid('active_workspace_id').references(() => workspaces.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * The real FK only guarantees "this row references *some* existing,
+     * non-deleted trading account" — it cannot express "...that belongs to
+     * this user's CURRENT active workspace," a cross-table condition FKs
+     * cannot encode. That check is an application-level authoritative
+     * boundary: `src/server/auth/dal.ts`'s active-trading-account resolution
+     * re-validates workspace ownership and non-archived status on every
+     * read, and repairs (clears) a stale/invalid reference rather than
+     * trusting it — the same "verify, don't just reference" posture
+     * `getActiveWorkspaceContext` already takes for `activeWorkspaceId`.
+     */
+    activeTradingAccountId: uuid('active_trading_account_id').references(() => tradingAccounts.id, {
       onDelete: 'set null',
     }),
     locale: text('locale').notNull().default('en'),

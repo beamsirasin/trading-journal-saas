@@ -17,6 +17,8 @@ export const AUDIT_ACTIONS = [
   'user_preferences.locale_changed',
   'user_preferences.theme_changed',
   'user_preferences.timezone_changed',
+  'trading_account.created',
+  'workspace.onboarding_completed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

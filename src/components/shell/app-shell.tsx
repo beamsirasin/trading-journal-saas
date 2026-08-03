@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
-import type { SessionUser } from '@/server/auth/dal';
+import type { ActiveTradingAccountSummary, SessionUser } from '@/server/auth/dal';
 import { PreferencesSync } from '@/components/auth/preferences-sync';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
@@ -13,6 +13,7 @@ import { LanguageSwitcher } from './language-switcher';
 import { MobileNav } from './mobile-nav';
 import { SidebarNav } from './sidebar-nav';
 import { SkipLink } from './skip-link';
+import { TradingAccountIndicator } from './trading-account-indicator';
 
 /**
  * Authenticated application shell.
@@ -32,12 +33,15 @@ export async function AppShell({
   workspaceName,
   dbTheme,
   dbLocale,
+  activeAccount,
 }: {
   children: ReactNode;
   user: SessionUser;
   workspaceName: string;
   dbTheme: string;
   dbLocale: string;
+  /** `null` while onboarding is incomplete — no trading account exists yet. */
+  activeAccount: ActiveTradingAccountSummary | null;
 }) {
   const t = await getTranslations('appNav');
 
@@ -54,6 +58,7 @@ export async function AppShell({
           <MobileNav />
           <Brand href="/app" className="lg:hidden" compact />
           <div className="ml-auto flex items-center gap-2">
+            {activeAccount === null ? null : <TradingAccountIndicator account={activeAccount} />}
             <DemoBadge className="hidden sm:inline-flex" />
             <LanguageSwitcher />
             <ThemeToggle />

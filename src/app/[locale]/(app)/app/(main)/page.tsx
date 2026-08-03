@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { DemoDashboard } from '@/components/dashboard/demo-dashboard';
+import { getActiveTradingAccount } from '@/server/auth/dal';
+import {
+  EmptyTradingDashboard,
+  NoActiveTradingAccountRecovery,
+} from '@/components/dashboard/empty-trading-dashboard';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
@@ -32,26 +36,28 @@ export async function generateMetadata({
 }
 
 /**
- * Application overview.
- *
- * Renders the same `DemoDashboard` as the public `/demo` route, from one
- * component. Two copies of "the dashboard" — a polished marketing one and a
- * thinner in-app one — is how a demo starts promising something the product
- * does not deliver.
- *
- * NO AUTHENTICATION GUARDS THIS ROUTE. That is a Phase 02 concern and is
- * recorded as an open risk in the phase document; it is safe today only
- * because the page holds fixtures rather than anyone's data.
+ * Application overview — real, not the fixture-driven `DemoDashboard` the
+ * public `/demo` route still shows. `(app)/app/(main)/layout.tsx` already
+ * guarantees onboarding is complete by the time this renders, so an active
+ * trading account normally exists; `getActiveTradingAccount()` still
+ * re-validates rather than assuming so (see its own doc comment — an
+ * account can be archived later, Phase 3B), and this page shows the
+ * recovery state instead of pretending one is selected when none is.
  */
 export default async function AppOverviewPage({ params }: { params: Promise<PageParams> }) {
   const { locale } = await params;
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('dashboard');
+  const account = await getActiveTradingAccount();
 
   return (
     <Container width="wide" className="flex flex-col gap-8 py-8">
       <PageHeader title={t('title')} description={t('description')} />
-      <DemoDashboard />
+      {account === null ? (
+        <NoActiveTradingAccountRecovery />
+      ) : (
+        <EmptyTradingDashboard account={account} />
+      )}
     </Container>
   );
 }

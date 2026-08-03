@@ -43,7 +43,14 @@
     "account": {
       "menuLabel": "Account menu",
       "workspace": "Workspace",
-      "logout": "Log out"
+      "logout": "Log out",
+      "activeTradingAccount": "Active trading account",
+      "accountModeValues": {
+        "live": "Live",
+        "demo": "Demo",
+        "prop": "Prop",
+        "backtest": "Backtest"
+      }
     }
   },
   "footer": {
@@ -304,6 +311,21 @@
   "dashboard": {
     "title": "Overview",
     "description": "What is happening with your trading right now.",
+    "activeAccountSubtitle": "Your active trading account",
+    "accountModeLabel": "Account mode",
+    "accountModeValues": {
+      "live": "Live",
+      "demo": "Demo",
+      "prop": "Prop",
+      "backtest": "Backtest"
+    },
+    "baseCurrencyLabel": "Base currency",
+    "startingBalanceLabel": "Starting balance",
+    "noTradesTitle": "No trades recorded yet",
+    "noTradesDescription": "Trade journaling is coming in the next phase. Once it ships, every trade you log here will show how much of your strategy's edge you actually captured.",
+    "noActiveAccountTitle": "No active trading account",
+    "noActiveAccountDescription": "Your workspace does not have a usable trading account right now. Set one up to continue.",
+    "noActiveAccountCta": "Set up a trading account",
     "netPnl": "Net P&L",
     "netPnlHint": "After commission, fees and swap.",
     "actualWinRate": "Actual Win Rate",
@@ -474,6 +496,44 @@
       "note": "Prices have not been set and nothing can be purchased. Billing arrives in a later release.",
       "seePlans": "See the plans"
     }
+  },
+  "onboarding": {
+    "title": "Set up your trading account",
+    "description": "A few details about how you trade, then you're in. This only takes a minute.",
+    "stepsLabel": "Onboarding steps",
+    "stepOneLabel": "Trading setup",
+    "stepTwoLabel": "Risk preferences",
+    "stepOneTitle": "Your trading setup",
+    "stepTwoTitle": "Risk preferences",
+    "nameLabel": "Trading account name",
+    "brokerLabel": "Broker",
+    "platformLabel": "Platform",
+    "accountModeLabel": "Account mode",
+    "accountModeValues": {
+      "live": "Live",
+      "demo": "Demo",
+      "prop": "Prop",
+      "backtest": "Backtest"
+    },
+    "baseCurrencyLabel": "Base currency",
+    "startingBalanceLabel": "Starting balance",
+    "timezoneLabel": "Timezone",
+    "riskPerTradeLabel": "Default risk per trade",
+    "maximumDailyLossLabel": "Maximum daily loss",
+    "optionalSuffix": "(optional)",
+    "back": "Back",
+    "continue": "Continue",
+    "finish": "Finish",
+    "errors": {
+      "required": "Enter a trading account name.",
+      "invalidCharacters": "Remove any special or unusual characters.",
+      "invalidBaseCurrency": "Use 2-10 uppercase letters or numbers, e.g. USD or BTC.",
+      "invalidBalance": "Enter a starting balance of 0 or more, e.g. 10000.",
+      "invalidTimezone": "Choose a valid timezone.",
+      "invalidPercent": "Enter a percentage greater than 0 and up to 100."
+    },
+    "submitValidationError": "Some details are not valid. Please check the form and try again.",
+    "submitUnexpectedError": "Something went wrong finishing setup. Please try again."
   },
   "auth": {
     "loginTitle": "Log in",
