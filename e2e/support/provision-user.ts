@@ -10,6 +10,7 @@ import {
   tradingAccounts,
   userPreferences,
   users,
+  workspaceEntitlements,
   workspaceMembers,
   workspaces,
 } from '../../src/server/db/schema';
@@ -40,11 +41,35 @@ import {
  * workspace, one trading account, and `onboardingCompletedAt` alongside the
  * user. Only `e2e/onboarding.spec.ts` needs the pre-onboarding state, and
  * passes `onboarded: false` explicitly.
+ *
+ * `entitlement` (Phase 3C): every onboarded fixture gets a real
+ * `workspace_entitlements` row, matching what `completeOnboarding` would
+ * have produced — a 7-day trial by default, so every EXISTING E2E test that
+ * provisions an onboarded user still sees ordinary trial-active state (the
+ * new trial banner, unblocked create/restore) rather than the fail-closed
+ * "no entitlement row" anomaly state. Pass an override to construct an
+ * expired-trial, active-plan, or over-limit fixture directly — a "trusted
+ * test-only method to expire the trial" (Phase 3C brief), not a code path
+ * reachable from any production route. `additionalAccounts` seeds extra
+ * non-archived accounts directly (bypassing the create-account entitlement
+ * check entirely, since this is fixture setup, not a user action) — needed
+ * to construct an already-over-limit workspace, which the real UI can never
+ * produce on its own.
  */
 export async function provisionVerifiedUser(
   connectionUrl: string,
   { email, password, name }: { email: string; password: string; name: string },
-  options: { readonly onboarded?: boolean } = {},
+  options: {
+    readonly onboarded?: boolean;
+    readonly entitlement?: {
+      readonly status?: 'trialing' | 'active' | 'expired' | 'canceled';
+      readonly planKey?: 'starter' | 'pro' | 'elite' | null;
+      readonly trialEndsAt?: Date | null;
+    };
+    readonly additionalAccounts?: number;
+    /** Extra accounts seeded already archived — for restore-blocked fixtures. */
+    readonly additionalArchivedAccounts?: number;
+  } = {},
 ): Promise<{ id: string; email: string; password: string; name: string }> {
   const onboarded = options.onboarded ?? true;
   const guardedUrl = validateTestDatabaseEnvironment().testUrl;
@@ -53,7 +78,15 @@ export async function provisionVerifiedUser(
   }
   const client = postgres(connectionUrl, { max: 1 });
   const db = drizzle(client, {
-    schema: { users, accounts, workspaces, workspaceMembers, userPreferences, tradingAccounts },
+    schema: {
+      users,
+      accounts,
+      workspaces,
+      workspaceMembers,
+      userPreferences,
+      tradingAccounts,
+      workspaceEntitlements,
+    },
   });
 
   try {
@@ -108,6 +141,47 @@ export async function provisionVerifiedUser(
         activeWorkspaceId: workspaceId,
         activeTradingAccountId: accountId,
       });
+
+      const entitlement = options.entitlement ?? {};
+      const status = entitlement.status ?? 'trialing';
+      const trialEndsAt =
+        entitlement.trialEndsAt === undefined
+          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          : entitlement.trialEndsAt;
+      await db.insert(workspaceEntitlements).values({
+        workspaceId,
+        status,
+        planKey: entitlement.planKey ?? null,
+        trialStartedAt: new Date(),
+        trialEndsAt,
+      });
+
+      const additionalAccounts = options.additionalAccounts ?? 0;
+      for (let i = 0; i < additionalAccounts; i += 1) {
+        await db.insert(tradingAccounts).values({
+          id: generateId(),
+          workspaceId,
+          name: `Additional Account ${i + 1}`,
+          accountMode: 'live',
+          baseCurrency: 'USD',
+          startingBalance: '5000',
+          timezone: 'Asia/Bangkok',
+        });
+      }
+
+      const additionalArchivedAccounts = options.additionalArchivedAccounts ?? 0;
+      for (let i = 0; i < additionalArchivedAccounts; i += 1) {
+        await db.insert(tradingAccounts).values({
+          id: generateId(),
+          workspaceId,
+          name: `Archived Account ${i + 1}`,
+          accountMode: 'live',
+          baseCurrency: 'USD',
+          startingBalance: '5000',
+          timezone: 'Asia/Bangkok',
+          isArchived: true,
+        });
+      }
     }
 
     return { id: userId, email, password, name };

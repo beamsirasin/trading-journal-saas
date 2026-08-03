@@ -24,6 +24,8 @@ export {
   wallClockAt,
 } from './timezone';
 
+export { createFixedClock, systemClock, type Clock } from './clock';
+
 export {
   calendarDateIn,
   dayRangeIn,

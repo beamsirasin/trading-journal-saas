@@ -2,11 +2,13 @@ import 'server-only';
 
 import { and, asc, eq } from 'drizzle-orm';
 
+import { systemClock, type Clock } from '@/lib/time';
 import type { OnboardingSubmitData } from '@/lib/trading-accounts/schema';
 import { getDb } from '@/server/db/client';
 import { tradingAccounts, userPreferences, workspaceMembers, workspaces } from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
+import { startTrialInTx } from './entitlement';
 
 export interface CompleteOnboardingResult {
   readonly accountId: string;
@@ -44,6 +46,7 @@ export async function completeOnboarding(
   workspaceId: string,
   userId: string,
   input: OnboardingSubmitData,
+  clock: Clock = systemClock,
 ): Promise<CompleteOnboardingResult> {
   const db = getDb();
 
@@ -178,6 +181,11 @@ export async function completeOnboarding(
       workspaceId,
       actorUserId: userId,
     });
+
+    // Only on this fresh-completion branch, never the "already completed"
+    // replay above — a repeated onboarding completion must never restart or
+    // extend the trial (Phase 3C brief).
+    await startTrialInTx(tx, workspaceId, userId, clock);
 
     return { accountId, alreadyCompleted: false };
   });

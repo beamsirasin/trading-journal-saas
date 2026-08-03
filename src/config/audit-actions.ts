@@ -23,6 +23,9 @@ export const AUDIT_ACTIONS = [
   'trading_account.activated',
   'trading_account.archived',
   'trading_account.restored',
+  'workspace.trial_started',
+  'workspace.trial_expired',
+  'workspace.entitlement_changed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

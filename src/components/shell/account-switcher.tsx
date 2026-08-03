@@ -33,12 +33,16 @@ import { Link, useRouter } from '@/i18n/navigation';
 export function AccountSwitcher({
   activeAccount,
   accounts,
+  canCreateAccount,
 }: {
   activeAccount: ActiveTradingAccountSummary;
   accounts: readonly ActiveTradingAccountSummary[];
+  /** Gates the "Create account" menu entry only — a navigation link, not a mutation, so the real enforcement still happens on `/app/accounts/new` and at submission. */
+  canCreateAccount: boolean;
 }) {
   const t = useTranslations('accounts.switcher');
   const tOnboarding = useTranslations('onboarding');
+  const tEntitlements = useTranslations('entitlements');
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -133,9 +137,25 @@ export function AccountSwitcher({
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="gap-2">
-          <Link href="/app/accounts/new">
+          {/*
+            Still a real link even when blocked — `/app/accounts/new` is the
+            one place that explains WHY creation is unavailable and offers
+            next steps (upgrade, view plans). A fully disabled menu item
+            here would dead-end the user with no explanation, so this only
+            signals unavailability visually (muted, no icon emphasis) rather
+            than blocking the click.
+          */}
+          <Link
+            href="/app/accounts/new"
+            className={canCreateAccount ? undefined : 'text-muted-foreground'}
+          >
             <Plus className="size-4" aria-hidden="true" />
             {t('createAccount')}
+            {canCreateAccount ? null : (
+              <span className="text-muted-foreground ml-auto text-xs">
+                {tEntitlements('upgradeRequired')}
+              </span>
+            )}
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>

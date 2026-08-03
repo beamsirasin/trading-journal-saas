@@ -5,10 +5,14 @@ import { headers } from 'next/headers';
 import { cache } from 'react';
 
 import { getAuth } from '@/lib/auth/server';
+import type { EffectiveEntitlement } from '@/lib/entitlements/resolve';
 import type { AccountMode } from '@/lib/trading-accounts/constants';
 import { getDb } from '@/server/db/client';
 import { tradingAccounts, userPreferences, workspaceMembers, workspaces } from '@/server/db/schema';
+import { readEffectiveEntitlement } from '@/server/services/entitlement';
 import { ensurePersonalWorkspace } from '@/server/services/workspace-provisioning';
+
+export type { EffectiveEntitlement } from '@/lib/entitlements/resolve';
 
 /**
  * The one centralized, server-only authorization boundary (CLAUDE.md §4,
@@ -500,3 +504,25 @@ export async function listSwitchableTradingAccounts(): Promise<ActiveTradingAcco
 export async function requireTradingAccountManagement(workspaceId: string): Promise<WorkspaceRole> {
   return requireWorkspaceRole(workspaceId, 'member');
 }
+
+/**
+ * The caller's active workspace's effective entitlement snapshot — display
+ * only (CLAUDE.md §4's "never trust the browser clock" extended: this is
+ * also never a lock, so it must never itself gate a mutation). Every write
+ * that actually needs to enforce a limit re-resolves it under a row lock
+ * inside its own transaction via `lockAndResolveEntitlement`
+ * (`src/server/services/entitlement.ts`) instead of trusting this value.
+ *
+ * `null` only for the fail-closed anomaly of a completed-onboarding
+ * workspace with no entitlement row — the migration backfilled every such
+ * workspace and `completeOnboarding` starts one for every new workspace
+ * going forward, so callers treat `null` as "nothing to show yet" rather
+ * than design a real UI state around it.
+ */
+export const getWorkspaceEntitlement = cache(
+  async function getWorkspaceEntitlement(): Promise<EffectiveEntitlement | null> {
+    const { workspaceId } = await getActiveWorkspaceContext();
+    const db = getDb();
+    return readEffectiveEntitlement(db, workspaceId);
+  },
+);

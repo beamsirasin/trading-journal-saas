@@ -1,8 +1,13 @@
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
-import type { ActiveTradingAccountSummary, SessionUser } from '@/server/auth/dal';
+import type {
+  ActiveTradingAccountSummary,
+  EffectiveEntitlement,
+  SessionUser,
+} from '@/server/auth/dal';
 import { PreferencesSync } from '@/components/auth/preferences-sync';
+import { TrialBanner } from '@/components/entitlements/trial-banner';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 
@@ -35,6 +40,7 @@ export async function AppShell({
   dbLocale,
   activeAccount,
   switchableAccounts,
+  entitlement,
 }: {
   children: ReactNode;
   user: SessionUser;
@@ -45,6 +51,8 @@ export async function AppShell({
   activeAccount: ActiveTradingAccountSummary | null;
   /** Every non-archived account in the active workspace — the switcher's menu. Empty/unused while `activeAccount` is `null`. */
   switchableAccounts: readonly ActiveTradingAccountSummary[];
+  /** `null` while onboarding is incomplete — no entitlement row exists yet (the trial starts on completion). */
+  entitlement: EffectiveEntitlement | null;
 }) {
   const t = await getTranslations('appNav');
 
@@ -62,7 +70,11 @@ export async function AppShell({
           <Brand href="/app" className="lg:hidden" compact />
           <div className="ml-auto flex items-center gap-2">
             {activeAccount === null ? null : (
-              <AccountSwitcher activeAccount={activeAccount} accounts={switchableAccounts} />
+              <AccountSwitcher
+                activeAccount={activeAccount}
+                accounts={switchableAccounts}
+                canCreateAccount={entitlement?.canCreateAccount ?? false}
+              />
             )}
             <DemoBadge className="hidden sm:inline-flex" />
             <LanguageSwitcher />
@@ -96,6 +108,7 @@ export async function AppShell({
         </aside>
 
         <main id={MAIN_CONTENT_ID} tabIndex={-1} className="min-w-0 flex-1">
+          {entitlement === null ? null : <TrialBanner entitlement={entitlement} />}
           {children}
         </main>
       </div>

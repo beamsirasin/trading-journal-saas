@@ -45,6 +45,7 @@
     "account": {
       "menuLabel": "Account menu",
       "workspace": "Workspace",
+      "planAndBilling": "Plan & billing",
       "logout": "Log out",
       "activeTradingAccount": "Active trading account",
       "accountModeValues": {
@@ -588,7 +589,13 @@
       "not_found": "This trading account could not be found.",
       "forbidden": "You do not have permission to do that.",
       "archived": "An archived account cannot be made active. Restore it first.",
-      "last_account": "You cannot archive your last trading account. Create another trading account first."
+      "last_account": "You cannot archive your last trading account. Create another trading account first.",
+      "trial_expired": "Your trial has expired. Upgrade your plan to create or restore trading accounts.",
+      "subscription_canceled": "Your subscription has been canceled. Choose a plan to create or restore trading accounts.",
+      "account_limit_reached": "You've used all the trading accounts your plan allows. Upgrade your plan or archive an account you're not using.",
+      "workspace_over_limit": "This workspace has more trading accounts than your plan allows. Archive an account or upgrade your plan before creating or restoring another.",
+      "entitlement_unavailable": "We couldn't check this workspace's plan right now. Please try again in a moment.",
+      "unknown_plan": "This workspace's plan could not be recognized. Please contact support."
     },
     "switcher": {
       "menuLabel": "Switch trading account",
@@ -596,6 +603,53 @@
       "currentAccount": "Current account",
       "manageAccounts": "Manage accounts",
       "createAccount": "Create account"
+    }
+  },
+  "entitlements": {
+    "banner": {
+      "regionLabel": "Trial status",
+      "trialActive": "Free trial",
+      "daysRemaining": "{days, plural, one {# day remaining} other {# days remaining}}",
+      "lessThanOneDay": "Less than one day remaining",
+      "trialExpired": "Trial expired",
+      "accountUsage": "{used}/{limit} trading accounts",
+      "viewPlans": "View plans"
+    },
+    "expiredNotice": {
+      "title": "Your trial has expired",
+      "body": "Your existing trading accounts and data remain fully accessible. Upgrade to create new accounts or restore archived ones.",
+      "viewPlans": "View plans"
+    },
+    "overLimitNotice": {
+      "title": "This workspace is over its plan's account limit",
+      "body": "Archive an account or upgrade your plan to create or restore another trading account."
+    },
+    "usage": {
+      "label": "Account usage",
+      "value": "{used} of {limit} trading accounts used",
+      "remaining": "{count, plural, one {# account remaining} other {# accounts remaining}}",
+      "limitReached": "Account limit reached"
+    },
+    "upgradeRequired": "Upgrade required",
+    "createUnavailable": "Create unavailable",
+    "restoreUnavailable": "Restore unavailable",
+    "archiveToReduceUsage": "Archive an account to reduce usage.",
+    "plan": {
+      "title": "Plan & billing",
+      "description": "Your workspace's current plan, trial status, and trading-account usage.",
+      "currentPlanLabel": "Current plan",
+      "statusTrialing": "Trial active",
+      "statusActive": "Active",
+      "statusExpired": "Expired",
+      "statusCanceled": "Canceled",
+      "trialEndsLabel": "Trial ends",
+      "usageLabel": "Account usage",
+      "plansHeading": "Available plans",
+      "accountAllowance": "{count} trading accounts",
+      "provisionalNote": "This limit is provisional and may change.",
+      "paymentNotConnected": "Online payment is not connected yet.",
+      "comingSoon": "Coming soon",
+      "currentPlanBadge": "Your plan"
     }
   },
   "auth": {

@@ -14,3 +14,4 @@ export * from './workspaces';
 export * from './trading-accounts';
 export * from './user-preferences';
 export * from './audit-logs';
+export * from './workspace-entitlements';

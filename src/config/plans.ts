@@ -1,11 +1,10 @@
 /**
- * Subscription plan definitions — PRESENTATION ONLY.
- *
- * Phase 01 renders these on the marketing site. They are not entitlements:
- * nothing here is enforced, no payment provider is connected, and no server
- * check reads this file. Phase 04 owns real entitlement checks, which must be
- * server-side and evaluated in the same transaction as the write they gate
- * (CLAUDE.md §4).
+ * Subscription plan definitions — the one registry for plan IDs, names, and
+ * account limits. Phase 01 rendered these on the marketing site as
+ * presentation only; Phase 3C is the first server-side reader
+ * (`src/lib/entitlements/resolve.ts`), evaluated in the same transaction as
+ * the write it gates (CLAUDE.md §4). No second, duplicated registry exists —
+ * every entitlement check and every plan-display surface reads this file.
  *
  * PRICES ARE DELIBERATELY ABSENT. No amounts have been approved, and an
  * invented number on a public pricing page is a commitment the product has
@@ -14,7 +13,8 @@
  *
  * Account limits come from the open product question in
  * docs/product-spec.md §9 (1 / 3 / 10) and are marked provisional until
- * Phase 04 validates them against real usage.
+ * real usage validates them — `limitProvisional` is a display hint only,
+ * never itself a reason to bypass enforcement.
  *
  * PHASE 1.1 CHANGE — `tagline` and `features` moved to
  * `messages/{locale}.json` under `pricing.plans.{id}`, since they are

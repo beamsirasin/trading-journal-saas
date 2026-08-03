@@ -60,7 +60,12 @@ const SECONDARY: ActiveTradingAccountSummary = {
 function renderSwitcher(props: Partial<Parameters<typeof AccountSwitcher>[0]> = {}) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <AccountSwitcher activeAccount={MAIN} accounts={[MAIN, SECONDARY]} {...props} />
+      <AccountSwitcher
+        activeAccount={MAIN}
+        accounts={[MAIN, SECONDARY]}
+        canCreateAccount={true}
+        {...props}
+      />
     </NextIntlClientProvider>,
   );
 }

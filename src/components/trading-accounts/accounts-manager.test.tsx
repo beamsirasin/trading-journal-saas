@@ -51,6 +51,7 @@ function renderManager(props: Partial<Parameters<typeof AccountsManager>[0]> = {
         activeAccounts={[account({ id: 'account-1', name: 'Main Account' })]}
         archivedAccounts={[]}
         activeAccountId="account-1"
+        entitlement={null}
         {...props}
       />
     </NextIntlClientProvider>,
