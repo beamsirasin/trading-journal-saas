@@ -265,8 +265,26 @@ test.describe('login and registration', () => {
     await page.getByLabel('Confirm password').fill(E2E_VALID_PASSWORD);
     await page.getByRole('button', { name: 'Create account' }).click();
 
+    // 1. Reaches the localized verification-pending route.
     await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
-    await expect(page.getByText(new RegExp(email.replace('.', '\\.')))).toBeVisible();
+    // 2. Generic verification messaging is visible — never a distinct
+    // "account created"/"check your inbox, <name>" message that would
+    // differ from the anti-enumeration screen a duplicate attempt shows.
+    await expect(
+      page.getByText(/If this email can be used to register, we have sent a verification link\./),
+    ).toBeVisible();
+    // 3. The Resend control is present.
+    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
+    // 4. The Login link is present.
+    await expect(page.getByRole('link', { name: 'Back to log in' })).toBeVisible();
+    // 5. The Forgot-password link is present (the route already exists).
+    await expect(page.getByRole('link', { name: 'Forgot password?' })).toBeVisible();
+    // 6/7. No wording reveals new/existing/verified/unverified status, and
+    // the submitted address itself is never rendered as visible page text —
+    // only the URL (needed for the Resend button's own request) carries it.
+    const bodyText = (await page.textContent('body')) ?? '';
+    expect(bodyText).not.toContain(email);
+    expect(bodyText).not.toMatch(/already exists|already registered|new account|unverified/i);
 
     // The account is real: logging in immediately fails because the email
     // is not yet verified (no real delivery provider exists to click a link
@@ -410,32 +428,92 @@ test.describe('login and registration', () => {
     await expect(page.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).not.toBeDisabled();
   });
 
-  test('shows the live requirement checklist and strength meter while typing a password', async ({
+  /**
+   * `E2E_STRONG_PASSWORD` is deliberately long enough to score "strong" on
+   * length alone: `evaluatePasswordStrength` (src/lib/auth/password-policy.ts)
+   * gives `floor((length - 12) / 4)` points for length past the 12-character
+   * minimum, plus at most 1 for character diversity, and needs a total of 3
+   * to reach "strong". At 30 characters that is `floor(18/4) = 4` — already
+   * past the threshold regardless of the diversity bonus, so this is a
+   * deterministic "strong" score, not an incidental one.
+   */
+  const E2E_STRONG_PASSWORD = 'Correct-Horse-Battery-Staple9!';
+
+  test('shows the live requirement checklist and strength meter through their real deterministic states while typing a password', async ({
     page,
   }) => {
     await page.goto('/en/register');
 
     const password = page.getByLabel('Password', { exact: true });
     const uppercaseItem = page.locator('li', { hasText: 'Contains an uppercase letter' });
+    // `PasswordStrengthMeter` renders nothing for an empty password
+    // (`src/components/auth/password-strength-meter.tsx`) — its accessible
+    // name is `"Password strength: <tier>"` on the `role="img"` bar group,
+    // which is the semantic selector Assistive Tech would actually use.
+    const strengthMeter = page.getByRole('img', { name: /^Password strength:/ });
 
+    // 1. The requirements checklist is present from the start.
     await expect(uppercaseItem).toHaveAttribute(
       'aria-label',
       'Contains an uppercase letter: Not met yet',
     );
-    await expect(page.getByText('Does not meet requirements')).toBeVisible();
+    // Nothing has been typed yet — the strength meter is correctly absent,
+    // not merely showing an "insufficient" label.
+    await expect(strengthMeter).toHaveCount(0);
 
+    // 2. A non-empty but weak password: still fails the requirement, and
+    // the strength meter now appears in its "insufficient" state.
     await password.fill('short');
+    await expect(uppercaseItem).toHaveAttribute(
+      'aria-label',
+      'Contains an uppercase letter: Not met yet',
+    );
+    await expect(strengthMeter).toHaveAccessibleName(
+      'Password strength: Does not meet requirements',
+    );
     await expect(page.getByText('Does not meet requirements')).toBeVisible();
 
+    // 3. A password satisfying every requirement flips the checklist item
+    // and moves the meter out of "insufficient".
     await password.fill(E2E_VALID_PASSWORD);
     await expect(uppercaseItem).toHaveAttribute('aria-label', 'Contains an uppercase letter: Met');
-    // Any of the three non-"insufficient" strength labels is acceptable —
-    // the exact band is an implementation detail of evaluatePasswordStrength;
-    // what matters is the meter reacted to a policy-valid password at all.
-    await expect(page.getByText(/^(Weak|Medium|Strong)$/)).toBeVisible();
+    // E2E_VALID_PASSWORD ('Correct-Horse9!', 15 chars) scores exactly one
+    // point (0 from length past the minimum, 1 from character diversity) —
+    // deterministically "Medium", not merely "some non-insufficient tier".
+    await expect(strengthMeter).toHaveAccessibleName('Password strength: Medium');
+    await expect(page.getByText('Medium', { exact: true })).toBeVisible();
+
+    // 4. A fully valid, genuinely long password reaches the "Strong" tier —
+    // the intended final state a real user filling in a strong password sees.
+    await password.fill(E2E_STRONG_PASSWORD);
+    await expect(strengthMeter).toHaveAccessibleName('Password strength: Strong');
+    await expect(page.getByText('Strong', { exact: true })).toBeVisible();
 
     // The button stays disabled until confirm-password also matches.
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
+  });
+
+  test('/th/register shows the localized requirement checklist and strength meter through the same deterministic states', async ({
+    page,
+  }) => {
+    await page.goto('/th/register');
+
+    const password = page.getByLabel('รหัสผ่าน', { exact: true });
+    const uppercaseItem = page.locator('li', { hasText: 'มีตัวพิมพ์ใหญ่' });
+    const strengthMeter = page.getByRole('img', { name: /^ความปลอดภัยของรหัสผ่าน:/ });
+
+    await expect(uppercaseItem).toHaveAttribute('aria-label', 'มีตัวพิมพ์ใหญ่: ยังไม่ผ่าน');
+    await expect(strengthMeter).toHaveCount(0);
+
+    await password.fill('short');
+    await expect(strengthMeter).toHaveAccessibleName('ความปลอดภัยของรหัสผ่าน: ยังไม่เพียงพอ');
+
+    await password.fill(E2E_VALID_PASSWORD);
+    await expect(uppercaseItem).toHaveAttribute('aria-label', 'มีตัวพิมพ์ใหญ่: ผ่านแล้ว');
+    await expect(strengthMeter).toHaveAccessibleName('ความปลอดภัยของรหัสผ่าน: ปานกลาง');
+
+    await password.fill(E2E_STRONG_PASSWORD);
+    await expect(strengthMeter).toHaveAccessibleName('ความปลอดภัยของรหัสผ่าน: แข็งแรง');
   });
 
   test('blocks submission on a password mismatch and shows an accessible error', async ({
@@ -488,6 +566,14 @@ test.describe('login and registration', () => {
     await expect(
       page.getByText(/หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว/),
     ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'กลับไปเข้าสู่ระบบ' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'ลืมรหัสผ่าน?' })).toBeVisible();
+
+    // The submitted address is never rendered as visible page text — only
+    // the URL (needed for the Resend button's own request) carries it.
+    const bodyText = (await page.textContent('body')) ?? '';
+    expect(bodyText).not.toContain(email);
   });
 
   test('/th/register rejects a weak password with the localized policy error', async ({ page }) => {

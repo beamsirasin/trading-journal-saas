@@ -4,6 +4,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { closeDb } from '@/server/db/client';
 import { accounts, auditLogs, rateLimits, users, workspaces } from '@/server/db/schema';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
+import { VALID_TEST_PASSWORD } from '@/test/test-passwords';
 
 /**
  * Exercises Phase 2.1's registration hardening — the password-policy
@@ -44,7 +45,6 @@ function testAdapter(): CapturedTestEmailAdapter {
   return adapter as CapturedTestEmailAdapter;
 }
 
-const VALID_PASSWORD = 'Correct-Horse9!';
 const WEAK_PASSWORD = 'alllowercaseonly';
 
 function signUpEmailRequest(
@@ -214,7 +214,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const response = await signUpEmailRequest(auth, {
         name: 'No Auto Send',
         email,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       expect(response.status).toBe(200);
       const user = await findUserByEmail(email);
@@ -232,7 +232,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const response = await signUpEmailRequest(auth, {
         name: 'New User',
         email,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       expect(response.status).toBe(200);
 
@@ -258,7 +258,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const email = `new-dispatch-${crypto.randomUUID()}@example.test`;
       testAdapter().reset();
 
-      await signUpEmailRequest(auth, { name: 'New User', email, password: VALID_PASSWORD });
+      await signUpEmailRequest(auth, { name: 'New User', email, password: VALID_TEST_PASSWORD });
       const user = await findUserByEmail(email);
       trackUser(user?.id);
       expect(testAdapter().sent.filter((message) => message.to === email)).toHaveLength(0);
@@ -280,7 +280,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const genuineResponse = await signUpEmailRequest(auth, {
         name: 'Original',
         email,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       const original = await findUserByEmail(email);
       trackUser(original?.id);
@@ -289,7 +289,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const duplicateResponse = await signUpEmailRequest(auth, {
         name: 'Impersonator',
         email,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
 
       expect(genuineResponse.status).toBe(200);
@@ -309,7 +309,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const auth = getAuth();
       const email = `dup-password-${crypto.randomUUID()}@example.test`;
 
-      await signUpEmailRequest(auth, { name: 'Original', email, password: VALID_PASSWORD });
+      await signUpEmailRequest(auth, { name: 'Original', email, password: VALID_TEST_PASSWORD });
       const original = await findUserByEmail(email);
       trackUser(original?.id);
       if (original === undefined) throw new Error('expected the first signup to create a user');
@@ -337,7 +337,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const auth = getAuth();
       const email = `dup-dispatch-${crypto.randomUUID()}@example.test`;
 
-      await signUpEmailRequest(auth, { name: 'Original', email, password: VALID_PASSWORD });
+      await signUpEmailRequest(auth, { name: 'Original', email, password: VALID_TEST_PASSWORD });
       const original = await findUserByEmail(email);
       trackUser(original?.id);
       testAdapter().reset();
@@ -345,7 +345,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const duplicateResponse = await signUpEmailRequest(auth, {
         name: 'Impersonator',
         email,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       expect(duplicateResponse.status).toBe(200);
       // The duplicate signup response itself must not have sent anything —
@@ -371,7 +371,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       await signUpEmailRequest(auth, {
         name: 'Original',
         email: lowerEmail,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       const original = await findUserByEmail(lowerEmail);
       trackUser(original?.id);
@@ -380,7 +380,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       await signUpEmailRequest(auth, {
         name: 'Case Variant',
         email: upperVariant,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
 
       const db = getTestDb();
@@ -400,7 +400,11 @@ describe('Registration hardening (real Better Auth + database)', () => {
   describe('existing verified email', () => {
     async function createVerifiedUser(email: string) {
       const auth = getAuth();
-      await signUpEmailRequest(auth, { name: 'Verified User', email, password: VALID_PASSWORD });
+      await signUpEmailRequest(auth, {
+        name: 'Verified User',
+        email,
+        password: VALID_TEST_PASSWORD,
+      });
       const user = await findUserByEmail(email);
       if (user === undefined) throw new Error('expected the signup to create a user');
       await getTestDb().update(users).set({ emailVerified: true }).where(eq(users.id, user.id));
@@ -416,7 +420,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const response = await signUpEmailRequest(auth, {
         name: 'Impersonator',
         email,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       expect(response.status).toBe(200);
 
@@ -450,7 +454,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       await signUpEmailRequest(auth, {
         name: 'Unverified',
         email: unverifiedEmail,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       const unverifiedUser = await findUserByEmail(unverifiedEmail);
       trackUser(unverifiedUser?.id);
@@ -458,7 +462,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       await signUpEmailRequest(auth, {
         name: 'Verified',
         email: verifiedEmail,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       const verifiedUser = await findUserByEmail(verifiedEmail);
       if (verifiedUser === undefined) throw new Error('expected the signup to create a user');
@@ -469,16 +473,20 @@ describe('Registration hardening (real Better Auth + database)', () => {
       trackUser(verifiedUser.id);
 
       const [newResponse, unverifiedDuplicate, verifiedDuplicate] = await Promise.all([
-        signUpEmailRequest(auth, { name: 'Brand New', email: newEmail, password: VALID_PASSWORD }),
+        signUpEmailRequest(auth, {
+          name: 'Brand New',
+          email: newEmail,
+          password: VALID_TEST_PASSWORD,
+        }),
         signUpEmailRequest(auth, {
           name: 'Impersonator',
           email: unverifiedEmail,
-          password: VALID_PASSWORD,
+          password: VALID_TEST_PASSWORD,
         }),
         signUpEmailRequest(auth, {
           name: 'Impersonator',
           email: verifiedEmail,
-          password: VALID_PASSWORD,
+          password: VALID_TEST_PASSWORD,
         }),
       ]);
       const newUser = await findUserByEmail(newEmail);
@@ -498,7 +506,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       await signUpEmailRequest(auth, {
         name: 'Unverified',
         email: unverifiedEmail,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       const unverifiedUser = await findUserByEmail(unverifiedEmail);
       trackUser(unverifiedUser?.id);
@@ -506,7 +514,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       await signUpEmailRequest(auth, {
         name: 'Verified',
         email: verifiedEmail,
-        password: VALID_PASSWORD,
+        password: VALID_TEST_PASSWORD,
       });
       const verifiedUser = await findUserByEmail(verifiedEmail);
       if (verifiedUser === undefined) throw new Error('expected the signup to create a user');
@@ -539,7 +547,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
         const response = await signUpEmailRequest(auth, {
           name: 'Rate Limited',
           email,
-          password: VALID_PASSWORD,
+          password: VALID_TEST_PASSWORD,
         });
         statuses.push(response.status);
         const user = await findUserByEmail(email);
@@ -554,7 +562,11 @@ describe('Registration hardening (real Better Auth + database)', () => {
     it('keeps /send-verification-email rate limited, and a blocked dispatch never invokes the email adapter', async () => {
       const auth = getAuth();
       const email = `dispatch-ratelimit-${crypto.randomUUID()}@example.test`;
-      await signUpEmailRequest(auth, { name: 'Rate Limited', email, password: VALID_PASSWORD });
+      await signUpEmailRequest(auth, {
+        name: 'Rate Limited',
+        email,
+        password: VALID_TEST_PASSWORD,
+      });
       const user = await findUserByEmail(email);
       trackUser(user?.id);
 
@@ -625,7 +637,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
 
       const responses = await Promise.all(
         Array.from({ length: 5 }, () =>
-          signUpEmailRequest(auth, { name: 'Racer', email, password: VALID_PASSWORD }),
+          signUpEmailRequest(auth, { name: 'Racer', email, password: VALID_TEST_PASSWORD }),
         ),
       );
 
@@ -645,7 +657,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const auth = getAuth();
       const email = `audit-${crypto.randomUUID()}@example.test`;
 
-      await signUpEmailRequest(auth, { name: 'Audited', email, password: VALID_PASSWORD });
+      await signUpEmailRequest(auth, { name: 'Audited', email, password: VALID_TEST_PASSWORD });
       const user = await findUserByEmail(email);
       trackUser(user?.id);
       if (user === undefined) throw new Error('expected the signup to create a user');
@@ -656,7 +668,7 @@ describe('Registration hardening (real Better Auth + database)', () => {
       expect(rows.length).toBeGreaterThan(0);
       for (const row of rows) {
         const serialized = JSON.stringify(row.metadata);
-        expect(serialized).not.toContain(VALID_PASSWORD);
+        expect(serialized).not.toContain(VALID_TEST_PASSWORD);
         expect(serialized).not.toContain(email);
         expect(serialized.toLowerCase()).not.toMatch(/password|token/);
       }

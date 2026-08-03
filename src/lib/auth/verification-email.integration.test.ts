@@ -4,14 +4,24 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { closeDb } from '@/server/db/client';
 import { rateLimits, users } from '@/server/db/schema';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
+import { VALID_TEST_PASSWORD } from '@/test/test-passwords';
 
 /**
  * Exercises the real Better Auth instance against a real, disposable
- * database (see `src/test/integration-db.ts`) — the only way to prove
- * "exactly one verification email per sign-up, exactly one more per
- * explicit resend" as a property of Better Auth's own `sendOnSignUp`
- * wiring (`src/lib/auth/server.ts`), rather than of our own code, which
- * cannot be faked with a mock and still mean anything.
+ * database (see `src/test/integration-db.ts`) — the only way to prove the
+ * exact email counts below as a property of Better Auth's real endpoints
+ * and this project's configuration (`src/lib/auth/server.ts`), rather than
+ * of our own code, which cannot be faked with a mock and still mean
+ * anything.
+ *
+ * Phase 2.1's follow-up turned `emailVerification.sendOnSignUp` OFF:
+ * `signUpEmail` alone never sends anything automatically anymore. Dispatch
+ * now happens client-side (`AuthForm` calling the public
+ * `/send-verification-email` endpoint immediately after every accepted
+ * signup) — the tests below call that same endpoint explicitly
+ * (`auth.api.sendVerificationEmail`/`sendVerificationEmailRequest`) to
+ * model what the browser actually does, rather than assuming `signUpEmail`
+ * sent something on its own.
  *
  * `next/headers` is mocked the same way `session-boundary.integration.test.ts`
  * mocks it: no cookie present, so `resolveRequestEmailLocale` in
@@ -113,12 +123,12 @@ describe('Better Auth verification email delivery (real database)', () => {
     await closeTestDb();
   });
 
-  it('sends exactly one verification email on sign-up, never a duplicate', async () => {
+  it('sends no verification email automatically on sign-up (sendOnSignUp is off) — the explicit dispatch call sends exactly one', async () => {
     const auth = getAuth();
     const email = `verify-once-${crypto.randomUUID()}@example.test`;
 
     await auth.api.signUpEmail({
-      body: { name: 'Verify Once', email, password: 'correct-horse-battery-staple' },
+      body: { name: 'Verify Once', email, password: VALID_TEST_PASSWORD },
       headers: new Headers({ origin: 'http://localhost:3000' }),
     });
 
@@ -126,18 +136,27 @@ describe('Better Auth verification email delivery (real database)', () => {
     const user = await db.query.users.findFirst({ where: eq(users.email, email) });
     expect(user).toBeDefined();
     if (user !== undefined) createdUserIds.push(user.id);
+
+    // sendOnSignUp is off (src/lib/auth/server.ts) — signUpEmail itself
+    // never sends anything; only the explicit dispatch call below does.
+    expect(testAdapter().sent.filter((message) => message.to === email)).toHaveLength(0);
+
+    await auth.api.sendVerificationEmail({
+      body: { email, callbackURL: '/verify-email/complete' },
+      headers: new Headers({ origin: 'http://localhost:3000' }),
+    });
 
     const sentToUser = testAdapter().sent.filter((message) => message.to === email);
     expect(sentToUser).toHaveLength(1);
     expect(sentToUser[0]?.kind).toBe('verification');
   });
 
-  it('sends exactly one additional email when verification is explicitly resent', async () => {
+  it('sends exactly one additional email when verification is explicitly resent again', async () => {
     const auth = getAuth();
     const email = `verify-resend-${crypto.randomUUID()}@example.test`;
 
     await auth.api.signUpEmail({
-      body: { name: 'Resend Once', email, password: 'correct-horse-battery-staple' },
+      body: { name: 'Resend Once', email, password: VALID_TEST_PASSWORD },
       headers: new Headers({ origin: 'http://localhost:3000' }),
     });
 
@@ -146,6 +165,13 @@ describe('Better Auth verification email delivery (real database)', () => {
     expect(user).toBeDefined();
     if (user !== undefined) createdUserIds.push(user.id);
 
+    // The first dispatch — mirrors AuthForm's own post-signup call
+    // (`src/components/auth/auth-form.tsx`), since sign-up alone sends
+    // nothing automatically anymore.
+    await auth.api.sendVerificationEmail({
+      body: { email, callbackURL: '/verify-email/complete' },
+      headers: new Headers({ origin: 'http://localhost:3000' }),
+    });
     expect(testAdapter().sent.filter((message) => message.to === email)).toHaveLength(1);
 
     // Mirrors what ResendVerificationButton (src/components/auth/resend-verification-button.tsx)
@@ -166,7 +192,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     const email = `verify-ratelimit-${crypto.randomUUID()}@example.test`;
 
     await auth.api.signUpEmail({
-      body: { name: 'Rate Limited', email, password: 'correct-horse-battery-staple' },
+      body: { name: 'Rate Limited', email, password: VALID_TEST_PASSWORD },
       headers: new Headers({ origin: 'http://localhost:3000' }),
     });
 
@@ -211,7 +237,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     const otherIpKey = '203.0.113.5|/send-verification-email';
 
     await auth.api.signUpEmail({
-      body: { name: 'Other IP', email, password: 'correct-horse-battery-staple' },
+      body: { name: 'Other IP', email, password: VALID_TEST_PASSWORD },
       headers: new Headers({ origin: 'http://localhost:3000' }),
     });
     const db = getTestDb();
@@ -246,7 +272,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     const email = `verify-ratelimit-unrelated-${crypto.randomUUID()}@example.test`;
 
     await auth.api.signUpEmail({
-      body: { name: 'Unrelated Endpoint', email, password: 'correct-horse-battery-staple' },
+      body: { name: 'Unrelated Endpoint', email, password: VALID_TEST_PASSWORD },
       headers: new Headers({ origin: 'http://localhost:3000' }),
     });
     const db = getTestDb();
