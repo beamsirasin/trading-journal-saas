@@ -43,7 +43,14 @@
     "account": {
       "menuLabel": "เมนูบัญชี",
       "workspace": "พื้นที่ทำงาน",
-      "logout": "ออกจากระบบ"
+      "logout": "ออกจากระบบ",
+      "activeTradingAccount": "บัญชีเทรดที่ใช้งานอยู่",
+      "accountModeValues": {
+        "live": "บัญชีจริง",
+        "demo": "บัญชีทดลอง",
+        "prop": "บัญชี Prop",
+        "backtest": "แบ็กเทสต์"
+      }
     }
   },
   "footer": {
@@ -304,6 +311,22 @@
   "dashboard": {
     "title": "ภาพรวม",
     "description": "ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง",
+    "activeAccountSubtitle": "บัญชีเทรดที่ใช้งานอยู่ของคุณ",
+    "activeAccountRegionLabel": "สรุปบัญชีเทรดที่ใช้งานอยู่",
+    "accountModeLabel": "โหมดบัญชี",
+    "accountModeValues": {
+      "live": "บัญชีจริง",
+      "demo": "บัญชีทดลอง",
+      "prop": "บัญชี Prop",
+      "backtest": "แบ็กเทสต์"
+    },
+    "baseCurrencyLabel": "สกุลเงินหลัก",
+    "startingBalanceLabel": "ยอดเงินเริ่มต้น",
+    "noTradesTitle": "ยังไม่มีการบันทึกเทรด",
+    "noTradesDescription": "ระบบบันทึกการเทรดจะมาในเฟสถัดไป เมื่อพร้อมใช้งาน ทุกเทรดที่คุณบันทึกที่นี่จะแสดงให้เห็นว่าคุณจับคุณค่าจากกลยุทธ์ของคุณได้มากแค่ไหน",
+    "noActiveAccountTitle": "ไม่มีบัญชีเทรดที่ใช้งานอยู่",
+    "noActiveAccountDescription": "พื้นที่ทำงานของคุณยังไม่มีบัญชีเทรดที่ใช้งานได้ กรุณาตั้งค่าบัญชีเพื่อดำเนินการต่อ",
+    "noActiveAccountCta": "ตั้งค่าบัญชีเทรด",
     "netPnl": "กำไร/ขาดทุนสุทธิ",
     "netPnlHint": "หลังหักค่าคอมมิชชัน ค่าธรรมเนียม และ swap",
     "actualWinRate": "อัตราชนะจริง",
@@ -474,6 +497,44 @@
       "note": "ยังไม่กำหนดราคาและยังไม่สามารถซื้อสิ่งใดได้ ระบบชำระเงินจะมาในเวอร์ชันถัดไป",
       "seePlans": "ดูแผนทั้งหมด"
     }
+  },
+  "onboarding": {
+    "title": "ตั้งค่าบัญชีเทรดของคุณ",
+    "description": "ตอบคำถามสั้น ๆ เกี่ยวกับวิธีการเทรดของคุณ แล้วก็พร้อมใช้งาน ใช้เวลาเพียงไม่กี่นาที",
+    "stepsLabel": "ขั้นตอนการตั้งค่า",
+    "stepOneLabel": "ตั้งค่าการเทรด",
+    "stepTwoLabel": "การตั้งค่าความเสี่ยง",
+    "stepOneTitle": "การตั้งค่าการเทรดของคุณ",
+    "stepTwoTitle": "การตั้งค่าความเสี่ยง",
+    "nameLabel": "ชื่อบัญชีเทรด",
+    "brokerLabel": "โบรกเกอร์",
+    "platformLabel": "แพลตฟอร์ม",
+    "accountModeLabel": "โหมดบัญชี",
+    "accountModeValues": {
+      "live": "บัญชีจริง",
+      "demo": "บัญชีทดลอง",
+      "prop": "บัญชี Prop",
+      "backtest": "แบ็กเทสต์"
+    },
+    "baseCurrencyLabel": "สกุลเงินหลัก",
+    "startingBalanceLabel": "ยอดเงินเริ่มต้น",
+    "timezoneLabel": "เขตเวลา",
+    "riskPerTradeLabel": "ความเสี่ยงต่อออเดอร์เริ่มต้น",
+    "maximumDailyLossLabel": "ขาดทุนสูงสุดต่อวัน",
+    "optionalSuffix": "(ไม่บังคับ)",
+    "back": "ย้อนกลับ",
+    "continue": "ถัดไป",
+    "finish": "เสร็จสิ้น",
+    "errors": {
+      "required": "กรุณากรอกชื่อบัญชีเทรด",
+      "invalidCharacters": "กรุณานำอักขระพิเศษหรือที่ไม่รองรับออก",
+      "invalidBaseCurrency": "ใช้ตัวอักษรพิมพ์ใหญ่หรือตัวเลข 2-10 ตัว เช่น USD หรือ BTC",
+      "invalidBalance": "กรุณากรอกยอดเงินเริ่มต้นตั้งแต่ 0 ขึ้นไป เช่น 10000",
+      "invalidTimezone": "กรุณาเลือกเขตเวลาที่ถูกต้อง",
+      "invalidPercent": "กรุณากรอกเปอร์เซ็นต์มากกว่า 0 และไม่เกิน 100"
+    },
+    "submitValidationError": "ข้อมูลบางส่วนไม่ถูกต้อง กรุณาตรวจสอบแบบฟอร์มแล้วลองใหม่อีกครั้ง",
+    "submitUnexpectedError": "เกิดข้อผิดพลาดขณะตั้งค่าเสร็จสิ้น กรุณาลองใหม่อีกครั้ง"
   },
   "auth": {
     "loginTitle": "เข้าสู่ระบบ",

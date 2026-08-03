@@ -35,6 +35,15 @@ export const workspaces = pgTable(
     personalOwnerUserId: text('personal_owner_user_id').references(() => users.id, {
       onDelete: 'cascade',
     }),
+    /**
+     * NULL until Phase 3A's onboarding transaction commits (first trading
+     * account created + active-account preference persisted) —
+     * `src/server/services/trading-account.ts`'s `completeOnboarding()` is
+     * the only writer. Workspace-scoped, not user-scoped, per the phase
+     * brief: onboarding is a property of the workspace's data, not of any
+     * one member.
+     */
+    onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

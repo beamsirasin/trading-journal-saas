@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import {
+  getActiveTradingAccount,
   getActiveWorkspaceContext,
   getCurrentUserPreferences,
   getOptionalSession,
@@ -49,6 +50,10 @@ export default async function AppLayout({
   const user = session.user;
   const workspace = await getActiveWorkspaceContext();
   const preferences = await getCurrentUserPreferences();
+  // `null` while onboarding is incomplete (no account exists yet) — AppShell
+  // simply omits the indicator rather than rendering a placeholder for
+  // something that does not exist.
+  const activeAccount = await getActiveTradingAccount();
 
   return (
     <AppShell
@@ -56,6 +61,7 @@ export default async function AppLayout({
       workspaceName={workspace.workspaceName}
       dbTheme={preferences.theme}
       dbLocale={preferences.locale}
+      activeAccount={activeAccount}
     >
       {children}
     </AppShell>

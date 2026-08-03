@@ -67,15 +67,27 @@ test.describe('locale rendering', () => {
     ).toBeVisible();
   });
 
-  test('/th/app localizes the overview page and fixed mistake taxonomy', async ({ page }) => {
+  test('/th/app localizes the real (Phase 3A) overview page', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
 
+    // Phase 3A replaced the fixture-driven overview (still checked via
+    // `/th/app/analytics` below, unaffected by that change) with the real,
+    // honest dashboard for an onboarded account — E2E_USER_A is provisioned
+    // pre-onboarded (`e2e/support/provision-user.ts`) specifically so this
+    // and every other pre-existing authenticated-shell test keeps working.
     await expect(page.getByRole('heading', { level: 1, name: 'ภาพรวม' })).toBeVisible();
     await expect(page.getByText('ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง')).toBeVisible();
-    await expect(page.getByText('ขยับจุดตัดขาดทุน').first()).toBeVisible();
+    // Scoped to the dashboard's own labelled region rather than `.first()`:
+    // `TradingAccountIndicator` in the header repeats the same account mode
+    // text and is hidden below the `sm` breakpoint (`hidden sm:flex`), so an
+    // unscoped `.first()` can resolve to that invisible copy on a mobile
+    // viewport (see `e2e/onboarding.spec.ts` for the same fix).
+    const accountRegion = page.getByRole('region', { name: 'สรุปบัญชีเทรดที่ใช้งานอยู่' });
+    await expect(accountRegion.getByText('บัญชีจริง', { exact: true })).toBeVisible();
+    await expect(page.getByText('ยังไม่มีการบันทึกเทรด')).toBeVisible();
     await expect(page.getByText('Overview', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Moved stop', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
   });
 
   test('/th/app/analytics localizes chart and accessible-table mistake labels', async ({
