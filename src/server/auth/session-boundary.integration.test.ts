@@ -6,6 +6,7 @@ import { generateId } from '@/lib/identifiers';
 import { closeDb } from '@/server/db/client';
 import { accounts, rateLimits, sessions, users } from '@/server/db/schema';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
+import { VALID_TEST_PASSWORD } from '@/test/test-passwords';
 
 let requestHeaders = new Headers();
 
@@ -23,7 +24,7 @@ async function createCredentialUser() {
   const db = getTestDb();
   const userId = generateId();
   const email = `session-${crypto.randomUUID()}@example.test`;
-  const password = 'correct-horse-battery-staple';
+  const password = VALID_TEST_PASSWORD;
   await db.insert(users).values({
     id: userId,
     name: 'Session Test',
@@ -100,7 +101,7 @@ describe('real Better Auth session boundary', () => {
 
     await expect(
       auth.api.signUpEmail({
-        body: { name: 'Hook Failure', email, password: 'correct-horse-battery-staple' },
+        body: { name: 'Hook Failure', email, password: VALID_TEST_PASSWORD },
         headers: new Headers({ origin: 'http://localhost:3000' }),
       }),
     ).rejects.toThrow(/provisioning failure/);

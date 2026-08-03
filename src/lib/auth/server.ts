@@ -2,6 +2,7 @@ import 'server-only';
 
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { nextCookies } from 'better-auth/next-js';
 import { cookies } from 'next/headers';
 
@@ -14,12 +15,66 @@ import { ensurePersonalWorkspace } from '@/server/services/workspace-provisionin
 import { logDispatchStage } from './dispatch-log';
 import { getEmailAdapter } from './email';
 import { resolveSupportedEmailLocale } from './email-templates';
+import { evaluatePasswordPolicy } from './password-policy';
+import { RESEND_VERIFICATION_WINDOW_SECONDS } from './rate-limit-config';
 import {
   isLoopbackUrl,
   resolveAuthBaseUrl,
   resolveTrustedOrigins,
   shouldUseSecureCookies,
 } from './runtime-config';
+
+/**
+ * Server-side enforcement of the shared password-complexity policy
+ * (`src/lib/auth/password-policy.ts`) — the security boundary; the
+ * registration form's real-time checklist is UX only and cannot be trusted
+ * on its own (a request can always bypass client JavaScript entirely).
+ *
+ * Wired as the ROOT-level `hooks.before` because Better Auth 1.6.25 exposes
+ * exactly one such slot per `betterAuth()` instance (typed `AuthMiddleware`,
+ * singular — not the array-of-`{matcher,handler}` shape plugin-level hooks
+ * use). Confirmed via `dist/api/dispatch.mjs`'s `getHooks()`: a root
+ * `hooks.before` is registered with `matcher: () => true` and therefore
+ * runs before EVERY endpoint, which is why this handler checks `ctx.path`
+ * itself rather than relying on any framework-level path scoping — exactly
+ * as required: it must affect `/sign-up/email` only, never `/sign-in/email`,
+ * password verification, or Google OAuth (none of which pass through this
+ * `if` at all).
+ *
+ * Runs strictly before Better Auth's own user-creation and
+ * verification-email dispatch inside `signUpEmail` (`dist/api/routes/sign-up.mjs`):
+ * `runBeforeHooks` executes ahead of the endpoint body, and a thrown
+ * `APIError` here propagates out of that call entirely — the endpoint body
+ * (and therefore `internalAdapter.createUser` and
+ * `emailVerification.sendVerificationEmail`) never runs. `hooks.before`
+ * itself is unaffected by `rateLimit` (a separate, router-level concern
+ * that still applies before this handler is ever reached via the real HTTP
+ * path), so this hook can neither strengthen nor weaken it.
+ *
+ * `ctx.body` here is the RAW pre-`zod`-validated request body (validation
+ * happens inside the endpoint itself, which this hook runs ahead of), so
+ * `password` is read defensively rather than assumed to be a string —
+ * anything that is not a non-empty string is left for Better Auth's own
+ * `INVALID_PASSWORD`/`PASSWORD_TOO_SHORT` checks to handle, rather than
+ * duplicated here.
+ */
+const enforceSignUpPasswordPolicy = createAuthMiddleware(async (ctx) => {
+  if (ctx.path !== '/sign-up/email') return;
+
+  const password: unknown = (ctx.body as Record<string, unknown> | undefined)?.password;
+  if (typeof password !== 'string' || password.length === 0) return;
+
+  const policy = evaluatePasswordPolicy(password);
+  if (policy.valid) return;
+
+  // Sanitized, stable error: no password value, no per-category detail that
+  // could help an attacker fingerprint the policy beyond what the public
+  // registration form already discloses in its own checklist copy.
+  throw new APIError('BAD_REQUEST', {
+    code: 'WEAK_PASSWORD',
+    message: 'Password does not meet the required complexity policy.',
+  });
+});
 
 /**
  * Best-effort locale for an outbound auth email. Mirrors
@@ -157,7 +212,7 @@ function buildRateLimitCustomRules(): Record<string, { window: number; max: numb
       '/sign-up/email': { window: 60, max: 50 },
       '/forget-password': { window: 60, max: 50 },
       '/reset-password': { window: 60, max: 50 },
-      '/send-verification-email': { window: 60, max: 50 },
+      '/send-verification-email': { window: RESEND_VERIFICATION_WINDOW_SECONDS, max: 50 },
       '/sign-in/social': { window: 60, max: 50 },
     };
   }
@@ -167,7 +222,7 @@ function buildRateLimitCustomRules(): Record<string, { window: number; max: numb
     '/sign-up/email': { window: 60, max: 5 },
     '/forget-password': { window: 60, max: 3 },
     '/reset-password': { window: 60, max: 5 },
-    '/send-verification-email': { window: 60, max: 3 },
+    '/send-verification-email': { window: RESEND_VERIFICATION_WINDOW_SECONDS, max: 3 },
     '/sign-in/social': { window: 60, max: 10 },
   };
 }
@@ -237,19 +292,32 @@ export function buildAuth(options?: {
     verification: { modelName: 'verifications' },
 
     emailVerification: {
-      // Sends exactly one verification email automatically as part of
-      // POST /sign-up/email itself — confirmed against the installed
-      // better-auth@1.6.25 source (`dist/api/routes/sign-up.mjs`): it awaits
-      // `ctx.context.runInBackgroundOrAwait(sendVerificationEmail(...))`
-      // before the route returns, and that helper only defers to a
-      // fire-and-forget task if `advanced.backgroundTasks.handler` is set
-      // below (it is not), otherwise it plainly `await`s the send. Do not
-      // add a `backgroundTasks.handler` (e.g. a serverless `waitUntil`) to
-      // "speed up" sign-up without also making the response wait for the
-      // outcome some other way — deferring the send past the HTTP response
-      // is exactly the "serverless runtime terminates the send prematurely"
-      // failure mode this phase's brief calls out.
-      sendOnSignUp: true,
+      // Deliberately OFF (Phase 2.1's registration-hardening follow-up).
+      // Confirmed against the installed better-auth@1.6.25 source
+      // (`dist/api/routes/sign-up.mjs`): this block only runs after a REAL
+      // `internalAdapter.createUser` — the synthetic-duplicate-response
+      // branch (`shouldReturnGenericDuplicateResponse`, active because
+      // `requireEmailVerification` is on) returns long before reaching it.
+      // That means `sendOnSignUp` could NEVER redeliver a verification email
+      // to someone re-registering an existing-but-unverified address —
+      // exactly the "I lost the first email, let me just register again"
+      // case this follow-up exists to fix.
+      //
+      // The fix moves dispatch to the CLIENT: `AuthForm`
+      // (`src/components/auth/auth-form.tsx`) calls the public,
+      // already-anti-enumeration-safe `sendVerificationEmail` client action
+      // itself immediately after ANY accepted `signUp.email` response (a
+      // real new signup or a synthetic-duplicate one — the browser cannot
+      // tell them apart, and does not need to). That action hits
+      // `/send-verification-email` through the real HTTP router — the same
+      // endpoint `resend-verification-button.tsx` already calls — which
+      // decides silently whether a real message goes out: yes for a
+      // brand-new or still-unverified existing account, a no-op (identical
+      // 200 shape, identical ~500ms timing floor) for an already-verified
+      // one. Leaving `sendOnSignUp` on here as well would double-send for a
+      // genuine first-time signup, since the client now dispatches
+      // unconditionally for every accepted outcome.
+      sendOnSignUp: false,
       // Recovery path for an expired verification link: since sign-in itself
       // is refused for an unverified user (requireEmailVerification below),
       // retrying sign-in is the natural next action, and this makes that
@@ -279,12 +347,40 @@ export function buildAuth(options?: {
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
+      // Kept in sync with src/lib/auth/password-policy.ts's own
+      // PASSWORD_MIN_LENGTH/PASSWORD_MAX_LENGTH constants — this is only
+      // the length floor/ceiling Better Auth itself enforces inside
+      // signUpEmail; character-class complexity (upper/lower/number/
+      // special) is NOT something Better Auth checks natively, which is
+      // exactly what `enforceSignUpPasswordPolicy` above adds.
       minPasswordLength: 12,
+      maxPasswordLength: 128,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         const locale = await resolveRequestEmailLocale();
         await getEmailAdapter().sendPasswordResetEmail({ to: user.email, url, locale });
       },
+      // `onExistingUserSignUp` (confirmed present in better-auth@1.6.25,
+      // dist/api/routes/sign-up.mjs — fires only on the synthetic-duplicate
+      // path, backgrounded via the same runInBackgroundOrAwait helper the
+      // verification email already uses) remains DELIBERATELY unimplemented.
+      // It is no longer needed to redeliver a verification email to the
+      // legitimate owner of an unverified duplicate — `sendOnSignUp`'s
+      // comment above explains that gap is now closed client-side via the
+      // public `/send-verification-email` endpoint instead, which already
+      // reaches the real account safely regardless of which signup attempt
+      // (first-time or duplicate) prompted it.
+      //
+      // The only remaining hypothetical use of this hook is a DIFFERENT
+      // feature: a "someone attempted to sign up with your (already
+      // registered) email" SECURITY notice to the account owner. That is
+      // explicitly out of scope here and has its own unresolved problem:
+      // Better Auth's `/sign-up/email` rate limit is keyed by IP, not by the
+      // targeted recipient, so an attacker could rotate source IPs (or wait
+      // out each window) and repeatedly trigger such a notification —
+      // sending one safely needs a per-recipient throttle this phase does
+      // not build. Tracked as a follow-up alongside the real production
+      // email provider (docs/email-delivery-setup.md).
     },
 
     socialProviders: buildSocialProviders(),
@@ -320,6 +416,10 @@ export function buildAuth(options?: {
           },
         },
       },
+    },
+
+    hooks: {
+      before: enforceSignUpPasswordPolicy,
     },
 
     // Must be last in the plugins array per Better Auth's own Next.js
