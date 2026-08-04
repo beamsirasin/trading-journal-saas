@@ -3,7 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TradingAccountRecord } from '@/server/auth/dal';
+import type { EffectiveEntitlement, TradingAccountRecord } from '@/server/auth/dal';
 
 import en from '../../../messages/en.json';
 import { AccountsManager } from './accounts-manager';
@@ -44,6 +44,27 @@ function account(overrides: Partial<TradingAccountRecord>): TradingAccountRecord
   };
 }
 
+/** An allowing entitlement snapshot — tests that need Restore/Create to actually succeed opt into this explicitly, since the default fixture (`entitlement: null`) fails closed. */
+function entitlementFixture(overrides: Partial<EffectiveEntitlement> = {}): EffectiveEntitlement {
+  return {
+    workspaceId: 'workspace-1',
+    persistedStatus: 'trialing',
+    effectiveStatus: 'trialing',
+    planKey: null,
+    trialStartedAt: new Date('2026-01-01T00:00:00Z'),
+    trialEndsAt: new Date('2026-01-08T00:00:00Z'),
+    accountLimit: 1,
+    activeAccountCount: 0,
+    remainingAccountSlots: 1,
+    canCreateAccount: true,
+    canRestoreAccount: true,
+    trialExpired: false,
+    overLimit: false,
+    blockReason: null,
+    ...overrides,
+  };
+}
+
 function renderManager(props: Partial<Parameters<typeof AccountsManager>[0]> = {}) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -51,6 +72,7 @@ function renderManager(props: Partial<Parameters<typeof AccountsManager>[0]> = {
         activeAccounts={[account({ id: 'account-1', name: 'Main Account' })]}
         archivedAccounts={[]}
         activeAccountId="account-1"
+        entitlement={null}
         {...props}
       />
     </NextIntlClientProvider>,
@@ -171,12 +193,70 @@ describe('AccountsManager — archived section', () => {
   it('restoring calls the action and shows a localized success message', async () => {
     restoreTradingAccountActionMock.mockResolvedValue({ ok: true });
     renderManager({
+      entitlement: entitlementFixture(),
       archivedAccounts: [account({ id: 'account-2', name: 'Old Account', isArchived: true })],
     });
     fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
 
     await waitFor(() => expect(restoreTradingAccountActionMock).toHaveBeenCalledWith('account-2'));
     expect(await screen.findByText('Account restored.')).toBeInTheDocument();
+  });
+});
+
+describe('AccountsManager — entitlement unavailable (null)', () => {
+  it('disables Restore and explains why via an accessible, non-color-only description', () => {
+    renderManager({
+      archivedAccounts: [account({ id: 'account-2', name: 'Old Account', isArchived: true })],
+    });
+
+    const restoreButton = screen.getByRole('button', { name: 'Restore' });
+    expect(restoreButton).toBeDisabled();
+
+    const describedById = restoreButton.getAttribute('aria-describedby');
+    expect(describedById).not.toBeNull();
+    expect(document.getElementById(describedById as string)).toHaveTextContent(
+      "We couldn't check this workspace's plan right now. Please try again in a moment.",
+    );
+  });
+
+  it('clicking a disabled Restore button never calls the server action', () => {
+    renderManager({
+      archivedAccounts: [account({ id: 'account-2', name: 'Old Account', isArchived: true })],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    expect(restoreTradingAccountActionMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the archived account visible rather than hiding it', () => {
+    renderManager({
+      archivedAccounts: [account({ id: 'account-2', name: 'Old Account', isArchived: true })],
+    });
+    expect(screen.getByText('Old Account')).toBeInTheDocument();
+  });
+
+  it('shows a generic, localized status explanation instead of the normal usage summary', () => {
+    renderManager();
+    const banners = screen.getAllByRole('status');
+    const unavailableBanner = banners.find((banner) =>
+      banner.textContent?.includes(
+        "We couldn't check this workspace's plan right now. Please try again in a moment.",
+      ),
+    );
+    expect(unavailableBanner).toBeDefined();
+    // Never a fabricated plan or trial status, and never a raw internal code.
+    expect(unavailableBanner?.textContent).not.toMatch(/trial|starter|trader|professional/i);
+  });
+
+  it('never disables Edit, Set-active, or Archive on active accounts', () => {
+    renderManager({
+      activeAccounts: [
+        account({ id: 'account-1', name: 'Main Account' }),
+        account({ id: 'account-2', name: 'Second Account' }),
+      ],
+    });
+    expect(screen.getAllByRole('link', { name: /Edit/ })[0]).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set as active' })).not.toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Archive' })[0]).not.toBeDisabled();
   });
 });
 
@@ -200,7 +280,11 @@ describe('AccountsManager — set active', () => {
 
 describe('AccountsManager — initial feedback from a redirect', () => {
   it('shows the localized message for the status carried by the URL', () => {
+    // Scoped rather than a bare `getByRole('status')`: the default
+    // `entitlement: null` fixture also renders its own status region, so two
+    // exist simultaneously here — the feedback banner and the
+    // entitlement-unavailable one.
     renderManager({ initialFeedback: 'created' });
-    expect(screen.getByRole('status')).toHaveTextContent('Account created.');
+    expect(screen.getByText('Account created.').closest('[role="status"]')).toBeInTheDocument();
   });
 });

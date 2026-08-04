@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { resolveE2eBetterAuthSecret } from './e2e/support/better-auth-secret';
 import { validateTestDatabaseEnvironment } from './scripts/test-database-safety.mjs';
 
 const PORT = 3100;
@@ -61,8 +62,12 @@ export default defineConfig({
     env: {
       ...process.env,
       BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? baseURL,
-      BETTER_AUTH_SECRET:
-        process.env.BETTER_AUTH_SECRET ?? 'playwright-loopback-only-secret-never-use-in-production',
+      // Shared with `e2e/support/authenticate.ts`'s database-session
+      // fixture via `resolveE2eBetterAuthSecret()` — that fixture signs a
+      // session cookie for THIS exact server process to verify, so both
+      // sides must resolve to the identical secret by construction, not by
+      // coincidence of a duplicated literal.
+      BETTER_AUTH_SECRET: resolveE2eBetterAuthSecret(),
       ...(guardedDatabase ? { DATABASE_URL: guardedDatabase.testUrl } : {}),
     },
   },

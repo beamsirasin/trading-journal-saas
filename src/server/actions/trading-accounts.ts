@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 
+import type { EntitlementBlockReason } from '@/lib/entitlements/resolve';
 import { CreateAccountSchema, UpdateAccountSchema } from '@/lib/trading-accounts/schema';
 import {
   ForbiddenError,
@@ -33,7 +34,10 @@ const accountIdSchema = z.string().uuid();
 
 export type CreateTradingAccountActionResult =
   | { readonly ok: true; readonly accountId: string }
-  | { readonly ok: false; readonly code: 'validation' | 'forbidden' | 'unexpected' };
+  | {
+      readonly ok: false;
+      readonly code: 'validation' | 'forbidden' | 'unexpected' | EntitlementBlockReason;
+    };
 
 export async function createTradingAccountAction(
   input: unknown,
@@ -47,7 +51,7 @@ export async function createTradingAccountAction(
     const { workspaceId, userId } = await getActiveWorkspaceContext();
     await requireTradingAccountManagement(workspaceId);
     const result = await createTradingAccount(workspaceId, userId, parsed.data);
-    return { ok: true, accountId: result.accountId };
+    return result.ok ? { ok: true, accountId: result.accountId } : { ok: false, code: result.code };
   } catch (error) {
     if (error instanceof ForbiddenError) {
       return { ok: false, code: 'forbidden' };
@@ -141,7 +145,10 @@ export async function archiveTradingAccountAction(
 
 export type RestoreTradingAccountActionResult =
   | { readonly ok: true }
-  | { readonly ok: false; readonly code: 'not_found' | 'forbidden' | 'unexpected' };
+  | {
+      readonly ok: false;
+      readonly code: 'not_found' | 'forbidden' | 'unexpected' | EntitlementBlockReason;
+    };
 
 export async function restoreTradingAccountAction(
   accountId: unknown,

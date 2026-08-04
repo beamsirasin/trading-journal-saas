@@ -1,6 +1,6 @@
 'use client';
 
-import { LogOut } from 'lucide-react';
+import { CreditCard, LogOut } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 
 export interface AccountMenuUser {
   readonly name: string;
@@ -74,6 +74,13 @@ export function AccountMenu({
           {t('workspace')}
         </DropdownMenuLabel>
         <div className="text-foreground px-2 pb-2 text-sm">{workspaceName}</div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="gap-2">
+          <Link href="/app/plan">
+            <CreditCard className="size-4" aria-hidden="true" />
+            {t('planAndBilling')}
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleLogout} disabled={isPending} className="gap-2">
           <LogOut className="size-4" aria-hidden="true" />

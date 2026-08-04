@@ -2,7 +2,12 @@ import { Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { getActiveTradingAccount, listWorkspaceTradingAccounts } from '@/server/auth/dal';
+import { resolveEntitlementGate } from '@/lib/entitlements/resolve';
+import {
+  getActiveTradingAccount,
+  getWorkspaceEntitlement,
+  listWorkspaceTradingAccounts,
+} from '@/server/auth/dal';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { AccountsManager } from '@/components/trading-accounts/accounts-manager';
@@ -71,12 +76,19 @@ export default async function AccountsPage({
   const { status } = await searchParams;
   const feedbackStatus = parseFeedbackStatus(status);
 
-  const [accounts, activeAccount] = await Promise.all([
+  const [accounts, activeAccount, entitlement] = await Promise.all([
     listWorkspaceTradingAccounts(),
     getActiveTradingAccount(),
+    getWorkspaceEntitlement(),
   ]);
   const activeAccounts = accounts.filter((account) => !account.isArchived);
   const archivedAccounts = accounts.filter((account) => account.isArchived);
+
+  // `resolveEntitlementGate` fails closed on a `null` entitlement (onboarding
+  // complete, no entitlement row) — "cannot create right now," never
+  // unlimited access. The same helper gates Restore in `AccountsManager`.
+  const { allowed: canCreateAccount, blockReason: createBlockReason } =
+    resolveEntitlementGate(entitlement);
 
   return (
     <Container width="wide" className="flex flex-col gap-8 py-8">
@@ -84,18 +96,35 @@ export default async function AccountsPage({
         title={t('title')}
         description={t('description')}
         actions={
-          <Button asChild className="gap-1.5">
-            <Link href="/app/accounts/new">
+          canCreateAccount ? (
+            <Button asChild className="gap-1.5">
+              <Link href="/app/accounts/new">
+                <Plus className="size-4" aria-hidden="true" />
+                {t('createAccount')}
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              disabled
+              className="gap-1.5"
+              aria-describedby="create-account-unavailable-reason"
+            >
               <Plus className="size-4" aria-hidden="true" />
               {t('createAccount')}
-            </Link>
-          </Button>
+            </Button>
+          )
         }
       />
+      {canCreateAccount ? null : (
+        <p id="create-account-unavailable-reason" className="text-muted-foreground -mt-4 text-sm">
+          {t(`errors.${createBlockReason}` as Parameters<typeof t>[0])}
+        </p>
+      )}
       <AccountsManager
         activeAccounts={activeAccounts}
         archivedAccounts={archivedAccounts}
         activeAccountId={activeAccount?.id ?? null}
+        entitlement={entitlement}
         {...(feedbackStatus === undefined ? {} : { initialFeedback: feedbackStatus })}
       />
     </Container>

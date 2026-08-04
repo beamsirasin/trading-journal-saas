@@ -36,6 +36,18 @@ function countVerificationDispatchRequests(page: Page): { count: () => number } 
 const E2E_VALID_PASSWORD = 'Correct-Horse9!';
 
 /**
+ * `test.info().project.name` plus a random suffix, not `Date.now()` alone —
+ * a timestamp-only email is unique enough under normal timing, but a bare
+ * millisecond collision between two projects' tests registering the exact
+ * same address at once would corrupt both (one silently becomes the
+ * anti-enumeration "already exists" outcome the other test never expected).
+ */
+function uniqueTestEmail(labelPrefix: string): string {
+  const projectName = test.info().project.name;
+  return `${labelPrefix}-${projectName}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+}
+
+/**
  * The honesty suite.
  *
  * Every assertion here exists to catch the product claiming something it
@@ -47,16 +59,30 @@ const E2E_VALID_PASSWORD = 'Correct-Horse9!';
  */
 
 test.describe('pricing', () => {
-  test('shows three plans with the trial and no invented prices', async ({ page }) => {
+  test('shows three plans with the locked prices and an identical feature list', async ({
+    page,
+  }) => {
     await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
 
-    for (const plan of ['Starter', 'Pro', 'Elite']) {
+    for (const plan of ['Starter', 'Trader', 'Professional']) {
       await expect(pricing.getByRole('heading', { name: plan })).toBeVisible();
     }
 
-    await expect(pricing.getByText('Pricing to be confirmed')).toHaveCount(3);
+    for (const price of ['฿149 / $5 per month', '฿299 / $9 per month', '฿499 / $15 per month']) {
+      await expect(pricing.getByText(price)).toBeVisible();
+    }
+
+    // Every plan card renders the exact same shared feature list — the
+    // locked decision that paid plans differ only by account allowance.
+    for (const feature of [
+      'Manual journal & TradingView links',
+      'System-vs-trader comparison',
+      'Mistake tracking & discipline scoring',
+    ]) {
+      await expect(pricing.getByText(feature, { exact: true })).toHaveCount(3);
+    }
 
     // Each plan card's own registration CTA, selected by the card's
     // `aria-labelledby` id (how `PricingCard` actually wires it — see the
@@ -65,29 +91,36 @@ test.describe('pricing', () => {
     // changed once (Phase 1.1's "preview" wording → Phase 2's real
     // registration), so asserting the destination rather than the label is
     // what keeps this test meaningful across that kind of rename.
-    for (const id of ['starter', 'pro', 'elite']) {
+    for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
       await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
     }
   });
 
-  test('states the seven-day trial', async ({ page }) => {
+  test('states the seven-day, full-feature, one-account trial', async ({ page }) => {
     await page.goto('/en/pricing');
-    // Current copy (`pricing.priceUnsetNote` in messages/en.json), not the
-    // old wording — "with no card is" never appears verbatim.
-    await expect(page.getByText(/7-day, no-card trial is planned/i).first()).toBeVisible();
+    await expect(
+      page
+        .getByText(/a 7-day, full-feature trial with one active trading account is planned/i)
+        .first(),
+    ).toBeVisible();
   });
 
-  test('shows the account limits the plans gate on', async ({ page }) => {
+  test('shows the account limits the plans gate on, with a tax-exclusive note', async ({
+    page,
+  }) => {
     await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
     // `exact` matters: Playwright's string matcher is substring-and-
-    // case-insensitive, so a loose "Trading accounts" also matches the
-    // section's intro paragraph.
-    await expect(pricing.getByText('Trading accounts', { exact: true })).toHaveCount(3);
-    // The Elite limit is still an open product question and must say so.
-    await expect(pricing.getByText('provisional', { exact: true })).toBeVisible();
+    // case-insensitive, so a loose "Active trading accounts" also matches
+    // the section's intro paragraph.
+    await expect(pricing.getByText('Active trading accounts', { exact: true })).toHaveCount(3);
+    await expect(pricing.getByText('Prices exclude applicable taxes.')).toHaveCount(3);
+    // No stale draft plan names or "provisional" limit marker remain.
+    await expect(pricing.getByText('provisional', { exact: true })).toHaveCount(0);
+    await expect(pricing.getByRole('heading', { name: 'Pro', exact: true })).toHaveCount(0);
+    await expect(pricing.getByRole('heading', { name: 'Elite', exact: true })).toHaveCount(0);
   });
 
   /**
@@ -96,9 +129,9 @@ test.describe('pricing', () => {
    * ~700px content width, with a full-width "Start trial" button — visibly
    * wider than the same card at mobile or desktop. Fixed by stepping to two
    * columns at `md`. Asserted by comparing row positions rather than a
-   * screenshot: Starter and Pro should sit side by side (equal top), with
-   * Elite wrapping to a second row (a lower top) rather than sitting to
-   * Pro's right in a phantom third column.
+   * screenshot: Starter and Trader should sit side by side (equal top), with
+   * Professional wrapping to a second row (a lower top) rather than sitting
+   * to Trader's right in a phantom third column.
    */
   test('renders two plan cards per row at a tablet viewport', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
@@ -106,15 +139,17 @@ test.describe('pricing', () => {
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
     const starterBox = await pricing.getByRole('heading', { name: 'Starter' }).boundingBox();
-    const proBox = await pricing.getByRole('heading', { name: 'Pro' }).boundingBox();
-    const eliteBox = await pricing.getByRole('heading', { name: 'Elite' }).boundingBox();
+    const traderBox = await pricing.getByRole('heading', { name: 'Trader' }).boundingBox();
+    const professionalBox = await pricing
+      .getByRole('heading', { name: 'Professional' })
+      .boundingBox();
 
     // A manual tolerance rather than `toBeCloseTo`: its precision digits
     // round to whole pixels, which is tighter than the sub-pixel rendering
     // variance between Playwright's desktop and mobile-emulation projects
     // actually produces for two elements that are genuinely on the same row.
-    expect(Math.abs((starterBox?.y ?? 0) - (proBox?.y ?? -100))).toBeLessThan(5);
-    expect(eliteBox?.y ?? 0).toBeGreaterThan((starterBox?.y ?? 0) + 20);
+    expect(Math.abs((starterBox?.y ?? 0) - (traderBox?.y ?? -100))).toBeLessThan(5);
+    expect(professionalBox?.y ?? 0).toBeGreaterThan((starterBox?.y ?? 0) + 20);
 
     // The card should no longer be stretched to the full content width.
     // Selected via the card's own `aria-labelledby` id rather than walking up
@@ -131,14 +166,14 @@ test.describe('pricing', () => {
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
 
     await expect(
-      page.getByText(/no payment processing is connected to this product yet/i),
+      page.getByText(/online payment is not connected to this product yet/i),
     ).toBeVisible();
 
     // No plan CTA may lead to a checkout. They all go to real registration
     // instead. Selected by each card's `aria-labelledby` id rather than CTA
     // copy — see the "shows three plans" test above for why.
     // Suffix match: `Link` from `@/i18n/navigation` renders `/en/register`.
-    for (const id of ['starter', 'pro', 'elite']) {
+    for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
       await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
     }
@@ -256,7 +291,7 @@ test.describe('login and registration', () => {
   test('registration creates a real account and moves to the verification-pending screen', async ({
     page,
   }) => {
-    const email = `e2e-register-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-register');
 
     await page.goto('/en/register');
     await page.getByLabel('Name').fill('E2E New Trader');
@@ -267,24 +302,42 @@ test.describe('login and registration', () => {
 
     // 1. Reaches the localized verification-pending route.
     await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+
+    // Every anti-enumeration property below is scoped to the page's own
+    // named "Verification email status" region, not the whole page —
+    // asserting against `page.textContent('body')` with a broad regex is
+    // brittle, since generic words like "account" or "new" can legitimately
+    // appear in unrelated copy (nav, footer, etc.) with no bearing on
+    // whether this screen leaks the submitted email's status.
+    const statusRegion = page.getByRole('region', { name: 'Verification email status' });
+
     // 2. Generic verification messaging is visible — never a distinct
     // "account created"/"check your inbox, <name>" message that would
     // differ from the anti-enumeration screen a duplicate attempt shows.
     await expect(
-      page.getByText(/If this email can be used to register, we have sent a verification link\./),
+      statusRegion.getByText(
+        /If this email can be used to register, we have sent a verification link\./,
+      ),
     ).toBeVisible();
     // 3. The Resend control is present.
-    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
+    await expect(statusRegion.getByRole('button', { name: 'Resend email' })).toBeVisible();
     // 4. The Login link is present.
-    await expect(page.getByRole('link', { name: 'Back to log in' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'Back to log in' })).toBeVisible();
     // 5. The Forgot-password link is present (the route already exists).
-    await expect(page.getByRole('link', { name: 'Forgot password?' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'Forgot password?' })).toBeVisible();
     // 6/7. No wording reveals new/existing/verified/unverified status, and
     // the submitted address itself is never rendered as visible page text —
     // only the URL (needed for the Resend button's own request) carries it.
-    const bodyText = (await page.textContent('body')) ?? '';
-    expect(bodyText).not.toContain(email);
-    expect(bodyText).not.toMatch(/already exists|already registered|new account|unverified/i);
+    const regionText = (await statusRegion.textContent()) ?? '';
+    expect(regionText).not.toContain(email);
+    // Prohibits only explicit account-existence disclosure — never a
+    // generic word ("account", "new", "unverified") that could legitimately
+    // appear in this region's own intended copy. Safe to check narrowly
+    // because the region itself is small and controlled (see above), not
+    // the whole page.
+    expect(regionText).not.toMatch(
+      /email already exists|this email is already registered|an account already exists for this email/i,
+    );
 
     // The account is real: logging in immediately fails because the email
     // is not yet verified (no real delivery provider exists to click a link
@@ -322,8 +375,9 @@ test.describe('login and registration', () => {
     // `notice` suffix, unlike a still-unverified account's dispatch below.
     await expect.poll(() => dispatchRequests.count()).toBe(1);
     expect(page.url()).not.toContain('notice=');
-    expect(await page.textContent('body')).not.toMatch(
-      /email already exists|this email is registered/i,
+    const statusRegion = page.getByRole('region', { name: 'Verification email status' });
+    expect(await statusRegion.textContent()).not.toMatch(
+      /email already exists|this email is (?:already )?registered|an account already exists for this email/i,
     );
   });
 
@@ -353,7 +407,7 @@ test.describe('login and registration', () => {
   test('sends exactly one verification-email dispatch request per registration attempt, including a re-registration of the same still-unverified email', async ({
     page,
   }) => {
-    const email = `e2e-resend-dup-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-resend-dup');
     const dispatchRequests = countVerificationDispatchRequests(page);
 
     await page.goto('/en/register');
@@ -382,14 +436,17 @@ test.describe('login and registration', () => {
     await expect.poll(() => dispatchRequests.count()).toBe(2);
     await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
 
-    const body = (await page.textContent('body')) ?? '';
-    expect(body).not.toMatch(/email already exists|this email is registered/i);
+    const statusRegion = page.getByRole('region', { name: 'Verification email status' });
+    const regionText = (await statusRegion.textContent()) ?? '';
+    expect(regionText).not.toMatch(
+      /email already exists|this email is (?:already )?registered|an account already exists for this email/i,
+    );
   });
 
   test('shows a localized, accessible notice and a disabled Resend button when the verify-email page carries a rate-limited dispatch notice', async ({
     page,
   }) => {
-    const email = `e2e-notice-rate-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-notice-rate');
     await page.goto(`/en/verify-email?email=${encodeURIComponent(email)}&notice=rate-limited`);
 
     await expect(
@@ -403,7 +460,7 @@ test.describe('login and registration', () => {
   test('shows a localized delivery-failed notice with a still-usable Resend button', async ({
     page,
   }) => {
-    const email = `e2e-notice-delivery-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-notice-delivery');
     await page.goto(`/en/verify-email?email=${encodeURIComponent(email)}&notice=delivery-failed`);
 
     await expect(
@@ -415,7 +472,7 @@ test.describe('login and registration', () => {
   test('/th/verify-email shows the localized Thai rate-limited and delivery-failed notices', async ({
     page,
   }) => {
-    const email = `e2e-th-notice-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-th-notice');
 
     await page.goto(`/th/verify-email?email=${encodeURIComponent(email)}&notice=rate-limited`);
     await expect(
@@ -522,7 +579,7 @@ test.describe('login and registration', () => {
     await page.goto('/en/register');
 
     await page.getByLabel('Name').fill('Mismatch Tester');
-    await page.getByLabel('Email').fill(`e2e-mismatch-${Date.now()}@example.test`);
+    await page.getByLabel('Email').fill(uniqueTestEmail('e2e-mismatch'));
     await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
     const confirm = page.getByLabel('Confirm password');
     await confirm.fill('Different-Horse9!');
@@ -553,7 +610,7 @@ test.describe('login and registration', () => {
   });
 
   test('/th/register runs the same registration flow with Thai copy', async ({ page }) => {
-    const email = `e2e-th-register-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-th-register');
 
     await page.goto('/th/register');
     await page.getByLabel('ชื่อ').fill('ผู้ใช้ทดสอบ');
@@ -563,23 +620,31 @@ test.describe('login and registration', () => {
     await page.getByRole('button', { name: 'สร้างบัญชี' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+
+    // Scoped to the page's own named "Verification email status" region —
+    // mirrors the English coverage above.
+    const statusRegion = page.getByRole('region', { name: 'สถานะอีเมลยืนยัน' });
     await expect(
-      page.getByText(/หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว/),
+      statusRegion.getByText(/หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว/),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'กลับไปเข้าสู่ระบบ' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'ลืมรหัสผ่าน?' })).toBeVisible();
+    await expect(statusRegion.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'กลับไปเข้าสู่ระบบ' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'ลืมรหัสผ่าน?' })).toBeVisible();
 
     // The submitted address is never rendered as visible page text — only
-    // the URL (needed for the Resend button's own request) carries it.
-    const bodyText = (await page.textContent('body')) ?? '';
-    expect(bodyText).not.toContain(email);
+    // the URL (needed for the Resend button's own request) carries it. No
+    // wording distinguishes new/existing/verified/unverified status either.
+    const regionText = (await statusRegion.textContent()) ?? '';
+    expect(regionText).not.toContain(email);
+    expect(regionText).not.toMatch(
+      /อีเมลนี้ถูกใช้แล้ว|อีเมลนี้ลงทะเบียนแล้ว|มีบัญชีสำหรับอีเมลนี้อยู่แล้ว/,
+    );
   });
 
   test('/th/register rejects a weak password with the localized policy error', async ({ page }) => {
     await page.goto('/th/register');
     await page.getByLabel('ชื่อ').fill('ผู้ใช้ทดสอบ');
-    await page.getByLabel('อีเมล').fill(`e2e-th-weak-${Date.now()}@example.test`);
+    await page.getByLabel('อีเมล').fill(uniqueTestEmail('e2e-th-weak'));
 
     // A password that is long enough to slip past no client-side gate
     // bypass attempt but still misses a required character class — proves

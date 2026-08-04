@@ -10,6 +10,7 @@ import {
   tradingAccounts,
   userPreferences,
   users,
+  workspaceEntitlements,
   workspaceMembers,
   workspaces,
 } from '../../src/server/db/schema';
@@ -40,11 +41,49 @@ import {
  * workspace, one trading account, and `onboardingCompletedAt` alongside the
  * user. Only `e2e/onboarding.spec.ts` needs the pre-onboarding state, and
  * passes `onboarded: false` explicitly.
+ *
+ * `entitlement` (Phase 3C): every onboarded fixture gets a real
+ * `workspace_entitlements` row, matching what `completeOnboarding` would
+ * have produced. Locked product decision: the trial allows exactly ONE
+ * active account — so omitting `entitlement` entirely defaults to an
+ * ACTIVE Professional plan (limit 15), not a trial, giving every
+ * pre-Phase-3C E2E spec (`accounts.spec.ts`, `onboarding.spec.ts`, and
+ * others that create several accounts through the UI without knowing
+ * entitlements exist) the same generous headroom they always had — none of
+ * them are testing trial/limit behavior, so they should not need to know it
+ * exists. Passing `entitlement` explicitly (even `{}`) opts into real,
+ * honest trial semantics (1-account limit, 7-day expiry by default) for
+ * tests that specifically exercise entitlement behavior
+ * (`e2e/entitlements.spec.ts`). Pass overrides to construct an
+ * expired-trial, active-plan, or over-limit fixture directly — a "trusted
+ * test-only method to expire the trial" (Phase 3C brief), not a code path
+ * reachable from any production route. `additionalAccounts` seeds extra
+ * non-archived accounts directly (bypassing the create-account entitlement
+ * check entirely, since this is fixture setup, not a user action) — needed
+ * to construct an already-over-limit workspace, which the real UI can never
+ * produce on its own. `omitEntitlementRow` skips inserting any
+ * `workspace_entitlements` row at all — the fail-closed anomaly no real
+ * onboarding flow can produce (`completeOnboarding` always starts a trial
+ * atomically), constructed here only to prove the UI and server both fail
+ * closed rather than granting unlimited access when the snapshot can't be
+ * resolved.
  */
 export async function provisionVerifiedUser(
   connectionUrl: string,
   { email, password, name }: { email: string; password: string; name: string },
-  options: { readonly onboarded?: boolean } = {},
+  options: {
+    readonly onboarded?: boolean;
+    readonly entitlement?: {
+      readonly status?: 'trialing' | 'active' | 'expired' | 'canceled';
+      readonly planKey?: 'starter' | 'trader' | 'professional' | null;
+      readonly trialEndsAt?: Date | null;
+    };
+    readonly additionalAccounts?: number;
+    /** Extra accounts seeded already archived — for restore-blocked fixtures. */
+    readonly additionalArchivedAccounts?: number;
+    /** Skip inserting a `workspace_entitlements` row entirely — the fail-closed anomaly state. */
+    readonly omitEntitlementRow?: boolean;
+  } = {},
 ): Promise<{ id: string; email: string; password: string; name: string }> {
   const onboarded = options.onboarded ?? true;
   const guardedUrl = validateTestDatabaseEnvironment().testUrl;
@@ -53,7 +92,15 @@ export async function provisionVerifiedUser(
   }
   const client = postgres(connectionUrl, { max: 1 });
   const db = drizzle(client, {
-    schema: { users, accounts, workspaces, workspaceMembers, userPreferences, tradingAccounts },
+    schema: {
+      users,
+      accounts,
+      workspaces,
+      workspaceMembers,
+      userPreferences,
+      tradingAccounts,
+      workspaceEntitlements,
+    },
   });
 
   try {
@@ -108,6 +155,63 @@ export async function provisionVerifiedUser(
         activeWorkspaceId: workspaceId,
         activeTradingAccountId: accountId,
       });
+
+      if (options.omitEntitlementRow !== true) {
+        const entitlementOverride = options.entitlement;
+        const { status, planKey, trialEndsAt } =
+          entitlementOverride === undefined
+            ? {
+                // No entitlement behavior under test — an active Professional
+                // plan (limit 15) gives every pre-Phase-3C spec the same
+                // headroom it always had, so it never has to know a 1-account
+                // trial exists.
+                status: 'active' as const,
+                planKey: 'professional' as const,
+                trialEndsAt: null,
+              }
+            : {
+                status: entitlementOverride.status ?? 'trialing',
+                planKey: entitlementOverride.planKey ?? null,
+                trialEndsAt:
+                  entitlementOverride.trialEndsAt === undefined
+                    ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    : entitlementOverride.trialEndsAt,
+              };
+        await db.insert(workspaceEntitlements).values({
+          workspaceId,
+          status,
+          planKey,
+          trialStartedAt: new Date(),
+          trialEndsAt,
+        });
+      }
+
+      const additionalAccounts = options.additionalAccounts ?? 0;
+      for (let i = 0; i < additionalAccounts; i += 1) {
+        await db.insert(tradingAccounts).values({
+          id: generateId(),
+          workspaceId,
+          name: `Additional Account ${i + 1}`,
+          accountMode: 'live',
+          baseCurrency: 'USD',
+          startingBalance: '5000',
+          timezone: 'Asia/Bangkok',
+        });
+      }
+
+      const additionalArchivedAccounts = options.additionalArchivedAccounts ?? 0;
+      for (let i = 0; i < additionalArchivedAccounts; i += 1) {
+        await db.insert(tradingAccounts).values({
+          id: generateId(),
+          workspaceId,
+          name: `Archived Account ${i + 1}`,
+          accountMode: 'live',
+          baseCurrency: 'USD',
+          startingBalance: '5000',
+          timezone: 'Asia/Bangkok',
+          isArchived: true,
+        });
+      }
     }
 
     return { id: userId, email, password, name };

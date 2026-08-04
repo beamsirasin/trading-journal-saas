@@ -7,6 +7,7 @@ import {
   tradingAccounts,
   userPreferences,
   users,
+  workspaceEntitlements,
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
@@ -89,6 +90,17 @@ async function createWorkspaceWithOwner(db: ReturnType<typeof getTestDb>, ownerU
     .insert(workspaceMembers)
     .values({ workspaceId: workspace.id, userId: ownerUserId, role: 'owner' });
   await db.insert(userPreferences).values({ userId: ownerUserId, activeWorkspaceId: workspace.id });
+  // Phase 3B's own mutations are pre-entitlement fixtures — none of these
+  // tests exercise Phase 3C's limits, and several create 2-3 accounts, which
+  // the trial's 1-account limit would now reject. An active Professional
+  // plan (limit 15) gives every existing Phase 3B test the same generous
+  // headroom the original pre-Phase-3C trial fixture intended, without
+  // relying on the trial's own (now much tighter) allowance.
+  await db.insert(workspaceEntitlements).values({
+    workspaceId: workspace.id,
+    status: 'active',
+    planKey: 'professional',
+  });
   return workspace.id;
 }
 
@@ -163,6 +175,7 @@ describe('trading-account-management (real database)', () => {
       await activateAccount(db, userId, firstAccountId);
 
       const result = await createTradingAccount(workspaceId, userId, VALID_INPUT);
+      if (!result.ok) throw new Error(`expected success, got ${result.code}`);
 
       const accounts = await db
         .select()
@@ -203,6 +216,7 @@ describe('trading-account-management (real database)', () => {
         ...VALID_INPUT,
         setActive: true,
       });
+      if (!result.ok) throw new Error(`expected success, got ${result.code}`);
 
       const preference = await db
         .select({ activeTradingAccountId: userPreferences.activeTradingAccountId })
@@ -238,6 +252,8 @@ describe('trading-account-management (real database)', () => {
         name: 'A Different Name',
         mutationKey,
       });
+      if (!first.ok) throw new Error(`expected success, got ${first.code}`);
+      if (!second.ok) throw new Error(`expected success, got ${second.code}`);
 
       expect(second.accountId).toBe(first.accountId);
       expect(second.alreadyCreated).toBe(true);
@@ -266,6 +282,8 @@ describe('trading-account-management (real database)', () => {
           mutationKey: crypto.randomUUID(),
         }),
       ]);
+      if (!resultA.ok) throw new Error(`expected success, got ${resultA.code}`);
+      if (!resultB.ok) throw new Error(`expected success, got ${resultB.code}`);
 
       expect(resultA.accountId).not.toBe(resultB.accountId);
       const accounts = await db
@@ -282,6 +300,7 @@ describe('trading-account-management (real database)', () => {
       const workspaceId = await createWorkspaceWithOwner(db, userId);
 
       const result = await createTradingAccount(workspaceId, userId, VALID_INPUT);
+      if (!result.ok) throw new Error(`expected success, got ${result.code}`);
 
       const rows = await db
         .select()

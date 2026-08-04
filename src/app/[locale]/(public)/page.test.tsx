@@ -94,16 +94,36 @@ describe('landing page', () => {
 
     for (const plan of PLANS) {
       expect(within(pricing).getByRole('heading', { name: plan.name })).toBeInTheDocument();
+      expect(
+        within(pricing).getByText(`฿${plan.priceThb} / $${plan.priceUsd} per month`),
+      ).toBeInTheDocument();
     }
 
-    expect(within(pricing).getAllByText('Pricing to be confirmed')).toHaveLength(PLANS.length);
+    expect(within(pricing).getAllByText('Prices exclude applicable taxes.')).toHaveLength(
+      PLANS.length,
+    );
     expect(within(pricing).getAllByRole('link', { name: 'Sign up' })).toHaveLength(PLANS.length);
+  });
+
+  it('gives every plan the exact same feature list', async () => {
+    await renderHome();
+    const pricing = screen.getByRole('region', {
+      name: /three plans, one free trial/i,
+    });
+
+    for (const feature of [
+      'Manual journal & TradingView links',
+      'System-vs-trader comparison',
+      'Mistake tracking & discipline scoring',
+    ]) {
+      expect(within(pricing).getAllByText(feature)).toHaveLength(PLANS.length);
+    }
   });
 
   it('states that payment processing is not connected', async () => {
     await renderHome();
     expect(
-      screen.getByText(/no payment processing is connected to this product yet/i),
+      screen.getByText(/online payment is not connected to this product yet/i),
     ).toBeInTheDocument();
   });
 
@@ -140,15 +160,17 @@ describe('landing page', () => {
   /**
    * Phase 2 made registration and login real (Better Auth) — the page must
    * no longer claim otherwise. What remains genuinely unimplemented is
-   * billing: there is no real paid trial or subscription, so the page must
-   * not imply one starts automatically, and pricing stays explicitly
-   * unconfirmed.
+   * billing: prices are real and locked (Phase 3C), but no payment provider
+   * is connected, so the page must not imply a paid trial or subscription
+   * can start today.
    */
   it('does not imply that a paid trial or subscription can start today, while no longer claiming registration is fake', async () => {
     await renderHome();
     expect(document.body).not.toHaveTextContent(/start (?:a )?(?:\d+-day )?free trial/i);
     expect(document.body).not.toHaveTextContent(/registration is not live yet/i);
-    expect(screen.getAllByText('Pricing to be confirmed').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('Online payment is not connected to this product yet').length,
+    ).toBeGreaterThan(0);
   });
 
   it('uses a server-rendered chart on the marketing page', async () => {

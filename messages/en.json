@@ -45,6 +45,7 @@
     "account": {
       "menuLabel": "Account menu",
       "workspace": "Workspace",
+      "planAndBilling": "Plan & billing",
       "logout": "Log out",
       "activeTradingAccount": "Active trading account",
       "accountModeValues": {
@@ -202,33 +203,31 @@
   "pricing": {
     "eyebrow": "Pricing",
     "title": "Three plans, one free trial",
-    "description": "Plans differ mainly by how many trading accounts you can journal.",
-    "tradingAccounts": "Trading accounts",
-    "provisional": "provisional",
+    "description": "Every plan includes the exact same features and analytics. Plans differ only by how many active trading accounts you can keep.",
+    "tradingAccounts": "Active trading accounts",
     "mostPopular": "Most popular",
-    "priceUnset": "Pricing to be confirmed",
-    "priceUnsetNote": "A {trialDays}-day, no-card trial is planned but not live.",
+    "priceMonthly": "฿{thb} / ${usd} per month",
+    "taxExclusiveNote": "Prices exclude applicable taxes.",
     "cta": "Sign up",
+    "sharedFeaturesHeading": "Every plan includes",
+    "sharedFeatures": [
+      "Manual journal & TradingView links",
+      "System-vs-trader comparison",
+      "Mistake tracking & discipline scoring"
+    ],
     "plans": {
       "starter": {
-        "tagline": "Prove whether your strategy has an edge.",
-        "features": [
-          "1 trading account",
-          "Manual journal & TradingView links",
-          "System-vs-trader comparison"
-        ]
+        "tagline": "Prove whether your strategy has an edge with one account."
       },
-      "pro": {
-        "tagline": "Separate edge from execution across several accounts.",
-        "features": ["3 trading accounts", "Everything in Starter", "Mistake-cost breakdown"]
+      "trader": {
+        "tagline": "Separate edge from execution across up to five accounts."
       },
-      "elite": {
-        "tagline": "For traders running many accounts or a prop programme.",
-        "features": ["10 trading accounts", "Everything in Pro", "Full attribution analytics"]
+      "professional": {
+        "tagline": "For traders running many accounts or a prop programme."
       }
     },
-    "paymentNoticeTitle": "No payment processing is connected to this product yet",
-    "paymentNoticeBody": "Prices have not been set, no card is collected, and nothing can be purchased. A {trialDays}-day trial with no payment details is planned. Billing arrives in a later release, and amounts will be published before it does."
+    "paymentNoticeTitle": "Online payment is not connected to this product yet",
+    "paymentNoticeBody": "A {trialDays}-day, full-feature trial with one active trading account is planned, with no card required. Billing arrives in a later release."
   },
   "faq": {
     "eyebrow": "Questions",
@@ -588,7 +587,13 @@
       "not_found": "This trading account could not be found.",
       "forbidden": "You do not have permission to do that.",
       "archived": "An archived account cannot be made active. Restore it first.",
-      "last_account": "You cannot archive your last trading account. Create another trading account first."
+      "last_account": "You cannot archive your last trading account. Create another trading account first.",
+      "trial_expired": "Your trial has expired. Upgrade your plan to create or restore trading accounts.",
+      "subscription_canceled": "Your subscription has been canceled. Choose a plan to create or restore trading accounts.",
+      "account_limit_reached": "You've used your plan's active trading account limit. Additional accounts require the Trader or Professional plan.",
+      "workspace_over_limit": "This workspace has more active trading accounts than its plan allows. Archive an account, or upgrade to Trader or Professional, before creating or restoring another.",
+      "entitlement_unavailable": "We couldn't check this workspace's plan right now. Please try again in a moment.",
+      "unknown_plan": "This workspace's plan could not be recognized. Please contact support."
     },
     "switcher": {
       "menuLabel": "Switch trading account",
@@ -596,6 +601,56 @@
       "currentAccount": "Current account",
       "manageAccounts": "Manage accounts",
       "createAccount": "Create account"
+    }
+  },
+  "entitlements": {
+    "banner": {
+      "regionLabel": "Trial status",
+      "trialActive": "Free trial",
+      "trialSummary": "Your 7-day full-feature trial includes 1 active trading account.",
+      "daysRemaining": "{days, plural, one {# day remaining} other {# days remaining}}",
+      "lessThanOneDay": "Less than one day remaining",
+      "trialExpired": "Trial expired",
+      "accountUsage": "{used}/{limit} trading accounts",
+      "viewPlans": "View plans"
+    },
+    "expiredNotice": {
+      "title": "Your trial has expired",
+      "body": "Your existing trading accounts and data remain fully accessible. Upgrade to create new accounts or restore archived ones.",
+      "viewPlans": "View plans"
+    },
+    "overLimitNotice": {
+      "title": "This workspace is over its plan's account limit",
+      "body": "Archive an account, or upgrade to Trader or Professional, to create or restore another trading account."
+    },
+    "usage": {
+      "label": "Account usage",
+      "value": "{used} of {limit} trading accounts used",
+      "remaining": "{count, plural, one {# account remaining} other {# accounts remaining}}",
+      "limitReached": "Account limit reached"
+    },
+    "upgradeRequired": "Upgrade required",
+    "createUnavailable": "Create unavailable",
+    "restoreUnavailable": "Restore unavailable",
+    "archiveToReduceUsage": "Archive an account to reduce usage.",
+    "additionalAccountsRequireUpgrade": "Additional accounts require the Trader or Professional plan.",
+    "unavailableRegionLabel": "Account entitlement unavailable",
+    "plan": {
+      "title": "Plan & billing",
+      "description": "Your workspace's current plan, trial status, and trading-account usage.",
+      "currentPlanLabel": "Current plan",
+      "statusTrialing": "Trial active",
+      "statusActive": "Active",
+      "statusExpired": "Expired",
+      "statusCanceled": "Canceled",
+      "trialEndsLabel": "Trial ends",
+      "usageLabel": "Account usage",
+      "plansHeading": "Available plans",
+      "accountAllowance": "{count} trading accounts",
+      "identicalFeaturesNote": "All plans include the same features and analytics. Plans differ only by how many active trading accounts you can keep.",
+      "paymentNotConnected": "Online payment is not connected yet.",
+      "comingSoon": "Coming soon",
+      "currentPlanBadge": "Your plan"
     }
   },
   "auth": {
@@ -663,6 +718,7 @@
     "resetPasswordInvalidBody": "Password reset links expire after an hour. Request a new one.",
     "resetPasswordInvalidCta": "Request a new link",
     "verifyEmailPendingTitle": "Verify your email",
+    "verifyEmailStatusRegionLabel": "Verification email status",
     "verifyEmailPendingBody": "If this email can be used to register, we have sent a verification link.\nIf you already have an account, sign in or reset your password.",
     "verifyEmailResend": "Resend email",
     "verifyEmailResendSuccess": "Verification email sent.",
@@ -687,8 +743,8 @@
     "ctaHowItWorks": "How it works"
   },
   "pricingPage": {
-    "title": "Plans are set. Prices are not, yet.",
-    "description": "The three tiers below differ only in how many trading accounts you can journal. Amounts have not been approved and no payment provider is connected, so nothing on this page can be purchased. A {trialDays}-day trial is planned, with no card.",
+    "title": "One feature set. Three account allowances.",
+    "description": "Every plan includes the exact same features and analytics — they differ only in how many active trading accounts you can keep. No payment provider is connected yet, so nothing on this page can be purchased. A {trialDays}-day full-feature trial with one active trading account is planned, with no card.",
     "sectionTitle": "Choose by how many accounts you trade"
   },
   "notFound": {

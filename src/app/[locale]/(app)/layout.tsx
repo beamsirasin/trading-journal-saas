@@ -5,6 +5,7 @@ import {
   getActiveWorkspaceContext,
   getCurrentUserPreferences,
   getOptionalSession,
+  getWorkspaceEntitlement,
   listSwitchableTradingAccounts,
 } from '@/server/auth/dal';
 import { AppShell } from '@/components/shell/app-shell';
@@ -56,9 +57,15 @@ export default async function AppLayout({
   // does not exist. `switchableAccounts` is fetched unconditionally (a cheap
   // query even when unused) rather than made conditional on `activeAccount`
   // — the two are independent reads and cannot silently drift out of sync.
-  const [activeAccount, switchableAccounts] = await Promise.all([
+  //
+  // `entitlement` is fetched only once onboarding is complete — no
+  // `workspace_entitlements` row exists before then (the trial starts on
+  // completion, `completeOnboarding`), so querying earlier would just
+  // resolve `null` anyway; skipping the query entirely says so directly.
+  const [activeAccount, switchableAccounts, entitlement] = await Promise.all([
     getActiveTradingAccount(),
     listSwitchableTradingAccounts(),
+    workspace.onboardingCompletedAt === null ? null : getWorkspaceEntitlement(),
   ]);
 
   return (
@@ -69,6 +76,7 @@ export default async function AppLayout({
       dbLocale={preferences.locale}
       activeAccount={activeAccount}
       switchableAccounts={switchableAccounts}
+      entitlement={entitlement}
     >
       {children}
     </AppShell>

@@ -5,6 +5,7 @@ import postgres from 'postgres';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
 import { tradingAccounts, workspaces } from '../src/server/db/schema';
+import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
@@ -21,13 +22,30 @@ import { provisionVerifiedUser } from './support/provision-user';
  */
 const VALID_TEST_PASSWORD = 'Correct-Horse9!';
 
+/**
+ * Every test in this suite creates a second (and sometimes third) trading
+ * account through the UI — Phase 3C's trial is fixed at exactly 1 active
+ * account (CLAUDE.md A4), so a Trial fixture would fail closed the moment
+ * any of these scenarios tries to create beyond the seed account. None of
+ * these tests exercise trial/limit behavior itself (that's
+ * `e2e/entitlements.spec.ts`'s job) — they need headroom, so they provision
+ * an explicit, real, active Trader entitlement (limit 5), which comfortably
+ * covers the at-most-three accounts any single test here creates.
+ */
 async function provisionOnboardedUser(labelPrefix: string) {
   const { testUrl } = validateTestDatabaseEnvironment();
-  const email = `${labelPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+  // `test.info().project.name` (chromium/mobile-chrome) is folded in purely
+  // for debuggability when inspecting the disposable test database — the
+  // timestamp + random suffix alone already guarantees uniqueness.
+  const projectName = test.info().project.name;
+  const email = `${labelPrefix}-${projectName}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
   return provisionVerifiedUser(
     testUrl,
     { email, password: VALID_TEST_PASSWORD, name: 'E2E Accounts Tester' },
-    { onboarded: true },
+    {
+      onboarded: true,
+      entitlement: { status: 'active', planKey: 'trader', trialEndsAt: null },
+    },
   );
 }
 
@@ -62,31 +80,6 @@ async function countAccounts(workspaceId: string): Promise<number> {
       .where(eq(tradingAccounts.workspaceId, workspaceId));
     return rows.length;
   });
-}
-
-/**
- * Logs in and waits for the resulting redirect to the authenticated app to
- * actually land before returning. Without this, a caller's immediate
- * `page.goto('/en/app/accounts')` can race the login form's own client-side
- * redirect: if the navigation away starts before the session cookie is set,
- * the browser is sent back to the login page instead, and every subsequent
- * selector on the intended page times out. `provisionOnboardedUser` users
- * always land on `/app` (never `/app/onboarding`, since they are provisioned
- * pre-onboarded), so waiting for that URL is a safe, deterministic signal
- * that the session is genuinely established.
- */
-async function loginAs(
-  page: Page,
-  locale: 'en' | 'th',
-  user: { email: string; password: string },
-): Promise<void> {
-  await page.goto(`/${locale}/login`);
-  await page.getByLabel(locale === 'en' ? 'Email' : 'อีเมล').fill(user.email);
-  await page
-    .getByLabel(locale === 'en' ? 'Password' : 'รหัสผ่าน', { exact: true })
-    .fill(user.password);
-  await page.getByRole('button', { name: locale === 'en' ? 'Log in' : 'เข้าสู่ระบบ' }).click();
-  await page.waitForURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
 }
 
 /**

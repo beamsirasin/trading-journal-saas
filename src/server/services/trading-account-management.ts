@@ -2,6 +2,8 @@ import 'server-only';
 
 import { and, asc, eq, ne } from 'drizzle-orm';
 
+import type { EntitlementBlockReason } from '@/lib/entitlements/resolve';
+import { systemClock, type Clock } from '@/lib/time';
 import type {
   AccountFieldsData,
   CreateAccountData,
@@ -11,6 +13,7 @@ import { getDb } from '@/server/db/client';
 import { tradingAccounts, userPreferences, workspaceMembers, workspaces } from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
+import { lockAndResolveEntitlement } from './entitlement';
 
 /**
  * Phase 3B's account-management mutations — creating additional accounts,
@@ -39,24 +42,27 @@ export type ArchiveErrorCode = 'not_found' | 'last_account';
 export type ActivateErrorCode = 'not_found' | 'archived';
 export type UpdateErrorCode = 'not_found' | 'archived';
 
-export interface CreateTradingAccountResult {
-  readonly accountId: string;
-  readonly alreadyCreated: boolean;
-}
+export type CreateTradingAccountResult =
+  | { readonly ok: true; readonly accountId: string; readonly alreadyCreated: boolean }
+  | { readonly ok: false; readonly code: EntitlementBlockReason };
 
 /**
- * `INSERT ... ON CONFLICT (workspace_id, mutation_key) DO NOTHING` is the
- * actual idempotency boundary (`trading_accounts_workspace_mutation_key_idx`)
- * — a real unique index, not an in-memory lock or a disabled button. Two
- * requests carrying the SAME `mutationKey` can never both insert: the first
- * wins the row, the second's `.returning()` comes back empty and re-reads
- * the winner's row instead of erroring. Two DIFFERENT keys always produce
- * two distinct rows, concurrently or not — there is no shared state between
- * them to race over.
+ * Idempotency check runs FIRST, entitlement enforcement second (Phase 3C
+ * brief's required step ordering) — a replayed submission of the SAME
+ * `mutationKey` always returns the original account, even if the workspace
+ * is now at or over its limit, since no new slot is being consumed.
+ *
+ * Both the idempotency lookup and the entitlement check are serialized by
+ * the workspace-row lock taken immediately below: two concurrent
+ * `createTradingAccount` calls for the SAME workspace fully serialize from
+ * that point on, so there is no window for two callers to both observe "one
+ * slot remaining" and both create. `lockAndResolveEntitlement`'s own row
+ * lock on `workspace_entitlements` is defence-in-depth on top of that, not
+ * the sole guarantee.
  *
  * `setActive` is only ever applied on the branch that actually inserted a
- * fresh row. A replay (same key, already created) returns the prior result
- * untouched — matching standard idempotency-key semantics: the key
+ * fresh row — a replay (same key, already created) returns the prior result
+ * untouched, matching standard idempotency-key semantics: the key
  * represents "this exact mutation already happened," not "reapply these
  * parameters."
  */
@@ -64,6 +70,7 @@ export async function createTradingAccount(
   workspaceId: string,
   userId: string,
   input: CreateAccountData,
+  clock: Clock = systemClock,
 ): Promise<CreateTradingAccountResult> {
   const db = getDb();
 
@@ -71,15 +78,32 @@ export async function createTradingAccount(
     await requireActiveMembership(tx, workspaceId, userId);
 
     // Locks the workspace row so this serializes with concurrent
-    // activate/archive/restore operations that also touch
-    // `userPreferences.activeTradingAccountId` for this workspace — relevant
-    // only when `setActive` is true, but taken unconditionally so every
-    // trading-account mutation shares one predictable locking rule.
+    // activate/archive/restore/create operations for this workspace —
+    // including the idempotency lookup and entitlement check below, not
+    // only the `setActive` write.
     await tx
       .select({ id: workspaces.id })
       .from(workspaces)
       .where(eq(workspaces.id, workspaceId))
       .for('update');
+
+    const existingByKey = await tx.query.tradingAccounts.findFirst({
+      where: and(
+        eq(tradingAccounts.workspaceId, workspaceId),
+        eq(tradingAccounts.mutationKey, input.mutationKey),
+      ),
+    });
+    if (existingByKey !== undefined) {
+      return { ok: true, accountId: existingByKey.id, alreadyCreated: true };
+    }
+
+    const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
+    if (!entitlement.ok) {
+      return { ok: false, code: entitlement.code };
+    }
+    if (entitlement.effective.blockReason !== null) {
+      return { ok: false, code: entitlement.effective.blockReason };
+    }
 
     const inserted = await tx
       .insert(tradingAccounts)
@@ -103,7 +127,9 @@ export async function createTradingAccount(
 
     const created = inserted[0];
     if (created === undefined) {
-      // A conflict proves a row already exists for this exact key.
+      // Unreachable given the serialized idempotency check above — kept as a
+      // defensive re-read rather than a thrown error on an impossible
+      // conflict, matching the codebase's existing posture elsewhere.
       const existing = await tx.query.tradingAccounts.findFirst({
         where: and(
           eq(tradingAccounts.workspaceId, workspaceId),
@@ -115,7 +141,7 @@ export async function createTradingAccount(
           `createTradingAccount: conflict reported but no row found for mutation key in workspace ${workspaceId}`,
         );
       }
-      return { accountId: existing.id, alreadyCreated: true };
+      return { ok: true, accountId: existing.id, alreadyCreated: true };
     }
 
     // Never the balance, risk values, broker, or platform — only a safe
@@ -156,7 +182,7 @@ export async function createTradingAccount(
       });
     }
 
-    return { accountId: created.id, alreadyCreated: false };
+    return { ok: true, accountId: created.id, alreadyCreated: false };
   });
 }
 
@@ -429,7 +455,9 @@ export async function archiveTradingAccount(
   });
 }
 
-export type RestoreTradingAccountResult = { ok: true } | { ok: false; code: 'not_found' };
+export type RestoreTradingAccountResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly code: 'not_found' | EntitlementBlockReason };
 
 /**
  * Restoring never automatically reactivates the account (Phase 3B brief) —
@@ -439,11 +467,17 @@ export type RestoreTradingAccountResult = { ok: true } | { ok: false; code: 'not
  * existing repair-on-read logic already picks a fallback the next time it
  * runs, which may naturally be this restored account — no special-case
  * activation logic is duplicated here for that.
+ *
+ * Restoring is idempotent BEFORE the entitlement check (Phase 3C brief): an
+ * already-restored account returns success unconditionally, since nothing
+ * about the account count changes. Entitlement is only evaluated when this
+ * call would actually increase the active-account count.
  */
 export async function restoreTradingAccount(
   workspaceId: string,
   userId: string,
   accountId: string,
+  clock: Clock = systemClock,
 ): Promise<RestoreTradingAccountResult> {
   const db = getDb();
 
@@ -463,6 +497,14 @@ export async function restoreTradingAccount(
     }
     if (!account.isArchived) {
       return { ok: true };
+    }
+
+    const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
+    if (!entitlement.ok) {
+      return { ok: false, code: entitlement.code };
+    }
+    if (entitlement.effective.blockReason !== null) {
+      return { ok: false, code: entitlement.effective.blockReason };
     }
 
     await tx

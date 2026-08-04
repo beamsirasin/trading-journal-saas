@@ -1,15 +1,16 @@
 'use client';
 
-import { ArchiveRestore, CircleCheck, Pencil } from 'lucide-react';
+import { ArchiveRestore, CircleAlert, CircleCheck, Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
+import { resolveEntitlementGate } from '@/lib/entitlements/resolve';
 import {
   archiveTradingAccountAction,
   restoreTradingAccountAction,
   setActiveTradingAccountAction,
 } from '@/server/actions/trading-accounts';
-import type { TradingAccountRecord } from '@/server/auth/dal';
+import type { EffectiveEntitlement, TradingAccountRecord } from '@/server/auth/dal';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,15 +43,23 @@ export function AccountsManager({
   activeAccounts,
   archivedAccounts,
   activeAccountId,
+  entitlement,
   initialFeedback,
 }: {
   activeAccounts: readonly TradingAccountRecord[];
   archivedAccounts: readonly TradingAccountRecord[];
   activeAccountId: string | null;
+  /** `null` is the fail-closed anomaly case — treated as "cannot restore right now." */
+  entitlement: EffectiveEntitlement | null;
   initialFeedback?: FeedbackStatus;
 }) {
   const t = useTranslations('accounts');
+  const tEntitlements = useTranslations('entitlements');
   const router = useRouter();
+  // Fails closed on a `null` entitlement snapshot — the same helper
+  // `accounts/page.tsx`'s Create button and `accounts/new/page.tsx` read,
+  // so Restore can never independently drift into failing open again.
+  const restoreGate = resolveEntitlementGate(entitlement);
   const [isPending, startTransition] = useTransition();
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
@@ -90,6 +99,39 @@ export function AccountsManager({
           }
         >
           {feedback.message}
+        </div>
+      )}
+
+      {entitlement === null ? (
+        <div
+          role="status"
+          aria-label={tEntitlements('unavailableRegionLabel')}
+          className="border-warning/30 bg-warning/10 flex items-center gap-3 rounded-lg border p-4 text-sm"
+        >
+          <CircleAlert className="text-warning size-4 shrink-0" aria-hidden="true" />
+          <span className="text-foreground">{t('errors.entitlement_unavailable')}</span>
+        </div>
+      ) : entitlement.accountLimit === null ? null : (
+        <div
+          role="status"
+          className="border-border bg-card flex flex-wrap items-center gap-3 rounded-lg border p-4 text-sm"
+        >
+          <span className="text-foreground font-medium">{tEntitlements('usage.label')}</span>
+          <span className="numeric text-muted-foreground">
+            {tEntitlements('usage.value', {
+              used: entitlement.activeAccountCount,
+              limit: entitlement.accountLimit,
+            })}
+          </span>
+          {entitlement.canCreateAccount ? (
+            <span className="text-muted-foreground ml-auto">
+              {tEntitlements('usage.remaining', { count: entitlement.remainingAccountSlots })}
+            </span>
+          ) : (
+            <span className="text-warning ml-auto font-medium">
+              {tEntitlements('usage.limitReached')}
+            </span>
+          )}
         </div>
       )}
 
@@ -136,6 +178,7 @@ export function AccountsManager({
                 <ArchivedAccountCard
                   account={account}
                   isPending={isPending && pendingAccountId === account.id}
+                  restoreBlockReason={restoreGate.blockReason}
                   onRestore={() =>
                     runAction(account.id, () => restoreTradingAccountAction(account.id), 'restored')
                   }
@@ -257,15 +300,19 @@ function AccountCard({
 function ArchivedAccountCard({
   account,
   isPending,
+  restoreBlockReason,
   onRestore,
 }: {
   account: TradingAccountRecord;
   isPending: boolean;
+  /** `null` when restoring is allowed; otherwise the reason to show instead of attempting it. */
+  restoreBlockReason: string | null;
   onRestore: () => void;
 }) {
   const t = useTranslations('accounts');
   const tOnboarding = useTranslations('onboarding');
   const headingId = `archived-account-card-heading-${account.id}`;
+  const restoreReasonId = `archived-account-restore-reason-${account.id}`;
 
   return (
     <Card role="region" aria-labelledby={headingId} className="bg-muted/30 flex h-full flex-col">
@@ -286,10 +333,22 @@ function ArchivedAccountCard({
           />
           <Field label={t('field.currency')} value={account.baseCurrency} />
         </dl>
-        <div className="mt-auto pt-2">
-          <Button variant="outline" size="sm" disabled={isPending} onClick={onRestore}>
+        <div className="mt-auto flex flex-col gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isPending || restoreBlockReason !== null}
+            aria-describedby={restoreBlockReason === null ? undefined : restoreReasonId}
+            onClick={onRestore}
+            className="self-start"
+          >
             {t('restore')}
           </Button>
+          {restoreBlockReason === null ? null : (
+            <p id={restoreReasonId} className="text-muted-foreground text-xs leading-relaxed">
+              {t(`errors.${restoreBlockReason}` as Parameters<typeof t>[0])}
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>
