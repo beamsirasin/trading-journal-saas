@@ -1,4 +1,4 @@
-import { PLANS, type Plan } from '@/config/plans';
+import { PLANS, TRIAL_ACCOUNT_LIMIT, type Plan } from '@/config/plans';
 
 /**
  * Pure, deterministic entitlement resolution — no I/O, no db (same discipline
@@ -22,12 +22,7 @@ export interface EntitlementRecord {
   readonly currentPeriodEndsAt: Date | null;
 }
 
-/**
- * The trial unlocks the highest currently-configured plan allowance, so a
- * trialing workspace never needs to know which paid plan it will eventually
- * pick before evaluating whether it can create another account.
- */
-export const TRIAL_ACCOUNT_LIMIT = Math.max(...PLANS.map((plan) => plan.tradingAccounts));
+export { TRIAL_ACCOUNT_LIMIT };
 
 function planAccountLimit(planKey: PlanKey | null): number | null {
   if (planKey === null) return null;
@@ -86,7 +81,7 @@ export function resolveEffectiveEntitlement(
     accountLimit = planAccountLimit(record.planKey);
   } else {
     // Expired/canceled with no plan ever selected (a trial that ran out) —
-    // still meaningful to report the trial's own limit for display ("0/10").
+    // still meaningful to report the trial's own limit for display ("0/1").
     accountLimit = TRIAL_ACCOUNT_LIMIT;
   }
 

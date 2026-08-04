@@ -47,16 +47,30 @@ const E2E_VALID_PASSWORD = 'Correct-Horse9!';
  */
 
 test.describe('pricing', () => {
-  test('shows three plans with the trial and no invented prices', async ({ page }) => {
+  test('shows three plans with the locked prices and an identical feature list', async ({
+    page,
+  }) => {
     await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
 
-    for (const plan of ['Starter', 'Pro', 'Elite']) {
+    for (const plan of ['Starter', 'Trader', 'Professional']) {
       await expect(pricing.getByRole('heading', { name: plan })).toBeVisible();
     }
 
-    await expect(pricing.getByText('Pricing to be confirmed')).toHaveCount(3);
+    for (const price of ['฿149 / $5 per month', '฿299 / $9 per month', '฿499 / $15 per month']) {
+      await expect(pricing.getByText(price)).toBeVisible();
+    }
+
+    // Every plan card renders the exact same shared feature list — the
+    // locked decision that paid plans differ only by account allowance.
+    for (const feature of [
+      'Manual journal & TradingView links',
+      'System-vs-trader comparison',
+      'Mistake tracking & discipline scoring',
+    ]) {
+      await expect(pricing.getByText(feature, { exact: true })).toHaveCount(3);
+    }
 
     // Each plan card's own registration CTA, selected by the card's
     // `aria-labelledby` id (how `PricingCard` actually wires it — see the
@@ -65,29 +79,36 @@ test.describe('pricing', () => {
     // changed once (Phase 1.1's "preview" wording → Phase 2's real
     // registration), so asserting the destination rather than the label is
     // what keeps this test meaningful across that kind of rename.
-    for (const id of ['starter', 'pro', 'elite']) {
+    for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
       await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
     }
   });
 
-  test('states the seven-day trial', async ({ page }) => {
+  test('states the seven-day, full-feature, one-account trial', async ({ page }) => {
     await page.goto('/en/pricing');
-    // Current copy (`pricing.priceUnsetNote` in messages/en.json), not the
-    // old wording — "with no card is" never appears verbatim.
-    await expect(page.getByText(/7-day, no-card trial is planned/i).first()).toBeVisible();
+    await expect(
+      page
+        .getByText(/a 7-day, full-feature trial with one active trading account is planned/i)
+        .first(),
+    ).toBeVisible();
   });
 
-  test('shows the account limits the plans gate on', async ({ page }) => {
+  test('shows the account limits the plans gate on, with a tax-exclusive note', async ({
+    page,
+  }) => {
     await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
     // `exact` matters: Playwright's string matcher is substring-and-
-    // case-insensitive, so a loose "Trading accounts" also matches the
-    // section's intro paragraph.
-    await expect(pricing.getByText('Trading accounts', { exact: true })).toHaveCount(3);
-    // The Elite limit is still an open product question and must say so.
-    await expect(pricing.getByText('provisional', { exact: true })).toBeVisible();
+    // case-insensitive, so a loose "Active trading accounts" also matches
+    // the section's intro paragraph.
+    await expect(pricing.getByText('Active trading accounts', { exact: true })).toHaveCount(3);
+    await expect(pricing.getByText('Prices exclude applicable taxes.')).toHaveCount(3);
+    // No stale draft plan names or "provisional" limit marker remain.
+    await expect(pricing.getByText('provisional', { exact: true })).toHaveCount(0);
+    await expect(pricing.getByRole('heading', { name: 'Pro', exact: true })).toHaveCount(0);
+    await expect(pricing.getByRole('heading', { name: 'Elite', exact: true })).toHaveCount(0);
   });
 
   /**
@@ -96,9 +117,9 @@ test.describe('pricing', () => {
    * ~700px content width, with a full-width "Start trial" button — visibly
    * wider than the same card at mobile or desktop. Fixed by stepping to two
    * columns at `md`. Asserted by comparing row positions rather than a
-   * screenshot: Starter and Pro should sit side by side (equal top), with
-   * Elite wrapping to a second row (a lower top) rather than sitting to
-   * Pro's right in a phantom third column.
+   * screenshot: Starter and Trader should sit side by side (equal top), with
+   * Professional wrapping to a second row (a lower top) rather than sitting
+   * to Trader's right in a phantom third column.
    */
   test('renders two plan cards per row at a tablet viewport', async ({ page }) => {
     await page.setViewportSize({ width: 768, height: 1024 });
@@ -106,15 +127,17 @@ test.describe('pricing', () => {
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
     const starterBox = await pricing.getByRole('heading', { name: 'Starter' }).boundingBox();
-    const proBox = await pricing.getByRole('heading', { name: 'Pro' }).boundingBox();
-    const eliteBox = await pricing.getByRole('heading', { name: 'Elite' }).boundingBox();
+    const traderBox = await pricing.getByRole('heading', { name: 'Trader' }).boundingBox();
+    const professionalBox = await pricing
+      .getByRole('heading', { name: 'Professional' })
+      .boundingBox();
 
     // A manual tolerance rather than `toBeCloseTo`: its precision digits
     // round to whole pixels, which is tighter than the sub-pixel rendering
     // variance between Playwright's desktop and mobile-emulation projects
     // actually produces for two elements that are genuinely on the same row.
-    expect(Math.abs((starterBox?.y ?? 0) - (proBox?.y ?? -100))).toBeLessThan(5);
-    expect(eliteBox?.y ?? 0).toBeGreaterThan((starterBox?.y ?? 0) + 20);
+    expect(Math.abs((starterBox?.y ?? 0) - (traderBox?.y ?? -100))).toBeLessThan(5);
+    expect(professionalBox?.y ?? 0).toBeGreaterThan((starterBox?.y ?? 0) + 20);
 
     // The card should no longer be stretched to the full content width.
     // Selected via the card's own `aria-labelledby` id rather than walking up
@@ -131,14 +154,14 @@ test.describe('pricing', () => {
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
 
     await expect(
-      page.getByText(/no payment processing is connected to this product yet/i),
+      page.getByText(/online payment is not connected to this product yet/i),
     ).toBeVisible();
 
     // No plan CTA may lead to a checkout. They all go to real registration
     // instead. Selected by each card's `aria-labelledby` id rather than CTA
     // copy — see the "shows three plans" test above for why.
     // Suffix match: `Link` from `@/i18n/navigation` renders `/en/register`.
-    for (const id of ['starter', 'pro', 'elite']) {
+    for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
       await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
     }

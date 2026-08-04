@@ -11,6 +11,14 @@ import { provisionVerifiedUser } from './support/provision-user';
  * its own fresh user, matching `e2e/accounts.spec.ts`'s own reasoning: this
  * suite's create/archive/restore mutations must never bleed into another
  * test's state under Playwright's `fullyParallel: true`.
+ *
+ * Locked plan decision (correcting the earlier starter/pro/elite 1/3/10
+ * draft): the trial is a fixed 1-account allowance (never the highest
+ * plan's), and paid limits are starter=1, trader=5, professional=15. Tests
+ * here that want real trial semantics pass `entitlement: {}` explicitly —
+ * `provisionVerifiedUser`'s default (entitlement omitted entirely) seeds an
+ * active Professional plan instead, for every OTHER spec file that creates
+ * several accounts without knowing entitlements exist.
  */
 const VALID_TEST_PASSWORD = 'Correct-Horse9!';
 
@@ -61,61 +69,60 @@ test.describe('trial entitlements and account limits', () => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
   });
 
-  test('shows the trial banner with days remaining and account usage after onboarding', async ({
+  test('shows the trial banner with the full-feature 7-day/1-account summary and days remaining', async ({
     page,
   }) => {
-    const user = await provisionUser('e2e-entitlements-banner');
+    const user = await provisionUser('e2e-entitlements-banner', { entitlement: {} });
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app');
     const banner = page.getByRole('region', { name: 'Trial status' });
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('Free trial');
+    await expect(banner).toContainText(
+      'Your 7-day full-feature trial includes 1 active trading account.',
+    );
     await expect(banner).toContainText('days remaining');
     await expect(banner.getByRole('link', { name: 'View plans' })).toBeVisible();
   });
 
-  test('account usage starts at 1/10 during the trial and reaches the limit at 10', async ({
+  test('account usage starts at 1/1 during the trial and a second account is rejected', async ({
     page,
   }) => {
-    const user = await provisionUser('e2e-entitlements-limit');
+    const user = await provisionUser('e2e-entitlements-trial-limit', { entitlement: {} });
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts');
-    await expect(page.getByText('1 of 10 trading accounts used')).toBeVisible();
-
-    for (let i = 2; i <= 10; i += 1) {
-      await createAccountViaUI(page, `Account ${i}`);
-    }
-
-    await page.goto('/en/app/accounts');
-    await expect(page.getByText('10 of 10 trading accounts used')).toBeVisible();
+    await expect(page.getByText('1 of 1 trading accounts used')).toBeVisible();
     await expect(page.getByText('Account limit reached')).toBeVisible();
-
-    // The Create button is now disabled with an explanation, and a direct
-    // submission to /app/accounts/new is rejected server-side rather than
-    // merely hidden client-side.
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
 
+    // A direct submission to /app/accounts/new is rejected server-side
+    // rather than merely hidden client-side — no form is rendered at all.
     await page.goto('/en/app/accounts/new');
     await expect(page.getByText('Create unavailable')).toBeVisible();
     await expect(
-      page.getByText("You've used all the trading accounts your plan allows."),
+      page.getByText("You've used your plan's active trading account limit."),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Additional accounts require the Trader or Professional plan.'),
     ).toBeVisible();
     await expect(page.getByRole('link', { name: 'Back to accounts' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'View plans' })).toBeVisible();
-    // No form is rendered at all — nothing to submit.
     await expect(page.getByLabel('Trading account name')).toHaveCount(0);
   });
 
-  test('archiving an account below the limit makes Create available again', async ({ page }) => {
+  test('archiving an account below the Trader limit makes Create available again', async ({
+    page,
+  }) => {
     const user = await provisionUser('e2e-entitlements-archive-frees-slot', {
-      additionalAccounts: 9,
+      entitlement: { status: 'active', planKey: 'trader', trialEndsAt: null },
+      additionalAccounts: 4,
     });
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/accounts');
-    await expect(page.getByText('10 of 10 trading accounts used')).toBeVisible();
+    await expect(page.getByText('5 of 5 trading accounts used')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
 
     await page
@@ -124,14 +131,14 @@ test.describe('trial entitlements and account limits', () => {
       .click();
     await page.getByRole('button', { name: 'Archive account' }).click();
 
-    await expect(page.getByText('9 of 10 trading accounts used')).toBeVisible();
+    await expect(page.getByText('4 of 5 trading accounts used')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Create account' })).toBeVisible();
 
     await createAccountViaUI(page, 'Freshly Allowed Account');
     await expect(page.getByRole('region', { name: 'Freshly Allowed Account' })).toBeVisible();
   });
 
-  test('restoring an archived account is blocked once it would exceed the limit', async ({
+  test('restoring an archived account is blocked once it would exceed the Starter limit', async ({
     page,
   }) => {
     // Starter plan (limit 1), already at its limit with the seed account —
@@ -150,7 +157,7 @@ test.describe('trial entitlements and account limits', () => {
     await expect(archivedRegion).toBeVisible();
     await expect(archivedRegion.getByRole('button', { name: 'Restore' })).toBeDisabled();
     await expect(
-      archivedRegion.getByText("You've used all the trading accounts your plan allows."),
+      archivedRegion.getByText("You've used your plan's active trading account limit."),
     ).toBeVisible();
   });
 
@@ -174,7 +181,7 @@ test.describe('trial entitlements and account limits', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
 
-    // Editing and switching remain available.
+    // Editing remains available.
     await page
       .getByRole('region', { name: 'Main Trading Account' })
       .getByRole('link', { name: 'Edit' })
@@ -182,14 +189,11 @@ test.describe('trial entitlements and account limits', () => {
     await expect(page.getByRole('heading', { name: 'Edit trading account' })).toBeVisible();
     await page.getByRole('link', { name: 'Cancel' }).click();
 
-    // Archiving remains available too (never blocked by trial expiry) —
-    // requires a second account first, since the last account cannot be
-    // archived regardless of entitlement.
     await page.goto('/en/app/accounts/new');
     await expect(page.getByText('Create unavailable')).toBeVisible();
   });
 
-  test('an over-limit workspace preserves all accounts and blocks create/restore with a clear notice', async ({
+  test('an over-limit Starter workspace preserves all accounts and blocks create/restore with a clear notice', async ({
     page,
   }) => {
     const user = await provisionUser('e2e-entitlements-over-limit', {
@@ -210,19 +214,34 @@ test.describe('trial entitlements and account limits', () => {
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
   });
 
-  test('the plan page shows the three real plan definitions and never fakes a purchase', async ({
+  test('the plan page shows Starter/Trader/Professional with the locked prices, and never fakes a purchase', async ({
     page,
   }) => {
-    const user = await provisionUser('e2e-entitlements-plan-page');
+    const user = await provisionUser('e2e-entitlements-plan-page', { entitlement: {} });
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/plan');
     await expect(page.getByRole('heading', { name: 'Plan & billing' })).toBeVisible();
     await expect(page.getByText('Online payment is not connected yet.')).toBeVisible();
+    await expect(
+      page.getByText(
+        'All plans include the same features and analytics. Plans differ only by how many active trading accounts you can keep.',
+      ),
+    ).toBeVisible();
 
-    for (const planName of ['Starter', 'Pro', 'Elite']) {
+    const expectations: Array<[string, string]> = [
+      ['Starter', '฿149 / $5 per month'],
+      ['Trader', '฿299 / $9 per month'],
+      ['Professional', '฿499 / $15 per month'],
+    ];
+    for (const [planName, price] of expectations) {
       await expect(page.getByRole('heading', { name: planName })).toBeVisible();
+      await expect(page.getByText(price)).toBeVisible();
     }
+    // No stale draft plan names remain.
+    await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Elite', exact: true })).toHaveCount(0);
+
     // Every plan CTA is a disabled "Coming soon" — never an active purchase button.
     const comingSoonButtons = page.getByRole('button', { name: 'Coming soon' });
     await expect(comingSoonButtons).toHaveCount(3);
@@ -231,14 +250,40 @@ test.describe('trial entitlements and account limits', () => {
     }
   });
 
+  test('the public pricing page shows the same Starter/Trader/Professional 1/5/15 limits and identical feature lists', async ({
+    page,
+  }) => {
+    await page.goto('/en/pricing');
+    const pricing = page.getByRole('region', { name: /three plans, one free trial/i });
+
+    for (const planName of ['Starter', 'Trader', 'Professional']) {
+      await expect(pricing.getByRole('heading', { name: planName, exact: true })).toBeVisible();
+    }
+
+    // Every shared feature string appears exactly once per plan card —
+    // three cards, so exactly three occurrences each. A per-plan feature
+    // list divergence (the old pro/elite design) would break this count.
+    const sharedFeatures = [
+      'Manual journal & TradingView links',
+      'System-vs-trader comparison',
+      'Mistake tracking & discipline scoring',
+    ];
+    for (const feature of sharedFeatures) {
+      await expect(pricing.getByText(feature, { exact: true })).toHaveCount(3);
+    }
+  });
+
   test('trial banner and plan page render correctly in Thai', async ({ page }) => {
-    const user = await provisionUser('e2e-entitlements-th');
+    const user = await provisionUser('e2e-entitlements-th', { entitlement: {} });
     await loginAs(page, 'th', user);
 
     await page.goto('/th/app');
     const banner = page.getByRole('region', { name: 'สถานะการทดลองใช้' });
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('ทดลองใช้ฟรี');
+    await expect(banner).toContainText(
+      'ทดลองใช้ทุกฟีเจอร์ 7 วัน พร้อมบัญชีเทรดที่ใช้งานอยู่ 1 บัญชี',
+    );
 
     await page.goto('/th/app/plan');
     await expect(page.getByRole('heading', { name: 'แผนและการเรียกเก็บเงิน' })).toBeVisible();
@@ -247,7 +292,7 @@ test.describe('trial entitlements and account limits', () => {
   test('no horizontal overflow at a 320px viewport with the trial banner and usage summary visible', async ({
     page,
   }) => {
-    const user = await provisionUser('e2e-entitlements-mobile-320', { additionalAccounts: 1 });
+    const user = await provisionUser('e2e-entitlements-mobile-320', { entitlement: {} });
     await page.setViewportSize({ width: 320, height: 720 });
     await loginAs(page, 'en', user);
 

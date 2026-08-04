@@ -103,6 +103,12 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
             ) : null}
           </div>
 
+          {entitlement.effectiveStatus === 'trialing' ? (
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              {tBanner('trialSummary')}
+            </p>
+          ) : null}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <span className="text-muted-foreground text-label uppercase">
@@ -128,9 +134,14 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
       )}
 
       <section aria-labelledby="available-plans-heading" className="flex flex-col gap-4">
-        <h2 id="available-plans-heading" className="text-card-title">
-          {t('plansHeading')}
-        </h2>
+        <div className="flex flex-col gap-1">
+          <h2 id="available-plans-heading" className="text-card-title">
+            {t('plansHeading')}
+          </h2>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {t('identicalFeaturesNote')}
+          </p>
+        </div>
         <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {PLANS.map((plan) => (
             <li key={plan.id} className="flex">
@@ -150,6 +161,7 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
           <p className="text-muted-foreground">
             {tPricing('paymentNoticeBody', { trialDays: TRIAL_DAYS })}
           </p>
+          <p className="text-muted-foreground">{tPricing('taxExclusiveNote')}</p>
         </div>
       </div>
     </Container>
@@ -177,6 +189,7 @@ async function PlanCard({ plan, isCurrent }: { plan: Plan; isCurrent: boolean })
   const t = await getTranslations('pricing');
   const tEntitlements = await getTranslations('entitlements.plan');
   const headingId = `plan-${plan.id}-name`;
+  const sharedFeatures = t.raw('sharedFeatures') as readonly string[];
 
   return (
     <div
@@ -199,14 +212,23 @@ async function PlanCard({ plan, isCurrent }: { plan: Plan; isCurrent: boolean })
         </p>
       </div>
 
+      <p className="text-foreground text-lg font-semibold">
+        {t('priceMonthly', { thb: plan.priceThb, usd: plan.priceUsd })}
+      </p>
+
       <div className="border-border flex flex-col gap-1 rounded-lg border border-dashed p-3">
         <span className="text-muted-foreground text-label uppercase">
           {tEntitlements('accountAllowance', { count: plan.tradingAccounts })}
         </span>
-        {plan.limitProvisional ? (
-          <span className="text-muted-foreground text-xs">{tEntitlements('provisionalNote')}</span>
-        ) : null}
       </div>
+
+      <ul className="flex flex-1 flex-col gap-2">
+        {sharedFeatures.map((feature) => (
+          <li key={feature} className="text-muted-foreground text-sm leading-relaxed">
+            {feature}
+          </li>
+        ))}
+      </ul>
 
       <Button
         disabled

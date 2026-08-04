@@ -9,13 +9,13 @@ import { Section, SectionIntro } from './section';
 /**
  * Pricing.
  *
- * Three plans gated primarily on trading-account count, which is the axis
- * recorded in docs/product-spec.md §9. The Elite limit of ten is still an
- * open product question and is marked provisional on the card rather than
- * presented as decided.
+ * Three plans (Starter/Trader/Professional — the locked product decision)
+ * gated exclusively on active trading-account count: 1/5/15. Every plan
+ * shares the exact same feature set (`pricing.sharedFeatures`,
+ * `PricingCard`) — the account limit is the only difference between them.
  *
  * The notice below the cards is not fine print to be minimised. Payment
- * processing does not exist, and a pricing page that does not say so is
+ * processing does not exist yet, and a pricing page that does not say so is
  * making a claim about the product's readiness.
  *
  * `title`/`eyebrow` stay as overridable props, translated already by the

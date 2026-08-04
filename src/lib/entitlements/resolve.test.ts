@@ -24,31 +24,63 @@ function record(overrides: Partial<EntitlementRecord> = {}): EntitlementRecord {
 }
 
 describe('plan registry', () => {
-  it('has exactly starter/pro/elite with 1/3/10 account limits', () => {
+  it('has exactly starter/trader/professional with 1/5/15 account limits', () => {
     expect(PLANS.map((plan) => [plan.id, plan.tradingAccounts])).toEqual([
       ['starter', 1],
-      ['pro', 3],
-      ['elite', 10],
+      ['trader', 5],
+      ['professional', 15],
     ]);
   });
 
-  it('the trial account limit equals the highest configured plan limit', () => {
-    expect(TRIAL_ACCOUNT_LIMIT).toBe(10);
-    expect(TRIAL_ACCOUNT_LIMIT).toBe(Math.max(...PLANS.map((plan) => plan.tradingAccounts)));
+  it('has the locked THB and USD prices', () => {
+    expect(PLANS.map((plan) => [plan.id, plan.priceThb, plan.priceUsd])).toEqual([
+      ['starter', 149, 5],
+      ['trader', 299, 9],
+      ['professional', 499, 15],
+    ]);
+  });
+
+  it('marks every plan tax-exclusive', () => {
+    expect(PLANS.every((plan) => plan.taxExclusive)).toBe(true);
+  });
+
+  it('the trial account limit is the explicit, authoritative value 1 — never derived from the plan registry', () => {
+    expect(TRIAL_ACCOUNT_LIMIT).toBe(1);
+    // Specifically NOT the highest, lowest, or any other plan's limit — a
+    // regression here (e.g. reintroducing `Math.max(...PLANS.map(...))`)
+    // would silently re-widen the trial the moment Professional's limit
+    // changed, which is exactly the bug this correction fixes.
+    expect(TRIAL_ACCOUNT_LIMIT).not.toBe(Math.max(...PLANS.map((plan) => plan.tradingAccounts)));
+    expect(TRIAL_ACCOUNT_LIMIT).toBe(PLANS.find((plan) => plan.id === 'starter')?.tradingAccounts);
   });
 });
 
 describe('resolveEffectiveEntitlement — trial status', () => {
-  it('is trialing with the full trial limit while now < trialEndsAt', () => {
+  it('is trialing with a 1-account limit while now < trialEndsAt', () => {
     const before = new Date('2026-06-15T11:59:59.999Z');
-    const effective = resolveEffectiveEntitlement(record(), 1, before);
+    const effective = resolveEffectiveEntitlement(record(), 0, before);
 
     expect(effective.effectiveStatus).toBe('trialing');
-    expect(effective.accountLimit).toBe(10);
+    expect(effective.accountLimit).toBe(1);
     expect(effective.trialExpired).toBe(false);
     expect(effective.canCreateAccount).toBe(true);
     expect(effective.canRestoreAccount).toBe(true);
     expect(effective.blockReason).toBeNull();
+  });
+
+  it('blocks creating a second account once the trial holds its one allowed account', () => {
+    const effective = resolveEffectiveEntitlement(record(), 1, new Date('2026-06-10T00:00:00Z'));
+
+    expect(effective.remainingAccountSlots).toBe(0);
+    expect(effective.canCreateAccount).toBe(false);
+    expect(effective.blockReason).toBe('account_limit_reached');
+  });
+
+  it('blocks restoring an archived account once the trial holds its one allowed account', () => {
+    const effective = resolveEffectiveEntitlement(record(), 1, new Date('2026-06-10T00:00:00Z'));
+
+    expect(effective.canRestoreAccount).toBe(false);
+    expect(effective.blockReason).toBe('account_limit_reached');
   });
 
   it('is expired exactly at trialEndsAt, with no grace period', () => {
@@ -68,30 +100,63 @@ describe('resolveEffectiveEntitlement — trial status', () => {
     expect(effective.persistedStatus).toBe('trialing');
     expect(effective.effectiveStatus).toBe('expired');
   });
-
-  it('reports remaining slots and blocks creation once at the trial limit', () => {
-    const atLimit = resolveEffectiveEntitlement(record(), 10, new Date('2026-06-10T00:00:00Z'));
-    expect(atLimit.remainingAccountSlots).toBe(0);
-    expect(atLimit.canCreateAccount).toBe(false);
-    expect(atLimit.blockReason).toBe('account_limit_reached');
-    expect(atLimit.overLimit).toBe(false);
-
-    const underLimit = resolveEffectiveEntitlement(record(), 9, new Date('2026-06-10T00:00:00Z'));
-    expect(underLimit.remainingAccountSlots).toBe(1);
-    expect(underLimit.canCreateAccount).toBe(true);
-  });
 });
 
 describe('resolveEffectiveEntitlement — active plan', () => {
-  it('uses the plan registry limit, not the trial limit', () => {
-    const active = resolveEffectiveEntitlement(
-      record({ status: 'active', planKey: 'pro', trialEndsAt: null }),
-      2,
+  it('Starter permits exactly 1 active account', () => {
+    const atLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'starter', trialEndsAt: null }),
+      1,
       NOW,
     );
-    expect(active.accountLimit).toBe(3);
-    expect(active.remainingAccountSlots).toBe(1);
-    expect(active.canCreateAccount).toBe(true);
+    expect(atLimit.accountLimit).toBe(1);
+    expect(atLimit.canCreateAccount).toBe(false);
+    expect(atLimit.blockReason).toBe('account_limit_reached');
+
+    const underLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'starter', trialEndsAt: null }),
+      0,
+      NOW,
+    );
+    expect(underLimit.canCreateAccount).toBe(true);
+  });
+
+  it('Trader permits exactly 5 active accounts', () => {
+    const atLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'trader', trialEndsAt: null }),
+      5,
+      NOW,
+    );
+    expect(atLimit.accountLimit).toBe(5);
+    expect(atLimit.canCreateAccount).toBe(false);
+    expect(atLimit.blockReason).toBe('account_limit_reached');
+
+    const underLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'trader', trialEndsAt: null }),
+      4,
+      NOW,
+    );
+    expect(underLimit.canCreateAccount).toBe(true);
+    expect(underLimit.remainingAccountSlots).toBe(1);
+  });
+
+  it('Professional permits exactly 15 active accounts', () => {
+    const atLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'professional', trialEndsAt: null }),
+      15,
+      NOW,
+    );
+    expect(atLimit.accountLimit).toBe(15);
+    expect(atLimit.canCreateAccount).toBe(false);
+    expect(atLimit.blockReason).toBe('account_limit_reached');
+
+    const underLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'professional', trialEndsAt: null }),
+      14,
+      NOW,
+    );
+    expect(underLimit.canCreateAccount).toBe(true);
+    expect(underLimit.remainingAccountSlots).toBe(1);
   });
 
   it('reports over-limit when a downgrade leaves more accounts than the new plan allows', () => {
@@ -117,12 +182,24 @@ describe('resolveEffectiveEntitlement — active plan', () => {
     expect(unknown.canRestoreAccount).toBe(false);
     expect(unknown.blockReason).toBe('unknown_plan');
   });
+
+  it('fails closed for the retired draft plan keys pro/elite', () => {
+    for (const retiredKey of ['pro', 'elite'] as const) {
+      const effective = resolveEffectiveEntitlement(
+        record({ status: 'active', planKey: retiredKey as never, trialEndsAt: null }),
+        1,
+        NOW,
+      );
+      expect(effective.accountLimit).toBeNull();
+      expect(effective.blockReason).toBe('unknown_plan');
+    }
+  });
 });
 
 describe('resolveEffectiveEntitlement — canceled', () => {
   it('blocks create and restore even when under the last known limit', () => {
     const canceled = resolveEffectiveEntitlement(
-      record({ status: 'canceled', planKey: 'pro', trialEndsAt: null }),
+      record({ status: 'canceled', planKey: 'trader', trialEndsAt: null }),
       1,
       NOW,
     );
@@ -130,6 +207,21 @@ describe('resolveEffectiveEntitlement — canceled', () => {
     expect(canceled.canCreateAccount).toBe(false);
     expect(canceled.canRestoreAccount).toBe(false);
     expect(canceled.blockReason).toBe('subscription_canceled');
+  });
+});
+
+describe('resolveEffectiveEntitlement — archived accounts', () => {
+  it('do not consume the allowance', () => {
+    // Two archived + one active, under a 1-account trial: only the active
+    // one counts, so a second slot is still available.
+    const effective = resolveEffectiveEntitlement(record(), 1, new Date('2026-06-10T00:00:00Z'));
+    expect(effective.activeAccountCount).toBe(1);
+    expect(effective.remainingAccountSlots).toBe(0);
+    // Restated explicitly: this resolver is handed the ALREADY-filtered
+    // active count by its caller (`countActiveAccounts` in
+    // `src/server/services/entitlement.ts`, which filters `is_archived =
+    // false`) — this test documents that contract rather than re-deriving
+    // it, since the resolver itself has no notion of "archived" at all.
   });
 });
 

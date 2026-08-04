@@ -102,9 +102,32 @@ Append-only by construction: `src/server/services/audit-log.ts` exposes only `in
 
 ---
 
+## Phase 3C — Trial entitlements and account limits (implemented, ahead of Phase 04)
+
+Migrations: [`drizzle/0003_add_workspace_entitlements.sql`](../drizzle/0003_add_workspace_entitlements.sql) (table + trial backfill for already-onboarded workspaces), [`drizzle/0004_rename_plan_keys_trader_professional.sql`](../drizzle/0004_rename_plan_keys_trader_professional.sql) (renamed a since-retired `pro`/`elite` draft to the locked `trader`/`professional` keys). Plan registry: [`src/config/plans.ts`](../src/config/plans.ts). Pure resolution logic: [`src/lib/entitlements/resolve.ts`](../src/lib/entitlements/resolve.ts).
+
+### `workspace_entitlements` (application-owned)
+
+The one authoritative source of a workspace's trial/subscription state — narrower than the `subscriptions` table Phase 04 originally planned below (no payment-provider identifiers yet; those arrive when a real provider is wired in).
+
+| Column                   | Type        | Notes                                                                           |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------- |
+| `workspace_id`           | uuid        | Unique (`workspace_entitlements_workspace_idx`) — at most one row per workspace |
+| `status`                 | text, CHECK | `trialing` \| `active` \| `expired` \| `canceled`                               |
+| `plan_key`               | text, CHECK | `NULL` (no plan selected yet) \| `starter` \| `trader` \| `professional`        |
+| `trial_started_at`       | timestamptz | `NULL` until onboarding completes                                               |
+| `trial_ends_at`          | timestamptz | Evaluated on read (`now >= trial_ends_at`) — expiry needs no scheduler          |
+| `current_period_ends_at` | timestamptz | `NULL` until a real billing period exists (Phase 04+)                           |
+
+**Locked plan decision:** the trial grants exactly **1** active trading account for **7 days** with every feature unlocked — an explicit constant (`TRIAL_ACCOUNT_LIMIT`), never derived from any paid plan's limit. Paid plans gate exclusively on active (non-archived) trading-account count and otherwise share an identical feature set: Starter (1 account, ฿149/$5 per month), Trader (5 accounts, ฿299/$9 per month), Professional (15 accounts, ฿499/$15 per month). Prices are tax-exclusive; VAT collection is disabled (not yet VAT-registered).
+
+---
+
 ## Phase 04 — Billing
 
 ### `subscriptions`
+
+Real payment-provider integration, not yet implemented. `workspace_entitlements` (above) already owns `status`/`plan`/trial-date tracking for Phase 3C's server-side enforcement; this table is where provider-specific fields (customer ID, subscription ID, billing period) land once a provider is wired in — likely widening `workspace_entitlements` rather than a fully separate table, but not yet decided.
 
 | Column                 | Type        | Notes                                                           |
 | ---------------------- | ----------- | --------------------------------------------------------------- |

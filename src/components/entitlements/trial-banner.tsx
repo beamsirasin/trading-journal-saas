@@ -8,19 +8,21 @@ import { Link } from '@/i18n/navigation';
 
 /**
  * The app-shell trial/entitlement status surface (Phase 3C brief). Renders
- * one of three mutually exclusive states, priority order matching the
+ * one of four mutually exclusive states, priority order matching the
  * brief's own downgrade/expiry precedence:
  *
- *   1. over limit    — a real, currently-active plan (or trial) that has
- *                       more non-archived accounts than it allows (e.g. a
- *                       downgrade). Takes priority because it is the most
- *                       actionable state: data is fine, but the workspace
- *                       needs to archive something.
- *   2. expired        — trial ran out (or a canceled subscription — the
- *                       banner treats both as "no active access" for now;
- *                       there is no live path to `canceled` this phase, only
- *                       trusted test helpers).
- *   3. trialing/active — the normal, informational status line.
+ *   1. over limit  — a real, currently-active plan (or trial) that has more
+ *                    non-archived accounts than it allows (e.g. a
+ *                    downgrade). Takes priority because it is the most
+ *                    actionable state: data is fine, but the workspace
+ *                    needs to archive something.
+ *   2. no access   — trial ran out, or the subscription was canceled; both
+ *                    read as "no active access" (there is no live path to
+ *                    `canceled` this phase, only trusted test helpers).
+ *   3. trialing    — the full-feature, 1-account trial's informational line.
+ *   4. active       — a real paying plan, not over its limit: nothing
+ *                    actionable to say, so no banner renders at all rather
+ *                    than nagging a paying customer with a permanent bar.
  *
  * Server component: no interactivity is required (no dismiss, no client
  * state), and the entitlement snapshot is already resolved server-side —
@@ -50,7 +52,7 @@ export async function TrialBanner({ entitlement }: { entitlement: EffectiveEntit
     );
   }
 
-  if (entitlement.trialExpired) {
+  if (entitlement.trialExpired || entitlement.effectiveStatus === 'canceled') {
     return (
       <div
         role="region"
@@ -70,6 +72,12 @@ export async function TrialBanner({ entitlement }: { entitlement: EffectiveEntit
     );
   }
 
+  if (entitlement.effectiveStatus !== 'trialing') {
+    // A real, active paying plan, not over its limit — nothing actionable
+    // to surface here (account usage lives on the accounts page itself).
+    return null;
+  }
+
   const usage =
     entitlement.accountLimit === null
       ? null
@@ -85,7 +93,8 @@ export async function TrialBanner({ entitlement }: { entitlement: EffectiveEntit
       className="border-border bg-muted/40 flex flex-wrap items-center gap-3 border-b px-4 py-2 text-sm"
     >
       <span className="text-foreground font-medium">{t('banner.trialActive')}</span>
-      {entitlement.effectiveStatus === 'trialing' && entitlement.trialEndsAt !== null ? (
+      <span className="text-muted-foreground">{t('banner.trialSummary')}</span>
+      {entitlement.trialEndsAt !== null ? (
         <TrialCountdown trialEndsAt={entitlement.trialEndsAt} />
       ) : null}
       {usage === null ? null : <span className="text-muted-foreground">{usage}</span>}

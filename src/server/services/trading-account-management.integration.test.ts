@@ -91,14 +91,15 @@ async function createWorkspaceWithOwner(db: ReturnType<typeof getTestDb>, ownerU
     .values({ workspaceId: workspace.id, userId: ownerUserId, role: 'owner' });
   await db.insert(userPreferences).values({ userId: ownerUserId, activeWorkspaceId: workspace.id });
   // Phase 3B's own mutations are pre-entitlement fixtures — none of these
-  // tests exercise Phase 3C's limits, so every workspace gets an active
-  // trial with the full trial allowance, matching what `completeOnboarding`
-  // would have produced for a genuinely onboarded workspace.
+  // tests exercise Phase 3C's limits, and several create 2-3 accounts, which
+  // the trial's 1-account limit would now reject. An active Professional
+  // plan (limit 15) gives every existing Phase 3B test the same generous
+  // headroom the original pre-Phase-3C trial fixture intended, without
+  // relying on the trial's own (now much tighter) allowance.
   await db.insert(workspaceEntitlements).values({
     workspaceId: workspace.id,
-    status: 'trialing',
-    trialStartedAt: new Date(),
-    trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    status: 'active',
+    planKey: 'professional',
   });
   return workspace.id;
 }

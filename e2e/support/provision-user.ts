@@ -44,10 +44,17 @@ import {
  *
  * `entitlement` (Phase 3C): every onboarded fixture gets a real
  * `workspace_entitlements` row, matching what `completeOnboarding` would
- * have produced — a 7-day trial by default, so every EXISTING E2E test that
- * provisions an onboarded user still sees ordinary trial-active state (the
- * new trial banner, unblocked create/restore) rather than the fail-closed
- * "no entitlement row" anomaly state. Pass an override to construct an
+ * have produced. Locked product decision: the trial allows exactly ONE
+ * active account — so omitting `entitlement` entirely defaults to an
+ * ACTIVE Professional plan (limit 15), not a trial, giving every
+ * pre-Phase-3C E2E spec (`accounts.spec.ts`, `onboarding.spec.ts`, and
+ * others that create several accounts through the UI without knowing
+ * entitlements exist) the same generous headroom they always had — none of
+ * them are testing trial/limit behavior, so they should not need to know it
+ * exists. Passing `entitlement` explicitly (even `{}`) opts into real,
+ * honest trial semantics (1-account limit, 7-day expiry by default) for
+ * tests that specifically exercise entitlement behavior
+ * (`e2e/entitlements.spec.ts`). Pass overrides to construct an
  * expired-trial, active-plan, or over-limit fixture directly — a "trusted
  * test-only method to expire the trial" (Phase 3C brief), not a code path
  * reachable from any production route. `additionalAccounts` seeds extra
@@ -63,7 +70,7 @@ export async function provisionVerifiedUser(
     readonly onboarded?: boolean;
     readonly entitlement?: {
       readonly status?: 'trialing' | 'active' | 'expired' | 'canceled';
-      readonly planKey?: 'starter' | 'pro' | 'elite' | null;
+      readonly planKey?: 'starter' | 'trader' | 'professional' | null;
       readonly trialEndsAt?: Date | null;
     };
     readonly additionalAccounts?: number;
@@ -142,16 +149,30 @@ export async function provisionVerifiedUser(
         activeTradingAccountId: accountId,
       });
 
-      const entitlement = options.entitlement ?? {};
-      const status = entitlement.status ?? 'trialing';
-      const trialEndsAt =
-        entitlement.trialEndsAt === undefined
-          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-          : entitlement.trialEndsAt;
+      const entitlementOverride = options.entitlement;
+      const { status, planKey, trialEndsAt } =
+        entitlementOverride === undefined
+          ? {
+              // No entitlement behavior under test — an active Professional
+              // plan (limit 15) gives every pre-Phase-3C spec the same
+              // headroom it always had, so it never has to know a 1-account
+              // trial exists.
+              status: 'active' as const,
+              planKey: 'professional' as const,
+              trialEndsAt: null,
+            }
+          : {
+              status: entitlementOverride.status ?? 'trialing',
+              planKey: entitlementOverride.planKey ?? null,
+              trialEndsAt:
+                entitlementOverride.trialEndsAt === undefined
+                  ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                  : entitlementOverride.trialEndsAt,
+            };
       await db.insert(workspaceEntitlements).values({
         workspaceId,
         status,
-        planKey: entitlement.planKey ?? null,
+        planKey,
         trialStartedAt: new Date(),
         trialEndsAt,
       });

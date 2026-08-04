@@ -49,9 +49,13 @@ export const workspaceEntitlements = pgTable(
       'workspace_entitlements_status_check',
       sql`${table.status} IN ('trialing', 'active', 'expired', 'canceled')`,
     ),
+    // `starter`/`trader`/`professional` — the locked plan registry
+    // (`src/config/plans.ts`). Migration 0004 renamed the earlier draft
+    // keys (`pro`->`trader`, `elite`->`professional`) and replaced this
+    // constraint; see that migration for the reconciliation.
     check(
       'workspace_entitlements_plan_key_check',
-      sql`${table.planKey} IS NULL OR ${table.planKey} IN ('starter', 'pro', 'elite')`,
+      sql`${table.planKey} IS NULL OR ${table.planKey} IN ('starter', 'trader', 'professional')`,
     ),
   ],
 );

@@ -19,6 +19,15 @@ import { closeTestDb, getTestDb } from '@/test/integration-db';
  * integration.test.ts` already established: only Better Auth's own
  * session-resolution step is mocked, everything else is a real transaction
  * against real tables and real locks.
+ *
+ * Locked plan decision (correcting the earlier starter/pro/elite 1/3/10
+ * draft): starter=1, trader=5, professional=15; the trial is a fixed
+ * 1-account allowance, never derived from the highest configured plan.
+ * Concurrency races that need more than one slot use Trader (racing for the
+ * 5th slot) or Professional (racing for the 15th) — never the trial, whose
+ * only race scenario is onboarding's own atomicity, already covered by
+ * `trading-account.integration.test.ts`'s "creates exactly one account when
+ * the same workspace onboards concurrently".
  */
 type MockSession = {
   user: { id: string; name: string; email: string; emailVerified: boolean; image: string | null };
@@ -95,7 +104,7 @@ async function seedEntitlement(
   workspaceId: string,
   overrides: {
     status?: 'trialing' | 'active' | 'expired' | 'canceled';
-    planKey?: string | null;
+    planKey?: 'starter' | 'trader' | 'professional' | null;
     trialEndsAt?: Date | null;
   } = {},
 ) {
@@ -220,6 +229,22 @@ describe('entitlement enforcement (real database)', () => {
       expect(serialized).not.toContain('status');
     });
 
+    it('leaves the workspace at 1/1 usage immediately after onboarding', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createIncompleteWorkspace(db, userId);
+      currentSession = sessionFor(userId);
+
+      await completeOnboarding(workspaceId, userId, ONBOARDING_INPUT);
+
+      const effective = await readEffectiveEntitlement(db, workspaceId);
+      expect(effective?.accountLimit).toBe(1);
+      expect(effective?.activeAccountCount).toBe(1);
+      expect(effective?.remainingAccountSlots).toBe(0);
+      expect(effective?.canCreateAccount).toBe(false);
+    });
+
     it('does not restart or extend the trial on a repeated onboarding completion', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
@@ -259,30 +284,25 @@ describe('entitlement enforcement (real database)', () => {
     });
   });
 
-  describe('createTradingAccount — limits', () => {
-    it('allows creating up to the trial limit (10)', async () => {
+  describe('createTradingAccount — trial (limit 1)', () => {
+    it('allows the trial to reach its one-account allowance', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId);
       currentSession = sessionFor(userId);
-      for (let i = 0; i < 9; i += 1) {
-        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
-      }
 
       const result = await createTradingAccount(workspaceId, userId, accountInput());
       expect(result.ok).toBe(true);
     });
 
-    it('rejects creation once the trial limit is reached', async () => {
+    it('rejects a second account once the trial holds its one allowed account', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId);
       currentSession = sessionFor(userId);
-      for (let i = 0; i < 10; i += 1) {
-        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
-      }
+      await seedAccount(db, workspaceId);
 
       const result = await createTradingAccount(workspaceId, userId, accountInput());
       expect(result).toEqual({ ok: false, code: 'account_limit_reached' });
@@ -291,24 +311,55 @@ describe('entitlement enforcement (real database)', () => {
         .select()
         .from(tradingAccounts)
         .where(eq(tradingAccounts.workspaceId, workspaceId));
-      expect(accounts).toHaveLength(10);
+      expect(accounts).toHaveLength(1);
     });
 
-    it('archived accounts do not consume the allowance', async () => {
+    it('archived accounts do not consume the trial allowance', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId);
       currentSession = sessionFor(userId);
-      for (let i = 0; i < 10; i += 1) {
-        await seedAccount(db, workspaceId, { name: `Seed ${i}`, isArchived: i < 3 });
-      }
+      await seedAccount(db, workspaceId, { isArchived: true });
 
       const result = await createTradingAccount(workspaceId, userId, accountInput());
       expect(result.ok).toBe(true);
     });
 
-    it('a low-plan workspace is limited to its plan allowance, not the trial limit', async () => {
+    it('rejects creation for an expired trial', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+        trialEndsAt: new Date(Date.now() - 1000),
+      });
+      currentSession = sessionFor(userId);
+
+      const result = await createTradingAccount(workspaceId, userId, accountInput());
+      expect(result).toEqual({ ok: false, code: 'trial_expired' });
+    });
+
+    it('a replayed mutation key returns the original account even at the limit', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId);
+      currentSession = sessionFor(userId);
+      const mutationKey = crypto.randomUUID();
+
+      const first = await createTradingAccount(workspaceId, userId, accountInput({ mutationKey }));
+      if (!first.ok) throw new Error(`expected success, got ${first.code}`);
+
+      // The workspace is now at its 1/1 trial limit — a genuine second
+      // create would be rejected (proven above), but a replay of the SAME
+      // mutation key must still succeed.
+      const replay = await createTradingAccount(workspaceId, userId, accountInput({ mutationKey }));
+      expect(replay).toEqual({ ok: true, accountId: first.accountId, alreadyCreated: true });
+    });
+  });
+
+  describe('createTradingAccount — active plans', () => {
+    it('Starter permits exactly 1 active account', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
@@ -324,18 +375,46 @@ describe('entitlement enforcement (real database)', () => {
       expect(result).toEqual({ ok: false, code: 'account_limit_reached' });
     });
 
-    it('rejects creation for an expired trial', async () => {
+    it('Trader permits up to 5 active accounts', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
-        trialEndsAt: new Date(Date.now() - 1000),
+        status: 'active',
+        planKey: 'trader',
+        trialEndsAt: null,
       });
       currentSession = sessionFor(userId);
-      await seedAccount(db, workspaceId);
+      for (let i = 0; i < 4; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
 
-      const result = await createTradingAccount(workspaceId, userId, accountInput());
-      expect(result).toEqual({ ok: false, code: 'trial_expired' });
+      const fifth = await createTradingAccount(workspaceId, userId, accountInput());
+      expect(fifth.ok).toBe(true);
+
+      const sixth = await createTradingAccount(workspaceId, userId, accountInput());
+      expect(sixth).toEqual({ ok: false, code: 'account_limit_reached' });
+    });
+
+    it('Professional permits up to 15 active accounts', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+        status: 'active',
+        planKey: 'professional',
+        trialEndsAt: null,
+      });
+      currentSession = sessionFor(userId);
+      for (let i = 0; i < 14; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
+
+      const fifteenth = await createTradingAccount(workspaceId, userId, accountInput());
+      expect(fifteenth.ok).toBe(true);
+
+      const sixteenth = await createTradingAccount(workspaceId, userId, accountInput());
+      expect(sixteenth).toEqual({ ok: false, code: 'account_limit_reached' });
     });
 
     it('rejects creation for an unrecognized plan (fail closed)', async () => {
@@ -344,7 +423,7 @@ describe('entitlement enforcement (real database)', () => {
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
         status: 'active',
-        planKey: 'mystery',
+        planKey: 'mystery' as never,
         trialEndsAt: null,
       });
       currentSession = sessionFor(userId);
@@ -354,53 +433,26 @@ describe('entitlement enforcement (real database)', () => {
       expect(result).toEqual({ ok: false, code: 'unknown_plan' });
     });
 
-    it('a replayed mutation key returns the original account even at the limit', async () => {
+    it('rejects creation for the retired draft plan keys pro/elite (fail closed)', async () => {
       const db = getTestDb();
-      const userId = await createUser(db, 'owner');
-      createdUserIds.push(userId);
-      const workspaceId = await createWorkspaceWithEntitlement(db, userId);
-      currentSession = sessionFor(userId);
-      const mutationKey = crypto.randomUUID();
+      for (const retiredKey of ['pro', 'elite'] as const) {
+        const userId = await createUser(db, `owner-${retiredKey}`);
+        createdUserIds.push(userId);
+        const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+          status: 'active',
+          planKey: retiredKey as never,
+          trialEndsAt: null,
+        });
+        currentSession = sessionFor(userId);
 
-      const first = await createTradingAccount(workspaceId, userId, accountInput({ mutationKey }));
-      if (!first.ok) throw new Error(`expected success, got ${first.code}`);
-      for (let i = 0; i < 9; i += 1) {
-        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+        const result = await createTradingAccount(workspaceId, userId, accountInput());
+        expect(result).toEqual({ ok: false, code: 'unknown_plan' });
       }
-
-      const replay = await createTradingAccount(workspaceId, userId, accountInput({ mutationKey }));
-      expect(replay).toEqual({ ok: true, accountId: first.accountId, alreadyCreated: true });
-    });
-
-    it('two creates racing for the last slot produce exactly one success and one rejection', async () => {
-      const db = getTestDb();
-      const userId = await createUser(db, 'owner');
-      createdUserIds.push(userId);
-      const workspaceId = await createWorkspaceWithEntitlement(db, userId);
-      currentSession = sessionFor(userId);
-      for (let i = 0; i < 9; i += 1) {
-        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
-      }
-
-      const [a, b] = await Promise.all([
-        createTradingAccount(workspaceId, userId, accountInput()),
-        createTradingAccount(workspaceId, userId, accountInput()),
-      ]);
-
-      const outcomes = [a, b];
-      expect(outcomes.filter((result) => result.ok)).toHaveLength(1);
-      expect(outcomes.filter((result) => !result.ok)).toHaveLength(1);
-
-      const accounts = await db
-        .select()
-        .from(tradingAccounts)
-        .where(eq(tradingAccounts.workspaceId, workspaceId));
-      expect(accounts).toHaveLength(10);
     });
   });
 
   describe('restoreTradingAccount — limits', () => {
-    it('restoring consumes allowance and is rejected once it would exceed the limit', async () => {
+    it('restoring is rejected once it would exceed the Starter limit', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
@@ -453,17 +505,70 @@ describe('entitlement enforcement (real database)', () => {
       expect(result).toEqual({ ok: false, code: 'trial_expired' });
     });
 
+    it('Professional permits restoring up to its 15-account limit', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+        status: 'active',
+        planKey: 'professional',
+        trialEndsAt: null,
+      });
+      currentSession = sessionFor(userId);
+      for (let i = 0; i < 14; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
+      const archivedId = await seedAccount(db, workspaceId, { isArchived: true });
+
+      const result = await restoreTradingAccount(workspaceId, userId, archivedId);
+      expect(result).toEqual({ ok: true });
+    });
+  });
+
+  describe('concurrency — Trader (racing for the 5th slot)', () => {
+    it('two creates racing for the last slot produce exactly one success and one rejection', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+        status: 'active',
+        planKey: 'trader',
+        trialEndsAt: null,
+      });
+      currentSession = sessionFor(userId);
+      for (let i = 0; i < 4; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
+
+      const [a, b] = await Promise.all([
+        createTradingAccount(workspaceId, userId, accountInput()),
+        createTradingAccount(workspaceId, userId, accountInput()),
+      ]);
+
+      const outcomes = [a, b];
+      expect(outcomes.filter((result) => result.ok)).toHaveLength(1);
+      expect(outcomes.filter((result) => !result.ok)).toHaveLength(1);
+
+      const accounts = await db
+        .select()
+        .from(tradingAccounts)
+        .where(eq(tradingAccounts.workspaceId, workspaceId));
+      expect(accounts).toHaveLength(5);
+    });
+
     it('two restores racing for the last slot produce exactly one success and one rejection', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
         status: 'active',
-        planKey: 'pro',
+        planKey: 'trader',
         trialEndsAt: null,
       });
       currentSession = sessionFor(userId);
-      await seedAccount(db, workspaceId);
+      for (let i = 0; i < 3; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
       const archivedA = await seedAccount(db, workspaceId, { isArchived: true });
       const archivedB = await seedAccount(db, workspaceId, { isArchived: true });
 
@@ -482,7 +587,7 @@ describe('entitlement enforcement (real database)', () => {
         .where(
           and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
         );
-      expect(activeAccounts).toHaveLength(3);
+      expect(activeAccounts).toHaveLength(4);
     });
 
     it('a create and a restore racing for the same last slot never both succeed', async () => {
@@ -491,12 +596,13 @@ describe('entitlement enforcement (real database)', () => {
       createdUserIds.push(userId);
       const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
         status: 'active',
-        planKey: 'pro',
+        planKey: 'trader',
         trialEndsAt: null,
       });
       currentSession = sessionFor(userId);
-      await seedAccount(db, workspaceId);
-      await seedAccount(db, workspaceId);
+      for (let i = 0; i < 3; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
       const archivedId = await seedAccount(db, workspaceId, { isArchived: true });
 
       const [createResult, restoreResult] = await Promise.all([
@@ -513,7 +619,37 @@ describe('entitlement enforcement (real database)', () => {
         .where(
           and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
         );
-      expect(activeAccounts).toHaveLength(3);
+      expect(activeAccounts).toHaveLength(4);
+    });
+
+    it('the same mutation key retried under concurrent load still creates exactly one account at the limit', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+        status: 'active',
+        planKey: 'trader',
+        trialEndsAt: null,
+      });
+      currentSession = sessionFor(userId);
+      for (let i = 0; i < 4; i += 1) {
+        await seedAccount(db, workspaceId, { name: `Seed ${i}` });
+      }
+      const mutationKey = crypto.randomUUID();
+
+      const [a, b] = await Promise.all([
+        createTradingAccount(workspaceId, userId, accountInput({ mutationKey })),
+        createTradingAccount(workspaceId, userId, accountInput({ mutationKey })),
+      ]);
+      if (!a.ok) throw new Error(`expected success, got ${a.code}`);
+      if (!b.ok) throw new Error(`expected success, got ${b.code}`);
+      expect(a.accountId).toBe(b.accountId);
+
+      const accounts = await db
+        .select()
+        .from(tradingAccounts)
+        .where(eq(tradingAccounts.workspaceId, workspaceId));
+      expect(accounts).toHaveLength(5);
     });
   });
 
@@ -522,7 +658,11 @@ describe('entitlement enforcement (real database)', () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
       createdUserIds.push(userId);
-      const workspaceId = await createWorkspaceWithEntitlement(db, userId);
+      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
+        status: 'active',
+        planKey: 'trader',
+        trialEndsAt: null,
+      });
       await seedAccount(db, workspaceId);
       await seedAccount(db, workspaceId, { isArchived: true });
       await seedAccount(db, workspaceId, { isArchived: true });

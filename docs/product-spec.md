@@ -93,9 +93,9 @@ Mitigations: prefill the system outcome where plan and execution agree, keep the
 
 ## 9. Open product questions
 
-| #   | Question                                                                          | Needed by |
-| --- | --------------------------------------------------------------------------------- | --------- |
-| 1   | Do plan limits (1 / 3 / 10 accounts) match how traders actually segment accounts? | Phase 04  |
-| 2   | Is a 7-day trial long enough to accumulate a meaningful sample of trades?         | Phase 04  |
-| 3   | What is the minimum closed-trade count before a verdict may be stated?            | Phase 09  |
-| 4   | Should the default break-even tolerance be 0.05R?                                 | Phase 07  |
+| #   | Question                                                                                                                                                                                                                                                            | Needed by  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 1   | ~~Do plan limits match how traders actually segment accounts?~~ **Locked in Phase 3C**: Starter 1 / Trader 5 / Professional 15, gating exclusively on active trading-account count, identical feature set across plans. See `src/config/plans.ts` and CLAUDE.md A3. | Phase 3C ✓ |
+| 2   | Is a 7-day trial long enough to accumulate a meaningful sample of trades? Trial grants exactly 1 active trading account (locked, CLAUDE.md A4) — not the highest plan's allowance.                                                                                  | Phase 04   |
+| 3   | What is the minimum closed-trade count before a verdict may be stated?                                                                                                                                                                                              | Phase 09   |
+| 4   | Should the default break-even tolerance be 0.05R?                                                                                                                                                                                                                   | Phase 07   |
