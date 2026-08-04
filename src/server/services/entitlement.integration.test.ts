@@ -417,38 +417,31 @@ describe('entitlement enforcement (real database)', () => {
       expect(sixteenth).toEqual({ ok: false, code: 'account_limit_reached' });
     });
 
-    it('rejects creation for an unrecognized plan (fail closed)', async () => {
-      const db = getTestDb();
-      const userId = await createUser(db, 'owner');
-      createdUserIds.push(userId);
-      const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
-        status: 'active',
-        planKey: 'mystery' as never,
-        trialEndsAt: null,
-      });
-      currentSession = sessionFor(userId);
-      await seedAccount(db, workspaceId);
-
-      const result = await createTradingAccount(workspaceId, userId, accountInput());
-      expect(result).toEqual({ ok: false, code: 'unknown_plan' });
-    });
-
-    it('rejects creation for the retired draft plan keys pro/elite (fail closed)', async () => {
-      const db = getTestDb();
-      for (const retiredKey of ['pro', 'elite'] as const) {
-        const userId = await createUser(db, `owner-${retiredKey}`);
-        createdUserIds.push(userId);
-        const workspaceId = await createWorkspaceWithEntitlement(db, userId, {
-          status: 'active',
-          planKey: retiredKey as never,
-          trialEndsAt: null,
-        });
-        currentSession = sessionFor(userId);
-
-        const result = await createTradingAccount(workspaceId, userId, accountInput());
-        expect(result).toEqual({ ok: false, code: 'unknown_plan' });
-      }
-    });
+    /**
+     * There is deliberately no DB-level integration test that inserts a
+     * `mystery`/`pro`/`elite` `plan_key` and then calls `createTradingAccount`
+     * against it: `workspace_entitlements_plan_key_check` (migration 0004)
+     * makes that INSERT itself fail with a Postgres constraint violation
+     * before the service code under test ever runs — the row is simply
+     * impossible to create in this database, by design. The unknown-plan
+     * fail-closed BEHAVIOR is proven at the layer that can actually exercise
+     * it without corrupting the schema: `resolveEffectiveEntitlement`'s pure
+     * unit tests (`src/lib/entitlements/resolve.test.ts` — "fails closed for
+     * an unrecognized plan key", "fails closed for the retired draft plan
+     * keys pro/elite"), which construct an `EntitlementRecord` directly in
+     * memory, no database involved. Defense in depth is therefore: the CHECK
+     * constraint (prevents the bad value from ever being persisted) plus the
+     * pure resolver test (proves the application logic would fail closed if
+     * it somehow were) — together covering both "can this state exist" and
+     * "what happens if it did," without needing a test that defeats the
+     * constraint to prove it. Migration 0004's own translation behavior
+     * (pro→trader, elite→professional, timestamps preserved, new constraint
+     * installed) is covered separately in
+     * `entitlement-plan-key-migration.integration.test.ts`, against a
+     * fixture that faithfully reproduces the pre-0004 schema rather than the
+     * already-upgraded one this file's `createWorkspaceWithEntitlement` seeds
+     * into.
+     */
   });
 
   describe('restoreTradingAccount — limits', () => {
@@ -584,6 +577,16 @@ describe('entitlement enforcement (real database)', () => {
     });
   });
 
+  /**
+   * Every test below seeds exactly 4 pre-existing active accounts against a
+   * Trader plan (limit 5) — exactly ONE slot remaining — before racing two
+   * mutations for it. This count matters precisely: seeding only 3 (2 free
+   * slots) makes "both succeed" the mathematically CORRECT outcome (each
+   * consumes one of the two available slots), not a concurrency defect, so
+   * asserting "exactly one success" against a 2-slot fixture is a test bug,
+   * not evidence the server fails to serialize. 4 existing + 1 contested
+   * slot is what actually exercises the race.
+   */
   describe('concurrency — Trader (racing for the 5th slot)', () => {
     it('two creates racing for the last slot produce exactly one success and one rejection', async () => {
       const db = getTestDb();
@@ -625,7 +628,7 @@ describe('entitlement enforcement (real database)', () => {
         trialEndsAt: null,
       });
       currentSession = sessionFor(userId);
-      for (let i = 0; i < 3; i += 1) {
+      for (let i = 0; i < 4; i += 1) {
         await seedAccount(db, workspaceId, { name: `Seed ${i}` });
       }
       const archivedA = await seedAccount(db, workspaceId, { isArchived: true });
@@ -646,7 +649,7 @@ describe('entitlement enforcement (real database)', () => {
         .where(
           and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
         );
-      expect(activeAccounts).toHaveLength(4);
+      expect(activeAccounts).toHaveLength(5);
     });
 
     it('a create and a restore racing for the same last slot never both succeed', async () => {
@@ -659,7 +662,7 @@ describe('entitlement enforcement (real database)', () => {
         trialEndsAt: null,
       });
       currentSession = sessionFor(userId);
-      for (let i = 0; i < 3; i += 1) {
+      for (let i = 0; i < 4; i += 1) {
         await seedAccount(db, workspaceId, { name: `Seed ${i}` });
       }
       const archivedId = await seedAccount(db, workspaceId, { isArchived: true });
@@ -678,7 +681,7 @@ describe('entitlement enforcement (real database)', () => {
         .where(
           and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
         );
-      expect(activeAccounts).toHaveLength(4);
+      expect(activeAccounts).toHaveLength(5);
     });
 
     it('the same mutation key retried under concurrent load still creates exactly one account at the limit', async () => {

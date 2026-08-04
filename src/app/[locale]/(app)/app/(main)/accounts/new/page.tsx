@@ -68,8 +68,14 @@ export default async function NewTradingAccountPage({ params }: { params: Promis
     return (
       <Container width="prose" className="flex flex-col gap-6 py-8">
         <PageHeader title={t('createAccountTitle')} description={t('createAccountDescription')} />
-        <div className="border-warning/30 bg-warning/10 flex flex-col gap-3 rounded-lg border p-5">
-          <p className="text-foreground font-medium">{tEntitlements('createUnavailable')}</p>
+        <div
+          role="region"
+          aria-labelledby="create-unavailable-heading"
+          className="border-warning/30 bg-warning/10 flex flex-col gap-3 rounded-lg border p-5"
+        >
+          <p id="create-unavailable-heading" className="text-foreground font-medium">
+            {tEntitlements('createUnavailable')}
+          </p>
           <p className="text-muted-foreground text-sm leading-relaxed">
             {t(`errors.${reasonCode}` as Parameters<typeof t>[0])}
           </p>

@@ -99,16 +99,21 @@ test.describe('trial entitlements and account limits', () => {
 
     // A direct submission to /app/accounts/new is rejected server-side
     // rather than merely hidden client-side — no form is rendered at all.
+    // Scoped to the page's own "Create unavailable" region: the persistent
+    // app-shell trial banner (still visible while trialing, even at the
+    // limit) renders its own separate "View plans" link, so an unscoped
+    // `getByRole('link', { name: 'View plans' })` here would match two.
     await page.goto('/en/app/accounts/new');
-    await expect(page.getByText('Create unavailable')).toBeVisible();
+    const blockedRegion = page.getByRole('region', { name: 'Create unavailable' });
+    await expect(blockedRegion).toBeVisible();
     await expect(
-      page.getByText("You've used your plan's active trading account limit."),
+      blockedRegion.getByText("You've used your plan's active trading account limit."),
     ).toBeVisible();
     await expect(
-      page.getByText('Additional accounts require the Trader or Professional plan.'),
+      blockedRegion.getByText('Additional accounts require the Trader or Professional plan.'),
     ).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Back to accounts' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'View plans' })).toBeVisible();
+    await expect(blockedRegion.getByRole('link', { name: 'Back to accounts' })).toBeVisible();
+    await expect(blockedRegion.getByRole('link', { name: 'View plans' })).toBeVisible();
     await expect(page.getByLabel('Trading account name')).toHaveCount(0);
   });
 
@@ -254,11 +259,33 @@ test.describe('trial entitlements and account limits', () => {
     page,
   }) => {
     await page.goto('/en/pricing');
-    const pricing = page.getByRole('region', { name: /three plans, one free trial/i });
+    // `/pricing`'s own section heading is "Choose by how many accounts you
+    // trade" (`pricingPage.sectionTitle`) — distinct from the landing page's
+    // "Three plans, one free trial" (`pricing.title`), which labels the SAME
+    // `PricingSection` component when it renders on `/`. Asserting the wrong
+    // page's heading here made this locator match zero elements.
+    const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
+    await expect(pricing).toBeVisible();
 
-    for (const planName of ['Starter', 'Trader', 'Professional']) {
+    // Exactly one trial presentation, exactly three paid plan cards. Scoped
+    // to `pricing`, not `page`: the page's own intro paragraph
+    // (`pricingPage.description`) separately mentions the trial in
+    // different wording, so an unscoped match risks coincidentally
+    // colliding with (or missing) that other sentence.
+    await expect(pricing.getByText(/full-feature trial/i)).toBeVisible();
+    await expect(pricing.getByRole('heading', { level: 3 })).toHaveCount(3);
+
+    const expectations: Array<[name: string, limit: string, price: string]> = [
+      ['Starter', '1', '฿149 / $5 per month'],
+      ['Trader', '5', '฿299 / $9 per month'],
+      ['Professional', '15', '฿499 / $15 per month'],
+    ];
+    for (const [planName, limit, price] of expectations) {
       await expect(pricing.getByRole('heading', { name: planName, exact: true })).toBeVisible();
+      await expect(pricing.getByText(price)).toBeVisible();
+      await expect(pricing.getByText(limit, { exact: true })).toBeVisible();
     }
+    await expect(pricing.getByText('Prices exclude applicable taxes.')).toHaveCount(3);
 
     // Every shared feature string appears exactly once per plan card —
     // three cards, so exactly three occurrences each. A per-plan feature
@@ -270,6 +297,13 @@ test.describe('trial entitlements and account limits', () => {
     ];
     for (const feature of sharedFeatures) {
       await expect(pricing.getByText(feature, { exact: true })).toHaveCount(3);
+    }
+
+    // No plan CTA leads to a checkout — every card links to real
+    // registration instead, never a purchase flow.
+    for (const id of ['starter', 'trader', 'professional']) {
+      const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
+      await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
     }
   });
 
@@ -315,13 +349,18 @@ test.describe('trial entitlements and account limits', () => {
 
     await page.goto('/en/app/accounts');
 
-    // A generic, localized explanation — never a fabricated plan/trial
-    // status, never a raw internal code.
-    await expect(
-      page.getByText(
-        "We couldn't check this workspace's plan right now. Please try again in a moment.",
-      ),
-    ).toBeVisible();
+    // A named, accessible region rather than one long exact-text locator —
+    // the SAME "couldn't check this workspace's plan" sentence also appears
+    // in the Create-button's own reason paragraph AND in each archived
+    // account's Restore-blocked explanation, so a bare, unscoped
+    // `getByText(...)` on this sentence matches three elements at once.
+    const unavailableRegion = page.getByRole('status', {
+      name: 'Account entitlement unavailable',
+    });
+    await expect(unavailableRegion).toBeVisible();
+    await expect(unavailableRegion).toContainText(
+      "We couldn't check this workspace's plan right now. Please try again in a moment.",
+    );
 
     // Create is unavailable.
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
@@ -351,7 +390,7 @@ test.describe('trial entitlements and account limits', () => {
 
     // A direct submission to /app/accounts/new is rejected server-side too.
     await page.goto('/en/app/accounts/new');
-    await expect(page.getByText('Create unavailable')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Create unavailable' })).toBeVisible();
     await expect(page.getByLabel('Trading account name')).toHaveCount(0);
   });
 
@@ -367,13 +406,33 @@ test.describe('trial entitlements and account limits', () => {
 
     await page.goto('/en/app/accounts');
     await expect(
-      page.getByText(
-        "We couldn't check this workspace's plan right now. Please try again in a moment.",
-      ),
+      page.getByRole('status', { name: 'Account entitlement unavailable' }),
     ).toBeVisible();
 
+    // Not merely "no reported scrollbar" — the actual document width must
+    // match the viewport exactly, so a real overflowing element (rather
+    // than one masked by `overflow-x: hidden` somewhere in the tree) cannot
+    // hide behind this assertion.
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+    expect(scrollWidth).toBe(clientWidth);
+  });
+
+  test('the entitlement-unavailable state renders correctly in Thai', async ({ page }) => {
+    const user = await provisionUser('e2e-entitlements-unavailable-th', {
+      omitEntitlementRow: true,
+      additionalArchivedAccounts: 1,
+    });
+    await loginAs(page, 'th', user);
+
+    await page.goto('/th/app/accounts');
+    const unavailableRegion = page.getByRole('status', {
+      name: 'ไม่สามารถตรวจสอบสิทธิ์แพ็กเกจได้',
+    });
+    await expect(unavailableRegion).toBeVisible();
+    await expect(unavailableRegion).toContainText(
+      'ไม่สามารถตรวจสอบแผนของพื้นที่ทำงานนี้ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง',
+    );
+    await expect(page.getByRole('button', { name: 'สร้างบัญชี' })).toBeDisabled();
   });
 });

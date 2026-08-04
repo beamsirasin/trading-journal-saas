@@ -634,6 +634,7 @@
     "restoreUnavailable": "ไม่สามารถกู้คืนบัญชีได้",
     "archiveToReduceUsage": "เก็บบัญชีที่ไม่ใช้งานเข้าคลังเพื่อลดจำนวนการใช้งาน",
     "additionalAccountsRequireUpgrade": "หากต้องการบัญชีเพิ่ม กรุณาเลือกแผน Trader หรือ Professional",
+    "unavailableRegionLabel": "ไม่สามารถตรวจสอบสิทธิ์แพ็กเกจได้",
     "plan": {
       "title": "แผนและการเรียกเก็บเงิน",
       "description": "แผนปัจจุบัน สถานะการทดลองใช้ และการใช้งานบัญชีเทรดของพื้นที่ทำงานนี้",

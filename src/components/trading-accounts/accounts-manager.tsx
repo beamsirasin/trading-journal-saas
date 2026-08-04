@@ -105,6 +105,7 @@ export function AccountsManager({
       {entitlement === null ? (
         <div
           role="status"
+          aria-label={tEntitlements('unavailableRegionLabel')}
           className="border-warning/30 bg-warning/10 flex items-center gap-3 rounded-lg border p-4 text-sm"
         >
           <CircleAlert className="text-warning size-4 shrink-0" aria-hidden="true" />

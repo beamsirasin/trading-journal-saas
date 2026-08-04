@@ -634,6 +634,7 @@
     "restoreUnavailable": "Restore unavailable",
     "archiveToReduceUsage": "Archive an account to reduce usage.",
     "additionalAccountsRequireUpgrade": "Additional accounts require the Trader or Professional plan.",
+    "unavailableRegionLabel": "Account entitlement unavailable",
     "plan": {
       "title": "Plan & billing",
       "description": "Your workspace's current plan, trial status, and trading-account usage.",
