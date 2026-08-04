@@ -290,24 +290,37 @@ test.describe('login and registration', () => {
 
     // 1. Reaches the localized verification-pending route.
     await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+
+    // Every anti-enumeration property below is scoped to the page's own
+    // named "Verification email status" region, not the whole page —
+    // asserting against `page.textContent('body')` with a broad regex is
+    // brittle, since generic words like "account" or "new" can legitimately
+    // appear in unrelated copy (nav, footer, etc.) with no bearing on
+    // whether this screen leaks the submitted email's status.
+    const statusRegion = page.getByRole('region', { name: 'Verification email status' });
+
     // 2. Generic verification messaging is visible — never a distinct
     // "account created"/"check your inbox, <name>" message that would
     // differ from the anti-enumeration screen a duplicate attempt shows.
     await expect(
-      page.getByText(/If this email can be used to register, we have sent a verification link\./),
+      statusRegion.getByText(
+        /If this email can be used to register, we have sent a verification link\./,
+      ),
     ).toBeVisible();
     // 3. The Resend control is present.
-    await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
+    await expect(statusRegion.getByRole('button', { name: 'Resend email' })).toBeVisible();
     // 4. The Login link is present.
-    await expect(page.getByRole('link', { name: 'Back to log in' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'Back to log in' })).toBeVisible();
     // 5. The Forgot-password link is present (the route already exists).
-    await expect(page.getByRole('link', { name: 'Forgot password?' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'Forgot password?' })).toBeVisible();
     // 6/7. No wording reveals new/existing/verified/unverified status, and
     // the submitted address itself is never rendered as visible page text —
     // only the URL (needed for the Resend button's own request) carries it.
-    const bodyText = (await page.textContent('body')) ?? '';
-    expect(bodyText).not.toContain(email);
-    expect(bodyText).not.toMatch(/already exists|already registered|new account|unverified/i);
+    const regionText = (await statusRegion.textContent()) ?? '';
+    expect(regionText).not.toContain(email);
+    expect(regionText).not.toMatch(
+      /email already exists|this email is already registered|an account already exists for this email|already exists|already registered|new account|unverified/i,
+    );
 
     // The account is real: logging in immediately fails because the email
     // is not yet verified (no real delivery provider exists to click a link
@@ -345,8 +358,9 @@ test.describe('login and registration', () => {
     // `notice` suffix, unlike a still-unverified account's dispatch below.
     await expect.poll(() => dispatchRequests.count()).toBe(1);
     expect(page.url()).not.toContain('notice=');
-    expect(await page.textContent('body')).not.toMatch(
-      /email already exists|this email is registered/i,
+    const statusRegion = page.getByRole('region', { name: 'Verification email status' });
+    expect(await statusRegion.textContent()).not.toMatch(
+      /email already exists|this email is (?:already )?registered|an account already exists for this email/i,
     );
   });
 
@@ -405,8 +419,11 @@ test.describe('login and registration', () => {
     await expect.poll(() => dispatchRequests.count()).toBe(2);
     await expect(page.getByRole('button', { name: 'Resend email' })).toBeVisible();
 
-    const body = (await page.textContent('body')) ?? '';
-    expect(body).not.toMatch(/email already exists|this email is registered/i);
+    const statusRegion = page.getByRole('region', { name: 'Verification email status' });
+    const regionText = (await statusRegion.textContent()) ?? '';
+    expect(regionText).not.toMatch(
+      /email already exists|this email is (?:already )?registered|an account already exists for this email/i,
+    );
   });
 
   test('shows a localized, accessible notice and a disabled Resend button when the verify-email page carries a rate-limited dispatch notice', async ({
@@ -586,17 +603,25 @@ test.describe('login and registration', () => {
     await page.getByRole('button', { name: 'สร้างบัญชี' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+
+    // Scoped to the page's own named "Verification email status" region —
+    // mirrors the English coverage above.
+    const statusRegion = page.getByRole('region', { name: 'สถานะอีเมลยืนยัน' });
     await expect(
-      page.getByText(/หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว/),
+      statusRegion.getByText(/หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว/),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'กลับไปเข้าสู่ระบบ' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'ลืมรหัสผ่าน?' })).toBeVisible();
+    await expect(statusRegion.getByRole('button', { name: 'ส่งอีเมลอีกครั้ง' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'กลับไปเข้าสู่ระบบ' })).toBeVisible();
+    await expect(statusRegion.getByRole('link', { name: 'ลืมรหัสผ่าน?' })).toBeVisible();
 
     // The submitted address is never rendered as visible page text — only
-    // the URL (needed for the Resend button's own request) carries it.
-    const bodyText = (await page.textContent('body')) ?? '';
-    expect(bodyText).not.toContain(email);
+    // the URL (needed for the Resend button's own request) carries it. No
+    // wording distinguishes new/existing/verified/unverified status either.
+    const regionText = (await statusRegion.textContent()) ?? '';
+    expect(regionText).not.toContain(email);
+    expect(regionText).not.toMatch(
+      /อีเมลนี้ถูกใช้แล้ว|อีเมลนี้ลงทะเบียนแล้ว|มีบัญชีสำหรับอีเมลนี้อยู่แล้ว/,
+    );
   });
 
   test('/th/register rejects a weak password with the localized policy error', async ({ page }) => {

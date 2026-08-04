@@ -718,6 +718,7 @@
     "resetPasswordInvalidBody": "Password reset links expire after an hour. Request a new one.",
     "resetPasswordInvalidCta": "Request a new link",
     "verifyEmailPendingTitle": "Verify your email",
+    "verifyEmailStatusRegionLabel": "Verification email status",
     "verifyEmailPendingBody": "If this email can be used to register, we have sent a verification link.\nIf you already have an account, sign in or reset your password.",
     "verifyEmailResend": "Resend email",
     "verifyEmailResendSuccess": "Verification email sent.",

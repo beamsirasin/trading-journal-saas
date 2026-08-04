@@ -53,7 +53,11 @@ async function loginAs(
     .getByLabel(locale === 'en' ? 'Password' : 'รหัสผ่าน', { exact: true })
     .fill(user.password);
   await page.getByRole('button', { name: locale === 'en' ? 'Log in' : 'เข้าสู่ระบบ' }).click();
-  await page.waitForURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
+  // Login's post-submit redirect is a client-side (App Router) navigation —
+  // no full-document `load` event ever fires, so `page.waitForURL`'s default
+  // `waitUntil: 'load'` hangs until timeout even once the URL already
+  // matches. `expect(...).toHaveURL` polls `location.href` directly instead.
+  await expect(page).toHaveURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
 }
 
 async function createAccountViaUI(page: Page, name: string): Promise<void> {

@@ -21,13 +21,26 @@ import { provisionVerifiedUser } from './support/provision-user';
  */
 const VALID_TEST_PASSWORD = 'Correct-Horse9!';
 
+/**
+ * Every test in this suite creates a second (and sometimes third) trading
+ * account through the UI — Phase 3C's trial is fixed at exactly 1 active
+ * account (CLAUDE.md A4), so a Trial fixture would fail closed the moment
+ * any of these scenarios tries to create beyond the seed account. None of
+ * these tests exercise trial/limit behavior itself (that's
+ * `e2e/entitlements.spec.ts`'s job) — they need headroom, so they provision
+ * an explicit, real, active Trader entitlement (limit 5), which comfortably
+ * covers the at-most-three accounts any single test here creates.
+ */
 async function provisionOnboardedUser(labelPrefix: string) {
   const { testUrl } = validateTestDatabaseEnvironment();
   const email = `${labelPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
   return provisionVerifiedUser(
     testUrl,
     { email, password: VALID_TEST_PASSWORD, name: 'E2E Accounts Tester' },
-    { onboarded: true },
+    {
+      onboarded: true,
+      entitlement: { status: 'active', planKey: 'trader', trialEndsAt: null },
+    },
   );
 }
 
@@ -86,7 +99,11 @@ async function loginAs(
     .getByLabel(locale === 'en' ? 'Password' : 'รหัสผ่าน', { exact: true })
     .fill(user.password);
   await page.getByRole('button', { name: locale === 'en' ? 'Log in' : 'เข้าสู่ระบบ' }).click();
-  await page.waitForURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
+  // Login's post-submit redirect is a client-side (App Router) navigation —
+  // no full-document `load` event ever fires, so `page.waitForURL`'s default
+  // `waitUntil: 'load'` hangs until timeout even once the URL already
+  // matches. `expect(...).toHaveURL` polls `location.href` directly instead.
+  await expect(page).toHaveURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
 }
 
 /**

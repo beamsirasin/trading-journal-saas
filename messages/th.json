@@ -718,6 +718,7 @@
     "resetPasswordInvalidBody": "ลิงก์ตั้งรหัสผ่านใหม่หมดอายุภายในหนึ่งชั่วโมง กรุณาขอลิงก์ใหม่",
     "resetPasswordInvalidCta": "ขอลิงก์ใหม่",
     "verifyEmailPendingTitle": "ยืนยันอีเมลของคุณ",
+    "verifyEmailStatusRegionLabel": "สถานะอีเมลยืนยัน",
     "verifyEmailPendingBody": "หากอีเมลนี้สามารถใช้สมัครได้ เราได้ส่งลิงก์ยืนยันให้แล้ว\nหากคุณมีบัญชีอยู่แล้ว กรุณาเข้าสู่ระบบหรือรีเซ็ตรหัสผ่าน",
     "verifyEmailResend": "ส่งอีเมลอีกครั้ง",
     "verifyEmailResendSuccess": "ส่งอีเมลยืนยันแล้ว",

@@ -1,4 +1,4 @@
-import { test as setup } from '@playwright/test';
+import { expect, test as setup } from '@playwright/test';
 
 import { authStateFile } from './support/auth-state';
 import { hasE2eDatabase } from './support/env';
@@ -38,7 +38,11 @@ setup('authenticate as E2E_USER_A', async ({ page }) => {
     throw new Error(`Sign-in for ${E2E_USER_A.email} failed: HTTP ${response.status()} — ${body}`);
   }
 
-  await page.waitForURL(/\/app$/);
+  // The post-login redirect is a client-side (App Router) navigation — no
+  // full-document `load` event fires, so `page.waitForURL`'s default
+  // `waitUntil: 'load'` can hang even once the URL already matches.
+  // `expect(...).toHaveURL` polls `location.href` directly instead.
+  await expect(page).toHaveURL(/\/app$/);
 
   await page.context().storageState({ path: authStateFile });
 });
