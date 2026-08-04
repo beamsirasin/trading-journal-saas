@@ -1,17 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { generateId } from '@/lib/identifiers';
 
 import { workspaces } from './workspaces';
 
 /**
- * Phase 3C's entitlement record — the one authoritative source for "is this
- * workspace trialing, active, expired or canceled, and under which plan."
- * `src/server/services/entitlement.ts` is the only writer; no public server
- * action mutates `status`, `plan_key`, `trial_started_at`, `trial_ends_at` or
- * `current_period_ends_at` — those are owned by onboarding-completion (trial
- * start) today and a future verified billing webhook (Phase 04+).
+ * The one authoritative source for a workspace's trial, paid-plan, and
+ * subscription timing state. Phase 04C only defines the storage boundary;
+ * onboarding remains the sole current writer and later trusted billing code
+ * will own lifecycle transitions.
  *
  * At most one row per workspace: the unique index below is the actual
  * concurrency guarantee (same technique as `workspaces_personal_owner_idx`),
@@ -21,9 +19,8 @@ import { workspaces } from './workspaces';
  * migration-cost reasoning as `workspaces.kind` and `trading_accounts.
  * account_mode`.
  *
- * No payment-provider identifiers (customer ID, subscription ID, …) exist
- * here yet — this phase has no payment provider integrated. Add them only
- * when a real provider is wired in, not speculatively.
+ * Billing and provider fields are nullable so pre-billing historical rows
+ * remain truthful. Their presence does not imply a provider integration.
  */
 export const workspaceEntitlements = pgTable(
   'workspace_entitlements',
@@ -38,8 +35,17 @@ export const workspaceEntitlements = pgTable(
     /** `null` for a workspace whose trial has not yet started (onboarding incomplete). */
     trialStartedAt: timestamp('trial_started_at', { withTimezone: true }),
     trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
-    /** `null` until a real billing period exists (Phase 04+). */
+    currentPeriodStartedAt: timestamp('current_period_started_at', { withTimezone: true }),
     currentPeriodEndsAt: timestamp('current_period_ends_at', { withTimezone: true }),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+    canceledAt: timestamp('canceled_at', { withTimezone: true }),
+    billingCurrency: text('billing_currency'),
+    billingInterval: text('billing_interval'),
+    pendingPlanKey: text('pending_plan_key'),
+    pendingPlanEffectiveAt: timestamp('pending_plan_effective_at', { withTimezone: true }),
+    providerKind: text('provider_kind'),
+    providerCustomerId: text('provider_customer_id'),
+    providerSubscriptionId: text('provider_subscription_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -47,7 +53,7 @@ export const workspaceEntitlements = pgTable(
     uniqueIndex('workspace_entitlements_workspace_idx').on(table.workspaceId),
     check(
       'workspace_entitlements_status_check',
-      sql`${table.status} IN ('trialing', 'active', 'expired', 'canceled')`,
+      sql`${table.status} IN ('trialing', 'active', 'past_due', 'expired', 'canceled')`,
     ),
     // `starter`/`trader`/`professional` — the locked plan registry
     // (`src/config/plans.ts`). Migration 0004 renamed the earlier draft
@@ -56,6 +62,30 @@ export const workspaceEntitlements = pgTable(
     check(
       'workspace_entitlements_plan_key_check',
       sql`${table.planKey} IS NULL OR ${table.planKey} IN ('starter', 'trader', 'professional')`,
+    ),
+    check(
+      'workspace_entitlements_billing_currency_check',
+      sql`${table.billingCurrency} IS NULL OR ${table.billingCurrency} IN ('THB', 'USD')`,
+    ),
+    check(
+      'workspace_entitlements_billing_interval_check',
+      sql`${table.billingInterval} IS NULL OR ${table.billingInterval} = 'monthly'`,
+    ),
+    check(
+      'workspace_entitlements_pending_plan_key_check',
+      sql`${table.pendingPlanKey} IS NULL OR ${table.pendingPlanKey} IN ('starter', 'trader', 'professional')`,
+    ),
+    check(
+      'workspace_entitlements_period_order_check',
+      sql`${table.currentPeriodStartedAt} IS NULL OR ${table.currentPeriodEndsAt} IS NULL OR ${table.currentPeriodStartedAt} <= ${table.currentPeriodEndsAt}`,
+    ),
+    check(
+      'workspace_entitlements_cancel_period_check',
+      sql`NOT ${table.cancelAtPeriodEnd} OR ${table.currentPeriodEndsAt} IS NOT NULL`,
+    ),
+    check(
+      'workspace_entitlements_pending_plan_pair_check',
+      sql`(${table.pendingPlanKey} IS NULL AND ${table.pendingPlanEffectiveAt} IS NULL) OR (${table.pendingPlanKey} IS NOT NULL AND ${table.pendingPlanEffectiveAt} IS NOT NULL)`,
     ),
   ],
 );

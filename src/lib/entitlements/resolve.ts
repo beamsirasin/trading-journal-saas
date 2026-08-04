@@ -11,12 +11,13 @@ import { TRIAL_ACCOUNT_LIMIT } from '@/config/plans';
  */
 
 export type EntitlementStatus = 'trialing' | 'active' | 'expired' | 'canceled';
+export type PersistedEntitlementStatus = EntitlementStatus | 'past_due';
 export type { PlanKey } from '@/config/plan-catalog';
 
 /** The persisted `workspace_entitlements` row, as read under lock. */
 export interface EntitlementRecord {
   readonly workspaceId: string;
-  readonly status: EntitlementStatus;
+  readonly status: PersistedEntitlementStatus;
   readonly planKey: PlanKey | null;
   readonly trialStartedAt: Date | null;
   readonly trialEndsAt: Date | null;
@@ -41,7 +42,7 @@ export type EntitlementBlockReason =
 
 export interface EffectiveEntitlement {
   readonly workspaceId: string;
-  readonly persistedStatus: EntitlementStatus;
+  readonly persistedStatus: PersistedEntitlementStatus;
   /** `persistedStatus`, except a trial past `trialEndsAt` is reported `expired` even with no persisted transition. */
   readonly effectiveStatus: EntitlementStatus;
   readonly planKey: PlanKey | null;
@@ -69,7 +70,14 @@ export function resolveEffectiveEntitlement(
     record.trialEndsAt !== null &&
     now.getTime() >= record.trialEndsAt.getTime();
 
-  const effectiveStatus: EntitlementStatus = trialTimedOut ? 'expired' : record.status;
+  // Phase 04C stores `past_due` but does not define recovery or grace-period
+  // lifecycle behavior. Treat it as read-only/canceled for now so account
+  // creation and restoration fail closed until a later phase owns that policy.
+  const effectiveStatus: EntitlementStatus = trialTimedOut
+    ? 'expired'
+    : record.status === 'past_due'
+      ? 'canceled'
+      : record.status;
 
   const planUnknown = record.planKey !== null && planAccountLimit(record.planKey) === null;
 

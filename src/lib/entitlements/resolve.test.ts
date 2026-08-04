@@ -211,6 +211,22 @@ describe('resolveEffectiveEntitlement — canceled', () => {
   });
 });
 
+describe('resolveEffectiveEntitlement — past due', () => {
+  it('fails closed until a later phase defines recovery and grace-period policy', () => {
+    const pastDue = resolveEffectiveEntitlement(
+      record({ status: 'past_due', planKey: 'trader', trialEndsAt: null }),
+      1,
+      NOW,
+    );
+
+    expect(pastDue.persistedStatus).toBe('past_due');
+    expect(pastDue.effectiveStatus).toBe('canceled');
+    expect(pastDue.canCreateAccount).toBe(false);
+    expect(pastDue.canRestoreAccount).toBe(false);
+    expect(pastDue.blockReason).toBe('subscription_canceled');
+  });
+});
+
 describe('resolveEffectiveEntitlement — archived accounts', () => {
   it('do not consume the allowance', () => {
     // Two archived + one active, under a 1-account trial: only the active
