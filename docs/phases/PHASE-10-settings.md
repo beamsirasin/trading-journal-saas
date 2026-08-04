@@ -26,10 +26,12 @@ Users control their profile, workspace, preferences, and subscription — includ
 ### Subscription (`/app/settings/billing`)
 
 - Current plan, status, trial or period end date
-- Usage against limits (accounts, strategies) with clear "3 of 3 used" framing
-- Upgrade / downgrade / cancel / resubscribe, reusing Phase 03 flows
-- Mock billing history
+- Usage against the active trading-account limit only; archived accounts are excluded. Do not show strategy, setup, trade, trade-history, analytics, or feature limits.
+- Upgrade / downgrade / cancel / resubscribe, reusing the Phase 04 billing flows
+- Billing history rendered from immutable price, currency, subtotal, tax-rate, tax-amount, and final-total snapshots rather than recalculating old payments from current configuration
 - Cancellation: explain exactly what happens (read-only, data retained, resubscribe restores) — no dark patterns, no guilt-trip interstitial
+
+All paid plans show the same included features and analytics. Plan comparison differs only by the maximum active trading-account count: Starter 1, Trader 5, Professional 15.
 
 ### Data & danger zone
 

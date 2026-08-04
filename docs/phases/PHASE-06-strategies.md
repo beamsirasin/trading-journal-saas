@@ -50,7 +50,7 @@ Ordered items, each `{ id, label, required }`. Phase 07 records which were satis
 - Editor with markdown preview and checklist builder (add/reorder/toggle required)
 - Explicit lock indicator and copy-on-write confirmation dialog
 - Archive; delete only when unreferenced
-- Entitlement gate on strategy count (Starter = 3)
+- Unlimited strategies and setups on the trial and every paid plan; no plan-specific strategy entitlement gate
 
 ## Out of scope
 
@@ -73,7 +73,7 @@ tests/strategies/{version-lock,copy-on-write,checklist-stability}.test.ts
 - [ ] Editing a locked version creates the next version, requires a change note
 - [ ] Historical trades still resolve to their original version content
 - [ ] Checklist item IDs stable across edits
-- [ ] Strategy count entitlement enforced server-side
+- [ ] Strategy and setup creation remains unlimited and identical across all plans
 - [ ] Version diff readable on mobile
 - [ ] Four states, responsive, accessible
 - [ ] Typecheck, lint, tests, build pass

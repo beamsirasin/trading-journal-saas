@@ -10,9 +10,13 @@ Most journals tell you your P&L. This one tells you where it came from:
 
 ## Status
 
-**Phase 02 — Neon PostgreSQL, Better Auth, user preferences, tenant-isolated workspace foundation** (branch `phase/02-auth-tenancy`, not yet merged to `main`), on top of Phase 01/01.1's design system, marketing site and application shell.
+**Phase 03 is officially complete and merged to `main`. Phase 04 — Billing & Checkout is the next implementation phase.**
 
-Authentication (Google OAuth + email/password, via self-hosted Better Auth) and a real, migrated PostgreSQL database now exist. Every visitor to `/{locale}/app/*` is a genuinely authenticated user with one personal workspace, verified server-side on every request — not a mock session. Trading accounts, strategies, trades, analytics calculations, subscriptions, and payment processing remain **static demo fixtures**, clearly labelled as such (`appNav.demoNote`: "Your account and sign-in are real. Trading data shown here is still a fixture preview."). See [docs/roadmap.md](docs/roadmap.md).
+Authentication, tenant-isolated personal workspaces, onboarding, trading-account management, the active-account switcher, the 7-day trial, and server-enforced active-account entitlements are real. Strategies, trades, analytics calculations, and payment-provider integration remain absent, fixture-driven, or deferred to later phases. See [docs/roadmap.md](docs/roadmap.md).
+
+The three final monthly paid plans have one identical feature set and differ only by the maximum number of active trading accounts: **Starter** (1 account, THB 149 or USD 5), **Trader** (5 accounts, THB 299 or USD 9), and **Professional** (15 accounts, THB 499 or USD 15). Every plan includes unlimited strategies, setups, trades, trade history, and the same analytics. Archived accounts do not consume the allowance; account creation and restoration are enforced server-side.
+
+The trial lasts 7 days, allows 1 active trading account, and unlocks every feature. Trial expiry never deletes user data. Launch pricing is tax-exclusive, but VAT collection is disabled because the business is not initially VAT registered; while disabled, public pricing and checkout show no VAT line or VAT pricing notice. The complete Phase 04 billing and future-VAT contract is in [PHASE-04-billing.md](docs/phases/PHASE-04-billing.md).
 
 ### Routes
 
@@ -115,7 +119,7 @@ src/
     time/       UTC storage, IANA conversion, DST-correct bucketing
     demo/       Static fixtures for the prototype — NO formulas, ever
     motion.ts   Duration and easing conventions
-  server/db/    Drizzle boundary — schema is empty until Phase 03
+  server/db/    Drizzle schema and services for auth, tenancy, accounts, and entitlements
 e2e/            Playwright specs
 docs/           Specifications, decisions, and phase plans
 ```

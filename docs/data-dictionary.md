@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Status:** Phase 02 tables are real, migrated, and documented below under [Phase 02 — Auth and tenancy](#phase-02--auth-and-tenancy-implemented). Everything under Phase 04 onward remains **planned schema** — not yet implemented — recorded here so field meanings are agreed before implementation, and updated as each phase lands its migration.
+**Status:** Phase 03 is officially complete. Phase 02 auth/tenancy plus Phase 3A–3C onboarding, trading-account, and entitlement tables are real and migrated. Phase 04 billing-provider and payment-snapshot storage remains planned and must extend, not duplicate, the existing entitlement source.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
@@ -119,7 +119,7 @@ The one authoritative source of a workspace's trial/subscription state — narro
 | `trial_ends_at`          | timestamptz | Evaluated on read (`now >= trial_ends_at`) — expiry needs no scheduler          |
 | `current_period_ends_at` | timestamptz | `NULL` until a real billing period exists (Phase 04+)                           |
 
-**Locked plan decision:** the trial grants exactly **1** active trading account for **7 days** with every feature unlocked — an explicit constant (`TRIAL_ACCOUNT_LIMIT`), never derived from any paid plan's limit. Paid plans gate exclusively on active (non-archived) trading-account count and otherwise share an identical feature set: Starter (1 account, ฿149/$5 per month), Trader (5 accounts, ฿299/$9 per month), Professional (15 accounts, ฿499/$15 per month). Prices are tax-exclusive; VAT collection is disabled (not yet VAT-registered).
+**Locked plan decision:** the trial grants exactly **1** active trading account for **7 days** with every feature unlocked — an explicit constant (`TRIAL_ACCOUNT_LIMIT`), never derived from any paid plan's limit. Paid plans gate exclusively on active (non-archived) trading-account count and otherwise share identical features and analytics: Starter (1 account, THB 149/USD 5 per month), Trader (5 accounts, THB 299/USD 9), Professional (15 accounts, THB 499/USD 15). Every paid plan includes unlimited strategies, setups, trades, and trade history. Archived accounts do not count; create and restore enforce the limit server-side. VAT collection is disabled at launch because the business is not initially VAT registered.
 
 ---
 
@@ -127,7 +127,7 @@ The one authoritative source of a workspace's trial/subscription state — narro
 
 ### `subscriptions`
 
-Real payment-provider integration, not yet implemented. `workspace_entitlements` (above) already owns `status`/`plan`/trial-date tracking for Phase 3C's server-side enforcement; this table is where provider-specific fields (customer ID, subscription ID, billing period) land once a provider is wired in — likely widening `workspace_entitlements` rather than a fully separate table, but not yet decided.
+Phase 04 billing and mock-provider integration are not yet implemented. `workspace_entitlements` (above) already owns `status`/`plan`/trial-date tracking for Phase 3C's server-side enforcement; provider-shaped fields (customer ID, subscription ID, billing period) may widen that table rather than create a conflicting subscription source, but the exact storage shape is not yet decided. A real payment provider still requires a separate approved decision.
 
 | Column                 | Type        | Notes                                                           |
 | ---------------------- | ----------- | --------------------------------------------------------------- |
@@ -138,6 +138,10 @@ Real payment-provider integration, not yet implemented. `workspace_entitlements`
 | `current_period_start` | timestamptz |                                                                 |
 | `current_period_end`   | timestamptz |                                                                 |
 | `cancel_at_period_end` | boolean     |                                                                 |
+
+The exact Phase 04 schema is not locked by this preflight. Whatever storage shape is selected must preserve immutable per-payment snapshots of plan key, currency, subtotal/price in integer minor units, VAT enabled state, VAT rate, VAT amount, final total, and reconciliation identifiers/timestamps. Historical rows must never be recomputed from current prices or VAT configuration.
+
+VAT is exclusive when enabled and is added at checkout, not included in displayed plan prices. VAT configuration is admin-owned in Phase 11, disabled by default, and initially prepared as 7%; Phase 04 customer billing reads trusted server configuration and never accepts a client-supplied VAT rate or tax amount. When disabled, no VAT line or public VAT notice is rendered.
 
 ---
 

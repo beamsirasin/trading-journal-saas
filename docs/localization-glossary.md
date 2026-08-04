@@ -16,7 +16,7 @@ These render identically in both locales, in every context:
 | `R` (the unit)                                                                                                              | The product's core unit of measure. "R" is not an abbreviation of a Thai word and has no natural translation.                                                                                                 |
 | Symbol names (`EURUSD`, `AAPL`, …)                                                                                          | Instrument identifiers, not prose.                                                                                                                                                                            |
 | Currency codes (`USD`, `THB`, …)                                                                                            | ISO 4217 codes are language-independent by design.                                                                                                                                                            |
-| Plan names (`Starter`, `Pro`, `Elite`)                                                                                      | Product/brand names, not descriptions — see [ADR 0007](decisions/0007-i18n-architecture.md), `config/plans.ts`.                                                                                               |
+| Plan names (`Starter`, `Trader`, `Professional`)                                                                            | Product/brand names, not descriptions — see [ADR 0007](decisions/0007-i18n-architecture.md), `config/plans.ts`.                                                                                               |
 | Demo fixture content (trade symbols, strategy names like "London breakout", account nicknames like "Prop challenge — 100K") | User-authored-like fixture data, not UI chrome — the same category as a real trader's own account name, which this product would never translate. Fixed product taxonomy such as mistake names is translated. |
 | `Trading OS` (brand name)                                                                                                   | Proper noun.                                                                                                                                                                                                  |
 
@@ -100,7 +100,18 @@ Introduced in Phase 02. Google, email address values, plan names, and technical 
 | Invalid email or password               | อีเมลหรือรหัสผ่านไม่ถูกต้อง                                                                                                                                                                                                                                                                           |
 | Check your email                        | ตรวจสอบอีเมลของคุณ                                                                                                                                                                                                                                                                                    |
 
-## 8. What this document does not cover
+## 8. VAT pricing notice
+
+VAT collection is disabled at launch, so neither locale shows a VAT line or VAT pricing notice while it remains disabled. If an administrator enables the future 7% VAT configuration, public pages use these exact strings:
+
+| Locale | Notice                              |
+| ------ | ----------------------------------- |
+| `th`   | `ราคาไม่รวมภาษีมูลค่าเพิ่ม 7%`      |
+| `en`   | `Prices exclude 7% VAT.`            |
+
+Checkout labels for subtotal, VAT, and final total are localized normally; the server-calculated amounts and rate must not be inferred from translated client copy.
+
+## 9. What this document does not cover
 
 - Grammatical structure decisions (e.g., Thai has no plural inflection, so `{count, plural, one {# time} other {# times}}` in English becomes a plain `{count} ครั้ง` in Thai — this is a structural ICU difference, not a terminology one, and is expected wherever a count is involved). See `messages/en.json` / `messages/th.json` `mistakes.occurrences` and `dashboard.mistakes.times` for the pattern.
 - Route naming or URL structure — see [ADR 0007](decisions/0007-i18n-architecture.md).

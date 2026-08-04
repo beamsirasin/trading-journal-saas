@@ -51,6 +51,17 @@ Every data surface has loading, empty, error, and success states. Empty states t
 
 Signup → onboarding → create account → create strategy → log trade → view dashboard. Plus: trial expiry → read-only; entitlement limit blocking; **cross-tenant access denial**.
 
+### Billing, entitlement, and VAT integrity
+
+- Verify the paid-plan matrix is exactly Starter 1 / Trader 5 / Professional 15 active trading accounts at THB 149/299/499 or USD 5/9/15 per month, with no annual pricing and no feature or analytics differences
+- Verify strategies, setups, trades, and trade history are unlimited on every paid plan; verify the 7-day trial unlocks all features with exactly 1 active account
+- Verify archived accounts never consume the allowance and both account creation and restoration enforce the limit server-side, including direct action calls and concurrent requests
+- Verify trial expiry and billing-state transitions never delete user data
+- With VAT disabled, verify public pages and checkout show no VAT line and no VAT pricing notice
+- With VAT enabled, verify public pages show exactly `ราคาไม่รวมภาษีมูลค่าเพิ่ม 7%` in Thai and `Prices exclude 7% VAT.` in English, and checkout shows subtotal, VAT, and final total
+- Verify VAT is exclusive and added at checkout, uses integer minor units with documented deterministic rounding, and rejects/ignores client-supplied rates or tax amounts
+- Verify billing records preserve immutable price, currency, subtotal, VAT enablement/rate/amount, and final-total snapshots after plan prices or VAT configuration change
+
 ### Deployment
 
 - Neon production database provisioned; `DATABASE_URL` via environment only
@@ -81,6 +92,7 @@ New features. Anything not listed belongs to a post-MVP phase.
 - [ ] All four states present on every data surface
 - [ ] Lighthouse targets met; dashboard performance target met
 - [ ] E2E suite green, including cross-tenant denial
+- [ ] Plan parity, active-account entitlement, archived-account, trial-retention, VAT-disabled/enabled, tamper-resistance, rounding, and immutable billing-snapshot checks pass
 - [ ] Backup **restore** performed successfully
 - [ ] Rollback rehearsed, not just written down
 - [ ] Full check suite green: format, lint, typecheck, unit, integration, e2e, build
