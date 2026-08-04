@@ -303,4 +303,77 @@ test.describe('trial entitlements and account limits', () => {
     const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
   });
+
+  test('when the entitlement snapshot is unavailable, Create and Restore fail closed while existing accounts stay usable', async ({
+    page,
+  }) => {
+    const user = await provisionUser('e2e-entitlements-unavailable', {
+      omitEntitlementRow: true,
+      additionalArchivedAccounts: 1,
+    });
+    await loginAs(page, 'en', user);
+
+    await page.goto('/en/app/accounts');
+
+    // A generic, localized explanation — never a fabricated plan/trial
+    // status, never a raw internal code.
+    await expect(
+      page.getByText(
+        "We couldn't check this workspace's plan right now. Please try again in a moment.",
+      ),
+    ).toBeVisible();
+
+    // Create is unavailable.
+    await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
+
+    // Existing accounts — active and archived — remain fully visible.
+    await expect(page.getByRole('region', { name: 'Main Trading Account' })).toBeVisible();
+    const archivedRegion = page.getByRole('region', { name: 'Archived Account 1' });
+    await expect(archivedRegion).toBeVisible();
+
+    // Restore is disabled with an accessible explanation, not merely a
+    // color change.
+    const restoreButton = archivedRegion.getByRole('button', { name: 'Restore' });
+    await expect(restoreButton).toBeDisabled();
+    const describedById = await restoreButton.getAttribute('aria-describedby');
+    expect(describedById).not.toBeNull();
+    await expect(page.locator(`#${describedById}`)).toContainText(
+      "We couldn't check this workspace's plan right now.",
+    );
+
+    // Editing the existing active account remains available — entitlement
+    // unavailability never blocks edit/switch/archive.
+    await page
+      .getByRole('region', { name: 'Main Trading Account' })
+      .getByRole('link', { name: 'Edit' })
+      .click();
+    await expect(page.getByRole('heading', { name: 'Edit trading account' })).toBeVisible();
+
+    // A direct submission to /app/accounts/new is rejected server-side too.
+    await page.goto('/en/app/accounts/new');
+    await expect(page.getByText('Create unavailable')).toBeVisible();
+    await expect(page.getByLabel('Trading account name')).toHaveCount(0);
+  });
+
+  test('the entitlement-unavailable state has no horizontal overflow at a 320px viewport', async ({
+    page,
+  }) => {
+    const user = await provisionUser('e2e-entitlements-unavailable-mobile', {
+      omitEntitlementRow: true,
+      additionalArchivedAccounts: 1,
+    });
+    await page.setViewportSize({ width: 320, height: 720 });
+    await loginAs(page, 'en', user);
+
+    await page.goto('/en/app/accounts');
+    await expect(
+      page.getByText(
+        "We couldn't check this workspace's plan right now. Please try again in a moment.",
+      ),
+    ).toBeVisible();
+
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+  });
 });

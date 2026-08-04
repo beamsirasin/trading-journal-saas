@@ -525,6 +525,65 @@ describe('entitlement enforcement (real database)', () => {
     });
   });
 
+  describe('createTradingAccount / restoreTradingAccount — no entitlement row (anomaly)', () => {
+    /**
+     * Onboarding complete (so a real account exists, matching every actual
+     * production workspace's guarantee) but no `workspace_entitlements` row —
+     * the fail-closed anomaly `lockAndResolveEntitlement`/
+     * `resolveEntitlementGate` treat as "nothing is allowed," never as
+     * unlimited access. Not reachable through any real onboarding flow
+     * (`completeOnboarding` always starts a trial atomically); this fixture
+     * exists specifically to prove the server never fails open regardless.
+     */
+    async function createOnboardedWorkspaceWithoutEntitlement(
+      db: ReturnType<typeof getTestDb>,
+      ownerUserId: string,
+    ) {
+      const workspaceId = await createIncompleteWorkspace(db, ownerUserId);
+      await db
+        .update(workspaces)
+        .set({ onboardingCompletedAt: new Date() })
+        .where(eq(workspaces.id, workspaceId));
+      return workspaceId;
+    }
+
+    it('createTradingAccount rejects with entitlement_unavailable', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createOnboardedWorkspaceWithoutEntitlement(db, userId);
+      currentSession = sessionFor(userId);
+      await seedAccount(db, workspaceId);
+
+      const result = await createTradingAccount(workspaceId, userId, accountInput());
+      expect(result).toEqual({ ok: false, code: 'entitlement_unavailable' });
+
+      const accounts = await db
+        .select()
+        .from(tradingAccounts)
+        .where(eq(tradingAccounts.workspaceId, workspaceId));
+      expect(accounts).toHaveLength(1);
+    });
+
+    it('restoreTradingAccount rejects with entitlement_unavailable', async () => {
+      const db = getTestDb();
+      const userId = await createUser(db, 'owner');
+      createdUserIds.push(userId);
+      const workspaceId = await createOnboardedWorkspaceWithoutEntitlement(db, userId);
+      currentSession = sessionFor(userId);
+      const archivedId = await seedAccount(db, workspaceId, { isArchived: true });
+
+      const result = await restoreTradingAccount(workspaceId, userId, archivedId);
+      expect(result).toEqual({ ok: false, code: 'entitlement_unavailable' });
+
+      const [account] = await db
+        .select({ isArchived: tradingAccounts.isArchived })
+        .from(tradingAccounts)
+        .where(eq(tradingAccounts.id, archivedId));
+      expect(account?.isArchived).toBe(true);
+    });
+  });
+
   describe('concurrency — Trader (racing for the 5th slot)', () => {
     it('two creates racing for the last slot produce exactly one success and one rejection', async () => {
       const db = getTestDb();

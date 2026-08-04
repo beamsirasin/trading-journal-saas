@@ -128,6 +128,33 @@ function resolveBlockReason(input: {
   return null;
 }
 
+export interface EntitlementGate {
+  readonly allowed: boolean;
+  /** `null` only when `allowed` is `true`. */
+  readonly blockReason: EntitlementBlockReason | null;
+}
+
+/**
+ * The one fail-closed decision behind every account-count-consuming
+ * mutation (create AND restore — `canCreateAccount`/`canRestoreAccount`
+ * are always identical on `EffectiveEntitlement`, both driven by the same
+ * `blockReason`). Every caller — `accounts/page.tsx`'s Create button,
+ * `accounts/new/page.tsx`'s blocked state, `AccountsManager`'s Restore
+ * button — reads through this instead of independently reimplementing
+ * "entitlement is null ⇒ blocked," which is what let the Restore button
+ * drift out of sync and fail OPEN on a null entitlement.
+ *
+ * `entitlement === null` is the fail-closed anomaly case (the workspace's
+ * entitlement snapshot could not be resolved) — treated as "nothing is
+ * allowed right now," never as unlimited access.
+ */
+export function resolveEntitlementGate(entitlement: EffectiveEntitlement | null): EntitlementGate {
+  if (entitlement === null) {
+    return { allowed: false, blockReason: 'entitlement_unavailable' };
+  }
+  return { allowed: entitlement.blockReason === null, blockReason: entitlement.blockReason };
+}
+
 export interface TrialRemaining {
   readonly expired: boolean;
   /** Whole days remaining, floored, never negative. */

@@ -2,6 +2,7 @@ import { Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { resolveEntitlementGate } from '@/lib/entitlements/resolve';
 import {
   getActiveTradingAccount,
   getWorkspaceEntitlement,
@@ -83,11 +84,11 @@ export default async function AccountsPage({
   const activeAccounts = accounts.filter((account) => !account.isArchived);
   const archivedAccounts = accounts.filter((account) => account.isArchived);
 
-  // `null` is the fail-closed anomaly case (onboarding complete, no
-  // entitlement row) — treated as "cannot create/restore right now" rather
-  // than fail open, matching `lockAndResolveEntitlement`'s own posture.
-  const canCreateAccount = entitlement?.canCreateAccount ?? false;
-  const createBlockReason = entitlement?.blockReason ?? 'entitlement_unavailable';
+  // `resolveEntitlementGate` fails closed on a `null` entitlement (onboarding
+  // complete, no entitlement row) — "cannot create right now," never
+  // unlimited access. The same helper gates Restore in `AccountsManager`.
+  const { allowed: canCreateAccount, blockReason: createBlockReason } =
+    resolveEntitlementGate(entitlement);
 
   return (
     <Container width="wide" className="flex flex-col gap-8 py-8">

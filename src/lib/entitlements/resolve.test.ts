@@ -5,6 +5,7 @@ import { PLANS } from '@/config/plans';
 import {
   computeTrialRemaining,
   resolveEffectiveEntitlement,
+  resolveEntitlementGate,
   TRIAL_ACCOUNT_LIMIT,
   type EntitlementRecord,
 } from './resolve';
@@ -222,6 +223,35 @@ describe('resolveEffectiveEntitlement — archived accounts', () => {
     // `src/server/services/entitlement.ts`, which filters `is_archived =
     // false`) — this test documents that contract rather than re-deriving
     // it, since the resolver itself has no notion of "archived" at all.
+  });
+});
+
+describe('resolveEntitlementGate', () => {
+  it('fails closed when the entitlement snapshot is null — never treated as unlimited access', () => {
+    const gate = resolveEntitlementGate(null);
+    expect(gate.allowed).toBe(false);
+    expect(gate.blockReason).toBe('entitlement_unavailable');
+  });
+
+  it('allows when the underlying entitlement has no block reason', () => {
+    const effective = resolveEffectiveEntitlement(record(), 0, new Date('2026-06-10T00:00:00Z'));
+    const gate = resolveEntitlementGate(effective);
+    expect(gate.allowed).toBe(true);
+    expect(gate.blockReason).toBeNull();
+  });
+
+  it('blocks and surfaces the same reason the entitlement itself reports', () => {
+    const effective = resolveEffectiveEntitlement(record(), 1, new Date('2026-06-10T00:00:00Z'));
+    const gate = resolveEntitlementGate(effective);
+    expect(gate.allowed).toBe(false);
+    expect(gate.blockReason).toBe('account_limit_reached');
+  });
+
+  it('is what both create and restore read — never diverges between the two', () => {
+    const effective = resolveEffectiveEntitlement(record(), 1, new Date('2026-06-10T00:00:00Z'));
+    const gate = resolveEntitlementGate(effective);
+    expect(gate.allowed).toBe(effective.canCreateAccount);
+    expect(gate.allowed).toBe(effective.canRestoreAccount);
   });
 });
 

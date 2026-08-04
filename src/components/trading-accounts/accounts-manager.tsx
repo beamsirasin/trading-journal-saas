@@ -1,9 +1,10 @@
 'use client';
 
-import { ArchiveRestore, CircleCheck, Pencil } from 'lucide-react';
+import { ArchiveRestore, CircleAlert, CircleCheck, Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
+import { resolveEntitlementGate } from '@/lib/entitlements/resolve';
 import {
   archiveTradingAccountAction,
   restoreTradingAccountAction,
@@ -55,6 +56,10 @@ export function AccountsManager({
   const t = useTranslations('accounts');
   const tEntitlements = useTranslations('entitlements');
   const router = useRouter();
+  // Fails closed on a `null` entitlement snapshot — the same helper
+  // `accounts/page.tsx`'s Create button and `accounts/new/page.tsx` read,
+  // so Restore can never independently drift into failing open again.
+  const restoreGate = resolveEntitlementGate(entitlement);
   const [isPending, startTransition] = useTransition();
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
@@ -97,7 +102,15 @@ export function AccountsManager({
         </div>
       )}
 
-      {entitlement === null || entitlement.accountLimit === null ? null : (
+      {entitlement === null ? (
+        <div
+          role="status"
+          className="border-warning/30 bg-warning/10 flex items-center gap-3 rounded-lg border p-4 text-sm"
+        >
+          <CircleAlert className="text-warning size-4 shrink-0" aria-hidden="true" />
+          <span className="text-foreground">{t('errors.entitlement_unavailable')}</span>
+        </div>
+      ) : entitlement.accountLimit === null ? null : (
         <div
           role="status"
           className="border-border bg-card flex flex-wrap items-center gap-3 rounded-lg border p-4 text-sm"
@@ -164,11 +177,7 @@ export function AccountsManager({
                 <ArchivedAccountCard
                   account={account}
                   isPending={isPending && pendingAccountId === account.id}
-                  restoreBlockReason={
-                    entitlement !== null && !entitlement.canRestoreAccount
-                      ? entitlement.blockReason
-                      : null
-                  }
+                  restoreBlockReason={restoreGate.blockReason}
                   onRestore={() =>
                     runAction(account.id, () => restoreTradingAccountAction(account.id), 'restored')
                   }

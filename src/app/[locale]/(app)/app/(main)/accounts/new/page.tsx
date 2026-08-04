@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { resolveEntitlementGate } from '@/lib/entitlements/resolve';
 import {
   DEFAULT_BASE_CURRENCY,
   DEFAULT_MAXIMUM_DAILY_LOSS_PERCENT,
@@ -60,10 +61,10 @@ export default async function NewTradingAccountPage({ params }: { params: Promis
   // Fail-closed, same posture as the accounts list page: `null` (no
   // entitlement row for a completed workspace) is treated as "cannot create
   // right now," not "cannot tell, so allow it."
-  const canCreateAccount = entitlement?.canCreateAccount ?? false;
+  const { allowed: canCreateAccount, blockReason: reasonCode } =
+    resolveEntitlementGate(entitlement);
 
   if (!canCreateAccount) {
-    const reasonCode = entitlement?.blockReason ?? 'entitlement_unavailable';
     return (
       <Container width="prose" className="flex flex-col gap-6 py-8">
         <PageHeader title={t('createAccountTitle')} description={t('createAccountDescription')} />
