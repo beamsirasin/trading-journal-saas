@@ -11,10 +11,10 @@ Add customer billing and checkout behavior on top of the trial and active-accoun
 ### Monthly plans
 
 | Plan         | Maximum active trading accounts | THB / month | USD / month | Features and analytics |
-| ------------ | -------------------------------: | ----------: | ----------: | ---------------------- |
-| Starter      |                                1 |     THB 149 |       USD 5 | All included           |
-| Trader       |                                5 |     THB 299 |       USD 9 | All included           |
-| Professional |                               15 |     THB 499 |      USD 15 | All included           |
+| ------------ | ------------------------------: | ----------: | ----------: | ---------------------- |
+| Starter      |                               1 |     THB 149 |       USD 5 | All included           |
+| Trader       |                               5 |     THB 299 |       USD 9 | All included           |
+| Professional |                              15 |     THB 499 |      USD 15 | All included           |
 
 These are the final monthly plans. Do not add annual pricing without a separate approved decision.
 

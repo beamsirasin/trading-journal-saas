@@ -4,23 +4,23 @@ The MVP is dependency-ordered and independently reviewable. A phase may land in 
 
 Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document. Do not implement work belonging to a later phase.
 
-| #                                     | Phase                            | Ships                                    | Depends on |
-| ------------------------------------- | -------------------------------- | ---------------------------------------- | ---------- |
-| [00](PHASE-00-foundation.md)          | Foundation & Conventions         | Repo, toolchain, design tokens, CI       | —          |
-| [00b](PHASE-00b-core-primitives.md)   | Core Technical Primitives        | Money, time, theme, shell, DB boundary   | 00         |
-| [01](PHASE-01-design-system.md)       | Design System, Marketing & Shell | Tokens, landing site, demo dashboard     | 00b        |
-| [01.1](PHASE-01-1-simplification-i18n.md) | UI Simplification & Localization | Simplified bilingual product surfaces | 01      |
-| [02](PHASE-02-auth-tenancy.md)        | Auth, Database & Tenancy         | Better Auth, workspaces, isolation       | 01.1       |
-| 03A–03C                                | Onboarding, Accounts & Entitlements | Wizard, account CRUD/switcher, trial, active-account limits | 02      |
-| [04](PHASE-04-billing.md)             | Billing & Checkout               | Monthly plans, snapshots, conditional VAT, mock payment     | 03      |
-| [05](PHASE-05-onboarding-accounts.md) | Onboarding & Trading Accounts    | Review and extend the core scope delivered early in Phase 03 | 04      |
-| [06](PHASE-06-strategies.md)          | Strategies & Versions            | Strategy CRUD, immutable versioning      | 05         |
-| [07](PHASE-07-calc-engine.md)         | Trade Model & Calculation Engine | Schema + pure R-multiple engine, tests   | 06         |
-| [08](PHASE-08-journal.md)             | Trade Journal                    | Manual entry, system vs actual, mistakes | 07         |
-| [09](PHASE-09-analytics.md)           | Dashboard & Analytics            | Real data behind the Phase 01 surfaces   | 08         |
-| [10](PHASE-10-settings.md)            | Settings                         | Profile, workspace, subscription         | 04, 08     |
-| [11](PHASE-11-admin.md)               | SaaS Administration              | Admin role, user/subscription oversight  | 04         |
-| [12](PHASE-12-hardening.md)           | Hardening & Launch               | A11y, responsive, security, deploy       | all        |
+| #                                         | Phase                               | Ships                                                        | Depends on |
+| ----------------------------------------- | ----------------------------------- | ------------------------------------------------------------ | ---------- |
+| [00](PHASE-00-foundation.md)              | Foundation & Conventions            | Repo, toolchain, design tokens, CI                           | —          |
+| [00b](PHASE-00b-core-primitives.md)       | Core Technical Primitives           | Money, time, theme, shell, DB boundary                       | 00         |
+| [01](PHASE-01-design-system.md)           | Design System, Marketing & Shell    | Tokens, landing site, demo dashboard                         | 00b        |
+| [01.1](PHASE-01-1-simplification-i18n.md) | UI Simplification & Localization    | Simplified bilingual product surfaces                        | 01         |
+| [02](PHASE-02-auth-tenancy.md)            | Auth, Database & Tenancy            | Better Auth, workspaces, isolation                           | 01.1       |
+| 03A–03C                                   | Onboarding, Accounts & Entitlements | Wizard, account CRUD/switcher, trial, active-account limits  | 02         |
+| [04](PHASE-04-billing.md)                 | Billing & Checkout                  | Monthly plans, snapshots, conditional VAT, mock payment      | 03         |
+| [05](PHASE-05-onboarding-accounts.md)     | Onboarding & Trading Accounts       | Review and extend the core scope delivered early in Phase 03 | 04         |
+| [06](PHASE-06-strategies.md)              | Strategies & Versions               | Strategy CRUD, immutable versioning                          | 05         |
+| [07](PHASE-07-calc-engine.md)             | Trade Model & Calculation Engine    | Schema + pure R-multiple engine, tests                       | 06         |
+| [08](PHASE-08-journal.md)                 | Trade Journal                       | Manual entry, system vs actual, mistakes                     | 07         |
+| [09](PHASE-09-analytics.md)               | Dashboard & Analytics               | Real data behind the Phase 01 surfaces                       | 08         |
+| [10](PHASE-10-settings.md)                | Settings                            | Profile, workspace, subscription                             | 04, 08     |
+| [11](PHASE-11-admin.md)                   | SaaS Administration                 | Admin role, user/subscription oversight                      | 04         |
+| [12](PHASE-12-hardening.md)               | Hardening & Launch                  | A11y, responsive, security, deploy                           | all        |
 
 ## Sequencing rationale
 

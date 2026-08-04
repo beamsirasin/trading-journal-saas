@@ -104,10 +104,10 @@ Introduced in Phase 02. Google, email address values, plan names, and technical 
 
 VAT collection is disabled at launch, so neither locale shows a VAT line or VAT pricing notice while it remains disabled. If an administrator enables the future 7% VAT configuration, public pages use these exact strings:
 
-| Locale | Notice                              |
-| ------ | ----------------------------------- |
-| `th`   | `ราคาไม่รวมภาษีมูลค่าเพิ่ม 7%`      |
-| `en`   | `Prices exclude 7% VAT.`            |
+| Locale | Notice                         |
+| ------ | ------------------------------ |
+| `th`   | `ราคาไม่รวมภาษีมูลค่าเพิ่ม 7%` |
+| `en`   | `Prices exclude 7% VAT.`       |
 
 Checkout labels for subtotal, VAT, and final total are localized normally; the server-calculated amounts and rate must not be inferred from translated client copy.
 
