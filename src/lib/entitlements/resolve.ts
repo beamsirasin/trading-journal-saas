@@ -1,4 +1,5 @@
-import { PLANS, TRIAL_ACCOUNT_LIMIT, type Plan } from '@/config/plans';
+import { getPlanDefinition, isPlanKey, type PlanKey } from '@/config/plan-catalog';
+import { TRIAL_ACCOUNT_LIMIT } from '@/config/plans';
 
 /**
  * Pure, deterministic entitlement resolution — no I/O, no db (same discipline
@@ -10,7 +11,7 @@ import { PLANS, TRIAL_ACCOUNT_LIMIT, type Plan } from '@/config/plans';
  */
 
 export type EntitlementStatus = 'trialing' | 'active' | 'expired' | 'canceled';
-export type PlanKey = Plan['id'];
+export type { PlanKey } from '@/config/plan-catalog';
 
 /** The persisted `workspace_entitlements` row, as read under lock. */
 export interface EntitlementRecord {
@@ -26,8 +27,8 @@ export { TRIAL_ACCOUNT_LIMIT };
 
 function planAccountLimit(planKey: PlanKey | null): number | null {
   if (planKey === null) return null;
-  const plan = PLANS.find((candidate) => candidate.id === planKey);
-  return plan?.tradingAccounts ?? null;
+  if (!isPlanKey(planKey)) return null;
+  return getPlanDefinition(planKey).activeTradingAccountLimit;
 }
 
 export type EntitlementBlockReason =
