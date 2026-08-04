@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
+import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
@@ -22,8 +23,16 @@ import { provisionVerifiedUser } from './support/provision-user';
  */
 const VALID_TEST_PASSWORD = 'Correct-Horse9!';
 
+/**
+ * `test.info().project.name` (chromium/mobile-chrome) is folded into the
+ * address purely for debuggability when inspecting the disposable test
+ * database — the actual uniqueness guarantee is the timestamp + random
+ * suffix, which already rules out a collision regardless of which project
+ * or how many tests run concurrently.
+ */
 function uniqueEmail(labelPrefix: string): string {
-  return `${labelPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+  const projectName = test.info().project.name;
+  return `${labelPrefix}-${projectName}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
 }
 
 async function provisionUser(
@@ -40,24 +49,6 @@ async function provisionUser(
     },
     { onboarded: true, ...options },
   );
-}
-
-async function loginAs(
-  page: Page,
-  locale: 'en' | 'th',
-  user: { email: string; password: string },
-): Promise<void> {
-  await page.goto(`/${locale}/login`);
-  await page.getByLabel(locale === 'en' ? 'Email' : 'อีเมล').fill(user.email);
-  await page
-    .getByLabel(locale === 'en' ? 'Password' : 'รหัสผ่าน', { exact: true })
-    .fill(user.password);
-  await page.getByRole('button', { name: locale === 'en' ? 'Log in' : 'เข้าสู่ระบบ' }).click();
-  // Login's post-submit redirect is a client-side (App Router) navigation —
-  // no full-document `load` event ever fires, so `page.waitForURL`'s default
-  // `waitUntil: 'load'` hangs until timeout even once the URL already
-  // matches. `expect(...).toHaveURL` polls `location.href` directly instead.
-  await expect(page).toHaveURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
 }
 
 async function createAccountViaUI(page: Page, name: string): Promise<void> {
@@ -230,6 +221,10 @@ test.describe('trial entitlements and account limits', () => {
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/plan');
+    // Proves the destination, not just the heading: a proxy-level bounce
+    // back to /login would otherwise only surface as "heading not found",
+    // which is indistinguishable from a genuine rendering bug.
+    await expect(page).toHaveURL(/\/en\/app\/plan$/);
     await expect(page.getByRole('heading', { name: 'Plan & billing' })).toBeVisible();
     await expect(page.getByText('Online payment is not connected yet.')).toBeVisible();
     await expect(
@@ -324,6 +319,7 @@ test.describe('trial entitlements and account limits', () => {
     );
 
     await page.goto('/th/app/plan');
+    await expect(page).toHaveURL(/\/th\/app\/plan$/);
     await expect(page.getByRole('heading', { name: 'แผนและการเรียกเก็บเงิน' })).toBeVisible();
   });
 

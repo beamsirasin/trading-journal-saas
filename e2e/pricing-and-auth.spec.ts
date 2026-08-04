@@ -36,6 +36,18 @@ function countVerificationDispatchRequests(page: Page): { count: () => number } 
 const E2E_VALID_PASSWORD = 'Correct-Horse9!';
 
 /**
+ * `test.info().project.name` plus a random suffix, not `Date.now()` alone —
+ * a timestamp-only email is unique enough under normal timing, but a bare
+ * millisecond collision between two projects' tests registering the exact
+ * same address at once would corrupt both (one silently becomes the
+ * anti-enumeration "already exists" outcome the other test never expected).
+ */
+function uniqueTestEmail(labelPrefix: string): string {
+  const projectName = test.info().project.name;
+  return `${labelPrefix}-${projectName}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+}
+
+/**
  * The honesty suite.
  *
  * Every assertion here exists to catch the product claiming something it
@@ -279,7 +291,7 @@ test.describe('login and registration', () => {
   test('registration creates a real account and moves to the verification-pending screen', async ({
     page,
   }) => {
-    const email = `e2e-register-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-register');
 
     await page.goto('/en/register');
     await page.getByLabel('Name').fill('E2E New Trader');
@@ -318,8 +330,13 @@ test.describe('login and registration', () => {
     // only the URL (needed for the Resend button's own request) carries it.
     const regionText = (await statusRegion.textContent()) ?? '';
     expect(regionText).not.toContain(email);
+    // Prohibits only explicit account-existence disclosure — never a
+    // generic word ("account", "new", "unverified") that could legitimately
+    // appear in this region's own intended copy. Safe to check narrowly
+    // because the region itself is small and controlled (see above), not
+    // the whole page.
     expect(regionText).not.toMatch(
-      /email already exists|this email is already registered|an account already exists for this email|already exists|already registered|new account|unverified/i,
+      /email already exists|this email is already registered|an account already exists for this email/i,
     );
 
     // The account is real: logging in immediately fails because the email
@@ -390,7 +407,7 @@ test.describe('login and registration', () => {
   test('sends exactly one verification-email dispatch request per registration attempt, including a re-registration of the same still-unverified email', async ({
     page,
   }) => {
-    const email = `e2e-resend-dup-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-resend-dup');
     const dispatchRequests = countVerificationDispatchRequests(page);
 
     await page.goto('/en/register');
@@ -429,7 +446,7 @@ test.describe('login and registration', () => {
   test('shows a localized, accessible notice and a disabled Resend button when the verify-email page carries a rate-limited dispatch notice', async ({
     page,
   }) => {
-    const email = `e2e-notice-rate-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-notice-rate');
     await page.goto(`/en/verify-email?email=${encodeURIComponent(email)}&notice=rate-limited`);
 
     await expect(
@@ -443,7 +460,7 @@ test.describe('login and registration', () => {
   test('shows a localized delivery-failed notice with a still-usable Resend button', async ({
     page,
   }) => {
-    const email = `e2e-notice-delivery-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-notice-delivery');
     await page.goto(`/en/verify-email?email=${encodeURIComponent(email)}&notice=delivery-failed`);
 
     await expect(
@@ -455,7 +472,7 @@ test.describe('login and registration', () => {
   test('/th/verify-email shows the localized Thai rate-limited and delivery-failed notices', async ({
     page,
   }) => {
-    const email = `e2e-th-notice-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-th-notice');
 
     await page.goto(`/th/verify-email?email=${encodeURIComponent(email)}&notice=rate-limited`);
     await expect(
@@ -562,7 +579,7 @@ test.describe('login and registration', () => {
     await page.goto('/en/register');
 
     await page.getByLabel('Name').fill('Mismatch Tester');
-    await page.getByLabel('Email').fill(`e2e-mismatch-${Date.now()}@example.test`);
+    await page.getByLabel('Email').fill(uniqueTestEmail('e2e-mismatch'));
     await page.getByLabel('Password', { exact: true }).fill(E2E_VALID_PASSWORD);
     const confirm = page.getByLabel('Confirm password');
     await confirm.fill('Different-Horse9!');
@@ -593,7 +610,7 @@ test.describe('login and registration', () => {
   });
 
   test('/th/register runs the same registration flow with Thai copy', async ({ page }) => {
-    const email = `e2e-th-register-${Date.now()}@example.test`;
+    const email = uniqueTestEmail('e2e-th-register');
 
     await page.goto('/th/register');
     await page.getByLabel('ชื่อ').fill('ผู้ใช้ทดสอบ');
@@ -627,7 +644,7 @@ test.describe('login and registration', () => {
   test('/th/register rejects a weak password with the localized policy error', async ({ page }) => {
     await page.goto('/th/register');
     await page.getByLabel('ชื่อ').fill('ผู้ใช้ทดสอบ');
-    await page.getByLabel('อีเมล').fill(`e2e-th-weak-${Date.now()}@example.test`);
+    await page.getByLabel('อีเมล').fill(uniqueTestEmail('e2e-th-weak'));
 
     // A password that is long enough to slip past no client-side gate
     // bypass attempt but still misses a required character class — proves
