@@ -181,11 +181,18 @@ test.describe('trial entitlements and account limits', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
 
-    // Editing remains available.
+    // Editing remains available — entitlement gating applies only to
+    // create/restore (`getWorkspaceTradingAccountById`, the edit page, and
+    // `AccountCard` carry no entitlement check at all). Asserting the
+    // destination URL before the heading distinguishes "the click's
+    // App-Router navigation never landed" from "it landed but something else
+    // is actually wrong," rather than leaving both to look like the same
+    // "heading not found" failure.
     await page
       .getByRole('region', { name: 'Main Trading Account' })
       .getByRole('link', { name: 'Edit' })
       .click();
+    await expect(page).toHaveURL(/\/en\/app\/accounts\/[^/]+\/edit$/);
     await expect(page.getByRole('heading', { name: 'Edit trading account' })).toBeVisible();
     await page.getByRole('link', { name: 'Cancel' }).click();
 

@@ -15,11 +15,16 @@ import { E2E_USER_A } from './support/fixtures';
  * instead of failing on the login redirect Phase 02 now enforces.
  *
  * Uses `authenticateContext` (the real Better Auth HTTP endpoints, never the
- * login form) for the same reason `e2e/entitlements.spec.ts` and
- * `e2e/accounts.spec.ts` do: it proves the session via `/api/auth/get-session`
- * before anything depends on it, rather than trusting the login form's own
+ * login form): it proves the session via `/api/auth/get-session` before
+ * anything depends on it, rather than trusting the login form's own
  * client-side fetch + `router.push` timing to have landed by the time the
- * next line runs.
+ * next line runs. This is the ONE real `/sign-in/email` call this project's
+ * fixed identities need per whole suite run, so it never meaningfully
+ * contends with that endpoint's rate limit — unlike `e2e/entitlements.spec.ts`
+ * and `e2e/accounts.spec.ts`, which provision a fresh user per test (dozens
+ * of sign-ins) and therefore use `loginAs`'s database-backed session fixture
+ * instead (`e2e/support/authenticate.ts`'s `establishDatabaseSession`),
+ * bypassing the rate-limited endpoint entirely.
  *
  * `e2e/auth-authorization.spec.ts` and `e2e/pricing-and-auth.spec.ts`
  * deliberately do NOT use this file's output — they test the unauthenticated
