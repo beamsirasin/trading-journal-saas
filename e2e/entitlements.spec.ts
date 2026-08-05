@@ -181,20 +181,14 @@ test.describe('trial entitlements and account limits', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
 
-    // Editing remains available — entitlement gating applies only to
-    // create/restore (`getWorkspaceTradingAccountById`, the edit page, and
-    // `AccountCard` carry no entitlement check at all). Asserting the
-    // destination URL before the heading distinguishes "the click's
-    // App-Router navigation never landed" from "it landed but something else
-    // is actually wrong," rather than leaving both to look like the same
-    // "heading not found" failure.
-    await page
-      .getByRole('region', { name: 'Main Trading Account' })
-      .getByRole('link', { name: 'Edit' })
-      .click();
-    await expect(page).toHaveURL(/\/en\/app\/accounts\/[^/]+\/edit$/);
-    await expect(page.getByRole('heading', { name: 'Edit trading account' })).toBeVisible();
-    await page.getByRole('link', { name: 'Cancel' }).click();
+    // Editing is also blocked while read-only — `updateTradingAccount`
+    // enforces `authorizeWorkspaceMutation(..., 'ordinary_write')` under lock
+    // exactly like create/restore, so Edit must not be offered as a live
+    // control the server is certain to reject (Phase 05C). Set-active and
+    // Archive remain unaffected — neither is gated by subscription status.
+    const mainAccountRegion = page.getByRole('region', { name: 'Main Trading Account' });
+    await expect(mainAccountRegion.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    await expect(mainAccountRegion.getByRole('link', { name: 'Edit' })).toHaveCount(0);
 
     await page.goto('/en/app/accounts/new');
     await expect(page.getByText('Create unavailable')).toBeVisible();
@@ -380,13 +374,16 @@ test.describe('trial entitlements and account limits', () => {
       "We couldn't check this workspace's plan right now.",
     );
 
-    // Editing the existing active account remains available — entitlement
-    // unavailability never blocks edit/switch/archive.
-    await page
-      .getByRole('region', { name: 'Main Trading Account' })
-      .getByRole('link', { name: 'Edit' })
-      .click();
-    await expect(page.getByRole('heading', { name: 'Edit trading account' })).toBeVisible();
+    // Editing the existing active account is also blocked while the
+    // entitlement snapshot is unavailable — `updateTradingAccount` fails
+    // closed on a `null` entitlement exactly like create/restore (Phase 05C:
+    // the UI must not offer Edit as a live control the server is certain to
+    // reject).
+    await expect(
+      page
+        .getByRole('region', { name: 'Main Trading Account' })
+        .getByRole('button', { name: 'Edit' }),
+    ).toBeDisabled();
 
     // A direct submission to /app/accounts/new is rejected server-side too.
     await page.goto('/en/app/accounts/new');

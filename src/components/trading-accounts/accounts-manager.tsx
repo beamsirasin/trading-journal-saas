@@ -4,7 +4,11 @@ import { ArchiveRestore, CircleAlert, CircleCheck, Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
-import { resolveEntitlementGate } from '@/lib/entitlements/resolve';
+import {
+  authorizeWorkspaceMutation,
+  resolveEntitlementGate,
+  type MutationDenialReason,
+} from '@/lib/entitlements/resolve';
 import {
   archiveTradingAccountAction,
   restoreTradingAccountAction,
@@ -60,6 +64,17 @@ export function AccountsManager({
   // `accounts/page.tsx`'s Create button and `accounts/new/page.tsx` read,
   // so Restore can never independently drift into failing open again.
   const restoreGate = resolveEntitlementGate(entitlement);
+  // The exact same pure decision `updateTradingAccountAction` re-derives
+  // server-side under lock (`authorizeWorkspaceMutation`, 'ordinary_write') —
+  // called here purely so Edit is never offered as a live control the server
+  // is certain to reject; the server call remains the sole authority.
+  const editAuthorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
+  // A workspace can never have zero non-archived accounts (Phase 3A/3B
+  // invariant, enforced by `archiveTradingAccount`'s own last-account check) —
+  // when exactly one remains, it is necessarily the only one archiving could
+  // ever be attempted against, and it is guaranteed to also be every member's
+  // active account (there is nothing else it could be).
+  const isOnlyActiveAccount = activeAccounts.length === 1;
   const [isPending, startTransition] = useTransition();
   const [pendingAccountId, setPendingAccountId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(
@@ -145,7 +160,10 @@ export function AccountsManager({
               <AccountCard
                 account={account}
                 isActive={account.id === activeAccountId}
+                isOnlyActiveAccount={isOnlyActiveAccount}
                 isPending={isPending && pendingAccountId === account.id}
+                canEdit={editAuthorization.allowed}
+                editBlockReason={editAuthorization.allowed ? null : editAuthorization.code}
                 onSetActive={() =>
                   runAction(
                     account.id,
@@ -179,6 +197,7 @@ export function AccountsManager({
                   account={account}
                   isPending={isPending && pendingAccountId === account.id}
                   restoreBlockReason={restoreGate.blockReason}
+                  entitlement={entitlement}
                   onRestore={() =>
                     runAction(account.id, () => restoreTradingAccountAction(account.id), 'restored')
                   }
@@ -195,13 +214,21 @@ export function AccountsManager({
 function AccountCard({
   account,
   isActive,
+  isOnlyActiveAccount,
   isPending,
+  canEdit,
+  editBlockReason,
   onSetActive,
   onArchive,
 }: {
   account: TradingAccountRecord;
   isActive: boolean;
+  /** True when this is the workspace's sole remaining non-archived account — archiving it is always rejected server-side. */
+  isOnlyActiveAccount: boolean;
   isPending: boolean;
+  /** Same `authorizeWorkspaceMutation(..., 'ordinary_write')` decision the server re-derives under lock — display-only, never the authorization boundary itself. */
+  canEdit: boolean;
+  editBlockReason: MutationDenialReason | null;
   onSetActive: () => void;
   onArchive: () => void;
 }) {
@@ -209,6 +236,7 @@ function AccountCard({
   const tOnboarding = useTranslations('onboarding');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const headingId = `account-card-heading-${account.id}`;
+  const editReasonId = `account-card-edit-reason-${account.id}`;
 
   return (
     <Card role="region" aria-labelledby={headingId} className="flex h-full flex-col">
@@ -240,6 +268,7 @@ function AccountCard({
             label={t('field.startingBalance')}
             value={`${account.startingBalance} ${account.baseCurrency}`}
           />
+          <Field label={t('field.timezone')} value={account.timezone} />
           {account.riskPerTradePercent === null ? null : (
             <Field label={t('field.riskPerTrade')} value={`${account.riskPerTradePercent}%`} />
           )}
@@ -251,68 +280,116 @@ function AccountCard({
           )}
         </dl>
 
-        <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link href={`/app/accounts/${account.id}/edit`}>
-              <Pencil className="size-3.5" aria-hidden="true" />
-              {t('edit')}
-            </Link>
-          </Button>
-          {isActive ? null : (
-            <Button variant="outline" size="sm" disabled={isPending} onClick={onSetActive}>
-              {t('setActive')}
-            </Button>
-          )}
-          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" disabled={isPending} className="text-destructive">
-                {t('archive')}
+        <div className="mt-auto flex flex-col gap-2 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit ? (
+              <Button asChild variant="outline" size="sm" className="gap-1.5">
+                <Link href={`/app/accounts/${account.id}/edit`}>
+                  <Pencil className="size-3.5" aria-hidden="true" />
+                  {t('edit')}
+                </Link>
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {t('archiveDialogTitle', { name: account.name })}
-                </AlertDialogTitle>
-                <AlertDialogDescription>{t('archiveDialogDescription')}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
-                <AlertDialogAction
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled
+                aria-describedby={editReasonId}
+              >
+                <Pencil className="size-3.5" aria-hidden="true" />
+                {t('edit')}
+              </Button>
+            )}
+            {isActive ? null : (
+              <Button variant="outline" size="sm" disabled={isPending} onClick={onSetActive}>
+                {t('setActive')}
+              </Button>
+            )}
+            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={isPending}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={() => {
-                    setConfirmOpen(false);
-                    onArchive();
-                  }}
+                  className="text-destructive"
                 >
-                  {t('archiveConfirm')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  {t('archive')}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t('archiveDialogTitle', { name: account.name })}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>{t('archiveDialogDescription')}</AlertDialogDescription>
+                  {isOnlyActiveAccount ? (
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      {t('archiveDialogLastAccountNote')}
+                    </p>
+                  ) : isActive ? (
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      {t('archiveDialogActiveNote')}
+                    </p>
+                  ) : null}
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={isPending}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => {
+                      setConfirmOpen(false);
+                      onArchive();
+                    }}
+                  >
+                    {t('archiveConfirm')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+          {canEdit ? null : (
+            <p id={editReasonId} className="text-muted-foreground text-xs leading-relaxed">
+              {t(`errors.${editBlockReason}` as Parameters<typeof t>[0])}
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>
   );
 }
 
+/** The two `EntitlementBlockReason` values that mean "at capacity" rather than "subscription not in good standing" — the only cases where showing usage numbers and a plan link is relevant instead of a subscription-status explanation. */
+function isAccountLimitBlockReason(reason: string): boolean {
+  return reason === 'account_limit_reached' || reason === 'workspace_over_limit';
+}
+
 function ArchivedAccountCard({
   account,
   isPending,
   restoreBlockReason,
+  entitlement,
   onRestore,
 }: {
   account: TradingAccountRecord;
   isPending: boolean;
   /** `null` when restoring is allowed; otherwise the reason to show instead of attempting it. */
   restoreBlockReason: string | null;
+  /** Read-only, for the richer at-limit explanation (current usage/limit) — never re-checked here as an authorization decision. */
+  entitlement: EffectiveEntitlement | null;
   onRestore: () => void;
 }) {
   const t = useTranslations('accounts');
+  const tEntitlements = useTranslations('entitlements');
   const tOnboarding = useTranslations('onboarding');
   const headingId = `archived-account-card-heading-${account.id}`;
   const restoreReasonId = `archived-account-restore-reason-${account.id}`;
+  const showLimitDetail =
+    restoreBlockReason !== null &&
+    isAccountLimitBlockReason(restoreBlockReason) &&
+    entitlement !== null &&
+    entitlement.accountLimit !== null;
 
   return (
     <Card role="region" aria-labelledby={headingId} className="bg-muted/30 flex h-full flex-col">
@@ -327,11 +404,31 @@ function ArchivedAccountCard({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          {account.brokerName === null ? null : (
+            <Field label={t('field.broker')} value={account.brokerName} />
+          )}
+          {account.platformName === null ? null : (
+            <Field label={t('field.platform')} value={account.platformName} />
+          )}
           <Field
             label={t('field.mode')}
             value={tOnboarding(`accountModeValues.${account.accountMode}`)}
           />
           <Field label={t('field.currency')} value={account.baseCurrency} />
+          <Field
+            label={t('field.startingBalance')}
+            value={`${account.startingBalance} ${account.baseCurrency}`}
+          />
+          <Field label={t('field.timezone')} value={account.timezone} />
+          {account.riskPerTradePercent === null ? null : (
+            <Field label={t('field.riskPerTrade')} value={`${account.riskPerTradePercent}%`} />
+          )}
+          {account.maximumDailyLossPercent === null ? null : (
+            <Field
+              label={t('field.maximumDailyLoss')}
+              value={`${account.maximumDailyLossPercent}%`}
+            />
+          )}
         </dl>
         <div className="mt-auto flex flex-col gap-2 pt-2">
           <Button
@@ -345,9 +442,30 @@ function ArchivedAccountCard({
             {t('restore')}
           </Button>
           {restoreBlockReason === null ? null : (
-            <p id={restoreReasonId} className="text-muted-foreground text-xs leading-relaxed">
-              {t(`errors.${restoreBlockReason}` as Parameters<typeof t>[0])}
-            </p>
+            <div id={restoreReasonId} className="flex flex-col gap-1.5">
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                {t(`errors.${restoreBlockReason}` as Parameters<typeof t>[0])}
+              </p>
+              {showLimitDetail && entitlement !== null && entitlement.accountLimit !== null ? (
+                <>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {t('restoreLimitUsage', {
+                      used: entitlement.activeAccountCount,
+                      limit: entitlement.accountLimit,
+                    })}
+                  </p>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {t('restoreLimitSafe')}
+                  </p>
+                  <Link
+                    href="/app/plan"
+                    className="text-primary text-xs font-medium underline-offset-2 hover:underline"
+                  >
+                    {tEntitlements('banner.viewPlans')}
+                  </Link>
+                </>
+              ) : null}
+            </div>
           )}
         </div>
       </CardContent>

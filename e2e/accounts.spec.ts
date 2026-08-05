@@ -98,12 +98,16 @@ function accountRegion(page: Page, name: string): Locator {
 
 async function expectAccountActive(page: Page, name: string): Promise<void> {
   await expect(accountRegion(page, name).getByRole('heading', { name })).toBeVisible();
-  await expect(accountRegion(page, name).getByText('Active', { exact: true })).toBeVisible();
+  await expect(
+    accountRegion(page, name).getByText('Current account', { exact: true }),
+  ).toBeVisible();
 }
 
 async function expectAccountNotActive(page: Page, name: string): Promise<void> {
   await expect(accountRegion(page, name).getByRole('heading', { name })).toBeVisible();
-  await expect(accountRegion(page, name).getByText('Active', { exact: true })).toHaveCount(0);
+  await expect(accountRegion(page, name).getByText('Current account', { exact: true })).toHaveCount(
+    0,
+  );
 }
 
 async function expectArchived(page: Page, name: string): Promise<void> {
@@ -420,7 +424,7 @@ test.describe('trading account management', () => {
       .getByRole('button', { name: 'ตั้งเป็นบัญชีที่ใช้งาน' })
       .click();
     await expect(
-      accountRegion(page, 'บัญชีที่สอง').getByText('ใช้งานอยู่', { exact: true }),
+      accountRegion(page, 'บัญชีที่สอง').getByText('บัญชีที่กำลังใช้งาน', { exact: true }),
     ).toBeVisible();
 
     await page.goto('/th/app');
