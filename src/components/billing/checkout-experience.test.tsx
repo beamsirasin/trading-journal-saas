@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { BillingCheckoutCapability } from '@/config/billing-capability';
 import type { CheckoutQuotePresentation } from '@/lib/billing/presentation-types';
 
 import en from '../../../messages/en.json';
@@ -53,13 +54,17 @@ function quote(vatEnabled: boolean): CheckoutQuotePresentation {
   };
 }
 
-function renderCheckout(vatEnabled: boolean) {
+function renderCheckout(
+  vatEnabled: boolean,
+  capability: BillingCheckoutCapability = 'development_mock',
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <CheckoutExperience
         quote={quote(vatEnabled)}
         sharedFeatureKeys={['unlimitedStrategies', 'analytics']}
         context={{ status: 'trialing', currentPlanName: null }}
+        capability={capability}
       />
     </NextIntlClientProvider>,
   );
@@ -90,5 +95,23 @@ describe('checkout presentation', () => {
     expect(screen.getByRole('heading', { name: 'Mock payment' })).toBeInTheDocument();
     expect(screen.getByText(/no real charge will occur/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/card|cvv|bank/i)).not.toBeInTheDocument();
+  });
+
+  it('renders an honest unavailable state with no mock form when capability is unavailable', () => {
+    renderCheckout(false, 'unavailable');
+    expect(
+      screen.getByRole('heading', { name: 'Payments are not available yet' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Mock payment' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Confirm mock subscription' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View billing history' })).toHaveAttribute(
+      'href',
+      '/app/billing',
+    );
+    // Public pricing/order-summary information remains visible even when payment is unavailable.
+    expect(screen.getByText('Starter')).toBeInTheDocument();
   });
 });

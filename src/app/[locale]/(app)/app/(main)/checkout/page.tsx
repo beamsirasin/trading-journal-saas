@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { getBillingCheckoutCapability } from '@/config/billing-capability.server';
 import { isPlanKey } from '@/config/plan-catalog';
 import { isSupportedBillingCurrency } from '@/lib/billing';
 import { getActiveWorkspaceContext, getWorkspaceEntitlement } from '@/server/auth/dal';
@@ -49,7 +50,7 @@ export default async function CheckoutPage({
 
   // Resolve the trusted session/workspace even for malformed queries: this route never
   // becomes an unauthenticated quote oracle or accepts a customer workspace identifier.
-  await getActiveWorkspaceContext();
+  const { userId } = await getActiveWorkspaceContext();
   const entitlement = await getWorkspaceEntitlement();
 
   if (
@@ -71,6 +72,7 @@ export default async function CheckoutPage({
     );
   }
 
+  const capability = await getBillingCheckoutCapability(userId);
   const presentation = getBillingPresentation(appLocale);
   const quote = getCheckoutQuotePresentation(appLocale, plan, currency);
   const currentPlan =
@@ -90,6 +92,7 @@ export default async function CheckoutPage({
         quote={quote}
         sharedFeatureKeys={presentation.sharedFeatureKeys}
         context={context}
+        capability={capability}
       />
     </Container>
   );

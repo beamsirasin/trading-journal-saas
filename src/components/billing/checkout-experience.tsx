@@ -1,9 +1,10 @@
 'use client';
 
-import { Check, CircleAlert, CreditCard, LoaderCircle } from 'lucide-react';
+import { Check, CircleAlert, Clock, CreditCard, LoaderCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState, useTransition, type FormEvent } from 'react';
 
+import type { BillingCheckoutCapability } from '@/config/billing-capability';
 import type { SharedBillingFeatureKey } from '@/config/plan-catalog';
 import type { CheckoutQuotePresentation } from '@/lib/billing/presentation-types';
 import {
@@ -27,10 +28,12 @@ export function CheckoutExperience({
   quote,
   sharedFeatureKeys,
   context,
+  capability,
 }: {
   quote: CheckoutQuotePresentation;
   sharedFeatureKeys: readonly SharedBillingFeatureKey[];
   context: CheckoutContextPresentation;
+  capability: BillingCheckoutCapability;
 }) {
   const t = useTranslations('checkout');
   const tPricing = useTranslations('pricing');
@@ -126,50 +129,86 @@ export function CheckoutExperience({
   const vatEnabled = displayResult?.vatEnabled ?? quote.vat.enabled;
   const vatRate = displayResult?.vatRatePercent ?? quote.vat.ratePercent;
 
+  const summaryPanel = (
+    <section
+      aria-labelledby="checkout-summary-heading"
+      className="border-border bg-card min-w-0 rounded-xl border p-5 sm:p-6"
+    >
+      <h2 id="checkout-summary-heading" className="text-card-title">
+        {t('summaryTitle')}
+      </h2>
+      <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+        <SummaryTerm label={t('planLabel')} value={quote.plan.name} />
+        <SummaryTerm
+          label={t('allowanceLabel')}
+          value={t('allowanceValue', { count: quote.plan.activeTradingAccountLimit })}
+        />
+        <SummaryTerm label={t('intervalLabel')} value={t('monthly')} />
+        <SummaryTerm label={t('currencyLabel')} value={quote.currency} />
+        <SummaryTerm
+          label={t('currentContextLabel')}
+          value={
+            context.currentPlanName === null
+              ? t(`context.${context.status}`)
+              : t('currentPlanContext', {
+                  plan: context.currentPlanName,
+                  status: t(`context.${context.status}`),
+                })
+          }
+        />
+      </dl>
+
+      <div className="border-border mt-6 border-t pt-5">
+        <h3 className="text-foreground text-sm font-semibold">
+          {tPricing('sharedFeaturesHeading')}
+        </h3>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {sharedFeatureKeys.map((feature) => (
+            <li key={feature} className="text-muted-foreground flex items-start gap-2 text-sm">
+              <Check className="text-positive mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>{tPricing(`sharedFeatures.${feature}`)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+
+  if (capability === 'unavailable') {
+    return (
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+        {summaryPanel}
+        <section
+          aria-labelledby="payment-heading"
+          className="border-border bg-card min-w-0 rounded-xl border p-5 sm:p-6"
+        >
+          <div className="flex items-start gap-3">
+            <Clock className="text-muted-foreground size-5 shrink-0" aria-hidden="true" />
+            <div>
+              <h2 id="payment-heading" className="text-card-title">
+                {t('unavailable.title')}
+              </h2>
+              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                {t('unavailable.body')}
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 flex flex-col gap-3">
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/app/billing">{t('unavailable.viewBilling')}</Link>
+            </Button>
+            <Button asChild variant="link" className="w-full">
+              <Link href="/app/plan">{t('backToPlans')}</Link>
+            </Button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-      <section
-        aria-labelledby="checkout-summary-heading"
-        className="border-border bg-card min-w-0 rounded-xl border p-5 sm:p-6"
-      >
-        <h2 id="checkout-summary-heading" className="text-card-title">
-          {t('summaryTitle')}
-        </h2>
-        <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-          <SummaryTerm label={t('planLabel')} value={quote.plan.name} />
-          <SummaryTerm
-            label={t('allowanceLabel')}
-            value={t('allowanceValue', { count: quote.plan.activeTradingAccountLimit })}
-          />
-          <SummaryTerm label={t('intervalLabel')} value={t('monthly')} />
-          <SummaryTerm label={t('currencyLabel')} value={quote.currency} />
-          <SummaryTerm
-            label={t('currentContextLabel')}
-            value={
-              context.currentPlanName === null
-                ? t(`context.${context.status}`)
-                : t('currentPlanContext', {
-                    plan: context.currentPlanName,
-                    status: t(`context.${context.status}`),
-                  })
-            }
-          />
-        </dl>
-
-        <div className="border-border mt-6 border-t pt-5">
-          <h3 className="text-foreground text-sm font-semibold">
-            {tPricing('sharedFeaturesHeading')}
-          </h3>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {sharedFeatureKeys.map((feature) => (
-              <li key={feature} className="text-muted-foreground flex items-start gap-2 text-sm">
-                <Check className="text-positive mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>{tPricing(`sharedFeatures.${feature}`)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+      {summaryPanel}
 
       <section
         aria-labelledby="payment-heading"

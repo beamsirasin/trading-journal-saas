@@ -118,4 +118,41 @@ test.describe('Phase 04F pricing and mock checkout', () => {
     await page.getByRole('link', { name: 'กลับไปหน้าแผน' }).click();
     await expect(page.getByText('ทดลองใช้ฟรี').first()).toBeVisible();
   });
+
+  test('Phase 04H-A: a non-E2E identity in the production build sees the unavailable panel, never a usable free activation', async ({
+    page,
+  }, testInfo) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    const { testUrl } = validateTestDatabaseEnvironment();
+    const segment = projectSegment(testInfo.project.name);
+    // This build IS the guarded production E2E seam (E2E_TEST_MODE=true,
+    // loopback BETTER_AUTH_URL — see playwright.config.ts's webServer.env),
+    // so the only thing standing between this ordinary authenticated
+    // identity and mock checkout is the trusted e2e-checkout-* email
+    // allowlist. This account deliberately does not match it.
+    const user = await provisionVerifiedUser(
+      testUrl,
+      {
+        email: `not-a-trusted-e2e-identity-${segment}@example.test`,
+        password: 'ordinary-customer-password-123',
+        name: 'Ordinary Customer',
+      },
+      { entitlement: {} },
+    );
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/checkout?plan=starter&currency=USD');
+
+    await expect(
+      page.getByRole('heading', { name: 'Payments are not available yet' }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Mock payment' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Confirm mock subscription' })).toHaveCount(0);
+    await expect(page.locator('form')).toHaveCount(0);
+    // Public pricing/order-summary information remains visible even though
+    // payment is unavailable.
+    await expect(page.getByText('Starter').first()).toBeVisible();
+
+    await page.getByRole('link', { name: 'View billing history' }).click();
+    await expect(page).toHaveURL(/\/en\/app\/billing/);
+  });
 });

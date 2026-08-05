@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 
+import { PaymentProviderUnavailableError } from '@/config/billing-capability';
 import { type BillingCurrency } from '@/lib/billing';
 import type { BillingMoneyPresentation } from '@/lib/billing/presentation-types';
 import { getActiveWorkspaceContext, UnauthenticatedError } from '@/server/auth/dal';
@@ -35,6 +36,7 @@ export type CheckoutCustomerError =
   | 'conflict'
   | 'already_processing'
   | 'payment_unavailable'
+  | 'payment_provider_unavailable'
   | 'unexpected';
 
 export interface CheckoutActionSuccess {
@@ -78,6 +80,9 @@ function presentResult(result: CheckoutResult): CheckoutActionSuccess {
 
 function mapError(error: unknown): CheckoutActionResult {
   if (error instanceof UnauthenticatedError) return { ok: false, code: 'unauthenticated' };
+  if (error instanceof PaymentProviderUnavailableError) {
+    return { ok: false, code: 'payment_provider_unavailable' };
+  }
   if (!(error instanceof CheckoutError)) return { ok: false, code: 'unexpected' };
 
   switch (error.code) {

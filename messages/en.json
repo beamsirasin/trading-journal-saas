@@ -817,6 +817,11 @@
     },
     "mockPaymentTitle": "Mock payment",
     "mockPaymentBody": "This test gateway does not collect card or bank details, and no real charge will occur.",
+    "unavailable": {
+      "title": "Payments are not available yet",
+      "body": "This environment does not have a payment provider connected, so card payments cannot be started here. Your plan and billing history remain available, and nothing was charged.",
+      "viewBilling": "View billing history"
+    },
     "price": "Price",
     "subtotal": "Subtotal",
     "vat": "VAT {rate}%",
@@ -843,6 +848,7 @@
       "conflict": "This checkout attempt conflicts with an earlier request. Start a new attempt.",
       "already_processing": "Another checkout is already processing. Resume that attempt before starting another.",
       "payment_unavailable": "The mock payment service is temporarily unavailable. Your subscription was not changed.",
+      "payment_provider_unavailable": "Payments are not available in this environment right now. Your subscription was not changed.",
       "unexpected": "Checkout could not be completed. Your subscription was not changed."
     }
   },
