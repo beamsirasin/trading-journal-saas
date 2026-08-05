@@ -102,7 +102,7 @@ beforeEach(() => {
 describe('AccountsManager — active account status', () => {
   it('marks the current active account and hides its Set-active button', () => {
     renderManager();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Current account')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Set as active' })).not.toBeInTheDocument();
   });
 
@@ -186,6 +186,59 @@ describe('AccountsManager — archive confirmation', () => {
   });
 });
 
+describe('AccountsManager — archive dialog wording', () => {
+  it('explains that archiving preserves data and is reversible', () => {
+    renderManager({
+      activeAccounts: [
+        account({ id: 'account-1', name: 'Main Account' }),
+        account({ id: 'account-2', name: 'Second Account' }),
+      ],
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Archive' })[0] as HTMLElement);
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('does not delete it');
+    expect(dialog).toHaveTextContent('preserved');
+    expect(dialog).toHaveTextContent('restore it later');
+  });
+
+  it('never uses permanent-deletion wording', () => {
+    renderManager({
+      activeAccounts: [
+        account({ id: 'account-1', name: 'Main Account' }),
+        account({ id: 'account-2', name: 'Second Account' }),
+      ],
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Archive' })[0] as HTMLElement);
+    const dialogText = screen.getByRole('alertdialog').textContent ?? '';
+    expect(dialogText).not.toMatch(/permanently|irreversibl|delete[ds]? forever|closure/i);
+  });
+
+  it('warns that another account becomes selected when archiving the currently selected account', () => {
+    renderManager({
+      activeAccounts: [
+        account({ id: 'account-1', name: 'Main Account' }),
+        account({ id: 'account-2', name: 'Second Account' }),
+      ],
+      activeAccountId: 'account-1',
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Archive' })[0] as HTMLElement);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(
+      'Another active trading account will automatically become selected',
+    );
+  });
+
+  it('warns that the only active account cannot be archived', () => {
+    renderManager({
+      activeAccounts: [account({ id: 'account-1', name: 'Main Account' })],
+      activeAccountId: 'account-1',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(
+      'This is your only active trading account.',
+    );
+  });
+});
+
 describe('AccountsManager — archived section', () => {
   it('shows "no archived accounts" when there are none', () => {
     renderManager({ archivedAccounts: [] });
@@ -213,6 +266,95 @@ describe('AccountsManager — archived section', () => {
 
     await waitFor(() => expect(restoreTradingAccountActionMock).toHaveBeenCalledWith('account-2'));
     expect(await screen.findByText('Account restored.')).toBeInTheDocument();
+  });
+
+  it('shows every approved field on an archived account, matching an active card', () => {
+    renderManager({
+      activeAccounts: [],
+      archivedAccounts: [
+        account({
+          id: 'account-2',
+          name: 'Old Account',
+          isArchived: true,
+          brokerName: 'Interactive Brokers',
+          platformName: 'MetaTrader 5',
+          riskPerTradePercent: '1.5',
+          maximumDailyLossPercent: '3',
+        }),
+      ],
+    });
+    expect(screen.getByText('Interactive Brokers')).toBeInTheDocument();
+    expect(screen.getByText('MetaTrader 5')).toBeInTheDocument();
+    expect(screen.getByText('Live')).toBeInTheDocument();
+    expect(screen.getByText('USD')).toBeInTheDocument();
+    expect(screen.getByText('10000 USD')).toBeInTheDocument();
+    expect(screen.getByText('Asia/Bangkok')).toBeInTheDocument();
+    expect(screen.getByText('1.5%')).toBeInTheDocument();
+    expect(screen.getByText('3%')).toBeInTheDocument();
+    // Never invented: no balance/P&L/trade-count/performance figures exist for this fixture at all.
+    expect(screen.queryByText(/realized|profit|loss factor|trade count|last traded/i)).toBeNull();
+  });
+
+  it('renders safely when optional fields are absent, with no unsafe truncation', () => {
+    renderManager({
+      activeAccounts: [],
+      archivedAccounts: [
+        account({
+          id: 'account-2',
+          name: 'Old Account',
+          isArchived: true,
+          brokerName: null,
+          platformName: null,
+          riskPerTradePercent: null,
+          maximumDailyLossPercent: null,
+        }),
+      ],
+    });
+    expect(screen.getByText('Old Account')).toBeInTheDocument();
+    expect(screen.queryByText('Broker')).not.toBeInTheDocument();
+    expect(screen.queryByText('Platform')).not.toBeInTheDocument();
+    expect(screen.queryByText('Risk per trade')).not.toBeInTheDocument();
+    expect(screen.queryByText('Maximum daily loss')).not.toBeInTheDocument();
+  });
+
+  it('gives the richer restore-limit explanation — current usage, limit, and that the account stays safe', () => {
+    renderManager({
+      entitlement: entitlementFixture({
+        accessMode: 'writable',
+        accountLimit: 1,
+        activeAccountCount: 1,
+        remainingAccountSlots: 0,
+        canCreateAccount: false,
+        canRestoreAccount: false,
+        blockReason: 'account_limit_reached',
+      }),
+      archivedAccounts: [account({ id: 'account-2', name: 'Old Account', isArchived: true })],
+    });
+
+    expect(
+      screen.getByText("You've used your plan's active trading account limit.", { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("You're using 1 of 1 active trading accounts.")).toBeInTheDocument();
+    expect(
+      screen.getByText('This archived account and its data remain safe — nothing has been lost.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View plans' })).toHaveAttribute('href', '/app/plan');
+  });
+
+  it('does not show the usage/limit detail for a subscription-status block reason (only for at-limit reasons)', () => {
+    renderManager({
+      entitlement: entitlementFixture({
+        accessMode: 'read_only',
+        denialReason: 'trial_expired',
+        blockReason: 'trial_expired',
+        canCreateAccount: false,
+        canRestoreAccount: false,
+      }),
+      archivedAccounts: [account({ id: 'account-2', name: 'Old Account', isArchived: true })],
+    });
+    expect(screen.getByText(/Your trial has expired/)).toBeInTheDocument();
+    expect(screen.queryByText(/active trading accounts\.$/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'View plans' })).not.toBeInTheDocument();
   });
 });
 
@@ -260,16 +402,69 @@ describe('AccountsManager — entitlement unavailable (null)', () => {
     expect(unavailableBanner?.textContent).not.toMatch(/trial|starter|trader|professional/i);
   });
 
-  it('never disables Edit, Set-active, or Archive on active accounts', () => {
+  it('never disables Set-active or Archive on active accounts', () => {
     renderManager({
       activeAccounts: [
         account({ id: 'account-1', name: 'Main Account' }),
         account({ id: 'account-2', name: 'Second Account' }),
       ],
     });
-    expect(screen.getAllByRole('link', { name: /Edit/ })[0]).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Set as active' })).not.toBeDisabled();
     expect(screen.getAllByRole('button', { name: 'Archive' })[0]).not.toBeDisabled();
+  });
+
+  it('disables Edit with an accessible reason — the server also rejects an edit for a read-only or entitlement-unavailable workspace', () => {
+    renderManager({
+      activeAccounts: [account({ id: 'account-1', name: 'Main Account' })],
+    });
+    const editButton = screen.getByRole('button', { name: 'Edit' });
+    expect(editButton).toBeDisabled();
+    const describedById = editButton.getAttribute('aria-describedby');
+    expect(describedById).not.toBeNull();
+    expect(document.getElementById(describedById as string)).toHaveTextContent(
+      'This workspace is read-only. Restore valid subscription access before making changes.',
+    );
+  });
+});
+
+describe('AccountsManager — edit availability', () => {
+  it('offers Edit as a normal link when the workspace is writable', () => {
+    renderManager({
+      entitlement: entitlementFixture(),
+      activeAccounts: [account({ id: 'account-1', name: 'Main Account' })],
+    });
+    expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('disables Edit when the workspace is over its account limit', () => {
+    renderManager({
+      entitlement: entitlementFixture({
+        accessMode: 'over_limit',
+        overLimit: true,
+        denialReason: 'workspace_over_limit',
+        blockReason: 'workspace_over_limit',
+      }),
+      activeAccounts: [account({ id: 'account-1', name: 'Main Account' })],
+    });
+    const editButton = screen.getByRole('button', { name: 'Edit' });
+    expect(editButton).toBeDisabled();
+    const describedById = editButton.getAttribute('aria-describedby');
+    expect(document.getElementById(describedById as string)).toHaveTextContent(
+      'This workspace is over its active-account limit. Archive an active account before making other changes.',
+    );
+  });
+
+  it('never disables Archive for an over-limit workspace — archiving is the remediation path', () => {
+    renderManager({
+      entitlement: entitlementFixture({
+        accessMode: 'over_limit',
+        overLimit: true,
+        denialReason: 'workspace_over_limit',
+        blockReason: 'workspace_over_limit',
+      }),
+      activeAccounts: [account({ id: 'account-1', name: 'Main Account' })],
+    });
+    expect(screen.getByRole('button', { name: 'Archive' })).not.toBeDisabled();
   });
 });
 

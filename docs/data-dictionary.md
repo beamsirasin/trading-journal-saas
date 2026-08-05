@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Status:** Phase 03 and Phase 04 — Billing & Checkout are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only.
+**Status:** Phase 03, Phase 04 — Billing & Checkout, and Phase 05 — Onboarding & Trading Accounts are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only. Phase 05 (see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md)) made no schema change either — it reviewed and polished the existing `trading_accounts` presentation, not the table itself.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
@@ -148,22 +148,36 @@ Billing snapshots are historical financial records and are never silently cascad
 
 ---
 
-## Phase 05 — Trading accounts
+## Phase 3A/3B — Trading accounts (implemented)
 
-### `trading_accounts`
+Migrations: [`drizzle/0001_fantastic_jigsaw.sql`](../drizzle/0001_fantastic_jigsaw.sql) (table, `onboarding_completed_at` on `workspaces`, `active_trading_account_id` on `user_preferences`) and [`drizzle/0002_tidy_union_jack.sql`](../drizzle/0002_tidy_union_jack.sql) (`mutation_key` idempotency column). Delivered in Phase 3A (first account, onboarding) and Phase 3B (full management: create/edit/archive/restore/switch). The scope originally planned for a later "Phase 05" landed here; Phase 05 (now complete) reviewed and polished it — see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md).
 
-| Column                   | Type          | Notes                                                                                                               |
-| ------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `name`                   | text          |                                                                                                                     |
-| `broker`                 | text          | Nullable                                                                                                            |
-| `account_type`           | enum          | `live` \| `demo` \| `backtest` \| `prop_challenge`                                                                  |
-| `currency`               | char(3)       | ISO-4217. **Immutable once a trade exists** — changing it would silently reinterpret every stored minor-unit amount |
-| `starting_balance`       | bigint        | Minor units                                                                                                         |
-| `risk_model`             | enum          | `fixed_fractional` \| `fixed_amount`                                                                                |
-| `risk_value`             | numeric(12,4) | Percent or minor units, per `risk_model`                                                                            |
-| `break_even_tolerance_r` | numeric(6,4)  | Default `0.05`. The configurable tolerance required by the calculation spec                                         |
-| `timezone`               | text          | Nullable; inherits the user's when null                                                                             |
-| `is_archived`            | boolean       | Archived accounts retain analytics                                                                                  |
+### `trading_accounts` (application-owned)
+
+| Column                       | Type           | Notes                                                                                                                                                                                                                                       |
+| ---------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                         | uuid           | UUIDv7                                                                                                                                                                                                                                      |
+| `workspace_id`               | uuid           | FK → `workspaces.id`, `ON DELETE CASCADE`                                                                                                                                                                                                   |
+| `name`                       | text           | Required; **no workspace-level uniqueness constraint** — duplicate names are permitted                                                                                                                                                      |
+| `broker_name`                | text           | Nullable                                                                                                                                                                                                                                    |
+| `platform_name`              | text           | Nullable                                                                                                                                                                                                                                    |
+| `account_mode`               | text, CHECK    | `live` \| `demo` \| `prop` \| `backtest`                                                                                                                                                                                                    |
+| `base_currency`              | text, CHECK    | Shape-only: uppercase alphanumeric, 2–10 characters (`^[A-Z0-9]{2,10}$`) — deliberately not the closed fiat `CurrencyCode` registry, so crypto tickers (BTC, ETH, USDT, USDC) are allowed alongside fiat (A12)                              |
+| `starting_balance`           | numeric(20,10) | String in TypeScript, `>= 0` CHECK. **Not currency minor units** — `base_currency` has no guaranteed per-currency scale, so this follows CLAUDE.md §5's "instrument price" convention instead of the `bigint`/minor-unit `Money` convention |
+| `timezone`                   | text           | Required IANA zone                                                                                                                                                                                                                          |
+| `risk_per_trade_percent`     | numeric(12,4)  | Nullable; CHECK `> 0 AND <= 100`                                                                                                                                                                                                            |
+| `maximum_daily_loss_percent` | numeric(12,4)  | Nullable; CHECK `> 0 AND <= 100`                                                                                                                                                                                                            |
+| `is_archived`                | boolean        | Default `false`. The only removal mechanism — reversible, retains all data. No hard-delete application flow exists, and none is planned; archive is the approved design                                                                     |
+| `mutation_key`               | uuid           | App-generated per creation attempt; the create-idempotency key (A15)                                                                                                                                                                        |
+| `created_at` / `updated_at`  | timestamptz    |                                                                                                                                                                                                                                             |
+
+No `current_balance` column exists (Phase 07+ ledger work). No `deleted_at` column exists — soft-delete for this table is expressed entirely by `is_archived`, not a second timestamp field.
+
+**Indexes:** `trading_accounts_workspace_idx (workspace_id)`; `trading_accounts_workspace_archived_idx (workspace_id, is_archived)`; unique `trading_accounts_workspace_mutation_key_idx (workspace_id, mutation_key)` — the create-idempotency guarantee (A15).
+
+**Related columns on other tables:** `workspaces.onboarding_completed_at` (timestamptz, nullable — workspace-scoped, not user-scoped; A10) and `user_preferences.active_trading_account_id` (uuid, FK → `trading_accounts.id`, `ON DELETE SET NULL` — re-validated against workspace ownership and archived state on every read rather than trusted from the stored reference; A11). Workspace deletion cascades to its trading accounts (`workspace_id` FK is `ON DELETE CASCADE`), matching this table's ordinary tenant-owned-record convention — unlike `billing_transactions`, which is deliberately `ON DELETE RESTRICT` because it is a financial record.
+
+`break_even_tolerance_r` is **not** a column on this table. It belongs to the later calculation-engine/trade-classification design (CLAUDE.md §6, assumption A1) and has not been implemented anywhere yet.
 
 ---
 
