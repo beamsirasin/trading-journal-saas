@@ -1,6 +1,8 @@
 # Phase 04 — Billing & Checkout
 
-**Status:** Next implementation phase · **Depends on:** completed Phase 03 · **Blocks:** remaining customer billing work in 05, 10, and 11
+**Status:** ✅ **Complete**, including the 04H-A production payment-provider guard · **Depends on:** completed Phase 03 · **Blocks:** remaining customer billing work in 05, 10, and 11 · **Next implementation phase:** [05 — Onboarding & Trading Accounts](PHASE-05-onboarding-accounts.md)
+
+Every item in this document's locked contract and Definition of Done is implemented and tested. See [`docs/roadmap.md`](../roadmap.md#what-phase-04-delivered) for the implementation summary with concrete file paths, and [`docs/deployment-checklist.md`](../deployment-checklist.md) for what to verify before a real deployment. The only remaining gap between this phase and a launchable paid product is a real payment provider — see "Payment-provider boundary" below.
 
 ## Goal
 
@@ -103,12 +105,22 @@ The notice text must reflect the configured rate if it changes in the future; th
 
 ## Payment-provider boundary
 
-Keep payment processing behind `src/lib/payments/` with a narrow `PaymentProvider` interface. Phase 04's approved scope remains a mock payment flow unless a separate decision approves a real provider.
+Keep payment processing behind `src/server/payments/` with a narrow `PaymentProvider` interface. Phase 04's approved scope remains a mock payment flow unless a separate decision approves a real provider.
 
 - Checkout shows the plan, currency, subtotal, conditional VAT, and final total
 - The mock path carries an explicit non-production notice and simulates success, decline, and processing delay
 - No real charges occur, no card data is stored, and no PCI scope is introduced
 - Provider requests are created from trusted server-side plan and VAT configuration, never from client-supplied prices, rates, tax, or totals
+
+### Production capability guard (04H-A)
+
+The mock provider must never be reachable by ordinary public production traffic. `src/config/billing-capability.ts` (pure) and `src/config/billing-capability.server.ts` (the server-only source of truth) resolve one of three capabilities before `checkoutAction`/`reconcileCheckoutAction` ever construct a provider:
+
+- `development_mock` — `NODE_ENV` is exactly `development` or exactly `test`; always available.
+- `automated_test_mock` — `NODE_ENV` is exactly `production`, **and** `E2E_TEST_MODE=true`, **and** `BETTER_AUTH_URL` is an exact loopback origin, **and** the authenticated caller's database-stored email matches one of the fixed e2e checkout identities `e2e/support/provision-user.ts` provisions for the real Playwright projects that run checkout specs. All four conditions are independent, server-only, and never derived from browser input.
+- `unavailable` — everything else, including normal production and any runtime whose `NODE_ENV` is missing, empty, or an unrecognized value (`staging`, `preview`, a typo) — that classification fails closed rather than defaulting to development trust or crashing.
+
+When capability is `unavailable`: `checkoutAction`/`reconcileCheckoutAction` return a typed `payment_provider_unavailable` result before any database write, the checkout page renders an honest unavailable panel instead of the mock-payment form, and public pricing, plan reads, billing history, downgrade, and cancellation remain available. See [`docs/deployment-checklist.md`](../deployment-checklist.md) for the production verification steps.
 
 ## UI
 
@@ -130,19 +142,20 @@ Real payment processing, invoices, proration, coupons, annual pricing/billing, d
 
 ## Definition of Done
 
-- [ ] Starter/Trader/Professional are the only paid plans, with 1/5/15 active accounts and THB 149/299/499 or USD 5/9/15 monthly pricing
-- [ ] Paid-plan feature and analytics lists are identical; strategies, setups, trades, and trade history are unlimited
-- [ ] Trial is exactly 7 days, 1 active account, and full-featured; expiry deletes no data
-- [ ] Archived accounts do not count; create and restore enforcement remains server-side and race-safe
-- [ ] Subscription state transitions are fully tested and invalid transitions rejected
-- [ ] Checkout trusts only server-side plan prices, VAT configuration, and calculated totals
-- [ ] VAT-disabled public pages and checkout contain no VAT notice or VAT line
-- [ ] VAT-enabled public pages use the required Thai and English notices, and checkout shows subtotal, VAT, and final total
-- [ ] Exclusive VAT uses integer minor units and a documented deterministic rounding rule
-- [ ] Historical price, currency, VAT, and total snapshots remain immutable across configuration changes
-- [ ] Mock checkout covers success, decline, and delay paths without a real charge or stored card data
-- [ ] Responsive, accessible dark and light states are complete
-- [ ] Typecheck, lint, tests, and build pass during implementation
+- [x] Starter/Trader/Professional are the only paid plans, with 1/5/15 active accounts and THB 149/299/499 or USD 5/9/15 monthly pricing
+- [x] Paid-plan feature and analytics lists are identical; strategies, setups, trades, and trade history are unlimited
+- [x] Trial is exactly 7 days, 1 active account, and full-featured; expiry deletes no data
+- [x] Archived accounts do not count; create and restore enforcement remains server-side and race-safe
+- [x] Subscription state transitions are fully tested and invalid transitions rejected
+- [x] Checkout trusts only server-side plan prices, VAT configuration, and calculated totals
+- [x] VAT-disabled public pages and checkout contain no VAT notice or VAT line
+- [x] VAT-enabled public pages use the required Thai and English notices, and checkout shows subtotal, VAT, and final total
+- [x] Exclusive VAT uses integer minor units and a documented deterministic rounding rule
+- [x] Historical price, currency, VAT, and total snapshots remain immutable across configuration changes
+- [x] Mock checkout covers success, decline, and delay paths without a real charge or stored card data
+- [x] Responsive, accessible dark and light states are complete
+- [x] Typecheck, lint, tests, and build pass during implementation
+- [x] **(04H-A)** Mock checkout is unreachable by ordinary public production traffic; production always returns `payment_provider_unavailable` outside the guarded automated-test seam, with zero billing rows created and no entitlement change
 
 ## Risks
 

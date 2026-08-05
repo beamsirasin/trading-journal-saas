@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Status:** Phase 03 is officially complete. Phase 04C adds the subscription and immutable billing-snapshot schema foundation; customer billing behavior and provider integration remain deferred.
+**Status:** Phase 03 and Phase 04 — Billing & Checkout are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 

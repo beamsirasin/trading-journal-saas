@@ -42,4 +42,4 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 ## Status
 
-Phases 00, 00b, 01, 01.1, 02, 02.1, and implementation Phase 3A–3C are complete. Phase 04 — Billing & Checkout is the next implementation phase.
+Phases 00, 00b, 01, 01.1, 02, 02.1, implementation Phase 3A–3C, and [Phase 04 — Billing & Checkout](PHASE-04-billing.md) (including the 04H-A production payment-provider guard) are complete. [Phase 05 — Onboarding & Trading Accounts](PHASE-05-onboarding-accounts.md) is the next implementation phase.

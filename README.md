@@ -10,13 +10,15 @@ Most journals tell you your P&L. This one tells you where it came from:
 
 ## Status
 
-**Phase 03 is officially complete and merged to `main`. Phase 04 — Billing & Checkout is the next implementation phase.**
+**Phase 03 and Phase 04 — Billing & Checkout are officially complete and merged to `main`. Phase 05 — Onboarding & Trading Accounts is the next implementation phase.**
 
-Authentication, tenant-isolated personal workspaces, onboarding, trading-account management, the active-account switcher, the 7-day trial, and server-enforced active-account entitlements are real. Strategies, trades, analytics calculations, and payment-provider integration remain absent, fixture-driven, or deferred to later phases. See [docs/roadmap.md](docs/roadmap.md).
+Authentication, tenant-isolated personal workspaces, onboarding, trading-account management, the active-account switcher, the 7-day trial, server-enforced active-account entitlements, monthly-plan checkout, immutable billing snapshots, and conditional VAT presentation are real. Strategies, trades, and analytics calculations remain absent or fixture-driven. See [docs/roadmap.md](docs/roadmap.md#what-phase-04-delivered).
 
 The three final monthly paid plans have one identical feature set and differ only by the maximum number of active trading accounts: **Starter** (1 account, THB 149 or USD 5), **Trader** (5 accounts, THB 299 or USD 9), and **Professional** (15 accounts, THB 499 or USD 15). Every plan includes unlimited strategies, setups, trades, trade history, and the same analytics. Archived accounts do not consume the allowance; account creation and restoration are enforced server-side.
 
 The trial lasts 7 days, allows 1 active trading account, and unlocks every feature. Trial expiry never deletes user data. Launch pricing is tax-exclusive, but VAT collection is disabled because the business is not initially VAT registered; while disabled, public pricing and checkout show no VAT line or VAT pricing notice. The complete Phase 04 billing and future-VAT contract is in [PHASE-04-billing.md](docs/phases/PHASE-04-billing.md).
+
+**The only payment provider is a mock provider, and it is not reachable by ordinary public production traffic.** Checkout and reconciliation resolve a server-only capability (`src/config/billing-capability.server.ts`) before ever touching a provider: available in development and in a guarded, CI-only automated-test seam; `payment_provider_unavailable` everywhere else, including normal production. No billing row is ever created by an unavailable attempt. A real payment provider is required before public paid activation can launch — see [docs/deployment-checklist.md](docs/deployment-checklist.md).
 
 ### Routes
 
@@ -138,23 +140,24 @@ Planned additions are described in [docs/architecture.md](docs/architecture.md);
 
 ## Documentation
 
-| Document                                                       | What it covers                                    |
-| -------------------------------------------------------------- | ------------------------------------------------- |
-| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first             |
-| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                     |
-| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                  |
-| [docs/data-dictionary.md](docs/data-dictionary.md)             | Schema and field meanings                         |
-| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases          |
-| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y          |
-| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard  |
-| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                   |
-| [docs/migration-runbook.md](docs/migration-runbook.md)         | Database migration commands, per environment      |
-| [docs/neon-setup.md](docs/neon-setup.md)                       | Manual Neon project/branch setup                  |
-| [docs/google-oauth-setup.md](docs/google-oauth-setup.md)       | Manual Google OAuth client setup                  |
-| [docs/email-delivery-setup.md](docs/email-delivery-setup.md)   | Email adapter boundary and what is/isn't verified |
-| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                         |
-| [docs/decisions/](docs/decisions/)                             | Architecture decision records                     |
-| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                          |
+| Document                                                       | What it covers                                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first                                          |
+| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                                                  |
+| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                                               |
+| [docs/data-dictionary.md](docs/data-dictionary.md)             | Schema and field meanings                                                      |
+| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases                                       |
+| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y                                       |
+| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard                               |
+| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                                                |
+| [docs/migration-runbook.md](docs/migration-runbook.md)         | Database migration commands, per environment                                   |
+| [docs/neon-setup.md](docs/neon-setup.md)                       | Manual Neon project/branch setup                                               |
+| [docs/google-oauth-setup.md](docs/google-oauth-setup.md)       | Manual Google OAuth client setup                                               |
+| [docs/email-delivery-setup.md](docs/email-delivery-setup.md)   | Email adapter boundary and what is/isn't verified                              |
+| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                                                      |
+| [docs/deployment-checklist.md](docs/deployment-checklist.md)   | Pre-deployment verification for the completed Phase 04 billing/payment surface |
+| [docs/decisions/](docs/decisions/)                             | Architecture decision records                                                  |
+| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                                                       |
 
 ## Environment
 
@@ -178,11 +181,12 @@ The app talks to PostgreSQL through a standard `DATABASE_URL` (local Postgres in
 
 ## Testing
 
-- **Unit** — Vitest + React Testing Library, in `src/**/*.test.{ts,tsx}`.
-- **E2E** — Playwright, in `e2e/`, run against a real production build rather than the dev server. Covers both locales in desktop and mobile projects, and asserts horizontal-overflow at five viewports, theming, reduced-motion branches, touch targets, focus management, localized metadata, and that nothing claims a capability the product lacks.
+- **Unit** — Vitest + React Testing Library, in `src/**/*.test.{ts,tsx}`. Run with `pnpm test`.
+- **Integration** — Vitest against a real, disposable PostgreSQL database (see [Test database safety](docs/migration-runbook.md#test-database-safety)), in `src/**/*.integration.test.ts`. Run with `pnpm test:integration`. **The complete suite takes roughly 7 minutes** — any local wrapper script, CI step, or scheduler timeout around this command must allow at least 10 minutes; a run terminated early is not a passing run, and a zero-collected or setup-failed run (e.g. `TEST_DATABASE_URL` unset) must never be reported as passing.
+- **E2E** — Playwright, in `e2e/`, run against a real production build (`next build && next start`) rather than the dev server. Covers both locales in desktop and mobile projects, and asserts horizontal-overflow at five viewports, theming, reduced-motion branches, touch targets, focus management, localized metadata, that nothing claims a capability the product lacks, and (`e2e/checkout.spec.ts`) that a non-trusted identity sees the honest payment-unavailable panel even inside this guarded production-build test run.
 - **Supply-chain canaries** — `pnpm build` must succeed with no `DATABASE_URL` set, and `pnpm scan:client` fails if a server-only variable name or a secret-shaped value reaches the client bundle. Both run in CI.
 
-Run `pnpm test:e2e:install` once before the first e2e run.
+Run `pnpm test:e2e:install` once before the first e2e run. Run `pnpm run db:check` and `pnpm check` before pushing; see [docs/deployment-checklist.md](docs/deployment-checklist.md) for the full pre-deployment command list.
 
 ## License
 
