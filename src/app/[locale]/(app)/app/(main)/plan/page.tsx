@@ -2,10 +2,11 @@ import { Check } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { computeTrialRemaining, type EffectiveEntitlement } from '@/lib/entitlements/resolve';
-import { formatInstant, systemClock } from '@/lib/time';
-import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
+import type { PersistedEntitlementStatus } from '@/lib/entitlements/resolve';
+import { getCurrentUserPreferences } from '@/server/auth/dal';
 import { getBillingPresentation } from '@/server/billing/presentation';
+import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
+import { SubscriptionManagementControls } from '@/components/billing/subscription-management-controls';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
@@ -37,7 +38,7 @@ export async function generateMetadata({
   };
 }
 
-const STATUS_VARIANT: Record<EffectiveEntitlement['persistedStatus'], BadgeVariant> = {
+const STATUS_VARIANT: Record<PersistedEntitlementStatus, BadgeVariant> = {
   trialing: 'brand',
   active: 'positive',
   past_due: 'warning',
@@ -59,14 +60,11 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
   setRequestLocale(appLocale);
   const t = await getTranslations('entitlements.plan');
   const tPricing = await getTranslations('pricing');
-  const tBanner = await getTranslations('entitlements.banner');
-  const [entitlement, preferences] = await Promise.all([
-    getWorkspaceEntitlement(),
-    getCurrentUserPreferences(),
-  ]);
+  const preferences = await getCurrentUserPreferences();
+  const subscription = await getSubscriptionManagementPresentation(appLocale, preferences.timezone);
   const presentation = getBillingPresentation(appLocale);
 
-  if (entitlement === null) {
+  if (subscription === null) {
     return (
       <Container width="wide" className="flex flex-col gap-8 py-8">
         <PageHeader title={t('title')} description={t('description')} />
@@ -80,20 +78,7 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
     );
   }
 
-  const currency =
-    entitlement.persistedStatus === 'active' && entitlement.billingCurrency !== null
-      ? entitlement.billingCurrency
-      : presentation.defaultCurrency;
-  const currentPlan =
-    entitlement.effectivePlanKey === null
-      ? null
-      : (presentation.plans.find((plan) => plan.id === entitlement.effectivePlanKey) ?? null);
-  const currentLimit = currentPlan?.activeTradingAccountLimit ?? 0;
-  const canCheckout = entitlement.persistedStatus !== 'past_due';
-  const trialRemaining =
-    entitlement.effectiveStatus === 'trialing' && entitlement.trialEndsAt !== null
-      ? computeTrialRemaining(entitlement.trialEndsAt, systemClock.now())
-      : null;
+  const currency = subscription.billingCurrency ?? presentation.defaultCurrency;
 
   return (
     <Container width="wide" className="flex flex-col gap-8 py-8">
@@ -107,61 +92,51 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
           <h2 id="plan-status-heading" className="text-card-title">
             {t('currentHeading')}
           </h2>
-          <Badge variant={STATUS_VARIANT[entitlement.persistedStatus]}>
-            {t(STATUS_KEY[entitlement.persistedStatus])}
+          <Badge variant={STATUS_VARIANT[subscription.persistedStatus]}>
+            {t(STATUS_KEY[subscription.persistedStatus])}
           </Badge>
-          {entitlement.overLimit ? <Badge variant="warning">{t('overLimitBadge')}</Badge> : null}
+          {subscription.overLimit ? <Badge variant="warning">{t('overLimitBadge')}</Badge> : null}
         </div>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Fact label={t('currentPlanLabel')} value={currentPlan?.name ?? t('trialLabel')} />
+          <Fact
+            label={t('currentPlanLabel')}
+            value={subscription.currentPlan?.name ?? t('trialLabel')}
+          />
           <Fact
             label={t('usageLabel')}
             value={
-              entitlement.accountLimit === null
+              subscription.accountLimit === null
                 ? '—'
-                : `${entitlement.activeAccountCount} / ${entitlement.accountLimit}`
+                : `${subscription.activeAccountCount} / ${subscription.accountLimit}`
             }
           />
-          <Fact label={t('accessModeLabel')} value={t(`accessMode.${entitlement.accessMode}`)} />
-          <Fact label={t('billingCurrencyLabel')} value={entitlement.billingCurrency ?? '—'} />
+          <Fact label={t('accessModeLabel')} value={t(`accessMode.${subscription.accessMode}`)} />
+          <Fact label={t('billingCurrencyLabel')} value={subscription.billingCurrency ?? '—'} />
           <Fact
             label={t('billingIntervalLabel')}
-            value={entitlement.billingInterval === 'monthly' ? t('monthly') : '—'}
+            value={subscription.billingInterval === 'monthly' ? t('monthly') : '—'}
           />
-          <Fact
-            label={t('trialEndsLabel')}
-            value={dateValue(entitlement.trialEndsAt, preferences.timezone)}
-          />
-          <Fact
-            label={t('periodEndsLabel')}
-            value={dateValue(entitlement.currentPeriodEndsAt, preferences.timezone)}
-          />
+          <Fact label={t('trialEndsLabel')} value={subscription.trialEndsAt ?? '—'} />
+          <Fact label={t('periodEndsLabel')} value={subscription.currentPeriodEndsAt ?? '—'} />
           <Fact
             label={t('cancellationLabel')}
-            value={entitlement.cancelAtPeriodEnd ? t('cancellationScheduled') : t('notScheduled')}
+            value={
+              subscription.cancellationScheduled ? t('cancellationScheduled') : t('notScheduled')
+            }
           />
         </dl>
-        {trialRemaining !== null && !trialRemaining.expired ? (
-          <p className="text-muted-foreground text-sm">
-            {trialRemaining.lessThanOneDay
-              ? tBanner('lessThanOneDay')
-              : tBanner('daysRemaining', { days: trialRemaining.days })}
-          </p>
-        ) : null}
-        {entitlement.pendingPlanKey !== null ? (
-          <p className="border-border bg-muted/40 rounded-lg border p-4 text-sm">
-            {t('pendingDowngrade', {
-              plan:
-                presentation.plans.find((plan) => plan.id === entitlement.pendingPlanKey)?.name ??
-                entitlement.pendingPlanKey,
-              date: dateValue(entitlement.pendingPlanEffectiveAt, preferences.timezone),
-            })}
-          </p>
-        ) : null}
-        {entitlement.persistedStatus === 'past_due' ? (
+        {subscription.persistedStatus === 'past_due' ? (
           <p className="text-muted-foreground text-sm">{t('pastDueCheckoutBlocked')}</p>
         ) : null}
       </section>
+
+      <SubscriptionManagementControls model={subscription} />
+
+      <div>
+        <Button asChild variant="outline">
+          <Link href="/app/billing">{t('billingHistory')}</Link>
+        </Button>
+      </div>
 
       <section aria-labelledby="available-plans-heading" className="flex flex-col gap-4">
         <div>
@@ -173,11 +148,8 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
         </div>
         <ul className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {presentation.plans.map((plan) => {
-            const isCurrent = entitlement.effectivePlanKey === plan.id;
-            const isUpgrade =
-              entitlement.persistedStatus !== 'active' ||
-              plan.activeTradingAccountLimit > currentLimit;
-            const enabled = canCheckout && !isCurrent && isUpgrade;
+            const isCurrent = subscription.currentPlan?.id === plan.id;
+            const enabled = subscription.upgradeOptions.some((option) => option.id === plan.id);
             return (
               <li key={plan.id} className="flex">
                 <div
@@ -222,14 +194,14 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
                   {enabled ? (
                     <Button asChild variant={plan.featured ? 'default' : 'outline'}>
                       <Link href={`/app/checkout?plan=${plan.id}&currency=${currency}`}>
-                        {entitlement.persistedStatus === 'active' ? t('upgrade') : t('choosePlan')}
+                        {subscription.persistedStatus === 'active' ? t('upgrade') : t('choosePlan')}
                       </Link>
                     </Button>
                   ) : (
                     <Button disabled variant="outline">
                       {isCurrent
                         ? t('currentPlanBadge')
-                        : entitlement.persistedStatus === 'past_due'
+                        : subscription.persistedStatus === 'past_due'
                           ? t('checkoutUnavailable')
                           : t('notAnUpgrade')}
                     </Button>
@@ -256,10 +228,4 @@ function Fact({ label, value }: { label: string; value: string }) {
       <dd className="text-foreground mt-1 text-sm font-semibold break-words">{value}</dd>
     </div>
   );
-}
-
-function dateValue(date: Date | null, timezone: string): string {
-  if (date === null) return '—';
-  const formatted = formatInstant(date, timezone, { style: 'date' });
-  return formatted.ok ? formatted.value : date.toISOString();
 }

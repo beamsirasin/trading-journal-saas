@@ -460,7 +460,7 @@
   },
   "settings": {
     "title": "Settings",
-    "description": "Appearance works today. Everything else is a preview of the surface.",
+    "description": "Manage appearance, language, profile details and your workspace subscription.",
     "appearance": {
       "title": "Appearance",
       "description": "This setting is live and persists in this browser.",
@@ -511,7 +511,10 @@
         "canceled": "Canceled"
       },
       "note": "See full lifecycle, usage, and upgrade details on the plan page.",
-      "seePlans": "Manage plan"
+      "seePlans": "Manage plan",
+      "billingHistory": "Billing history",
+      "pendingDowngrade": "Downgrade to {plan} is scheduled for {date}.",
+      "cancellationScheduled": "Cancellation is scheduled for {date}."
     }
   },
   "onboarding": {
@@ -693,8 +696,103 @@
       "choosePlan": "Choose plan",
       "checkoutUnavailable": "Checkout unavailable",
       "notAnUpgrade": "Not an upgrade",
+      "billingHistory": "View billing history",
       "unavailable": "Subscription information is unavailable. No billing action can be started."
     }
+  },
+  "subscriptionManagement": {
+    "title": "Manage subscription",
+    "description": "Schedule changes to your monthly plan. Upgrades remain available through mock checkout.",
+    "blocked": {
+      "past_due": "Subscription changes and checkout are unavailable while payment is past due. Contact support for payment recovery.",
+      "malformed": "This subscription cannot be managed safely. Contact support before making a billing change.",
+      "checkout_in_progress": "Finish or reconcile the current mock checkout before changing this subscription."
+    },
+    "overLimitTitle": "This workspace is over its active-account limit",
+    "overLimitBody": "Archive accounts to restore write access, or upgrade to a plan with a larger allowance. Account selection remains available so retained history and analytics can still be inspected.",
+    "pendingTitle": "Downgrade scheduled",
+    "pendingBody": "Your plan will change to {plan} on {date}.",
+    "pendingOverLimit": "Current usage exceeds the future limit. No account will be deleted or archived automatically.",
+    "undoDowngrade": "Cancel scheduled downgrade",
+    "undoDowngradeTitle": "Keep the current plan?",
+    "undoDowngradeBody": "The scheduled downgrade will be removed and your current plan will continue.",
+    "confirmUndoDowngrade": "Keep current plan",
+    "downgradeTo": "Downgrade to {plan}",
+    "effectiveAt": "Effective {date}",
+    "currentPlan": "Current plan",
+    "currentUsage": "Active accounts now",
+    "futureLimit": "Future active-account limit",
+    "willBeOverLimit": "This workspace will be over limit when the downgrade takes effect.",
+    "scheduleDowngrade": "Schedule downgrade",
+    "confirmDowngradeTitle": "Schedule downgrade to {plan}?",
+    "confirmDowngradeBody": "Your current plan and allowance remain active until {date}. The {plan} allowance starts at that boundary.",
+    "noImmediatePriceChange": "There is no immediate price adjustment, refund or proration.",
+    "noAutomaticArchive": "Trading accounts are never deleted or automatically archived.",
+    "dataRetained": "All trading data, history and analytics remain available.",
+    "selectionRemainsAvailable": "You can continue switching accounts to inspect retained history.",
+    "overLimitAfterDowngrade": "Ordinary writes will be blocked while usage exceeds the future limit. Archive accounts manually to return to compliance.",
+    "confirmDowngrade": "Confirm downgrade",
+    "cancelTitle": "Schedule cancellation?",
+    "cancelBody": "Cancellation takes effect at the end of the current paid period on {date}.",
+    "cancelKeepsAccess": "Paid access remains active through {date}.",
+    "cancelReadOnly": "After the boundary, the workspace becomes read-only.",
+    "cancelDataRetained": "No data is deleted; historical data and existing exports remain accessible.",
+    "cancelClearsDowngrade": "Scheduling cancellation removes the pending downgrade because the subscription is ending.",
+    "scheduleCancellation": "Schedule cancellation",
+    "confirmCancellation": "Confirm cancellation",
+    "cancellationScheduledTitle": "Cancellation scheduled",
+    "cancellationScheduledBody": "Paid access continues until {date}. After that, the workspace becomes read-only and retained data remains accessible.",
+    "undoCancellation": "Reverse cancellation",
+    "undoCancellationTitle": "Continue this subscription?",
+    "undoCancellationBody": "Cancellation will be removed. An older canceled downgrade will not be restored.",
+    "confirmUndoCancellation": "Continue subscription",
+    "close": "Go back",
+    "saving": "Saving subscription changeâ€¦",
+    "success": "Subscription change saved.",
+    "errors": {
+      "validation": "This subscription request is invalid. Refresh and try again.",
+      "unauthenticated": "Sign in again before managing this subscription.",
+      "forbidden": "This subscription is not available for the current workspace.",
+      "downgrade_not_allowed": "This downgrade is no longer allowed. Refresh the current subscription state.",
+      "cancellation_not_allowed": "This cancellation change is no longer allowed.",
+      "boundary_passed": "The current billing-period boundary has already passed. Refresh to see the effective state.",
+      "checkout_in_progress": "Finish or reconcile the current mock checkout before changing this subscription.",
+      "malformed_subscription": "This subscription cannot be changed safely. Contact support.",
+      "past_due": "Subscription changes are unavailable while payment is past due.",
+      "unexpected": "The subscription could not be changed. No data was deleted."
+    }
+  },
+  "billingHistory": {
+    "title": "Billing history",
+    "description": "Immutable mock-payment snapshots for this workspace.",
+    "emptyTitle": "No billing transactions yet",
+    "emptyBody": "Completed and attempted mock checkouts will appear here.",
+    "mockPayment": "Mock payment",
+    "createdAt": "Created",
+    "finishedAt": "Finished",
+    "plan": "Plan",
+    "interval": "Billing interval",
+    "monthly": "Monthly",
+    "subtotal": "Subtotal",
+    "vat": "VAT {rate}%",
+    "total": "Total",
+    "statusLabel": "Status",
+    "status": {
+      "created": "Mock payment created",
+      "pending": "Mock payment pending",
+      "processing": "Mock payment processing",
+      "succeeded": "Mock payment completed",
+      "failed": "Mock payment failed",
+      "canceled": "Mock payment canceled"
+    },
+    "failure": {
+      "payment_failed": "The mock payment was not completed. No provider details are shown."
+    },
+    "resume": "Return to payment status",
+    "previous": "Previous page",
+    "next": "Next page",
+    "page": "Page {page} of {totalPages}",
+    "backToPlan": "Back to plan management"
   },
   "checkout": {
     "title": "Mock checkout",

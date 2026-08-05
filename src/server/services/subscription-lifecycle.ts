@@ -1,12 +1,17 @@
 import 'server-only';
 
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { getPlanDefinition, isPlanKey, type PlanKey } from '@/config/plan-catalog';
 import type { BillingCurrency, BillingInterval } from '@/lib/billing/types';
 import { systemClock, type Clock } from '@/lib/time';
 import { getDb, type Database } from '@/server/db/client';
-import { workspaceEntitlements, workspaces } from '@/server/db/schema';
+import {
+  billingTransactions,
+  workspaceEntitlements,
+  workspaceMembers,
+  workspaces,
+} from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
 
@@ -19,7 +24,10 @@ export type SubscriptionLifecycleErrorCode =
   | 'invalid_billing_period'
   | 'currency_change_not_allowed'
   | 'stale_period'
-  | 'stale_transition';
+  | 'stale_transition'
+  | 'checkout_in_progress'
+  | 'forbidden'
+  | 'past_due_restriction';
 
 export class SubscriptionLifecycleError extends Error {
   readonly code: SubscriptionLifecycleErrorCode;
@@ -54,6 +62,11 @@ export type ApplyImmediateUpgradeInput = ActivatePaidSubscriptionInput;
 
 export interface SchedulePlanDowngradeInput extends TrustedTransitionContext {
   readonly targetPlanKey: PlanKey;
+}
+
+export interface CustomerTransitionContext {
+  readonly workspaceId: string;
+  readonly actorUserId: string;
 }
 
 export interface RecoverSubscriptionInput extends TrustedTransitionContext, TrustedPaidPeriod {}
@@ -107,6 +120,9 @@ function validatePaidPeriod(period: TrustedPaidPeriod, now: Date): void {
 }
 
 function requireActivePaid(row: EntitlementRow): void {
+  if (row.status === 'past_due') {
+    throw lifecycleError('past_due_restriction', 'Past-due subscriptions cannot be managed');
+  }
   if (
     row.status !== 'active' ||
     !isPlanKey(row.planKey) ||
@@ -303,38 +319,52 @@ export async function schedulePlanDowngrade(
 ): Promise<{ readonly changed: boolean; readonly effectiveAt: Date }> {
   return getDb().transaction(async (tx) => {
     const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
-    const now = clock.now();
-    requireActivePaid(row);
-    validatePlan(input.targetPlanKey);
-    if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
-      throw lifecycleError('stale_transition', 'The current paid period has already ended');
-    }
-    const currentLimit = getPlanDefinition(row.planKey as PlanKey).activeTradingAccountLimit;
-    const targetLimit = getPlanDefinition(input.targetPlanKey).activeTradingAccountLimit;
-    if (targetLimit >= currentLimit) {
-      throw lifecycleError(
-        'invalid_lifecycle_transition',
-        'Scheduled downgrade requires a strictly smaller account allowance',
-      );
-    }
-    if (
-      row.pendingPlanKey === input.targetPlanKey &&
-      row.pendingPlanEffectiveAt?.getTime() === row.currentPeriodEndsAt.getTime()
-    ) {
-      return { changed: false, effectiveAt: row.currentPeriodEndsAt };
-    }
-
-    await tx
-      .update(workspaceEntitlements)
-      .set({
-        pendingPlanKey: input.targetPlanKey,
-        pendingPlanEffectiveAt: row.currentPeriodEndsAt,
-        updatedAt: now,
-      })
-      .where(eq(workspaceEntitlements.id, row.id));
-    await auditLifecycle(tx, input, 'subscription.downgrade_scheduled');
-    return { changed: true, effectiveAt: row.currentPeriodEndsAt };
+    return schedulePlanDowngradeInTransaction(tx, row, input, clock.now());
   });
+}
+
+export async function schedulePlanDowngradeInTransaction(
+  tx: LifecycleExecutor,
+  row: EntitlementRow,
+  input: SchedulePlanDowngradeInput,
+  now: Date,
+): Promise<{ readonly changed: boolean; readonly effectiveAt: Date }> {
+  requireActivePaid(row);
+  validatePlan(input.targetPlanKey);
+  if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
+    throw lifecycleError('stale_transition', 'The current paid period has already ended');
+  }
+  if (row.cancelAtPeriodEnd) {
+    throw lifecycleError(
+      'invalid_lifecycle_transition',
+      'A downgrade cannot be scheduled while cancellation is scheduled',
+    );
+  }
+  const currentLimit = getPlanDefinition(row.planKey as PlanKey).activeTradingAccountLimit;
+  const targetLimit = getPlanDefinition(input.targetPlanKey).activeTradingAccountLimit;
+  if (targetLimit >= currentLimit) {
+    throw lifecycleError(
+      'invalid_lifecycle_transition',
+      'Scheduled downgrade requires a strictly smaller account allowance',
+    );
+  }
+  if (
+    row.pendingPlanKey === input.targetPlanKey &&
+    row.pendingPlanEffectiveAt?.getTime() === row.currentPeriodEndsAt.getTime()
+  ) {
+    return { changed: false, effectiveAt: row.currentPeriodEndsAt };
+  }
+
+  await tx
+    .update(workspaceEntitlements)
+    .set({
+      pendingPlanKey: input.targetPlanKey,
+      pendingPlanEffectiveAt: row.currentPeriodEndsAt,
+      updatedAt: now,
+    })
+    .where(eq(workspaceEntitlements.id, row.id));
+  await auditLifecycle(tx, input, 'subscription.downgrade_scheduled');
+  return { changed: true, effectiveAt: row.currentPeriodEndsAt };
 }
 
 export async function cancelScheduledDowngrade(
@@ -343,19 +373,27 @@ export async function cancelScheduledDowngrade(
 ): Promise<{ readonly changed: boolean }> {
   return getDb().transaction(async (tx) => {
     const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
-    const now = clock.now();
-    requireActivePaid(row);
-    if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
-      throw lifecycleError('stale_transition', 'The downgrade boundary has already passed');
-    }
-    if (row.pendingPlanKey === null) return { changed: false };
-    await tx
-      .update(workspaceEntitlements)
-      .set({ pendingPlanKey: null, pendingPlanEffectiveAt: null, updatedAt: now })
-      .where(eq(workspaceEntitlements.id, row.id));
-    await auditLifecycle(tx, input, 'subscription.downgrade_canceled');
-    return { changed: true };
+    return cancelScheduledDowngradeInTransaction(tx, row, input, clock.now());
   });
+}
+
+export async function cancelScheduledDowngradeInTransaction(
+  tx: LifecycleExecutor,
+  row: EntitlementRow,
+  input: TrustedTransitionContext,
+  now: Date,
+): Promise<{ readonly changed: boolean }> {
+  requireActivePaid(row);
+  if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
+    throw lifecycleError('stale_transition', 'The downgrade boundary has already passed');
+  }
+  if (row.pendingPlanKey === null) return { changed: false };
+  await tx
+    .update(workspaceEntitlements)
+    .set({ pendingPlanKey: null, pendingPlanEffectiveAt: null, updatedAt: now })
+    .where(eq(workspaceEntitlements.id, row.id));
+  await auditLifecycle(tx, input, 'subscription.downgrade_canceled');
+  return { changed: true };
 }
 
 export async function scheduleCancellationAtPeriodEnd(
@@ -364,19 +402,34 @@ export async function scheduleCancellationAtPeriodEnd(
 ): Promise<{ readonly changed: boolean }> {
   return getDb().transaction(async (tx) => {
     const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
-    const now = clock.now();
-    requireActivePaid(row);
-    if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
-      throw lifecycleError('stale_transition', 'The cancellation boundary has already passed');
-    }
-    if (row.cancelAtPeriodEnd) return { changed: false };
-    await tx
-      .update(workspaceEntitlements)
-      .set({ cancelAtPeriodEnd: true, updatedAt: now })
-      .where(eq(workspaceEntitlements.id, row.id));
-    await auditLifecycle(tx, input, 'subscription.cancellation_scheduled');
-    return { changed: true };
+    return scheduleCancellationAtPeriodEndInTransaction(tx, row, input, clock.now());
   });
+}
+
+export async function scheduleCancellationAtPeriodEndInTransaction(
+  tx: LifecycleExecutor,
+  row: EntitlementRow,
+  input: TrustedTransitionContext,
+  now: Date,
+): Promise<{ readonly changed: boolean }> {
+  requireActivePaid(row);
+  if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
+    throw lifecycleError('stale_transition', 'The cancellation boundary has already passed');
+  }
+  if (row.cancelAtPeriodEnd && row.pendingPlanKey === null) return { changed: false };
+  await tx
+    .update(workspaceEntitlements)
+    .set({
+      cancelAtPeriodEnd: true,
+      pendingPlanKey: null,
+      pendingPlanEffectiveAt: null,
+      updatedAt: now,
+    })
+    .where(eq(workspaceEntitlements.id, row.id));
+  if (!row.cancelAtPeriodEnd) {
+    await auditLifecycle(tx, input, 'subscription.cancellation_scheduled');
+  }
+  return { changed: true };
 }
 
 export async function cancelScheduledCancellation(
@@ -385,19 +438,119 @@ export async function cancelScheduledCancellation(
 ): Promise<{ readonly changed: boolean }> {
   return getDb().transaction(async (tx) => {
     const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
-    const now = clock.now();
-    requireActivePaid(row);
-    if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
-      throw lifecycleError('stale_transition', 'The cancellation boundary has already passed');
-    }
-    if (!row.cancelAtPeriodEnd) return { changed: false };
-    await tx
-      .update(workspaceEntitlements)
-      .set({ cancelAtPeriodEnd: false, updatedAt: now })
-      .where(eq(workspaceEntitlements.id, row.id));
-    await auditLifecycle(tx, input, 'subscription.cancellation_canceled');
-    return { changed: true };
+    return cancelScheduledCancellationInTransaction(tx, row, input, clock.now());
   });
+}
+
+export async function cancelScheduledCancellationInTransaction(
+  tx: LifecycleExecutor,
+  row: EntitlementRow,
+  input: TrustedTransitionContext,
+  now: Date,
+): Promise<{ readonly changed: boolean }> {
+  requireActivePaid(row);
+  if (row.currentPeriodEndsAt === null || now.getTime() >= row.currentPeriodEndsAt.getTime()) {
+    throw lifecycleError('stale_transition', 'The cancellation boundary has already passed');
+  }
+  if (!row.cancelAtPeriodEnd) return { changed: false };
+  await tx
+    .update(workspaceEntitlements)
+    .set({ cancelAtPeriodEnd: false, updatedAt: now })
+    .where(eq(workspaceEntitlements.id, row.id));
+  await auditLifecycle(tx, input, 'subscription.cancellation_canceled');
+  return { changed: true };
+}
+
+type CustomerTransition<T> = (tx: LifecycleExecutor, row: EntitlementRow, now: Date) => Promise<T>;
+
+async function runCustomerTransition<T>(
+  input: CustomerTransitionContext,
+  transition: CustomerTransition<T>,
+  clock: Clock,
+): Promise<T> {
+  return getDb().transaction(async (tx) => {
+    // Lock ordering is shared with checkout finalization: workspace first,
+    // entitlement second. The workspace lock serializes this decision with a
+    // concurrent checkout before either flow can change lifecycle state.
+    const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
+    const [membership] = await tx
+      .select({ id: workspaceMembers.id })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, input.workspaceId),
+          eq(workspaceMembers.userId, input.actorUserId),
+          eq(workspaceMembers.status, 'active'),
+        ),
+      )
+      .limit(1);
+    if (membership === undefined) {
+      throw lifecycleError('forbidden', 'Active workspace membership is required');
+    }
+
+    const [checkout] = await tx
+      .select({ id: billingTransactions.id })
+      .from(billingTransactions)
+      .where(
+        and(
+          eq(billingTransactions.workspaceId, input.workspaceId),
+          inArray(billingTransactions.status, ['created', 'pending', 'processing']),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (checkout !== undefined) {
+      throw lifecycleError(
+        'checkout_in_progress',
+        'A non-terminal checkout must finish before subscription management can continue',
+      );
+    }
+    return transition(tx, row, clock.now());
+  });
+}
+
+export async function customerSchedulePlanDowngrade(
+  input: CustomerTransitionContext & { readonly targetPlanKey: PlanKey },
+  clock: Clock = systemClock,
+): Promise<{ readonly changed: boolean; readonly effectiveAt: Date }> {
+  return runCustomerTransition(
+    input,
+    (tx, row, now) => schedulePlanDowngradeInTransaction(tx, row, input, now),
+    clock,
+  );
+}
+
+export async function customerCancelScheduledDowngrade(
+  input: CustomerTransitionContext,
+  clock: Clock = systemClock,
+): Promise<{ readonly changed: boolean }> {
+  return runCustomerTransition(
+    input,
+    (tx, row, now) => cancelScheduledDowngradeInTransaction(tx, row, input, now),
+    clock,
+  );
+}
+
+export async function customerScheduleCancellationAtPeriodEnd(
+  input: CustomerTransitionContext,
+  clock: Clock = systemClock,
+): Promise<{ readonly changed: boolean }> {
+  return runCustomerTransition(
+    input,
+    (tx, row, now) => scheduleCancellationAtPeriodEndInTransaction(tx, row, input, now),
+    clock,
+  );
+}
+
+export async function customerCancelScheduledCancellation(
+  input: CustomerTransitionContext,
+  clock: Clock = systemClock,
+): Promise<{ readonly changed: boolean }> {
+  return runCustomerTransition(
+    input,
+    (tx, row, now) => cancelScheduledCancellationInTransaction(tx, row, input, now),
+    clock,
+  );
 }
 
 export async function markSubscriptionPastDue(
@@ -491,11 +644,16 @@ export async function materializeDueLifecycleState(
       pendingPlanEffectiveAt !== null &&
       now.getTime() >= pendingPlanEffectiveAt.getTime()
     ) {
-      nextPlanKey = pendingPlanKey;
+      // Cancellation wins over a historical state that somehow contains
+      // both flags. New customer scheduling clears the pending downgrade,
+      // but this keeps boundary resolution deterministic for older rows.
+      if (!cancelAtPeriodEnd) {
+        nextPlanKey = pendingPlanKey;
+        await auditLifecycle(tx, input, 'subscription.pending_plan_materialized');
+      }
       pendingPlanKey = null;
       pendingPlanEffectiveAt = null;
       changed = true;
-      await auditLifecycle(tx, input, 'subscription.pending_plan_materialized');
     }
 
     if (

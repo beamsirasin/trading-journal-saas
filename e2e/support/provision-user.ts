@@ -75,7 +75,7 @@ export async function provisionVerifiedUser(
   options: {
     readonly onboarded?: boolean;
     readonly entitlement?: {
-      readonly status?: 'trialing' | 'active' | 'expired' | 'canceled';
+      readonly status?: 'trialing' | 'active' | 'past_due' | 'expired' | 'canceled';
       readonly planKey?: 'starter' | 'trader' | 'professional' | null;
       readonly trialEndsAt?: Date | null;
       readonly billingCurrency?: 'THB' | 'USD' | null;

@@ -222,9 +222,18 @@ describe('subscription lifecycle transitions (real database)', () => {
 
   it('schedules and reverses cancellation only before the exact boundary', async () => {
     const workspaceId = await createActiveWorkspace();
+    await schedulePlanDowngrade({ workspaceId, targetPlanKey: 'starter' }, createFixedClock(NOW));
     await expect(
       scheduleCancellationAtPeriodEnd({ workspaceId }, createFixedClock(NOW)),
     ).resolves.toEqual({ changed: true });
+    expect(
+      await getTestDb().query.workspaceEntitlements.findFirst({
+        where: eq(workspaceEntitlements.workspaceId, workspaceId),
+      }),
+    ).toMatchObject({ cancelAtPeriodEnd: true, pendingPlanKey: null });
+    await expect(
+      schedulePlanDowngrade({ workspaceId, targetPlanKey: 'starter' }, createFixedClock(NOW)),
+    ).rejects.toMatchObject({ code: 'invalid_lifecycle_transition' });
     await expect(
       cancelScheduledCancellation(
         { workspaceId },
@@ -276,7 +285,7 @@ describe('subscription lifecycle transitions (real database)', () => {
     expect(row).toMatchObject({ status: 'active', cancelAtPeriodEnd: false });
   });
 
-  it('materializes due pending plan and period-end state without changing history', async () => {
+  it('cancellation wins over a historical pending downgrade at the boundary', async () => {
     const db = getTestDb();
     const workspaceId = await createActiveWorkspace('professional');
     await db
@@ -297,7 +306,7 @@ describe('subscription lifecycle transitions (real database)', () => {
       .where(eq(workspaceEntitlements.workspaceId, workspaceId));
     expect(row).toMatchObject({
       status: 'canceled',
-      planKey: 'starter',
+      planKey: 'professional',
       pendingPlanKey: null,
       cancelAtPeriodEnd: false,
     });
@@ -306,8 +315,9 @@ describe('subscription lifecycle transitions (real database)', () => {
       .select({ action: auditLogs.action })
       .from(auditLogs)
       .where(eq(auditLogs.workspaceId, workspaceId));
-    expect(audits.map((audit) => audit.action)).toEqual(
-      expect.arrayContaining(['subscription.pending_plan_materialized', 'subscription.canceled']),
+    expect(audits.map((audit) => audit.action)).toContain('subscription.canceled');
+    expect(audits.map((audit) => audit.action)).not.toContain(
+      'subscription.pending_plan_materialized',
     );
   });
 

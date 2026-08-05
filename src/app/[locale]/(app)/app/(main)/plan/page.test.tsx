@@ -3,12 +3,14 @@ import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EffectiveEntitlement } from '@/lib/entitlements/resolve';
+import type { SubscriptionManagementPresentation } from '@/lib/billing/subscription-management-types';
 
 import en from '../../../../../../../messages/en.json';
 import PlanPage from './page';
 
-const state = vi.hoisted(() => ({ entitlement: null as EffectiveEntitlement | null }));
+const state = vi.hoisted(() => ({
+  subscription: null as SubscriptionManagementPresentation | null,
+}));
 
 vi.mock('next-intl/server', () => ({
   setRequestLocale: vi.fn(),
@@ -21,10 +23,11 @@ vi.mock('next-intl/server', () => ({
 }));
 
 vi.mock('@/server/auth/dal', () => ({
-  getWorkspaceEntitlement: async () => state.entitlement,
   getCurrentUserPreferences: async () => ({ locale: 'en', theme: 'system', timezone: 'UTC' }),
 }));
-
+vi.mock('@/server/billing/subscription-management', () => ({
+  getSubscriptionManagementPresentation: async () => state.subscription,
+}));
 vi.mock('@/server/billing/presentation', () => ({
   getBillingPresentation: () => ({
     locale: 'en',
@@ -49,48 +52,63 @@ vi.mock('@/server/billing/presentation', () => ({
     })),
   }),
 }));
-
+vi.mock('@/server/actions/subscription-management', () => ({
+  schedulePlanDowngradeAction: vi.fn(),
+  cancelPlanDowngradeAction: vi.fn(),
+  scheduleSubscriptionCancellationAction: vi.fn(),
+  cancelSubscriptionCancellationAction: vi.fn(),
+}));
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children }: { href: string; children: ReactNode }) => (
     <a href={href}>{children}</a>
   ),
+  useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-function entitlement(overrides: Partial<EffectiveEntitlement> = {}): EffectiveEntitlement {
+function option(id: 'starter' | 'trader' | 'professional') {
+  const details = {
+    starter: ['Starter', 1, '$5.00'],
+    trader: ['Trader', 5, '$9.00'],
+    professional: ['Professional', 15, '$15.00'],
+  } as const;
   return {
-    workspaceId: 'workspace-1',
+    id,
+    name: details[id][0],
+    activeTradingAccountLimit: details[id][1],
+    priceFormatted: details[id][2],
+  };
+}
+
+function subscription(
+  overrides: Partial<SubscriptionManagementPresentation> = {},
+): SubscriptionManagementPresentation {
+  return {
     persistedStatus: 'trialing',
     effectiveStatus: 'trialing',
-    planKey: null,
-    effectivePlanKey: null,
-    trialStartedAt: new Date('2026-08-01T00:00:00Z'),
-    trialEndsAt: new Date('2026-08-08T00:00:00Z'),
-    currentPeriodStartedAt: null,
-    currentPeriodEndsAt: null,
-    effectivePeriodEnd: new Date('2026-08-08T00:00:00Z'),
+    accessMode: 'writable',
+    currentPlan: null,
     billingCurrency: null,
     billingInterval: null,
-    cancelAtPeriodEnd: false,
-    canceledAt: null,
-    pendingPlanKey: null,
-    pendingPlanEffectiveAt: null,
-    pendingPlanDue: false,
-    accountLimit: 1,
+    trialEndsAt: '08 Aug 2026',
+    currentPeriodEndsAt: null,
     activeAccountCount: 1,
-    remainingAccountSlots: 0,
-    canCreateAccount: false,
-    canRestoreAccount: false,
-    trialExpired: false,
+    accountLimit: 1,
     overLimit: false,
-    accessMode: 'writable',
-    denialReason: null,
-    blockReason: 'account_limit_reached',
+    hasNonTerminalCheckout: false,
+    blockReason: null,
+    upgradeOptions: [option('starter'), option('trader'), option('professional')],
+    downgradeOptions: [],
+    pendingDowngrade: null,
+    cancellationScheduled: false,
+    canCancelPendingDowngrade: false,
+    canScheduleCancellation: false,
+    canReverseCancellation: false,
     ...overrides,
   };
 }
 
-async function renderPage(snapshot: EffectiveEntitlement) {
-  state.entitlement = snapshot;
+async function renderPage(snapshot: SubscriptionManagementPresentation) {
+  state.subscription = snapshot;
   const element = await PlanPage({ params: Promise.resolve({ locale: 'en' }) });
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -101,7 +119,7 @@ async function renderPage(snapshot: EffectiveEntitlement) {
 
 describe('authenticated plan page', () => {
   it('shows real trial usage and every canonical plan without fake billing data', async () => {
-    await renderPage(entitlement());
+    await renderPage(subscription());
     expect(screen.getByText('Trial active')).toBeInTheDocument();
     expect(screen.getByText('1 / 1')).toBeInTheDocument();
     for (const plan of ['Starter', 'Trader', 'Professional']) {
@@ -110,82 +128,74 @@ describe('authenticated plan page', () => {
     expect(document.body).not.toHaveTextContent(/demo subscription|coming soon/i);
   });
 
-  it.each([
-    ['starter', 1],
-    ['trader', 5],
-    ['professional', 15],
-  ] as const)('shows active %s currency, period, and real limit', async (planKey, limit) => {
-    await renderPage(
-      entitlement({
-        persistedStatus: 'active',
-        effectiveStatus: 'active',
-        planKey,
-        effectivePlanKey: planKey,
-        billingCurrency: 'USD',
-        billingInterval: 'monthly',
-        currentPeriodStartedAt: new Date('2026-08-01T00:00:00Z'),
-        currentPeriodEndsAt: new Date('2026-09-01T00:00:00Z'),
-        effectivePeriodEnd: new Date('2026-09-01T00:00:00Z'),
-        accountLimit: limit,
-        activeAccountCount: 1,
-      }),
-    );
-    expect(screen.getByText('USD')).toBeInTheDocument();
-    expect(screen.getByText(`1 / ${limit}`)).toBeInTheDocument();
-    expect(screen.getByText('Monthly')).toBeInTheDocument();
-    expect(screen.getAllByText('01 Sept 2026').length).toBeGreaterThan(0);
-  });
+  it.each(['starter', 'trader', 'professional'] as const)(
+    'shows active %s currency, period, and real limit',
+    async (planKey) => {
+      const plan = option(planKey);
+      await renderPage(
+        subscription({
+          persistedStatus: 'active',
+          effectiveStatus: 'active',
+          currentPlan: plan,
+          billingCurrency: 'USD',
+          billingInterval: 'monthly',
+          trialEndsAt: null,
+          currentPeriodEndsAt: '01 Sept 2026',
+          accountLimit: plan.activeTradingAccountLimit,
+          upgradeOptions: [],
+          canScheduleCancellation: true,
+        }),
+      );
+      expect(screen.getByText('USD')).toBeInTheDocument();
+      expect(screen.getByText(`1 / ${plan.activeTradingAccountLimit}`)).toBeInTheDocument();
+      expect(screen.getByText('Monthly')).toBeInTheDocument();
+      expect(screen.getByText('01 Sept 2026')).toBeInTheDocument();
+    },
+  );
 
   it('shows pending downgrade, scheduled cancellation, and over-limit access state', async () => {
     await renderPage(
-      entitlement({
+      subscription({
         persistedStatus: 'active',
         effectiveStatus: 'active',
-        planKey: 'trader',
-        effectivePlanKey: 'trader',
+        accessMode: 'over_limit',
+        currentPlan: option('trader'),
         billingCurrency: 'USD',
         billingInterval: 'monthly',
-        currentPeriodStartedAt: new Date('2026-08-01T00:00:00Z'),
-        currentPeriodEndsAt: new Date('2026-09-01T00:00:00Z'),
-        effectivePeriodEnd: new Date('2026-09-01T00:00:00Z'),
-        cancelAtPeriodEnd: true,
-        pendingPlanKey: 'starter',
-        pendingPlanEffectiveAt: new Date('2026-09-01T00:00:00Z'),
-        accountLimit: 5,
+        trialEndsAt: null,
+        currentPeriodEndsAt: '01 Sept 2026',
         activeAccountCount: 6,
+        accountLimit: 5,
         overLimit: true,
-        accessMode: 'over_limit',
-        denialReason: 'workspace_over_limit',
-        blockReason: 'workspace_over_limit',
+        pendingDowngrade: {
+          plan: option('starter'),
+          effectiveAt: '01 Sept 2026',
+          willBeOverLimit: true,
+        },
+        cancellationScheduled: true,
       }),
     );
     expect(screen.getByText('Scheduled at period end')).toBeInTheDocument();
     expect(screen.getByText('Over account limit')).toBeInTheDocument();
-    expect(screen.getByText(/Downgrade to Starter is scheduled/)).toBeInTheDocument();
+    expect(screen.getByText(/Your plan will change to Starter/)).toBeInTheDocument();
   });
 
-  it.each(['expired', 'canceled', 'past_due'] as const)(
-    'shows %s honestly and blocks past-due checkout',
-    async (status) => {
-      await renderPage(
-        entitlement({
-          persistedStatus: status,
-          effectiveStatus: status === 'expired' ? 'expired' : 'canceled',
-          accessMode: 'read_only',
-          denialReason:
-            status === 'past_due'
-              ? 'subscription_past_due'
-              : status === 'canceled'
-                ? 'subscription_canceled'
-                : 'subscription_expired',
-        }),
-      );
-      if (status === 'past_due') {
-        expect(
-          screen.getByText(/Checkout is unavailable while this subscription is past due/),
-        ).toBeInTheDocument();
-        expect(screen.getAllByRole('button', { name: 'Checkout unavailable' })).toHaveLength(3);
-      }
-    },
-  );
+  it('shows past_due without a checkout action', async () => {
+    await renderPage(
+      subscription({
+        persistedStatus: 'past_due',
+        effectiveStatus: 'canceled',
+        accessMode: 'read_only',
+        currentPlan: option('starter'),
+        billingCurrency: 'USD',
+        billingInterval: 'monthly',
+        upgradeOptions: [],
+        blockReason: 'past_due',
+      }),
+    );
+    expect(
+      screen.getByText(/Checkout is unavailable while this subscription is past due/),
+    ).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Upgrade' })).not.toBeInTheDocument();
+  });
 });

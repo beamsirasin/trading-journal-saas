@@ -3,12 +3,8 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { DEMO_ACCOUNTS } from '@/lib/demo';
-import {
-  getCurrentUser,
-  getCurrentUserPreferences,
-  getWorkspaceEntitlement,
-} from '@/server/auth/dal';
-import { getBillingPresentation } from '@/server/billing/presentation';
+import { getCurrentUser, getCurrentUserPreferences } from '@/server/auth/dal';
+import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
@@ -65,17 +61,11 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   const t = await getTranslations('settings');
   const tLanguageSwitcher = await getTranslations('languageSwitcher');
   const tradingAccounts = DEMO_ACCOUNTS.filter((account) => account.id !== 'all');
-  const [user, preferences, entitlement] = await Promise.all([
-    getCurrentUser(),
-    getCurrentUserPreferences(),
-    getWorkspaceEntitlement(),
-  ]);
-  const billingPresentation = getBillingPresentation(locale as AppLocale);
-  const currentPlan =
-    entitlement?.effectivePlanKey === null || entitlement?.effectivePlanKey === undefined
-      ? null
-      : (billingPresentation.plans.find((plan) => plan.id === entitlement.effectivePlanKey) ??
-        null);
+  const [user, preferences] = await Promise.all([getCurrentUser(), getCurrentUserPreferences()]);
+  const subscription = await getSubscriptionManagementPresentation(
+    locale as AppLocale,
+    preferences.timezone,
+  );
 
   return (
     <Container className="flex flex-col gap-10 py-8">
@@ -195,19 +185,21 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
             <div className="flex flex-col gap-1">
               <MetricLabel>{t('subscription.planShown')}</MetricLabel>
               <span className="text-foreground text-sm font-semibold">
-                {currentPlan?.name ?? t('subscription.trial')}
+                {subscription?.currentPlan?.name ?? t('subscription.trial')}
               </span>
             </div>
             <div className="flex flex-col gap-1">
               <MetricLabel>{t('subscription.tradingAccounts')}</MetricLabel>
               <span className="numeric text-foreground text-sm font-semibold">
-                {entitlement?.accountLimit ?? '—'}
+                {subscription === null || subscription.accountLimit === null
+                  ? '—'
+                  : `${subscription.activeAccountCount} / ${subscription.accountLimit}`}
               </span>
             </div>
             <Badge variant="warning" className="ml-auto">
-              {entitlement === null
+              {subscription === null
                 ? t('subscription.unavailable')
-                : t(`subscription.status.${entitlement.persistedStatus}`)}
+                : t(`subscription.status.${subscription.persistedStatus}`)}
             </Badge>
           </div>
 
@@ -219,7 +211,30 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
             >
               {t('subscription.seePlans')}
             </Link>
+            {' · '}
+            <Link
+              href="/app/billing"
+              className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+            >
+              {t('subscription.billingHistory')}
+            </Link>
           </p>
+          {subscription?.pendingDowngrade !== null &&
+          subscription?.pendingDowngrade !== undefined ? (
+            <p className="text-muted-foreground text-sm">
+              {t('subscription.pendingDowngrade', {
+                plan: subscription.pendingDowngrade.plan.name,
+                date: subscription.pendingDowngrade.effectiveAt,
+              })}
+            </p>
+          ) : null}
+          {subscription?.cancellationScheduled ? (
+            <p className="text-muted-foreground text-sm">
+              {t('subscription.cancellationScheduled', {
+                date: subscription.currentPeriodEndsAt ?? '—',
+              })}
+            </p>
+          ) : null}
         </div>
       </section>
     </Container>
