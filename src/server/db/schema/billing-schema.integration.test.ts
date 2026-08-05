@@ -28,6 +28,27 @@ async function expectDatabaseError(operation: Promise<unknown>, code: string): P
   throw new Error(`expected PostgreSQL error ${code}`);
 }
 
+/**
+ * An `ON DELETE RESTRICT` violation is the one PostgreSQL rejection this
+ * suite has observed surfaced under two different SQLSTATE codes depending
+ * on version/environment: `23001` (restrict_violation) locally on
+ * PostgreSQL 18.4, and `23503` (foreign_key_violation) on GitHub Actions'
+ * PostgreSQL service container. Both are genuine integrity-constraint
+ * rejections of the same RESTRICT behavior, so either is accepted here —
+ * never an arbitrary error, and never every class-23 error.
+ */
+const RESTRICT_VIOLATION_CODES = ['23001', '23503'] as const;
+
+async function expectRestrictViolation(operation: Promise<unknown>): Promise<void> {
+  try {
+    await operation;
+  } catch (error) {
+    expect(RESTRICT_VIOLATION_CODES).toContain(databaseErrorCode(error));
+    return;
+  }
+  throw new Error(`expected a RESTRICT violation (${RESTRICT_VIOLATION_CODES.join(' or ')})`);
+}
+
 describe('Phase 04C billing schema (real database)', () => {
   const createdWorkspaceIds: string[] = [];
 
@@ -375,10 +396,7 @@ describe('Phase 04C billing schema (real database)', () => {
         .values(snapshot(workspaceId))
         .returning({ id: billingTransactions.id });
       if (row === undefined) throw new Error('failed to seed retained snapshot');
-      await expectDatabaseError(
-        db.delete(workspaces).where(eq(workspaces.id, workspaceId)),
-        '23001',
-      );
+      await expectRestrictViolation(db.delete(workspaces).where(eq(workspaces.id, workspaceId)));
       const remaining = await db
         .select({ id: billingTransactions.id })
         .from(billingTransactions)
