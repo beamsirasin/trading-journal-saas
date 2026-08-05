@@ -2,7 +2,11 @@ import 'server-only';
 
 import { and, asc, eq, ne } from 'drizzle-orm';
 
-import type { EntitlementBlockReason } from '@/lib/entitlements/resolve';
+import {
+  authorizeWorkspaceMutation,
+  type MutationDenialReason,
+  type WorkspaceMutationOperation,
+} from '@/lib/entitlements/resolve';
 import { systemClock, type Clock } from '@/lib/time';
 import type {
   AccountFieldsData,
@@ -44,7 +48,7 @@ export type UpdateErrorCode = 'not_found' | 'archived';
 
 export type CreateTradingAccountResult =
   | { readonly ok: true; readonly accountId: string; readonly alreadyCreated: boolean }
-  | { readonly ok: false; readonly code: EntitlementBlockReason };
+  | { readonly ok: false; readonly code: MutationDenialReason };
 
 /**
  * Idempotency check runs FIRST, entitlement enforcement second (Phase 3C
@@ -97,13 +101,8 @@ export async function createTradingAccount(
       return { ok: true, accountId: existingByKey.id, alreadyCreated: true };
     }
 
-    const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
-    if (!entitlement.ok) {
-      return { ok: false, code: entitlement.code };
-    }
-    if (entitlement.effective.blockReason !== null) {
-      return { ok: false, code: entitlement.effective.blockReason };
-    }
+    const denied = await mutationDenial(tx, workspaceId, 'create_trading_account', clock);
+    if (denied !== null) return { ok: false, code: denied };
 
     const inserted = await tx
       .insert(tradingAccounts)
@@ -186,7 +185,8 @@ export async function createTradingAccount(
   });
 }
 
-export type UpdateTradingAccountResult = { ok: true } | { ok: false; code: UpdateErrorCode };
+export type UpdateTradingAccountResult =
+  { ok: true } | { ok: false; code: UpdateErrorCode | MutationDenialReason };
 
 const FIELD_COMPARISON_KEYS: readonly (keyof AccountFieldsData)[] = [
   'name',
@@ -223,11 +223,16 @@ export async function updateTradingAccount(
   userId: string,
   accountId: string,
   input: UpdateAccountData,
+  clock: Clock = systemClock,
 ): Promise<UpdateTradingAccountResult> {
   const db = getDb();
 
   return db.transaction(async (tx) => {
     await requireActiveMembership(tx, workspaceId, userId);
+    await lockWorkspace(tx, workspaceId);
+
+    const denied = await mutationDenial(tx, workspaceId, 'ordinary_write', clock);
+    if (denied !== null) return { ok: false, code: denied };
 
     const existing = await tx.query.tradingAccounts.findFirst({
       where: and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)),
@@ -275,6 +280,10 @@ export async function updateTradingAccount(
 export type SetActiveTradingAccountResult = { ok: true } | { ok: false; code: ActivateErrorCode };
 
 /**
+ * Changes only the caller's viewing preference, so subscription access mode
+ * does not gate this operation. Membership, workspace isolation, and the
+ * target account's active/non-archived state remain mandatory.
+ *
  * Locks the workspace row so this cannot interleave with a concurrent
  * archive of the SAME account — without the lock, a set-active and an
  * archive racing each other could each read "not archived" before the other
@@ -289,11 +298,7 @@ export async function setActiveTradingAccount(
 
   return db.transaction(async (tx) => {
     await requireActiveMembership(tx, workspaceId, userId);
-    await tx
-      .select({ id: workspaces.id })
-      .from(workspaces)
-      .where(eq(workspaces.id, workspaceId))
-      .for('update');
+    await lockWorkspace(tx, workspaceId);
 
     const account = await tx.query.tradingAccounts.findFirst({
       where: and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)),
@@ -337,7 +342,8 @@ export async function setActiveTradingAccount(
   });
 }
 
-export type ArchiveTradingAccountResult = { ok: true } | { ok: false; code: ArchiveErrorCode };
+export type ArchiveTradingAccountResult =
+  { ok: true } | { ok: false; code: ArchiveErrorCode | MutationDenialReason };
 
 /**
  * Phase 3B's archive-with-fallback transaction.
@@ -369,6 +375,7 @@ export async function archiveTradingAccount(
   workspaceId: string,
   userId: string,
   accountId: string,
+  clock: Clock = systemClock,
 ): Promise<ArchiveTradingAccountResult> {
   const db = getDb();
 
@@ -383,6 +390,9 @@ export async function archiveTradingAccount(
     if (lockedWorkspace === undefined) {
       throw new Error(`archiveTradingAccount: workspace ${workspaceId} not found`);
     }
+
+    const denied = await mutationDenial(tx, workspaceId, 'archive_trading_account', clock);
+    if (denied !== null) return { ok: false, code: denied };
 
     const account = await tx.query.tradingAccounts.findFirst({
       where: and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)),
@@ -456,8 +466,7 @@ export async function archiveTradingAccount(
 }
 
 export type RestoreTradingAccountResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly code: 'not_found' | EntitlementBlockReason };
+  { readonly ok: true } | { readonly ok: false; readonly code: 'not_found' | MutationDenialReason };
 
 /**
  * Restoring never automatically reactivates the account (Phase 3B brief) —
@@ -499,13 +508,8 @@ export async function restoreTradingAccount(
       return { ok: true };
     }
 
-    const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
-    if (!entitlement.ok) {
-      return { ok: false, code: entitlement.code };
-    }
-    if (entitlement.effective.blockReason !== null) {
-      return { ok: false, code: entitlement.effective.blockReason };
-    }
+    const denied = await mutationDenial(tx, workspaceId, 'restore_trading_account', clock);
+    if (denied !== null) return { ok: false, code: denied };
 
     await tx
       .update(tradingAccounts)
@@ -526,6 +530,29 @@ export async function restoreTradingAccount(
 
 /** Structurally matches both a Drizzle transaction handle and the plain database — same shape `insertAuditLog` relies on. */
 type Executor = Pick<ReturnType<typeof getDb>, 'select'>;
+
+async function lockWorkspace(tx: Executor, workspaceId: string): Promise<void> {
+  const [workspace] = await tx
+    .select({ id: workspaces.id })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .for('update');
+  if (workspace === undefined) throw new Error(`Workspace ${workspaceId} not found`);
+}
+
+async function mutationDenial(
+  tx: Parameters<typeof lockAndResolveEntitlement>[0],
+  workspaceId: string,
+  operation: WorkspaceMutationOperation,
+  clock: Clock,
+): Promise<MutationDenialReason | null> {
+  const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
+  const decision = authorizeWorkspaceMutation(
+    entitlement.ok ? entitlement.effective : null,
+    operation,
+  );
+  return decision.allowed ? null : decision.code;
+}
 
 async function requireActiveMembership(
   tx: Executor,

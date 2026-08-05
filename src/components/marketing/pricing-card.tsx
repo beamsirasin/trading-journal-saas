@@ -1,7 +1,9 @@
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { Plan } from '@/config/plans';
+import type { SharedBillingFeatureKey } from '@/config/plan-catalog';
+import type { BillingCurrency } from '@/lib/billing';
+import type { BillingPlanPresentation } from '@/lib/billing/presentation-types';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,22 +12,27 @@ import { Link } from '@/i18n/navigation';
 /**
  * One subscription plan.
  *
- * Prices are real and tax-exclusive (`plan.priceThb`/`plan.priceUsd`,
- * `plan.taxExclusive`) — the locked product decision replacing the earlier
- * "Pricing to be confirmed" placeholder. The account-limit figure is the
- * ONLY entitlement difference between plans; the feature list below it is
- * the SAME `pricing.sharedFeatures` array for every card, never a per-plan
- * list — every paid plan includes identical features and analytics
- * (`src/config/plans.ts`'s file header).
+ * The safe server presentation DTO supplies canonical bigint-derived prices,
+ * account allowances, and one shared feature-key list. VAT visibility is
+ * deliberately absent from the plan: only trusted server configuration may
+ * add the separate notice around the cards.
  *
- * The call to action goes to real registration (Phase 2). It does not claim
- * to start a trial, since billing and trial-entitlement tracking are still
- * unimplemented — only account creation is real today.
+ * The protected checkout URL carries only plan and display currency. The
+ * authenticated route derives workspace context and every commercial value
+ * again on the server; unauthenticated visitors follow the existing safe
+ * login callback path through the protected-route proxy.
  */
-export function PricingCard({ plan }: { plan: Plan }) {
+export function PricingCard({
+  plan,
+  currency,
+  sharedFeatureKeys,
+}: {
+  plan: BillingPlanPresentation;
+  currency: BillingCurrency;
+  sharedFeatureKeys: readonly SharedBillingFeatureKey[];
+}) {
   const t = useTranslations('pricing');
   const headingId = `plan-${plan.id}-name`;
-  const sharedFeatures = t.raw('sharedFeatures') as readonly string[];
 
   return (
     <div
@@ -49,17 +56,14 @@ export function PricingCard({ plan }: { plan: Plan }) {
 
       <div className="flex flex-col gap-1">
         <p className="text-foreground text-xl font-semibold">
-          {t('priceMonthly', { thb: plan.priceThb, usd: plan.priceUsd })}
+          {t('priceMonthly', { price: plan.prices[currency].formatted })}
         </p>
-        {plan.taxExclusive ? (
-          <p className="text-muted-foreground text-xs leading-relaxed">{t('taxExclusiveNote')}</p>
-        ) : null}
       </div>
 
       <div className="border-border flex flex-col gap-1 rounded-lg border border-dashed p-3">
         <span className="text-muted-foreground text-label uppercase">{t('tradingAccounts')}</span>
         <span className="numeric text-foreground text-lg font-semibold">
-          {plan.tradingAccounts}
+          {plan.activeTradingAccountLimit}
         </span>
       </div>
 
@@ -68,17 +72,19 @@ export function PricingCard({ plan }: { plan: Plan }) {
           {t('sharedFeaturesHeading')}
         </span>
         <ul className="flex flex-col gap-2.5">
-          {sharedFeatures.map((feature) => (
+          {sharedFeatureKeys.map((feature) => (
             <li key={feature} className="flex items-start gap-2.5 text-sm">
               <Check className="text-positive mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span className="text-muted-foreground leading-relaxed">{feature}</span>
+              <span className="text-muted-foreground leading-relaxed">
+                {t(`sharedFeatures.${feature}`)}
+              </span>
             </li>
           ))}
         </ul>
       </div>
 
       <Button asChild variant={plan.featured ? 'default' : 'outline'} className="min-h-11 w-full">
-        <Link href="/register">{t('cta')}</Link>
+        <Link href={`/app/checkout?plan=${plan.id}&currency=${currency}`}>{t('cta')}</Link>
       </Button>
     </div>
   );

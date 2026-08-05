@@ -1,5 +1,5 @@
 import { hashPassword } from 'better-auth/crypto';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
@@ -7,6 +7,7 @@ import { validateTestDatabaseEnvironment } from '../../scripts/test-database-saf
 import { generateId } from '../../src/lib/identifiers';
 import {
   accounts,
+  billingTransactions,
   tradingAccounts,
   userPreferences,
   users,
@@ -74,9 +75,12 @@ export async function provisionVerifiedUser(
   options: {
     readonly onboarded?: boolean;
     readonly entitlement?: {
-      readonly status?: 'trialing' | 'active' | 'expired' | 'canceled';
+      readonly status?: 'trialing' | 'active' | 'past_due' | 'expired' | 'canceled';
       readonly planKey?: 'starter' | 'trader' | 'professional' | null;
       readonly trialEndsAt?: Date | null;
+      readonly billingCurrency?: 'THB' | 'USD' | null;
+      readonly currentPeriodStartedAt?: Date | null;
+      readonly currentPeriodEndsAt?: Date | null;
     };
     readonly additionalAccounts?: number;
     /** Extra accounts seeded already archived — for restore-blocked fixtures. */
@@ -100,6 +104,7 @@ export async function provisionVerifiedUser(
       userPreferences,
       tradingAccounts,
       workspaceEntitlements,
+      billingTransactions,
     },
   });
 
@@ -108,6 +113,26 @@ export async function provisionVerifiedUser(
     // any prior run's row for this fixed email before recreating it, rather
     // than accumulating duplicate test users or failing on the unique index.
     // Cascades away any prior workspace/account/preferences too.
+    const priorUsers = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+    if (priorUsers.length > 0) {
+      const priorWorkspaces = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(
+          inArray(
+            workspaces.personalOwnerUserId,
+            priorUsers.map(({ id }) => id),
+          ),
+        );
+      if (priorWorkspaces.length > 0) {
+        await db.delete(billingTransactions).where(
+          inArray(
+            billingTransactions.workspaceId,
+            priorWorkspaces.map(({ id }) => id),
+          ),
+        );
+      }
+    }
     await db.delete(users).where(eq(users.email, email));
 
     const userId = generateId();
@@ -158,7 +183,14 @@ export async function provisionVerifiedUser(
 
       if (options.omitEntitlementRow !== true) {
         const entitlementOverride = options.entitlement;
-        const { status, planKey, trialEndsAt } =
+        const {
+          status,
+          planKey,
+          trialEndsAt,
+          billingCurrency,
+          currentPeriodStartedAt,
+          currentPeriodEndsAt,
+        } =
           entitlementOverride === undefined
             ? {
                 // No entitlement behavior under test — an active Professional
@@ -168,6 +200,9 @@ export async function provisionVerifiedUser(
                 status: 'active' as const,
                 planKey: 'professional' as const,
                 trialEndsAt: null,
+                billingCurrency: 'USD' as const,
+                currentPeriodStartedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                currentPeriodEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
               }
             : {
                 status: entitlementOverride.status ?? 'trialing',
@@ -176,6 +211,21 @@ export async function provisionVerifiedUser(
                   entitlementOverride.trialEndsAt === undefined
                     ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
                     : entitlementOverride.trialEndsAt,
+                billingCurrency:
+                  entitlementOverride.billingCurrency === undefined &&
+                  entitlementOverride.status === 'active'
+                    ? ('USD' as const)
+                    : (entitlementOverride.billingCurrency ?? null),
+                currentPeriodStartedAt:
+                  entitlementOverride.currentPeriodStartedAt === undefined &&
+                  entitlementOverride.status === 'active'
+                    ? new Date(Date.now() - 24 * 60 * 60 * 1000)
+                    : (entitlementOverride.currentPeriodStartedAt ?? null),
+                currentPeriodEndsAt:
+                  entitlementOverride.currentPeriodEndsAt === undefined &&
+                  entitlementOverride.status === 'active'
+                    ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                    : (entitlementOverride.currentPeriodEndsAt ?? null),
               };
         await db.insert(workspaceEntitlements).values({
           workspaceId,
@@ -183,6 +233,10 @@ export async function provisionVerifiedUser(
           planKey,
           trialStartedAt: new Date(),
           trialEndsAt,
+          billingCurrency,
+          billingInterval: billingCurrency === null ? null : 'monthly',
+          currentPeriodStartedAt,
+          currentPeriodEndsAt,
         });
       }
 

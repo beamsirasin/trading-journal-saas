@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 
-import type { EntitlementBlockReason } from '@/lib/entitlements/resolve';
+import type { MutationDenialReason } from '@/lib/entitlements/resolve';
 import { CreateAccountSchema, UpdateAccountSchema } from '@/lib/trading-accounts/schema';
 import {
   ForbiddenError,
@@ -36,7 +36,7 @@ export type CreateTradingAccountActionResult =
   | { readonly ok: true; readonly accountId: string }
   | {
       readonly ok: false;
-      readonly code: 'validation' | 'forbidden' | 'unexpected' | EntitlementBlockReason;
+      readonly code: 'validation' | 'forbidden' | 'unexpected' | MutationDenialReason;
     };
 
 export async function createTradingAccountAction(
@@ -64,7 +64,8 @@ export type UpdateTradingAccountActionResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
-      readonly code: 'validation' | 'not_found' | 'archived' | 'forbidden' | 'unexpected';
+      readonly code:
+        'validation' | 'not_found' | 'archived' | 'forbidden' | 'unexpected' | MutationDenialReason;
     };
 
 export async function updateTradingAccountAction(
@@ -92,7 +93,10 @@ export async function updateTradingAccountAction(
 
 export type SetActiveTradingAccountActionResult =
   | { readonly ok: true }
-  | { readonly ok: false; readonly code: 'not_found' | 'archived' | 'forbidden' | 'unexpected' };
+  | {
+      readonly ok: false;
+      readonly code: 'not_found' | 'archived' | 'forbidden' | 'unexpected';
+    };
 
 export async function setActiveTradingAccountAction(
   accountId: unknown,
@@ -119,7 +123,8 @@ export type ArchiveTradingAccountActionResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
-      readonly code: 'not_found' | 'last_account' | 'forbidden' | 'unexpected';
+      readonly code:
+        'not_found' | 'last_account' | 'forbidden' | 'unexpected' | MutationDenialReason;
     };
 
 export async function archiveTradingAccountAction(
@@ -147,7 +152,7 @@ export type RestoreTradingAccountActionResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
-      readonly code: 'not_found' | 'forbidden' | 'unexpected' | EntitlementBlockReason;
+      readonly code: 'not_found' | 'forbidden' | 'unexpected' | MutationDenialReason;
     };
 
 export async function restoreTradingAccountAction(

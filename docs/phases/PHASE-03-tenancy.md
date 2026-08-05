@@ -1,6 +1,6 @@
 # Phase 03 — Data Model & Tenancy Core
 
-> **Superseded.** Tenancy was absorbed into Phase 02 alongside authentication — see [`PHASE-02-auth-tenancy.md`](PHASE-02-auth-tenancy.md) for what was actually built (`workspaces`/`workspace_members`/`user_preferences`, `requireWorkspaceMembership`/`requireWorkspaceRole`) and [ADR 0011](../decisions/0011-tenant-workspace-authorization-model.md) for the authorization model. This document is preserved as the historical record of the original plan below; its schema sketch differs from what shipped (e.g. `role` includes `admin` here, but only `owner`/`member` shipped — see the ADR for why).
+> **Superseded historical plan.** This original tenancy scope was absorbed into Phase 02 alongside authentication — see [`PHASE-02-auth-tenancy.md`](PHASE-02-auth-tenancy.md) and [ADR 0011](../decisions/0011-tenant-workspace-authorization-model.md). It is distinct from implementation Phase 3A–3C, which later delivered onboarding, trading-account management, and the entitlement foundation and is officially complete. This document remains only as the record of the original sequence; its schema sketch differs from what shipped.
 
 **Depends on:** 02 · **Blocks:** everything with a database record
 

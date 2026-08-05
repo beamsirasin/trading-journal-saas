@@ -2,6 +2,8 @@
 
 **Depends on:** 04 · **Blocks:** 06, 07
 
+> **Implementation note:** The core onboarding and trading-account scope was delivered early in Phase 3A–3C. Phase 04 must preserve and integrate with that server-side entitlement boundary; this document remains the product contract for later account work.
+
 ## Goal
 
 A new user goes from first login to a configured trading account in under two minutes, and trading accounts are fully manageable under plan limits.
@@ -40,10 +42,12 @@ Currency is **immutable after the first trade**. Changing it would silently rein
 ### Account management (`/app/accounts`)
 
 - List with balance, trade count, archived state
-- Create — **gated by `requireEntitlement('tradingAccount')`**; at-limit UI explains the limit and links to upgrade
+- Create and restore — gated by the active-account entitlement **server-side inside the mutation transaction**; direct action calls must not bypass the limit
 - Edit; currency locked once trades exist, with a clear explanation of why
 - Archive (reversible, excluded from default views, retains analytics) and delete (only when zero trades; otherwise archive)
 - Empty state that teaches, not just "No accounts"
+
+Only active trading accounts count toward the allowance. Archived accounts do not count. Starter allows 1 active account, Trader 5, and Professional 15; the 7-day full-feature trial allows 1. Plans do not impose strategy, setup, trade, trade-history, analytics, or other feature limits.
 
 ## Out of scope
 
@@ -64,7 +68,8 @@ tests/accounts/{entitlement-gate,currency-lock}.test.ts
 
 - [ ] Wizard completes on desktop and mobile; resumable mid-flow
 - [ ] Timezone confirmed by the user, stored as IANA, used for display
-- [ ] Account creation blocked at plan limit **server-side**
+- [ ] Account creation and restoration blocked at the active-account limit **server-side**, including direct action calls and concurrent requests
+- [ ] Archived accounts do not count toward the active-account limit and can be restored only when an active slot is available
 - [ ] Currency immutable after first trade, enforced in the service layer
 - [ ] Archive preserves analytics; delete blocked when trades exist
 - [ ] All amounts stored as minor units; no float anywhere in the path

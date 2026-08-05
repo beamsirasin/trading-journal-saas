@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phase 02 — every surface still renders from fictional demo fixtures and is labelled as such, but authentication (Google OAuth + email/password) and a real, tenant-isolated database now exist behind them. A user's account, sign-in, and personal workspace are real; no real metric below is computed yet.
+**Status:** Living document. Phase 03 and Phase 04 — Billing & Checkout are officially complete; Phase 05 — Onboarding & Trading Accounts is next. Authentication, tenant-isolated workspaces, onboarding, trading accounts, the 7-day trial, active-account entitlements, monthly-plan checkout, immutable billing snapshots, and conditional VAT presentation are real, behind a mock payment provider not reachable by ordinary production traffic. Strategy, trade, and analytics surfaces remain absent or fixture-driven; no real metric below is computed yet.
 
 ## 1. The problem
 
@@ -60,7 +60,7 @@ Each trade may carry mistakes from a taxonomy (moved stop, early exit, oversized
 
 ## 4. MVP scope
 
-Landing page · Google and email authentication · 7-day trial · three plans gated primarily on trading-account count · mock payment · onboarding · trading-account management · strategy and strategy-version management · manual trade journal · TradingView chart URLs · system vs actual outcome · mistake and discipline tracking · dashboard · basic analytics · account, subscription and profile settings · basic SaaS administration · responsive desktop, tablet, and mobile · English and Thai localization.
+Landing page · Google and email authentication · 7-day full-feature trial with 1 active trading account · three monthly paid plans gated only on active trading-account count · unlimited strategies, setups, trades, and trade history on every plan · mock payment and future-ready exclusive VAT checkout behavior · onboarding · trading-account management · strategy and strategy-version management · manual trade journal · TradingView chart URLs · system vs actual outcome · mistake and discipline tracking · dashboard · identical analytics across plans · account, subscription and profile settings · basic SaaS administration · responsive desktop, tablet, and mobile · English and Thai localization.
 
 ## 5. Explicitly excluded from the MVP
 
@@ -91,11 +91,12 @@ The product works if a user can answer, within a month of journaling:
 
 Mitigations: prefill the system outcome where plan and execution agree, keep the wording neutral so recording a mistake does not feel like a confession, and be candid in the product that output quality follows input honesty. This is inherent to a manual journal and is not solved by more UI.
 
-## 9. Open product questions
+## 9. Product decisions and open questions
 
-| #   | Question                                                                                                                                                                                                                                                            | Needed by  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1   | ~~Do plan limits match how traders actually segment accounts?~~ **Locked in Phase 3C**: Starter 1 / Trader 5 / Professional 15, gating exclusively on active trading-account count, identical feature set across plans. See `src/config/plans.ts` and CLAUDE.md A3. | Phase 3C ✓ |
-| 2   | Is a 7-day trial long enough to accumulate a meaningful sample of trades? Trial grants exactly 1 active trading account (locked, CLAUDE.md A4) — not the highest plan's allowance.                                                                                  | Phase 04   |
-| 3   | What is the minimum closed-trade count before a verdict may be stated?                                                                                                                                                                                              | Phase 09   |
-| 4   | Should the default break-even tolerance be 0.05R?                                                                                                                                                                                                                   | Phase 07   |
+| #   | Question                                                                                                                                                                                                                                                                 | Needed by  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| 1   | ~~Do plan limits match how traders actually segment accounts?~~ **Locked in Phase 3C**: Starter 1 / Trader 5 / Professional 15, gating exclusively on active trading-account count, identical feature set across plans. See `src/config/plans.ts` and CLAUDE.md A3.      | Phase 3C ✓ |
+| 2   | **Locked in Phase 3C:** 7-day trial, exactly 1 active trading account, every feature unlocked, and no user-data deletion at expiry. The allowance is not derived from any paid plan.                                                                                     | Phase 3C ✓ |
+| 3   | What is the minimum closed-trade count before a verdict may be stated?                                                                                                                                                                                                   | Phase 09   |
+| 4   | Should the default break-even tolerance be 0.05R?                                                                                                                                                                                                                        | Phase 07   |
+| 5   | **Locked for launch/future implementation:** VAT collection disabled at launch; future exclusive VAT is admin-configured, initially prepared as 7%, server-calculated in integer minor units, snapshotted immutably, and presented/calculated for customers by Phase 04. | 04/11/12   |

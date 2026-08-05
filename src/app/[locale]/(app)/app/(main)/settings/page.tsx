@@ -2,9 +2,9 @@ import { Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { PLANS, TRIAL_DAYS } from '@/config/plans';
 import { DEMO_ACCOUNTS } from '@/lib/demo';
 import { getCurrentUser, getCurrentUserPreferences } from '@/server/auth/dal';
+import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
@@ -61,9 +61,11 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   const t = await getTranslations('settings');
   const tLanguageSwitcher = await getTranslations('languageSwitcher');
   const tradingAccounts = DEMO_ACCOUNTS.filter((account) => account.id !== 'all');
-  const currentPlan = PLANS.find((plan) => plan.featured) ?? PLANS[0];
-  const user = await getCurrentUser();
-  const preferences = await getCurrentUserPreferences();
+  const [user, preferences] = await Promise.all([getCurrentUser(), getCurrentUserPreferences()]);
+  const subscription = await getSubscriptionManagementPresentation(
+    locale as AppLocale,
+    preferences.timezone,
+  );
 
   return (
     <Container className="flex flex-col gap-10 py-8">
@@ -182,28 +184,57 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex flex-col gap-1">
               <MetricLabel>{t('subscription.planShown')}</MetricLabel>
-              <span className="text-foreground text-sm font-semibold">{currentPlan?.name}</span>
+              <span className="text-foreground text-sm font-semibold">
+                {subscription?.currentPlan?.name ?? t('subscription.trial')}
+              </span>
             </div>
             <div className="flex flex-col gap-1">
               <MetricLabel>{t('subscription.tradingAccounts')}</MetricLabel>
               <span className="numeric text-foreground text-sm font-semibold">
-                {currentPlan?.tradingAccounts}
+                {subscription === null || subscription.accountLimit === null
+                  ? '—'
+                  : `${subscription.activeAccountCount} / ${subscription.accountLimit}`}
               </span>
             </div>
             <Badge variant="warning" className="ml-auto">
-              {t('subscription.trialNotStarted', { trialDays: TRIAL_DAYS })}
+              {subscription === null
+                ? t('subscription.unavailable')
+                : t(`subscription.status.${subscription.persistedStatus}`)}
             </Badge>
           </div>
 
           <p className="text-muted-foreground text-sm leading-relaxed">
             {t('subscription.note')}{' '}
             <Link
-              href="/pricing"
+              href="/app/plan"
               className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
             >
               {t('subscription.seePlans')}
             </Link>
+            {' · '}
+            <Link
+              href="/app/billing"
+              className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
+            >
+              {t('subscription.billingHistory')}
+            </Link>
           </p>
+          {subscription?.pendingDowngrade !== null &&
+          subscription?.pendingDowngrade !== undefined ? (
+            <p className="text-muted-foreground text-sm">
+              {t('subscription.pendingDowngrade', {
+                plan: subscription.pendingDowngrade.plan.name,
+                date: subscription.pendingDowngrade.effectiveAt,
+              })}
+            </p>
+          ) : null}
+          {subscription?.cancellationScheduled ? (
+            <p className="text-muted-foreground text-sm">
+              {t('subscription.cancellationScheduled', {
+                date: subscription.currentPeriodEndsAt ?? '—',
+              })}
+            </p>
+          ) : null}
         </div>
       </section>
     </Container>

@@ -38,7 +38,18 @@ Simple SQL aggregates. No analytics pipeline, no warehouse.
 - List with filters
 - Manual overrides: extend trial, change plan, change status, comp an account
 - Every override requires a **reason**, recorded in the audit log
-- Overrides reuse the Phase 03 state machine — no direct row edits that could produce an invalid state
+- Overrides reuse the Phase 04 billing state machine — no direct row edits that could produce an invalid state
+
+### VAT configuration
+
+VAT configuration belongs to the admin phase; customer-facing calculation and checkout behavior belongs to Phase 04.
+
+- Admin-only enable/disable control; there is no customer or public mutation path
+- Disabled by default at launch because the business is not initially VAT registered
+- Configurable rate prepared initially as 7%
+- Changing the setting or rate affects only future checkouts; historical billing, price, rate, tax, and total snapshots remain immutable
+- Every change requires a reason and an `admin_audit_log` entry with before/after values
+- The server supplies the effective VAT setting and rate to Phase 04 billing logic; client input can never select or override either the rate or tax amount
 
 ## Out of scope
 
@@ -61,6 +72,7 @@ tests/admin/{access-control,audit-log,override-state-machine}.test.ts
 - [ ] No UI path grants admin to anyone
 - [ ] Every admin mutation writes an audit entry with actor and reason
 - [ ] Overrides cannot produce an invalid subscription state
+- [ ] VAT enablement and rate are admin-only, audited, and cannot rewrite historical billing snapshots
 - [ ] Admin surfaces expose no customer trade data
 - [ ] Responsive (operators use tablets), accessible
 - [ ] Typecheck, lint, tests, build pass

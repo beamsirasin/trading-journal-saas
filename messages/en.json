@@ -86,7 +86,7 @@
     "description": "Most journals record what happened, so they can only ever show profit and loss. Trading OS records what <em>should</em> have happened too — then measures the distance between them.",
     "ctaPrimary": "Sign up",
     "ctaDemo": "See the demo dashboard",
-    "trialNote": "Planned {trialDays}-day trial · no card required"
+    "trialNote": "{trialDays}-day full-feature trial · no card required"
   },
   "productPreview": {
     "title": "Attribution overview",
@@ -206,15 +206,21 @@
     "description": "Every plan includes the exact same features and analytics. Plans differ only by how many active trading accounts you can keep.",
     "tradingAccounts": "Active trading accounts",
     "mostPopular": "Most popular",
-    "priceMonthly": "฿{thb} / ${usd} per month",
-    "taxExclusiveNote": "Prices exclude applicable taxes.",
-    "cta": "Sign up",
+    "priceMonthly": "{price} / month",
+    "currencyLegend": "Display currency",
+    "currencyNote": "THB and USD are fixed prices, not live currency conversions.",
+    "cta": "Choose plan",
     "sharedFeaturesHeading": "Every plan includes",
-    "sharedFeatures": [
-      "Manual journal & TradingView links",
-      "System-vs-trader comparison",
-      "Mistake tracking & discipline scoring"
-    ],
+    "sharedFeatures": {
+      "unlimitedStrategies": "Unlimited strategies",
+      "unlimitedSetups": "Unlimited setups",
+      "unlimitedTrades": "Unlimited trades",
+      "unlimitedTradeHistory": "Unlimited trade history",
+      "journal": "All journal functionality",
+      "analytics": "All analytics",
+      "performanceComparison": "System Performance vs Trader Performance",
+      "importExport": "Import/export where currently supported"
+    },
     "plans": {
       "starter": {
         "tagline": "Prove whether your strategy has an edge with one account."
@@ -226,8 +232,9 @@
         "tagline": "For traders running many accounts or a prop programme."
       }
     },
-    "paymentNoticeTitle": "Online payment is not connected to this product yet",
-    "paymentNoticeBody": "A {trialDays}-day, full-feature trial with one active trading account is planned, with no card required. Billing arrives in a later release."
+    "trialNoticeTitle": "Try every feature free for {trialDays} days",
+    "trialNoticeBody": "The trial starts after onboarding, includes one active trading account, and requires no card. Your data is retained after the trial ends.",
+    "vatExclusiveNotice": "Prices exclude {rate}% VAT."
   },
   "faq": {
     "eyebrow": "Questions",
@@ -255,7 +262,7 @@
       },
       "freeTrial": {
         "question": "Is the free trial available now?",
-        "answer": "Not yet. A {trialDays}-day trial with no card required is planned. Authentication and payment processing are not connected, so no trial can start today."
+        "answer": "Yes. Your {trialDays}-day full-feature trial starts after onboarding, includes one active trading account, and requires no card. Your data is retained after it ends."
       },
       "mobile": {
         "question": "Can I use it on my phone?",
@@ -272,7 +279,7 @@
     "description": "A meaningful sample of honestly recorded trades can separate a strategy problem from an execution problem.",
     "ctaPrimary": "Sign up",
     "ctaSecondary": "Explore the demo first",
-    "trialNote": "Planned {trialDays}-day trial · no card required"
+    "trialNote": "{trialDays}-day full-feature trial · no card required"
   },
   "demoData": {
     "badge": "Demo data",
@@ -453,7 +460,7 @@
   },
   "settings": {
     "title": "Settings",
-    "description": "Appearance works today. Everything else is a preview of the surface.",
+    "description": "Manage appearance, language, profile details and your workspace subscription.",
     "appearance": {
       "title": "Appearance",
       "description": "This setting is live and persists in this browser.",
@@ -491,12 +498,23 @@
     },
     "subscription": {
       "title": "Subscription",
-      "description": "No payment provider is connected to this product.",
-      "planShown": "Plan shown",
+      "description": "Your current workspace subscription summary.",
+      "planShown": "Current plan",
       "tradingAccounts": "Trading accounts",
-      "trialNotStarted": "{trialDays}-day trial · not started",
-      "note": "Prices have not been set and nothing can be purchased. Billing arrives in a later release.",
-      "seePlans": "See the plans"
+      "trial": "Free trial",
+      "unavailable": "Unavailable",
+      "status": {
+        "trialing": "Trial active",
+        "active": "Active",
+        "past_due": "Past due",
+        "expired": "Expired",
+        "canceled": "Canceled"
+      },
+      "note": "See full lifecycle, usage, and upgrade details on the plan page.",
+      "seePlans": "Manage plan",
+      "billingHistory": "Billing history",
+      "pendingDowngrade": "Downgrade to {plan} is scheduled for {date}.",
+      "cancellationScheduled": "Cancellation is scheduled for {date}."
     }
   },
   "onboarding": {
@@ -589,9 +607,14 @@
       "archived": "An archived account cannot be made active. Restore it first.",
       "last_account": "You cannot archive your last trading account. Create another trading account first.",
       "trial_expired": "Your trial has expired. Upgrade your plan to create or restore trading accounts.",
+      "subscription_expired": "Your paid access period has ended. Renew your subscription to make changes.",
+      "subscription_past_due": "Your subscription payment is past due. Recover the subscription to make changes.",
       "subscription_canceled": "Your subscription has been canceled. Choose a plan to create or restore trading accounts.",
+      "malformed_entitlement": "We couldn't verify this workspace's subscription state. Please contact support.",
       "account_limit_reached": "You've used your plan's active trading account limit. Additional accounts require the Trader or Professional plan.",
       "workspace_over_limit": "This workspace has more active trading accounts than its plan allows. Archive an account, or upgrade to Trader or Professional, before creating or restoring another.",
+      "read_only_workspace": "This workspace is read-only. Restore valid subscription access before making changes.",
+      "over_limit_workspace": "This workspace is over its active-account limit. Archive an active account before making other changes.",
       "entitlement_unavailable": "We couldn't check this workspace's plan right now. Please try again in a moment.",
       "unknown_plan": "This workspace's plan could not be recognized. Please contact support."
     },
@@ -641,28 +664,204 @@
       "currentPlanLabel": "Current plan",
       "statusTrialing": "Trial active",
       "statusActive": "Active",
+      "statusPastDue": "Past due",
       "statusExpired": "Expired",
       "statusCanceled": "Canceled",
       "trialEndsLabel": "Trial ends",
       "usageLabel": "Account usage",
+      "currentHeading": "Current subscription",
+      "trialLabel": "Free trial",
+      "accessModeLabel": "Workspace access",
+      "accessMode": {
+        "writable": "Writable",
+        "over_limit": "Over account limit",
+        "read_only": "Read only"
+      },
+      "billingCurrencyLabel": "Billing currency",
+      "billingIntervalLabel": "Billing interval",
+      "monthly": "Monthly",
+      "periodEndsLabel": "Paid period ends",
+      "cancellationLabel": "Cancellation",
+      "cancellationScheduled": "Scheduled at period end",
+      "notScheduled": "Not scheduled",
+      "overLimitBadge": "Over limit",
+      "pendingDowngrade": "Downgrade to {plan} is scheduled for {date}.",
+      "pastDueCheckoutBlocked": "Checkout is unavailable while this subscription is past due.",
+      "displayCurrency": "Prices shown in {currency}. Active paid subscriptions keep their current currency.",
       "plansHeading": "Available plans",
       "accountAllowance": "{count} trading accounts",
       "identicalFeaturesNote": "All plans include the same features and analytics. Plans differ only by how many active trading accounts you can keep.",
-      "paymentNotConnected": "Online payment is not connected yet.",
-      "comingSoon": "Coming soon",
-      "currentPlanBadge": "Your plan"
+      "currentPlanBadge": "Your plan",
+      "upgrade": "Upgrade",
+      "choosePlan": "Choose plan",
+      "checkoutUnavailable": "Checkout unavailable",
+      "notAnUpgrade": "Not an upgrade",
+      "billingHistory": "View billing history",
+      "unavailable": "Subscription information is unavailable. No billing action can be started."
+    }
+  },
+  "subscriptionManagement": {
+    "title": "Manage subscription",
+    "description": "Schedule changes to your monthly plan. Upgrades remain available through mock checkout.",
+    "blocked": {
+      "past_due": "Subscription changes and checkout are unavailable while payment is past due. Contact support for payment recovery.",
+      "malformed": "This subscription cannot be managed safely. Contact support before making a billing change.",
+      "checkout_in_progress": "Finish or reconcile the current mock checkout before changing this subscription."
+    },
+    "overLimitTitle": "This workspace is over its active-account limit",
+    "overLimitBody": "Archive accounts to restore write access, or upgrade to a plan with a larger allowance. Account selection remains available so retained history and analytics can still be inspected.",
+    "pendingTitle": "Downgrade scheduled",
+    "pendingBody": "Your plan will change to {plan} on {date}.",
+    "pendingOverLimit": "Current usage exceeds the future limit. No account will be deleted or archived automatically.",
+    "undoDowngrade": "Cancel scheduled downgrade",
+    "undoDowngradeTitle": "Keep the current plan?",
+    "undoDowngradeBody": "The scheduled downgrade will be removed and your current plan will continue.",
+    "confirmUndoDowngrade": "Keep current plan",
+    "downgradeTo": "Downgrade to {plan}",
+    "effectiveAt": "Effective {date}",
+    "currentPlan": "Current plan",
+    "currentUsage": "Active accounts now",
+    "futureLimit": "Future active-account limit",
+    "willBeOverLimit": "This workspace will be over limit when the downgrade takes effect.",
+    "scheduleDowngrade": "Schedule downgrade",
+    "confirmDowngradeTitle": "Schedule downgrade to {plan}?",
+    "confirmDowngradeBody": "Your current plan and allowance remain active until {date}. The {plan} allowance starts at that boundary.",
+    "noImmediatePriceChange": "There is no immediate price adjustment, refund or proration.",
+    "noAutomaticArchive": "Trading accounts are never deleted or automatically archived.",
+    "dataRetained": "All trading data, history and analytics remain available.",
+    "selectionRemainsAvailable": "You can continue switching accounts to inspect retained history.",
+    "overLimitAfterDowngrade": "Ordinary writes will be blocked while usage exceeds the future limit. Archive accounts manually to return to compliance.",
+    "confirmDowngrade": "Confirm downgrade",
+    "cancelTitle": "Schedule cancellation?",
+    "cancelBody": "Cancellation takes effect at the end of the current paid period on {date}.",
+    "cancelKeepsAccess": "Paid access remains active through {date}.",
+    "cancelReadOnly": "After the boundary, the workspace becomes read-only.",
+    "cancelDataRetained": "No data is deleted; historical data and existing exports remain accessible.",
+    "cancelClearsDowngrade": "Scheduling cancellation removes the pending downgrade because the subscription is ending.",
+    "scheduleCancellation": "Schedule cancellation",
+    "confirmCancellation": "Confirm cancellation",
+    "cancellationScheduledTitle": "Cancellation scheduled",
+    "cancellationScheduledBody": "Paid access continues until {date}. After that, the workspace becomes read-only and retained data remains accessible.",
+    "undoCancellation": "Reverse cancellation",
+    "undoCancellationTitle": "Continue this subscription?",
+    "undoCancellationBody": "Cancellation will be removed. An older canceled downgrade will not be restored.",
+    "confirmUndoCancellation": "Continue subscription",
+    "close": "Go back",
+    "saving": "Saving subscription changeâ€¦",
+    "success": "Subscription change saved.",
+    "errors": {
+      "validation": "This subscription request is invalid. Refresh and try again.",
+      "unauthenticated": "Sign in again before managing this subscription.",
+      "forbidden": "This subscription is not available for the current workspace.",
+      "downgrade_not_allowed": "This downgrade is no longer allowed. Refresh the current subscription state.",
+      "cancellation_not_allowed": "This cancellation change is no longer allowed.",
+      "boundary_passed": "The current billing-period boundary has already passed. Refresh to see the effective state.",
+      "checkout_in_progress": "Finish or reconcile the current mock checkout before changing this subscription.",
+      "malformed_subscription": "This subscription cannot be changed safely. Contact support.",
+      "past_due": "Subscription changes are unavailable while payment is past due.",
+      "unexpected": "The subscription could not be changed. No data was deleted."
+    }
+  },
+  "billingHistory": {
+    "title": "Billing history",
+    "description": "Immutable mock-payment snapshots for this workspace.",
+    "emptyTitle": "No billing transactions yet",
+    "emptyBody": "Completed and attempted mock checkouts will appear here.",
+    "mockPayment": "Mock payment",
+    "createdAt": "Created",
+    "finishedAt": "Finished",
+    "plan": "Plan",
+    "interval": "Billing interval",
+    "monthly": "Monthly",
+    "subtotal": "Subtotal",
+    "vat": "VAT {rate}%",
+    "total": "Total",
+    "statusLabel": "Status",
+    "status": {
+      "created": "Mock payment created",
+      "pending": "Mock payment pending",
+      "processing": "Mock payment processing",
+      "succeeded": "Mock payment completed",
+      "failed": "Mock payment failed",
+      "canceled": "Mock payment canceled"
+    },
+    "failure": {
+      "payment_failed": "The mock payment was not completed. No provider details are shown."
+    },
+    "resume": "Return to payment status",
+    "previous": "Previous page",
+    "next": "Next page",
+    "page": "Page {page} of {totalPages}",
+    "backToPlan": "Back to plan management"
+  },
+  "checkout": {
+    "title": "Mock checkout",
+    "description": "Review the trusted server quote and confirm a mock payment. No real charge will occur.",
+    "invalidSelection": "Choose a supported plan and currency from the plan page.",
+    "summaryTitle": "Subscription summary",
+    "planLabel": "Plan",
+    "allowanceLabel": "Active-account allowance",
+    "allowanceValue": "{count, plural, one {# active trading account} other {# active trading accounts}}",
+    "intervalLabel": "Billing interval",
+    "monthly": "Monthly",
+    "currencyLabel": "Currency",
+    "currentContextLabel": "Current workspace state",
+    "currentPlanContext": "{plan} · {status}",
+    "context": {
+      "trialing": "Trial active",
+      "active": "Active subscription",
+      "past_due": "Past due",
+      "expired": "Expired",
+      "canceled": "Canceled",
+      "unavailable": "Unavailable"
+    },
+    "mockPaymentTitle": "Mock payment",
+    "mockPaymentBody": "This test gateway does not collect card or bank details, and no real charge will occur.",
+    "unavailable": {
+      "title": "Payments are not available yet",
+      "body": "This environment does not have a payment provider connected, so card payments cannot be started here. Your plan and billing history remain available, and nothing was charged.",
+      "viewBilling": "View billing history"
+    },
+    "price": "Price",
+    "subtotal": "Subtotal",
+    "vat": "VAT {rate}%",
+    "total": "Total",
+    "confirm": "Confirm mock subscription",
+    "submitting": "Submitting mock payment…",
+    "checkStatus": "Check payment status",
+    "newAttempt": "Start a new mock attempt",
+    "continueToPlan": "View current plan",
+    "backToPlans": "Back to plans",
+    "status": {
+      "created": "The mock checkout was created.",
+      "pending": "The mock payment is pending.",
+      "processing": "The mock payment is processing. No subscription change has occurred yet.",
+      "succeeded": "Mock payment completed for {plan}: {amount}. Your plan is now updated.",
+      "failed": "The mock payment failed. Your subscription was not changed.",
+      "canceled": "The mock payment was canceled. Your subscription was not changed."
+    },
+    "errors": {
+      "validation": "The checkout request is invalid. Return to plans and try again.",
+      "unauthenticated": "Sign in again to continue checkout.",
+      "forbidden": "This checkout is not available for your current workspace.",
+      "not_eligible": "This plan change is not eligible for checkout.",
+      "conflict": "This checkout attempt conflicts with an earlier request. Start a new attempt.",
+      "already_processing": "Another checkout is already processing. Resume that attempt before starting another.",
+      "payment_unavailable": "The mock payment service is temporarily unavailable. Your subscription was not changed.",
+      "payment_provider_unavailable": "Payments are not available in this environment right now. Your subscription was not changed.",
+      "unexpected": "Checkout could not be completed. Your subscription was not changed."
     }
   },
   "auth": {
     "loginTitle": "Log in",
     "registerTitle": "Start your free trial",
     "trialPoints": [
-      "Planned {trialDays}-day trial",
+      "{trialDays}-day full-feature trial",
       "No card required",
       "Every plan feature unlocked during the trial",
       "Manual journal — no broker connection needed"
     ],
-    "paymentNote": "Payment processing is not connected to this product. When billing ships, prices will be published before anything can be charged.",
+    "paymentNote": "The trial starts after onboarding, requires no card, and retains your data after expiry.",
     "continueWithGoogle": "Continue with Google",
     "googleNotConnected": "Google sign-in is not available right now.",
     "or": "or",
@@ -744,7 +943,7 @@
   },
   "pricingPage": {
     "title": "One feature set. Three account allowances.",
-    "description": "Every plan includes the exact same features and analytics — they differ only in how many active trading accounts you can keep. No payment provider is connected yet, so nothing on this page can be purchased. A {trialDays}-day full-feature trial with one active trading account is planned, with no card.",
+    "description": "Every plan includes the exact same features and analytics — they differ only in how many active trading accounts you can keep. Start with a {trialDays}-day full-feature trial with one active account and no card required.",
     "sectionTitle": "Choose by how many accounts you trade"
   },
   "notFound": {

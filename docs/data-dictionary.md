@@ -1,10 +1,10 @@
 # Data Dictionary
 
-**Status:** Phase 02 tables are real, migrated, and documented below under [Phase 02 — Auth and tenancy](#phase-02--auth-and-tenancy-implemented). Everything under Phase 04 onward remains **planned schema** — not yet implemented — recorded here so field meanings are agreed before implementation, and updated as each phase lands its migration.
+**Status:** Phase 03 and Phase 04 — Billing & Checkout are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
-> **Reading numeric columns.** Financial `numeric` and `bigint` columns stay strings; coercing them to JS numbers would reintroduce floating-point loss. The sole Phase 2 exception is Better Auth's `rate_limits.last_request`: it is SQL `bigint` with Drizzle `mode: 'number'` because the installed library consumes epoch milliseconds as a number, still safely below `Number.MAX_SAFE_INTEGER`. A dedicated financial `numeric` contract test lands with the first product column in Phase 07.
+> **Reading numeric columns.** Financial `numeric` columns stay strings. Billing money uses PostgreSQL `BIGINT` with Drizzle `mode: 'bigint'`, so application values are JavaScript `bigint` and are never coerced to `number`. The sole Phase 2 exception is Better Auth's `rate_limits.last_request`: it is SQL `bigint` with Drizzle `mode: 'number'` because the installed library consumes epoch milliseconds as a number, still safely below `Number.MAX_SAFE_INTEGER`.
 
 ## Conventions
 
@@ -102,42 +102,49 @@ Append-only by construction: `src/server/services/audit-log.ts` exposes only `in
 
 ---
 
-## Phase 3C — Trial entitlements and account limits (implemented, ahead of Phase 04)
+## Phase 3C / Phase 04C — Workspace entitlements (implemented)
 
-Migrations: [`drizzle/0003_add_workspace_entitlements.sql`](../drizzle/0003_add_workspace_entitlements.sql) (table + trial backfill for already-onboarded workspaces), [`drizzle/0004_rename_plan_keys_trader_professional.sql`](../drizzle/0004_rename_plan_keys_trader_professional.sql) (renamed a since-retired `pro`/`elite` draft to the locked `trader`/`professional` keys). Plan registry: [`src/config/plans.ts`](../src/config/plans.ts). Pure resolution logic: [`src/lib/entitlements/resolve.ts`](../src/lib/entitlements/resolve.ts).
+Migrations: [`drizzle/0003_add_workspace_entitlements.sql`](../drizzle/0003_add_workspace_entitlements.sql) (table + original trial backfill), [`drizzle/0004_rename_plan_keys_trader_professional.sql`](../drizzle/0004_rename_plan_keys_trader_professional.sql) (locked plan keys), and [`drizzle/0005_extend_workspace_entitlements_for_billing.sql`](../drizzle/0005_extend_workspace_entitlements_for_billing.sql) (additive subscription fields and constraints).
 
 ### `workspace_entitlements` (application-owned)
 
-The one authoritative source of a workspace's trial/subscription state — narrower than the `subscriptions` table Phase 04 originally planned below (no payment-provider identifiers yet; those arrive when a real provider is wired in).
+The one authoritative source of a workspace's trial/subscription state. Phase 04C extends this table rather than creating a competing `subscriptions` table. New paid-billing fields remain nullable for historical pre-billing rows.
 
-| Column                   | Type        | Notes                                                                           |
-| ------------------------ | ----------- | ------------------------------------------------------------------------------- |
-| `workspace_id`           | uuid        | Unique (`workspace_entitlements_workspace_idx`) — at most one row per workspace |
-| `status`                 | text, CHECK | `trialing` \| `active` \| `expired` \| `canceled`                               |
-| `plan_key`               | text, CHECK | `NULL` (no plan selected yet) \| `starter` \| `trader` \| `professional`        |
-| `trial_started_at`       | timestamptz | `NULL` until onboarding completes                                               |
-| `trial_ends_at`          | timestamptz | Evaluated on read (`now >= trial_ends_at`) — expiry needs no scheduler          |
-| `current_period_ends_at` | timestamptz | `NULL` until a real billing period exists (Phase 04+)                           |
+| Column                                                                | Type                  | Notes                                                                             |
+| --------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------- |
+| `workspace_id`                                                        | uuid                  | Unique (`workspace_entitlements_workspace_idx`) — at most one row per workspace   |
+| `status`                                                              | text, CHECK           | `trialing` \| `active` \| `past_due` \| `canceled` \| `expired`                   |
+| `plan_key` / `pending_plan_key`                                       | text, CHECK           | Nullable; `starter` \| `trader` \| `professional`                                 |
+| `trial_started_at` / `trial_ends_at`                                  | timestamptz           | Original trial timestamps; never restarted or extended by the Phase 04C migration |
+| `current_period_started_at` / `_ends_at`                              | timestamptz           | Nullable; start cannot be after end                                               |
+| `cancel_at_period_end` / `canceled_at`                                | boolean / timestamptz | Flag defaults false; true requires a period end                                   |
+| `billing_currency` / `billing_interval`                               | text, CHECK           | Nullable; `THB` or `USD`, and `monthly` only                                      |
+| `pending_plan_effective_at`                                           | timestamptz           | Must be present exactly when `pending_plan_key` is present                        |
+| `provider_kind` / `provider_customer_id` / `provider_subscription_id` | text                  | Nullable; no provider behavior is implemented by this schema phase                |
 
-**Locked plan decision:** the trial grants exactly **1** active trading account for **7 days** with every feature unlocked — an explicit constant (`TRIAL_ACCOUNT_LIMIT`), never derived from any paid plan's limit. Paid plans gate exclusively on active (non-archived) trading-account count and otherwise share an identical feature set: Starter (1 account, ฿149/$5 per month), Trader (5 accounts, ฿299/$9 per month), Professional (15 accounts, ฿499/$15 per month). Prices are tax-exclusive; VAT collection is disabled (not yet VAT-registered).
+**Locked plan decision:** the trial grants exactly **1** active trading account for **7 days** with every feature unlocked — an explicit constant (`TRIAL_ACCOUNT_LIMIT`), never derived from any paid plan's limit. Paid plans gate exclusively on active (non-archived) trading-account count and otherwise share identical features and analytics: Starter (1 account, THB 149/USD 5 per month), Trader (5 accounts, THB 299/USD 9), Professional (15 accounts, THB 499/USD 15). Every paid plan includes unlimited strategies, setups, trades, and trade history. Archived accounts do not count; create and restore enforce the limit server-side. VAT collection is disabled at launch because the business is not initially VAT registered.
 
 ---
 
-## Phase 04 — Billing
+## Phase 04C — Billing transaction snapshots (implemented schema)
 
-### `subscriptions`
+Migration: [`drizzle/0006_create_billing_transaction_snapshots.sql`](../drizzle/0006_create_billing_transaction_snapshots.sql).
 
-Real payment-provider integration, not yet implemented. `workspace_entitlements` (above) already owns `status`/`plan`/trial-date tracking for Phase 3C's server-side enforcement; this table is where provider-specific fields (customer ID, subscription ID, billing period) land once a provider is wired in — likely widening `workspace_entitlements` rather than a fully separate table, but not yet decided.
+### `billing_transactions` (application-owned)
 
-| Column                 | Type        | Notes                                                           |
-| ---------------------- | ----------- | --------------------------------------------------------------- |
-| `workspace_id`         | uuid        | Unique — one subscription per workspace                         |
-| `plan`                 | enum        | `starter` \| `trader` \| `professional`                         |
-| `status`               | enum        | `trialing` \| `active` \| `past_due` \| `canceled` \| `expired` |
-| `trial_ends_at`        | timestamptz | Evaluated on read, so expiry needs no scheduler                 |
-| `current_period_start` | timestamptz |                                                                 |
-| `current_period_end`   | timestamptz |                                                                 |
-| `cancel_at_period_end` | boolean     |                                                                 |
+One workspace-owned row per billing attempt. No historical rows are backfilled. The composite unique index `(workspace_id, idempotency_key)` scopes idempotency to a workspace; non-null provider checkout and payment IDs are each unique.
+
+| Group                  | Columns                                                                                                                                                        | Notes                                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Identity               | `id`, `workspace_id`, `idempotency_key`                                                                                                                        | Workspace FK uses `ON DELETE RESTRICT`; a referenced workspace cannot be deleted                                        |
+| Commercial snapshot    | `plan_key`, `billing_currency`, `billing_interval`                                                                                                             | Locked plans, `THB`/`USD`, monthly only                                                                                 |
+| Money and tax snapshot | `subtotal_minor`, `vat_enabled`, `applied_vat_rate_basis_points`, `vat_amount_minor`, `total_minor`, `tax_mode`, `tax_jurisdiction`, `vat_registration_number` | Money is PostgreSQL `BIGINT` mapped to JS `bigint`; totals and disabled/exclusive VAT combinations are checked          |
+| Provider processing    | `provider_kind`, `provider_checkout_id`, `provider_payment_id`, `status`, `failure_code`                                                                       | Provider references are nullable; status supports `created`, `pending`, `processing`, `succeeded`, `failed`, `canceled` |
+| Lifecycle              | `created_at`, `updated_at`, `completed_at`, `failed_at`                                                                                                        | UTC `timestamptz`                                                                                                       |
+
+The migration installs a `BEFORE UPDATE` trigger that rejects changes to identity, plan, currency, interval, price, and tax snapshot fields. It permits future trusted services to update status, failure details, provider references, and lifecycle timestamps. Price and VAT calculations remain in the Phase 04B domain; PostgreSQL validates stored consistency but does not calculate VAT.
+
+Billing snapshots are historical financial records and are never silently cascade-deleted with a workspace. They remain intact, and workspace deletion is rejected, until a future explicit financial-record retention or anonymization process safely handles them.
 
 ---
 

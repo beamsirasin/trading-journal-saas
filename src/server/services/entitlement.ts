@@ -7,7 +7,7 @@ import {
   resolveEffectiveEntitlement,
   type EffectiveEntitlement,
   type EntitlementRecord,
-  type EntitlementStatus,
+  type PersistedEntitlementStatus,
   type PlanKey,
 } from '@/lib/entitlements/resolve';
 import { systemClock, type Clock } from '@/lib/time';
@@ -33,11 +33,18 @@ type EntitlementRow = typeof workspaceEntitlements.$inferSelect;
 function toRecord(row: EntitlementRow): EntitlementRecord {
   return {
     workspaceId: row.workspaceId,
-    status: row.status as EntitlementStatus,
+    status: row.status as PersistedEntitlementStatus,
     planKey: row.planKey as PlanKey | null,
     trialStartedAt: row.trialStartedAt,
     trialEndsAt: row.trialEndsAt,
+    currentPeriodStartedAt: row.currentPeriodStartedAt,
     currentPeriodEndsAt: row.currentPeriodEndsAt,
+    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+    canceledAt: row.canceledAt,
+    billingCurrency: row.billingCurrency as EntitlementRecord['billingCurrency'],
+    billingInterval: row.billingInterval as EntitlementRecord['billingInterval'],
+    pendingPlanKey: row.pendingPlanKey as PlanKey | null,
+    pendingPlanEffectiveAt: row.pendingPlanEffectiveAt,
   };
 }
 

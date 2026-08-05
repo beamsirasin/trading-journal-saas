@@ -36,6 +36,20 @@
       "when": 1785797502829,
       "tag": "0004_rename_plan_keys_trader_professional",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785879301036,
+      "tag": "0005_extend_workspace_entitlements_for_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785879357032,
+      "tag": "0006_create_billing_transaction_snapshots",
+      "breakpoints": true
     }
   ]
 }

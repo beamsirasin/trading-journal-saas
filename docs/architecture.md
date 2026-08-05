@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 02 (`phase/02-auth-tenancy`, not yet merged to `main`). Authentication, database-backed sessions, and the tenant/workspace foundation are real. Directories still marked _(planned)_ do not exist yet — they are recorded here so the shape is agreed before code fills it.
+**Status:** Phase 03 is officially complete on `main`; Phase 04 — Billing & Checkout is next. Authentication, database-backed sessions, tenant/workspace isolation, onboarding, trading accounts, workspace entitlements, and server-side create/restore limits are real. Directories still marked _(planned)_ remain future work.
 
 ## 1. Shape
 
@@ -17,7 +17,7 @@ Next.js (App Router)
   └── lib/          pure logic: calc (planned), money, time, auth (Better Auth)
                           │
                           ▼
-                    PostgreSQL (Drizzle) — Better Auth tables + workspaces/preferences/audit
+                    PostgreSQL (Drizzle) — auth + workspaces/accounts/entitlements/audit
 ```
 
 ## 2. Directory layout
@@ -57,7 +57,7 @@ src/
     env.schema.ts         Pure Zod schemas — testable
     env.server.ts         server-only; build fails if imported client-side
     env.client.ts         NEXT_PUBLIC_* only
-    plans.ts              Plan definitions — PRESENTATION ONLY, not entitlements
+    plans.ts              Authoritative plan registry — shared by presentation and entitlements
     mistakes.ts           Mistake taxonomy and weights       (planned)
   hooks/
     use-is-hydrated.ts    SSR-safe hydration detection
@@ -77,8 +77,8 @@ src/
       dal.ts               Server-only session/workspace authorization DAL — the real boundary
     db/
       client.ts           Drizzle handle, connects lazily
-      schema/             auth.ts, workspaces.ts, user-preferences.ts, audit-logs.ts
-      queries/            Workspace-scoped query helpers     (planned — Phase 03+)
+      schema/             auth, workspaces, preferences, audit, trading accounts, entitlements
+      queries/            Workspace-scoped query helpers     (planned for later product tables)
     actions/              Server actions — guarded, validated. e.g. preferences.ts
     services/             Business logic, tenant-aware. e.g. workspace-provisioning.ts, audit-log.ts
 e2e/                      Playwright specs (+ support/ — global-setup fixtures for auth specs)
@@ -97,13 +97,13 @@ drizzle/                  Generated SQL migrations — 0000_init_auth_tenancy.sq
 
 **`lib/demo/` contains no arithmetic.** It holds static presentation fixtures for the Phase 01 prototype. A formula written there to make a demo surface move would be a second implementation of the calculation engine, outside `lib/calc/`, untested and free to disagree with the real one. It is deleted or reduced to test fixtures once Phase 09 wires real data in. See [ADR 0006](decisions/0006-design-system-and-demo-data.md).
 
-**`config/plans.ts` is presentation only.** It renders the pricing page. It is not an entitlement source, and no server check reads it — Phase 04 owns entitlements, evaluated server-side in the same transaction as the write they gate.
+**`config/plans.ts` is the authoritative paid-plan registry.** Presentation and server-side entitlement resolution share it so prices, plan keys, and 1/5/15 active-account allowances cannot drift. The trial's 1-account allowance remains a separate explicit constant. Phase 3C already enforces create/restore limits in the mutation transaction; Phase 04 adds billing and checkout without creating a second entitlement source.
 
 **Infrastructure sits behind adapters** — auth provider, email sender, payment provider. Swapping Neon for a VPS Postgres, or the mock payment provider for a real one, must not touch feature code.
 
 **`src/i18n/` is the only place that imports `next/navigation` or `next/link` directly.** Every other file imports `Link`, `redirect`, `usePathname`, `useRouter` from `@/i18n/navigation` instead — that layer is what prepends the locale segment to a route, so bypassing it produces a link with no locale prefix. See [ADR 0007](decisions/0007-i18n-architecture.md).
 
-## 4. Request flow for a mutation _(planned)_
+## 4. Request flow for a mutation _(implemented for accounts; extended by later phases)_
 
 ```
 Client form (React Hook Form + Zod, client-side UX validation only)
@@ -140,7 +140,7 @@ Five checks on every protected read and write:
 4. Record ownership / workspace scope
 5. Subscription entitlement, where the action consumes a limited resource
 
-Checks 1–3 are implemented today (`src/server/auth/dal.ts`); 4–5 apply once Phase 03+ introduces workspace-scoped product records and entitlements.
+Checks 1–5 apply today to trading-account creation/restoration: workspace and record scope come from server-resolved context, and the active-account entitlement is checked in the same locked transaction as the mutation. Archived accounts do not consume the allowance.
 
 Every new user is provisioned exactly one personal workspace via `ensurePersonalWorkspace()` (`src/server/services/workspace-provisioning.ts`) — idempotent, safe under concurrency (the database's unique constraints do the real work, not a check-then-insert), called both from a Better Auth `databaseHooks.user.create.after` hook and, defensively, from `getActiveWorkspaceContext()` itself, in case the hook ever fails independently.
 
