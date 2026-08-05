@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Status:** Phase 03 and Phase 04 — Billing & Checkout are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only.
+**Status:** Phase 03, Phase 04 — Billing & Checkout, and Phase 05 — Onboarding & Trading Accounts are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only. Phase 05 (see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md)) made no schema change either — it reviewed and polished the existing `trading_accounts` presentation, not the table itself.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
@@ -150,7 +150,7 @@ Billing snapshots are historical financial records and are never silently cascad
 
 ## Phase 3A/3B — Trading accounts (implemented)
 
-Migrations: [`drizzle/0001_fantastic_jigsaw.sql`](../drizzle/0001_fantastic_jigsaw.sql) (table, `onboarding_completed_at` on `workspaces`, `active_trading_account_id` on `user_preferences`) and [`drizzle/0002_tidy_union_jack.sql`](../drizzle/0002_tidy_union_jack.sql) (`mutation_key` idempotency column). Delivered in Phase 3A (first account, onboarding) and Phase 3B (full management: create/edit/archive/restore/switch). The scope originally planned for a later "Phase 05" landed here; see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md) for what genuinely remains.
+Migrations: [`drizzle/0001_fantastic_jigsaw.sql`](../drizzle/0001_fantastic_jigsaw.sql) (table, `onboarding_completed_at` on `workspaces`, `active_trading_account_id` on `user_preferences`) and [`drizzle/0002_tidy_union_jack.sql`](../drizzle/0002_tidy_union_jack.sql) (`mutation_key` idempotency column). Delivered in Phase 3A (first account, onboarding) and Phase 3B (full management: create/edit/archive/restore/switch). The scope originally planned for a later "Phase 05" landed here; Phase 05 (now complete) reviewed and polished it — see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md).
 
 ### `trading_accounts` (application-owned)
 

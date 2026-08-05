@@ -2,7 +2,7 @@
 
 **Depends on:** 04 · **Blocks:** 06, 07
 
-**Status:** The onboarding and trading-account core was delivered early, in Phase 3A–3C, and integrated with Phase 04's billing/entitlement work. This document was written before that implementation landed and described a schema, wizard shape, and file layout that were never built as originally planned. Phase 05B (documentation reconciliation) rewrote this document to match what actually shipped. What remains under the Phase 05 heading is listed in [Remaining Phase 05 work](#remaining-phase-05-work) below — review and polish, not a new build.
+**Status:** ✅ **Complete.** The onboarding and trading-account core was delivered early, in Phase 3A–3C, and integrated with Phase 04's billing/entitlement work. This document was written before that implementation landed and described a schema, wizard shape, and file layout that were never built as originally planned. Phase 05 reviewed and polished that shipped implementation across four slices — see [Phase 05 closeout](#phase-05-closeout) below.
 
 ## Goal
 
@@ -108,13 +108,14 @@ Only active (non-archived) trading accounts count toward the allowance. Starter 
 
 ---
 
-## Remaining Phase 05 work
+## Phase 05 closeout
 
-- **Documentation reconciliation** — this document and `docs/data-dictionary.md` (Phase 05B, in progress/complete as of this revision).
-- **Archived-account management UX polish** — e.g. the archived-account card currently shows less detail (mode, currency only) than the active-account card (which also shows broker, platform, starting balance, risk fields); bring them to parity.
-- **Clearer archive-versus-delete messaging** — confirm the product copy (archive dialog, empty states) unambiguously communicates that archiving is reversible and that there is no separate delete, so a user never expects data loss that cannot happen or looks for a delete option that does not exist.
-- **Responsive/accessibility regression review** — a focused pass confirming the existing onboarding/account-management coverage (already substantial — see the e2e suites) has no gaps introduced since Phase 3B, rather than a from-scratch audit.
-- **Final closeout** — once the above land, a Phase 05 closeout task mirroring Phase 04's 04H-C: full regression run and an explicit close/no-close recommendation.
+Phase 05 reviewed and polished the onboarding/trading-account core delivered early in Phase 3A–3C, rather than building it from scratch, across four slices:
+
+- **05A — Audit.** Confirmed the shipped Phase 3A–3C/04 implementation against this document's original (pre-implementation) brief and CLAUDE.md.
+- **05B — Documentation reconciliation.** Rewrote this document and `docs/data-dictionary.md` to match what actually shipped, replacing the originally-planned (never-built) schema and wizard description this document once carried.
+- **05C — Archived-account UX and account-management polish.** Brought the archived-account card to full field parity with the active-account card (broker, platform, mode, currency, starting balance, timezone, risk per trade, maximum daily loss); rewrote archive-confirmation copy to state unambiguously that archiving is reversible and preserves data, with no delete action, no `deleted_at` column, and none planned; added usage/limit detail (and a safety reassurance) to the restore-blocked-by-limit explanation; renamed the per-card "Active" badge to "Current account" / "บัญชีที่กำลังใช้งาน" so it stops colliding with "active = non-archived, counts toward the plan"; and disabled the Edit action (with an accessible reason) in the `read_only`/`over_limit` access modes it was already server-rejected in, while Archive correctly stays available under `over_limit` as the remediation path.
+- **05D — Full regression and closeout.** Ran the complete unit/component suite, the complete real-PostgreSQL integration suite, and one complete production-build E2E suite against a guarded disposable database, plus a stale-reference scan across docs and code. All green, with no active defects found — see the Phase 05D verification report for exact counts.
 
 ## Deferred
 
@@ -141,10 +142,10 @@ Strategies, trades, balance reconciliation, deposits/withdrawals, multi-currency
 - [x] Starting balance and risk/loss percentages are stored as `NUMERIC` strings; no float anywhere in the path
 - [x] Loading, empty, error, and success states are present, responsive, and accessible for onboarding and account management
 - [x] Typecheck, lint, tests, and build pass
-- [ ] Archived-account management UX polish (parity with the active-account card) — see [Remaining Phase 05 work](#remaining-phase-05-work)
-- [ ] Archive-versus-delete messaging reviewed for clarity
-- [ ] Responsive/accessibility regression review completed
-- [ ] Final Phase 05 closeout run and recommendation
+- [x] Archived-account management UX polish (parity with the active-account card) — see [Phase 05 closeout](#phase-05-closeout)
+- [x] Archive-versus-delete messaging reviewed for clarity
+- [x] Responsive/accessibility regression review completed
+- [x] Final Phase 05 closeout run and recommendation
 
 Formally dropped from this list, not carried forward as outstanding: a resumable step-by-step wizard, a third "Trading style" onboarding step, currency-lock-after-first-trade, and conditional hard deletion — each is either re-scoped under [Deferred](#deferred) or not planned at all, and none blocks closing Phase 05.
 
