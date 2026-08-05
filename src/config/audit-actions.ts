@@ -26,6 +26,17 @@ export const AUDIT_ACTIONS = [
   'workspace.trial_started',
   'workspace.trial_expired',
   'workspace.entitlement_changed',
+  'subscription.activated',
+  'subscription.upgraded',
+  'subscription.downgrade_scheduled',
+  'subscription.downgrade_canceled',
+  'subscription.cancellation_scheduled',
+  'subscription.cancellation_canceled',
+  'subscription.past_due',
+  'subscription.recovered',
+  'subscription.expired',
+  'subscription.canceled',
+  'subscription.pending_plan_materialized',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

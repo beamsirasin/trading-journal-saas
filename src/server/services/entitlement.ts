@@ -37,7 +37,14 @@ function toRecord(row: EntitlementRow): EntitlementRecord {
     planKey: row.planKey as PlanKey | null,
     trialStartedAt: row.trialStartedAt,
     trialEndsAt: row.trialEndsAt,
+    currentPeriodStartedAt: row.currentPeriodStartedAt,
     currentPeriodEndsAt: row.currentPeriodEndsAt,
+    cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+    canceledAt: row.canceledAt,
+    billingCurrency: row.billingCurrency as EntitlementRecord['billingCurrency'],
+    billingInterval: row.billingInterval as EntitlementRecord['billingInterval'],
+    pendingPlanKey: row.pendingPlanKey as PlanKey | null,
+    pendingPlanEffectiveAt: row.pendingPlanEffectiveAt,
   };
 }
 

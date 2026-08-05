@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PLANS } from '@/config/plans';
 
 import {
+  authorizeWorkspaceMutation,
   computeTrialRemaining,
   resolveEffectiveEntitlement,
   resolveEntitlementGate,
@@ -19,7 +20,14 @@ function record(overrides: Partial<EntitlementRecord> = {}): EntitlementRecord {
     planKey: null,
     trialStartedAt: new Date('2026-06-08T12:00:00Z'),
     trialEndsAt: new Date('2026-06-15T12:00:00Z'),
-    currentPeriodEndsAt: null,
+    currentPeriodStartedAt: new Date('2026-06-01T00:00:00Z'),
+    currentPeriodEndsAt: new Date('2026-07-01T00:00:00Z'),
+    cancelAtPeriodEnd: false,
+    canceledAt: null,
+    billingCurrency: 'USD',
+    billingInterval: 'monthly',
+    pendingPlanKey: null,
+    pendingPlanEffectiveAt: null,
     ...overrides,
   };
 }
@@ -223,7 +231,151 @@ describe('resolveEffectiveEntitlement — past due', () => {
     expect(pastDue.effectiveStatus).toBe('canceled');
     expect(pastDue.canCreateAccount).toBe(false);
     expect(pastDue.canRestoreAccount).toBe(false);
-    expect(pastDue.blockReason).toBe('subscription_canceled');
+    expect(pastDue.accessMode).toBe('read_only');
+    expect(pastDue.blockReason).toBe('subscription_past_due');
+  });
+});
+
+describe('resolveEffectiveEntitlement — paid period boundaries', () => {
+  it('is writable one millisecond before period end and expired exactly at the end', () => {
+    const periodEnd = new Date('2026-07-01T00:00:00Z');
+    const paid = record({ status: 'active', planKey: 'trader', currentPeriodEndsAt: periodEnd });
+
+    const before = resolveEffectiveEntitlement(paid, 1, new Date(periodEnd.getTime() - 1));
+    expect(before.effectiveStatus).toBe('active');
+    expect(before.accessMode).toBe('writable');
+
+    const at = resolveEffectiveEntitlement(paid, 1, periodEnd);
+    expect(at.effectiveStatus).toBe('expired');
+    expect(at.accessMode).toBe('read_only');
+    expect(at.denialReason).toBe('subscription_expired');
+  });
+
+  it('keeps scheduled cancellation writable before the boundary and cancels exactly at it', () => {
+    const periodEnd = new Date('2026-07-01T00:00:00Z');
+    const paid = record({
+      status: 'active',
+      planKey: 'trader',
+      cancelAtPeriodEnd: true,
+      currentPeriodEndsAt: periodEnd,
+    });
+
+    expect(resolveEffectiveEntitlement(paid, 1, new Date(periodEnd.getTime() - 1)).accessMode).toBe(
+      'writable',
+    );
+    const at = resolveEffectiveEntitlement(paid, 1, periodEnd);
+    expect(at.effectiveStatus).toBe('canceled');
+    expect(at.denialReason).toBe('subscription_canceled');
+  });
+
+  it('fails closed for malformed active billing state', () => {
+    const malformed = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'trader', billingCurrency: null }),
+      1,
+      NOW,
+    );
+    expect(malformed.accessMode).toBe('read_only');
+    expect(malformed.denialReason).toBe('malformed_entitlement');
+  });
+});
+
+describe('resolveEffectiveEntitlement — pending downgrade', () => {
+  const effectiveAt = new Date('2026-06-20T00:00:00Z');
+  const pending = record({
+    status: 'active',
+    planKey: 'professional',
+    pendingPlanKey: 'starter',
+    pendingPlanEffectiveAt: effectiveAt,
+  });
+
+  it('uses the current plan before the boundary', () => {
+    const effective = resolveEffectiveEntitlement(pending, 3, new Date(effectiveAt.getTime() - 1));
+    expect(effective.effectivePlanKey).toBe('professional');
+    expect(effective.accountLimit).toBe(15);
+    expect(effective.pendingPlanDue).toBe(false);
+  });
+
+  it('uses the lower plan exactly at and after the boundary without a scheduler', () => {
+    for (const now of [effectiveAt, new Date(effectiveAt.getTime() + 1)]) {
+      const effective = resolveEffectiveEntitlement(pending, 3, now);
+      expect(effective.effectivePlanKey).toBe('starter');
+      expect(effective.accountLimit).toBe(1);
+      expect(effective.pendingPlanDue).toBe(true);
+      expect(effective.overLimit).toBe(true);
+      expect(effective.accessMode).toBe('over_limit');
+    }
+  });
+
+  it('reflects an immediate upgrade through the new current plan allowance', () => {
+    const upgraded = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'professional' }),
+      5,
+      NOW,
+    );
+    expect(upgraded.accountLimit).toBe(15);
+    expect(upgraded.remainingAccountSlots).toBe(10);
+  });
+});
+
+describe('workspace mutation access matrix', () => {
+  it('allows every operation while writable except create/restore at the exact limit', () => {
+    const below = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'trader' }),
+      4,
+      NOW,
+    );
+    for (const operation of [
+      'ordinary_write',
+      'create_trading_account',
+      'restore_trading_account',
+      'archive_trading_account',
+    ] as const) {
+      expect(authorizeWorkspaceMutation(below, operation)).toEqual({ allowed: true });
+    }
+
+    const atLimit = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'trader' }),
+      5,
+      NOW,
+    );
+    expect(atLimit.accessMode).toBe('writable');
+    expect(authorizeWorkspaceMutation(atLimit, 'ordinary_write')).toEqual({ allowed: true });
+    expect(authorizeWorkspaceMutation(atLimit, 'create_trading_account')).toEqual({
+      allowed: false,
+      code: 'account_limit_reached',
+    });
+  });
+
+  it('allows only archive while over limit', () => {
+    const over = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'starter' }),
+      2,
+      NOW,
+    );
+    expect(authorizeWorkspaceMutation(over, 'archive_trading_account')).toEqual({
+      allowed: true,
+    });
+    expect(authorizeWorkspaceMutation(over, 'ordinary_write')).toEqual({
+      allowed: false,
+      code: 'over_limit_workspace',
+    });
+    expect(authorizeWorkspaceMutation(over, 'restore_trading_account')).toEqual({
+      allowed: false,
+      code: 'workspace_over_limit',
+    });
+  });
+
+  it('blocks every operation when read-only or entitlement is missing', () => {
+    const expired = resolveEffectiveEntitlement(record(), 0, NOW);
+    for (const operation of [
+      'ordinary_write',
+      'create_trading_account',
+      'restore_trading_account',
+      'archive_trading_account',
+    ] as const) {
+      expect(authorizeWorkspaceMutation(expired, operation).allowed).toBe(false);
+      expect(authorizeWorkspaceMutation(null, operation).allowed).toBe(false);
+    }
   });
 });
 

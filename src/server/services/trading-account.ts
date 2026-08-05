@@ -2,13 +2,14 @@ import 'server-only';
 
 import { and, asc, eq } from 'drizzle-orm';
 
+import { assertWorkspaceMutationAllowed } from '@/lib/entitlements/resolve';
 import { systemClock, type Clock } from '@/lib/time';
 import type { OnboardingSubmitData } from '@/lib/trading-accounts/schema';
 import { getDb } from '@/server/db/client';
 import { tradingAccounts, userPreferences, workspaceMembers, workspaces } from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
-import { startTrialInTx } from './entitlement';
+import { lockAndResolveEntitlement, startTrialInTx } from './entitlement';
 
 export interface CompleteOnboardingResult {
   readonly accountId: string;
@@ -111,6 +112,11 @@ export async function completeOnboarding(
 
       if (resolvedAccount !== undefined) {
         if (preferredAccount === undefined) {
+          const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
+          assertWorkspaceMutationAllowed(
+            entitlement.ok ? entitlement.effective : null,
+            'ordinary_write',
+          );
           await tx
             .update(userPreferences)
             .set({ activeTradingAccountId: resolvedAccount.id })
@@ -118,6 +124,11 @@ export async function completeOnboarding(
         }
         return { accountId: resolvedAccount.id, alreadyCompleted: true };
       }
+      const entitlement = await lockAndResolveEntitlement(tx, workspaceId, clock);
+      assertWorkspaceMutationAllowed(
+        entitlement.ok ? entitlement.effective : null,
+        'ordinary_write',
+      );
       // Marked complete but genuinely no account exists in the workspace —
       // an inconsistent state no normal flow produces. Falls through to
       // create one rather than leaving the workspace permanently stuck.

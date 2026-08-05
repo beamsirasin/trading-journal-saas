@@ -41,6 +41,7 @@ vi.mock('@/lib/auth/server', () => ({
 }));
 
 const { getActiveTradingAccount } = await import('@/server/auth/dal');
+const { setActiveTradingAccountAction } = await import('@/server/actions/trading-accounts');
 const {
   archiveTradingAccount,
   createTradingAccount,
@@ -100,6 +101,10 @@ async function createWorkspaceWithOwner(db: ReturnType<typeof getTestDb>, ownerU
     workspaceId: workspace.id,
     status: 'active',
     planKey: 'professional',
+    billingCurrency: 'USD',
+    billingInterval: 'monthly',
+    currentPeriodStartedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    currentPeriodEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
   return workspace.id;
 }
@@ -413,6 +418,15 @@ describe('trading-account-management (real database)', () => {
   });
 
   describe('setActiveTradingAccount', () => {
+    it('denies an unauthenticated action caller', async () => {
+      currentSession = null;
+
+      await expect(setActiveTradingAccountAction(crypto.randomUUID())).resolves.toEqual({
+        ok: false,
+        code: 'unexpected',
+      });
+    });
+
     it('persists the change for the user/workspace', async () => {
       const db = getTestDb();
       const userId = await createUser(db, 'owner');
