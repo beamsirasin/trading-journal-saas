@@ -22,6 +22,17 @@ export interface AuditLogMetadata {
   readonly changedFields?: readonly string[];
   readonly previousActiveTradingAccountId?: string;
   readonly newActiveTradingAccountId?: string;
+  readonly billingTransactionId?: string;
+  readonly planKey?: string;
+  readonly currency?: string;
+  readonly subtotalMinor?: string;
+  readonly vatAmountMinor?: string;
+  readonly totalMinor?: string;
+  readonly providerKind?: string;
+  readonly providerCheckoutId?: string;
+  readonly providerPaymentId?: string;
+  readonly status?: string;
+  readonly failureCode?: string;
 }
 
 export interface AuditLogInput {

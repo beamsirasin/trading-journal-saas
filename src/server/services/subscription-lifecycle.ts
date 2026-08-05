@@ -58,8 +58,9 @@ export interface SchedulePlanDowngradeInput extends TrustedTransitionContext {
 
 export interface RecoverSubscriptionInput extends TrustedTransitionContext, TrustedPaidPeriod {}
 
-type EntitlementRow = typeof workspaceEntitlements.$inferSelect;
-type Executor = Pick<Database, 'select' | 'update' | 'insert'>;
+export type EntitlementRow = typeof workspaceEntitlements.$inferSelect;
+export type LifecycleExecutor = Pick<Database, 'select' | 'update' | 'insert'>;
+type Executor = LifecycleExecutor;
 
 function lifecycleError(
   code: SubscriptionLifecycleErrorCode,
@@ -177,47 +178,61 @@ export async function activatePaidSubscription(
 ): Promise<{ readonly changed: boolean }> {
   return getDb().transaction(async (tx) => {
     const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
-    const now = clock.now();
-    validatePlan(input.planKey);
-    validatePaidPeriod(input, now);
-
-    const exactRetry =
-      row.status === 'active' &&
-      row.planKey === input.planKey &&
-      row.billingCurrency === input.billingCurrency &&
-      row.billingInterval === input.billingInterval &&
-      row.currentPeriodStartedAt?.getTime() === input.periodStartedAt.getTime() &&
-      row.currentPeriodEndsAt?.getTime() === input.periodEndsAt.getTime();
-    if (exactRetry) return { changed: false };
-    if (row.status === 'active' || row.status === 'past_due') {
-      throw lifecycleError(
-        'invalid_lifecycle_transition',
-        'Use upgrade or recovery for an existing paid lifecycle',
-      );
-    }
-
-    await tx
-      .update(workspaceEntitlements)
-      .set({
-        status: 'active',
-        planKey: input.planKey,
-        currentPeriodStartedAt: input.periodStartedAt,
-        currentPeriodEndsAt: input.periodEndsAt,
-        billingCurrency: input.billingCurrency,
-        billingInterval: input.billingInterval,
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
-        pendingPlanKey: null,
-        pendingPlanEffectiveAt: null,
-        providerKind: input.providerKind ?? null,
-        providerCustomerId: input.providerCustomerId ?? null,
-        providerSubscriptionId: input.providerSubscriptionId ?? null,
-        updatedAt: now,
-      })
-      .where(eq(workspaceEntitlements.id, row.id));
-    await auditLifecycle(tx, input, 'subscription.activated');
-    return { changed: true };
+    return activatePaidSubscriptionInTransaction(tx, row, input, clock.now());
   });
+}
+
+/** Transaction-aware Phase 04D transition used by trusted payment finalization. */
+export async function activatePaidSubscriptionInTransaction(
+  tx: LifecycleExecutor,
+  row: EntitlementRow,
+  input: ActivatePaidSubscriptionInput,
+  now: Date,
+): Promise<{ readonly changed: boolean }> {
+  validatePlan(input.planKey);
+  validatePaidPeriod(input, now);
+
+  const exactRetry =
+    row.status === 'active' &&
+    row.planKey === input.planKey &&
+    row.billingCurrency === input.billingCurrency &&
+    row.billingInterval === input.billingInterval &&
+    row.currentPeriodStartedAt?.getTime() === input.periodStartedAt.getTime() &&
+    row.currentPeriodEndsAt?.getTime() === input.periodEndsAt.getTime();
+  if (exactRetry) return { changed: false };
+
+  const activePeriodEnded =
+    row.status === 'active' &&
+    row.currentPeriodEndsAt !== null &&
+    now.getTime() >= row.currentPeriodEndsAt.getTime();
+  if ((row.status === 'active' && !activePeriodEnded) || row.status === 'past_due') {
+    throw lifecycleError(
+      'invalid_lifecycle_transition',
+      'Use upgrade or recovery for an existing paid lifecycle',
+    );
+  }
+
+  await tx
+    .update(workspaceEntitlements)
+    .set({
+      status: 'active',
+      planKey: input.planKey,
+      currentPeriodStartedAt: input.periodStartedAt,
+      currentPeriodEndsAt: input.periodEndsAt,
+      billingCurrency: input.billingCurrency,
+      billingInterval: input.billingInterval,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      pendingPlanKey: null,
+      pendingPlanEffectiveAt: null,
+      providerKind: input.providerKind ?? null,
+      providerCustomerId: input.providerCustomerId ?? null,
+      providerSubscriptionId: input.providerSubscriptionId ?? null,
+      updatedAt: now,
+    })
+    .where(eq(workspaceEntitlements.id, row.id));
+  await auditLifecycle(tx, input, 'subscription.activated');
+  return { changed: true };
 }
 
 export async function applyImmediateUpgrade(
@@ -226,51 +241,60 @@ export async function applyImmediateUpgrade(
 ): Promise<{ readonly changed: true }> {
   return getDb().transaction(async (tx) => {
     const row = await lockWorkspaceAndEntitlement(tx, input.workspaceId);
-    const now = clock.now();
-    requireActivePaid(row);
-    validatePlan(input.planKey);
-    validatePaidPeriod(input, now);
-    if (input.billingCurrency !== row.billingCurrency) {
-      throw lifecycleError(
-        'currency_change_not_allowed',
-        'Currency cannot change during an active billing lifecycle',
-      );
-    }
-    const currentLimit = getPlanDefinition(row.planKey as PlanKey).activeTradingAccountLimit;
-    const targetLimit = getPlanDefinition(input.planKey).activeTradingAccountLimit;
-    if (targetLimit <= currentLimit) {
-      throw lifecycleError(
-        'invalid_lifecycle_transition',
-        'Immediate upgrade requires a strictly larger account allowance',
-      );
-    }
-    if (
-      row.currentPeriodEndsAt !== null &&
-      input.periodEndsAt.getTime() < row.currentPeriodEndsAt.getTime()
-    ) {
-      throw lifecycleError('stale_period', 'Upgrade cannot shorten the current paid period');
-    }
-
-    await tx
-      .update(workspaceEntitlements)
-      .set({
-        planKey: input.planKey,
-        currentPeriodStartedAt: input.periodStartedAt,
-        currentPeriodEndsAt: input.periodEndsAt,
-        billingInterval: input.billingInterval,
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
-        pendingPlanKey: null,
-        pendingPlanEffectiveAt: null,
-        providerKind: input.providerKind,
-        providerCustomerId: input.providerCustomerId,
-        providerSubscriptionId: input.providerSubscriptionId,
-        updatedAt: now,
-      })
-      .where(eq(workspaceEntitlements.id, row.id));
-    await auditLifecycle(tx, input, 'subscription.upgraded');
-    return { changed: true };
+    return applyImmediateUpgradeInTransaction(tx, row, input, clock.now());
   });
+}
+
+/** Transaction-aware Phase 04D transition used by trusted payment finalization. */
+export async function applyImmediateUpgradeInTransaction(
+  tx: LifecycleExecutor,
+  row: EntitlementRow,
+  input: ApplyImmediateUpgradeInput,
+  now: Date,
+): Promise<{ readonly changed: true }> {
+  requireActivePaid(row);
+  validatePlan(input.planKey);
+  validatePaidPeriod(input, now);
+  if (input.billingCurrency !== row.billingCurrency) {
+    throw lifecycleError(
+      'currency_change_not_allowed',
+      'Currency cannot change during an active billing lifecycle',
+    );
+  }
+  const currentLimit = getPlanDefinition(row.planKey as PlanKey).activeTradingAccountLimit;
+  const targetLimit = getPlanDefinition(input.planKey).activeTradingAccountLimit;
+  if (targetLimit <= currentLimit) {
+    throw lifecycleError(
+      'invalid_lifecycle_transition',
+      'Immediate upgrade requires a strictly larger account allowance',
+    );
+  }
+  if (
+    row.currentPeriodEndsAt !== null &&
+    input.periodEndsAt.getTime() < row.currentPeriodEndsAt.getTime()
+  ) {
+    throw lifecycleError('stale_period', 'Upgrade cannot shorten the current paid period');
+  }
+
+  await tx
+    .update(workspaceEntitlements)
+    .set({
+      planKey: input.planKey,
+      currentPeriodStartedAt: input.periodStartedAt,
+      currentPeriodEndsAt: input.periodEndsAt,
+      billingInterval: input.billingInterval,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      pendingPlanKey: null,
+      pendingPlanEffectiveAt: null,
+      providerKind: input.providerKind,
+      providerCustomerId: input.providerCustomerId,
+      providerSubscriptionId: input.providerSubscriptionId,
+      updatedAt: now,
+    })
+    .where(eq(workspaceEntitlements.id, row.id));
+  await auditLifecycle(tx, input, 'subscription.upgraded');
+  return { changed: true };
 }
 
 export async function schedulePlanDowngrade(

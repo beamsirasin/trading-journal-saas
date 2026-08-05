@@ -19,6 +19,12 @@ export {
   PRICE_BOOK,
 } from './price-book';
 export { quoteCheckout } from './quote';
+export {
+  decideBillingStatusTransition,
+  type BillingStatusTransitionDecision,
+  type PersistedBillingTransactionStatus,
+  type ProviderBillingTransactionStatus,
+} from './transaction-status';
 export type {
   AppliedTaxMode,
   BillingCurrency,

@@ -37,6 +37,12 @@ export const AUDIT_ACTIONS = [
   'subscription.expired',
   'subscription.canceled',
   'subscription.pending_plan_materialized',
+  'billing.checkout_created',
+  'billing.checkout_processing',
+  'billing.checkout_succeeded',
+  'billing.checkout_failed',
+  'billing.checkout_canceled',
+  'billing.checkout_reconciled',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
