@@ -221,7 +221,7 @@ test.describe('trial entitlements and account limits', () => {
     await expect(page.getByRole('button', { name: 'Create account' })).toBeDisabled();
   });
 
-  test('the plan page shows Starter/Trader/Professional with the locked prices, and never fakes a purchase', async ({
+  test('the plan page shows Starter/Trader/Professional with locked prices and real checkout options', async ({
     page,
   }) => {
     const user = await provisionUser('e2e-entitlements-plan-page', { entitlement: {} });
@@ -233,7 +233,6 @@ test.describe('trial entitlements and account limits', () => {
     // which is indistinguishable from a genuine rendering bug.
     await expect(page).toHaveURL(/\/en\/app\/plan$/);
     await expect(page.getByRole('heading', { name: 'Plan & billing' })).toBeVisible();
-    await expect(page.getByText('Online payment is not connected yet.')).toBeVisible();
     await expect(
       page.getByText(
         'All plans include the same features and analytics. Plans differ only by how many active trading accounts you can keep.',
@@ -241,9 +240,9 @@ test.describe('trial entitlements and account limits', () => {
     ).toBeVisible();
 
     const expectations: Array<[string, string]> = [
-      ['Starter', '฿149 / $5 per month'],
-      ['Trader', '฿299 / $9 per month'],
-      ['Professional', '฿499 / $15 per month'],
+      ['Starter', '$5.00 / month'],
+      ['Trader', '$9.00 / month'],
+      ['Professional', '$15.00 / month'],
     ];
     for (const [planName, price] of expectations) {
       await expect(page.getByRole('heading', { name: planName })).toBeVisible();
@@ -253,12 +252,7 @@ test.describe('trial entitlements and account limits', () => {
     await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Elite', exact: true })).toHaveCount(0);
 
-    // Every plan CTA is a disabled "Coming soon" — never an active purchase button.
-    const comingSoonButtons = page.getByRole('button', { name: 'Coming soon' });
-    await expect(comingSoonButtons).toHaveCount(3);
-    for (const button of await comingSoonButtons.all()) {
-      await expect(button).toBeDisabled();
-    }
+    await expect(page.getByRole('link', { name: 'Choose plan' })).toHaveCount(3);
   });
 
   test('the public pricing page shows the same Starter/Trader/Professional 1/5/15 limits and identical feature lists', async ({
@@ -278,29 +272,25 @@ test.describe('trial entitlements and account limits', () => {
     // (`pricingPage.description`) separately mentions the trial in
     // different wording, so an unscoped match risks coincidentally
     // colliding with (or missing) that other sentence.
-    await expect(pricing.getByText(/full-feature trial/i)).toBeVisible();
+    await expect(pricing.getByText('Try every feature free for 7 days')).toBeVisible();
     await expect(pricing.getByRole('heading', { level: 3 })).toHaveCount(3);
 
     const expectations: Array<[name: string, limit: string, price: string]> = [
-      ['Starter', '1', '฿149 / $5 per month'],
-      ['Trader', '5', '฿299 / $9 per month'],
-      ['Professional', '15', '฿499 / $15 per month'],
+      ['Starter', '1', '$5.00 / month'],
+      ['Trader', '5', '$9.00 / month'],
+      ['Professional', '15', '$15.00 / month'],
     ];
     for (const [planName, limit, price] of expectations) {
       await expect(pricing.getByRole('heading', { name: planName, exact: true })).toBeVisible();
       await expect(pricing.getByText(price)).toBeVisible();
       await expect(pricing.getByText(limit, { exact: true })).toBeVisible();
     }
-    await expect(pricing.getByText('Prices exclude applicable taxes.')).toHaveCount(3);
+    await expect(pricing.getByText(/VAT/i)).toHaveCount(0);
 
     // Every shared feature string appears exactly once per plan card —
     // three cards, so exactly three occurrences each. A per-plan feature
     // list divergence (the old pro/elite design) would break this count.
-    const sharedFeatures = [
-      'Manual journal & TradingView links',
-      'System-vs-trader comparison',
-      'Mistake tracking & discipline scoring',
-    ];
+    const sharedFeatures = ['Unlimited strategies', 'Unlimited trade history', 'All analytics'];
     for (const feature of sharedFeatures) {
       await expect(pricing.getByText(feature, { exact: true })).toHaveCount(3);
     }
@@ -309,7 +299,10 @@ test.describe('trial entitlements and account limits', () => {
     // registration instead, never a purchase flow.
     for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
-      await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
+      await expect(card.getByRole('link')).toHaveAttribute(
+        'href',
+        new RegExp(`/app/checkout\\?plan=${id}&currency=USD$`),
+      );
     }
   });
 

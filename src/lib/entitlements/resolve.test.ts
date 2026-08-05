@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { PLANS } from '@/config/plans';
+import { PLAN_DEFINITIONS } from '@/config/plan-catalog';
+import { PRICE_BOOK } from '@/lib/billing';
 
 import {
   authorizeWorkspaceMutation,
@@ -34,7 +35,7 @@ function record(overrides: Partial<EntitlementRecord> = {}): EntitlementRecord {
 
 describe('plan registry', () => {
   it('has exactly starter/trader/professional with 1/5/15 account limits', () => {
-    expect(PLANS.map((plan) => [plan.id, plan.tradingAccounts])).toEqual([
+    expect(PLAN_DEFINITIONS.map((plan) => [plan.id, plan.activeTradingAccountLimit])).toEqual([
       ['starter', 1],
       ['trader', 5],
       ['professional', 15],
@@ -42,25 +43,35 @@ describe('plan registry', () => {
   });
 
   it('has the locked THB and USD prices', () => {
-    expect(PLANS.map((plan) => [plan.id, plan.priceThb, plan.priceUsd])).toEqual([
-      ['starter', 149, 5],
-      ['trader', 299, 9],
-      ['professional', 499, 15],
+    expect(
+      PLAN_DEFINITIONS.map((plan) => [
+        plan.id,
+        PRICE_BOOK[plan.id].monthly.THB,
+        PRICE_BOOK[plan.id].monthly.USD,
+      ]),
+    ).toEqual([
+      ['starter', 14_900n, 500n],
+      ['trader', 29_900n, 900n],
+      ['professional', 49_900n, 1_500n],
     ]);
   });
 
-  it('marks every plan tax-exclusive', () => {
-    expect(PLANS.every((plan) => plan.taxExclusive)).toBe(true);
+  it('keeps VAT configuration out of the entitlement plan catalogue', () => {
+    expect(PLAN_DEFINITIONS.every((plan) => !Object.hasOwn(plan, 'taxExclusive'))).toBe(true);
   });
 
   it('the trial account limit is the explicit, authoritative value 1 — never derived from the plan registry', () => {
     expect(TRIAL_ACCOUNT_LIMIT).toBe(1);
     // Specifically NOT the highest, lowest, or any other plan's limit — a
-    // regression here (e.g. reintroducing `Math.max(...PLANS.map(...))`)
+    // regression here (e.g. deriving it from the largest paid allowance)
     // would silently re-widen the trial the moment Professional's limit
     // changed, which is exactly the bug this correction fixes.
-    expect(TRIAL_ACCOUNT_LIMIT).not.toBe(Math.max(...PLANS.map((plan) => plan.tradingAccounts)));
-    expect(TRIAL_ACCOUNT_LIMIT).toBe(PLANS.find((plan) => plan.id === 'starter')?.tradingAccounts);
+    expect(TRIAL_ACCOUNT_LIMIT).not.toBe(
+      Math.max(...PLAN_DEFINITIONS.map((plan) => plan.activeTradingAccountLimit)),
+    );
+    expect(TRIAL_ACCOUNT_LIMIT).toBe(
+      PLAN_DEFINITIONS.find((plan) => plan.id === 'starter')?.activeTradingAccountLimit,
+    );
   });
 });
 

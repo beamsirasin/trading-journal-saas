@@ -61,13 +61,17 @@ export default defineConfig({
     stderr: 'pipe',
     env: {
       ...process.env,
-      BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? baseURL,
+      // This process serves the E2E app at this exact loopback origin. Never
+      // inherit a developer's unrelated local auth URL into the production
+      // test server or Better Auth will correctly reject browser requests.
+      BETTER_AUTH_URL: baseURL,
       // Shared with `e2e/support/authenticate.ts`'s database-session
       // fixture via `resolveE2eBetterAuthSecret()` — that fixture signs a
       // session cookie for THIS exact server process to verify, so both
       // sides must resolve to the identical secret by construction, not by
       // coincidence of a duplicated literal.
       BETTER_AUTH_SECRET: resolveE2eBetterAuthSecret(),
+      ...(guardedDatabase ? { E2E_TEST_MODE: 'true' } : {}),
       ...(guardedDatabase ? { DATABASE_URL: guardedDatabase.testUrl } : {}),
     },
   },

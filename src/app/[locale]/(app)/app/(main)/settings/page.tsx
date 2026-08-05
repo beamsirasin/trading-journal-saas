@@ -2,9 +2,13 @@ import { Plus } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { PLANS, TRIAL_DAYS } from '@/config/plans';
 import { DEMO_ACCOUNTS } from '@/lib/demo';
-import { getCurrentUser, getCurrentUserPreferences } from '@/server/auth/dal';
+import {
+  getCurrentUser,
+  getCurrentUserPreferences,
+  getWorkspaceEntitlement,
+} from '@/server/auth/dal';
+import { getBillingPresentation } from '@/server/billing/presentation';
 import { DemoBadge } from '@/components/product/demo-badge';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
@@ -61,9 +65,17 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   const t = await getTranslations('settings');
   const tLanguageSwitcher = await getTranslations('languageSwitcher');
   const tradingAccounts = DEMO_ACCOUNTS.filter((account) => account.id !== 'all');
-  const currentPlan = PLANS.find((plan) => plan.featured) ?? PLANS[0];
-  const user = await getCurrentUser();
-  const preferences = await getCurrentUserPreferences();
+  const [user, preferences, entitlement] = await Promise.all([
+    getCurrentUser(),
+    getCurrentUserPreferences(),
+    getWorkspaceEntitlement(),
+  ]);
+  const billingPresentation = getBillingPresentation(locale as AppLocale);
+  const currentPlan =
+    entitlement?.effectivePlanKey === null || entitlement?.effectivePlanKey === undefined
+      ? null
+      : (billingPresentation.plans.find((plan) => plan.id === entitlement.effectivePlanKey) ??
+        null);
 
   return (
     <Container className="flex flex-col gap-10 py-8">
@@ -182,23 +194,27 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex flex-col gap-1">
               <MetricLabel>{t('subscription.planShown')}</MetricLabel>
-              <span className="text-foreground text-sm font-semibold">{currentPlan?.name}</span>
+              <span className="text-foreground text-sm font-semibold">
+                {currentPlan?.name ?? t('subscription.trial')}
+              </span>
             </div>
             <div className="flex flex-col gap-1">
               <MetricLabel>{t('subscription.tradingAccounts')}</MetricLabel>
               <span className="numeric text-foreground text-sm font-semibold">
-                {currentPlan?.tradingAccounts}
+                {entitlement?.accountLimit ?? '—'}
               </span>
             </div>
             <Badge variant="warning" className="ml-auto">
-              {t('subscription.trialNotStarted', { trialDays: TRIAL_DAYS })}
+              {entitlement === null
+                ? t('subscription.unavailable')
+                : t(`subscription.status.${entitlement.persistedStatus}`)}
             </Badge>
           </div>
 
           <p className="text-muted-foreground text-sm leading-relaxed">
             {t('subscription.note')}{' '}
             <Link
-              href="/pricing"
+              href="/app/plan"
               className="text-primary inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4"
             >
               {t('subscription.seePlans')}

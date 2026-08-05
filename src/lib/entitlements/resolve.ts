@@ -62,7 +62,13 @@ export interface EffectiveEntitlement {
   readonly effectivePlanKey: PlanKey | null;
   readonly trialStartedAt: Date | null;
   readonly trialEndsAt: Date | null;
+  readonly currentPeriodStartedAt: Date | null;
+  readonly currentPeriodEndsAt: Date | null;
   readonly effectivePeriodEnd: Date | null;
+  readonly billingCurrency: BillingCurrency | null;
+  readonly billingInterval: BillingInterval | null;
+  readonly cancelAtPeriodEnd: boolean;
+  readonly canceledAt: Date | null;
   readonly pendingPlanKey: PlanKey | null;
   readonly pendingPlanEffectiveAt: Date | null;
   readonly pendingPlanDue: boolean;
@@ -186,8 +192,14 @@ export function resolveEffectiveEntitlement(
     effectivePlanKey,
     trialStartedAt: record.trialStartedAt,
     trialEndsAt: record.trialEndsAt,
+    currentPeriodStartedAt: record.currentPeriodStartedAt,
+    currentPeriodEndsAt: record.currentPeriodEndsAt,
     effectivePeriodEnd:
       record.status === 'trialing' ? record.trialEndsAt : record.currentPeriodEndsAt,
+    billingCurrency: record.billingCurrency,
+    billingInterval: record.billingInterval,
+    cancelAtPeriodEnd: record.cancelAtPeriodEnd,
+    canceledAt: record.canceledAt,
     pendingPlanKey: record.pendingPlanKey,
     pendingPlanEffectiveAt: record.pendingPlanEffectiveAt,
     pendingPlanDue,

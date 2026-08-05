@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { TRIAL_DAYS } from '@/config/plans';
+import { getBillingPresentation } from '@/server/billing/presentation';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { Container } from '@/components/shell/container';
@@ -36,14 +37,15 @@ export async function generateMetadata({
 /**
  * Pricing page.
  *
- * The `<h1>` states the honest position up front rather than burying it under
- * the cards. A visitor who reads only the heading should already know that
- * they cannot buy anything today.
+ * The heading and cards describe the final equal-feature plan model. The
+ * protected CTA owns authenticated checkout and safe callback behavior.
  */
 export default async function PricingPage({ params }: { params: Promise<PageParams> }) {
   const { locale } = await params;
-  setRequestLocale(locale as AppLocale);
+  const appLocale = locale as AppLocale;
+  setRequestLocale(appLocale);
   const t = await getTranslations('pricingPage');
+  const billingPresentation = getBillingPresentation(appLocale);
 
   return (
     <>
@@ -56,7 +58,7 @@ export default async function PricingPage({ params }: { params: Promise<PagePara
         </div>
       </Container>
 
-      <PricingSection title={t('sectionTitle')} />
+      <PricingSection presentation={billingPresentation} title={t('sectionTitle')} />
 
       <FaqSection />
     </>

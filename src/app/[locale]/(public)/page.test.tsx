@@ -3,10 +3,46 @@ import { NextIntlClientProvider } from 'next-intl';
 import type * as NextIntlServer from 'next-intl/server';
 import { describe, expect, it, vi } from 'vitest';
 
-import { PLANS } from '@/config/plans';
+import { PLAN_DEFINITIONS } from '@/config/plan-catalog';
 
 import en from '../../../../messages/en.json';
 import Home from './page';
+
+const billingPresentation = {
+  locale: 'en' as const,
+  supportedCurrencies: ['THB', 'USD'] as const,
+  defaultCurrency: 'USD' as const,
+  billingInterval: 'monthly' as const,
+  sharedFeatureKeys: [
+    'unlimitedStrategies',
+    'unlimitedSetups',
+    'unlimitedTrades',
+    'unlimitedTradeHistory',
+    'journal',
+    'analytics',
+    'performanceComparison',
+    'importExport',
+  ] as const,
+  vat: { enabled: false, rateBasisPoints: 700, ratePercent: '7' },
+  plans: PLAN_DEFINITIONS.map((plan) => ({
+    id: plan.id,
+    name: plan.name,
+    activeTradingAccountLimit: plan.activeTradingAccountLimit,
+    featured: plan.featured,
+    prices: {
+      THB: { currency: 'THB' as const, amountMinor: '0', formatted: '฿0.00' },
+      USD: {
+        currency: 'USD' as const,
+        amountMinor: plan.id === 'starter' ? '500' : plan.id === 'trader' ? '900' : '1500',
+        formatted: plan.id === 'starter' ? '$5.00' : plan.id === 'trader' ? '$9.00' : '$15.00',
+      },
+    },
+  })),
+};
+
+vi.mock('@/server/billing/presentation', () => ({
+  getBillingPresentation: () => billingPresentation,
+}));
 
 /**
  * `setRequestLocale` is gated to the real RSC runtime — calling it outside
@@ -82,7 +118,7 @@ describe('landing page', () => {
     expect(screen.getByText(/not a performance claim/i)).toBeInTheDocument();
   });
 
-  it('presents exactly three plans, each with the trial and no price', async () => {
+  it('presents exactly three plans with canonical USD prices and no VAT notice', async () => {
     await renderHome();
 
     // Scoped to the pricing region: the closing CTA also offers a trial link,
@@ -92,17 +128,16 @@ describe('landing page', () => {
       name: /three plans, one free trial/i,
     });
 
-    for (const plan of PLANS) {
+    for (const plan of PLAN_DEFINITIONS) {
       expect(within(pricing).getByRole('heading', { name: plan.name })).toBeInTheDocument();
-      expect(
-        within(pricing).getByText(`฿${plan.priceThb} / $${plan.priceUsd} per month`),
-      ).toBeInTheDocument();
+      const price = plan.id === 'starter' ? '$5.00' : plan.id === 'trader' ? '$9.00' : '$15.00';
+      expect(within(pricing).getByText(`${price} / month`)).toBeInTheDocument();
     }
 
-    expect(within(pricing).getAllByText('Prices exclude applicable taxes.')).toHaveLength(
-      PLANS.length,
+    expect(within(pricing).queryByText(/VAT/i)).not.toBeInTheDocument();
+    expect(within(pricing).getAllByRole('link', { name: 'Choose plan' })).toHaveLength(
+      PLAN_DEFINITIONS.length,
     );
-    expect(within(pricing).getAllByRole('link', { name: 'Sign up' })).toHaveLength(PLANS.length);
   });
 
   it('gives every plan the exact same feature list', async () => {
@@ -111,20 +146,15 @@ describe('landing page', () => {
       name: /three plans, one free trial/i,
     });
 
-    for (const feature of [
-      'Manual journal & TradingView links',
-      'System-vs-trader comparison',
-      'Mistake tracking & discipline scoring',
-    ]) {
-      expect(within(pricing).getAllByText(feature)).toHaveLength(PLANS.length);
+    for (const feature of ['Unlimited strategies', 'All analytics', 'Unlimited trade history']) {
+      expect(within(pricing).getAllByText(feature)).toHaveLength(PLAN_DEFINITIONS.length);
     }
   });
 
-  it('states that payment processing is not connected', async () => {
+  it('states the live trial policy', async () => {
     await renderHome();
-    expect(
-      screen.getByText(/online payment is not connected to this product yet/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/try every feature free for 7 days/i)).toBeInTheDocument();
+    expect(screen.getByText(/data is retained after the trial ends/i)).toBeInTheDocument();
   });
 
   it('does not advertise capabilities that are out of scope', async () => {
@@ -157,20 +187,11 @@ describe('landing page', () => {
     expect(demo).toHaveAttribute('href', expect.stringMatching(/\/demo$/));
   });
 
-  /**
-   * Phase 2 made registration and login real (Better Auth) — the page must
-   * no longer claim otherwise. What remains genuinely unimplemented is
-   * billing: prices are real and locked (Phase 3C), but no payment provider
-   * is connected, so the page must not imply a paid trial or subscription
-   * can start today.
-   */
-  it('does not imply that a paid trial or subscription can start today, while no longer claiming registration is fake', async () => {
+  /** Phase 04F removes the final planned-trial and unpublished-price placeholders. */
+  it('does not retain stale planned-trial or unpublished-price copy', async () => {
     await renderHome();
-    expect(document.body).not.toHaveTextContent(/start (?:a )?(?:\d+-day )?free trial/i);
     expect(document.body).not.toHaveTextContent(/registration is not live yet/i);
-    expect(
-      screen.getAllByText('Online payment is not connected to this product yet').length,
-    ).toBeGreaterThan(0);
+    expect(document.body).not.toHaveTextContent(/planned 7-day trial|prices have not been set/i);
   });
 
   it('uses a server-rendered chart on the marketing page', async () => {

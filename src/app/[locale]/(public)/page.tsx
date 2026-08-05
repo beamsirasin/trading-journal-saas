@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
+import { getBillingPresentation } from '@/server/billing/presentation';
 import { AttributionSection } from '@/components/marketing/attribution-section';
 import { CtaSection } from '@/components/marketing/cta-section';
 import { FaqSection } from '@/components/marketing/faq-section';
@@ -50,7 +51,9 @@ export async function generateMetadata({
  */
 export default async function HomePage({ params }: { params: Promise<PageParams> }) {
   const { locale } = await params;
-  setRequestLocale(locale as AppLocale);
+  const appLocale = locale as AppLocale;
+  setRequestLocale(appLocale);
+  const billingPresentation = getBillingPresentation(appLocale);
 
   return (
     <>
@@ -59,7 +62,7 @@ export default async function HomePage({ params }: { params: Promise<PageParams>
       <AttributionSection />
       <WorkflowSection />
       <FeaturesSection />
-      <PricingSection />
+      <PricingSection presentation={billingPresentation} />
       <FaqSection />
       <CtaSection />
     </>

@@ -10,6 +10,20 @@
 
 export const PLAN_KEYS = Object.freeze(['starter', 'trader', 'professional'] as const);
 
+/** One shared product surface for trial and every paid plan. */
+export const SHARED_BILLING_FEATURE_KEYS = Object.freeze([
+  'unlimitedStrategies',
+  'unlimitedSetups',
+  'unlimitedTrades',
+  'unlimitedTradeHistory',
+  'journal',
+  'analytics',
+  'performanceComparison',
+  'importExport',
+] as const);
+
+export type SharedBillingFeatureKey = (typeof SHARED_BILLING_FEATURE_KEYS)[number];
+
 export type PlanKey = (typeof PLAN_KEYS)[number];
 
 export interface PlanDefinition {

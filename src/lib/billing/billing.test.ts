@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import { PLANS } from '@/config/plans';
 import { MAX_SAFE_MINOR } from '@/lib/money';
 
 import {
@@ -101,15 +100,9 @@ describe('fixed monthly price book', () => {
     expect(Object.isFrozen(getPlanPrice('starter', 'USD', 'monthly'))).toBe(true);
   });
 
-  it('derives the legacy UI major-unit prices from the canonical price book', () => {
-    for (const plan of PLANS) {
-      expect(BigInt(plan.priceThb) * 100n).toBe(
-        getPlanPrice(plan.id, 'THB', 'monthly').amountMinor,
-      );
-      expect(BigInt(plan.priceUsd) * 100n).toBe(
-        getPlanPrice(plan.id, 'USD', 'monthly').amountMinor,
-      );
-    }
+  it('has no independent legacy whole-unit pricing facade', async () => {
+    const plans = await import('@/config/plans');
+    expect(plans).not.toHaveProperty('PLANS');
   });
 });
 

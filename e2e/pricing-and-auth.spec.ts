@@ -70,21 +70,17 @@ test.describe('pricing', () => {
       await expect(pricing.getByRole('heading', { name: plan })).toBeVisible();
     }
 
-    for (const price of ['฿149 / $5 per month', '฿299 / $9 per month', '฿499 / $15 per month']) {
+    for (const price of ['$5.00 / month', '$9.00 / month', '$15.00 / month']) {
       await expect(pricing.getByText(price)).toBeVisible();
     }
 
     // Every plan card renders the exact same shared feature list — the
     // locked decision that paid plans differ only by account allowance.
-    for (const feature of [
-      'Manual journal & TradingView links',
-      'System-vs-trader comparison',
-      'Mistake tracking & discipline scoring',
-    ]) {
+    for (const feature of ['Unlimited strategies', 'Unlimited trade history', 'All analytics']) {
       await expect(pricing.getByText(feature, { exact: true })).toHaveCount(3);
     }
 
-    // Each plan card's own registration CTA, selected by the card's
+    // Each plan card's protected checkout CTA, selected by the card's
     // `aria-labelledby` id (how `PricingCard` actually wires it — see the
     // tablet-viewport test below and `e2e/i18n.spec.ts`'s Thai equivalent)
     // rather than by CTA copy. The copy is translated and has already
@@ -93,20 +89,20 @@ test.describe('pricing', () => {
     // what keeps this test meaningful across that kind of rename.
     for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
-      await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
+      await expect(card.getByRole('link')).toHaveAttribute(
+        'href',
+        new RegExp(`/app/checkout\\?plan=${id}&currency=USD$`),
+      );
     }
   });
 
   test('states the seven-day, full-feature, one-account trial', async ({ page }) => {
     await page.goto('/en/pricing');
-    await expect(
-      page
-        .getByText(/a 7-day, full-feature trial with one active trading account is planned/i)
-        .first(),
-    ).toBeVisible();
+    await expect(page.getByText(/try every feature free for 7 days/i).first()).toBeVisible();
+    await expect(page.getByText(/data is retained after the trial ends/i)).toBeVisible();
   });
 
-  test('shows the account limits the plans gate on, with a tax-exclusive note', async ({
+  test('shows account limits and omits VAT launch copy while collection is disabled', async ({
     page,
   }) => {
     await page.goto('/en/pricing');
@@ -116,7 +112,7 @@ test.describe('pricing', () => {
     // case-insensitive, so a loose "Active trading accounts" also matches
     // the section's intro paragraph.
     await expect(pricing.getByText('Active trading accounts', { exact: true })).toHaveCount(3);
-    await expect(pricing.getByText('Prices exclude applicable taxes.')).toHaveCount(3);
+    await expect(pricing.getByText(/VAT/i)).toHaveCount(0);
     // No stale draft plan names or "provisional" limit marker remain.
     await expect(pricing.getByText('provisional', { exact: true })).toHaveCount(0);
     await expect(pricing.getByRole('heading', { name: 'Pro', exact: true })).toHaveCount(0);
@@ -160,14 +156,14 @@ test.describe('pricing', () => {
     expect(cardBox?.width ?? 0).toBeLessThan(500);
   });
 
-  test('does not present a working purchase path', async ({ page }) => {
+  test('presents a protected mock-checkout path without payment credential fields', async ({
+    page,
+  }) => {
     await page.goto('/en/pricing');
 
     const pricing = page.getByRole('region', { name: /choose by how many accounts/i });
 
-    await expect(
-      page.getByText(/online payment is not connected to this product yet/i),
-    ).toBeVisible();
+    await expect(page.getByText(/try every feature free for 7 days/i)).toBeVisible();
 
     // No plan CTA may lead to a checkout. They all go to real registration
     // instead. Selected by each card's `aria-labelledby` id rather than CTA
@@ -175,12 +171,15 @@ test.describe('pricing', () => {
     // Suffix match: `Link` from `@/i18n/navigation` renders `/en/register`.
     for (const id of ['starter', 'trader', 'professional']) {
       const card = pricing.locator(`[aria-labelledby="plan-${id}-name"]`);
-      await expect(card.getByRole('link')).toHaveAttribute('href', /\/register$/);
+      await expect(card.getByRole('link')).toHaveAttribute(
+        'href',
+        new RegExp(`/app/checkout\\?plan=${id}&currency=USD$`),
+      );
     }
 
     const body = (await page.textContent('body')) ?? '';
-    expect(body).not.toMatch(/enter card|card number|checkout now|buy now/i);
-    expect(body).not.toMatch(/start (?:a )?(?:7-day )?free trial/i);
+    expect(body).not.toMatch(/enter card|card number|cvv|buy now/i);
+    expect(body).not.toMatch(/annual|discount/i);
   });
 });
 
