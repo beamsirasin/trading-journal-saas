@@ -50,6 +50,13 @@
       "when": 1785879357032,
       "tag": "0006_create_billing_transaction_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785985118039,
+      "tag": "0007_strategies_and_setups",
+      "breakpoints": true
     }
   ]
 }

@@ -16,3 +16,7 @@ export * from './user-preferences';
 export * from './audit-logs';
 export * from './workspace-entitlements';
 export * from './billing-transactions';
+export * from './strategies';
+export * from './setups';
+export * from './strategy-setup-versions';
+export * from './strategy-rules';
