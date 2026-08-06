@@ -290,6 +290,8 @@ export type CreateStrategyResult =
       readonly ok: true;
       readonly strategyId: string;
       readonly versionId: string;
+      /** The canonical current Version's number — `1` on a genuinely new create; the actual current Version's number on a replay, which may exceed `1` if the Strategy has since been edited. */
+      readonly versionNumber: number;
       readonly alreadyCreated: boolean;
     }
   | {
@@ -341,10 +343,18 @@ export async function createStrategy(
       if (existing.currentVersionId === null) {
         return { ok: false, code: 'strategy_current_version_missing' };
       }
+      const [currentVersion] = await tx
+        .select({ versionNumber: strategyVersions.versionNumber })
+        .from(strategyVersions)
+        .where(eq(strategyVersions.id, existing.currentVersionId));
+      if (currentVersion === undefined) {
+        return { ok: false, code: 'strategy_current_version_missing' };
+      }
       return {
         ok: true,
         strategyId: existing.id,
         versionId: existing.currentVersionId,
+        versionNumber: currentVersion.versionNumber,
         alreadyCreated: true,
       };
     }
@@ -379,10 +389,18 @@ export async function createStrategy(
           `createStrategy: conflict reported but no valid row found for mutation key in workspace ${workspaceId}`,
         );
       }
+      const [racedVersion] = await tx
+        .select({ versionNumber: strategyVersions.versionNumber })
+        .from(strategyVersions)
+        .where(eq(strategyVersions.id, raced.currentVersionId));
+      if (racedVersion === undefined) {
+        return { ok: false, code: 'strategy_current_version_missing' };
+      }
       return {
         ok: true,
         strategyId: raced.id,
         versionId: raced.currentVersionId,
+        versionNumber: racedVersion.versionNumber,
         alreadyCreated: true,
       };
     }
@@ -416,7 +434,13 @@ export async function createStrategy(
       metadata: { strategyVersionId: version.id, versionNumber: 1 },
     });
 
-    return { ok: true, strategyId: strategyRow.id, versionId: version.id, alreadyCreated: false };
+    return {
+      ok: true,
+      strategyId: strategyRow.id,
+      versionId: version.id,
+      versionNumber: 1,
+      alreadyCreated: false,
+    };
   });
 }
 

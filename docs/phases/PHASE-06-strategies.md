@@ -118,7 +118,7 @@ A copy: increments `version_number`; copies `name`/`description`/`notes`; stores
 
 ### Strategy lifecycle
 
-`createStrategy` is one atomic transaction: Strategy identity + Version 1 + `current_version_id` set, so no committed row is ever observable with a null `current_version_id` (a persisted null is treated as malformed and rejected safely by every reader, via `strategy_current_version_missing`, never a crash). Workspace-scoped idempotency mirrors `createTradingAccount`'s `mutation_key` pattern, including its step ordering: the workspace row is locked and active membership is always revalidated first — a removed member can never retrieve or mutate data merely by replaying an old `mutationKey` — and only THEN is the idempotency lookup performed. An exact replay of an existing `mutationKey` returns the original Strategy/Version with no new write and no duplicate `strategy.created` event, and stays safely replayable even after the workspace has since become `read_only`/`over_limit`, since it consumes no entitlement. Entitlement/authorization is resolved only when the lookup misses — a genuinely new `mutationKey` still requires `writable` access; the replay exception never extends to a new key, an update, an archive/restore, or a Rule mutation. `updateStrategyContent` edits `name`/`description`/`notes` in place while unlocked, or copy-on-writes (with a required `changeNote`) while locked; it rejects an archived Strategy outright in both states, before touching the Version at all. `archiveStrategy`/`restoreStrategy` are idempotent, never touch `setups.is_archived`, never create a Version, and never change Version/Rule content.
+`createStrategy` is one atomic transaction: Strategy identity + Version 1 + `current_version_id` set, so no committed row is ever observable with a null `current_version_id` (a persisted null is treated as malformed and rejected safely by every reader, via `strategy_current_version_missing`, never a crash). Workspace-scoped idempotency mirrors `createTradingAccount`'s `mutation_key` pattern, including its step ordering: the workspace row is locked and active membership is always revalidated first — a removed member can never retrieve or mutate data merely by replaying an old `mutationKey` — and only THEN is the idempotency lookup performed. An exact replay of an existing `mutationKey` returns the original Strategy plus the _canonical current_ Version's `versionId`/`versionNumber` (added to `CreateStrategyResult` in Phase 06D — a replay of a Strategy edited since its creation correctly reports the version that replaced Version 1, never a stale reference to a Version the Strategy no longer points at), with no new write and no duplicate `strategy.created` event, and stays safely replayable even after the workspace has since become `read_only`/`over_limit`, since it consumes no entitlement. Entitlement/authorization is resolved only when the lookup misses — a genuinely new `mutationKey` still requires `writable` access; the replay exception never extends to a new key, an update, an archive/restore, or a Rule mutation. `updateStrategyContent` edits `name`/`description`/`notes` in place while unlocked, or copy-on-writes (with a required `changeNote`) while locked; it rejects an archived Strategy outright in both states, before touching the Version at all. `archiveStrategy`/`restoreStrategy` are idempotent, never touch `setups.is_archived`, never create a Version, and never change Version/Rule content.
 
 ### Setup lifecycle
 
@@ -140,10 +140,61 @@ Every mutation is an ordinary business write (`authorizeWorkspaceMutation(entitl
 
 `AUDIT_ACTIONS` gained `strategy.created`/`updated`/`archived`/`restored`, `strategy.version.created`/`locked`, `setup.created`/`updated`/`archived`/`restored`, and `strategy.rule.created`/`updated`/`removed`. `AuditLogMetadata` gained only structural fields — Strategy/Setup/Version/Rule IDs, version number, rule category, Strategy-vs-Setup scope, changed field _names_ — never a name, description, note, change note, rule title, or rule description. Verified directly: the serialized metadata of a `strategy.created`/`strategy.rule.created` event never contains the Strategy name or Rule title/description supplied to create it.
 
+## Delivered in Phase 06D — authenticated DAL, Server Actions, validation and safe error mapping
+
+No page, form, or client component exists yet — this sub-phase is purely the authenticated server boundary a future UI sub-phase wires up to. Every export below derives `workspaceId`/`userId` exclusively from the session (`getActiveWorkspaceContext()`); none accepts one from client input, and the Phase 06C service layer underneath independently re-verifies membership/entitlement regardless of what this layer does.
+
+### Reads (`src/server/dal/strategies.ts`)
+
+`listWorkspaceStrategies()` and `getWorkspaceStrategyDetail(strategyId)` — session-scoped, never entitlement-gated (readable in `writable`, `over_limit`, and `read_only` workspaces alike). A cross-workspace or missing Strategy ID is indistinguishable: both return `strategy_not_found`. Fixed-count batched queries regardless of row count (no N+1): the list uses one query each for Strategies, current Versions, grouped Setup counts, and grouped Rule counts; the detail view loads only a lightweight Version-history summary (`id`/`version_number`/`locked_at`/`change_note`/`created_at`) rather than every historical Version's Rules/Setups. Both fail closed with `strategy_current_version_missing` (or `setup_snapshot_missing`) rather than crash or silently drop a malformed row. Never returns `mutation_key`, `workspace_id`, audit metadata, or a fabricated trade/performance figure.
+
+### Validation (`src/lib/strategies/schemas.ts`)
+
+One `.strict()` Zod object schema per Server Action. An unrecognized key — `workspaceId`, `actorUserId`, `isArchived`, `currentVersionId`, `versionNumber`, `lockedAt`, a raw Rule row `id` — fails validation outright rather than being silently stripped, making the "client can never choose these" boundary structural rather than merely a convention. Shape-only: non-empty/length/character checks, valid UUID, valid enum, non-negative integer — the actual blank-after-trim rejection stays owned solely by `src/lib/strategies/validation.ts` inside the service, so there is exactly one definition of "blank," never two that could drift apart.
+
+### Server Actions (`src/server/actions/strategies.ts`)
+
+Eleven actions — `createStrategyAction`, `updateStrategyAction`, `archiveStrategyAction`, `restoreStrategyAction`, `createSetupAction`, `updateSetupAction`, `archiveSetupAction`, `restoreSetupAction`, `createStrategyRuleAction`, `updateStrategyRuleAction`, `removeStrategyRuleAction` — each: `safeParse` the input, resolve trusted session context (authentication plus active-membership derivation via `requireStrategyManagement` — never an entitlement/access-mode precheck, so it can never block an exact-key replay the service would otherwise allow), call the matching Phase 06C service function, map its result to {@link StrategyActionResult}, and revalidate `/app/strategies` in both locales on success only (including an idempotent replay — the same code path a fresh success takes). Deliberately not exposed: `copyCurrentVersionInTx`, `lockStrategyVersionForReferenceInTx`, or any direct write to `current_version_id`/`locked_at` — those stay internal to the service layer and Phase 08's future Trade-creation transaction.
+
+### The action-result contract
+
+One closed, JSON-serializable discriminated union used by every action:
+
+```ts
+type StrategyActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: StrategyPublicErrorCode; fieldErrors?: Record<string, string[]> } };
+```
+
+Superseded a first draft that only had `{ ok, code, fieldErrors? }` on the failure branch with no typed success payload at all — a UI could tell a mutation succeeded but never learn the canonical identity or Version it produced. Each `data` shape is the smallest structurally useful response its service call can reliably provide:
+
+- **Create** (`CreateStrategyData`/`CreateSetupData`/`CreateStrategyRuleData`): the created (or replayed) identity, plus the _canonical current_ Version's `versionId`/`versionNumber` at response time — never framed as "the immutable original creation Version," since a later copy-on-write can supersede it — plus `alreadyCreated` (`false`: this call created it; `true`: an exact `mutationKey` replay returned an existing row, no new write). `CreateStrategyResult`'s service type gained a `versionNumber` field in this correction specifically so the replay branch can report the Strategy's actual current version rather than assuming Version 1.
+- **Update** (`UpdateStrategyData`/`UpdateSetupData`/`UpdateStrategyRuleData`): the identity plus the current `versionId`/`versionNumber` and `copied` (whether this edit triggered copy-on-write) — all already returned safely by the Phase 06C service, so no extra query was needed.
+- **Archive/restore** (`StrategyLifecycleData`/`SetupLifecycleData`): the affected identity ID plus `isArchived`, the final archived state. The Phase 06C service itself only ever returns `{ ok: true }` on success; `isArchived` is populated from a static invariant of which action ran (archive always leaves `true`, restore always leaves `false`) rather than a second, unsafe re-query solely to enrich the result.
+- **Rule mutations** (`CreateStrategyRuleData`/`UpdateStrategyRuleData`/`RemoveStrategyRuleData`): `strategyId` plus `ruleKey` — never the internal Rule row id the service's own result type exposes as `ruleId`, since `ruleKey` is the one approved Rule identifier (CLAUDE.md §4) and is already client-supplied, trusted input at the action layer. `removeStrategyRuleAction` additionally reports `alreadyRemoved`.
+
+Never returned by any action: `workspaceId`, `actorUserId`, `mutationKey`, `lockedAt`, or any other audit/internal-only field — proven by dedicated serialization tests asserting the JSON string never contains those substrings.
+
+### Error mapping (`src/lib/strategies/errors.ts`)
+
+`STRATEGY_PUBLIC_ERROR_CODES` — a closed 16-code public surface: `STRATEGY_DOMAIN_ERROR_CODES` minus the Zod-catchable `blank_name`/`blank_title` (folded into `validation_error`), plus four action-layer-only codes (`validation_error`, `unauthenticated`, `conflict`, `unexpected_error`) no service ever returns itself. `mapServiceErrorToPublicCode` performs the fold; every field error is scoped to a client-editable field only (an unrecognized key like `workspaceId` surfaces as a root-level Zod `formErrors` issue, which the action never reads, so it can never be mistaken for an editable field error), and the rejected raw value is never echoed back.
+
+### Localization
+
+`messages/{en,th}.json`'s `strategies.errors` namespace carries all 16 public codes in both locales, reusing the existing `accounts.errors` phrasing for the two shared concepts (`read_only_workspace`/`over_limit_workspace`) for consistency. Parity enforced by the existing `src/i18n/messages.test.ts`.
+
+### Idempotency and replay
+
+Create actions require a client-generated `mutationKey` (UUID), matching `createTradingAccount`'s pattern — never generated server-side. An exact-key replay returns the original identity plus the canonical current Version (`alreadyCreated: true`) with no new write and no duplicate audit event, and stays replayable even after the workspace has since become `read_only`/`over_limit`; a genuinely new key under either state is denied; a cross-workspace replay of the same key is treated as a fresh create attempt in that other workspace, not a replay. Proven at the action layer (not just the service layer) by `src/server/actions/strategies.integration.test.ts`, for both Strategy and Setup creation.
+
+### Authorization boundary — service remains the owner
+
+`requireStrategyManagement` at the action layer is authentication plus active-membership derivation only; it never resolves entitlement/access mode. The Phase 06C service (`strategy-management.ts`) is what actually decides membership → exact-key replay → entitlement-for-a-genuinely-new-key, and independently re-verifies membership itself against the database regardless of what the action layer already checked — a removed member's replay is denied by the _service_, proven by mocking only the action layer's session/membership precheck to succeed while the underlying database membership row is deleted. The service also remains the sole emitter of audit events; the action layer never constructs or duplicates one.
+
 ## Remaining Phase 06 work
 
-- **06D — Management UI.** Replaces the current fixture-driven placeholder at `/app/strategies` with real list/detail/create/edit/archive/restore, the lock indicator and copy-on-write confirmation dialog, the rule editor, and full en/th localization, wired to Phase 06C's services through new Server Actions.
-- **06E — Full regression and closeout.** Mirrors Phase 05D: complete unit/integration/E2E regression, stale-reference scan, documentation closeout marking Phase 06 complete and Phase 07 next.
+- **Management UI.** Replaces the current fixture-driven placeholder at `/app/strategies` with real list/detail/create/edit/archive/restore, the lock indicator and copy-on-write confirmation dialog, and the rule editor, wired to Phase 06D's Server Actions and DAL reads.
+- **Full regression and closeout.** Mirrors Phase 05D: complete unit/integration/E2E regression, stale-reference scan, documentation closeout marking Phase 06 complete and Phase 07 next.
 
 ## UI (`/app/strategies`) — target shape for 06D, not yet built
 
@@ -173,9 +224,10 @@ Backtesting, rule automation, sharing/marketplace, importing strategies, per-rul
 - [x] Copy-on-write centralized, proven to preserve `rule_key`/Setup identity and remap `setup_version_id` correctly, including for an archived Setup's historical content (06C)
 - [x] Concurrent mutations against a locked current Version produce a deterministic, non-duplicated result; no orphaned Setup Version/Rule rows (06C)
 - [x] Audit metadata for every new action verified to carry no Strategy/Setup/Rule content (06C)
-- [ ] Server Actions, real management UI, four states, responsive, accessible (06D)
-- [ ] Version diff readable on mobile (06D)
-- [ ] Full regression and Phase 06 closeout (06E)
+- [x] Authenticated DAL reads, Zod-validated Server Actions, closed public error mapping, en/th localization, idempotent replay proven at the action layer (06D)
+- [ ] Real management UI, four states, responsive, accessible
+- [ ] Version diff readable on mobile
+- [ ] Full regression and Phase 06 closeout
 
 ## Assumptions
 

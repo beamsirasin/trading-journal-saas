@@ -421,7 +421,25 @@
     "tradesShown": "Trades shown",
     "rules": "Rules",
     "active": "Active",
-    "retired": "Retired"
+    "retired": "Retired",
+    "errors": {
+      "validation_error": "Some details are not valid. Please check the form and try again.",
+      "unauthenticated": "Please sign in again to continue.",
+      "workspace_access_denied": "You do not have permission to do that in this workspace.",
+      "read_only_workspace": "This workspace is read-only. Restore valid subscription access before making changes.",
+      "over_limit_workspace": "This workspace is over its active-account limit. Archive an active account before making other changes.",
+      "strategy_not_found": "This Strategy could not be found.",
+      "strategy_archived": "This Strategy is archived. Restore it first, then you can make changes.",
+      "strategy_current_version_missing": "We couldn't load this Strategy's current version. Please contact support.",
+      "setup_not_found": "This Setup could not be found.",
+      "setup_archived": "This Setup is archived. Restore it first, then you can make changes.",
+      "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
+      "rule_not_found": "This rule could not be found.",
+      "change_note_required": "This Strategy Version is locked. Add a change note to save your edit as a new version.",
+      "invalid_rule_category": "Choose a valid rule category.",
+      "conflict": "That change could not be saved because something changed at the same time. Please try again.",
+      "unexpected_error": "Something went wrong. Please try again."
+    }
   },
   "analytics": {
     "title": "Analytics",

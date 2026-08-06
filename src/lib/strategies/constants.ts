@@ -23,3 +23,15 @@ export function isStrategyRuleCategory(value: unknown): value is StrategyRuleCat
     typeof value === 'string' && (STRATEGY_RULE_CATEGORIES as readonly string[]).includes(value)
   );
 }
+
+/**
+ * Phase 06D boundary-validation bounds — generous but finite, matching
+ * `src/lib/trading-accounts/constants.ts`'s `NAME_MAX_LENGTH` precedent. The
+ * database has no length CHECK of its own (only non-blank), so these are the
+ * only upper bound; not a normalization rule (trimming/blank-rejection stays
+ * the service's job — see `src/lib/strategies/validation.ts`).
+ */
+export const STRATEGY_NAME_MAX_LENGTH = 120;
+export const STRATEGY_TEXT_MAX_LENGTH = 2000;
+export const CHANGE_NOTE_MAX_LENGTH = 500;
+export const RULE_TITLE_MAX_LENGTH = 200;
