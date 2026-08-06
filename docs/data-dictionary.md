@@ -181,32 +181,117 @@ No `current_balance` column exists (Phase 07+ ledger work). No `deleted_at` colu
 
 ---
 
-## Phase 06 — Strategies
+## Phase 06 — Strategies and Setups (schema, version integrity, domain services, authenticated DAL/actions, and management UI — complete)
 
-### `strategies`
+Migration: [`drizzle/0007_strategies_and_setups.sql`](../drizzle/0007_strategies_and_setups.sql). Phase 06B delivered the schema, forward migration, and database-enforced version immutability below; Phase 06C delivered the server-side domain services on top of it (`src/server/services/strategy-management.ts`, `strategy-versioning.ts`) — creation, copy-on-write, archive/restore lifecycle, structured Rule mutations, and a Phase 08 version-locking helper; Phase 06D delivered the authenticated read DAL (`src/server/dal/strategies.ts`), Zod-validated Server Actions (`src/server/actions/strategies.ts`), the closed public error mapping, and en/th localization on top of that; Phase 06E replaced the Phase 01 fixture preview with the real, responsive `/app/strategies` management UI (`src/components/strategies/`) on top of that boundary (see [PHASE-06-strategies.md](phases/PHASE-06-strategies.md)). This section replaces its original pre-implementation draft, which modeled a Setup as a jsonb checklist field rather than a distinct entity, put `timeframe`/`instrument_class` directly on `strategies`, and included a `deleted_at` column inconsistent with every other table's archive-only convention — Phase 06A's audit found all three stale against the approved model.
 
-| Column               | Type | Notes                  |
-| -------------------- | ---- | ---------------------- |
-| `name`               | text |                        |
-| `description`        | text |                        |
-| `instrument_class`   | text | Nullable               |
-| `timeframe`          | text | Nullable               |
-| `current_version_id` | uuid | Fast default selection |
+Five tables, all workspace-owned (`ON DELETE CASCADE`, the ordinary tenant-owned-record convention — not `billing_transactions`' deliberately stronger `RESTRICT`, confirmed unweakened by this migration). Deleting the owning workspace is allowed to cascade away even _locked_ strategy history — see [Immutability](#strategy_versions-versioned-content) below for the narrowly-scoped exception that makes this true without weakening direct-delete protection.
 
-### `strategy_versions`
+### `strategies` (identity row only)
 
-| Column            | Type    | Notes                                                             |
-| ----------------- | ------- | ----------------------------------------------------------------- |
-| `strategy_id`     | uuid    |                                                                   |
-| `version_number`  | integer | Unique with `strategy_id`                                         |
-| `entry_rules`     | text    | Markdown                                                          |
-| `exit_rules`      | text    | Markdown                                                          |
-| `risk_rules`      | text    | Markdown                                                          |
-| `setup_checklist` | jsonb   | `[{ id, label, required }]`; item IDs are stable and never reused |
-| `is_locked`       | boolean | Set true on the first referencing trade                           |
-| `change_note`     | text    | Required when superseding a locked version                        |
+| Column                    | Type        | Notes                                                                                                                                                                                                                                                               |
+| ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7                                                                                                                                                                                                                                                              |
+| `workspace_id`            | uuid        | FK → `workspaces.id`, `ON DELETE CASCADE`                                                                                                                                                                                                                           |
+| `current_version_id`      | uuid        | Nullable. Composite FK ensures it references a `strategy_versions` row belonging to this same strategy — hand-authored SQL in the migration (a circular TypeScript type between the two mutually-referential tables cannot express it in the Drizzle schema itself) |
+| `is_archived`             | boolean     | Default `false`. The only removal mechanism — reversible, retains all data, no hard-delete flow exists or is planned                                                                                                                                                |
+| `mutation_key`            | uuid        | Create-idempotency, same pattern as `trading_accounts.mutation_key`                                                                                                                                                                                                 |
+| `created_at`/`updated_at` | timestamptz |                                                                                                                                                                                                                                                                     |
 
-**Immutability:** a version is editable only while unreferenced. Once a trade points at it, it locks permanently and edits create version _n+1_. Without this, analytics would blend results from rules that have since changed, and system performance would become meaningless.
+No `name`, `description`, `timeframe`, `instrument_class`, `default_risk`, or `deleted_at` column exists on this table. Current display content comes from `current_version_id`.
+
+**Indexes:** `strategies_workspace_idx (workspace_id)`; `strategies_workspace_archived_idx (workspace_id, is_archived)`; unique `strategies_workspace_mutation_key_idx (workspace_id, mutation_key)`; unique `strategies_id_workspace_idx (id, workspace_id)` (composite-FK plumbing only, letting children prove workspace consistency against their parent strategy).
+
+### `strategy_versions` (versioned content)
+
+| Column                    | Type        | Notes                                                                                                                                             |
+| ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7                                                                                                                                            |
+| `workspace_id`            | uuid        | FK → `workspaces.id`; composite FK also pins it to the same workspace as `strategy_id`'s strategy                                                 |
+| `strategy_id`             | uuid        | FK → `strategies.id`, `ON DELETE CASCADE`                                                                                                         |
+| `version_number`          | integer     | CHECK `> 0`; unique with `strategy_id`                                                                                                            |
+| `name`                    | text        | CHECK `btrim(name) <> ''` — required, non-blank                                                                                                   |
+| `description`             | text        | Nullable                                                                                                                                          |
+| `notes`                   | text        | Nullable                                                                                                                                          |
+| `change_note`             | text        | Nullable — a future service requires it when superseding a locked version; not DB-enforced, since an unlocked first version legitimately has none |
+| `locked_at`               | timestamptz | Nullable. Null = unlocked (editable in place). Non-null = permanently locked                                                                      |
+| `created_at`/`updated_at` | timestamptz |                                                                                                                                                   |
+
+No `instrument_class`, `timeframe`, `setup_checklist` (jsonb), `entry_rules`, `exit_rules`, or `risk_rules` column exists — structured rules live in `strategy_rules` below.
+
+**Immutability:** enforced by a PostgreSQL `BEFORE UPDATE` trigger (`strategy_versions_protect_locked`) that rejects the entire update once `OLD.locked_at IS NOT NULL` — content, and any attempt to clear or replace `locked_at` itself. A separate `BEFORE DELETE` trigger (`strategy_versions_protect_locked_delete`) rejects deleting a locked row **unless the owning workspace no longer exists** — the one narrow exception, shared by every delete-protection trigger in this domain via `strategy_domain_workspace_gone(workspace_id)`, which returns true only when the `workspaces` row referenced by this row's own `workspace_id` has itself already been deleted in the same transaction (empirically verified against real PostgreSQL: a cascading delete always sees its own prior writes, so this cannot be gamed by a client, a session setting, or a concurrent uncommitted transaction). This is what lets ordinary workspace deletion cascade away locked strategy history — the approved tenant-owned-record policy — while a direct delete of a locked version, or of its Strategy identity while the workspace still exists, remains rejected exactly as before. A version is editable only while unreferenced (`locked_at IS NULL`); Phase 08 will set `locked_at` atomically the moment a trade first references it, and a future edit to a locked version creates version _n+1_ by copy-on-write (Phase 06C). Without this, analytics would blend results from rules that have since changed, and system performance would become meaningless.
+
+**Indexes:** `strategy_versions_workspace_strategy_idx (workspace_id, strategy_id)`; unique `strategy_versions_strategy_version_number_idx (strategy_id, version_number)`; unique `strategy_versions_id_strategy_idx (id, strategy_id)` and unique `strategy_versions_id_workspace_idx (id, workspace_id)` (composite-FK plumbing for `strategies.current_version_id` and for `strategy_setup_versions`/`strategy_rules`).
+
+### `setups` (identity row only)
+
+| Column                    | Type        | Notes                                                                                        |
+| ------------------------- | ----------- | -------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7                                                                                       |
+| `workspace_id`            | uuid        | FK → `workspaces.id`; composite FK pins it to the same workspace as `strategy_id`'s strategy |
+| `strategy_id`             | uuid        | FK → `strategies.id`, `ON DELETE CASCADE` — **required**, no orphan Setup                    |
+| `is_archived`             | boolean     | Default `false`. Independent of `strategies.is_archived` — see archive policy below          |
+| `mutation_key`            | uuid        | Create-idempotency                                                                           |
+| `created_at`/`updated_at` | timestamptz |                                                                                              |
+
+No `name`, `description`, or `deleted_at` column exists. Current Setup presentation comes from `strategy_setup_versions` for the strategy's current version.
+
+**Indexes:** `setups_strategy_idx (strategy_id)`; `setups_workspace_archived_idx (workspace_id, is_archived)`; unique `setups_workspace_mutation_key_idx (workspace_id, mutation_key)`; unique `setups_id_strategy_idx (id, strategy_id)` (composite-FK plumbing for `strategy_setup_versions`).
+
+### `strategy_setup_versions` (Setup snapshot per Strategy Version)
+
+Snapshots a Setup's name/description as they existed inside one Strategy Version — the historical content a future Trade will actually reference, so a later rename never rewrites what a past trade meant.
+
+| Column                    | Type        | Notes                                                                                                                                                    |
+| ------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7                                                                                                                                                   |
+| `workspace_id`            | uuid        | FK → `workspaces.id`; composite FK pins it to the same workspace as `strategy_version_id`'s version                                                      |
+| `strategy_id`             | uuid        | FK → `strategies.id`. Together with the two composite FKs below, transitively forces the Setup and the Strategy Version to belong to the _same_ Strategy |
+| `strategy_version_id`     | uuid        | FK → `strategy_versions.id`, `ON DELETE CASCADE`; composite FK also requires `strategy_id` to match the version's own `strategy_id`                      |
+| `setup_id`                | uuid        | FK → `setups.id`, `ON DELETE CASCADE`; composite FK also requires `strategy_id` to match the setup's own `strategy_id`                                   |
+| `name`                    | text        | CHECK `btrim(name) <> ''`                                                                                                                                |
+| `description`             | text        | Nullable                                                                                                                                                 |
+| `sort_order`              | integer     | CHECK `>= 0`; default `0`                                                                                                                                |
+| `created_at`/`updated_at` | timestamptz |                                                                                                                                                          |
+
+No `expected_minimum_r`, `target_guidance`, `timeframe`, `symbol`, `wave_number`, or current-performance column exists — those are deferred (analytics/trade-context) or not planned.
+
+**Immutability:** protected by a `BEFORE INSERT OR UPDATE OR DELETE` trigger (`strategy_setup_versions_protect_locked`) once the parent `strategy_versions.locked_at` is set — checked against both the old and new `strategy_version_id` on UPDATE, so a row cannot be reassigned out of a locked version's child set as a back door. The `DELETE` branch shares the same narrow workspace-gone exception `strategy_versions` uses (see above) — removable directly only as part of the owning workspace itself being deleted.
+
+**Indexes:** unique `strategy_setup_versions_version_setup_idx (strategy_version_id, setup_id)`; `strategy_setup_versions_version_sort_idx (strategy_version_id, sort_order)`; unique `strategy_setup_versions_id_version_idx (id, strategy_version_id)` (composite-FK plumbing for `strategy_rules`).
+
+### `strategy_rules` (structured, versioned rule content)
+
+The hybrid model Phase 06A recommended: normalized rows for anything that should carry a stable identity across edits, rather than one markdown blob or a bespoke checklist shape.
+
+| Column                    | Type        | Notes                                                                                                                                                                                                                            |
+| ------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7 — identifies one immutable row for one Version                                                                                                                                                                            |
+| `workspace_id`            | uuid        | FK → `workspaces.id`; composite FK pins it to the same workspace as `strategy_version_id`'s version                                                                                                                              |
+| `strategy_version_id`     | uuid        | FK → `strategy_versions.id`, `ON DELETE CASCADE` — always required, whether the rule is Strategy-general or Setup-scoped                                                                                                         |
+| `setup_version_id`        | uuid        | Nullable FK → `strategy_setup_versions.id`. Null = applies to the Strategy Version generally; non-null = scoped to that Setup snapshot. Composite FK requires it to belong to the _same_ `strategy_version_id` this row declares |
+| `rule_key`                | uuid        | Stable logical identity, survives copy-on-write (a copied version's rule keeps the same `rule_key` in a new row with a new `id`); unique with `strategy_version_id`                                                              |
+| `category`                | text, CHECK | `entry` \| `invalidation` \| `risk` \| `management` \| `exit` — mirrored in `src/lib/strategies/constants.ts`'s `STRATEGY_RULE_CATEGORIES`                                                                                       |
+| `title`                   | text        | CHECK `btrim(title) <> ''`                                                                                                                                                                                                       |
+| `description`             | text        | Nullable                                                                                                                                                                                                                         |
+| `is_required`             | boolean     | Default `true`                                                                                                                                                                                                                   |
+| `is_pre_trade_check`      | boolean     | Default `false`                                                                                                                                                                                                                  |
+| `sort_order`              | integer     | CHECK `>= 0`; default `0`                                                                                                                                                                                                        |
+| `created_at`/`updated_at` | timestamptz |                                                                                                                                                                                                                                  |
+
+No severity weight, penalty value, or analytics result lives here — that belongs to the future calculation engine / discipline-scoring design (CLAUDE.md §6), not this schema.
+
+**Immutability:** same protection pattern as `strategy_setup_versions`, via `strategy_rules_protect_locked`, including the same `DELETE`-branch workspace-gone exception.
+
+**Indexes:** unique `strategy_rules_version_rule_key_idx (strategy_version_id, rule_key)`; `strategy_rules_version_sort_idx (strategy_version_id, sort_order)`; `strategy_rules_setup_version_idx (setup_version_id)`.
+
+### Name uniqueness
+
+No database uniqueness constraint on Strategy or Setup **names** — only the `btrim(...) <> ''` non-blank CHECK. UUID identity remains authoritative, matching `trading_accounts.name`'s deliberate lack of a workspace-level uniqueness constraint (A12-adjacent reasoning: duplicate display names are permitted; the id is what every reference actually uses).
+
+### Entitlements
+
+No Strategy-count or Setup-count limit column, check, or index exists anywhere in this schema, and none is planned — every plan (trial and paid) has unlimited Strategies and Setups with identical functionality. `src/config/plan-catalog.ts`'s `SHARED_BILLING_FEATURE_KEYS` already lists `unlimitedStrategies`/`unlimitedSetups` as shared, non-differentiating features.
 
 ---
 
@@ -216,16 +301,16 @@ No `current_balance` column exists (Phase 07+ ledger work). No `deleted_at` colu
 
 The system/actual separation is structural — two parallel column sets, neither derived from the other.
 
-| Group                     | Columns                                                                                                                                                     | Notes                                                 |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Links                     | `trading_account_id`, `strategy_id`, `strategy_version_id`                                                                                                  | Version pinned at creation                            |
-| Identity                  | `symbol`, `direction` (`long`\|`short`), `status` (`planned`\|`open`\|`closed`\|`cancelled`)                                                                |                                                       |
-| **Plan**                  | `planned_entry`, `planned_stop`, `planned_target`, `planned_position_size`                                                                                  | What the system proposed                              |
-| **Actual**                | `actual_entry`, `actual_initial_stop`, `actual_exit`, `position_size`, `contract_multiplier`, `entered_at`, `exited_at`                                     | What the trader did                                   |
-| **System counterfactual** | `system_exit_price`, `system_outcome` (`win`\|`loss`\|`break_even`\|`no_trade`), `system_exit_reason` (`target_hit`\|`stop_hit`\|`rule_exit`\|`still_open`) | Self-reported; see the limitation in the product spec |
-| Costs                     | `commission`, `fees`, `swap`                                                                                                                                | `BIGINT` minor units                                  |
-| Derived                   | `initial_risk_amount`, `gross_pnl`, `net_pnl`, `planned_r`, `system_r`, `actual_r`, `trader_outcome`, `calc_version`                                        | Persisted at close                                    |
-| Behaviour                 | `followed_plan`, `confidence` (1–5), `tradingview_url`, `notes`                                                                                             |                                                       |
+| Group                     | Columns                                                                                                                                                     | Notes                                                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Links                     | `trading_account_id`, `strategy_id`, `strategy_version_id`, `setup_id`, `setup_version_id`                                                                  | Version and setup version both pinned at creation (Phase 06B added the Setup entity after this sketch was originally written) |
+| Identity                  | `symbol`, `direction` (`long`\|`short`), `status` (`planned`\|`open`\|`closed`\|`cancelled`)                                                                |                                                                                                                               |
+| **Plan**                  | `planned_entry`, `planned_stop`, `planned_target`, `planned_position_size`                                                                                  | What the system proposed                                                                                                      |
+| **Actual**                | `actual_entry`, `actual_initial_stop`, `actual_exit`, `position_size`, `contract_multiplier`, `entered_at`, `exited_at`                                     | What the trader did                                                                                                           |
+| **System counterfactual** | `system_exit_price`, `system_outcome` (`win`\|`loss`\|`break_even`\|`no_trade`), `system_exit_reason` (`target_hit`\|`stop_hit`\|`rule_exit`\|`still_open`) | Self-reported; see the limitation in the product spec                                                                         |
+| Costs                     | `commission`, `fees`, `swap`                                                                                                                                | `BIGINT` minor units                                                                                                          |
+| Derived                   | `initial_risk_amount`, `gross_pnl`, `net_pnl`, `planned_r`, `system_r`, `actual_r`, `trader_outcome`, `calc_version`                                        | Persisted at close                                                                                                            |
+| Behaviour                 | `followed_plan`, `confidence` (1–5), `tradingview_url`, `notes`                                                                                             |                                                                                                                               |
 
 `actual_initial_stop` is the stop **as first placed**, not as later moved. Moving a stop is a discipline event recorded as a mistake; if this field tracked the moved stop, the R denominator would shift and the mistake would erase its own evidence.
 

@@ -43,6 +43,19 @@ export const AUDIT_ACTIONS = [
   'billing.checkout_failed',
   'billing.checkout_canceled',
   'billing.checkout_reconciled',
+  'strategy.created',
+  'strategy.updated',
+  'strategy.archived',
+  'strategy.restored',
+  'strategy.version.created',
+  'strategy.version.locked',
+  'setup.created',
+  'setup.updated',
+  'setup.archived',
+  'setup.restored',
+  'strategy.rule.created',
+  'strategy.rule.updated',
+  'strategy.rule.removed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

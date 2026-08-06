@@ -506,6 +506,25 @@ html[lang='th'] .text-label {
   animation: menu-content-out 0.12s cubic-bezier(0.4, 0, 1, 1) both;
 }
 
+/* `Dialog` (forms) reuses the exact same centered-modal animation shape as
+   `AlertDialog` — the only difference between the two primitives is
+   dismissal behavior (outside click/Escape), not how they animate. */
+[data-slot='dialog-overlay'][data-state='open'] {
+  animation: sheet-overlay-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-slot='dialog-overlay'][data-state='closed'] {
+  animation: sheet-overlay-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+[data-slot='dialog-content'][data-state='open'] {
+  animation: menu-content-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-slot='dialog-content'][data-state='closed'] {
+  animation: menu-content-out 0.12s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

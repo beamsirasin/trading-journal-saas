@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 03 is officially complete on `main`; Phase 04 — Billing & Checkout is next. Authentication, database-backed sessions, tenant/workspace isolation, onboarding, trading accounts, workspace entitlements, and server-side create/restore limits are real. Directories still marked _(planned)_ remain future work.
+**Status:** Phase 03, Phase 04 — Billing & Checkout, Phase 05 — Onboarding & Trading Accounts, and Phase 06 — Strategies & Versions are officially complete on `main`; Phase 07 — Trade Model & Calculation Engine is next. Authentication, database-backed sessions, tenant/workspace isolation, onboarding, trading accounts, workspace entitlements, server-side create/restore limits, monthly-plan billing, and the versioned Strategy/Setup/Rule domain (schema, services, authenticated DAL/actions, and the real `/app/strategies` management UI) are real. Directories still marked _(planned)_ — principally `lib/calc/` and the query layer under `server/db/queries/` — remain Phase 07's job: no Trade table or calculation engine exists yet.
 
 ## 1. Shape
 

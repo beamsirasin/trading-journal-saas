@@ -1,18 +1,23 @@
-import { Plus } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
-import { DEMO_TRADES } from '@/lib/demo';
-import { DemoBadge } from '@/components/product/demo-badge';
-import { MetricLabel } from '@/components/product/metric';
+import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
+import { StrategyIdSchema } from '@/lib/strategies/schemas';
+import { formatInstant } from '@/lib/time';
+import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
+import { getWorkspaceStrategyDetail, listWorkspaceStrategies } from '@/server/dal/strategies';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { StrategiesManager } from '@/components/strategies/strategies-manager';
+import type { StrategyDetailView } from '@/components/strategies/strategy-detail';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
+type PageSearchParams = { strategy?: string };
+
+const DATE_LOCALE: Record<string, string> = { en: 'en-GB', th: 'th' };
 
 export async function generateMetadata({
   params,
@@ -36,154 +41,93 @@ export async function generateMetadata({
 }
 
 /**
- * Strategy playbooks.
+ * `/app/strategies` — Phase 06E's real Strategy/Setup/Rule management
+ * experience, replacing the Phase 01 fixture preview. Selection is the
+ * `?strategy=<uuid>` search param (validated with `StrategyIdSchema`, never
+ * trusted raw); a missing, malformed, or cross-workspace value is treated
+ * identically as "nothing selected" — the DAL's `getWorkspaceStrategyDetail`
+ * already collapses "not found" and "not yours" into the same `strategy_not_
+ * found` result, and this page does not attempt to distinguish them either.
  *
- * The preview exists mainly to make immutable versioning visible before it is
- * built. A trade references the version of a playbook that was live when it
- * was taken (assumption A6), which is what stops a rule change silently
- * rewriting the history of every past trade — the single most important
- * property of this screen, and the easiest to leave out.
- *
- * Trade counts are derived from the fixture list by counting rows, which is
- * grouping, not a performance calculation.
- *
- * Strategy name/summary/rules are fixture content, not UI chrome — the same
- * treatment as a trade's symbol or a demo account's nickname elsewhere in
- * this product, so they are not run through the message catalog.
+ * `authorizeWorkspaceMutation(entitlement, 'ordinary_write')` is the same
+ * canonical decision `trading-accounts` UI reads for its own Edit gating —
+ * reused as-is rather than inventing a Strategy-specific quota check, since
+ * this domain has no Strategy/Setup count limit (CLAUDE.md A3): the only
+ * reason writes are ever blocked here is workspace access
+ * (`read_only_workspace`/`over_limit_workspace`), which is exactly what that
+ * helper already resolves.
  */
-
-interface StrategyPreview {
-  readonly name: string;
-  readonly version: string;
-  readonly status: 'active' | 'retired';
-  readonly summary: string;
-  readonly rules: readonly string[];
-}
-
-const STRATEGIES: readonly StrategyPreview[] = [
-  {
-    name: 'London breakout',
-    version: 'v3',
-    status: 'active',
-    summary: 'Range break on the London open, with a fixed 1.5R first target.',
-    rules: [
-      'Only after 07:00 London, only on the first clean break',
-      'Stop below the range low, never tightened before the first target',
-      'Exit fully at 3R or on the session close, whichever comes first',
-    ],
-  },
-  {
-    name: 'New York reversal',
-    version: 'v2',
-    status: 'active',
-    summary: 'Fade the first extreme of the New York session on a failed continuation.',
-    rules: [
-      'Requires a failed break of the London high or low',
-      'Stop beyond the failed extreme',
-      'No entry inside ten minutes of a scheduled release',
-    ],
-  },
-  {
-    name: 'Momentum continuation',
-    version: 'v4',
-    status: 'active',
-    summary: 'Pullback entry in an established trend on the higher timeframe.',
-    rules: [
-      'Higher timeframe trend must be unambiguous',
-      'Entry on the first pullback to the moving average',
-      'Stop under the pullback low',
-    ],
-  },
-  {
-    name: 'Asia range fade',
-    version: 'v1',
-    status: 'retired',
-    summary: 'Faded the Asia session range. Retired after the edge failed to hold up.',
-    rules: [
-      'Entry at the range extreme, no confirmation required',
-      'Fixed 1R target',
-      'Retired — kept so its trades stay scored against the rules that were live',
-    ],
-  },
-];
-
-function tradeCount(strategy: string): number {
-  return DEMO_TRADES.filter((trade) => trade.strategy === strategy).length;
-}
-
-export default async function StrategiesPage({ params }: { params: Promise<PageParams> }) {
+export default async function StrategiesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<PageParams>;
+  searchParams: Promise<PageSearchParams>;
+}) {
   const { locale } = await params;
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('strategies');
+  const { strategy: strategyParam } = await searchParams;
+
+  const [listResult, entitlement, preferences] = await Promise.all([
+    listWorkspaceStrategies(),
+    getWorkspaceEntitlement(),
+    getCurrentUserPreferences(),
+  ]);
+
+  if (!listResult.ok) {
+    return (
+      <Container width="wide" className="flex flex-col gap-8 py-8">
+        <PageHeader title={t('title')} description={t('description')} />
+        <div className="border-destructive/30 bg-destructive/10 flex gap-3 rounded-lg border p-4">
+          <CircleAlert className="text-destructive size-5 shrink-0" aria-hidden="true" />
+          <p className="text-foreground text-sm leading-relaxed">
+            {t(`errors.${listResult.code}` as Parameters<typeof t>[0])}
+          </p>
+        </div>
+      </Container>
+    );
+  }
+
+  const parsedId = strategyParam === undefined ? null : StrategyIdSchema.safeParse(strategyParam);
+  const requestedId = parsedId !== null && parsedId.success ? parsedId.data : null;
+  const detailResult = requestedId === null ? null : await getWorkspaceStrategyDetail(requestedId);
+
+  const locOptions = { locale: DATE_LOCALE[locale] ?? 'en-GB' };
+  let selectedStrategy: StrategyDetailView | null = null;
+  let selectedStrategyId: string | null = null;
+  if (detailResult !== null && detailResult.ok) {
+    selectedStrategyId = detailResult.strategy.strategyId;
+    selectedStrategy = {
+      ...detailResult.strategy,
+      versionHistory: detailResult.strategy.versionHistory.map((entry) => {
+        const formatted = formatInstant(entry.createdAt, preferences.timezone, {
+          style: 'datetime',
+          ...locOptions,
+        });
+        return {
+          versionId: entry.versionId,
+          versionNumber: entry.versionNumber,
+          isLocked: entry.isLocked,
+          changeNote: entry.changeNote,
+          createdAtDisplay: formatted.ok ? formatted.value : '—',
+        };
+      }),
+    };
+  }
+
+  const writeAuthorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
 
   return (
     <Container width="wide" className="flex flex-col gap-8 py-8">
-      <PageHeader
-        title={t('title')}
-        description={t('description')}
-        meta={<DemoBadge />}
-        actions={
-          <Button className="min-h-11" disabled aria-describedby="new-strategy-note">
-            <Plus className="size-4" aria-hidden="true" />
-            {t('newStrategy')}
-          </Button>
-        }
+      <PageHeader title={t('title')} description={t('description')} />
+      <StrategiesManager
+        strategies={listResult.strategies}
+        selectedStrategy={selectedStrategy}
+        selectedStrategyId={selectedStrategyId}
+        canWrite={writeAuthorization.allowed}
+        writeBlockReason={writeAuthorization.allowed ? null : writeAuthorization.code}
       />
-
-      <p id="new-strategy-note" className="text-muted-foreground -mt-4 text-sm">
-        {t('newStrategyNote')}
-      </p>
-
-      <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {STRATEGIES.map((strategy) => (
-          <li
-            key={strategy.name}
-            className="bg-card border-border flex flex-col gap-4 rounded-lg border p-5"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <h2 className="text-card-title">{strategy.name}</h2>
-                <p className="text-muted-foreground text-sm leading-relaxed">{strategy.summary}</p>
-              </div>
-              <Badge variant={strategy.status === 'active' ? 'positive' : 'neutral'}>
-                {strategy.status === 'active' ? t('active') : t('retired')}
-              </Badge>
-            </div>
-
-            <div className="flex flex-wrap gap-6">
-              <div className="flex flex-col gap-1">
-                <MetricLabel>{t('version')}</MetricLabel>
-                <span className="numeric text-foreground text-sm font-semibold">
-                  {strategy.version}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <MetricLabel>{t('tradesShown')}</MetricLabel>
-                <span className="numeric text-foreground text-sm font-semibold">
-                  {tradeCount(strategy.name)}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <MetricLabel>{t('rules')}</MetricLabel>
-              <ul className="flex flex-col gap-1.5">
-                {strategy.rules.map((rule) => (
-                  <li
-                    key={rule}
-                    className="text-muted-foreground flex gap-2 text-sm leading-relaxed"
-                  >
-                    <span aria-hidden="true" className="text-brand">
-                      ·
-                    </span>
-                    {rule}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </li>
-        ))}
-      </ul>
     </Container>
   );
 }

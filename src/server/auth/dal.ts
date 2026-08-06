@@ -506,6 +506,20 @@ export async function requireTradingAccountManagement(workspaceId: string): Prom
 }
 
 /**
+ * The one centralized permission decision behind every Strategy/Setup/Rule
+ * mutation (Phase 06D) — the same `'member'`-minimum, defense-in-depth
+ * precheck `requireTradingAccountManagement` performs before its own
+ * services, called from `src/server/actions/strategies.ts` before every
+ * mutating Server Action reaches `strategy-management.ts`. The service layer
+ * still independently re-verifies active membership itself inside its own
+ * transaction (CLAUDE.md §4) — this is an additional, earlier check, not a
+ * replacement for it.
+ */
+export async function requireStrategyManagement(workspaceId: string): Promise<WorkspaceRole> {
+  return requireWorkspaceRole(workspaceId, 'member');
+}
+
+/**
  * The caller's active workspace's effective entitlement snapshot — display
  * only (CLAUDE.md §4's "never trust the browser clock" extended: this is
  * also never a lock, so it must never itself gate a mutation). Every write
