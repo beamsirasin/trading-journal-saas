@@ -2,7 +2,7 @@
 
 **Depends on:** 05 · **Blocks:** 07, 09
 
-**Status:** In progress. This document was written before implementation and originally described a two-table schema (`strategies`/`strategy_versions` only) with no distinct Setup entity, unstructured markdown rule columns, and a `deleted_at` column inconsistent with every other lifecycle this product ships. Phase 06A audited that draft against the approved product model and found it stale on exactly those points; Phase 06B replaced it with the five-table model below, delivering schema, migration, and database-enforced version integrity only — no mutation services, server actions, or UI yet (06C–06E, see [Remaining Phase 06 work](#remaining-phase-06-work)).
+**Status:** In progress. This document was written before implementation and originally described a two-table schema (`strategies`/`strategy_versions` only) with no distinct Setup entity, unstructured markdown rule columns, and a `deleted_at` column inconsistent with every other lifecycle this product ships. Phase 06A audited that draft against the approved product model and found it stale on exactly those points; Phase 06B replaced it with the five-table model below, delivering schema, migration, and database-enforced version integrity. Phase 06C then delivered the server-side domain services on top of that schema — creation, copy-on-write, lifecycle, rules, and a Phase 08 lock helper — with no Server Action, page, or UI yet (06D–06E, see [Remaining Phase 06 work](#remaining-phase-06-work)).
 
 ## Goal
 
@@ -95,10 +95,54 @@ src/server/db/schema/strategy-domain-migration.integration.test.ts (real Postgre
 
 `strategies`/`strategy_versions` share one file (like `workspaces.ts`'s `workspaces`/`workspace_members`) because they are mutually referential — a Strategy points at its current version, a version points back at its Strategy. Tests are colocated `*.test.ts`/`*.integration.test.ts` next to their source, the repository-wide convention — not the original draft's separate `tests/strategies/` directory, which does not otherwise exist anywhere in this codebase.
 
+## Delivered in Phase 06C — domain services, copy-on-write, lifecycle
+
+No Server Action, page, DAL, or UI exists yet — every function below takes `workspaceId`/`actorUserId` already resolved from the session by a future caller (never client input) and independently re-verifies active membership itself, `trading-account-management.ts`'s own defense-in-depth posture.
+
+### Services
+
+- `src/server/services/strategy-management.ts` — `createStrategy`, `updateStrategyContent`, `archiveStrategy`/`restoreStrategy`, `createSetup`, `updateSetupContent`, `archiveSetup`/`restoreSetup`, `createStrategyRule`, `updateStrategyRule`, `removeStrategyRule`, and the shared lock-order helpers every one of them composes.
+- `src/server/services/strategy-versioning.ts` — `copyCurrentVersionInTx` (the one centralized copy-on-write primitive) and `lockStrategyVersionForReferenceInTx` (Phase 08's future lock helper).
+- `src/lib/strategies/errors.ts` — `STRATEGY_DOMAIN_ERROR_CODES`, a closed, non-sensitive error surface.
+- `src/lib/strategies/validation.ts` — pure name/change-note trimming and blank-rejection, checked before any transaction opens.
+
+### Canonical transaction lock order
+
+Documented in full next to `strategy-management.ts`'s shared helpers. Every mutation acquires, in order: (1) the owning `workspaces` row `FOR UPDATE`; (2) active membership verification; (3) canonical entitlement resolution/authorization (`lockAndResolveEntitlement` + `authorizeWorkspaceMutation(entitlement, 'ordinary_write')` — confirmed in Phase 06A to need zero changes to `resolve.ts`); (4) the `strategies` identity row `FOR UPDATE`, where applicable; (5) the Strategy's _current_ `strategy_versions` row `FOR UPDATE`, where applicable; (6) the `setups` identity row `FOR UPDATE`, where applicable; (7) mutation-specific reads/writes. Every mutation locks the same `workspaces` row first, before touching any other table — identical to `trading-account-management.ts`'s own first lock — so nothing in this domain can deadlock against the trading-account or entitlement services. Verified directly: a transaction that unblocks on the Strategy-row lock (step 4) always re-reads `current_version_id` fresh from the row it just locked, never a value cached from before it queued — proven by the concurrency tests below producing a deterministic, non-duplicated result.
+
+### Copy-on-write
+
+`copyCurrentVersionInTx` always performs one thing: a complete, faithful duplication of a Version's content — never partial, never selective. Every higher-level mutation that needs copy-on-write calls it first, then applies its own specific insert/update/delete against the freshly-copied rows, found via the same unique `(strategy_version_id, setup_id)` / `(strategy_version_id, rule_key)` indexes Phase 06B's migration already provides — not via any map the copy function returns. This keeps the copy primitive itself free of per-caller special cases.
+
+A copy: increments `version_number`; copies `name`/`description`/`notes`; stores the required, trimmed `change_note`; starts `locked_at` at null; copies every `strategy_setup_versions` row the source Version owns (including snapshots belonging to a currently-archived Setup — archive state never affects historical content) with new row IDs but the same `setup_id`; copies every `strategy_rules` row (Strategy-level and Setup-level) with a new row ID but the same `rule_key`, remapping `setup_version_id` through an old-to-new map built while copying the Setup Version rows; and only then atomically repoints `strategies.current_version_id` at the new row. `changeNote` is required by every caller **only when the current Version is actually locked** — an unlocked edit-in-place never touches it.
+
+### Strategy lifecycle
+
+`createStrategy` is one atomic transaction: Strategy identity + Version 1 + `current_version_id` set, so no committed row is ever observable with a null `current_version_id` (a persisted null is treated as malformed and rejected safely by every reader, via `strategy_current_version_missing`, never a crash). Workspace-scoped idempotency mirrors `createTradingAccount`'s `mutation_key` pattern, including its step ordering: the workspace row is locked and active membership is always revalidated first — a removed member can never retrieve or mutate data merely by replaying an old `mutationKey` — and only THEN is the idempotency lookup performed. An exact replay of an existing `mutationKey` returns the original Strategy/Version with no new write and no duplicate `strategy.created` event, and stays safely replayable even after the workspace has since become `read_only`/`over_limit`, since it consumes no entitlement. Entitlement/authorization is resolved only when the lookup misses — a genuinely new `mutationKey` still requires `writable` access; the replay exception never extends to a new key, an update, an archive/restore, or a Rule mutation. `updateStrategyContent` edits `name`/`description`/`notes` in place while unlocked, or copy-on-writes (with a required `changeNote`) while locked; it rejects an archived Strategy outright in both states, before touching the Version at all. `archiveStrategy`/`restoreStrategy` are idempotent, never touch `setups.is_archived`, never create a Version, and never change Version/Rule content.
+
+### Setup lifecycle
+
+`createSetup` rejects an archived Strategy, is workspace-scoped-idempotent on its own `mutation_key` with the identical membership-before-replay ordering `createStrategy` uses, and either snapshots directly into the current Version (unlocked) or copy-on-writes first (locked, `changeNote` required) once a genuinely new key is confirmed writable. `updateSetupContent` rejects an archived Strategy or Setup, and rejects a Setup with no snapshot in the current Version as malformed (`setup_snapshot_missing`) rather than inventing historical meaning. `archiveSetup`/`restoreSetup` are idempotent and refuse to run at all while the parent Strategy is archived — it must be restored first.
+
+### Rule lifecycle
+
+`createStrategyRule`/`updateStrategyRule`/`removeStrategyRule` operate on a Rule identified by its stable `rule_key` within the current Version — Strategy-level when no Setup is supplied, Setup-level (and rejecting an archived Setup) when one is. Category is restricted to the five approved values (`entry`/`invalidation`/`risk`/`management`/`exit`), matching `STRATEGY_RULE_CATEGORIES` and the database CHECK exactly; `is_pre_trade_check` is an independent boolean, never conflated with category. All three copy-on-write when the current Version is locked; removal deletes the copied row from the _new_ Version only, so the Rule remains present, unchanged, in every older Version where it historically existed — hard-deleting Rule history from a locked Version is never possible through these services.
+
+### Future Trade-reference lock helper
+
+`lockStrategyVersionForReferenceInTx` is Phase 08's actual enforcement point for assumption A6. It verifies workspace/Strategy/Version ownership, verifies the Version is the Strategy's _current_ one (a Trade may only newly lock the version it is about to reference — never an older, already-superseded one), locks it, and sets `locked_at` exactly once if it is still null. A repeated call is idempotent, returning the existing `locked_at` rather than erroring; it never unlocks or replaces a set value, matching the database trigger's own one-way rule, which remains the final authority regardless of what this function does. Phase 06C never calls it itself — nothing in this phase creates a locked Version outside tests — but proves it end-to-end for Phase 08 to reuse without rediscovering the lock order.
+
+### Authorization and domain errors
+
+Every mutation is an ordinary business write (`authorizeWorkspaceMutation(entitlement, 'ordinary_write')` — no new operation variant, confirmed in Phase 06A). `writable` allows; `over_limit` and `read_only` deny with `over_limit_workspace`/`read_only_workspace` (`MutationDenialReason` values, reused directly — never duplicated); reads are never gated. A caller who is not an active workspace member gets `workspace_access_denied`, checked before entitlement, membership before authorization. `src/lib/strategies/errors.ts`'s `STRATEGY_DOMAIN_ERROR_CODES` is the complete, stable, non-sensitive error surface for a future Phase 06D action to map to user-facing copy — never a name, description, note, change note, rule title, or workspace ID.
+
+### Audit events
+
+`AUDIT_ACTIONS` gained `strategy.created`/`updated`/`archived`/`restored`, `strategy.version.created`/`locked`, `setup.created`/`updated`/`archived`/`restored`, and `strategy.rule.created`/`updated`/`removed`. `AuditLogMetadata` gained only structural fields — Strategy/Setup/Version/Rule IDs, version number, rule category, Strategy-vs-Setup scope, changed field _names_ — never a name, description, note, change note, rule title, or rule description. Verified directly: the serialized metadata of a `strategy.created`/`strategy.rule.created` event never contains the Strategy name or Rule title/description supplied to create it.
+
 ## Remaining Phase 06 work
 
-- **06C — Mutation services and server actions.** Create/edit/archive/restore for Strategies and Setups, the copy-on-write service, and the service that atomically locks a version. Every mutation reuses `requireWorkspaceMembership` and `authorizeWorkspaceMutation(entitlement, 'ordinary_write')` — confirmed in Phase 06A to already cover Strategy/Setup writes with zero changes to `src/lib/entitlements/resolve.ts`: `over_limit` blocks ordinary writes, `read_only` blocks them, `writable` allows them, and reads stay ungated. New `AUDIT_ACTIONS` entries for the lifecycle.
-- **06D — Management UI.** Replaces the current fixture-driven placeholder at `/app/strategies` with real list/detail/create/edit/archive/restore, the lock indicator and copy-on-write confirmation dialog, the rule editor, and full en/th localization.
+- **06D — Management UI.** Replaces the current fixture-driven placeholder at `/app/strategies` with real list/detail/create/edit/archive/restore, the lock indicator and copy-on-write confirmation dialog, the rule editor, and full en/th localization, wired to Phase 06C's services through new Server Actions.
 - **06E — Full regression and closeout.** Mirrors Phase 05D: complete unit/integration/E2E regression, stale-reference scan, documentation closeout marking Phase 06 complete and Phase 07 next.
 
 ## UI (`/app/strategies`) — target shape for 06D, not yet built
@@ -124,8 +168,12 @@ Backtesting, rule automation, sharing/marketplace, importing strategies, per-rul
 - [x] Strategy and Setup creation carries no plan/account-limit column or check anywhere in the schema
 - [x] Tenant integrity (cross-workspace, cross-strategy, cross-version combinations) database-enforced and tested
 - [x] Typecheck, lint, unit tests, full guarded-Postgres integration suite, production build pass
-- [ ] Mutation services, server actions, copy-on-write service, version-locking service (06C)
-- [ ] Real management UI, four states, responsive, accessible (06D)
+- [x] Strategy/Setup/Rule mutation services, copy-on-write service, Phase 08 version-locking helper (06C)
+- [x] Every mutation authorized through the canonical `authorizeWorkspaceMutation(entitlement, 'ordinary_write')` path, membership independently re-verified (06C)
+- [x] Copy-on-write centralized, proven to preserve `rule_key`/Setup identity and remap `setup_version_id` correctly, including for an archived Setup's historical content (06C)
+- [x] Concurrent mutations against a locked current Version produce a deterministic, non-duplicated result; no orphaned Setup Version/Rule rows (06C)
+- [x] Audit metadata for every new action verified to carry no Strategy/Setup/Rule content (06C)
+- [ ] Server Actions, real management UI, four states, responsive, accessible (06D)
 - [ ] Version diff readable on mobile (06D)
 - [ ] Full regression and Phase 06 closeout (06E)
 
@@ -135,6 +183,6 @@ Backtesting, rule automation, sharing/marketplace, importing strategies, per-rul
 
 ## Risks
 
-- **Lock-check race** — mitigated at the schema level already: the lock trigger reads `OLD.locked_at` inside the same row-level UPDATE, so two concurrent updates to the same version row serialize on Postgres's normal row lock; a service-layer transaction (06C) should still take an explicit row lock before a copy-on-write read-then-insert sequence, the same pattern `trading-account-management.ts` uses for workspace-row locking.
+- **Lock-check race — resolved in Phase 06C.** Every service-layer mutation takes an explicit `FOR UPDATE` lock on the Strategy row (and, where applicable, the current Version row) before deciding whether to edit in place or copy-on-write, the same pattern `trading-account-management.ts` uses for workspace-row locking. Proven directly: two concurrent `updateStrategyContent` calls against one locked Version always produce exactly one copy and one in-place edit of the result (never two competing copies, never a duplicate `version_number`) — the second caller unblocks, re-reads the Strategy row's `current_version_id` fresh, and finds the first caller's new Version already unlocked.
 - **Version sprawl** — frequent editors will generate many versions. Acceptable for MVP; consider draft-then-publish if it becomes noisy.
 - **Workspace deletion with locked history — resolved in Phase 06B.** An earlier draft of this migration blocked workspace deletion entirely whenever a locked strategy version existed underneath it (the delete-lock trigger refused the cascade the same way it refuses a direct delete). That contradicted the approved tenant-owned-record policy — strategy-domain rows belong to the workspace, and ordinary workspace deletion should be able to cascade them away, exactly like every other business table. Fixed with a narrowly-scoped exception (`strategy_domain_workspace_gone()`, see [Version immutability](#version-immutability-assumption-a6--database-enforced) above): deletion of locked history is allowed only when it is a direct consequence of the owning workspace itself being deleted, never a direct delete or a Strategy-identity delete while the workspace remains. `billing_transactions`' `ON DELETE RESTRICT` still independently blocks workspace deletion whenever a billing record exists, regardless of strategy content — unweakened.

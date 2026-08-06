@@ -33,6 +33,19 @@ export interface AuditLogMetadata {
   readonly providerPaymentId?: string;
   readonly status?: string;
   readonly failureCode?: string;
+  /** Strategy-domain structural metadata only — see the module comment. */
+  readonly strategyId?: string;
+  readonly strategyVersionId?: string;
+  readonly previousStrategyVersionId?: string;
+  readonly setupId?: string;
+  readonly setupVersionId?: string;
+  readonly ruleId?: string;
+  readonly ruleKey?: string;
+  readonly versionNumber?: number;
+  readonly ruleCategory?: string;
+  /** `'strategy' | 'setup'` — never rule/setup/strategy content itself. */
+  readonly ruleScope?: string;
+  readonly isNoop?: boolean;
 }
 
 export interface AuditLogInput {

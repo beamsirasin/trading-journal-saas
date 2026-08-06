@@ -181,9 +181,9 @@ No `current_balance` column exists (Phase 07+ ledger work). No `deleted_at` colu
 
 ---
 
-## Phase 06B — Strategies and Setups (schema and version integrity implemented)
+## Phase 06B/06C — Strategies and Setups (schema, version integrity, and domain services implemented)
 
-Migration: [`drizzle/0007_strategies_and_setups.sql`](../drizzle/0007_strategies_and_setups.sql). Schema, forward migration, and database-enforced version immutability only — no mutation service, server action, or UI exists yet (Phase 06C–06E; see [PHASE-06-strategies.md](phases/PHASE-06-strategies.md)). Replaces this section's original pre-implementation draft, which modeled a Setup as a jsonb checklist field rather than a distinct entity, put `timeframe`/`instrument_class` directly on `strategies`, and included a `deleted_at` column inconsistent with every other table's archive-only convention — Phase 06A's audit found all three stale against the approved model.
+Migration: [`drizzle/0007_strategies_and_setups.sql`](../drizzle/0007_strategies_and_setups.sql). Phase 06B delivered the schema, forward migration, and database-enforced version immutability below; Phase 06C delivered the server-side domain services on top of it (`src/server/services/strategy-management.ts`, `strategy-versioning.ts`) — creation, copy-on-write, archive/restore lifecycle, structured Rule mutations, and a Phase 08 version-locking helper. No Server Action, page, or UI exists yet (Phase 06D–06E; see [PHASE-06-strategies.md](phases/PHASE-06-strategies.md)). This section replaces its original pre-implementation draft, which modeled a Setup as a jsonb checklist field rather than a distinct entity, put `timeframe`/`instrument_class` directly on `strategies`, and included a `deleted_at` column inconsistent with every other table's archive-only convention — Phase 06A's audit found all three stale against the approved model.
 
 Five tables, all workspace-owned (`ON DELETE CASCADE`, the ordinary tenant-owned-record convention — not `billing_transactions`' deliberately stronger `RESTRICT`, confirmed unweakened by this migration). Deleting the owning workspace is allowed to cascade away even _locked_ strategy history — see [Immutability](#strategy_versions-versioned-content) below for the narrowly-scoped exception that makes this true without weakening direct-delete protection.
 
