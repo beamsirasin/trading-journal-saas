@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phase 03, Phase 04 — Billing & Checkout, and Phase 05 — Onboarding & Trading Accounts are officially complete; Phase 06 — Strategies & Versions is next. Authentication, tenant-isolated workspaces, onboarding, trading accounts, the 7-day trial, active-account entitlements, monthly-plan checkout, immutable billing snapshots, and conditional VAT presentation are real, behind a mock payment provider not reachable by ordinary production traffic. Strategy, trade, and analytics surfaces remain absent or fixture-driven; no real metric below is computed yet.
+**Status:** Living document. Phase 03, Phase 04 — Billing & Checkout, Phase 05 — Onboarding & Trading Accounts, and Phase 06 — Strategies & Versions are officially complete; Phase 07 — Trade Model & Calculation Engine is next. Authentication, tenant-isolated workspaces, onboarding, trading accounts, the 7-day trial, active-account entitlements, monthly-plan checkout, immutable billing snapshots, conditional VAT presentation, and real workspace-owned Strategies with nested Setups, versioned Rules, and a full management UI are real, behind a mock payment provider not reachable by ordinary production traffic. Trade and analytics surfaces remain absent or fixture-driven; no real trade metric below is computed yet — that is Phase 07's job.
 
 ## 1. The problem
 

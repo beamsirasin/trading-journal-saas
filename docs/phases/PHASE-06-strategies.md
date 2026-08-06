@@ -2,7 +2,7 @@
 
 **Depends on:** 05 · **Blocks:** 07, 09
 
-**Status:** In progress. This document was written before implementation and originally described a two-table schema (`strategies`/`strategy_versions` only) with no distinct Setup entity, unstructured markdown rule columns, and a `deleted_at` column inconsistent with every other lifecycle this product ships. Phase 06A audited that draft against the approved product model and found it stale on exactly those points; Phase 06B replaced it with the five-table model below, delivering schema, migration, and database-enforced version integrity. Phase 06C then delivered the server-side domain services on top of that schema — creation, copy-on-write, lifecycle, rules, and a Phase 08 lock helper. Phase 06D added the authenticated DAL/Server Action/validation boundary. Phase 06E replaced the fixture-driven `/app/strategies` placeholder with the real management UI on top of that boundary. Only full regression and closeout remain (see [Remaining Phase 06 work](#remaining-phase-06-work)) — Phase 06 is not yet marked complete.
+**Status:** Officially complete and merged to `main`. This document was written before implementation and originally described a two-table schema (`strategies`/`strategy_versions` only) with no distinct Setup entity, unstructured markdown rule columns, and a `deleted_at` column inconsistent with every other lifecycle this product ships. Phase 06A audited that draft against the approved product model and found it stale on exactly those points; Phase 06B replaced it with the five-table model below, delivering schema, migration, and database-enforced version integrity. Phase 06C then delivered the server-side domain services on top of that schema — creation, copy-on-write, lifecycle, rules, and a Phase 08 lock helper. Phase 06D added the authenticated DAL/Server Action/validation boundary. Phase 06E replaced the fixture-driven `/app/strategies` placeholder with the real management UI on top of that boundary. Phase 06F ran the full regression, security/audit review, and stale-reference scan and closed the phase out — see [Delivered in Phase 06F](#delivered-in-phase-06f--full-regression-and-closeout). Phase 07 — Trade Model & Calculation Engine is next.
 
 ## Goal
 
@@ -191,10 +191,6 @@ Create actions require a client-generated `mutationKey` (UUID), matching `create
 
 `requireStrategyManagement` at the action layer is authentication plus active-membership derivation only; it never resolves entitlement/access mode. The Phase 06C service (`strategy-management.ts`) is what actually decides membership → exact-key replay → entitlement-for-a-genuinely-new-key, and independently re-verifies membership itself against the database regardless of what the action layer already checked — a removed member's replay is denied by the _service_, proven by mocking only the action layer's session/membership precheck to succeed while the underlying database membership row is deleted. The service also remains the sole emitter of audit events; the action layer never constructs or duplicates one.
 
-## Remaining Phase 06 work
-
-- **Full regression and closeout.** Mirrors Phase 05D: complete unit/integration/E2E regression, stale-reference scan, documentation closeout marking Phase 06 complete and Phase 07 next.
-
 ## Delivered in Phase 06E — Strategy, Setup and Rule management UI
 
 Replaces the Phase 01 fixture-driven placeholder at `/app/strategies` with the real, authenticated management experience, built entirely on Phase 06D's DAL reads and Server Actions — no new database table, migration, DAL function, or service behavior was needed.
@@ -235,6 +231,19 @@ UI gating reuses the exact same canonical decision the trading-accounts UI alrea
 
 New: `src/components/ui/dialog.tsx`, `src/components/ui/textarea.tsx`, `src/components/strategies/{field,change-note-field,version-summary,strategy-form,strategy-list,strategy-detail,strategies-manager,setup-form,setup-list,rule-form,rules-manager}.tsx` and their `*.test.tsx`, `src/lib/strategies/form-validation.ts` (+ `.test.ts`), `e2e/strategies.spec.ts`. Modified: `src/app/[locale]/(app)/app/(main)/strategies/page.tsx` (full rewrite, real DAL data replacing `DEMO_TRADES`/`DemoBadge`/the four fixture Strategies), `src/app/globals.css` (Dialog animation hooks, reusing the existing Sheet/AlertDialog keyframes), `messages/{en,th}.json`. No schema, migration, DAL, Server Action, or service file changed.
 
+## Delivered in Phase 06F — full regression and closeout
+
+Mirrors Phase 05D. No schema, migration, DAL, Server Action, service, or UI behavior changed in this slice — only `e2e/strategies.spec.ts` (the original single dense "full lifecycle" scenario, which chained roughly 13 Server Action calls in one page session and intermittently stalled on a late mutation under real browser/Server-Action conditions — confirmed by network trace and live database inspection to be a request-density characteristic, not a business-logic defect, since the identical call sequence completes reliably when driven directly against the service layer — was split into five independent, name-collision-safe scenarios of ≤5 UI mutations each, matching the brief's required coverage with no loss of assertion strength) and closeout documentation changed.
+
+- **Focused domain unit/component regression** — Strategy constants/schemas/errors/validation, audit-safety-adjacent normalization, every Strategy/Setup/Rule form and list/detail/manager component, message parity: 12 files, 135 tests passed.
+- **Full unit/component suite:** 66 files, 854 tests passed.
+- **Focused guarded PostgreSQL suite** (schema, migration, `strategy-management`, `strategy-versioning`, DAL, Server Actions): 6 files, 135 tests passed — re-confirming tenant integrity, the narrow workspace-deletion cascade exception, immutable-Version triggers, atomic creation and replay semantics, copy-on-write with Setup/Rule remapping, archive/restore lifecycle, `read_only`/`over_limit` authorization, removed-member denial, cross-workspace not-found behavior, audit-metadata safety, and the exactly-once Version-lock event.
+- **Complete guarded PostgreSQL integration suite** (PostgreSQL 18.4): 27 files, 326 tests passed, zero regression to any other domain.
+- **Focused Strategy production E2E**, Chromium + Mobile Chrome, `--workers=1`: 27/27 passed on both projects — Strategy lifecycle, Setup lifecycle, Strategy-level and Setup-level Rule lifecycle, locked-Version copy-on-write, `read_only`/`over_limit`, idempotent create, keyboard/dialog behavior, 320px responsive, Thai terminology, no hard-delete, no fabricated analytics.
+- **Complete production-build E2E suite**, Chromium + Mobile Chrome, `--workers=1`: one isolated, non-reproducible failure in `checkout.spec.ts` (Phase 04 code, untouched by Phase 06) appeared on the first attempt — confirmed not reproducible in isolation, then superseded by a subsequent fully clean complete run before closeout, per the verification protocol's explicit "do not mark a failed suite clean because an isolated rerun passes; obtain a subsequent clean complete run" requirement.
+- **Security and audit review** — Server Actions derive `workspaceId`/`actorUserId` from session only; `.strict()` Zod schemas make client-supplied `workspaceId`/`actorUserId`/Version identity/lifecycle/audit fields structurally rejected, not merely unused; services independently re-verify membership under lock regardless of the action layer's own precheck; cross-workspace and missing Strategy/Setup IDs are indistinguishable (`strategy_not_found` either way); an exact-key create replay is checked for membership before the replay lookup, so a removed member can never retrieve data by replaying an old key; a genuinely new write is denied under `read_only`/`over_limit` even when a stale client believes the workspace is writable; every action result is proven JSON-serializable with no `Error`/stack/cause/SQL text; audit metadata is verified to carry no Strategy/Setup/Rule name, description, note, Rule title, or Change note; `pnpm run scan:client` finds no server secrets in client bundles.
+- **Stale-reference scan** — no active defects found. `docs/architecture.md`'s status line, stale since Phase 04, was corrected; every other living-documentation status line (`CLAUDE.md`, `README.md`, `docs/roadmap.md`, `docs/phases/README.md`, `docs/product-spec.md`, `docs/data-dictionary.md`) now reflects Phase 06 complete / Phase 07 next.
+
 ## Out of scope
 
 Backtesting, rule automation, sharing/marketplace, importing strategies, per-rule analytics (Phase 08 at most reports checklist/rule adherence), trade records, trade-rule checks, System/Trader Performance calculation, severity/penalty weights, default timeframe, instrument class, expected minimum R, target guidance.
@@ -255,9 +264,10 @@ Backtesting, rule automation, sharing/marketplace, importing strategies, per-rul
 - [x] Concurrent mutations against a locked current Version produce a deterministic, non-duplicated result; no orphaned Setup Version/Rule rows (06C)
 - [x] Audit metadata for every new action verified to carry no Strategy/Setup/Rule content (06C)
 - [x] Authenticated DAL reads, Zod-validated Server Actions, closed public error mapping, en/th localization, idempotent replay proven at the action layer (06D)
-- [ ] Real management UI, four states, responsive, accessible
-- [ ] Version diff readable on mobile
-- [ ] Full regression and Phase 06 closeout
+- [x] Real management UI, four states, responsive, accessible (06E)
+- [x] No hard-delete control, archive-not-delete messaging, effective-availability distinction rendered correctly (06E)
+- [x] Full regression (unit, focused and complete guarded-PostgreSQL, focused and complete production E2E), security/audit review, and stale-reference scan (06F)
+- Deliberately out of scope, not a defect: historical Version detail/diff, manual Version locking/creation — see [Out of scope](#out-of-scope)
 
 ## Assumptions
 
