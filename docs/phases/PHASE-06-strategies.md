@@ -2,7 +2,7 @@
 
 **Depends on:** 05 · **Blocks:** 07, 09
 
-**Status:** In progress. This document was written before implementation and originally described a two-table schema (`strategies`/`strategy_versions` only) with no distinct Setup entity, unstructured markdown rule columns, and a `deleted_at` column inconsistent with every other lifecycle this product ships. Phase 06A audited that draft against the approved product model and found it stale on exactly those points; Phase 06B replaced it with the five-table model below, delivering schema, migration, and database-enforced version integrity. Phase 06C then delivered the server-side domain services on top of that schema — creation, copy-on-write, lifecycle, rules, and a Phase 08 lock helper — with no Server Action, page, or UI yet (06D–06E, see [Remaining Phase 06 work](#remaining-phase-06-work)).
+**Status:** In progress. This document was written before implementation and originally described a two-table schema (`strategies`/`strategy_versions` only) with no distinct Setup entity, unstructured markdown rule columns, and a `deleted_at` column inconsistent with every other lifecycle this product ships. Phase 06A audited that draft against the approved product model and found it stale on exactly those points; Phase 06B replaced it with the five-table model below, delivering schema, migration, and database-enforced version integrity. Phase 06C then delivered the server-side domain services on top of that schema — creation, copy-on-write, lifecycle, rules, and a Phase 08 lock helper. Phase 06D added the authenticated DAL/Server Action/validation boundary. Phase 06E replaced the fixture-driven `/app/strategies` placeholder with the real management UI on top of that boundary. Only full regression and closeout remain (see [Remaining Phase 06 work](#remaining-phase-06-work)) — Phase 06 is not yet marked complete.
 
 ## Goal
 
@@ -193,17 +193,47 @@ Create actions require a client-generated `mutationKey` (UUID), matching `create
 
 ## Remaining Phase 06 work
 
-- **Management UI.** Replaces the current fixture-driven placeholder at `/app/strategies` with real list/detail/create/edit/archive/restore, the lock indicator and copy-on-write confirmation dialog, and the rule editor, wired to Phase 06D's Server Actions and DAL reads.
 - **Full regression and closeout.** Mirrors Phase 05D: complete unit/integration/E2E regression, stale-reference scan, documentation closeout marking Phase 06 complete and Phase 07 next.
 
-## UI (`/app/strategies`) — target shape for 06D, not yet built
+## Delivered in Phase 06E — Strategy, Setup and Rule management UI
 
-- List with per-strategy Setup count and version count (trade count arrives with Phase 08; showing one now would be fabricated)
-- Detail: rules, version history timeline, diff between versions
-- Editor with a structured rule builder (add/reorder/toggle required, assign category) and Setup management within the current version
-- Explicit lock indicator and copy-on-write confirmation dialog
-- Archive/restore only — no delete action anywhere
-- Unlimited strategies and setups on the trial and every paid plan; no plan-specific entitlement gate
+Replaces the Phase 01 fixture-driven placeholder at `/app/strategies` with the real, authenticated management experience, built entirely on Phase 06D's DAL reads and Server Actions — no new database table, migration, DAL function, or service behavior was needed.
+
+### Single-page hierarchy, not a new route
+
+Strategy → Setups → Rules stays on the one existing route. The selected Strategy is a validated URL search param, `?strategy=<uuid>` (`StrategyIdSchema.safeParse` in `page.tsx`; a missing, malformed, or cross-workspace value is treated identically as "nothing selected," matching the DAL's own `strategy_not_found` fail-closed posture). No `/app/setups` route, no client-side fetch of Strategy data — a Server Component (`page.tsx`) reads `listWorkspaceStrategies()`/`getWorkspaceStrategyDetail()`/`getWorkspaceEntitlement()`/`getCurrentUserPreferences()` and hands plain, already-safe props to one client shell, `StrategiesManager`.
+
+### Responsive master-detail
+
+Desktop/tablet (`lg:` and up): a fixed-width Strategy list beside the selected Strategy's detail panel, both visible at once. Mobile (below `lg:`): CSS-only visibility swap (`hidden lg:flex` / `hidden lg:block` driven by whether a Strategy is selected, no JS media-query state) — the list when nothing is selected, the detail panel plus a "Back to strategies" control when one is. No wide tables anywhere; Rule/Setup content is cards and stacked text. Verified at 320px: no horizontal overflow, 44px touch targets (`e2e/strategies.spec.ts`).
+
+### Components (`src/components/strategies/`)
+
+`strategies-manager.tsx` (feedback banner + access-mode banner + empty state + master-detail shell) → `strategy-list.tsx` (link-based selection) and `strategy-detail.tsx` (header/actions, notes, `version-summary.tsx`, `setup-list.tsx`, `rules-manager.tsx`). Create/edit forms (`strategy-form.tsx`, `setup-form.tsx`, `rule-form.tsx`) are each a `Dialog` (`src/components/ui/dialog.tsx` — a new project-authored `radix-ui` `Dialog` wrapper, following `alert-dialog.tsx`/`sheet.tsx`'s existing composition convention; reserved for non-destructive forms, since unlike `AlertDialog` it dismisses on outside click/Escape). Archive/restore and Rule-removal reuse the existing `AlertDialog`. `field.tsx`/`change-note-field.tsx` are small shared field wrappers; `src/lib/strategies/form-validation.ts` is pure client-side pre-validation mirroring the server Zod schema's own rules (the same "client code, server schema stays authoritative" split as `trading-accounts/form-validation.ts`).
+
+### Mutations and mutationKey/ruleKey lifecycle
+
+Every mutation is a direct call to a Phase 06D Server Action from a Client Component (no `<form action>`), the same pattern `TradingAccountForm`/`AccountsManager` already establish. `mutationKey`/`ruleKey` are generated once via `useState(() => crypto.randomUUID())` inside each form's body component; because Radix's `Dialog.Content` unmounts its subtree while closed, closing and reopening a dialog is what produces "a new key only after an explicit new attempt," and a retry within one open dialog (validation failure, a rejected submission) reuses the same key — proven directly (`strategy-form.test.tsx`, `setup-form.test.tsx`, `rule-form.test.tsx`) and end-to-end (`e2e/strategies.spec.ts`'s rapid-double-submit test: exactly one Strategy row after a forced double-click).
+
+### Copy-on-write UX
+
+Before submitting an edit to a Strategy/Setup/Rule, the form shows `VersionEditNotice` — "this version is editable, saving updates it in place" when unlocked, or "this version is locked, saving creates a new version and prior history is unchanged" when locked, at which point a required `ChangeNoteField` appears. The service remains authoritative for the actual `change_note_required` decision; the client-side notice and requirement are a UX affordance only, verified end-to-end by locking a Version directly in the guarded test database (`e2e/strategies.spec.ts` — no manual lock control exists in production UI) and confirming the edit is blocked without a note, succeeds with one, and the resulting current-Version number is exactly what the Server Action's `data.versionNumber` reported — never a client-invented value.
+
+### Action-result consumption
+
+Every action call is handled through the exact Phase 06D contract (`{ ok: true, data } | { ok: false, error: { code, fieldErrors? } }`) — a create's `alreadyCreated` selects the "already created" vs. "created" feedback message but both navigate identically; `versionId`/`versionNumber` are always displayed as the current Version, never labeled "the version this was created in." Field errors from a defensive server-side Zod rejection are mapped to a generic `invalidCharacters` message rather than echoing Zod's raw text; an unrecognized/forged field can never surface as a labeled field error (Phase 06D's `.strict()` schemas already route it to a root-level issue the action never reads). `ruleKey` — never the internal Rule row `id` the DAL's `StrategyRuleDetail.ruleId` field carries — is the only Rule identifier ever rendered or sent, proven by a component test asserting the row id string never appears in the DOM.
+
+### Access-mode gating
+
+UI gating reuses the exact same canonical decision the trading-accounts UI already reads — `authorizeWorkspaceMutation(entitlement, 'ordinary_write')` — rather than inventing a Strategy-specific check; this domain has no Strategy/Setup-count quota (CLAUDE.md A3), so the only two denial codes ever produced for this operation are `read_only_workspace`/`over_limit_workspace`, both already present in `strategies.errors`. `over_limit`/`read_only` disable (not hide) every mutation control, each with a visible reason (`aria-describedby` or inline text); reads, selection, and archived-content remain fully available. The Server Action's own membership/entitlement check remains the actual authorization boundary — the client-side gate is read-only display, proven stale-safe by the same action-layer tests Phase 06D already wrote (a client believing `writable` still gets a real `read_only_workspace`/`over_limit_workspace` failure from the server if the snapshot is stale).
+
+### Localization and accessibility
+
+`messages/{en,th}.json`'s `strategies` namespace expanded with the full UI copy set — page/empty states, Strategy/Setup/Rule CRUD, categories, required/pre-trade-check, current-Version/locked/editable state, Change note, copy-on-write explanation, archive-not-delete wording, restore behavior, effective availability, and every dialog title/description — Thai using the terminology CLAUDE.md/the brief specify (กลยุทธ์/เซ็ตอัพ/กฎ/เวอร์ชันปัจจุบัน/บันทึกการเปลี่ยนแปลง/เก็บเข้าคลังแล้ว/ตรวจสอบก่อนเข้าเทรด). Strict key parity is enforced by the existing `src/i18n/messages.test.ts`. Dialogs use Radix's built-in focus-trap/return-focus and title/description semantics; disabled controls carry a visible, associated reason; status/feedback messages use `role="status" aria-live="polite"`; category/scope selects and required/pre-trade-check checkboxes have explicit labels; motion (dialog/overlay transitions) is the existing global `prefers-reduced-motion` guard, not a new one.
+
+### Files
+
+New: `src/components/ui/dialog.tsx`, `src/components/ui/textarea.tsx`, `src/components/strategies/{field,change-note-field,version-summary,strategy-form,strategy-list,strategy-detail,strategies-manager,setup-form,setup-list,rule-form,rules-manager}.tsx` and their `*.test.tsx`, `src/lib/strategies/form-validation.ts` (+ `.test.ts`), `e2e/strategies.spec.ts`. Modified: `src/app/[locale]/(app)/app/(main)/strategies/page.tsx` (full rewrite, real DAL data replacing `DEMO_TRADES`/`DemoBadge`/the four fixture Strategies), `src/app/globals.css` (Dialog animation hooks, reusing the existing Sheet/AlertDialog keyframes), `messages/{en,th}.json`. No schema, migration, DAL, Server Action, or service file changed.
 
 ## Out of scope
 
