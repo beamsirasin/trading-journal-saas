@@ -1,6 +1,6 @@
 # Calculation Specification
 
-**Status:** Phase 07C implemented the per-trade calculation core — `src/lib/calc/{types,decimal,risk,trade}.ts` — against the `trades` schema Phase 07B made real (`drizzle/0008_trade_domain_and_discipline.sql`). Planned R, Actual R, System gross R, System R, outcome classification, and the per-Trade snapshot composition helpers are implemented and tested; this document is the contract they satisfy. **Not yet implemented:** `aggregate.ts`, `attribution.ts`, `equity.ts` (Phase 07D) — §4 "Aggregates", §5 "Attribution metrics", and §6 "Null-result discipline" below describe that future contract, not Phase 07C's. No service, DAL, Server Action, UI, or database write path exists yet (Phase 08's job) — the engine is pure, importable, and testable without a database connection, environment variables, or the Next.js runtime.
+**Status:** Phase 07 is IN PROGRESS. Phase 07C implemented the per-trade calculation core — `src/lib/calc/{types,decimal,risk,trade}.ts` — against the `trades` schema Phase 07B made real (`drizzle/0008_trade_domain_and_discipline.sql`). Phase 07D implemented the aggregate/attribution/equity engine on top of it — `src/lib/calc/{aggregate,attribution,equity}.ts`: Total/Average R, Expectancy, Win Rate, average Win/Loss, Payoff Ratio, Profit Factor, the cumulative-R equity curve, Maximum Drawdown, paired System-vs-Trader edge leakage, execution efficiency, and objective Rule adherence. §4/§5/§6 below reflect that implemented contract. **Deliberately NOT implemented:** Discipline Score (no approved formula exists) and mistake-cost attribution (deferred to a later phase's explicit attribution policy) — see §5's own subsection. No service, DAL, Server Action, UI, database write path, date-bucketed reporting, or SQL aggregation exists yet (Phase 08/09's job) — the entire engine is pure, importable, and testable without a database connection, environment variables, or the Next.js runtime.
 
 **Implemented in Phase 00b:** the money and time primitives the engine builds on — [`src/lib/money/`](../src/lib/money/) and [`src/lib/time/`](../src/lib/time/). See [ADR 0002](decisions/0002-money-representation.md) and [ADR 0003](decisions/0003-time-model.md).
 
@@ -149,58 +149,87 @@ Comment this at the call site. A future contributor unifying the denominators wo
 ## 4. Aggregates
 
 ```
-winRate      = wins / closedTrades      (break-evens are excluded from the
-                                         numerator, included in the denominator)
-avgR         = mean(R)
-expectancy   = mean(R)                  (equivalently winRate·avgWinR − lossRate·|avgLossR|)
-totalR       = Σ R
-profitFactor = Σ R⁺ / |Σ R⁻|
-maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magnitude)
+totalR       = Σ R                                          [aggregate.ts: totalR]
+avgR         = totalR / eligibleCount                        [aggregate.ts: averageR]
+expectancyR  = avgR (identical contract, not a second formula) [aggregate.ts: expectancyR]
+winRate      = wins / eligibleResolvedCount   (break-evens excluded from the
+                                               numerator, included in the denominator)
+                                                               [aggregate.ts: winRate]
+averageWinR  = mean(R where outcome = win)     (signed positive) [aggregate.ts: averageWinR]
+averageLossR = mean(R where outcome = loss)    (signed negative) [aggregate.ts: averageLossR]
+payoffRatio  = averageWinR / abs(averageLossR)                [aggregate.ts: payoffRatio]
+profitFactor = grossPositiveR / abs(grossNegativeR)
+             where grossPositiveR = Σ R where R > 0, grossNegativeR = Σ R where R < 0
+                                                               [aggregate.ts: profitFactor]
+equityCurveR    = per-Trade cumulative R, sorted by occurrence time then id
+                                                               [equity.ts: equityCurveR]
+maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magnitude,
+             runningPeak seeded at 0)                          [equity.ts: maximumDrawdownR]
 ```
 
-Open trades and soft-deleted trades (`Trade.deleted_at IS NOT NULL`) are excluded from every closed-trade aggregate. `canceled` trades are excluded from every Trader-performance aggregate (a locked Phase 07B product decision) — this is a query-level filter, not a schema-shape constraint, since `Trade.status = 'canceled'` deliberately leaves every other field unconstrained.
+**Implemented as of Phase 07D** — `src/lib/calc/{aggregate,equity}.ts`. These functions consume already-resolved R/outcome snapshots (Phase 07C's `trade.ts` output); none of them recalculates Actual R or System R from prices.
 
-**Deterministic ordering.** Sequence calculations (equity curves, drawdown) order the closed-trade set by `Trade.exited_at`, tie-broken by `Trade.id` — UUIDv7 sorts chronologically as a secondary key (`src/lib/identifiers.ts`). Both the Actual and System series plot against this one shared per-trade ordering (matching `DemoEquityPoint`'s one-label/two-values shape in `src/lib/demo/types.ts`), never two independently-ordered series by `exited_at` vs `system_exited_at` — a System counterfactual that resolved on a different date from the actual close is still compared trade-for-trade, not re-sequenced by its own resolution time.
+**Profit Factor uses the sign of R, not the outcome classification.** A `+0.0300R` Trade the outcome snapshot calls `break_even` still contributes its full value to `grossPositiveR`; a `-0.0300R` break-even Trade still contributes to `grossNegativeR`. `profitFactor` does not even accept an outcome field — it reads R values only. `winRate`/`averageWinR`/`averageLossR`, conversely, are classification-based and read the trusted `outcome` snapshot directly, never reclassifying `R` themselves.
+
+**Break-even remains in the Win Rate denominator** — never removed, exactly as CLAUDE.md §6 requires. `averageWinR`/`averageLossR` exclude break-even Trades from their own subsets (a break-even Trade is neither a win nor a loss for averaging purposes), but `winRate`'s denominator still counts it.
+
+**Eligible populations differ between the Trader and System axes** (Phase 07D locked rule): a Trader metric's eligible Trade requires `status = 'closed'`, not soft-deleted, `actualR` present, `traderOutcome` present — **System status does not matter**, so a closed Trader Trade with `system_status = 'pending'` is still eligible for Trader metrics. A System metric's eligible Trade requires `system_status = 'resolved'`, `systemR` present, `systemOutcome` present, not soft-deleted — `pending` and `no_trade` are both excluded, and neither is ever treated as a `0R` sample. `src/lib/calc/aggregate.ts`'s `isTraderEligible`/`isSystemEligible` (and their `select*Eligible` filter wrappers) are the one place this distinction is expressed, so a caller cannot accidentally mix the two populations.
+
+**Open, soft-deleted, and `canceled` trades** are excluded from every closed-trade aggregate exactly as before — `canceled` exclusion is a query-level filter the caller applies before calling these functions, not a schema-shape constraint (`Trade.status = 'canceled'` deliberately leaves every other field unconstrained).
+
+**Deterministic ordering.** `equityCurveR`/`maximumDrawdownR` sort their own input — occurrence timestamp ascending, then `id` ascending as a stable tie-breaker (UUIDv7 sorts chronologically as a secondary key too, `src/lib/identifiers.ts`) — never trusting caller array order. A **Trader** curve's caller supplies `exited_at` as the occurrence timestamp; a **System** curve's caller supplies `system_exited_at`. Never `created_at`/`updated_at`/`system_resolved_at` — none of those describe when the position's outcome actually happened. The two axes are two independent curves over their own respectively-eligible populations, each internally ordered by its own occurrence time — not one merged series.
 
 ## 5. Attribution metrics
 
 ```
-edgeLeakageR        = systemTotalR − actualTotalR
-executionEfficiency = actualTotalR / systemTotalR       (only when systemTotalR > 0)
-disciplineScore     = 100 × (1 − mean(perTradePenalty))
-perTradePenalty     = min(1, Σ severityWeight(mistake))
+edgeLeakageR         = systemR − actualR                          (per Trade)
+                                                    [attribution.ts: edgeLeakageR]
+pairedEdgeLeakageR   = Σ (systemR − actualR) over the SAME paired-Trade population
+                                                    [attribution.ts: pairedEdgeLeakageR]
+executionEfficiency  = pairedActualTotalR / pairedSystemTotalR   (only when
+                        pairedSystemTotalR > 0, same paired population both sides)
+                                                    [attribution.ts: executionEfficiency]
+ruleAdherenceRate    = followed / (followed + violated)   (not_applicable/not_checked excluded)
+                                                    [attribution.ts: ruleAdherenceRate]
 ```
 
-**Edge leakage** positive means the trader destroyed edge. Negative means the trader added value by deviating from the rules — a real and interesting finding. **Do not clamp it to zero.**
+**Implemented as of Phase 07D** — `src/lib/calc/attribution.ts`.
 
-**Execution efficiency** is undefined when `systemTotalR ≤ 0`. Against a zero or negative system edge the ratio is not merely undefined, it is actively misleading: capturing 50% of a losing system is not a 50% score. Return `null` with reason `system_has_no_edge`.
+**Comparison is paired by Trade, always.** A Trade contributes to System-vs-Trader comparison only when BOTH `actualR` and `systemR` exist for that same Trade (`isComparisonEligible`/`selectComparisonEligible`) — a third, distinct eligibility rule from the Trader/System rules above: a closed Trader Trade with a still-`pending` System side is Trader-eligible but not comparison-eligible. `PairedRTrade` couples one `tradeId` to both its own R values in a single record, so a caller cannot construct `systemTotal` over one population minus `actualTotal` over a different one — pairing is enforced by the type shape itself, not by a runtime cross-check.
 
-**Severity weights** live in `src/config/mistakes.ts` (assumption A2):
+**Edge leakage** positive means the trader captured less R than the System; zero means they matched; **negative means the trader captured MORE R than the counterfactual System** — never described as an error, never clamped to zero. Both are real, meaningful findings.
 
-| Severity | Weight |
-| -------- | ------ |
-| minor    | 0.15   |
-| moderate | 0.35   |
-| severe   | 0.60   |
+**Execution efficiency** is undefined when `pairedSystemTotalR ≤ 0` (a non-positive System edge makes the ratio not merely undefined but actively misleading — capturing 50% of a losing system is not a 50% score) — returns `{ ok: false, reason: 'system_has_no_edge' }`, never `Infinity`, never a clamp. Values above `1.0000` (captured more than the System's own counterfactual) and below `0` (a net loss against a positive System edge) are both legitimate, literal results, never clamped to `[0, 1]`. This metric describes execution against available System edge; it is not an independent Strategy-quality metric.
 
-A required-but-unsatisfied setup-checklist item contributes one `minor` penalty.
+**Rule adherence is the objective primitive only.** `not_applicable` (the Rule did not apply) and `not_checked` (adherence state unknown) are both excluded from the denominator — the engine must never silently infer a violation from an unknown or inapplicable state. A caller may pre-filter by required/optional, pre-trade, category, or Setup scope before calling; none of those dimensions are baked into the formula.
 
-## 6. Null-result discipline (Phase 07D — not yet implemented)
+### Discipline Score and mistake-cost attribution remain deliberately deferred
 
-The reason set below (`no_trades`, `no_losing_trades`, `system_has_no_edge`, `insufficient_data`) belongs to the future _aggregate_ engine (`aggregate.ts`/`attribution.ts`, Phase 07D) — it is a different, wider closed set from Phase 07C's _per-trade_ `CalcFailureReason` (`src/lib/calc/types.ts`: `missing_input`, `invalid_decimal`, `invalid_direction`, `zero_risk`, `invalid_risk_direction`, `invalid_target_direction`, `invalid_initial_risk`, `invalid_system_cost`, `unresolved_system_outcome`, `system_no_trade`). Both share the same `{ ok, value } | { ok, reason }` shape and the same underlying discipline — never `NaN`, never `Infinity`, never a silent `0` standing in for "no data" — but a per-trade calculation and a multi-trade aggregate fail for structurally different reasons, so they are two separate reason sets, not one shared enum.
+**There is no approved Discipline Score formula.** Although Phase 07B seeds the nine canonical mistake types with a neutral `default_weight`/`severity_at_time` snapshot, that is future-proofing for a later, evidence-backed weighting decision — it is not permission to invent `100 × (1 − mean(perTradePenalty))` or any other 0–100 scoring formula now. `src/lib/calc/` contains no such function, and none should be added until an explicit product decision defines one.
 
-Every aggregate returns a discriminated result:
+**Mistake-cost ranking (attributing lost R to individual mistake types) is also deferred.** A Trade may carry multiple mistake labels, so naively assigning its entire edge leakage to every mistake on it would double-count attribution. `pairedEdgeLeakageR`/general leakage calculations exist in Phase 07D; attributing that leakage to specific mistake types does not, and is left to a future phase's explicit attribution policy.
+
+## 6. Null-result discipline
+
+Every aggregate/attribution/equity function returns a discriminated result — implemented, not merely planned, as of Phase 07D:
 
 ```ts
-type CalcResult<T> =
-  | { ok: true; value: T }
-  | {
-      ok: false;
-      reason: 'no_trades' | 'no_losing_trades' | 'system_has_no_edge' | 'insufficient_data';
-    };
+type CalcResult<T> = { ok: true; value: T } | { ok: false; reason: CalcFailureReason };
 ```
 
-`NaN`, `Infinity`, and "0 means no data" are all forbidden.
+The full closed `CalcFailureReason` set (`src/lib/calc/types.ts`) spans both Phase 07C's per-trade reasons and Phase 07D's aggregate/attribution/equity reasons:
+
+| Reason                                                                                                                                                                                                                    | Phase | Returned by                                                                                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `missing_input`, `invalid_decimal`, `invalid_direction`, `zero_risk`, `invalid_risk_direction`, `invalid_target_direction`, `invalid_initial_risk`, `invalid_system_cost`, `unresolved_system_outcome`, `system_no_trade` | 07C   | `risk.ts`/`trade.ts`                                                                                                                                                |
+| `no_trades`                                                                                                                                                                                                               | 07D   | `totalR`, `averageR`, `expectancyR`, `winRate`, `profitFactor`, `equityCurveR`, `maximumDrawdownR` — an empty eligible population is never a legitimate `0R` sample |
+| `no_wins` / `no_losses`                                                                                                                                                                                                   | 07D   | `averageWinR`, `averageLossR`, `payoffRatio`                                                                                                                        |
+| `no_profit_or_loss`                                                                                                                                                                                                       | 07D   | `profitFactor`, when every R is exactly zero                                                                                                                        |
+| `system_has_no_edge`                                                                                                                                                                                                      | 07D   | `executionEfficiency`, when the paired System total is not strictly positive                                                                                        |
+| `no_comparable_trades`                                                                                                                                                                                                    | 07D   | `pairedEdgeLeakageR`, `executionEfficiency`, when the paired population is empty                                                                                    |
+| `no_rule_checks`                                                                                                                                                                                                          | 07D   | `ruleAdherenceRate`, when no `followed`/`violated` checks exist                                                                                                     |
+
+`NaN`, `Infinity`, and "0 means no data" are all forbidden across both phases' functions.
 
 A dashboard showing `0%` win rate for a user with no trades is stating something false. Showing "no closed trades yet" is stating something true. The type system should make the false version hard to write.
 

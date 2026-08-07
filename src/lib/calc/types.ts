@@ -13,12 +13,22 @@ export type CalcResult<T> =
   | { readonly ok: false; readonly reason: CalcFailureReason };
 
 /**
- * The closed failure-reason set for Phase 07C's calculations. Each member is
- * justified by a specific function in `risk.ts`/`trade.ts` — see that
- * function's own doc comment for exactly which reason it returns and why.
- * Not the full reason set every future `src/lib/calc/` module will ever
- * need (Phase 07D's aggregate/attribution/equity calculations may justify
- * more); this set covers only what Phase 07C actually implements.
+ * The closed failure-reason set for `src/lib/calc/`'s calculations. Each
+ * member is justified by a specific function — see that function's own doc
+ * comment for exactly which reason it returns and why.
+ *
+ * The first ten (through `system_no_trade`) are Phase 07C's per-trade
+ * reasons (`risk.ts`/`trade.ts`). The remaining seven are Phase 07D's
+ * aggregate/attribution/equity reasons (`aggregate.ts`/`attribution.ts`/
+ * `equity.ts`) — a genuinely new failure state each: an empty eligible
+ * population is not a legitimate zero sample (`no_trades`), a ratio with an
+ * empty numerator-defining subset has nothing to average
+ * (`no_wins`/`no_losses`), every R exactly zero is neither a profit nor a
+ * loss (`no_profit_or_loss`), a non-positive System edge makes execution
+ * efficiency undefined rather than merely large (`system_has_no_edge`), an
+ * empty paired population cannot be compared (`no_comparable_trades`), and
+ * a Rule with only `not_applicable`/`not_checked` checks has no objectively
+ * evaluated adherence to report (`no_rule_checks`).
  */
 export const CALC_FAILURE_REASONS = [
   'missing_input',
@@ -31,6 +41,13 @@ export const CALC_FAILURE_REASONS = [
   'invalid_system_cost',
   'unresolved_system_outcome',
   'system_no_trade',
+  'no_trades',
+  'no_wins',
+  'no_losses',
+  'no_profit_or_loss',
+  'system_has_no_edge',
+  'no_comparable_trades',
+  'no_rule_checks',
 ] as const;
 
 export type CalcFailureReason = (typeof CALC_FAILURE_REASONS)[number];
