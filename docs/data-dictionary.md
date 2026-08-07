@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Status:** Phase 03, Phase 04 — Billing & Checkout, and Phase 05 — Onboarding & Trading Accounts are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only. Phase 05 (see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md)) made no schema change either — it reviewed and polished the existing `trading_accounts` presentation, not the table itself.
+**Status:** Phase 03, Phase 04 — Billing & Checkout, Phase 05 — Onboarding & Trading Accounts, Phase 06 — Strategies & Versions, and Phase 07 — Trade Model & Calculation Engine are officially complete. Phase 04C's schema (below) is fully consumed by the implemented customer billing behavior, checkout, and mock provider integration — see [PHASE-04-billing.md](phases/PHASE-04-billing.md) and [roadmap.md](roadmap.md#what-phase-04-delivered). No schema changes were needed for the 04H-A production payment-provider guard — it is application-layer only. Phase 05 (see [PHASE-05-onboarding-accounts.md](phases/PHASE-05-onboarding-accounts.md)) made no schema change either — it reviewed and polished the existing `trading_accounts` presentation, not the table itself. Phase 06 added the five-table versioned Strategy/Setup/Rule domain (§"Phase 06" below); Phase 07B added the four-table Trade/discipline domain — `trades`, `mistake_types`, `trade_mistakes`, `trade_rule_checks` (§"Phase 07" below) — and Phase 07C/D built the pure calculation engine that consumes it, documented separately in [calculation-spec.md](calculation-spec.md).
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
@@ -295,48 +295,78 @@ No Strategy-count or Setup-count limit column, check, or index exists anywhere i
 
 ---
 
-## Phase 07 — Trades
+## Phase 07 — Trades and discipline (07B schema — implemented)
 
 ### `trades`
 
-The system/actual separation is structural — two parallel column sets, neither derived from the other.
+Migration: [`drizzle/0008_trade_domain_and_discipline.sql`](../drizzle/0008_trade_domain_and_discipline.sql). One Trade is one complete trading idea/position — never a partial fill, execution, or multi-leg composite (none supported this phase). Every normal Trade pins Trading Account, Strategy, the exact Strategy Version, Setup, and the exact Setup Version — **all five required**, not nullable; a general-purpose Strategy uses an explicit "General Setup"-style Setup rather than a nullable reference. The system/actual/planned separation is structural — three parallel column sets, none derived from the others.
 
-| Group                     | Columns                                                                                                                                                     | Notes                                                                                                                         |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Links                     | `trading_account_id`, `strategy_id`, `strategy_version_id`, `setup_id`, `setup_version_id`                                                                  | Version and setup version both pinned at creation (Phase 06B added the Setup entity after this sketch was originally written) |
-| Identity                  | `symbol`, `direction` (`long`\|`short`), `status` (`planned`\|`open`\|`closed`\|`cancelled`)                                                                |                                                                                                                               |
-| **Plan**                  | `planned_entry`, `planned_stop`, `planned_target`, `planned_position_size`                                                                                  | What the system proposed                                                                                                      |
-| **Actual**                | `actual_entry`, `actual_initial_stop`, `actual_exit`, `position_size`, `contract_multiplier`, `entered_at`, `exited_at`                                     | What the trader did                                                                                                           |
-| **System counterfactual** | `system_exit_price`, `system_outcome` (`win`\|`loss`\|`break_even`\|`no_trade`), `system_exit_reason` (`target_hit`\|`stop_hit`\|`rule_exit`\|`still_open`) | Self-reported; see the limitation in the product spec                                                                         |
-| Costs                     | `commission`, `fees`, `swap`                                                                                                                                | `BIGINT` minor units                                                                                                          |
-| Derived                   | `initial_risk_amount`, `gross_pnl`, `net_pnl`, `planned_r`, `system_r`, `actual_r`, `trader_outcome`, `calc_version`                                        | Persisted at close                                                                                                            |
-| Behaviour                 | `followed_plan`, `confidence` (1–5), `tradingview_url`, `notes`                                                                                             |                                                                                                                               |
+| Group                     | Columns                                                                                                                                                              | Notes                                                                                                                                                                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity/tenancy          | `id`, `workspace_id`, `mutation_key`                                                                                                                                 | Create-idempotency, same pattern as `strategies.mutation_key`                                                                                                                                                                                               |
+| Pinned framework          | `trading_account_id`, `strategy_id`, `strategy_version_id`, `setup_id`, `setup_version_id`                                                                           | All five `NOT NULL`; five composite foreign keys chain-verify tenant/parent consistency (below)                                                                                                                                                             |
+| Context                   | `symbol`, `direction` (`long`\|`short`), `timeframe`, `session`, `confirmation_notes`, `confidence` (1–5), `tradingview_url`, `notes`                                |                                                                                                                                                                                                                                                             |
+| **Plan**                  | `planned_entry`, `planned_stop` (both `NOT NULL`), `planned_target`, `planned_position_size` (informational only)                                                    | Direction-aware `CHECK` prevents zero/negative risk and a Stop/Target on the wrong side of Entry                                                                                                                                                            |
+| **Actual**                | `actual_entry`, `actual_initial_stop`, `actual_exit`, `actual_position_size` (informational only), `entered_at`, `exited_at`                                         | What the trader did                                                                                                                                                                                                                                         |
+| **Authoritative money**   | `actual_initial_risk_minor`, `gross_pnl_minor`, `net_pnl_minor`, `commission_minor`, `fees_minor`, `swap_minor`                                                      | `BIGINT` minor units. Actual R is computed from `actual_initial_risk_minor`/`net_pnl_minor` — **not** `price × quantity × contract multiplier`, deliberately abandoned as not universally valid across Forex/gold/crypto/indices, especially cross-currency |
+| **System counterfactual** | `system_status` (`pending`\|`resolved`\|`no_trade`), `system_exit_price`, `system_exited_at`, `system_exit_reason` (8 values), `system_cost_r`, `system_resolved_at` | Independent lifecycle from `status`; self-reported, see the limitation in the product spec                                                                                                                                                                  |
+| Derived                   | `planned_r`, `actual_r`, `system_r`, `trader_outcome`, `system_outcome` (all `win`\|`loss`\|`break_even`), `calc_version`                                            | Persisted at compute time, never client-supplied                                                                                                                                                                                                            |
+| Lifecycle                 | `status` (`planned`\|`open`\|`closed`\|`canceled`), `followed_plan`, `deleted_at`, `created_at`, `updated_at`                                                        | American spelling `canceled`; `deleted_at` — see below                                                                                                                                                                                                      |
 
 `actual_initial_stop` is the stop **as first placed**, not as later moved. Moving a stop is a discipline event recorded as a mistake; if this field tracked the moved stop, the R denominator would shift and the mistake would erase its own evidence.
 
+**System status is a third, independent state machine** from `status` and from the outcome classifications — CLAUDE.md §1's outcome matrix requires this. `pending` (no counterfactual recorded yet — all terminal System fields null) is not the same state as `no_trade` (the approved Strategy/Setup would not have permitted the Trade at all — `system_exit_reason` fixed to `setup_invalidated`, no exit price). `resolved` requires exit price/timestamp/reason (forbidding `setup_invalidated` as the reason) **and now also requires `system_r`/`system_outcome` to be present** (Phase 07B correction — resolving the System result and computing its R/outcome are one atomic requirement, not two separable steps). There is no `still_open` reason — an unresolved counterfactual is `pending` with null terminal fields. `system_cost_r` (see below) is pinned to exactly `0` under both `pending` and `no_trade`. `trades_system_status_consistency_check` makes every other combination unrepresentable. The eight `system_exit_reason` values: `target_hit`, `stop_hit`, `break_even_rule`, `trailing_exit`, `time_exit`, `rule_exit`, `manual_system_valid_exit` (all `resolved`-only), `setup_invalidated` (`no_trade`-only).
+
+**`system_cost_r` semantics (locked): `systemR = systemGrossR − systemCostR`.** A user-supplied estimate of costs attributable to the counterfactual System execution, expressed directly in R, non-negative, default `0`, supplied only when _resolving_ the System result — never automatically copied from Actual `commission_minor`/`fees_minor`/`swap_minor`, and never calculated from a per-account cost constant in MVP.
+
+**Trade execution status consistency**: `trades_status_consistency_check` requires/forbids an exact set of actual-execution fields per status — `planned` forbids all of them; `open` requires the four open-only fields and forbids the close-only ones; `closed` requires all of the above plus `actual_exit`/`net_pnl_minor`/`exited_at`/`actual_r`/`trader_outcome`; `canceled` is unconstrained in shape (exclusion from Trader metrics is a query-level filter, not a schema shape). No `invalidated` Trade status exists — that concept lives on the System axis (`system_status = 'no_trade'`).
+
+**`deleted_at` soft-deletion**, not `is_archived` — the one deliberate exception to every other table's archive-only convention in this codebase (CLAUDE.md assumption A7).
+
+**Trades remain editable after `status = 'closed'`** — unlike a locked Strategy Version, a Trade is the measurement record itself. Historical integrity is protected by `calc_version` (persisted from creation, defaulting to `src/config/trade-calc.ts`'s `CALC_VERSION`) plus an explicit backfill migration — never by row-level immutability.
+
+**Composite foreign keys**: `(trading_account_id, workspace_id)` → `trading_accounts(id, workspace_id)` — a **new** index (`trading_accounts_id_workspace_idx`) this migration adds to the pre-existing `trading_accounts` table via `CREATE INDEX` only, no `ALTER TABLE`; `(strategy_id, workspace_id)` → `strategies(id, workspace_id)`; `(strategy_version_id, strategy_id)` → `strategy_versions(id, strategy_id)`; `(setup_id, strategy_id)` → `setups(id, strategy_id)`; `(setup_version_id, strategy_version_id)` → `strategy_setup_versions(id, strategy_version_id)`; `(setup_version_id, setup_id)` → `strategy_setup_versions(id, setup_id)` — also new plumbing (`strategy_setup_versions_id_setup_idx`), closing a gap the Version-level FK alone cannot: without it, a Trade could pair a valid `setup_id` with a `setup_version_id` that is a real snapshot belonging to a _different_ Setup within the same Strategy Version.
+
 **Why derived values are persisted:** analytics over thousands of trades must not recompute decimals per row, and a later engine fix must not silently rewrite historical numbers. `calc_version` makes recomputation an explicit, auditable backfill.
+
+**No row exists yet.** Phase 07 built the table and the pure engine that computes `planned_r`/`actual_r`/`system_r`/`trader_outcome`/`system_outcome`, but no service or Server Action writes to this table — every derived column will always be server-calculated from `src/lib/calc/trade.ts`'s composition helpers at write time (Phase 08's job), never accepted as a client-supplied value, exactly like every other guarded mutation in this codebase (CLAUDE.md §4).
 
 ### `mistake_types`
 
-| Column         | Type    | Notes                                |
-| -------------- | ------- | ------------------------------------ |
-| `workspace_id` | uuid    | Nullable for seeded system types     |
-| `key`          | text    | Stable identifier                    |
-| `label`        | text    |                                      |
-| `severity`     | enum    | `minor` \| `moderate` \| `severe`    |
-| `is_system`    | boolean | Seeded taxonomy vs workspace-defined |
+| Column           | Type          | Notes                                                                                                 |
+| ---------------- | ------------- | ----------------------------------------------------------------------------------------------------- |
+| `workspace_id`   | uuid          | Nullable for seeded system types; `NOT NULL` for workspace-defined custom types (a future phase's UI) |
+| `key`            | text          | Stable identifier; globally unique among system rows, unique per workspace among custom rows          |
+| `label`          | text          |                                                                                                       |
+| `severity`       | text          | `minor` \| `moderate` \| `severe`, CHECK-enforced                                                     |
+| `default_weight` | numeric(12,4) | Current default weight (`src/config/mistakes.ts`); new custom types default to it                     |
+| `is_system`      | boolean       | Seeded taxonomy vs workspace-defined; `workspace_id IS NULL ⇔ is_system` enforced by CHECK            |
+| `is_archived`    | boolean       | Archive-only lifecycle, matching every other table — no `deleted_at`, no hard-delete                  |
 
-Seeded: moved stop · early exit · oversized · no setup · revenge trade · chased entry · ignored invalidation · moved target · no stop.
+`default_weight`/`trade_mistakes.weight_at_time` are `NUMERIC(12,4)` — the CLAUDE.md §5 R-multiple precision, not an arbitrary shorter scale, chosen so a value like `1.0000` stores exactly rather than being rounded.
 
-Editing a severity does **not** retroactively rewrite historical discipline scores — the penalty is snapshotted when the trade is saved.
+Seeded (fixed deterministic ids, `ON CONFLICT ... DO NOTHING` for idempotent replay): moved stop · early exit · oversized position · no setup · revenge trade · chased entry · ignored invalidation · moved target · no stop. **Every one of the nine is seeded with one deliberately neutral default: `severity = 'moderate'`, `default_weight = '1.0000'`** (Phase 07B correction) — the source documents name the nine types but define no evidence-backed relative severity or weight, so Phase 07 MVP does not invent unjustified differentiation. `src/config/mistakes.ts`'s `MISTAKE_SEVERITY_WEIGHTS` (minor `0.15` / moderate `0.35` / severe `0.60`) remains a separate, general severity → weight framework, reserved for a later phase's evidence-backed differentiated weighting — not applied to these nine rows.
+
+Editing a severity or default weight does **not** retroactively rewrite historical discipline scores — `trade_mistakes.severity_at_time`/`weight_at_time` snapshot the values in effect when the trade was saved.
 
 ### `trade_mistakes`
 
-Join table, primary key `(trade_id, mistake_type_id)`, with an optional per-instance `note`.
+Join table, primary key `(trade_id, mistake_type_id)`, with `workspace_id`, an optional per-instance `note`, and snapshotted `severity_at_time`/`weight_at_time`. `mistake_type_id` uses `ON DELETE RESTRICT` (not the ordinary tenant-owned `CASCADE`) — losing a `mistake_types` row out from under historical rows would corrupt discipline history, the same reasoning `billing_transactions` applies to its own workspace reference.
 
-### `trade_checklist_results`
+Cross-workspace isolation for a **custom** (workspace-scoped) mistake type cannot be a plain composite foreign key, because `mistake_types.workspace_id` is `NULL` for shared system rows — an exact match would incorrectly reject every reference to a system type. A `BEFORE INSERT OR UPDATE` trigger (`trade_mistakes_workspace_scope_check`) enforces it instead: any reference to a `workspace_id IS NULL` row is allowed unconditionally; any other row requires an exact workspace match.
 
-`(trade_id, checklist_item_id, was_satisfied)`. Required-but-unsatisfied items feed the discipline score.
+### `trade_rule_checks`
+
+Replaces the stale `trade_checklist_results(trade_id, checklist_item_id, was_satisfied)` draft — Phase 06 never built a separate "checklist item" entity; a Rule check attaches to `strategy_rules` directly.
+
+| Column                                                                 | Notes                                                                                                                                                                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `strategy_rule_id`                                                     | The exact Rule row in the Strategy Version this Trade is pinned to                                                                                                                   |
+| `strategy_version_id`, `rule_key`                                      | Jointly FK-verified with `strategy_rule_id` against `strategy_rules(id, strategy_version_id, rule_key)` — a **new** composite index (`strategy_rules_id_version_rule_key_idx`)       |
+| `check_status`                                                         | `followed` \| `violated` \| `not_applicable` \| `not_checked` — **not** a boolean `was_satisfied`; a Rule may be inapplicable or simply unreviewed, neither expressible as a boolean |
+| `title`, `category`, `is_required`, `is_pre_trade_check`, `sort_order` | Snapshotted from `strategy_rules` at check-save time, the pattern `strategy_setup_versions` established for Setup content                                                            |
+
+Unique `(trade_id, rule_key)` prevents a duplicate check for the same logical Rule on the same Trade. A composite foreign key `(trade_id, strategy_version_id)` → `trades(id, strategy_version_id)` (a **new** index, `trades_id_strategy_version_idx`) guarantees a Rule check can only ever reference the exact Strategy Version its own Trade is pinned to.
 
 ---
 
@@ -352,19 +382,22 @@ Every platform-admin mutation writes a row. Non-negotiable: admins act on other 
 
 ## Index plan
 
-| Table               | Index                                                                                 | Status                 |
-| ------------------- | ------------------------------------------------------------------------------------- | ---------------------- |
-| `users`             | `(email)` unique — `users_email_idx`                                                  | Implemented (Phase 02) |
-| `sessions`          | `(token)` unique, `(user_id)`                                                         | Implemented (Phase 02) |
-| `accounts`          | `(user_id)`, `(provider_id, account_id)` unique                                       | Implemented (Phase 02) |
-| `verifications`     | `(identifier)`                                                                        | Implemented (Phase 02) |
-| `rate_limits`       | `(key)` unique                                                                        | Implemented (Phase 02) |
-| `workspaces`        | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                    | Implemented (Phase 02) |
-| `workspace_members` | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces | Implemented (Phase 02) |
-| `audit_logs`        | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                     | Implemented (Phase 02) |
-| `trades`            | `(workspace_id, trading_account_id, exited_at)`                                       | Planned (Phase 07)     |
-| `trades`            | `(workspace_id, strategy_version_id)`                                                 | Planned (Phase 07)     |
-| `trades`            | `(workspace_id, status)`                                                              | Planned (Phase 07)     |
-| `trade_mistakes`    | `(mistake_type_id)` — mistake cost ranking                                            | Planned (Phase 07)     |
+| Table               | Index                                                                                                                                                                      | Status                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `users`             | `(email)` unique — `users_email_idx`                                                                                                                                       | Implemented (Phase 02)  |
+| `sessions`          | `(token)` unique, `(user_id)`                                                                                                                                              | Implemented (Phase 02)  |
+| `accounts`          | `(user_id)`, `(provider_id, account_id)` unique                                                                                                                            | Implemented (Phase 02)  |
+| `verifications`     | `(identifier)`                                                                                                                                                             | Implemented (Phase 02)  |
+| `rate_limits`       | `(key)` unique                                                                                                                                                             | Implemented (Phase 02)  |
+| `workspaces`        | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                                                                                                         | Implemented (Phase 02)  |
+| `workspace_members` | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces                                                                                      | Implemented (Phase 02)  |
+| `audit_logs`        | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                                                                                                          | Implemented (Phase 02)  |
+| `trades`            | `(workspace_id, trading_account_id, exited_at)` — `trades_workspace_account_exited_idx`                                                                                    | Implemented (Phase 07B) |
+| `trades`            | `(workspace_id, strategy_version_id)` — `trades_workspace_strategy_version_idx`                                                                                            | Implemented (Phase 07B) |
+| `trades`            | `(workspace_id, status)` — `trades_workspace_status_idx`                                                                                                                   | Implemented (Phase 07B) |
+| `trades`            | `(workspace_id, trading_account_id)`, `(workspace_id, deleted_at)`, `(id, workspace_id)` unique, `(id, strategy_version_id)` unique, `(workspace_id, mutation_key)` unique | Implemented (Phase 07B) |
+| `trade_mistakes`    | `(mistake_type_id)` — mistake cost ranking; `(workspace_id)`                                                                                                               | Implemented (Phase 07B) |
+| `trade_rule_checks` | `(trade_id, rule_key)` unique, `(workspace_id)`, `(rule_key)` — cross-Version logical-rule analysis                                                                        | Implemented (Phase 07B) |
+| `mistake_types`     | `(key)` unique WHERE `is_system`; `(workspace_id, key)` unique WHERE NOT `is_system`; `(workspace_id, is_archived)`                                                        | Implemented (Phase 07B) |
 
 Verify with `EXPLAIN ANALYZE` rather than assuming these are used.

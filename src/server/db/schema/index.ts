@@ -20,3 +20,7 @@ export * from './strategies';
 export * from './setups';
 export * from './strategy-setup-versions';
 export * from './strategy-rules';
+export * from './trades';
+export * from './mistake-types';
+export * from './trade-mistakes';
+export * from './trade-rule-checks';

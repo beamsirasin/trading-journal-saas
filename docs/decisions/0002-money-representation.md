@@ -32,7 +32,7 @@ interface Money {
 
 `decimal.js` is **not** installed in this phase. Integer minor units in `bigint` are exact by construction; a decimal library would add a dependency to do arithmetic that `bigint` already does perfectly.
 
-It becomes justified in **Phase 06**, when `NUMERIC(20,10)` instrument prices arrive. Prices genuinely need arbitrary-precision decimal arithmetic — `1.08532` has no minor-unit representation — and that is the point at which the dependency earns its place.
+It becomes justified in **Phase 07C**, when `NUMERIC(20,10)` instrument prices arrive (`src/lib/calc/decimal.ts`). Prices genuinely need arbitrary-precision decimal arithmetic — `1.08532` has no minor-unit representation — and that is the point at which the dependency earns its place. (This ADR's original text named "Phase 06" — a forward reference written before the roadmap's later renumbering moved the calculation engine to Phase 07; corrected here as a narrow factual fix, not a rewrite of the decision's own reasoning.)
 
 ### Explicit parsing policy
 
@@ -72,7 +72,7 @@ Every fallible operation returns `{ ok: true; value } | { ok: false; error }`. P
 **Negative / accepted**
 
 - `bigint` does not serialise to JSON. Conversion is explicit at every boundary — annoying, but the annoyance is what prevents a silent `Number()` coercion.
-- Multiplication and division are deliberately absent. Position sizing and R-multiples need a documented rounding rule per formula, and belong in the Phase 06 engine.
+- Multiplication and division are deliberately absent. Position sizing and R-multiples need a documented rounding rule per formula, and belong in the Phase 07 engine (`src/lib/calc/`).
 - Strict parsing will reject input some users consider reasonable, notably European decimal commas. Accepted: a rejected amount is recoverable, a misread one is not.
 
 ## Alternatives considered

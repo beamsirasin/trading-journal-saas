@@ -8,7 +8,8 @@ import { err, MAX_SAFE_MINOR, MIN_SAFE_MINOR, ok, type Money, type MoneyResult }
  *
  * Multiplication and division are deliberately absent. Position sizing and
  * R-multiples need a documented rounding rule and belong in the calculation
- * engine (Phase 06), not in a general-purpose money helper.
+ * engine (`src/lib/calc/`, Phase 07C/D), not in a general-purpose money
+ * helper.
  */
 
 function guardRange(amountMinor: bigint, currency: CurrencyCode): MoneyResult<Money> {

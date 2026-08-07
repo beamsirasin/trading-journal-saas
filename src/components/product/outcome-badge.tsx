@@ -18,7 +18,9 @@ const OUTCOME_CLASS: Record<DemoOutcome, string> = {
  * in the actual column, and only the label disambiguates them.
  *
  * Break-even is a first-class outcome, not a rounding artefact of zero. It is
- * decided by an explicit tolerance band per trading account (CLAUDE.md §6).
+ * decided by an explicit tolerance band — a global Calculation Engine
+ * Version 1 constant (`BREAK_EVEN_TOLERANCE_R`, `src/config/trade-calc.ts`),
+ * not per-workspace or per-trading-account configuration (CLAUDE.md §6).
  *
  * `axis` is the semantic side (`system` | `trader`), not display text — the
  * translated label ("System" / "Actual") comes from `common.system` /

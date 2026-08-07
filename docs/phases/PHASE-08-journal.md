@@ -21,11 +21,11 @@ Two mitigations:
 
 Three-step flow, each step independently valid:
 
-**1. Plan** — account, strategy (pins current `strategy_version_id`), symbol, direction, planned entry / stop / target, planned size. Live-computed **planned R** shown as the trader types, with a validation error if the stop is on the wrong side of entry.
+**1. Plan** — account, Strategy AND Setup (both required, not optional — Phase 07B locked decision; a general-purpose Strategy uses an explicit "General Setup"-style Setup rather than a nullable one), pinning the current `strategy_version_id` AND `setup_version_id` together, symbol, direction, planned entry / stop / target, planned size. Live-computed **planned R** shown as the trader types (`src/lib/calc/trade.ts`'s `plannedR`), with a validation error if the stop is on the wrong side of entry.
 
 **2. Execution** — actual entry, actual initial stop, size, entry time, actual exit, exit time, commission / fees / swap. Live **actual R** and net P&L.
 
-**3. Review** — system exit price and outcome (prefilled per above), `followed_plan`, mistakes, checklist results, confidence, TradingView URL, notes.
+**3. Review** — system exit price and outcome (prefilled per above), `followed_plan`, mistakes, Rule checks (`trade_rule_checks`: `followed`/`violated`/`not_applicable`/`not_checked` per Strategy/Setup Rule — not a boolean "was_satisfied" checklist), confidence, TradingView URL, notes.
 
 Additional flows:
 
@@ -43,7 +43,7 @@ Additional flows:
 - Closing requires exit price and exit time
 - Trading account and strategy version must belong to the caller's workspace _(scoped queries, not client-supplied IDs)_
 
-On save: engine computes derived values, persisted with `calc_version`.
+On save: engine computes derived values, persisted with `calc_version`. Use `src/lib/calc/trade.ts`'s composition helpers as the atomic unit of work — `composePlanned` for the Plan step, `composeTraderClose` for closing the Trader side (never requires System data), `composeSystemResolve` for resolving the System side (independently, since `system_status` can remain `pending` after `status = 'closed'`) — never hand-combine `actualR`/`systemR`/`classifyOutcome`/`CALC_VERSION` at the call site. The first Trade insert referencing a Strategy Version must call `lockStrategyVersionForReferenceInTx` (`src/server/services/strategy-versioning.ts`, already built in Phase 06) in the same transaction, after acquiring the same canonical lock order Phase 06's services already establish (workspace → membership → entitlement → strategy row → current version row → setup row). Phase 07D's aggregate/attribution functions (`aggregate.ts`/`attribution.ts`/`equity.ts`) are multi-Trade calculations and do not belong in a single-Trade write path — they are Phase 09's job, reading already-persisted snapshots, never recomputed per write.
 
 ### TradingView
 
@@ -51,10 +51,10 @@ Store the URL. Validate it is a well-formed `https://` URL on a TradingView host
 
 ### Mistake & discipline capture
 
-- Multi-select from the workspace taxonomy, grouped by severity, with optional per-mistake note
+- Multi-select from the workspace taxonomy (nine seeded system types, `severity = 'moderate'`/`weight = 1.0000` neutral defaults — Phase 07B; not yet a differentiated scoring model), with optional per-mistake note
 - Workspace-custom mistake types
-- Required-but-unsatisfied checklist items surface as an inline prompt, not a scolding
-- Live discipline impact preview so the cost of a mistake is visible at logging time
+- Required Rule checks left `not_checked`, or explicitly marked `violated`, surface as an inline prompt, not a scolding
+- No Discipline Score or mistake-cost-ranking preview — no approved formula exists yet (explicitly deferred through Phase 07); do not invent one when building this step
 
 ### Trade list (`/app/trades`)
 

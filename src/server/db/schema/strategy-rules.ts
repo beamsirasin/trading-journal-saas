@@ -67,6 +67,16 @@ export const strategyRules = pgTable(
     uniqueIndex('strategy_rules_version_rule_key_idx').on(table.strategyVersionId, table.ruleKey),
     index('strategy_rules_version_sort_idx').on(table.strategyVersionId, table.sortOrder),
     index('strategy_rules_setup_version_idx').on(table.setupVersionId),
+    // Composite-FK plumbing added in Phase 07B — lets `trade_rule_checks`
+    // prove all three of (exact Rule row, its Version, its rule_key) are
+    // mutually consistent with a single FK, rather than trusting the caller
+    // to keep `strategy_rule_id` and `rule_key` in agreement. `id` alone is
+    // already unique; this wider index is still trivially valid.
+    uniqueIndex('strategy_rules_id_version_rule_key_idx').on(
+      table.id,
+      table.strategyVersionId,
+      table.ruleKey,
+    ),
     foreignKey({
       name: 'strategy_rules_version_workspace_fk',
       columns: [table.strategyVersionId, table.workspaceId],
