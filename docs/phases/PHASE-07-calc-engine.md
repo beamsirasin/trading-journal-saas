@@ -2,7 +2,7 @@
 
 **Depends on:** 06 · **Blocks:** 08, 09
 
-**Status:** 07A (repository audit) and 07B (trade domain and discipline schema) are complete — the `trades`/`mistake_types`/`trade_mistakes`/`trade_rule_checks` schema below is real, migrated (`drizzle/0008_trade_domain_and_discipline.sql`), and guarded-PostgreSQL-tested. No service, DAL, Server Action, UI, or `src/lib/calc/` calculation function exists yet — that is 07C onward. The schema below reflects what was actually built, correcting the pre-implementation sketch this document originally carried (see the Phase 07A audit for the itemized mismatches: a missing Setup/Setup Version link, a stale `checklist_item_id`/`trade_checklist_results` design, a `price × quantity × contract multiplier` monetary formula abandoned as not universally valid, and an undifferentiated System "pending vs. never-would-have-happened" state).
+**Status:** Phase 07 is IN PROGRESS, not complete. 07A (repository audit), 07B (trade domain and discipline schema), and 07C (risk and per-trade calculation engine) are done — the `trades`/`mistake_types`/`trade_mistakes`/`trade_rule_checks` schema is real and migrated (`drizzle/0008_trade_domain_and_discipline.sql`), guarded-PostgreSQL-tested, and `src/lib/calc/{types,decimal,risk,trade}.ts` now implements Planned R, Actual R, System gross R, System R, outcome classification, and per-Trade snapshot composition — pure, tested, importable with no database/environment/Next.js dependency. **Not yet implemented:** `aggregate.ts`/`attribution.ts`/`equity.ts` (Phase 07D — multi-trade aggregate metrics), and no service, DAL, Server Action, or UI exists anywhere in this phase (Phase 08's job). The schema below reflects what was actually built in 07B, correcting the pre-implementation sketch this document originally carried (see the Phase 07A audit for the itemized mismatches: a missing Setup/Setup Version link, a stale `checklist_item_id`/`trade_checklist_results` design, a `price × quantity × contract multiplier` monetary formula abandoned as not universally valid, and an undifferentiated System "pending vs. never-would-have-happened" state).
 
 ## Goal
 
@@ -96,38 +96,42 @@ Persisted values carry `calc_version`. A backfill migration is the only thing th
 Pure functions. No database, no I/O, no `Date.now()`, no globals. Input: plain data. Output: plain data. This is what makes it testable and trustworthy.
 
 ```
-risk.ts        riskPerUnit, initialRiskAmount
-trade.ts       plannedR, actualR, systemR, classifyOutcome
-aggregate.ts   winRate, avgR, expectancy, profitFactor, totalR, maxDrawdownR
-attribution.ts edgeLeakage, executionEfficiency, disciplineScore
-equity.ts      equityCurveR, drawdownSeries
+types.ts       CalcResult<T>, CalcFailureReason                                    [07C — done]
+decimal.ts     CalcDecimal, parseCalcDecimal, bigintToCalcDecimal, toCanonicalR     [07C — done]
+risk.ts        plannedRiskPerUnit, resolvePlannedRiskContext                       [07C — done]
+trade.ts       plannedR, actualR, systemGrossR, systemR, resolveSystemR,
+               classifyOutcome, composePlanned, composeTraderClose,
+               composeSystemResolve                                                [07C — done]
+aggregate.ts   winRate, avgR, expectancy, profitFactor, totalR, maxDrawdownR        [07D — pending]
+attribution.ts edgeLeakage, executionEfficiency, disciplineScore                    [07D — pending]
+equity.ts      equityCurveR, drawdownSeries                                        [07D — pending]
 ```
 
-All arithmetic via `decimal.js` (prices, R) and `bigint` (money). A JS `number` in a financial path is a bug.
+All arithmetic via `decimal.js` (prices, R, behind a locally cloned constructor — `src/lib/calc/decimal.ts` never mutates the library's global default config) and `bigint` (money, converted to `Decimal` only through exact string conversion). A JS `number` in a financial path is a bug.
 
 ### Formulas
 
-Canonical definitions live in `CLAUDE.md` §6. Implementation notes:
+Canonical definitions live in `CLAUDE.md` §6 and `docs/calculation-spec.md`; that document is the authoritative, kept-current contract for what's implemented and what remains Phase 07D. Summary:
 
-**Risk per unit** — `long: entry − stop`, `short: stop − entry`. Must be **strictly positive**; non-positive means the stop is on the wrong side of entry. Reject at validation. Never proceed with a negative denominator.
+**Risk per unit** — `long: entry − stop`, `short: stop − entry`. Must be **strictly positive**; non-positive means the stop is on the wrong side of entry. Reject at validation. Never proceed with a negative denominator. Implemented: `src/lib/calc/risk.ts`'s `plannedRiskPerUnit`.
 
-**System R uses planned inputs; actual R uses actual inputs.** Different denominators, deliberately (`CLAUDE.md` §6). Both are in R, which is exactly what makes them comparable when the trader sized differently from plan. Trader size errors show up as edge leakage, not as distorted system performance.
+**System R uses planned inputs; actual R uses actual inputs.** Different denominators, deliberately (`CLAUDE.md` §6). Both are in R, which is exactly what makes them comparable when the trader sized differently from plan. Trader size errors show up as edge leakage, not as distorted system performance. `systemR = systemGrossR − systemCostR` (Phase 07B-locked; `systemCostR` is a user-supplied R-denominated cost estimate, never derived from Actual costs). Implemented: `src/lib/calc/trade.ts`'s `plannedR`/`actualR`/`systemGrossR`/`systemR`/`resolveSystemR`.
 
-**Break-even** — `|R| ≤ breakEvenToleranceR`. `breakEvenToleranceR` is `src/config/trade-calc.ts`'s `BREAK_EVEN_TOLERANCE_R` (`'0.0500'`) — a **global Calculation Engine Version 1 constant**, identical for every Workspace and Trading Account, not per-trading-account configuration. Never `== 0`.
+**Break-even** — `|R| ≤ breakEvenToleranceR`. `breakEvenToleranceR` is `src/config/trade-calc.ts`'s `BREAK_EVEN_TOLERANCE_R` (`'0.0500'`) — a **global Calculation Engine Version 1 constant**, identical for every Workspace and Trading Account, not per-trading-account configuration. Never `== 0`. Implemented: `src/lib/calc/trade.ts`'s `classifyOutcome`, shared by both Trader and System R.
 
-**Profit factor** — `Σ R⁺ / |Σ R⁻|`. Zero losses returns `null` with reason `no_losing_trades`, **never `Infinity`**, never a fake large number.
+**Profit factor** — `Σ R⁺ / |Σ R⁻|`. Zero losses returns `null` with reason `no_losing_trades`, **never `Infinity`**, never a fake large number. _(Phase 07D — not yet implemented.)_
 
-**Max drawdown in R** — running peak of cumulative R; `max(peak − current)`. Reported as a positive magnitude.
+**Max drawdown in R** — running peak of cumulative R; `max(peak − current)`. Reported as a positive magnitude. _(Phase 07D — not yet implemented.)_
 
-**Edge leakage** — `systemTotalR − actualTotalR`. Positive = trader destroyed edge. Negative is meaningful and must not be clamped: it means the trader added value by deviating, which is itself a finding worth surfacing.
+**Edge leakage** — `systemTotalR − actualTotalR`. Positive = trader destroyed edge. Negative is meaningful and must not be clamped: it means the trader added value by deviating, which is itself a finding worth surfacing. _(Phase 07D — not yet implemented.)_
 
-**Execution efficiency** — `actualTotalR / systemTotalR`, defined **only when `systemTotalR > 0`**. Against a zero or negative system edge the ratio is not merely undefined, it is misleading — return `null` with reason `system_has_no_edge`.
+**Execution efficiency** — `actualTotalR / systemTotalR`, defined **only when `systemTotalR > 0`**. Against a zero or negative system edge the ratio is not merely undefined, it is misleading — return `null` with reason `system_has_no_edge`. _(Phase 07D — not yet implemented.)_
 
-**Discipline score** — `100 × (1 − mean(perTradePenalty))`, `perTradePenalty = min(1, Σ severityWeight)`, weights in `src/config/mistakes.ts` (minor 0.15 / moderate 0.35 / severe 0.60). Unsatisfied _required_ checklist items contribute a `minor` penalty each.
+**Discipline score** — `100 × (1 − mean(perTradePenalty))`, `perTradePenalty = min(1, Σ severityWeight)`. _(Phase 07D — not yet implemented.)_ Note: the nine seeded system mistake types themselves use a deliberately neutral `severity = 'moderate'`/`weight = 1.0000` in Phase 07 MVP, not the differentiated minor `0.15`/moderate `0.35`/severe `0.60` framework `src/config/mistakes.ts`'s `MISTAKE_SEVERITY_WEIGHTS` still declares for a future evidence-backed decision — see `docs/data-dictionary.md`'s `mistake_types` section.
 
-### Null-result discipline
+### Null-result discipline (Phase 07D — aggregate-level, not yet implemented)
 
-Every aggregate returns a discriminated result, never a silent zero:
+Every aggregate will return a discriminated result, never a silent zero:
 
 ```ts
 type CalcResult<T> =
@@ -138,7 +142,9 @@ type CalcResult<T> =
     };
 ```
 
-`NaN`, `Infinity`, and "0 means no data" are all forbidden. The UI renders the reason, so an empty dashboard explains itself instead of claiming a 0% win rate.
+This is the _aggregate_-level reason set (Phase 07D) — a different, wider closed set from Phase 07C's already-implemented _per-trade_ `CalcFailureReason` (`src/lib/calc/types.ts`: `missing_input`, `invalid_decimal`, `invalid_direction`, `zero_risk`, `invalid_risk_direction`, `invalid_target_direction`, `invalid_initial_risk`, `invalid_system_cost`, `unresolved_system_outcome`, `system_no_trade`). Both share the same `{ ok, value } | { ok, reason }` shape.
+
+`NaN`, `Infinity`, and "0 means no data" are all forbidden — already true of every Phase 07C function, and will remain true of Phase 07D's aggregates. The UI renders the reason, so an empty dashboard explains itself instead of claiming a 0% win rate.
 
 ### Test coverage (the real deliverable)
 
@@ -164,8 +170,9 @@ src/config/{mistakes,trade-calc}.ts                                             
 drizzle/0008_trade_domain_and_discipline.sql                                       [07B — done]
 src/server/db/schema/trade-domain{,-migration}.integration.test.ts                 [07B — done]
 
-src/lib/calc/{risk,trade,aggregate,attribution,equity,types}.ts                    [07C/07D — pending]
-tests/calc/**  (golden fixtures + property tests)                                  [07C/07D — pending]
+src/lib/calc/{types,decimal,risk,trade}.ts                                         [07C — done]
+src/lib/calc/{decimal,risk,trade}.test.ts (golden fixtures + property tests)        [07C — done]
+src/lib/calc/{aggregate,attribution,equity}.ts                                     [07D — pending]
 docs/formulas.md                                                                   [07E — pending]
 ```
 

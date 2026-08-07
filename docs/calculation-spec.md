@@ -1,6 +1,6 @@
 # Calculation Specification
 
-**Status:** Specification. `src/lib/calc/` does not exist yet — it lands in Phase 07C/D. The `trades` schema this document's formulas read from is real as of Phase 07B (`drizzle/0008_trade_domain_and_discipline.sql`); this document is the contract the engine implementation must satisfy against that schema, and the reference its tests are written against.
+**Status:** Phase 07C implemented the per-trade calculation core — `src/lib/calc/{types,decimal,risk,trade}.ts` — against the `trades` schema Phase 07B made real (`drizzle/0008_trade_domain_and_discipline.sql`). Planned R, Actual R, System gross R, System R, outcome classification, and the per-Trade snapshot composition helpers are implemented and tested; this document is the contract they satisfy. **Not yet implemented:** `aggregate.ts`, `attribution.ts`, `equity.ts` (Phase 07D) — §4 "Aggregates", §5 "Attribution metrics", and §6 "Null-result discipline" below describe that future contract, not Phase 07C's. No service, DAL, Server Action, UI, or database write path exists yet (Phase 08's job) — the engine is pure, importable, and testable without a database connection, environment variables, or the Next.js runtime.
 
 **Implemented in Phase 00b:** the money and time primitives the engine builds on — [`src/lib/money/`](../src/lib/money/) and [`src/lib/time/`](../src/lib/time/). See [ADR 0002](decisions/0002-money-representation.md) and [ADR 0003](decisions/0003-time-model.md).
 
@@ -15,12 +15,14 @@ Every formula here must be implemented in `src/lib/calc/`, documented in code, a
 | Quantity                                      | Storage                              | In TypeScript         | Status       |
 | --------------------------------------------- | ------------------------------------ | --------------------- | ------------ |
 | Monetary amounts (P&L, fees, balances)        | `BIGINT` minor units + ISO-4217 code | `bigint`              | ✅ Phase 00b |
-| Instrument prices (entry, stop, target, exit) | `NUMERIC(20,10)`                     | `string` → decimal.js | Phase 07     |
-| R-multiples and ratios                        | `NUMERIC(12,4)`                      | decimal.js            | Phase 07     |
+| Instrument prices (entry, stop, target, exit) | `NUMERIC(20,10)`                     | `string` → decimal.js | ✅ Phase 07C |
+| R-multiples and ratios                        | `NUMERIC(12,4)`                      | decimal.js            | ✅ Phase 07C |
 
 Currency scale comes from a lookup, never a hardcoded `100` — JPY, KRW, VND and IDR have zero minor decimals. Rounding happens once, at the presentation boundary, never mid-calculation.
 
-**`decimal.js` is not yet a dependency.** Minor units in `bigint` are exact by construction, and the money module's parsing and formatting use string arithmetic with no intermediate `Number`. The library becomes justified in Phase 07, when `NUMERIC(20,10)` prices arrive — `1.08532` has no minor-unit representation and genuinely needs arbitrary-precision decimal arithmetic.
+**`decimal.js` is a dependency**, used by `src/lib/calc/decimal.ts` behind a locally cloned constructor (`Decimal.clone({ precision: 50, rounding: Decimal.ROUND_HALF_UP })`) — never the library's own global default export, so nothing in this engine can silently change rounding/precision for an unrelated module that also imports `decimal.js` elsewhere in the codebase. `precision: 50` (significant digits) comfortably covers `NUMERIC(20,10)` prices with headroom for an unrounded intermediate division. `ROUND_HALF_UP` matches the one other rounding convention already documented in this repository (`src/lib/money/parse.ts`'s `fitFraction`: "round-half-up, on the magnitude ... rounds away from zero symmetrically for negative amounts") — the engine does not introduce a second, different rounding mode (e.g. banker's rounding) alongside it. Minor units in `bigint` remain exact by construction and never pass through `Decimal` at all; a `bigint` converts to `Decimal` only via exact string conversion (`src/lib/calc/decimal.ts`'s `bigintToCalcDecimal`), never through a JS `number`.
+
+**Persisted R rounding.** Every R-producing function calculates at full 50-significant-digit precision and rounds exactly once, at its own final return, to `NUMERIC(12,4)`'s four decimal places (`src/lib/calc/decimal.ts`'s `toCanonicalR`) — never on an intermediate value. `systemR = systemGrossR − systemCostR`, for example, subtracts the cost from the raw unrounded gross R and rounds the difference once, rather than rounding `systemGrossR` first and subtracting from that already-rounded value (which would let a small rounding error compound). Canonical output is always a fixed-point string with exactly four decimal places and no exponent — `'3.0000'`, `'-1.0500'`, `'0.0000'` (never `'-0.0000'`) — never a JavaScript `number`.
 
 **Available now:** `add`, `subtract`, `negate`, `absolute`, `sum`, `compare`, `equals`, and predicates. Mixing currencies is an error, never a silent coercion.
 
@@ -90,7 +92,27 @@ systemR  = systemGrossR − systemCostR
           without any currency conversion; see "System cost semantics" below)
 ```
 
-`plannedR` is undefined (`null`) whenever `Trade.planned_target` is absent — a Trade may legitimately have a planned entry/stop without a committed target.
+`plannedR` is undefined whenever `Trade.planned_target` is absent — a Trade may legitimately have a planned entry/stop without a committed target; `src/lib/calc/trade.ts`'s `plannedR` reports this as `{ ok: false, reason: 'missing_input' }`, never `null` or `NaN`.
+
+### Implementation mapping (Phase 07C)
+
+| Formula above              | Implemented as                                                                | Source                  |
+| -------------------------- | ----------------------------------------------------------------------------- | ----------------------- |
+| `riskPerUnit`              | `plannedRiskPerUnit` / `resolvePlannedRiskContext`                            | `src/lib/calc/risk.ts`  |
+| `plannedR`                 | `plannedR`                                                                    | `src/lib/calc/trade.ts` |
+| `actualR`                  | `actualR`                                                                     | `src/lib/calc/trade.ts` |
+| `systemGrossR`             | `systemGrossR`                                                                | `src/lib/calc/trade.ts` |
+| `systemR`                  | `systemR` (raw resolved inputs) / `resolveSystemR` (respects `system_status`) | `src/lib/calc/trade.ts` |
+| Outcome classification     | `classifyOutcome`                                                             | `src/lib/calc/trade.ts` |
+| Atomic per-Trade snapshots | `composePlanned`, `composeTraderClose`, `composeSystemResolve`                | `src/lib/calc/trade.ts` |
+
+### `calc_version` ownership
+
+`src/config/trade-calc.ts`'s `CALC_VERSION` (`1`) is the single source every composed snapshot stamps (`composeTraderClose`/`composeSystemResolve`'s own `calcVersion` field) — no calculation function reads or infers it from anywhere else, and no literal `1` is duplicated inside `src/lib/calc/`. Bumping it is a deliberate, reviewed change to the engine paired with an explicit backfill migration for existing rows (CLAUDE.md's "Persisted derived values drift" risk) — Phase 07C does not perform that bump itself, it only establishes the constant every future snapshot stamps.
+
+### `pending`/`no_trade` behavior
+
+`resolveSystemR` (`src/lib/calc/trade.ts`) is the one function that respects `Trade.system_status`'s three-state lifecycle before attempting any arithmetic: `pending` returns `{ ok: false, reason: 'unresolved_system_outcome' }`, `no_trade` returns `{ ok: false, reason: 'system_no_trade' }`, and only `resolved` reaches `systemR`'s actual calculation. Neither `pending` nor `no_trade` is ever represented as a System R of `0` — CLAUDE.md's null-result discipline ("0 means no data" is forbidden) applies to the per-trade engine exactly as it will to Phase 07D's aggregates.
 
 ### Why system and actual use different denominators
 
@@ -163,7 +185,9 @@ perTradePenalty     = min(1, Σ severityWeight(mistake))
 
 A required-but-unsatisfied setup-checklist item contributes one `minor` penalty.
 
-## 6. Null-result discipline
+## 6. Null-result discipline (Phase 07D — not yet implemented)
+
+The reason set below (`no_trades`, `no_losing_trades`, `system_has_no_edge`, `insufficient_data`) belongs to the future _aggregate_ engine (`aggregate.ts`/`attribution.ts`, Phase 07D) — it is a different, wider closed set from Phase 07C's _per-trade_ `CalcFailureReason` (`src/lib/calc/types.ts`: `missing_input`, `invalid_decimal`, `invalid_direction`, `zero_risk`, `invalid_risk_direction`, `invalid_target_direction`, `invalid_initial_risk`, `invalid_system_cost`, `unresolved_system_outcome`, `system_no_trade`). Both share the same `{ ok, value } | { ok, reason }` shape and the same underlying discipline — never `NaN`, never `Infinity`, never a silent `0` standing in for "no data" — but a per-trade calculation and a multi-trade aggregate fail for structurally different reasons, so they are two separate reason sets, not one shared enum.
 
 Every aggregate returns a discriminated result:
 
