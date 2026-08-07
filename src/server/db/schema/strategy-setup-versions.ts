@@ -65,6 +65,12 @@ export const strategySetupVersions = pgTable(
     // Composite-FK plumbing for `strategy_rules`, which must prove a Rule
     // scoped to a Setup snapshot belongs to the same Strategy Version.
     uniqueIndex('strategy_setup_versions_id_version_idx').on(table.id, table.strategyVersionId),
+    // Composite-FK plumbing added in Phase 07B — lets `trades` prove its
+    // `setup_version_id` is genuinely a snapshot *of* its own `setup_id`, not
+    // merely some other Setup's snapshot within the same Strategy Version
+    // (which the Version-level FK alone cannot distinguish). `id` alone is
+    // already unique; this pair is too.
+    uniqueIndex('strategy_setup_versions_id_setup_idx').on(table.id, table.setupId),
     foreignKey({
       name: 'strategy_setup_versions_version_strategy_fk',
       columns: [table.strategyVersionId, table.strategyId],

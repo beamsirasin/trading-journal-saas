@@ -109,14 +109,16 @@ describe('Phase 06B migration integrity (real database)', () => {
   });
 
   describe('applied state matches the committed journal', () => {
-    it('the journal records migration 0007 as the latest entry', () => {
+    it('the journal records migration 0007 as present, in order', () => {
+      // Not "as the latest entry" — Phase 07B added migration 0008 on top of
+      // this one; this test only re-confirms 0007's own entry is still
+      // correctly recorded, not that nothing has been added since.
       const journal = JSON.parse(
         readFileSync(join(process.cwd(), 'drizzle', 'meta', '_journal.json'), 'utf8'),
       ) as { entries: { idx: number; tag: string }[] };
-      const last = journal.entries.at(-1);
-      expect(last?.idx).toBe(7);
-      expect(last?.tag).toBe('0007_strategies_and_setups');
-      expect(journal.entries).toHaveLength(8);
+      const entry = journal.entries.find((e) => e.idx === 7);
+      expect(entry?.tag).toBe('0007_strategies_and_setups');
+      expect(journal.entries.length).toBeGreaterThanOrEqual(8);
     });
 
     it('all five tables exist in the live database', async () => {

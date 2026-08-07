@@ -99,6 +99,12 @@ export const tradingAccounts = pgTable(
       table.workspaceId,
       table.mutationKey,
     ),
+    // Composite-FK plumbing added in Phase 07B — lets `trades` prove the
+    // Trading Account it references belongs to the same workspace as the
+    // trade itself, the same technique every Phase 06 child table already
+    // uses against `strategies`/`strategy_versions`/`setups`. `id` alone is
+    // already unique; this pair is too.
+    uniqueIndex('trading_accounts_id_workspace_idx').on(table.id, table.workspaceId),
     check(
       'trading_accounts_account_mode_check',
       sql`${table.accountMode} IN ('live', 'demo', 'prop', 'backtest')`,
