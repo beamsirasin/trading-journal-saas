@@ -2,6 +2,16 @@
 
 **Depends on:** 07 · **Blocks:** 09
 
+**Status:** In progress. 08A (repository audit) and 08B (Trade domain services and lifecycle — `src/server/services/trade-management.ts`, `trade-discipline.ts`) are complete; no DAL, Server Action, or UI exists yet (08C/08D's job). 08B locked the following corrections to this document's original pre-implementation prose, superseding it where they conflict:
+
+- **The server, never the client, resolves and pins `strategy_version_id`/`setup_version_id`.** The client supplies only `tradingAccountId`/`strategyId`/`setupId`; the create transaction resolves the current Strategy Version and the matching Setup Version snapshot under lock, exactly like every other guarded mutation in this codebase (CLAUDE.md §4). The line below in "1. Plan" describing the client "pinning" both version ids was ambiguous on this point — read it as "the service pins," never as a client-supplied value.
+- **`planned_target` is optional.** A Trade may be created with a Plan and no Target; `planned_r` is then `null`, not a validation failure.
+- **`canceled` is reachable only from `planned`.** Once an actual entry exists (`open`/`closed`), a Trade can never be hidden from Trader performance by canceling it — a genuinely erroneous record uses soft deletion instead.
+- **The System axis has no artificial ordering against the Trader axis.** System may resolve before, during, or after the Trader side closes, and may remain `pending` indefinitely after `closed` — there is no rule requiring one to precede the other.
+- **No restore for a soft-deleted Trade exists or is planned in Phase 08.**
+- **Workspace-defined custom mistake types remain deferred**, not part of Phase 08 — this document's "Workspace-custom mistake types" line (Mistake & discipline capture) exceeds the locked Phase 07 contract's scope; MVP uses only the nine canonical system types.
+- **Correction/recalculation policy is locked**: any edit to Plan (`entry`/`stop`/`target`/`direction`) recomputes `planned_r` (and `system_r`/`system_outcome` if System is already resolved) via the same `composePlanned`/`composeSystemResolve` helpers used at first write — never a hand-duplicated formula; a post-close correction to `actual_initial_risk_minor`/`net_pnl_minor` likewise recomputes `actual_r`/`trader_outcome` via `composeTraderClose`.
+
 ## Goal
 
 Manual trade capture that makes recording the **system counterfactual** as natural as recording the actual result — because the entire product depends on that data existing.
