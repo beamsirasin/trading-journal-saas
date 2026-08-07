@@ -8,12 +8,12 @@
  * See docs/calculation-spec.md §1 for the storage contract and
  * docs/decisions/0002-money-representation.md for why.
  *
- * NOT SUPPORTED YET (deliberately):
- *   - multiplication, division, percentages  -> Phase 06 calculation engine,
+ * NOT SUPPORTED HERE (deliberately):
+ *   - multiplication, division, percentages  -> `src/lib/calc/` (Phase 07C/D),
  *     where a rounding rule can be specified per formula
  *   - currency conversion / FX rates         -> out of MVP scope
- *   - instrument prices                      -> Phase 06 uses NUMERIC(20,10)
- *     with decimal.js; minor units cannot represent 1.08532
+ *   - instrument prices                      -> `src/lib/calc/` uses
+ *     `NUMERIC(20,10)` with decimal.js; minor units cannot represent 1.08532
  *   - locale-aware parsing or formatting     -> presentation concern, later
  *   - accounting-style negatives "(12.34)"
  */

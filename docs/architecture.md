@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 03, Phase 04 — Billing & Checkout, Phase 05 — Onboarding & Trading Accounts, and Phase 06 — Strategies & Versions are officially complete on `main`; Phase 07 — Trade Model & Calculation Engine is next. Authentication, database-backed sessions, tenant/workspace isolation, onboarding, trading accounts, workspace entitlements, server-side create/restore limits, monthly-plan billing, and the versioned Strategy/Setup/Rule domain (schema, services, authenticated DAL/actions, and the real `/app/strategies` management UI) are real. Directories still marked _(planned)_ — principally `lib/calc/` and the query layer under `server/db/queries/` — remain Phase 07's job: no Trade table or calculation engine exists yet.
+**Status:** Phase 03, Phase 04 — Billing & Checkout, Phase 05 — Onboarding & Trading Accounts, Phase 06 — Strategies & Versions, and Phase 07 — Trade Model & Calculation Engine are officially complete on `main`; Phase 08 — Trade Journal is next. Authentication, database-backed sessions, tenant/workspace isolation, onboarding, trading accounts, workspace entitlements, server-side create/restore limits, monthly-plan billing, the versioned Strategy/Setup/Rule domain (schema, services, authenticated DAL/actions, and the real `/app/strategies` management UI), the Trade/mistake/Rule-check schema, and the pure `lib/calc/` calculation engine are real. The query layer under `server/db/queries/` for the new Trade tables, and every service/DAL/action/UI layer above the engine, remain _(planned)_ — Phase 08's job: no Trade can be recorded yet even though the engine that will compute its derived values already exists and is fully tested.
 
 ## 1. Shape
 
@@ -14,7 +14,7 @@ Next.js (App Router)
   ├── proxy.ts      optimistic locale + session-cookie-presence redirect
   ├── app/          routes, thin
   ├── server/       auth (DAL) + actions -> services -> queries (queries planned)
-  └── lib/          pure logic: calc (planned), money, time, auth (Better Auth)
+  └── lib/          pure logic: calc (Phase 07C/D), money, time, auth (Better Auth)
                           │
                           ▼
                     PostgreSQL (Drizzle) — auth + workspaces/accounts/entitlements/audit
@@ -58,7 +58,7 @@ src/
     env.server.ts         server-only; build fails if imported client-side
     env.client.ts         NEXT_PUBLIC_* only
     plans.ts              Authoritative plan registry — shared by presentation and entitlements
-    mistakes.ts           Mistake taxonomy and weights       (planned)
+    mistakes.ts           Mistake taxonomy and severity weights (Phase 07B)
   hooks/
     use-is-hydrated.ts    SSR-safe hydration detection
     use-prefers-reduced-motion.ts
@@ -69,7 +69,7 @@ src/
     money/                Integer minor units, currency-aware
     time/                 UTC storage, IANA conversion, day bucketing
     demo/                 Static fixtures for the Phase 01 prototype — NO formulas
-    calc/                 PURE calculation engine            (planned)
+    calc/                 PURE calculation engine        (Phase 07C/D, real)
     auth/                 Better Auth instance (server.ts), client, email adapter (email.ts)
     identifiers.ts        The one ID generator — UUIDv7, see ADR 0008
   server/
