@@ -1,0 +1,598 @@
+import 'server-only';
+
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+
+import type {
+  MistakeSeverity,
+  OutcomeValue,
+  RuleCheckStatus,
+  SystemExitReason,
+  SystemStatus,
+  TradeDirection,
+  TradeStatus,
+} from '@/lib/trades/constants';
+import { getActiveWorkspaceContext } from '@/server/auth/dal';
+import { getDb } from '@/server/db/client';
+import {
+  mistakeTypes,
+  setups,
+  strategies,
+  strategyRules,
+  strategySetupVersions,
+  strategyVersions,
+  tradeMistakes,
+  tradeRuleChecks,
+  trades,
+  tradingAccounts,
+} from '@/server/db/schema';
+
+/**
+ * Authenticated Trade reads — Phase 08C. Every export derives workspace
+ * scope exclusively from `getActiveWorkspaceContext()` (never a
+ * client-supplied `workspaceId`), matching `src/server/dal/strategies.ts`'s
+ * exact posture. Reads are NEVER entitlement-gated — `writable`,
+ * `over_limit`, and `read_only` workspaces all read identically; only
+ * mutations (`src/server/services/trade-management.ts`/`trade-discipline.ts`)
+ * are gated. A cross-workspace or missing Trade ID is rejected identically as
+ * "not found" — never distinguishable from the caller's perspective.
+ *
+ * ## The historical-label rule (critical)
+ *
+ * Every Strategy/Setup label this file ever returns for an EXISTING Trade
+ * comes from that Trade's OWN PINNED snapshot — `strategy_versions` row at
+ * `trade.strategy_version_id`, `strategy_setup_versions` row at
+ * `trade.setup_version_id` — joined directly on those two foreign keys.
+ * Nothing here ever resolves a label via `strategies.current_version_id`
+ * (that is exactly the query shape `src/server/dal/strategies.ts` uses for
+ * the CURRENT Strategy presentation, deliberately not reused here). A later
+ * Strategy/Setup rename, or an entirely new Version, must never rewrite what
+ * an old Trade appears to have used — see
+ * `trades.integration.test.ts`'s dedicated proof.
+ *
+ * Every returned value is already serializable — `bigint` minor units as
+ * decimal-integer strings, `Date` as ISO-8601 strings, decimal/R columns as
+ * the strings Drizzle/postgres.js already return them as. No caller of this
+ * file (a Server Component, a Server Action) ever needs to convert anything
+ * further before sending it to the client.
+ */
+
+function minorToString(value: bigint | null): string | null {
+  return value === null ? null : value.toString();
+}
+
+function dateToIso(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
+}
+
+/**
+ * `postgres.js` does not always parse a raw `sql<Date>\`coalesce(...)\`` computed
+ * column's result the same way it parses an ordinary `timestamptz` column
+ * reference — it can come back as an ISO-formatted string rather than a
+ * `Date` instance. Normalizing once here (rather than trusting the `sql<Date>`
+ * type parameter, which is a compile-time-only assertion) is what makes
+ * `.toISOString()`/`encodeCursor` safe to call on the result unconditionally.
+ */
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+// ---------------------------------------------------------------------------
+// List
+// ---------------------------------------------------------------------------
+
+export interface TradeListItem {
+  readonly tradeId: string;
+  /**
+   * `exited_at ?? entered_at ?? created_at` — the most advanced lifecycle
+   * timestamp available for a Trade in ANY status. A closed Trade sorts by
+   * when it closed (matching the equity-curve convention
+   * `docs/calculation-spec.md` already establishes for the Trader axis); an
+   * open Trade, not yet exited, sorts by when it was entered; a still-
+   * `planned` Trade, with neither, sorts by when it was created. Never
+   * `updated_at` — a silent edit must never reorder the list.
+   */
+  readonly occurredAt: string;
+  readonly symbol: string;
+  readonly direction: TradeDirection;
+  readonly tradingAccountName: string;
+  /** The pinned Strategy Version's own name — see the module's historical-label rule. */
+  readonly strategyName: string;
+  /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. */
+  readonly setupName: string;
+  readonly strategyVersionNumber: number;
+  readonly status: TradeStatus;
+  readonly systemStatus: SystemStatus;
+  readonly actualR: string | null;
+  readonly systemR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+  readonly systemOutcome: OutcomeValue | null;
+}
+
+export interface TradeListPage {
+  readonly items: readonly TradeListItem[];
+  /** Pass back as `cursor` to fetch the next page; `null` once the list is exhausted. */
+  readonly nextCursor: string | null;
+}
+
+export interface ListWorkspaceTradesParams {
+  readonly limit?: number;
+  readonly cursor?: string | null;
+}
+
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 50;
+
+function clampPageSize(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_PAGE_SIZE;
+  return Math.min(Math.max(1, Math.trunc(limit)), MAX_PAGE_SIZE);
+}
+
+interface DecodedCursor {
+  readonly occurredAt: string;
+  readonly tradeId: string;
+}
+
+/**
+ * An opaque, Trade-list-specific keyset cursor — not a general pagination
+ * framework. Encodes `(occurredAt, tradeId)`, the exact composite ordering
+ * key the list query sorts by, so "the next page" is a plain, index-friendly
+ * `(occurredAt, id) < (cursorOccurredAt, cursorId)` row comparison rather
+ * than an `OFFSET`, which degrades under concurrent inserts (skipped or
+ * duplicated rows as the list shifts underneath a paging user).
+ */
+function encodeCursor(occurredAt: Date, tradeId: string): string {
+  return Buffer.from(`${occurredAt.toISOString()}|${tradeId}`, 'utf8').toString('base64url');
+}
+
+function decodeCursor(cursor: string): DecodedCursor | null {
+  try {
+    const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+    const separatorIndex = decoded.indexOf('|');
+    if (separatorIndex === -1) return null;
+    const occurredAt = decoded.slice(0, separatorIndex);
+    const tradeId = decoded.slice(separatorIndex + 1);
+    if (occurredAt === '' || tradeId === '' || Number.isNaN(Date.parse(occurredAt))) return null;
+    return { occurredAt, tradeId };
+  } catch {
+    return null;
+  }
+}
+
+const occurredAtExpr = sql<Date>`coalesce(${trades.exitedAt}, ${trades.enteredAt}, ${trades.createdAt})`;
+
+/**
+ * Every non-deleted Trade in the caller's active workspace, newest
+ * `occurredAt` first, deterministically tie-broken by `id` (UUIDv7 sorts
+ * chronologically as a secondary key too). One query with three inner joins
+ * (Trading Account, pinned Strategy Version, pinned Setup Version snapshot)
+ * — no N+1 regardless of how many Trades match, and every label already the
+ * historically-pinned one (see the module doc comment).
+ */
+export async function listWorkspaceTrades(
+  params: ListWorkspaceTradesParams = {},
+): Promise<TradeListPage> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+  const limit = clampPageSize(params.limit);
+  const cursor = params.cursor ? decodeCursor(params.cursor) : null;
+
+  const conditions = [eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)];
+  if (cursor !== null) {
+    conditions.push(
+      sql`(${occurredAtExpr}, ${trades.id}) < (${cursor.occurredAt}::timestamptz, ${cursor.tradeId}::uuid)`,
+    );
+  }
+
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      occurredAt: occurredAtExpr,
+      symbol: trades.symbol,
+      direction: trades.direction,
+      status: trades.status,
+      systemStatus: trades.systemStatus,
+      actualR: trades.actualR,
+      systemR: trades.systemR,
+      traderOutcome: trades.traderOutcome,
+      systemOutcome: trades.systemOutcome,
+      tradingAccountName: tradingAccounts.name,
+      strategyVersionName: strategyVersions.name,
+      strategyVersionNumber: strategyVersions.versionNumber,
+      setupVersionName: strategySetupVersions.name,
+    })
+    .from(trades)
+    .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
+    .innerJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
+    .innerJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .where(and(...conditions))
+    .orderBy(desc(occurredAtExpr), desc(trades.id))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const lastRow = pageRows.at(-1);
+  const nextCursor =
+    hasMore && lastRow !== undefined
+      ? encodeCursor(toDate(lastRow.occurredAt), lastRow.tradeId)
+      : null;
+
+  return {
+    items: pageRows.map((row) => ({
+      tradeId: row.tradeId,
+      occurredAt: toDate(row.occurredAt).toISOString(),
+      symbol: row.symbol,
+      direction: row.direction as TradeDirection,
+      tradingAccountName: row.tradingAccountName,
+      strategyName: row.strategyVersionName,
+      setupName: row.setupVersionName,
+      strategyVersionNumber: row.strategyVersionNumber,
+      status: row.status as TradeStatus,
+      systemStatus: row.systemStatus as SystemStatus,
+      actualR: row.actualR,
+      systemR: row.systemR,
+      traderOutcome: row.traderOutcome as OutcomeValue | null,
+      systemOutcome: row.systemOutcome as OutcomeValue | null,
+    })),
+    nextCursor,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Detail
+// ---------------------------------------------------------------------------
+
+export interface TradeRuleCheckDetail {
+  readonly ruleKey: string;
+  /** Derived from the pinned Rule's own `setup_version_id` — `strategyRuleId`/the internal row id are never exposed. */
+  readonly scope: 'strategy' | 'setup';
+  readonly title: string;
+  readonly category: string;
+  readonly isRequired: boolean;
+  readonly isPreTradeCheck: boolean;
+  readonly sortOrder: number;
+  readonly checkStatus: RuleCheckStatus;
+}
+
+export interface TradeMistakeDetail {
+  readonly mistakeTypeId: string;
+  readonly key: string;
+  readonly label: string;
+  readonly severityAtTime: MistakeSeverity;
+  readonly weightAtTime: string;
+  readonly note: string | null;
+}
+
+export interface TradeDetail {
+  readonly tradeId: string;
+  readonly tradingAccountId: string;
+  readonly tradingAccountName: string;
+  readonly strategyId: string;
+  /** The pinned Strategy Version's own name — see the module's historical-label rule. */
+  readonly strategyName: string;
+  readonly strategyVersionNumber: number;
+  readonly setupId: string;
+  /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. */
+  readonly setupName: string;
+  readonly status: TradeStatus;
+  readonly systemStatus: SystemStatus;
+
+  readonly symbol: string;
+  readonly direction: TradeDirection;
+  readonly timeframe: string | null;
+  readonly session: string | null;
+  readonly confidence: number | null;
+  readonly confirmationNotes: string | null;
+  readonly tradingviewUrl: string | null;
+  readonly notes: string | null;
+
+  readonly plannedEntry: string;
+  readonly plannedStop: string;
+  readonly plannedTarget: string | null;
+  readonly plannedPositionSize: string | null;
+  readonly plannedR: string | null;
+
+  readonly actualEntry: string | null;
+  readonly actualInitialStop: string | null;
+  readonly actualPositionSize: string | null;
+  readonly actualInitialRiskMinor: string | null;
+  readonly actualExit: string | null;
+  readonly grossPnlMinor: string | null;
+  readonly commissionMinor: string;
+  readonly feesMinor: string;
+  readonly swapMinor: string;
+  readonly netPnlMinor: string | null;
+  readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+  readonly enteredAt: string | null;
+  readonly exitedAt: string | null;
+
+  readonly systemExitPrice: string | null;
+  readonly systemExitedAt: string | null;
+  readonly systemExitReason: SystemExitReason | null;
+  readonly systemCostR: string;
+  readonly systemR: string | null;
+  readonly systemOutcome: OutcomeValue | null;
+  readonly systemResolvedAt: string | null;
+
+  readonly ruleChecks: readonly TradeRuleCheckDetail[];
+  readonly mistakes: readonly TradeMistakeDetail[];
+
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type GetTradeDetailResult =
+  | { readonly ok: true; readonly trade: TradeDetail }
+  | { readonly ok: false; readonly code: 'trade_not_found' };
+
+/**
+ * One Trade's full presentation, scoped to the caller's active workspace. A
+ * soft-deleted Trade is `trade_not_found`, identically to one that never
+ * existed or belongs to another workspace. `tradeId` must already be a
+ * validated UUID from the caller — this function still independently scopes
+ * every query to the authenticated workspace.
+ */
+export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTradeDetailResult> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const [row] = await db
+    .select({
+      trade: trades,
+      tradingAccountName: tradingAccounts.name,
+      strategyVersionName: strategyVersions.name,
+      strategyVersionNumber: strategyVersions.versionNumber,
+      setupVersionName: strategySetupVersions.name,
+    })
+    .from(trades)
+    .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
+    .innerJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
+    .innerJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .where(
+      and(eq(trades.id, tradeId), eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)),
+    );
+  if (row === undefined) return { ok: false, code: 'trade_not_found' };
+  const { trade } = row;
+
+  const ruleCheckRows = await db
+    .select({
+      ruleKey: tradeRuleChecks.ruleKey,
+      title: tradeRuleChecks.title,
+      category: tradeRuleChecks.category,
+      isRequired: tradeRuleChecks.isRequired,
+      isPreTradeCheck: tradeRuleChecks.isPreTradeCheck,
+      sortOrder: tradeRuleChecks.sortOrder,
+      checkStatus: tradeRuleChecks.checkStatus,
+      // Internal only — used to derive `scope` below, never returned.
+      setupVersionId: strategyRules.setupVersionId,
+    })
+    .from(tradeRuleChecks)
+    .innerJoin(strategyRules, eq(strategyRules.id, tradeRuleChecks.strategyRuleId))
+    .where(eq(tradeRuleChecks.tradeId, tradeId))
+    .orderBy(asc(tradeRuleChecks.sortOrder));
+
+  const mistakeRows = await db
+    .select({
+      mistakeTypeId: tradeMistakes.mistakeTypeId,
+      key: mistakeTypes.key,
+      label: mistakeTypes.label,
+      severityAtTime: tradeMistakes.severityAtTime,
+      weightAtTime: tradeMistakes.weightAtTime,
+      note: tradeMistakes.note,
+    })
+    .from(tradeMistakes)
+    .innerJoin(mistakeTypes, eq(mistakeTypes.id, tradeMistakes.mistakeTypeId))
+    .where(eq(tradeMistakes.tradeId, tradeId));
+
+  return {
+    ok: true,
+    trade: {
+      tradeId: trade.id,
+      tradingAccountId: trade.tradingAccountId,
+      tradingAccountName: row.tradingAccountName,
+      strategyId: trade.strategyId,
+      strategyName: row.strategyVersionName,
+      strategyVersionNumber: row.strategyVersionNumber,
+      setupId: trade.setupId,
+      setupName: row.setupVersionName,
+      status: trade.status as TradeStatus,
+      systemStatus: trade.systemStatus as SystemStatus,
+
+      symbol: trade.symbol,
+      direction: trade.direction as TradeDirection,
+      timeframe: trade.timeframe,
+      session: trade.session,
+      confidence: trade.confidence,
+      confirmationNotes: trade.confirmationNotes,
+      tradingviewUrl: trade.tradingviewUrl,
+      notes: trade.notes,
+
+      plannedEntry: trade.plannedEntry,
+      plannedStop: trade.plannedStop,
+      plannedTarget: trade.plannedTarget,
+      plannedPositionSize: trade.plannedPositionSize,
+      plannedR: trade.plannedR,
+
+      actualEntry: trade.actualEntry,
+      actualInitialStop: trade.actualInitialStop,
+      actualPositionSize: trade.actualPositionSize,
+      actualInitialRiskMinor: minorToString(trade.actualInitialRiskMinor),
+      actualExit: trade.actualExit,
+      grossPnlMinor: minorToString(trade.grossPnlMinor),
+      commissionMinor: trade.commissionMinor.toString(),
+      feesMinor: trade.feesMinor.toString(),
+      swapMinor: trade.swapMinor.toString(),
+      netPnlMinor: minorToString(trade.netPnlMinor),
+      actualR: trade.actualR,
+      traderOutcome: trade.traderOutcome as OutcomeValue | null,
+      enteredAt: dateToIso(trade.enteredAt),
+      exitedAt: dateToIso(trade.exitedAt),
+
+      systemExitPrice: trade.systemExitPrice,
+      systemExitedAt: dateToIso(trade.systemExitedAt),
+      systemExitReason: trade.systemExitReason as SystemExitReason | null,
+      systemCostR: trade.systemCostR,
+      systemR: trade.systemR,
+      systemOutcome: trade.systemOutcome as OutcomeValue | null,
+      systemResolvedAt: dateToIso(trade.systemResolvedAt),
+
+      ruleChecks: ruleCheckRows.map((r) => ({
+        ruleKey: r.ruleKey,
+        scope: r.setupVersionId === null ? 'strategy' : 'setup',
+        title: r.title,
+        category: r.category,
+        isRequired: r.isRequired,
+        isPreTradeCheck: r.isPreTradeCheck,
+        sortOrder: r.sortOrder,
+        checkStatus: r.checkStatus as RuleCheckStatus,
+      })),
+      mistakes: mistakeRows.map((m) => ({
+        mistakeTypeId: m.mistakeTypeId,
+        key: m.key,
+        label: m.label,
+        severityAtTime: m.severityAtTime as MistakeSeverity,
+        weightAtTime: m.weightAtTime,
+        note: m.note,
+      })),
+
+      createdAt: trade.createdAt.toISOString(),
+      updatedAt: trade.updatedAt.toISOString(),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Trade-creation selectors
+// ---------------------------------------------------------------------------
+
+export interface TradeCreateAccountOption {
+  readonly tradingAccountId: string;
+  readonly name: string;
+  readonly accountMode: string;
+  readonly baseCurrency: string;
+}
+
+export interface TradeCreateSetupOption {
+  readonly setupId: string;
+  /** The CURRENT Setup Version's name — a live selector value, not a historical label; see the module doc comment for why Trade list/detail use the pinned name instead. */
+  readonly name: string;
+  readonly sortOrder: number;
+}
+
+export interface TradeCreateStrategyOption {
+  readonly strategyId: string;
+  /** The CURRENT Strategy Version's name. */
+  readonly name: string;
+  readonly currentVersionNumber: number;
+  readonly setups: readonly TradeCreateSetupOption[];
+}
+
+export interface TradeCreateOptions {
+  readonly tradingAccounts: readonly TradeCreateAccountOption[];
+  readonly strategies: readonly TradeCreateStrategyOption[];
+}
+
+/**
+ * The minimum authenticated read `/app/trades/new` needs: every active
+ * (non-archived) Trading Account, and every active Strategy with its active
+ * Setups, current-Version-scoped. `strategy_version_id`/`setup_version_id`
+ * are NEVER included here — the UI may display a current Version NUMBER, but
+ * the future `createTradeAction` still sends only `strategyId`/`setupId`,
+ * and `createTrade` resolves and pins the real Version IDs again under lock
+ * (this selector's data is a preview, never a trusted write value). A
+ * Strategy whose `current_version_id` fails to resolve (only ever legitimate
+ * transiently, mid-transaction) is silently excluded from the options list
+ * rather than failing the whole selector — unlike `listWorkspaceStrategies`,
+ * this read backs an unrelated creation flow that must stay available even
+ * if one other Strategy is momentarily malformed.
+ *
+ * Fixed-count batched queries regardless of how many Strategies/Setups exist
+ * (no N+1): one for accounts, one for Strategies, one for their current
+ * Versions, one for their Setups, one for those Setups' current-Version
+ * snapshots.
+ */
+export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const accountRows = await db.query.tradingAccounts.findMany({
+    where: and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
+    orderBy: [asc(tradingAccounts.createdAt), asc(tradingAccounts.id)],
+  });
+
+  const strategyRows = await db
+    .select()
+    .from(strategies)
+    .where(and(eq(strategies.workspaceId, workspaceId), eq(strategies.isArchived, false)));
+
+  const currentVersionIds = strategyRows
+    .map((s) => s.currentVersionId)
+    .filter((id): id is string => id !== null);
+
+  const versionRows =
+    currentVersionIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(strategyVersions)
+          .where(inArray(strategyVersions.id, currentVersionIds));
+  const versionById = new Map(versionRows.map((v) => [v.id, v]));
+
+  const strategyIds = strategyRows.map((s) => s.id);
+  const setupRows =
+    strategyIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(setups)
+          .where(and(inArray(setups.strategyId, strategyIds), eq(setups.isArchived, false)));
+  const setupIdSet = new Set(setupRows.map((s) => s.id));
+  const setupsByStrategyId = new Map<string, typeof setupRows>();
+  for (const setup of setupRows) {
+    const list = setupsByStrategyId.get(setup.strategyId) ?? [];
+    list.push(setup);
+    setupsByStrategyId.set(setup.strategyId, list);
+  }
+
+  const snapshotRows =
+    currentVersionIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(strategySetupVersions)
+          .where(inArray(strategySetupVersions.strategyVersionId, currentVersionIds));
+  const snapshotBySetupId = new Map(snapshotRows.map((s) => [s.setupId, s]));
+
+  const strategyOptions: TradeCreateStrategyOption[] = [];
+  for (const strategy of strategyRows) {
+    if (strategy.currentVersionId === null) continue;
+    const version = versionById.get(strategy.currentVersionId);
+    if (version === undefined) continue;
+
+    const setupOptions: TradeCreateSetupOption[] = [];
+    for (const setup of setupsByStrategyId.get(strategy.id) ?? []) {
+      if (!setupIdSet.has(setup.id)) continue;
+      const snapshot = snapshotBySetupId.get(setup.id);
+      if (snapshot === undefined) continue;
+      setupOptions.push({ setupId: setup.id, name: snapshot.name, sortOrder: snapshot.sortOrder });
+    }
+    setupOptions.sort((a, b) => a.sortOrder - b.sortOrder);
+
+    strategyOptions.push({
+      strategyId: strategy.id,
+      name: version.name,
+      currentVersionNumber: version.versionNumber,
+      setups: setupOptions,
+    });
+  }
+
+  return {
+    tradingAccounts: accountRows.map((a) => ({
+      tradingAccountId: a.id,
+      name: a.name,
+      accountMode: a.accountMode,
+      baseCurrency: a.baseCurrency,
+    })),
+    strategies: strategyOptions,
+  };
+}

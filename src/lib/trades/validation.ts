@@ -26,3 +26,24 @@ export function normalizeOptionalText(value: string | null | undefined): string 
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
 }
+
+/**
+ * Practical TradingView chart-link validation — HTTPS only, host restricted
+ * to `tradingview.com` and its subdomains, no embedded userinfo credentials,
+ * and (by construction, since only `https:` is ever accepted)
+ * `javascript:`/`data:`/`file:` and every other scheme are already rejected.
+ * Never fetches the URL — CLAUDE.md §9 forbids any TradingView API
+ * integration or scraping; this is shape validation only.
+ */
+export function isValidTradingViewUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  if (url.username !== '' || url.password !== '') return false;
+  const host = url.hostname.toLowerCase();
+  return host === 'tradingview.com' || host.endsWith('.tradingview.com');
+}

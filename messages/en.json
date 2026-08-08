@@ -410,6 +410,33 @@
       "timezoneCaption": "Demo data. Times shown in {timezone}; a real account uses your profile timezone.",
       "viewChartFor": "for {symbol}",
       "scrollRegionLabel": "Trade history table"
+    },
+    "errors": {
+      "validation_error": "Some details are not valid. Please check the form and try again.",
+      "unauthenticated": "Please sign in again to continue.",
+      "workspace_access_denied": "You do not have permission to do that in this workspace.",
+      "read_only_workspace": "This workspace is read-only. Restore valid subscription access before making changes.",
+      "over_limit_workspace": "This workspace is over its active-account limit. Archive an active account before making other changes.",
+      "trade_not_found": "This Trade could not be found.",
+      "trading_account_not_found": "This Trading Account could not be found.",
+      "trading_account_archived": "This Trading Account is archived. Restore it first, then you can make changes.",
+      "strategy_not_found": "This Strategy could not be found.",
+      "strategy_archived": "This Strategy is archived. Restore it first, then you can make changes.",
+      "strategy_current_version_missing": "We couldn't load this Strategy's current version. Please contact support.",
+      "setup_not_found": "This Setup could not be found.",
+      "setup_archived": "This Setup is archived. Restore it first, then you can make changes.",
+      "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
+      "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
+      "invalid_status_transition": "This Trade cannot make that change from its current status.",
+      "invalid_initial_risk": "Initial risk must be a positive amount.",
+      "invalid_exit_time": "The exit time cannot be before the entry time.",
+      "no_actual_execution": "This Trade has no actual execution to correct yet.",
+      "invalid_system_status_transition": "The System result cannot make that change from its current status.",
+      "invalid_system_exit_reason": "Choose a valid System exit reason.",
+      "rule_check_not_found": "This Rule check could not be found on this Trade.",
+      "mistake_type_not_found": "This mistake type could not be found.",
+      "mistake_type_not_usable": "This mistake type is not available in this workspace.",
+      "unexpected_error": "Something went wrong. Please try again."
     }
   },
   "strategies": {

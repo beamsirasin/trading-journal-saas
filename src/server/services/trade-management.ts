@@ -7,7 +7,12 @@ import { composePlanned, composeSystemResolve, composeTraderClose } from '@/lib/
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { authorizeWorkspaceMutation, type MutationDenialReason } from '@/lib/entitlements/resolve';
 import { systemClock, type Clock } from '@/lib/time';
-import { isSystemExitReason, isTradeDirection, type TradeStatus } from '@/lib/trades/constants';
+import {
+  isSystemExitReason,
+  isTradeDirection,
+  type OutcomeValue,
+  type TradeStatus,
+} from '@/lib/trades/constants';
 import { normalizeOptionalText, normalizeRequiredText } from '@/lib/trades/validation';
 import { getDb, type Database } from '@/server/db/client';
 import {
@@ -614,7 +619,11 @@ export interface UpdateTradePlanInput extends PlanFieldsPatch {
 }
 
 export type UpdateTradePlanResult =
-  | { readonly ok: true; readonly changedFields: readonly string[] }
+  | {
+      readonly ok: true;
+      readonly changedFields: readonly string[];
+      readonly plannedR: string | null;
+    }
   | {
       readonly ok: false;
       readonly code: WorkspaceAccessDenial | 'trade_not_found' | 'invalid_plan';
@@ -723,7 +732,7 @@ export async function updateTradePlan(
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
     if (systemR !== trade.systemR) changedFields.push('systemR');
 
-    if (changedFields.length === 0) return { ok: true, changedFields: [] };
+    if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
 
     await tx
       .update(trades)
@@ -755,7 +764,7 @@ export async function updateTradePlan(
       metadata: { tradeId, changedFields },
     });
 
-    return { ok: true, changedFields };
+    return { ok: true, changedFields, plannedR };
   });
 }
 
@@ -782,7 +791,11 @@ export interface CorrectTradeIdentityInput {
 }
 
 export type CorrectTradeIdentityResult =
-  | { readonly ok: true; readonly changedFields: readonly string[] }
+  | {
+      readonly ok: true;
+      readonly changedFields: readonly string[];
+      readonly plannedR: string | null;
+    }
   | {
       readonly ok: false;
       readonly code:
@@ -882,7 +895,7 @@ export async function correctTradeIdentity(
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
     if (systemR !== trade.systemR) changedFields.push('systemR');
 
-    if (changedFields.length === 0) return { ok: true, changedFields: [] };
+    if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
 
     await tx
       .update(trades)
@@ -908,7 +921,7 @@ export async function correctTradeIdentity(
       metadata: { tradeId, changedFields },
     });
 
-    return { ok: true, changedFields };
+    return { ok: true, changedFields, plannedR };
   });
 }
 
@@ -1031,7 +1044,7 @@ export interface CloseTradeInput {
 }
 
 export type CloseTradeResult =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly actualR: string; readonly traderOutcome: OutcomeValue }
   | {
       readonly ok: false;
       readonly code:
@@ -1070,6 +1083,8 @@ export async function closeTrade(
         trade.actualExit !== null &&
         trade.netPnlMinor !== null &&
         trade.exitedAt !== null &&
+        trade.actualR !== null &&
+        trade.traderOutcome !== null &&
         matchesCloseRetry(
           {
             actualExit: trade.actualExit,
@@ -1079,7 +1094,11 @@ export async function closeTrade(
           input,
         )
       ) {
-        return { ok: true };
+        return {
+          ok: true,
+          actualR: trade.actualR,
+          traderOutcome: trade.traderOutcome as OutcomeValue,
+        };
       }
       return { ok: false, code: 'invalid_status_transition' };
     }
@@ -1121,7 +1140,11 @@ export async function closeTrade(
       metadata: { tradeId, previousStatus: 'open', newStatus: 'closed' },
     });
 
-    return { ok: true };
+    return {
+      ok: true,
+      actualR: composed.value.actualR,
+      traderOutcome: composed.value.traderOutcome,
+    };
   });
 }
 
@@ -1376,7 +1399,7 @@ export interface ResolveSystemTradeInput {
 }
 
 export type ResolveSystemTradeResult =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly systemR: string; readonly systemOutcome: OutcomeValue }
   | {
       readonly ok: false;
       readonly code:
@@ -1415,6 +1438,8 @@ export async function resolveSystemTrade(
         trade.systemExitPrice !== null &&
         trade.systemExitedAt !== null &&
         trade.systemExitReason !== null &&
+        trade.systemR !== null &&
+        trade.systemOutcome !== null &&
         matchesSystemResolveRetry(
           {
             systemExitPrice: trade.systemExitPrice,
@@ -1425,7 +1450,11 @@ export async function resolveSystemTrade(
           input,
         )
       ) {
-        return { ok: true };
+        return {
+          ok: true,
+          systemR: trade.systemR,
+          systemOutcome: trade.systemOutcome as OutcomeValue,
+        };
       }
       return { ok: false, code: 'invalid_system_status_transition' };
     }
@@ -1475,7 +1504,11 @@ export async function resolveSystemTrade(
       metadata: { tradeId, previousStatus: 'pending', newStatus: 'resolved' },
     });
 
-    return { ok: true };
+    return {
+      ok: true,
+      systemR: composed.value.systemR,
+      systemOutcome: composed.value.systemOutcome,
+    };
   });
 }
 
