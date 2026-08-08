@@ -7,6 +7,7 @@ import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety
 import {
   setups,
   strategies,
+  strategyRules,
   strategySetupVersions,
   strategyVersions,
   workspaces,
@@ -29,7 +30,14 @@ async function seedFramework(userId: string): Promise<void> {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
   const db = drizzle(client, {
-    schema: { workspaces, strategies, strategyVersions, setups, strategySetupVersions },
+    schema: {
+      workspaces,
+      strategies,
+      strategyVersions,
+      strategyRules,
+      setups,
+      strategySetupVersions,
+    },
   });
   try {
     const [workspace] = await db
@@ -56,6 +64,14 @@ async function seedFramework(userId: string): Promise<void> {
       .update(strategies)
       .set({ currentVersionId: version.id })
       .where(eq(strategies.id, strategy.id));
+    await db.insert(strategyRules).values({
+      workspaceId: workspace.id,
+      strategyVersionId: version.id,
+      category: 'entry',
+      title: 'Wait for confirmation',
+      isRequired: true,
+      isPreTradeCheck: true,
+    });
     const [setup] = await db
       .insert(setups)
       .values({ workspaceId: workspace.id, strategyId: strategy.id })
@@ -92,11 +108,58 @@ async function createPlannedTrade(page: Page) {
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
 
+async function completeTradeLifecycle(page: Page) {
+  const ruleStatus = page.getByRole('combobox', {
+    name: 'Rule status for Wait for confirmation',
+  });
+  await ruleStatus.selectOption('followed');
+  await expect(ruleStatus).toBeEnabled({ timeout: 30_000 });
+  await expect(ruleStatus).toHaveValue('followed');
+
+  await page.getByLabel('Mistake type').selectOption({ label: 'Moved stop' });
+  await page.getByLabel(/Note/).fill('E2E lifecycle note');
+  const attachMistake = page.getByRole('button', { name: 'Attach mistake' });
+  await attachMistake.click();
+  await expect(page.getByText('E2E lifecycle note')).toBeVisible({ timeout: 120_000 });
+  await page.reload();
+  await expect(page.getByText('E2E lifecycle note')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open Trade' }).click();
+  let dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Initial risk').fill('100.00');
+  await dialog.getByRole('button', { name: 'Open Trade' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+  await page.reload();
+  await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole('button', { name: 'Close Trade' }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Exit', { exact: true }).fill('110');
+  await dialog.getByLabel('Net P&L').fill('200.00');
+  await dialog.getByLabel('Commission').fill('5.00');
+  await dialog.getByRole('button', { name: 'Close Trade' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+  await page.reload();
+  await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('article', { name: 'XAUUSD' }).getByText('+2.00R')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Resolve System result' }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByLabel('System exit price').fill('120');
+  await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+  await page.reload();
+  await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+}
+
 test.describe('real Trade Journal creation', () => {
   test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
 
-  test('desktop creates and reloads a canonical planned Trade', async ({ page }) => {
+  test('desktop creates, completes, corrects discipline, resolves, and deletes a Trade', async ({
+    page,
+  }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
     const user = await provisionJournalUser('e2e-trades-desktop');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
@@ -114,10 +177,19 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
     await expect(page.getByText('+3.00R')).toBeVisible();
+    await completeTradeLifecycle(page);
+
+    await page.getByRole('button', { name: 'Delete Trade' }).click();
+    const deleteDialog = page.getByRole('alertdialog');
+    await expect(deleteDialog.getByText(/no restore flow/i)).toBeVisible();
+    await deleteDialog.getByRole('button', { name: 'Delete Trade' }).click();
+    await expect(page).toHaveURL(/\/en\/app\/trades$/);
+    await expect(page.getByRole('heading', { name: 'XAUUSD' })).toHaveCount(0);
   });
 
   test('mobile creation remains usable without horizontal overflow', async ({ page }) => {
     test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    test.setTimeout(180_000);
     const user = await provisionJournalUser('e2e-trades-mobile');
     await seedFramework(user.id);
     await page.setViewportSize({ width: 320, height: 800 });
@@ -125,6 +197,25 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades');
     await createPlannedTrade(page);
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    await page.getByRole('button', { name: 'Open Trade' }).click();
+    let dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    const dialogBox = await dialog.boundingBox();
+    expect(dialogBox?.width ?? 999).toBeLessThanOrEqual(320);
+    await dialog.getByLabel('Initial risk').fill('100.00');
+    await dialog.getByRole('button', { name: 'Open Trade' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Close Trade' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Exit', { exact: true }).fill('110');
+    await dialog.getByLabel('Net P&L').fill('100.00');
+    await dialog.getByRole('button', { name: 'Close Trade' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible();
     const dimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,

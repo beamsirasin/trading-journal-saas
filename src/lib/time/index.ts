@@ -34,6 +34,7 @@ export {
   parseCalendarParts,
   startOfDayIn,
   wallClockIn,
+  wallClockToInstant,
 } from './convert';
 
 export { parseCalendarDate, parseInstant, toIsoUtc } from './parse';

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  mistakeTypes,
   strategySetupVersions,
   trades,
   tradingAccounts,
@@ -343,6 +344,41 @@ describe('trades DAL (real database)', () => {
         weightAtTime: mistakeType.defaultWeight,
         note: 'note',
       });
+    });
+
+    it('returns only the nine active canonical system Mistakes as attach options', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+
+      await db.insert(mistakeTypes).values({
+        workspaceId,
+        key: `custom-${crypto.randomUUID()}`,
+        label: 'Custom excluded mistake',
+        severity: 'minor',
+        defaultWeight: '0.1500',
+        isSystem: false,
+      });
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.mistakeCatalog).toHaveLength(9);
+      expect(detail.trade.mistakeCatalog.map((mistake) => mistake.key)).toEqual([
+        'moved_stop',
+        'early_exit',
+        'oversized_position',
+        'no_setup',
+        'revenge_trade',
+        'chased_entry',
+        'ignored_invalidation',
+        'moved_target',
+        'no_stop',
+      ]);
+      expect(JSON.stringify(detail.trade.mistakeCatalog)).not.toContain('severity');
+      expect(JSON.stringify(detail.trade.mistakeCatalog)).not.toContain('weight');
+      expect(JSON.stringify(detail.trade.mistakeCatalog)).not.toContain('Custom excluded');
     });
   });
 

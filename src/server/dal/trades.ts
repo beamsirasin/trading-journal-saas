@@ -262,6 +262,12 @@ export interface TradeMistakeDetail {
   readonly note: string | null;
 }
 
+export interface TradeMistakeOption {
+  readonly mistakeTypeId: string;
+  readonly key: string;
+  readonly label: string;
+}
+
 export interface TradeDetail {
   readonly tradeId: string;
   readonly tradingAccountId: string;
@@ -318,6 +324,8 @@ export interface TradeDetail {
 
   readonly ruleChecks: readonly TradeRuleCheckDetail[];
   readonly mistakes: readonly TradeMistakeDetail[];
+  /** The nine active, platform-owned mistake types available in the Phase 08 journal UI. */
+  readonly mistakeCatalog: readonly TradeMistakeOption[];
 
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -386,6 +394,16 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .from(tradeMistakes)
     .innerJoin(mistakeTypes, eq(mistakeTypes.id, tradeMistakes.mistakeTypeId))
     .where(eq(tradeMistakes.tradeId, tradeId));
+
+  const mistakeCatalogRows = await db
+    .select({
+      mistakeTypeId: mistakeTypes.id,
+      key: mistakeTypes.key,
+      label: mistakeTypes.label,
+    })
+    .from(mistakeTypes)
+    .where(and(eq(mistakeTypes.isSystem, true), eq(mistakeTypes.isArchived, false)))
+    .orderBy(asc(mistakeTypes.sortOrder), asc(mistakeTypes.key));
 
   return {
     ok: true,
@@ -458,6 +476,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
         weightAtTime: m.weightAtTime,
         note: m.note,
       })),
+      mistakeCatalog: mistakeCatalogRows,
 
       createdAt: trade.createdAt.toISOString(),
       updatedAt: trade.updatedAt.toISOString(),

@@ -2,10 +2,14 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
+import {
+  TradeMistakesEditor,
+  TradeRulesEditor,
+} from '@/components/trades/trade-discipline-editors';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
+import { TradeLifecycleActions } from '@/components/trades/trade-lifecycle-actions';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
 
@@ -41,19 +45,17 @@ export function TradeDetail({
   trade,
   timezone,
   locale,
+  canWrite,
 }: {
   trade: TradeDetailModel;
   timezone: string;
   locale: string;
+  canWrite: boolean;
 }) {
   const t = useTranslations('trades');
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
   const money = (value: string | null) =>
     formatTradeMoney(value, trade.tradingAccountBaseCurrency) ?? '—';
-  const ruleGroups = {
-    strategy: trade.ruleChecks.filter((rule) => rule.scope === 'strategy'),
-    setup: trade.ruleChecks.filter((rule) => rule.scope === 'setup'),
-  };
 
   return (
     <article className="flex min-w-0 flex-col gap-5" aria-labelledby="trade-detail-heading">
@@ -78,6 +80,8 @@ export function TradeDetail({
           <SystemStatusBadge status={trade.systemStatus} />
         </div>
       </header>
+
+      {canWrite ? <TradeLifecycleActions trade={trade} timezone={timezone} /> : null}
 
       <Section id="trade-overview" title={t('detail.sections.overview')}>
         <dl className="divide-border divide-y">
@@ -215,54 +219,16 @@ export function TradeDetail({
       </Section>
 
       <Section id="trade-rules" title={t('detail.sections.rules')}>
-        {trade.ruleChecks.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{t('detail.noRules')}</p>
-        ) : (
-          <div className="grid gap-5">
-            {(['strategy', 'setup'] as const).map((scope) =>
-              ruleGroups[scope].length === 0 ? null : (
-                <div key={scope}>
-                  <h4 className="mb-2 font-semibold">{t(`detail.ruleGroups.${scope}`)}</h4>
-                  <ul className="grid gap-2">
-                    {ruleGroups[scope].map((rule) => (
-                      <li key={rule.ruleKey} className="bg-muted/30 rounded-md p-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <span className="font-medium">{rule.title}</span>
-                          <Badge>{t(`ruleStatus.${rule.checkStatus}`)}</Badge>
-                        </div>
-                        <div className="text-muted-foreground mt-2 flex flex-wrap gap-2 text-xs">
-                          <span>{rule.category}</span>
-                          {rule.isRequired ? <span>· {t('detail.required')}</span> : null}
-                          {rule.isPreTradeCheck ? <span>· {t('detail.preTrade')}</span> : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ),
-            )}
-          </div>
-        )}
+        <TradeRulesEditor tradeId={trade.tradeId} rules={trade.ruleChecks} canWrite={canWrite} />
       </Section>
 
       <Section id="trade-mistakes" title={t('detail.sections.mistakes')}>
-        {trade.mistakes.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{t('detail.noMistakes')}</p>
-        ) : (
-          <ul className="grid gap-2">
-            {trade.mistakes.map((mistake) => (
-              <li key={mistake.key} className="bg-muted/30 rounded-md p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium">{mistake.label}</span>
-                  <Badge>{t(`severity.${mistake.severityAtTime}`)}</Badge>
-                </div>
-                {mistake.note === null ? null : (
-                  <p className="text-muted-foreground mt-2 text-sm">{mistake.note}</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        <TradeMistakesEditor
+          tradeId={trade.tradeId}
+          mistakes={trade.mistakes}
+          catalog={trade.mistakeCatalog}
+          canWrite={canWrite}
+        />
       </Section>
     </article>
   );

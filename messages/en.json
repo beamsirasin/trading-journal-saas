@@ -504,6 +504,102 @@
       },
       "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" }
     },
+    "lifecycle": {
+      "title": "Trade actions",
+      "description": "Record lifecycle transitions and make explicit corrections. Calculated results are always refreshed from the server.",
+      "groups": {
+        "execution": "Execution",
+        "corrections": "Plan and identity corrections",
+        "system": "System result",
+        "delete": "Delete Trade"
+      },
+      "common": {
+        "close": "Close dialog",
+        "cancel": "Cancel",
+        "save": "Save changes",
+        "saving": "Saving…"
+      },
+      "plan": {
+        "edit": "Edit Plan",
+        "title": "Correct the Plan",
+        "description": "Update the stored Plan. The server recalculates Planned R from the authoritative values.",
+        "targetHint": "Leave blank to explicitly remove the Target."
+      },
+      "identity": {
+        "edit": "Correct identity",
+        "title": "Correct Trade identity",
+        "description": "Correct the symbol or direction. Entry and Stop are submitted together with direction so the risk geometry stays coherent.",
+        "directionHint": "Changing direction also validates the Entry and Stop shown below."
+      },
+      "execution": {
+        "open": "Open Trade",
+        "openTitle": "Record Trade entry",
+        "openDescription": "Record the actual entry primitives. Initial risk is an authoritative account-currency amount; Rule status never blocks this transition.",
+        "closeTrade": "Close Trade",
+        "closeTitle": "Record Trade exit",
+        "closeDescription": "Net P&L is authoritative. Commission, fees, and swap are informational and are not subtracted again.",
+        "correct": "Correct execution",
+        "correctTitle": "Correct actual execution",
+        "correctDescription": "Edit stored execution primitives. R and outcome are recalculated by the server and cannot be edited here.",
+        "moneyHint": "Enter an amount in {currency}. If the currency is not in the registry, enter raw minor units.",
+        "netHint": "Enter the authoritative signed net amount in {currency}; costs will not be subtracted again.",
+        "timezoneHint": "Wall-clock time in your saved timezone: {timezone}."
+      },
+      "system": {
+        "resolve": "Resolve System result",
+        "resolveTitle": "Resolve the System result",
+        "resolveDescription": "Confirm the counterfactual exit primitives. System R and outcome are calculated by the server.",
+        "confirmResolve": "Confirm resolved result",
+        "noTrade": "Mark no trade",
+        "noTradeTitle": "Mark the System result as no trade?",
+        "noTradeDescription": "This records that the pinned Strategy and Setup would not have permitted this Trade. The actual execution remains unchanged.",
+        "confirmNoTrade": "Confirm no trade",
+        "correct": "Correct System result",
+        "correctTitle": "Correct the System result",
+        "correctDescription": "A terminal System result can be corrected to Resolved or No trade. It cannot return to Pending.",
+        "result": "Corrected result",
+        "exitPrice": "System exit price",
+        "costHint": "Enter System Cost R directly. System R is calculated by the server.",
+        "correctionNoTradeWarning": "Saving will replace the resolved counterfactual with No trade. The actual execution remains unchanged."
+      },
+      "rules": { "statusFor": "Rule status for {title}" },
+      "mistakes": {
+        "type": "Mistake type",
+        "select": "Choose a canonical mistake",
+        "note": "Note",
+        "attach": "Attach mistake",
+        "remove": "Remove",
+        "choose": "Choose a mistake type."
+      },
+      "cancelTrade": {
+        "action": "Cancel planned Trade",
+        "title": "Cancel this planned Trade?",
+        "description": "Canceled is a terminal execution status. The journal entry remains readable and cannot be reopened.",
+        "confirm": "Confirm cancellation"
+      },
+      "delete": {
+        "action": "Delete Trade",
+        "title": "Delete this Trade?",
+        "description": "The Trade will disappear from the journal and be excluded from Trade queries. Phase 08 has no restore flow.",
+        "confirm": "Delete Trade",
+        "deleting": "Deleting…"
+      },
+      "validation": {
+        "money": "Enter a valid amount with the currency's supported precision.",
+        "time": "Enter a valid date and time in your saved timezone."
+      }
+    },
+    "mistake": {
+      "moved_stop": "Moved stop",
+      "early_exit": "Early exit",
+      "oversized_position": "Oversized position",
+      "no_setup": "No setup",
+      "revenge_trade": "Revenge trade",
+      "chased_entry": "Chased entry",
+      "ignored_invalidation": "Ignored invalidation",
+      "moved_target": "Moved target",
+      "no_stop": "No stop"
+    },
     "create": {
       "pageTitle": "Log a planned Trade",
       "pageDescription": "Capture the account, pinned Strategy and Setup, then record the Plan for server-verified creation.",

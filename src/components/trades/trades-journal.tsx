@@ -89,7 +89,12 @@ export function TradesJournal({
           />
         </div>
         {hasSelection ? (
-          <TradeDetail trade={selectedTrade} timezone={timezone} locale={locale} />
+          <TradeDetail
+            trade={selectedTrade}
+            timezone={timezone}
+            locale={locale}
+            canWrite={canWrite}
+          />
         ) : null}
       </div>
     </div>

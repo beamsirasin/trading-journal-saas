@@ -14,7 +14,10 @@ vi.mock('@/i18n/navigation', () => ({
       {children}
     </a>
   ),
+  useRouter: () => ({ refresh: vi.fn() }),
 }));
+
+vi.mock('@/server/actions/trades', () => ({}));
 
 const base: TradeDetailModel = {
   tradeId: '018f0000-0000-7000-8000-000000000001',
@@ -84,6 +87,7 @@ const base: TradeDetailModel = {
       note: 'Entered early',
     },
   ],
+  mistakeCatalog: [],
   createdAt: '2026-08-08T00:00:00.000Z',
   updatedAt: '2026-08-08T00:00:00.000Z',
 };
@@ -91,7 +95,7 @@ const base: TradeDetailModel = {
 function renderDetail(trade: TradeDetailModel) {
   render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeDetail trade={trade} timezone="Asia/Bangkok" locale="en-GB" />
+      <TradeDetail trade={trade} timezone="Asia/Bangkok" locale="en-GB" canWrite={false} />
     </NextIntlClientProvider>,
   );
 }
