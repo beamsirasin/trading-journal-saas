@@ -1,0 +1,136 @@
+import { expect, test, type Page } from '@playwright/test';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+
+import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
+import {
+  setups,
+  strategies,
+  strategySetupVersions,
+  strategyVersions,
+  workspaces,
+} from '../src/server/db/schema';
+import { loginAs } from './support/authenticate';
+import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
+import { provisionVerifiedUser } from './support/provision-user';
+
+async function provisionJournalUser(prefix: string) {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const email = `${prefix}-${test.info().project.name}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+  return provisionVerifiedUser(testUrl, {
+    email,
+    password: 'Correct-Horse9!',
+    name: 'E2E Journal Tester',
+  });
+}
+
+async function seedFramework(userId: string): Promise<void> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, {
+    schema: { workspaces, strategies, strategyVersions, setups, strategySetupVersions },
+  });
+  try {
+    const [workspace] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    if (workspace === undefined) throw new Error('Trade E2E workspace missing');
+    const [strategy] = await db
+      .insert(strategies)
+      .values({ workspaceId: workspace.id })
+      .returning();
+    if (strategy === undefined) throw new Error('Trade E2E Strategy insert failed');
+    const [version] = await db
+      .insert(strategyVersions)
+      .values({
+        workspaceId: workspace.id,
+        strategyId: strategy.id,
+        versionNumber: 1,
+        name: 'Golden Breakout',
+      })
+      .returning();
+    if (version === undefined) throw new Error('Trade E2E Version insert failed');
+    await db
+      .update(strategies)
+      .set({ currentVersionId: version.id })
+      .where(eq(strategies.id, strategy.id));
+    const [setup] = await db
+      .insert(setups)
+      .values({ workspaceId: workspace.id, strategyId: strategy.id })
+      .returning();
+    if (setup === undefined) throw new Error('Trade E2E Setup insert failed');
+    await db.insert(strategySetupVersions).values({
+      workspaceId: workspace.id,
+      strategyId: strategy.id,
+      strategyVersionId: version.id,
+      setupId: setup.id,
+      name: 'Clean Retest',
+      sortOrder: 0,
+    });
+  } finally {
+    await client.end();
+  }
+}
+
+async function createPlannedTrade(page: Page) {
+  await page.getByRole('link', { name: 'Log a trade' }).first().click();
+  await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+  await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Symbol').fill('XAUUSD');
+  await page.getByRole('button', { name: 'Long' }).click();
+  await page.getByLabel('Entry').fill('100');
+  await page.getByLabel('Stop').fill('90');
+  await page.getByLabel(/Target/).fill('130');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create Trade' }).click();
+  await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+}
+
+test.describe('real Trade Journal creation', () => {
+  test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
+
+  test('desktop creates and reloads a canonical planned Trade', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    const user = await provisionJournalUser('e2e-trades-desktop');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await expect(page.getByRole('heading', { level: 1, name: 'Trades' })).toBeVisible();
+    await expect(page.getByText('London Open Sweep')).toHaveCount(0);
+    await createPlannedTrade(page);
+    await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    await expect(page.getByText('Long').first()).toBeVisible();
+    await expect(page.getByText('Golden Breakout').last()).toBeVisible();
+    await expect(page.getByText('Clean Retest').last()).toBeVisible();
+    await expect(page.getByText('+3.00R')).toBeVisible();
+    await expect(page.getByText('Planned').last()).toBeVisible();
+    await expect(page.getByText('Pending').last()).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    await expect(page.getByText('+3.00R')).toBeVisible();
+  });
+
+  test('mobile creation remains usable without horizontal overflow', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    const user = await provisionJournalUser('e2e-trades-mobile');
+    await seedFramework(user.id);
+    await page.setViewportSize({ width: 320, height: 800 });
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await createPlannedTrade(page);
+    await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    const dimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+    const back = await page.getByRole('link', { name: 'Back to trades' }).first().boundingBox();
+    expect(back?.height ?? 0).toBeGreaterThanOrEqual(44);
+  });
+});

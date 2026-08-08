@@ -266,6 +266,8 @@ export interface TradeDetail {
   readonly tradeId: string;
   readonly tradingAccountId: string;
   readonly tradingAccountName: string;
+  /** Account currency code used to format the minor-unit execution amounts. */
+  readonly tradingAccountBaseCurrency: string;
   readonly strategyId: string;
   /** The pinned Strategy Version's own name — see the module's historical-label rule. */
   readonly strategyName: string;
@@ -340,6 +342,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .select({
       trade: trades,
       tradingAccountName: tradingAccounts.name,
+      tradingAccountBaseCurrency: tradingAccounts.baseCurrency,
       strategyVersionName: strategyVersions.name,
       strategyVersionNumber: strategyVersions.versionNumber,
       setupVersionName: strategySetupVersions.name,
@@ -390,6 +393,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       tradeId: trade.id,
       tradingAccountId: trade.tradingAccountId,
       tradingAccountName: row.tradingAccountName,
+      tradingAccountBaseCurrency: row.tradingAccountBaseCurrency,
       strategyId: trade.strategyId,
       strategyName: row.strategyVersionName,
       strategyVersionNumber: row.strategyVersionNumber,

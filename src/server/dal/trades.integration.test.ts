@@ -511,6 +511,7 @@ describe('trades DAL (real database)', () => {
       if (!detail.ok) return;
       expect(detail.trade.systemStatus).toBe('resolved');
       expect(detail.trade.systemR).toBe('2.0000');
+      expect(detail.trade.tradingAccountBaseCurrency).toBe('USD');
       expect(detail.trade.actualInitialRiskMinor).toBe('5000');
       expect(typeof detail.trade.enteredAt).toBe('string');
     });
