@@ -102,3 +102,37 @@ export function isMistakeSeverity(value: unknown): value is MistakeSeverity {
 /** `confidence` — a bounded 1–5 rating, never a financial value; plain `number` is safe here. */
 export const CONFIDENCE_MIN = 1;
 export const CONFIDENCE_MAX = 5;
+
+/**
+ * `system_exit_reason` values legal on a RESOLVE (`pending -> resolved`, or a
+ * `no_trade -> resolved` correction) — `setup_invalidated` is exclusive to
+ * `system_status = 'no_trade'` (`trades_system_status_consistency_check`),
+ * so it is never a member of this subset. Declared as its own literal tuple
+ * (not derived via `.filter()` from {@link SYSTEM_EXIT_REASONS}) so the Zod
+ * enum built from it (`src/lib/trades/schemas.ts`) keeps a real const-tuple
+ * type rather than widening to `string[]`.
+ */
+export const RESOLVABLE_SYSTEM_EXIT_REASONS = [
+  'target_hit',
+  'stop_hit',
+  'break_even_rule',
+  'trailing_exit',
+  'time_exit',
+  'rule_exit',
+  'manual_system_valid_exit',
+] as const;
+
+/**
+ * Phase 08C's Zod schema text-length bounds — this domain's equivalent of
+ * `src/lib/strategies/constants.ts`'s `STRATEGY_NAME_MAX_LENGTH`/etc. Not DB
+ * CHECK-enforced (`trades.symbol`/`notes`/etc. carry no length CHECK), so
+ * these bounds exist purely to reject pathological input at the boundary,
+ * generous enough never to reject genuine trading data.
+ */
+export const SYMBOL_MAX_LENGTH = 20;
+export const TIMEFRAME_MAX_LENGTH = 20;
+export const SESSION_MAX_LENGTH = 40;
+export const CONFIRMATION_NOTES_MAX_LENGTH = 2000;
+export const NOTES_MAX_LENGTH = 4000;
+export const TRADINGVIEW_URL_MAX_LENGTH = 2000;
+export const MISTAKE_NOTE_MAX_LENGTH = 1000;

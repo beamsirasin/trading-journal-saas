@@ -329,7 +329,7 @@ Migration: [`drizzle/0008_trade_domain_and_discipline.sql`](../drizzle/0008_trad
 
 **Why derived values are persisted:** analytics over thousands of trades must not recompute decimals per row, and a later engine fix must not silently rewrite historical numbers. `calc_version` makes recomputation an explicit, auditable backfill.
 
-**No row exists yet.** Phase 07 built the table and the pure engine that computes `planned_r`/`actual_r`/`system_r`/`trader_outcome`/`system_outcome`, but no service or Server Action writes to this table — every derived column will always be server-calculated from `src/lib/calc/trade.ts`'s composition helpers at write time (Phase 08's job), never accepted as a client-supplied value, exactly like every other guarded mutation in this codebase (CLAUDE.md §4).
+**Phase 08 write/read paths are live.** `createTrade` resolves and pins the current Strategy Version and exact Setup Version under the canonical workspace/member/entitlement/framework lock order, locks the Strategy Version on first reference, inserts the Trade, snapshots applicable Rules, and writes audit metadata atomically. Lifecycle and correction services persist `planned_r`/`actual_r`/`system_r` and outcomes only through `src/lib/calc/trade.ts` composition helpers; Actions strictly reject every derived/trusted field. `listWorkspaceTrades` and `getWorkspaceTradeDetail` exclude `deleted_at IS NOT NULL` and resolve historical Strategy/Setup labels from the pinned snapshots, never current Version names. Phase 08 provides no restore/deleted view or aggregate analytics read model.
 
 ### `mistake_types`
 

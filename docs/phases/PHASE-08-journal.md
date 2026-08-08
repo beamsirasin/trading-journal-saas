@@ -2,6 +2,38 @@
 
 **Depends on:** 07 · **Blocks:** 09
 
+**Status:** Complete. 08A (repository/workflow audit), 08B (Trade services/lifecycle), 08C (authenticated DAL, strict validation/errors, and Server Actions), 08D (real creation/list/detail UI), 08E (execution/System lifecycle, corrections, Rule/Mistake interaction, and soft deletion), and 08F (full regression and official closeout) are complete. Phase 09 — Dashboard & Analytics is next. The authenticated `/app/trades` route is DAL-backed and contains no demo fixture/notice; `/app/trades/new` is the staged Plan creation route. Every Action returns one closed JSON-serializable result, derives trusted session context, and strictly rejects derived/trusted fields. Trade list/detail labels come from each Trade's pinned historical Strategy/Setup snapshots, never the current Version.
+
+08F reconfirmed the complete contract through focused Trade unit/component tests, explicit Phase 06–08 guarded-PostgreSQL tests, the complete 33-file/517-test PostgreSQL suite on PostgreSQL 18.4, focused Chromium/Mobile Chrome Trade E2E, and a subsequent uncontaminated full 385-test serial production E2E run. The closeout also removed stale authenticated-shell demo labelling, corrected obsolete demo E2E route assumptions, and made Rule/Mistake UI reconciliation independent of slow full-route Server Action revalidation while keeping every write server-authoritative.
+
+The detailed implementation boundaries below supersede the original proposal wherever they conflict; unshipped proposal items remain deferred rather than Phase 08 defects.
+
+### 08D implementation boundary
+
+- `/app/trades` preserves the 08C keyset order and exposes forward cursor navigation; Previous uses browser history because the locked cursor contract is forward-only.
+- Trade selection remains `/app/trades?trade=<uuid>`: list/detail are adjacent on desktop and the selected read-only detail becomes the primary mobile view.
+- `/app/trades/new` creates planned Trades only through `createTradeAction`; one UUIDv7 mutation key survives stage changes and failed retries, blank Target is sent as `null`, and no Version IDs are client state or Action input.
+- Actual money display uses the Trade's account base currency added to the detail read model. Registry currencies use their defined minor-unit exponent; unconstrained non-registry account currencies are shown explicitly as minor units rather than assigned a guessed scale.
+- 08D includes no lifecycle mutation, correction, discipline mutation, or aggregate analytics UI. Those remain 08E/later work.
+
+### 08E implementation boundary
+
+- The selected Trade detail now exposes only valid execution transitions (`planned → open/canceled`, `open → closed`) and state-adaptive correction forms. Closed and canceled execution states remain terminal; there is no reopen control or generic status selector.
+- The independent System axis exposes `pending → resolved/no_trade` plus terminal correction between `resolved` and `no_trade`; no control can reset it to `pending`.
+- Plan, identity, and actual-execution corrections submit only schema-owned primitives. All R values and outcomes remain server-derived and are refreshed from the canonical detail read after success.
+- Rule checks expose the four stored states directly. Mistake interaction is restricted to the nine canonical active system types and never submits severity or weight.
+- Trade deletion is soft deletion with an explicit confirmation and post-success navigation back to `/app/trades`; no Phase 08 restore flow exists.
+- Account money entry uses the shared exact money parser for registered currencies and an explicit raw-minor fallback for unknown currencies. `datetime-local` values are resolved through the user's persisted IANA timezone before ISO UTC submission.
+- Lifecycle controls are absent in `read_only` and `over_limit` access modes while all journal reads remain available. 08E adds no aggregate dashboard, discipline score, or mistake-cost attribution.
+
+- **The server, never the client, resolves and pins `strategy_version_id`/`setup_version_id`.** The client supplies only `tradingAccountId`/`strategyId`/`setupId`; the create transaction resolves the current Strategy Version and the matching Setup Version snapshot under lock, exactly like every other guarded mutation in this codebase (CLAUDE.md §4). The line below in "1. Plan" describing the client "pinning" both version ids was ambiguous on this point — read it as "the service pins," never as a client-supplied value.
+- **`planned_target` is optional.** A Trade may be created with a Plan and no Target; `planned_r` is then `null`, not a validation failure.
+- **`canceled` is reachable only from `planned`.** Once an actual entry exists (`open`/`closed`), a Trade can never be hidden from Trader performance by canceling it — a genuinely erroneous record uses soft deletion instead.
+- **The System axis has no artificial ordering against the Trader axis.** System may resolve before, during, or after the Trader side closes, and may remain `pending` indefinitely after `closed` — there is no rule requiring one to precede the other.
+- **No restore for a soft-deleted Trade exists or is planned in Phase 08.**
+- **Workspace-defined custom mistake types remain deferred**, not part of Phase 08 — this document's "Workspace-custom mistake types" line (Mistake & discipline capture) exceeds the locked Phase 07 contract's scope; MVP uses only the nine canonical system types.
+- **Correction/recalculation policy is locked**: any edit to Plan (`entry`/`stop`/`target`/`direction`) recomputes `planned_r` (and `system_r`/`system_outcome` if System is already resolved) via the same `composePlanned`/`composeSystemResolve` helpers used at first write — never a hand-duplicated formula; a post-close correction to `actual_initial_risk_minor`/`net_pnl_minor` likewise recomputes `actual_r`/`trader_outcome` via `composeTraderClose`.
+
 ## Goal
 
 Manual trade capture that makes recording the **system counterfactual** as natural as recording the actual result — because the entire product depends on that data existing.

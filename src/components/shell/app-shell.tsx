@@ -1,4 +1,3 @@
-import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 
 import type {
@@ -8,7 +7,6 @@ import type {
 } from '@/server/auth/dal';
 import { PreferencesSync } from '@/components/auth/preferences-sync';
 import { TrialBanner } from '@/components/entitlements/trial-banner';
-import { DemoBadge } from '@/components/product/demo-badge';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 import { AccountMenu } from './account-menu';
@@ -54,8 +52,6 @@ export async function AppShell({
   /** `null` while onboarding is incomplete — no entitlement row exists yet (the trial starts on completion). */
   entitlement: EffectiveEntitlement | null;
 }) {
-  const t = await getTranslations('appNav');
-
   return (
     <div className="min-h-dvh">
       <PreferencesSync initialDbTheme={dbTheme} initialDbLocale={dbLocale} />
@@ -76,7 +72,6 @@ export async function AppShell({
                 canCreateAccount={entitlement?.canCreateAccount ?? false}
               />
             )}
-            <DemoBadge className="hidden sm:inline-flex" />
             <LanguageSwitcher />
             <ThemeToggle />
             <AccountMenu user={user} workspaceName={workspaceName} />
@@ -100,10 +95,6 @@ export async function AppShell({
           <div className="flex h-full flex-col gap-4 p-3">
             <Brand href="/app" className="px-2 py-2" />
             <SidebarNav />
-            <div className="border-border text-muted-foreground mt-auto flex flex-col gap-1 border-t px-2 pt-3 text-xs">
-              <p className="text-warning font-medium">{t('demoNoteTitle')}</p>
-              <p className="leading-relaxed">{t('demoNote')}</p>
-            </div>
           </div>
         </aside>
 

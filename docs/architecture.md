@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phase 03, Phase 04 — Billing & Checkout, Phase 05 — Onboarding & Trading Accounts, Phase 06 — Strategies & Versions, and Phase 07 — Trade Model & Calculation Engine are officially complete on `main`; Phase 08 — Trade Journal is next. Authentication, database-backed sessions, tenant/workspace isolation, onboarding, trading accounts, workspace entitlements, server-side create/restore limits, monthly-plan billing, the versioned Strategy/Setup/Rule domain (schema, services, authenticated DAL/actions, and the real `/app/strategies` management UI), the Trade/mistake/Rule-check schema, and the pure `lib/calc/` calculation engine are real. The query layer under `server/db/queries/` for the new Trade tables, and every service/DAL/action/UI layer above the engine, remain _(planned)_ — Phase 08's job: no Trade can be recorded yet even though the engine that will compute its derived values already exists and is fully tested.
+**Status:** Phases 03–08 are officially complete; Phase 09 — Dashboard & Analytics is next. Authentication, tenant/workspace isolation, accounts and entitlements, billing foundations, the versioned Strategy/Setup/Rule domain, the Trade schema and pure calculation engine, and the real Trade Journal are implemented. Trade writes flow through strict Server Actions into authoritative services; authenticated DAL reads provide cursor-paginated list/detail/create options with historical labels resolved from each Trade's pinned Strategy/Setup Version snapshots. Phase 09 must add workspace-scoped analytics read models over the persisted snapshots; it must not rederive per-Trade R/outcomes or calculate formulas in React.
 
 ## 1. Shape
 
@@ -13,7 +13,7 @@ Browser
 Next.js (App Router)
   ├── proxy.ts      optimistic locale + session-cookie-presence redirect
   ├── app/          routes, thin
-  ├── server/       auth (DAL) + actions -> services -> queries (queries planned)
+  ├── server/       auth + authenticated DAL/actions -> authoritative services
   └── lib/          pure logic: calc (Phase 07C/D), money, time, auth (Better Auth)
                           │
                           ▼

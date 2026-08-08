@@ -217,9 +217,8 @@ test.describe('demo dashboard', () => {
   });
 
   test('wide trade table scrolls inside its own container', async ({ page }) => {
-    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('/en/app/trades');
+    await page.goto('/en/demo');
 
     const region = page.getByRole('region', { name: 'Trade history table' });
     await expect(region).toBeVisible();
@@ -233,9 +232,8 @@ test.describe('demo dashboard', () => {
   });
 
   test('mobile shows record cards rather than a squeezed table', async ({ page }) => {
-    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto('/en/app/trades');
+    await page.goto('/en/demo');
 
     // The table is present but display:none below `md`, which removes it from
     // the accessibility tree — so a screen reader is offered the trades once.

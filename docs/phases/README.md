@@ -42,4 +42,4 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 ## Status
 
-Phases 00, 00b, 01, 01.1, 02, 02.1, implementation Phase 3A–3C, [Phase 04 — Billing & Checkout](PHASE-04-billing.md) (including the 04H-A production payment-provider guard), [Phase 05 — Onboarding & Trading Accounts](PHASE-05-onboarding-accounts.md), [Phase 06 — Strategies & Versions](PHASE-06-strategies.md), and [Phase 07 — Trade Model & Calculation Engine](PHASE-07-calc-engine.md) are complete. [Phase 08 — Trade Journal](PHASE-08-journal.md) is the next implementation phase.
+Phases 00–08, including [Phase 08 — Trade Journal](PHASE-08-journal.md), are complete. [Phase 09 — Dashboard & Analytics](PHASE-09-analytics.md) is the next implementation phase.

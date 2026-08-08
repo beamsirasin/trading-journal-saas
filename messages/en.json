@@ -39,9 +39,7 @@
       "analytics": "System versus trader",
       "settings": "Profile and preferences"
     },
-    "demoNoteTitle": "Demo data",
-    "demoNote": "Your account and sign-in are real. Trading data shown here is still a fixture preview.",
-    "drawerDescription": "Application sections. Every section is a preview built from demo data.",
+    "drawerDescription": "Application sections.",
     "account": {
       "menuLabel": "Account menu",
       "workspace": "Workspace",
@@ -410,6 +408,292 @@
       "timezoneCaption": "Demo data. Times shown in {timezone}; a real account uses your profile timezone.",
       "viewChartFor": "for {symbol}",
       "scrollRegionLabel": "Trade history table"
+    },
+    "common": {
+      "notAvailable": "Not available",
+      "notSet": "Not set",
+      "optional": "(optional)",
+      "version": "Version {number}"
+    },
+    "direction": { "long": "Long", "short": "Short" },
+    "status": {
+      "execution": {
+        "planned": "Planned",
+        "open": "Open",
+        "closed": "Closed",
+        "canceled": "Canceled"
+      },
+      "system": { "pending": "Pending", "resolved": "Resolved", "no_trade": "No trade" },
+      "outcome": { "win": "Win", "loss": "Loss", "break_even": "Break even" }
+    },
+    "list": {
+      "caption": "Trade journal",
+      "trade": "Trade",
+      "strategy": "Strategy & Setup",
+      "account": "Trading Account",
+      "execution": "Execution",
+      "trader": "Trader",
+      "system": "System"
+    },
+    "pagination": { "label": "Trade pages", "previous": "Previous", "next": "Next" },
+    "empty": {
+      "title": "No Trades yet",
+      "description": "Create your first planned Trade to start a journal grounded in your Strategy and Setup."
+    },
+    "field": {
+      "account": "Trading Account",
+      "strategy": "Strategy",
+      "version": "Version",
+      "setup": "Setup",
+      "symbol": "Symbol",
+      "direction": "Direction",
+      "executionStatus": "Execution status",
+      "systemStatus": "System status",
+      "entry": "Entry",
+      "stop": "Stop",
+      "target": "Target",
+      "positionSize": "Planned position size",
+      "plannedR": "Planned R",
+      "timeframe": "Timeframe",
+      "session": "Session",
+      "confidence": "Confidence",
+      "confirmationNotes": "Confirmation notes",
+      "tradingViewUrl": "TradingView URL",
+      "notes": "Notes",
+      "createdAt": "Created",
+      "enteredAt": "Entered",
+      "exitedAt": "Exited",
+      "actualEntry": "Actual entry",
+      "initialStop": "Initial Stop",
+      "actualPositionSize": "Actual position size",
+      "initialRisk": "Initial risk",
+      "exit": "Exit",
+      "grossPnl": "Gross P&L",
+      "commission": "Commission",
+      "fees": "Fees",
+      "swap": "Swap",
+      "netPnl": "Net P&L",
+      "actualR": "Actual R",
+      "traderOutcome": "Trader outcome",
+      "systemExitedAt": "System exited",
+      "systemExitReason": "Reason",
+      "systemCostR": "System Cost R",
+      "systemR": "System R",
+      "systemOutcome": "System outcome"
+    },
+    "detail": {
+      "back": "Back to trades",
+      "selectPrompt": "Select a Trade to view its full journal entry.",
+      "openChart": "Open TradingView chart",
+      "notOpened": "This Trade has not been opened. No actual execution has been recorded.",
+      "systemPending": "The System result is Pending. System R and outcome are not available yet.",
+      "systemNoTrade": "The pinned Strategy and Setup would not have permitted this Trade. System R is not available.",
+      "noRules": "No Rule snapshots are attached to this Trade.",
+      "noMistakes": "No mistakes are attached to this Trade.",
+      "required": "Required",
+      "preTrade": "Pre-trade check",
+      "sections": {
+        "overview": "Overview",
+        "plan": "Plan",
+        "execution": "Actual Execution",
+        "system": "System Result",
+        "rules": "Rules",
+        "mistakes": "Mistakes"
+      },
+      "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" }
+    },
+    "lifecycle": {
+      "title": "Trade actions",
+      "description": "Record lifecycle transitions and make explicit corrections. Calculated results are always refreshed from the server.",
+      "groups": {
+        "execution": "Execution",
+        "corrections": "Plan and identity corrections",
+        "system": "System result",
+        "delete": "Delete Trade"
+      },
+      "common": {
+        "close": "Close dialog",
+        "cancel": "Cancel",
+        "save": "Save changes",
+        "saving": "Saving…"
+      },
+      "plan": {
+        "edit": "Edit Plan",
+        "title": "Correct the Plan",
+        "description": "Update the stored Plan. The server recalculates Planned R from the authoritative values.",
+        "targetHint": "Leave blank to explicitly remove the Target."
+      },
+      "identity": {
+        "edit": "Correct identity",
+        "title": "Correct Trade identity",
+        "description": "Correct the symbol or direction. Entry and Stop are submitted together with direction so the risk geometry stays coherent.",
+        "directionHint": "Changing direction also validates the Entry and Stop shown below."
+      },
+      "execution": {
+        "open": "Open Trade",
+        "openTitle": "Record Trade entry",
+        "openDescription": "Record the actual entry primitives. Initial risk is an authoritative account-currency amount; Rule status never blocks this transition.",
+        "closeTrade": "Close Trade",
+        "closeTitle": "Record Trade exit",
+        "closeDescription": "Net P&L is authoritative. Commission, fees, and swap are informational and are not subtracted again.",
+        "correct": "Correct execution",
+        "correctTitle": "Correct actual execution",
+        "correctDescription": "Edit stored execution primitives. R and outcome are recalculated by the server and cannot be edited here.",
+        "moneyHint": "Enter an amount in {currency}. If the currency is not in the registry, enter raw minor units.",
+        "netHint": "Enter the authoritative signed net amount in {currency}; costs will not be subtracted again.",
+        "timezoneHint": "Wall-clock time in your saved timezone: {timezone}."
+      },
+      "system": {
+        "resolve": "Resolve System result",
+        "resolveTitle": "Resolve the System result",
+        "resolveDescription": "Confirm the counterfactual exit primitives. System R and outcome are calculated by the server.",
+        "confirmResolve": "Confirm resolved result",
+        "noTrade": "Mark no trade",
+        "noTradeTitle": "Mark the System result as no trade?",
+        "noTradeDescription": "This records that the pinned Strategy and Setup would not have permitted this Trade. The actual execution remains unchanged.",
+        "confirmNoTrade": "Confirm no trade",
+        "correct": "Correct System result",
+        "correctTitle": "Correct the System result",
+        "correctDescription": "A terminal System result can be corrected to Resolved or No trade. It cannot return to Pending.",
+        "result": "Corrected result",
+        "exitPrice": "System exit price",
+        "costHint": "Enter System Cost R directly. System R is calculated by the server.",
+        "correctionNoTradeWarning": "Saving will replace the resolved counterfactual with No trade. The actual execution remains unchanged."
+      },
+      "rules": { "statusFor": "Rule status for {title}" },
+      "mistakes": {
+        "type": "Mistake type",
+        "select": "Choose a canonical mistake",
+        "note": "Note",
+        "attach": "Attach mistake",
+        "remove": "Remove",
+        "choose": "Choose a mistake type."
+      },
+      "cancelTrade": {
+        "action": "Cancel planned Trade",
+        "title": "Cancel this planned Trade?",
+        "description": "Canceled is a terminal execution status. The journal entry remains readable and cannot be reopened.",
+        "confirm": "Confirm cancellation"
+      },
+      "delete": {
+        "action": "Delete Trade",
+        "title": "Delete this Trade?",
+        "description": "The Trade will disappear from the journal and be excluded from Trade queries. Phase 08 has no restore flow.",
+        "confirm": "Delete Trade",
+        "deleting": "Deleting…"
+      },
+      "validation": {
+        "money": "Enter a valid amount with the currency's supported precision.",
+        "time": "Enter a valid date and time in your saved timezone."
+      }
+    },
+    "mistake": {
+      "moved_stop": "Moved stop",
+      "early_exit": "Early exit",
+      "oversized_position": "Oversized position",
+      "no_setup": "No setup",
+      "revenge_trade": "Revenge trade",
+      "chased_entry": "Chased entry",
+      "ignored_invalidation": "Ignored invalidation",
+      "moved_target": "Moved target",
+      "no_stop": "No stop"
+    },
+    "create": {
+      "pageTitle": "Log a planned Trade",
+      "pageDescription": "Capture the account, pinned Strategy and Setup, then record the Plan for server-verified creation.",
+      "blockedTitle": "Trade creation is unavailable",
+      "progress": "Trade creation progress",
+      "ready": "Ready",
+      "steps": {
+        "account": "Account",
+        "strategy": "Strategy & Setup",
+        "plan": "Plan",
+        "review": "Review & Create"
+      },
+      "accountTitle": "Choose a Trading Account",
+      "accountDescription": "Only active Trading Accounts are available.",
+      "chooseAccount": "Choose an account",
+      "strategyTitle": "Choose a Strategy and Setup",
+      "strategyDescription": "The server pins the current Version when the Trade is created.",
+      "chooseStrategy": "Choose a Strategy",
+      "chooseSetup": "Choose a Setup",
+      "planTitle": "Record the Plan",
+      "reviewTitle": "Review the planned Trade",
+      "versionPinNote": "The Version shown is informational. The server resolves and pins the authoritative Version at creation time.",
+      "back": "Back",
+      "continue": "Continue",
+      "create": "Create Trade",
+      "creating": "Creating…"
+    },
+    "prerequisite": {
+      "noAccountTitle": "No active Trading Account",
+      "noAccountDescription": "Create or restore an active Trading Account before logging a Trade.",
+      "manageAccounts": "Manage trading accounts",
+      "noStrategyTitle": "No active Strategy",
+      "noStrategyDescription": "Create a Strategy and at least one Setup before logging a Trade.",
+      "createStrategy": "Create Strategy",
+      "noSetupTitle": "No usable Setup",
+      "noSetupDescription": "Your active Strategies need an active Setup before they can be used for a Trade.",
+      "manageStrategies": "Manage Strategies"
+    },
+    "validation": {
+      "requiredAccount": "Choose a Trading Account.",
+      "requiredStrategy": "Choose a Strategy.",
+      "requiredSetup": "Choose a Setup.",
+      "requiredSymbol": "Enter a symbol.",
+      "requiredDirection": "Choose Long or Short.",
+      "requiredEntry": "Enter the planned Entry.",
+      "requiredStop": "Enter the planned Stop.",
+      "invalidDecimal": "Enter a valid positive decimal.",
+      "invalidTradingViewUrl": "Enter an HTTPS TradingView URL.",
+      "invalidField": "Check this value.",
+      "invalidRiskDirection": "The Stop is on the wrong side of Entry for this direction.",
+      "zeroRisk": "Entry and Stop must be different.",
+      "invalidTargetDirection": "The Target is on the wrong side of Entry for this direction."
+    },
+    "ruleStatus": {
+      "followed": "Followed",
+      "violated": "Violated",
+      "not_applicable": "Not applicable",
+      "not_checked": "Not checked"
+    },
+    "severity": { "minor": "Minor", "moderate": "Moderate", "severe": "Severe" },
+    "systemReason": {
+      "target_hit": "Target hit",
+      "stop_hit": "Stop hit",
+      "break_even_rule": "Break-even rule",
+      "trailing_exit": "Trailing exit",
+      "time_exit": "Time exit",
+      "rule_exit": "Rule exit",
+      "manual_system_valid_exit": "Manual system-valid exit",
+      "setup_invalidated": "Setup invalidated"
+    },
+    "errors": {
+      "validation_error": "Some details are not valid. Please check the form and try again.",
+      "unauthenticated": "Please sign in again to continue.",
+      "workspace_access_denied": "You do not have permission to do that in this workspace.",
+      "read_only_workspace": "This workspace is read-only. Restore valid subscription access before making changes.",
+      "over_limit_workspace": "This workspace is over its active-account limit. Archive an active account before making other changes.",
+      "trade_not_found": "This Trade could not be found.",
+      "trading_account_not_found": "This Trading Account could not be found.",
+      "trading_account_archived": "This Trading Account is archived. Restore it first, then you can make changes.",
+      "strategy_not_found": "This Strategy could not be found.",
+      "strategy_archived": "This Strategy is archived. Restore it first, then you can make changes.",
+      "strategy_current_version_missing": "We couldn't load this Strategy's current version. Please contact support.",
+      "setup_not_found": "This Setup could not be found.",
+      "setup_archived": "This Setup is archived. Restore it first, then you can make changes.",
+      "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
+      "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
+      "invalid_status_transition": "This Trade cannot make that change from its current status.",
+      "invalid_initial_risk": "Initial risk must be a positive amount.",
+      "invalid_exit_time": "The exit time cannot be before the entry time.",
+      "no_actual_execution": "This Trade has no actual execution to correct yet.",
+      "invalid_system_status_transition": "The System result cannot make that change from its current status.",
+      "invalid_system_exit_reason": "Choose a valid System exit reason.",
+      "rule_check_not_found": "This Rule check could not be found on this Trade.",
+      "mistake_type_not_found": "This mistake type could not be found.",
+      "mistake_type_not_usable": "This mistake type is not available in this workspace.",
+      "unexpected_error": "Something went wrong. Please try again."
     }
   },
   "strategies": {

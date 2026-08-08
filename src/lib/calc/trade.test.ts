@@ -320,6 +320,22 @@ describe('per-Trade snapshot composition', () => {
     expect(system.ok && system.value.systemR).toBe('3.0000');
   });
 
+  it.each([
+    ['System Win / Trader Win', 1000n, '110', 'win', 'win'],
+    ['System Win / Trader Loss', -1000n, '110', 'loss', 'win'],
+    ['System Loss / Trader Win', 1000n, '90', 'win', 'loss'],
+    ['System Loss / Trader Loss', -1000n, '90', 'loss', 'loss'],
+  ] as const)(
+    'records the %s quadrant without coupling the outcome axes',
+    (_label, netPnlMinor, systemExit, traderOutcome, systemOutcome) => {
+      const trader = composeTraderClose(netPnlMinor, 1000n);
+      const system = composeSystemResolve('long', '100', '90', systemExit, '0');
+
+      expect(trader.ok && trader.value.traderOutcome).toBe(traderOutcome);
+      expect(system.ok && system.value.systemOutcome).toBe(systemOutcome);
+    },
+  );
+
   it('no_trade System status never blocks an independently-closed Trader side', () => {
     const trader = composeTraderClose(500n, 1000n);
     expect(trader.ok).toBe(true);

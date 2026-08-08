@@ -46,6 +46,18 @@ export interface AuditLogMetadata {
   /** `'strategy' | 'setup'` — never rule/setup/strategy content itself. */
   readonly ruleScope?: string;
   readonly isNoop?: boolean;
+  /**
+   * Trade-domain structural metadata only (Phase 08B) — identifiers and
+   * lifecycle state NAMES, never symbol, notes, prices, risk, P&L, R values,
+   * costs, or a TradingView URL. `previousStatus`/`newStatus` cover both the
+   * Trader (`status`) and System (`system_status`) axes; the metadata itself
+   * never says which axis without the surrounding `action` making it obvious.
+   */
+  readonly tradeId?: string;
+  readonly tradingAccountId?: string;
+  readonly mistakeTypeId?: string;
+  readonly previousStatus?: string;
+  readonly newStatus?: string;
 }
 
 export interface AuditLogInput {

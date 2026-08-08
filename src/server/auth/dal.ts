@@ -520,6 +520,25 @@ export async function requireStrategyManagement(workspaceId: string): Promise<Wo
 }
 
 /**
+ * The one centralized permission decision behind every Trade Server Action
+ * (Phase 08C) — the same `'member'`-minimum, defense-in-depth precheck
+ * `requireStrategyManagement`/`requireTradingAccountManagement` perform
+ * before their own services, called from `src/server/actions/trades.ts`
+ * before every mutating Server Action reaches `trade-management.ts`/
+ * `trade-discipline.ts`. Deliberately authentication + active-membership
+ * ONLY — it never resolves entitlement/access mode, so it can never reject
+ * an exact-mutation-key `createTrade` replay that ought to stay replayable
+ * under a `read_only`/`over_limit` workspace (`src/server/services/
+ * trade-management.ts`'s own idempotency contract). The service layer
+ * remains authoritative: it independently re-verifies active membership and
+ * resolves/authorizes `ordinary_write` entitlement itself, inside its own
+ * transaction, regardless of what this earlier check decides.
+ */
+export async function requireTradeManagement(workspaceId: string): Promise<WorkspaceRole> {
+  return requireWorkspaceRole(workspaceId, 'member');
+}
+
+/**
  * The caller's active workspace's effective entitlement snapshot — display
  * only (CLAUDE.md §4's "never trust the browser clock" extended: this is
  * also never a lock, so it must never itself gate a mutation). Every write

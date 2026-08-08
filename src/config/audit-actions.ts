@@ -56,6 +56,18 @@ export const AUDIT_ACTIONS = [
   'strategy.rule.created',
   'strategy.rule.updated',
   'strategy.rule.removed',
+  'trade.created',
+  'trade.plan_updated',
+  'trade.opened',
+  'trade.closed',
+  'trade.canceled',
+  'trade.corrected',
+  'trade.system_resolved',
+  'trade.system_no_trade',
+  'trade.rule_check_updated',
+  'trade.mistake_added',
+  'trade.mistake_removed',
+  'trade.deleted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
