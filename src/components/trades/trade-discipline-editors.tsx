@@ -24,7 +24,14 @@ import {
 } from '@/components/trades/trade-action-form';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useRouter } from '@/i18n/navigation';
+
+type VisibleTradeMistake = Pick<TradeMistakeDetail, 'mistakeTypeId' | 'key' | 'label' | 'note'>;
+
+interface VisibleMistakeState {
+  readonly tradeId: string;
+  readonly base: readonly TradeMistakeDetail[];
+  readonly items: readonly VisibleTradeMistake[];
+}
 
 export function TradeRulesEditor({
   tradeId,
@@ -36,7 +43,7 @@ export function TradeRulesEditor({
   canWrite: boolean;
 }) {
   const t = useTranslations('trades');
-  const router = useRouter();
+  const tStrategies = useTranslations('strategies');
   const [pendingRule, setPendingRule] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -52,7 +59,6 @@ export function TradeRulesEditor({
       const result = await updateTradeRuleCheckAction({ tradeId, ruleKey, checkStatus });
       const code = actionErrorCode(result);
       if (code !== null) setFeedback(t(`errors.${code}`));
-      else router.refresh();
       setPendingRule(null);
     });
   }
@@ -72,7 +78,7 @@ export function TradeRulesEditor({
                     <div>
                       <p className="font-medium">{rule.title}</p>
                       <p className="text-muted-foreground mt-1 text-xs">
-                        {rule.category}
+                        {tStrategies(`ruleCategories.${rule.category}`)}
                         {rule.isRequired ? ` · ${t('detail.required')}` : ''}
                         {rule.isPreTradeCheck ? ` · ${t('detail.preTrade')}` : ''}
                       </p>
@@ -119,16 +125,37 @@ export function TradeMistakesEditor({
   canWrite: boolean;
 }) {
   const t = useTranslations('trades');
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [removing, setRemoving] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [visibleState, setVisibleState] = useState<VisibleMistakeState>({
+    tradeId,
+    base: mistakes,
+    items: mistakes,
+  });
+  const visibleMistakes =
+    visibleState.tradeId === tradeId && visibleState.base === mistakes
+      ? visibleState.items
+      : mistakes;
+
+  function updateVisibleMistakes(
+    update: (current: readonly VisibleTradeMistake[]) => readonly VisibleTradeMistake[],
+  ) {
+    setVisibleState((current) => ({
+      tradeId,
+      base: mistakes,
+      items: update(
+        current.tradeId === tradeId && current.base === mistakes ? current.items : mistakes,
+      ),
+    }));
+  }
   const available = useMemo(
     () =>
       catalog.filter(
-        (option) => !mistakes.some((mistake) => mistake.mistakeTypeId === option.mistakeTypeId),
+        (option) =>
+          !visibleMistakes.some((mistake) => mistake.mistakeTypeId === option.mistakeTypeId),
       ),
-    [catalog, mistakes],
+    [catalog, visibleMistakes],
   );
 
   function attach(event: React.FormEvent<HTMLFormElement>) {
@@ -146,7 +173,13 @@ export function TradeMistakesEditor({
       });
       const code = actionErrorCode(result);
       if (code !== null) return setFeedback(t(`errors.${code}`));
-      router.refresh();
+      const option = catalog.find((item) => item.mistakeTypeId === mistakeTypeId);
+      if (option !== undefined) {
+        updateVisibleMistakes((current) => [
+          ...current,
+          { mistakeTypeId, key: option.key, label: option.label, note: note === '' ? null : note },
+        ]);
+      }
     });
   }
 
@@ -157,18 +190,21 @@ export function TradeMistakesEditor({
       const result = await removeTradeMistakeAction({ tradeId, mistakeTypeId });
       const code = actionErrorCode(result);
       if (code !== null) setFeedback(t(`errors.${code}`));
-      else router.refresh();
+      else
+        updateVisibleMistakes((current) =>
+          current.filter((mistake) => mistake.mistakeTypeId !== mistakeTypeId),
+        );
       setRemoving(null);
     });
   }
 
   return (
     <div className="grid gap-4">
-      {mistakes.length === 0 ? (
+      {visibleMistakes.length === 0 ? (
         <p className="text-muted-foreground text-sm">{t('detail.noMistakes')}</p>
       ) : (
         <ul className="grid gap-2">
-          {mistakes.map((mistake) => (
+          {visibleMistakes.map((mistake) => (
             <li key={mistake.mistakeTypeId} className="bg-muted/30 rounded-md p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">

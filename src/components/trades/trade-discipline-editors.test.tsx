@@ -73,6 +73,7 @@ describe('Trade discipline editors', () => {
     expect(Array.from((select as HTMLSelectElement).options).map((option) => option.value)).toEqual(
       ['followed', 'violated', 'not_applicable', 'not_checked'],
     );
+    expect(screen.getByText(/Entry · Required · Pre-trade check/)).toBeVisible();
     await user.selectOptions(select, 'violated');
     await waitFor(() =>
       expect(updateTradeRuleCheckAction).toHaveBeenCalledWith({
@@ -81,6 +82,45 @@ describe('Trade discipline editors', () => {
         checkStatus: 'violated',
       }),
     );
+  });
+
+  it('keeps the changed Rule control disabled until its full transition settles', async () => {
+    const user = userEvent.setup();
+    const ruleKey = '018f0000-0000-7000-8000-000000000003';
+    let resolveAction: (
+      result: Awaited<ReturnType<typeof updateTradeRuleCheckAction>>,
+    ) => void = () => undefined;
+    vi.mocked(updateTradeRuleCheckAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAction = resolve;
+        }),
+    );
+    renderWithMessages(
+      <TradeRulesEditor
+        tradeId={tradeId}
+        canWrite
+        rules={[
+          {
+            ruleKey,
+            scope: 'strategy',
+            title: 'Wait for confirmation',
+            category: 'entry',
+            isRequired: true,
+            isPreTradeCheck: true,
+            sortOrder: 0,
+            checkStatus: 'not_checked',
+          },
+        ]}
+      />,
+    );
+    const select = screen.getByRole('combobox', { name: 'Rule status for Wait for confirmation' });
+    await user.selectOptions(select, 'followed');
+    await waitFor(() => expect(select).toBeDisabled());
+
+    resolveAction({ ok: true, data: { tradeId, ruleKey, checkStatus: 'followed' } });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('attaches a canonical Mistake with an optional note and no scoring fields', async () => {
@@ -101,6 +141,9 @@ describe('Trade discipline editors', () => {
     expect(payload).toEqual({ tradeId, mistakeTypeId, note: 'Adjusted after entry' });
     expect(payload).not.toHaveProperty('severity');
     expect(payload).not.toHaveProperty('weight');
+    await waitFor(() => expect(screen.getByText('Adjusted after entry')).toBeVisible());
+    expect(screen.queryByRole('option', { name: 'Moved stop' })).not.toBeInTheDocument();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('removes an attached Mistake by canonical id and hides controls without write access', async () => {
@@ -120,6 +163,8 @@ describe('Trade discipline editors', () => {
     await waitFor(() =>
       expect(removeTradeMistakeAction).toHaveBeenCalledWith({ tradeId, mistakeTypeId }),
     );
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull());
+    expect(refresh).not.toHaveBeenCalled();
     rerender(
       <NextIntlClientProvider locale="en" messages={en}>
         <TradeMistakesEditor tradeId={tradeId} mistakes={[mistake]} catalog={[]} canWrite={false} />

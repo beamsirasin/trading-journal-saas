@@ -520,7 +520,7 @@ export interface TradeCreateOptions {
  * (non-archived) Trading Account, and every active Strategy with its active
  * Setups, current-Version-scoped. `strategy_version_id`/`setup_version_id`
  * are NEVER included here — the UI may display a current Version NUMBER, but
- * the future `createTradeAction` still sends only `strategyId`/`setupId`,
+ * `createTradeAction` sends only `strategyId`/`setupId`,
  * and `createTrade` resolves and pins the real Version IDs again under lock
  * (this selector's data is a preview, never a trusted write value). A
  * Strategy whose `current_version_id` fails to resolve (only ever legitimate

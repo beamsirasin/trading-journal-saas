@@ -135,13 +135,14 @@ async function completeTradeLifecycle(page: Page) {
   await page.getByRole('button', { name: 'Close Trade' }).click();
   dialog = page.getByRole('dialog');
   await dialog.getByLabel('Exit', { exact: true }).fill('110');
-  await dialog.getByLabel('Net P&L').fill('200.00');
+  await dialog.getByLabel('Net P&L').fill('-100.00');
   await dialog.getByLabel('Commission').fill('5.00');
   await dialog.getByRole('button', { name: 'Close Trade' }).click();
   await expect(dialog).toBeHidden({ timeout: 60_000 });
   await page.reload();
   await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole('article', { name: 'XAUUSD' }).getByText('+2.00R')).toBeVisible();
+  const detail = page.getByRole('article', { name: 'XAUUSD' });
+  await expect(detail.getByText('-1.00R')).toBeVisible();
 
   await page.getByRole('button', { name: 'Resolve System result' }).click();
   dialog = page.getByRole('dialog');
@@ -150,6 +151,10 @@ async function completeTradeLifecycle(page: Page) {
   await expect(dialog).toBeHidden({ timeout: 60_000 });
   await page.reload();
   await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+  await expect(detail.getByText('-1.00R')).toBeVisible();
+  await expect(detail.getByText('+2.00R')).toBeVisible();
+  await expect(detail.getByText('Loss', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Win', { exact: true })).toBeVisible();
 }
 
 test.describe('real Trade Journal creation', () => {
@@ -165,6 +170,8 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades');
     await expect(page.getByRole('heading', { level: 1, name: 'Trades' })).toBeVisible();
+    await expect(page.getByText('Demo data', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/fixture preview/i)).toHaveCount(0);
     await expect(page.getByText('London Open Sweep')).toHaveCount(0);
     await createPlannedTrade(page);
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();

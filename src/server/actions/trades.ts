@@ -52,8 +52,8 @@ import {
 } from '@/server/services/trade-management';
 
 /**
- * Trade Server Actions — Phase 08C. The Zod-validated, session-authorized
- * entry points a future Phase 08D/E UI calls; none of them ever reads
+ * Trade Server Actions — Phase 08C. The Phase 08D/E UI calls these
+ * Zod-validated, session-authorized entry points; none of them ever reads
  * `workspaceId`/`actorUserId` from client input — `getActiveWorkspaceContext()`
  * derives both from the session, exactly like `src/server/actions/
  * strategies.ts`. `requireTradeManagement` (`src/server/auth/dal.ts`) is an
@@ -89,8 +89,8 @@ import {
  * close, `systemR`/`systemOutcome` after System resolve, `plannedR` after a
  * Plan/identity correction). Nothing here re-queries the database merely to
  * enrich a response — the Trade list/detail DAL
- * (`src/server/dal/trades.ts`) is the canonical read path a future UI
- * refreshes through after any mutation.
+ * (`src/server/dal/trades.ts`) is the canonical read path the UI refreshes
+ * through when rendered server data changes.
  */
 
 type FieldErrors = Readonly<Record<string, readonly string[]>>;
@@ -168,12 +168,14 @@ function systemFailure(result: CalcFailureResult): TradeActionFailure {
 }
 
 /**
- * Revalidated after every successful mutation, including an idempotent
- * replay/no-op. `/app/trades/new`'s selector data (`getTradeCreateOptions`)
- * reads Trading Accounts/Strategies/Setups — tables no Trade mutation in this
- * file ever writes to — so it is deliberately never revalidated here; doing
- * so would be a `revalidatePath` call with no route whose data it could
- * actually invalidate.
+ * Revalidated after successful mutations whose rendered server data changes,
+ * including an idempotent replay/no-op. The three Rule/Mistake actions are the
+ * exception: their client editors reconcile the minimal, server-confirmed
+ * result locally, avoiding a full authenticated detail render in the action
+ * response. Reload/navigation still reads canonical DAL state.
+ * `/app/trades/new`'s selector data (`getTradeCreateOptions`) reads Trading
+ * Accounts/Strategies/Setups — tables no Trade mutation in this file ever
+ * writes to — so it is deliberately never revalidated here.
  */
 function revalidateTradeRoutes(): void {
   for (const locale of ['en', 'th']) {
@@ -631,7 +633,6 @@ export async function updateTradeRuleCheckAction(
       checkStatus,
     );
     if (!result.ok) return serviceFailure(result.code);
-    revalidateTradeRoutes();
     return { ok: true, data: { tradeId, ruleKey, checkStatus } };
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
@@ -669,7 +670,6 @@ export async function attachTradeMistakeAction(
       note ?? null,
     );
     if (!result.ok) return serviceFailure(result.code);
-    revalidateTradeRoutes();
     return {
       ok: true,
       data: { tradeId, mistakeTypeId, alreadyAttached: result.alreadyAttached },
@@ -704,7 +704,6 @@ export async function removeTradeMistakeAction(
     const { tradeId, mistakeTypeId } = parsed.data;
     const result = await removeTradeMistake(ctx.workspaceId, ctx.userId, tradeId, mistakeTypeId);
     if (!result.ok) return serviceFailure(result.code);
-    revalidateTradeRoutes();
     return {
       ok: true,
       data: { tradeId, mistakeTypeId, alreadyRemoved: result.alreadyRemoved },

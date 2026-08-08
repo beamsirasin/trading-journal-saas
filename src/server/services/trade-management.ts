@@ -43,14 +43,14 @@ import {
 } from './trade-recalculation';
 
 /**
- * Phase 08B — Trade domain services and lifecycle. No DAL, Server Action, or
- * UI exists yet (Phase 08C/D's job); every function here takes
- * `workspaceId`/`actorUserId` already resolved from the session by a future
- * caller (never client input — CLAUDE.md §4) and independently re-verifies
+ * Phase 08B — Trade domain services and lifecycle. The Phase 08C–E
+ * DAL/Server Action/UI layers call these functions with `workspaceId`/
+ * `actorUserId` resolved from the session (never client input — CLAUDE.md §4),
+ * and every service independently re-verifies
  * active membership and entitlement itself, the same defense-in-depth
  * posture `strategy-management.ts`/`trading-account-management.ts` already
  * establish. This file must not be trusted to run correctly merely because a
- * future Server Action layer also happens to check authorization first.
+ * Server Action layer also checks authorization first.
  *
  * ## Canonical create-transaction lock order
  *

@@ -39,9 +39,7 @@
       "analytics": "System versus trader",
       "settings": "Profile and preferences"
     },
-    "demoNoteTitle": "Demo data",
-    "demoNote": "Your account and sign-in are real. Trading data shown here is still a fixture preview.",
-    "drawerDescription": "Application sections. Every section is a preview built from demo data.",
+    "drawerDescription": "Application sections.",
     "account": {
       "menuLabel": "Account menu",
       "workspace": "Workspace",
