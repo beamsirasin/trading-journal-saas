@@ -204,12 +204,27 @@ test.describe('trading account management', () => {
 
     // Switch back using the app-shell switcher.
     await page.getByRole('button', { name: 'Switch trading account' }).click();
+    const switchResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/en/app' &&
+        response.ok(),
+    );
     await page.getByRole('menuitem', { name: /Main Trading Account/ }).click();
-    await expect(page.getByText('No trades recorded yet')).toBeVisible();
+    await switchResponse;
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Switch trading account' })).toContainText(
+      'Main Trading Account',
+    );
     await expect(
       page.getByRole('region', { name: 'Active trading account summary' }).getByRole('heading', {
         name: 'Main Trading Account',
       }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Recent Trades' })
+        .getByText('No Trades in this account yet'),
     ).toBeVisible();
   });
 

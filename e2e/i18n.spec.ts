@@ -67,15 +67,11 @@ test.describe('locale rendering', () => {
     ).toBeVisible();
   });
 
-  test('/th/app localizes the real (Phase 3A) overview page', async ({ page }) => {
+  test('/th/app localizes the real Dashboard overview', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
 
-    // Phase 3A replaced the fixture-driven overview (still checked via
-    // `/th/app/analytics` below, unaffected by that change) with the real,
-    // honest dashboard for an onboarded account — E2E_USER_A is provisioned
-    // pre-onboarded (`e2e/support/provision-user.ts`) specifically so this
-    // and every other pre-existing authenticated-shell test keeps working.
+    // E2E_USER_A is pre-onboarded so the localized real Dashboard is reached.
     await expect(page.getByRole('heading', { level: 1, name: 'ภาพรวม' })).toBeVisible();
     await expect(page.getByText('ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง')).toBeVisible();
     // Scoped to the dashboard's own labelled region rather than `.first()`:
@@ -85,19 +81,24 @@ test.describe('locale rendering', () => {
     // viewport (see `e2e/onboarding.spec.ts` for the same fix).
     const accountRegion = page.getByRole('region', { name: 'สรุปบัญชีเทรดที่ใช้งานอยู่' });
     await expect(accountRegion.getByText('บัญชีจริง', { exact: true })).toBeVisible();
-    await expect(page.getByText('ยังไม่มีการบันทึกเทรด')).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'เทรดล่าสุด' }).getByText('ยังไม่มีเทรดในบัญชีนี้'),
+    ).toBeVisible();
     await expect(page.getByText('Overview', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
   });
 
-  test('/th/app/analytics localizes chart and accessible-table mistake labels', async ({
+  test('/th/app/analytics localizes real analytics sections and empty Mistakes', async ({
     page,
   }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app/analytics');
 
-    await expect(page.getByText('ขยับจุดตัดขาดทุน').first()).toBeVisible();
-    await expect(page.getByText('Moved stop', { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'ผลการทำงานของระบบและเทรดเดอร์' }),
+    ).toBeVisible();
+    await expect(page.getByText('ไม่มีข้อผิดพลาดที่บันทึกไว้')).toBeVisible();
+    await expect(page.getByText('No mistakes recorded', { exact: true })).toHaveCount(0);
   });
 
   test('sets html[lang] to match the URL locale', async ({ page }) => {

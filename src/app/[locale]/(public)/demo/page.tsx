@@ -43,10 +43,10 @@ export async function generateMetadata({
 /**
  * Public demo.
  *
- * Renders exactly the same `DemoDashboard` the application shell renders at
- * `/app`, so a visitor is not shown a marketing mock-up that the product does
- * not match. The only difference is the surrounding chrome and the call to
- * action below it.
+ * Renders the explicitly labelled static `DemoDashboard`. Authenticated
+ * `/app` and `/app/analytics` use persisted workspace data instead; keeping
+ * this fixture boundary public preserves a useful product tour without
+ * allowing demo values into real analytics.
  */
 export default async function DemoPage({ params }: { params: Promise<PageParams> }) {
   const { locale } = await params;

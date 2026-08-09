@@ -5,15 +5,14 @@
  * is fictional, it is labelled as such wherever it renders, and it is never
  * computed — no formula in this directory, ever.
  *
- * That restriction is deliberate. The real metrics arrive in Phase 07's
+ * That restriction is deliberate. Real metrics live in Phase 07's
  * calculation engine (`src/lib/calc/`), and a plausible-looking formula
  * written here to make a demo chart move would become a second, untested
  * implementation of the thing the product is actually about. Literal values
  * cannot drift from a spec they do not implement.
  *
  * Representation follows the production contract (CLAUDE.md §5) even though
- * nothing is persisted yet, so the shape of the UI does not have to change
- * when real data replaces these fixtures:
+ * the public demo itself is static:
  *
  *   - monetary amounts  -> `Money` (bigint minor units + ISO 4217 code)
  *   - R-multiples       -> strings, as `NUMERIC(12,4)` will read back

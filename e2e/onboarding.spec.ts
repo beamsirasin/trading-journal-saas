@@ -167,14 +167,15 @@ test.describe('onboarding', () => {
     await expect(accountRegion.getByRole('heading', { name: 'My First Account' })).toBeVisible();
     await expect(accountRegion.getByText('Live', { exact: true })).toBeVisible();
     await expect(accountRegion.getByText('USD', { exact: true })).toBeVisible();
-    await expect(page.getByText('No trades recorded yet')).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Recent Trades' })
+        .getByText('No Trades in this account yet'),
+    ).toBeVisible();
 
-    // No fabricated performance metrics — structural, not a whole-page text
-    // regex. The empty-state copy is allowed to say "no win rate is
-    // available yet"; what it must never do is render an actual KPI card or
-    // chart. `[data-kpi]` is `KpiCard`'s own test hook and `.recharts-wrapper`
-    // is Recharts' own render marker — both are exactly what `DemoDashboard`
-    // renders and this real dashboard must not.
+    // No fabricated success values or chart: the real Dashboard may render
+    // canonical unavailable metric states, but never a fixture KPI card or
+    // Recharts plot for a brand-new Account.
     await expect(page.locator('[data-kpi]')).toHaveCount(0);
     await expect(page.locator('.recharts-wrapper')).toHaveCount(0);
 
@@ -205,7 +206,9 @@ test.describe('onboarding', () => {
     await expect(page).toHaveURL(/\/th\/app$/);
     const accountRegion = page.getByRole('region', { name: 'สรุปบัญชีเทรดที่ใช้งานอยู่' });
     await expect(accountRegion.getByRole('heading', { name: 'บัญชีแรกของฉัน' })).toBeVisible();
-    await expect(page.getByText('ยังไม่มีการบันทึกเทรด')).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'เทรดล่าสุด' }).getByText('ยังไม่มีเทรดในบัญชีนี้'),
+    ).toBeVisible();
   });
 
   test('a double-click on Finish creates exactly one trading account', async ({ page }) => {

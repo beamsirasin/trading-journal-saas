@@ -6,12 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Link } from '@/i18n/navigation';
 
 /**
- * The honest, real (non-demo) dashboard for `/app`, replacing `DemoDashboard`
- * once onboarding is complete. Renders only what is actually known — the
- * account just created — never an invented P&L, win rate, expectancy, or
- * chart, which is exactly what the fixture-driven demo shows instead. Trade
- * journaling itself is Phase 08+; this makes that explicit rather than
- * leaving an empty gap or, worse, a fabricated number.
+ * The honest empty state for a real active Account. It renders only what is
+ * known and directs the user to record a Trade; it never substitutes fixture
+ * P&L, win rate, expectancy, or chart data.
  *
  * `useTranslations` rather than `getTranslations` — same reasoning as
  * `TradingAccountIndicator`: `account` is already resolved by the caller, so
