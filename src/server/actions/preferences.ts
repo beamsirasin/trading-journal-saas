@@ -1,85 +1,93 @@
 'use server';
 
-import { eq } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
-import { z } from 'zod';
+import type { z } from 'zod';
 
-import { isValidTimeZone } from '@/lib/time/timezone';
-import { getOptionalSession } from '@/server/auth/dal';
-import { getDb } from '@/server/db/client';
-import { userPreferences } from '@/server/db/schema';
-import { routing } from '@/i18n/routing';
+import { SyncObservedPreferencesSchema, UpdateTimezoneSchema } from '@/lib/settings/schemas';
+import { requireSession, UnauthenticatedError } from '@/server/auth/dal';
+import { updateUserPreferences } from '@/server/services/user-preferences';
 
-import { insertAuditLog } from '../services/audit-log';
+import type { SettingsActionFailure } from './profile';
 
-/**
- * Syncs a locale/theme/timezone change into `user_preferences` for the
- * current session, and — for locale specifically — the `NEXT_LOCALE` cookie
- * next-intl's middleware reads (Phase 2 brief §13: "update both the
- * database and cookie when the user changes locale").
- *
- * Silently a no-op for an unauthenticated caller: locale and theme already
- * work correctly pre-login via the existing cookie/localStorage mechanisms
- * (Phase 1.1) — this action only extends that to also persist once a real
- * account exists, never gates the pre-login behavior on having one.
- *
- * Never trusts the client for anything beyond the literal values being set;
- * the target row is always the CALLER's own (`session.user.id`), never a
- * client-supplied user ID.
- */
-const inputSchema = z.object({
-  locale: z.enum(routing.locales).optional(),
-  theme: z.enum(['light', 'dark', 'system']).optional(),
-  timezone: z.string().optional(),
-});
+type FieldErrors = Readonly<Record<string, readonly string[]>>;
+type PreferenceActionResult =
+  | {
+      readonly ok: true;
+      readonly data: { readonly changed: boolean; readonly changedFields: readonly string[] };
+    }
+  | SettingsActionFailure;
 
-export async function syncPreferences(input: z.infer<typeof inputSchema>): Promise<void> {
-  const parsed = inputSchema.parse(input);
-  if (parsed.timezone !== undefined && !isValidTimeZone(parsed.timezone)) {
-    throw new Error(`Invalid IANA timezone: ${parsed.timezone}`);
+function fieldErrors(error: z.ZodError): FieldErrors {
+  return error.flatten().fieldErrors as FieldErrors;
+}
+
+function revalidateAuthenticatedShell(): void {
+  for (const locale of ['en', 'th']) {
+    revalidatePath(`/${locale}/app`, 'layout');
+  }
+}
+
+/** Persists the explicit database-authoritative timezone account preference. */
+export async function updateTimezonePreferenceAction(
+  input: unknown,
+): Promise<PreferenceActionResult> {
+  const parsed = UpdateTimezoneSchema.safeParse(input);
+  if (!parsed.success) {
+    const errors = fieldErrors(parsed.error);
+    const timezoneInvalid = errors.timezone !== undefined;
+    return {
+      ok: false,
+      error: {
+        code: timezoneInvalid ? 'invalid_timezone' : 'validation_error',
+        ...(timezoneInvalid ? { fieldErrors: errors } : {}),
+      },
+    };
   }
 
-  const session = await getOptionalSession();
-  if (session === null) {
-    return;
-  }
-
-  const changes: Partial<typeof userPreferences.$inferInsert> = {};
-  const auditActions: Array<
-    | 'user_preferences.locale_changed'
-    | 'user_preferences.theme_changed'
-    | 'user_preferences.timezone_changed'
-  > = [];
-
-  if (parsed.locale !== undefined) {
-    changes.locale = parsed.locale;
-    auditActions.push('user_preferences.locale_changed');
-  }
-  if (parsed.theme !== undefined) {
-    changes.theme = parsed.theme;
-    auditActions.push('user_preferences.theme_changed');
-  }
-  if (parsed.timezone !== undefined) {
-    changes.timezone = parsed.timezone;
-    auditActions.push('user_preferences.timezone_changed');
-  }
-
-  if (Object.keys(changes).length === 0) {
-    return;
-  }
-
-  const db = getDb();
-  await db.update(userPreferences).set(changes).where(eq(userPreferences.userId, session.user.id));
-
-  for (const action of auditActions) {
-    await insertAuditLog(db, { action, actorUserId: session.user.id });
-  }
-
-  if (parsed.locale !== undefined) {
-    const cookieStore = await cookies();
-    cookieStore.set('NEXT_LOCALE', parsed.locale, {
-      path: '/',
-      sameSite: 'lax',
+  try {
+    const session = await requireSession();
+    const result = await updateUserPreferences(session.user.id, {
+      timezone: parsed.data.timezone,
     });
+    revalidateAuthenticatedShell();
+    return { ok: true, data: result };
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) {
+      return { ok: false, error: { code: 'unauthenticated' } };
+    }
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+/** Records the existing browser-authoritative theme and route-authoritative locale when observed. */
+export async function syncPreferences(input: unknown): Promise<PreferenceActionResult> {
+  const parsed = SyncObservedPreferencesSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: { code: 'validation_error', fieldErrors: fieldErrors(parsed.error) },
+    };
+  }
+
+  try {
+    const session = await requireSession();
+    const observed = {
+      ...(parsed.data.locale === undefined ? {} : { locale: parsed.data.locale }),
+      ...(parsed.data.theme === undefined ? {} : { theme: parsed.data.theme }),
+    };
+    const result = await updateUserPreferences(session.user.id, observed);
+
+    if (parsed.data.locale !== undefined) {
+      const cookieStore = await cookies();
+      cookieStore.set('NEXT_LOCALE', parsed.data.locale, { path: '/', sameSite: 'lax' });
+    }
+
+    return { ok: true, data: result };
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) {
+      return { ok: false, error: { code: 'unauthenticated' } };
+    }
+    return { ok: false, error: { code: 'unexpected_error' } };
   }
 }

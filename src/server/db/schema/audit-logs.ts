@@ -18,9 +18,9 @@ import { workspaces } from './workspaces';
  * nullable so a future account-level event (e.g. "user deleted their own
  * account") does not need a migration to relax a NOT NULL constraint.
  *
- * Phase 2 writes `metadata` as `{}` and `insertAuditLog()` accepts no metadata
- * argument. A future structured schema must explicitly allow fields before
- * this boundary is widened; arbitrary objects could silently capture secrets.
+ * Metadata writes pass through `AuditLogMetadata`, the closed safe-field
+ * contract in `src/server/services/audit-log.ts`; arbitrary objects are not
+ * accepted because they could silently capture secrets or user content.
  */
 export const auditLogs = pgTable(
   'audit_logs',

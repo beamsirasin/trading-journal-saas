@@ -202,6 +202,15 @@ async function establishDatabaseSession(
   await verifySessionEstablished(page, user.id);
 }
 
+/** Establishes a verified database-backed session without navigating; for specs whose subject is not sign-in or the dashboard. */
+export async function establishAuthenticatedSession(
+  page: Page,
+  user: E2eAuthUser & { readonly id: string },
+): Promise<void> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  await establishDatabaseSession(page, testUrl, user);
+}
+
 /**
  * The one shared entry point every entitlement/account E2E test uses to
  * reach an authenticated `/{locale}/app` — establishes and proves the
@@ -216,8 +225,7 @@ export async function loginAs(
   locale: 'en' | 'th',
   user: E2eAuthUser & { readonly id: string },
 ): Promise<void> {
-  const { testUrl } = validateTestDatabaseEnvironment();
-  await establishDatabaseSession(page, testUrl, user);
+  await establishAuthenticatedSession(page, user);
   await page.goto(`/${locale}/app`);
   await expect(page).toHaveURL(new RegExp(`/${locale}/app(?:[/?]|$)`), { timeout: 15000 });
   await expect(page.getByRole('heading', { name: DASHBOARD_HEADING[locale] })).toBeVisible();

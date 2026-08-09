@@ -1056,10 +1056,11 @@
   },
   "settings": {
     "title": "Settings",
-    "description": "Manage appearance, language, profile details and your workspace subscription.",
+    "description": "Manage your profile and account preferences, with concise links to workspace account and billing tools.",
+    "completeOnboarding": "Complete onboarding",
     "appearance": {
       "title": "Appearance",
-      "description": "This setting is live and persists in this browser.",
+      "description": "Choose how Trading OS looks on this browser and device.",
       "theme": "Theme",
       "light": "Light",
       "lightHint": "Always light",
@@ -1067,30 +1068,64 @@
       "darkHint": "Always dark",
       "system": "System",
       "systemHint": "Follow this device",
-      "note": "Saved in this browser. Without an explicit choice, your device preference is used; with no device preference, the interface stays dark.",
+      "note": "Theme primarily applies to this browser and device. Your account records the last observed choice, but it does not initialize other devices.",
       "toggleLabel": "Change theme",
       "toggleLabelWithTheme": "Change theme, currently {theme}"
     },
     "language": {
       "title": "Language",
-      "description": "Choose English or Thai. Saved in this browser, and later synced to your account once sign-in exists."
+      "description": "Language follows the current URL and browser routing cookie. Your account records the last observed language without promising cross-device sync."
     },
     "profile": {
       "title": "Profile",
-      "description": "Your account details. Editing arrives in a later release.",
-      "name": "Name",
+      "description": "Update your display name and review the identity details managed by your sign-in methods.",
+      "displayName": "Display name",
       "email": "Email",
+      "verified": "Verified",
+      "unverified": "Unverified",
+      "emailReadOnly": "Email is read-only in this release.",
+      "linkedMethods": "Linked sign-in methods",
+      "providers": {
+        "email_password": "Email/password",
+        "google": "Google",
+        "other": "Other sign-in method"
+      },
+      "avatarAlt": "Profile image for {name}",
+      "initialsAlt": "Initials for {name}",
+      "save": "Save profile",
+      "saving": "Saving…",
+      "saved": "Profile saved.",
+      "fieldErrors": {
+        "required": "Enter a display name.",
+        "too_long": "Display name must be 80 characters or fewer.",
+        "invalid_characters": "Remove control characters or angle brackets.",
+        "validation": "Enter a valid display name."
+      },
+      "errors": {
+        "unauthenticated": "Please sign in again to continue.",
+        "unexpected_error": "We couldn't save your profile. Please try again."
+      }
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "Set your account timezone and control this browser's theme and language.",
       "timezone": "Timezone",
-      "timezoneNote": "Timestamps are stored in UTC and displayed here. Daily analytics bucket by this zone, so a trade closed at 23:30 belongs to that local day.",
-      "currency": "Reporting currency",
-      "save": "Save changes",
-      "saveNote": "Profile editing arrives in a later release."
+      "timezoneHelp": "Changing timezone changes how dates and analytics date ranges are displayed and interpreted. Stored historical timestamps are not changed.",
+      "saveTimezone": "Save timezone",
+      "saving": "Saving…",
+      "timezoneSaved": "Timezone saved.",
+      "errors": {
+        "invalid_timezone": "Choose a valid IANA timezone.",
+        "unauthenticated": "Please sign in again to continue.",
+        "unexpected_error": "We couldn't save your timezone. Please try again."
+      }
     },
     "accounts": {
-      "title": "Trading accounts",
-      "description": "Plans are gated primarily on how many of these you can keep.",
-      "add": "Add account",
-      "note": "Account management arrives with onboarding. These are demo fixtures."
+      "title": "Trading Accounts",
+      "description": "Trading account management stays in its canonical workspace tool.",
+      "ready": "Create, edit, activate, archive, and restore trading accounts on the Trading Accounts page.",
+      "onboardingRequired": "Trading account management becomes available after you complete onboarding.",
+      "manage": "Manage trading accounts"
     },
     "subscription": {
       "title": "Subscription",
@@ -1106,9 +1141,9 @@
         "expired": "Expired",
         "canceled": "Canceled"
       },
-      "note": "See full lifecycle, usage, and upgrade details on the plan page.",
       "seePlans": "Manage plan",
       "billingHistory": "Billing history",
+      "onboardingRequired": "Plan and billing tools become available after you complete onboarding.",
       "pendingDowngrade": "Downgrade to {plan} is scheduled for {date}.",
       "cancellationScheduled": "Cancellation is scheduled for {date}."
     }

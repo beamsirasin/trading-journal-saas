@@ -2,7 +2,21 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
-**Status:** Next phase; not started. Readiness audit required before implementation because several original bullets below are provisional and conflict with later locked Phase 07–09 contracts.
+**Status:** In progress. Phase 10A audit and Phase 10B Profile & Preferences are delivered; later Settings slices remain pending.
+
+## Phase 10B delivery
+
+- The single authenticated `/app/settings` route is reachable before onboarding completes; unrelated `(main)` routes retain their onboarding guard.
+- Display name is editable through the canonical Better Auth user API. Email, verification state, provider names, and an existing avatar are display-only.
+- Timezone is the database-authoritative account preference. Changing it affects future display and analytics date-range interpretation without rewriting stored timestamps.
+- Theme remains browser/device-authoritative through `next-themes`; the database records only the last authenticated observation.
+- Locale remains URL/cookie-routing-authoritative; the database records only the last authenticated observation.
+- The fabricated reporting currency and authenticated Settings demo fixtures were removed.
+- Trading Account, Plan, and Billing management remain in their canonical routes and are truthfully onboarding-gated from Settings.
+- No migration was required.
+- Workspace/Billing Settings integration remains Phase 10C, Export remains 10D, Security remains 10E, and deletion remains deferred from Phase 10 pending a separately approved lifecycle contract.
+
+The original scope notes below are planning history. Locked slice briefs take precedence where they narrow or supersede an earlier provisional bullet.
 
 ## Goal
 

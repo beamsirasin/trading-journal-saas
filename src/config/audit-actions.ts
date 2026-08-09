@@ -17,6 +17,7 @@ export const AUDIT_ACTIONS = [
   'user_preferences.locale_changed',
   'user_preferences.theme_changed',
   'user_preferences.timezone_changed',
+  'user.profile_updated',
   'trading_account.created',
   'workspace.onboarding_completed',
   'trading_account.updated',
