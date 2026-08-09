@@ -2,7 +2,7 @@
 
 **Depends on:** 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 09A completed the repository/metric audit, Phase 09B delivered the authenticated raw analytics read model, Phase 09C composes canonical analytics view models, and Phase 09D delivers the real active-account attribution overview at `/app`. The deep `/app/analytics` experience remains unimplemented for Phase 09E. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
+**Status:** In progress. Phase 09A completed the repository/metric audit, Phase 09B delivered the authenticated raw analytics read model, Phase 09C composes canonical analytics view models, Phase 09D delivered the real active-account attribution overview at `/app`, and Phase 09E delivers the real deep `/app/analytics` experience. Phase 09F full regression and official closeout remain pending. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
 
 ## Phase 09B implementation boundary
 
@@ -29,7 +29,16 @@
 - System and Trader panels deliberately expose separate sample counts, Total R, Expectancy, Win Rate, and Profit Factor. The comparison shows comparable count, paired Edge Leakage, and unclamped Execution Efficiency. Canonical unavailable and sanitized integrity states render as explanations, never zero or raw failure codes.
 - Decimal-safe presentation formatting converts canonical strings to signed two-decimal R, percentages, and Profit Factor text without recomputing any metric. Static server-rendered values are used; no financial-number animation or browser-side date-range calculation is introduced.
 - Dashboard loading mirrors the Account, two performance panels, comparison, and recent-Trade structure. Empty System/Trader populations remain independent, no active Account routes to Account management, and unexpected/typed failures render sanitized guidance. EN/TH copy, keyboard-visible links, 44px range controls, mobile stacking, and 320px overflow coverage are included.
-- Phase 09D adds no equity chart, Rule/Mistake analytics UI, deep Analytics filters, verdict/grade/confidence layer, Discipline Score, mistake-cost attribution, aggregate currency P&L, or FX conversion. Those decisions and the real `/app/analytics` experience remain later Phase 09 work.
+- Phase 09D adds no equity chart, Rule/Mistake analytics UI, deep Analytics filters, verdict/grade/confidence layer, Discipline Score, mistake-cost attribution, aggregate currency P&L, or FX conversion. The real `/app/analytics` experience is delivered separately by Phase 09E.
+
+## Phase 09E implementation boundary
+
+- The authenticated `/app/analytics` route now maps only URL-backed `range`, `account`, `strategy`, `setup`, and `version` keys into the strict Phase 09B contract. It defaults to active Account plus `90d`, supports explicit All Accounts and archived historical identities, clears dependent Setup/Version values when Strategy changes, and never broadens invalid or foreign filters.
+- The page renders the complete canonical System and Trader metric families in distinct panels while presenting Expectancy once as “Expectancy (Average R)”. The paired section uses only canonical comparable count, paired totals, Edge Leakage, and unclamped Execution Efficiency; no independent-headline subtraction occurs in React.
+- Trader and System equity remain two independent Recharts curves using the already-composed cumulative-R points and their own exit ordering. Decimal strings become JavaScript numbers only at the final SVG-coordinate boundary; tooltips and accessible fallback tables retain decimal-safe R presentation and user-timezone date labels.
+- Rule Analytics shows objective adherence plus followed, violated, not-checked, not-applicable, and evaluated counts. Mistake Analytics shows only canonical distinct-Trade frequency ranking and factual empty copy. Neither surface introduces scoring, severity weighting, percentages, cost, lost R, or leakage attribution.
+- The server route owns loading, typed no-active-account/invalid-filter recovery, sanitized unexpected errors, and user-timezone chart labels. Filters remain visible for valid empty intersections. EN/TH parity, native labeled selectors, keyboard focus, 44px date controls, independent mobile chart cards, accessible chart tables, and 320px overflow coverage are included.
+- Phase 09E adds no verdicts, grades, Discipline Score, mistake-cost attribution, aggregate currency P&L, FX conversion, custom date range, 7D/YTD, or symbol/direction/session/timeframe global filters. Phase 09 remains in progress pending Phase 09F regression and closeout.
 
 ## Goal
 

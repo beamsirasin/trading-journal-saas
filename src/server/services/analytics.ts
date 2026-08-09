@@ -8,8 +8,10 @@ import {
 } from '@/lib/analytics/metrics';
 import { resolveDashboardDatePreset } from '@/lib/analytics/presentation';
 import {
+  getAnalyticsFilterOptions,
   getAnalyticsRawPopulations,
   type AnalyticsFilterErrorCode,
+  type AnalyticsFilterOptions,
   type AnalyticsReadOptions,
 } from '@/server/dal/analytics';
 import { listWorkspaceTrades, type TradeListItem } from '@/server/dal/trades';
@@ -45,6 +47,33 @@ export async function getAnalyticsSnapshot(
       mistakes: raw.data.mistakes,
     }),
   };
+}
+
+export interface AnalyticsPageData {
+  readonly snapshot: AnalyticsSnapshot;
+  readonly filterOptions: AnalyticsFilterOptions;
+}
+
+export type AnalyticsPageServiceResult =
+  | { readonly ok: true; readonly data: AnalyticsPageData }
+  | {
+      readonly ok: false;
+      readonly code: AnalyticsFilterErrorCode;
+      readonly filterOptions: AnalyticsFilterOptions;
+    };
+
+/** Real deep-Analytics read boundary: one canonical snapshot plus selectors. */
+export async function getAnalyticsPageData(
+  input: unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsPageServiceResult> {
+  const [snapshot, filterOptions] = await Promise.all([
+    getAnalyticsSnapshot(input, options),
+    getAnalyticsFilterOptions(),
+  ]);
+  return snapshot.ok
+    ? { ok: true, data: { snapshot: snapshot.data, filterOptions } }
+    : { ok: false, code: snapshot.code, filterOptions };
 }
 
 export interface DashboardOverviewData {

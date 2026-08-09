@@ -38,7 +38,8 @@ vi.mock('@/lib/auth/server', () => ({
   getAuth: () => ({ api: { getSession: async () => currentSession } }),
 }));
 
-const { getAnalyticsSnapshot, getDashboardOverview } = await import('./analytics');
+const { getAnalyticsPageData, getAnalyticsSnapshot, getDashboardOverview } =
+  await import('./analytics');
 
 const db = getTestDb();
 const workspaceIds: string[] = [];
@@ -594,6 +595,7 @@ describe('analytics service (real PostgreSQL)', () => {
     const fixture = await createFixture();
     const writable = await getAnalyticsSnapshot({}, READ_OPTIONS);
     expect(writable.ok).toBe(true);
+    expect((await getAnalyticsPageData({}, READ_OPTIONS)).ok).toBe(true);
 
     await db
       .update(workspaceEntitlements)
@@ -601,6 +603,7 @@ describe('analytics service (real PostgreSQL)', () => {
       .where(eq(workspaceEntitlements.workspaceId, fixture.workspaceId));
     const overLimit = await getAnalyticsSnapshot({}, READ_OPTIONS);
     expect(overLimit.ok).toBe(true);
+    expect((await getAnalyticsPageData({}, READ_OPTIONS)).ok).toBe(true);
 
     await db
       .update(workspaceEntitlements)
@@ -608,6 +611,7 @@ describe('analytics service (real PostgreSQL)', () => {
       .where(eq(workspaceEntitlements.workspaceId, fixture.workspaceId));
     const readOnly = await getAnalyticsSnapshot({}, READ_OPTIONS);
     expect(readOnly.ok).toBe(true);
+    expect((await getAnalyticsPageData({}, READ_OPTIONS)).ok).toBe(true);
   });
 
   it('does not expose former workspace analytics after membership removal', async () => {
@@ -627,6 +631,79 @@ describe('analytics service (real PostgreSQL)', () => {
     } else {
       expect(result.code).toBe('no_active_trading_account');
     }
+  });
+
+  it('returns a JSON-safe deep Analytics page model with historical selectors and canonical populations', async () => {
+    const fixture = await createFixture();
+    const result = await getAnalyticsPageData(
+      {
+        datePreset: 'all',
+        tradingAccountId: 'all',
+        strategyId: fixture.primary.strategyId,
+        setupId: fixture.primary.setupId,
+        strategyVersionId: fixture.primary.strategyVersionId,
+      },
+      READ_OPTIONS,
+    );
+    if (!result.ok) throw new Error(result.code);
+
+    expect(result.data.snapshot.scope).toMatchObject({
+      datePreset: 'all',
+      accountScope: { kind: 'all' },
+      strategyId: fixture.primary.strategyId,
+      setupId: fixture.primary.setupId,
+      strategyVersionId: fixture.primary.strategyVersionId,
+    });
+    expect(result.data.snapshot.trader.sampleCount).toBe(7);
+    expect(result.data.snapshot.system.sampleCount).toBe(7);
+    expect(result.data.snapshot.comparison.comparableCount).toBe(6);
+    expect(result.data.snapshot.comparison.comparableCount).not.toBe(
+      result.data.snapshot.trader.sampleCount,
+    );
+    expect(result.data.filterOptions.accounts).toContainEqual({
+      tradingAccountId: fixture.archivedAccountId,
+      name: 'Archived Account',
+      isArchived: true,
+    });
+    expect(
+      result.data.filterOptions.strategyVersions.some(
+        (option) => option.strategyVersionId === fixture.primary.strategyVersionId,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(result.data.snapshot)).not.toContain(fixture.deletedTradeId);
+    expect(() => JSON.parse(JSON.stringify(result.data)) as unknown).not.toThrow();
+  });
+
+  it('keeps page selectors available for safe invalid-filter recovery and supports All Accounts without an active Account', async () => {
+    const fixture = await createFixture();
+    const invalid = await getAnalyticsPageData(
+      { strategyId: fixture.primary.strategyId, setupId: fixture.secondary.setupId },
+      READ_OPTIONS,
+    );
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) {
+      expect(invalid.code).toBe('invalid_filters');
+      expect(invalid.filterOptions.strategies.length).toBeGreaterThan(0);
+    }
+
+    await db
+      .update(tradingAccounts)
+      .set({ isArchived: true })
+      .where(eq(tradingAccounts.id, fixture.activeAccountId));
+    await db
+      .update(tradingAccounts)
+      .set({ isArchived: true })
+      .where(eq(tradingAccounts.id, fixture.emptyAccountId));
+    const all = await getAnalyticsPageData(
+      { datePreset: 'all', tradingAccountId: 'all' },
+      READ_OPTIONS,
+    );
+    expect(all.ok).toBe(true);
+    if (all.ok) expect(all.data.snapshot.scope.accountScope).toEqual({ kind: 'all' });
+    expect(await getAnalyticsPageData({}, READ_OPTIONS)).toMatchObject({
+      ok: false,
+      code: 'no_active_trading_account',
+    });
   });
 
   it('builds the Dashboard from active Account scope with strict 90D, 30D, and All ranges', async () => {
