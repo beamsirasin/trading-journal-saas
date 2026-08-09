@@ -12,6 +12,7 @@
  */
 export const AUDIT_ACTIONS = [
   'workspace.personal_created',
+  'workspace.updated',
   'workspace_member.owner_created',
   'user_preferences.active_workspace_initialized',
   'user_preferences.locale_changed',

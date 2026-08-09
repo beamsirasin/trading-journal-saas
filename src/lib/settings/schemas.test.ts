@@ -5,6 +5,8 @@ import {
   SyncObservedPreferencesSchema,
   UpdateDisplayNameSchema,
   UpdateTimezoneSchema,
+  UpdateWorkspaceNameSchema,
+  WORKSPACE_NAME_MAX_LENGTH,
 } from './schemas';
 
 describe('UpdateDisplayNameSchema', () => {
@@ -27,6 +29,35 @@ describe('UpdateDisplayNameSchema', () => {
     expect(UpdateDisplayNameSchema.safeParse({ name: 42 }).success).toBe(false);
     expect(
       UpdateDisplayNameSchema.safeParse({ name: 'Ada', email: 'forged@example.test' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('UpdateWorkspaceNameSchema', () => {
+  it.each(['Trading Workspace', 'พื้นที่ทำงานของกานต์'])('accepts workspace name %s', (name) => {
+    expect(UpdateWorkspaceNameSchema.parse({ name })).toEqual({ name });
+  });
+
+  it('normalizes outer whitespace', () => {
+    expect(UpdateWorkspaceNameSchema.parse({ name: '  Alpha Workspace  ' })).toEqual({
+      name: 'Alpha Workspace',
+    });
+  });
+
+  it('rejects blank, max-length overflow, unsafe markup, non-string, slug and unknown fields', () => {
+    expect(UpdateWorkspaceNameSchema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(
+      UpdateWorkspaceNameSchema.safeParse({ name: 'a'.repeat(WORKSPACE_NAME_MAX_LENGTH + 1) })
+        .success,
+    ).toBe(false);
+    expect(UpdateWorkspaceNameSchema.safeParse({ name: '<b>Alpha</b>' }).success).toBe(false);
+    expect(UpdateWorkspaceNameSchema.safeParse({ name: 42 }).success).toBe(false);
+    expect(
+      UpdateWorkspaceNameSchema.safeParse({ name: 'Alpha', slug: 'foreign-target' }).success,
+    ).toBe(false);
+    expect(
+      UpdateWorkspaceNameSchema.safeParse({ name: 'Alpha', workspaceId: crypto.randomUUID() })
+        .success,
     ).toBe(false);
   });
 });

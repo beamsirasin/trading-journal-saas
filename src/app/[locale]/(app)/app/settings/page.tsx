@@ -3,13 +3,18 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { isOnboardingComplete } from '@/lib/trading-accounts/onboarding-guard';
-import { getActiveWorkspaceContext, getCurrentUserPreferences } from '@/server/auth/dal';
-import { getSelfProfile } from '@/server/auth/settings-dal';
+import {
+  getActiveTradingAccount,
+  getActiveWorkspaceContext,
+  getCurrentUserPreferences,
+} from '@/server/auth/dal';
+import { getSelfProfile, getSettingsWorkspaceSummary } from '@/server/auth/settings-dal';
 import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
 import { ProfileForm } from '@/components/settings/profile-form';
 import { TimezoneForm } from '@/components/settings/timezone-form';
+import { WorkspaceForm } from '@/components/settings/workspace-form';
 import { Container } from '@/components/shell/container';
 import { LanguageSwitcher } from '@/components/shell/language-switcher';
 import { ThemeSelector } from '@/components/theme/theme-selector';
@@ -54,11 +59,18 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   // this pre-onboarding route before those application rows exist; reading
   // preferences in parallel with the repair would race their creation.
   const workspace = await getActiveWorkspaceContext();
-  const [profile, preferences] = await Promise.all([getSelfProfile(), getCurrentUserPreferences()]);
+  const [profile, preferences, settingsWorkspace] = await Promise.all([
+    getSelfProfile(),
+    getCurrentUserPreferences(),
+    getSettingsWorkspaceSummary(),
+  ]);
   const onboardingComplete = isOnboardingComplete(workspace.onboardingCompletedAt);
-  const subscription = onboardingComplete
-    ? await getSubscriptionManagementPresentation(appLocale, preferences.timezone)
-    : null;
+  const [activeAccount, subscription] = onboardingComplete
+    ? await Promise.all([
+        getActiveTradingAccount(),
+        getSubscriptionManagementPresentation(appLocale, preferences.timezone),
+      ])
+    : [null, null];
 
   return (
     <Container className="flex flex-col gap-10 py-8">
@@ -104,6 +116,15 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
         </div>
       </section>
 
+      <section aria-labelledby="workspace-heading" className="flex flex-col gap-4">
+        <SectionHeader
+          id="workspace-heading"
+          title={t('workspace.title')}
+          description={t('workspace.description')}
+        />
+        <WorkspaceForm workspace={settingsWorkspace} />
+      </section>
+
       <section aria-labelledby="accounts-heading" className="flex flex-col gap-4">
         <SectionHeader
           id="accounts-heading"
@@ -111,9 +132,16 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           description={t('accounts.description')}
         />
         <div className="bg-card border-border flex flex-col items-start gap-4 rounded-lg border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            {onboardingComplete ? t('accounts.ready') : t('accounts.onboardingRequired')}
-          </p>
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              {onboardingComplete ? t('accounts.ready') : t('accounts.onboardingRequired')}
+            </p>
+            {activeAccount === null ? null : (
+              <p className="text-foreground mt-2 text-sm font-semibold break-words">
+                {t('accounts.active', { name: activeAccount.name })}
+              </p>
+            )}
+          </div>
           <Button asChild variant="outline" className="min-h-11 shrink-0">
             <Link href={onboardingComplete ? '/app/accounts' : '/app/onboarding'}>
               {onboardingComplete ? t('accounts.manage') : t('completeOnboarding')}
@@ -157,9 +185,6 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
                 <Button asChild variant="outline" className="min-h-11">
                   <Link href="/app/plan">{t('subscription.seePlans')}</Link>
                 </Button>
-                <Button asChild variant="outline" className="min-h-11">
-                  <Link href="/app/billing">{t('subscription.billingHistory')}</Link>
-                </Button>
               </div>
               {subscription?.pendingDowngrade ? (
                 <p className="text-muted-foreground text-sm">
@@ -187,6 +212,25 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
               </Button>
             </div>
           )}
+        </div>
+      </section>
+
+      <section aria-labelledby="billing-heading" className="flex flex-col gap-4">
+        <SectionHeader
+          id="billing-heading"
+          title={t('billing.title')}
+          description={t('billing.description')}
+        />
+        <div className="bg-card border-border flex flex-col items-start gap-4 rounded-lg border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {onboardingComplete ? t('billing.ready') : t('billing.onboardingRequired')}
+          </p>
+          <Button asChild variant="outline" className="min-h-11 shrink-0">
+            <Link href={onboardingComplete ? '/app/billing' : '/app/onboarding'}>
+              {onboardingComplete ? t('billing.view') : t('completeOnboarding')}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </Button>
         </div>
       </section>
     </Container>

@@ -2,7 +2,18 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 10A audit and Phase 10B Profile & Preferences are delivered; later Settings slices remain pending.
+**Status:** In progress. Phase 10A audit, Phase 10B Profile & Preferences, and Phase 10C Workspace & Billing Integration are delivered; later Settings slices remain pending.
+
+## Phase 10C delivery
+
+- Settings composes a narrow, authenticated active-Workspace summary with the real personal Workspace name, kind, caller role, and canonical access mode; slug is hidden and cannot be edited.
+- Workspace owners may rename the active Workspace only under canonical `ordinary_write` authorization. Members, removed memberships, `read_only`, and `over_limit` callers are denied server-side.
+- Rename validation is strict and Unicode-safe. Same-name requests are no-ops; changed name plus field-name-only `workspace.updated` audit commit atomically in PostgreSQL.
+- Trading Accounts displays the canonical active Account and links to `/app/accounts`; no CRUD or second default-Account preference was duplicated.
+- Subscription reuses the Phase 04 presentation and links to `/app/plan`; Billing truthfully links to the immutable-snapshot history at `/app/billing`. No payment lifecycle or VAT control was duplicated.
+- Profile and Preferences remain available in every access mode. Pre-onboarding Settings remains reachable while Account, Plan, and Billing route guards remain unchanged.
+- Teams/member/invite UI remains deferred. Export remains Phase 10D, Security remains Phase 10E, and deletion remains deferred.
+- No migration was required.
 
 ## Phase 10B delivery
 

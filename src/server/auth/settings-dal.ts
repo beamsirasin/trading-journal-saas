@@ -2,10 +2,16 @@ import 'server-only';
 
 import { asc, eq } from 'drizzle-orm';
 
+import { authorizeWorkspaceMutation, type AccessMode } from '@/lib/entitlements/resolve';
 import { getDb } from '@/server/db/client';
-import { accounts } from '@/server/db/schema';
+import { accounts, workspaces } from '@/server/db/schema';
 
-import { requireSession } from './dal';
+import {
+  getActiveWorkspaceContext,
+  getWorkspaceEntitlement,
+  requireSession,
+  type WorkspaceRole,
+} from './dal';
 
 export type LinkedAuthProvider = 'email_password' | 'google' | 'other';
 
@@ -15,6 +21,17 @@ export interface SelfProfile {
   readonly emailVerified: boolean;
   readonly image: string | null;
   readonly providers: readonly LinkedAuthProvider[];
+}
+
+export type WorkspaceRenameAvailability =
+  'available' | 'owner_required' | 'read_only_workspace' | 'over_limit_workspace';
+
+export interface SettingsWorkspaceSummary {
+  readonly name: string;
+  readonly kind: 'personal';
+  readonly role: WorkspaceRole;
+  readonly accessMode: AccessMode;
+  readonly renameAvailability: WorkspaceRenameAvailability;
 }
 
 function toSafeProvider(providerId: string): LinkedAuthProvider {
@@ -38,5 +55,41 @@ export async function getSelfProfile(): Promise<SelfProfile> {
     emailVerified: user.emailVerified,
     image: user.image,
     providers: [...new Set(rows.map((row) => toSafeProvider(row.providerId)))],
+  };
+}
+
+/** Settings-only workspace DTO. Slug, provider data, and entitlement rows never cross this boundary. */
+export async function getSettingsWorkspaceSummary(): Promise<SettingsWorkspaceSummary> {
+  const context = await getActiveWorkspaceContext();
+  const [workspace, entitlement] = await Promise.all([
+    getDb()
+      .select({ name: workspaces.name, kind: workspaces.kind })
+      .from(workspaces)
+      .where(eq(workspaces.id, context.workspaceId))
+      .limit(1),
+    getWorkspaceEntitlement(),
+  ]);
+  const row = workspace[0];
+  if (row === undefined || row.kind !== 'personal') {
+    throw new Error('Active Settings workspace is unavailable.');
+  }
+
+  const accessMode = entitlement?.accessMode ?? 'read_only';
+  const authorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
+  const renameAvailability: WorkspaceRenameAvailability =
+    context.role !== 'owner'
+      ? 'owner_required'
+      : authorization.allowed
+        ? 'available'
+        : authorization.code === 'over_limit_workspace'
+          ? 'over_limit_workspace'
+          : 'read_only_workspace';
+
+  return {
+    name: row.name,
+    kind: 'personal',
+    role: context.role,
+    accessMode,
+    renameAvailability,
   };
 }

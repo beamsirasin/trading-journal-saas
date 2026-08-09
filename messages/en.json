@@ -1120,12 +1120,48 @@
         "unexpected_error": "We couldn't save your timezone. Please try again."
       }
     },
+    "workspace": {
+      "title": "Workspace",
+      "description": "Review the active personal workspace and rename it when your role and access allow changes.",
+      "name": "Workspace name",
+      "type": "Workspace type",
+      "personal": "Personal workspace",
+      "access": "Workspace access",
+      "role": {
+        "owner": "Owner",
+        "member": "Member"
+      },
+      "accessMode": {
+        "writable": "Writable",
+        "over_limit": "Over account limit",
+        "read_only": "Read-only"
+      },
+      "save": "Save workspace",
+      "saving": "Saving…",
+      "saved": "Workspace saved.",
+      "blocked": {
+        "owner_required": "Only a workspace owner can rename this workspace.",
+        "read_only_workspace": "This workspace is read-only. Restore valid subscription access from Manage plan before renaming it.",
+        "over_limit_workspace": "This workspace is over its active-account allowance. Resolve the account limit or change plan before renaming it."
+      },
+      "fieldErrors": {
+        "required": "Enter a workspace name.",
+        "too_long": "Workspace name must be 80 characters or fewer.",
+        "invalid_characters": "Remove control characters or angle brackets.",
+        "validation": "Enter a valid workspace name."
+      },
+      "errors": {
+        "unauthenticated": "Please sign in again to continue.",
+        "unexpected_error": "We couldn't save the workspace. Please try again."
+      }
+    },
     "accounts": {
       "title": "Trading Accounts",
       "description": "Trading account management stays in its canonical workspace tool.",
       "ready": "Create, edit, activate, archive, and restore trading accounts on the Trading Accounts page.",
       "onboardingRequired": "Trading account management becomes available after you complete onboarding.",
-      "manage": "Manage trading accounts"
+      "manage": "Manage trading accounts",
+      "active": "Active account: {name}"
     },
     "subscription": {
       "title": "Subscription",
@@ -1146,6 +1182,13 @@
       "onboardingRequired": "Plan and billing tools become available after you complete onboarding.",
       "pendingDowngrade": "Downgrade to {plan} is scheduled for {date}.",
       "cancellationScheduled": "Cancellation is scheduled for {date}."
+    },
+    "billing": {
+      "title": "Billing",
+      "description": "Billing history uses immutable payment snapshots from this workspace.",
+      "ready": "Review the workspace's payment history. Entries may represent the current mock payment infrastructure and are not tax invoices or official receipts.",
+      "onboardingRequired": "Billing history becomes available after you complete onboarding.",
+      "view": "View billing history"
     }
   },
   "onboarding": {
