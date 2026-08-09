@@ -2,7 +2,7 @@
 
 **Depends on:** 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 09A completed the repository/metric audit. Phase 09B implements the authenticated raw analytics read model, historical filters, deterministic date bounds, and measured query benchmark; metric composition and the `/app`/`/app/analytics` UI remain unimplemented. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
+**Status:** In progress. Phase 09A completed the repository/metric audit, Phase 09B delivered the authenticated raw analytics read model, and Phase 09C composes its projections through the canonical Phase 07D engine into JSON-safe full and Dashboard-overview view models. The `/app` and `/app/analytics` UI remain unimplemented. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
 
 ## Phase 09B implementation boundary
 
@@ -12,6 +12,15 @@
 - Historical selectors include archived identities with nondeleted Trade history. Filtering always uses IDs. Selector display uses the current Strategy/Setup snapshot where available, otherwise the latest pinned historical snapshot; Trade list/detail continue to show each Trade's exact pinned labels.
 - The read model returns narrow serializable IDs, enum strings, canonical R strings, and ISO timestamps only. It performs no aggregate formula, currency sum, FX conversion, Rule adherence calculation, mistake percentage, severity weighting, or mistake-cost/leakage attribution.
 - The guarded opt-in benchmark (`pnpm run analytics:benchmark`) creates and removes a deterministic 5,000-Trade fixture only in `TEST_DATABASE_URL`. Eight required `EXPLAIN (ANALYZE, BUFFERS)` query shapes completed in 0.295–5.322 ms in the Phase 09B run, with zero shared-block reads and only small in-memory sorts. Existing indexes are adequate at the approved target scale; no migration `0009` is justified by this measurement.
+
+## Phase 09C implementation boundary
+
+- Pure analytics composition receives the five serialized Phase 09B populations and delegates Total/average/expectancy R, Win Rate, Profit Factor, win/loss averages, Payoff Ratio, cumulative R, maximum drawdown, paired leakage/efficiency, and Rule adherence to the Phase 07D functions. It introduces no alternative financial/statistical formula.
+- Every calculated value has one explicit state: `available`, a user-meaningful `unavailable` reason, or sanitized `data_integrity_error`. Empty Trader/System samples remain `no_trades`; empty comparison samples are normalized to `no_comparable_trades`; non-positive paired System edge remains `system_has_no_edge`; raw persistence/calculation corruption is never presented as ordinary unavailability.
+- Trader and System summaries contain independent sample counts, metric sets, and equity event timelines using `exited_at` and `system_exited_at` respectively. Average R and Expectancy remain equal by contract. Curves are not synchronized or interpreted as Edge Leakage; leakage exists only over the same-Trade paired population.
+- The Rule model reports followed, violated, not-checked, not-applicable, evaluated count, and objective adherence. The Mistake model reports only deterministic distinct-Trade counts per canonical type, sorted by count then key. No weighted score, percentage, cost, lost R, or leakage attribution is composed.
+- One authenticated service resolves the scope once and runs the five fixed-shape projections in parallel before composing a JSON-safe snapshot. It preserves typed `no_active_trading_account`, `invalid_filters`, and `invalid_timezone` results without broadening scope. A compact pure Dashboard overview selects existing System/Trader headline metrics and paired comparison values without recalculation.
+- Phase 09C adds no verdict, quality grade, sample-confidence threshold, Discipline Score, aggregate currency P&L, or FX conversion. Dashboard cards, charts, route replacement, and all presentation behavior remain later Phase 09 work.
 
 ## Goal
 

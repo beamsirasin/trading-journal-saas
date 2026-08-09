@@ -54,6 +54,7 @@ export type ResolvedAnalyticsAccountScope =
 export interface ResolvedAnalyticsFilters {
   readonly datePreset: AnalyticsFilters['datePreset'];
   readonly dateBounds: AnalyticsDateBounds;
+  readonly timezone: string;
   readonly accountScope: ResolvedAnalyticsAccountScope;
   readonly strategyId: string | null;
   readonly setupId: string | null;
@@ -161,6 +162,7 @@ async function resolveAnalyticsQueryContext(
       filters: {
         datePreset: filters.datePreset,
         dateBounds: dateResult.bounds,
+        timezone: preferences.timezone,
         accountScope,
         strategyId: filters.strategyId,
         setupId: filters.setupId,
@@ -343,12 +345,9 @@ export interface TraderAnalyticsRecord {
   readonly setupId: string;
 }
 
-export async function getTraderAnalyticsRecords(
-  input: AnalyticsFilterInput | unknown,
-  options: AnalyticsReadOptions = {},
-): Promise<AnalyticsReadResult<readonly TraderAnalyticsRecord[]>> {
-  const context = await resolveAnalyticsQueryContext(input, options);
-  if (!context.ok) return context;
+async function selectTraderAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly TraderAnalyticsRecord[]> {
   const db = getDb();
   const rows = await db
     .select({
@@ -365,28 +364,34 @@ export async function getTraderAnalyticsRecords(
     .from(trades)
     .where(
       and(
-        ...frameworkConditions(context.data),
+        ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.status, 'closed'),
         isNotNull(trades.actualR),
         isNotNull(trades.traderOutcome),
         isNotNull(trades.exitedAt),
-        ...dateConditions(trades.exitedAt, context.data.filters.dateBounds),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
     .orderBy(asc(trades.exitedAt), asc(trades.id));
 
-  return {
-    ok: true,
-    data: rows.map((row) => ({
-      ...row,
-      status: row.status as TradeStatus,
-      deletedAt: null,
-      actualR: row.actualR as string,
-      traderOutcome: row.traderOutcome as OutcomeValue,
-      exitedAt: (row.exitedAt as Date).toISOString(),
-    })),
-  };
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as TradeStatus,
+    deletedAt: null,
+    actualR: row.actualR as string,
+    traderOutcome: row.traderOutcome as OutcomeValue,
+    exitedAt: (row.exitedAt as Date).toISOString(),
+  }));
+}
+
+export async function getTraderAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly TraderAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectTraderAnalyticsRecords(context.data) };
 }
 
 export interface SystemAnalyticsRecord {
@@ -402,12 +407,9 @@ export interface SystemAnalyticsRecord {
   readonly setupId: string;
 }
 
-export async function getSystemAnalyticsRecords(
-  input: AnalyticsFilterInput | unknown,
-  options: AnalyticsReadOptions = {},
-): Promise<AnalyticsReadResult<readonly SystemAnalyticsRecord[]>> {
-  const context = await resolveAnalyticsQueryContext(input, options);
-  if (!context.ok) return context;
+async function selectSystemAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly SystemAnalyticsRecord[]> {
   const db = getDb();
   const rows = await db
     .select({
@@ -424,28 +426,34 @@ export async function getSystemAnalyticsRecords(
     .from(trades)
     .where(
       and(
-        ...frameworkConditions(context.data),
+        ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.systemStatus, 'resolved'),
         isNotNull(trades.systemR),
         isNotNull(trades.systemOutcome),
         isNotNull(trades.systemExitedAt),
-        ...dateConditions(trades.systemExitedAt, context.data.filters.dateBounds),
+        ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
     )
     .orderBy(asc(trades.systemExitedAt), asc(trades.id));
 
-  return {
-    ok: true,
-    data: rows.map((row) => ({
-      ...row,
-      systemStatus: row.systemStatus as SystemStatus,
-      deletedAt: null,
-      systemR: row.systemR as string,
-      systemOutcome: row.systemOutcome as OutcomeValue,
-      systemExitedAt: (row.systemExitedAt as Date).toISOString(),
-    })),
-  };
+  return rows.map((row) => ({
+    ...row,
+    systemStatus: row.systemStatus as SystemStatus,
+    deletedAt: null,
+    systemR: row.systemR as string,
+    systemOutcome: row.systemOutcome as OutcomeValue,
+    systemExitedAt: (row.systemExitedAt as Date).toISOString(),
+  }));
+}
+
+export async function getSystemAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly SystemAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectSystemAnalyticsRecords(context.data) };
 }
 
 export interface PairedAnalyticsRecord {
@@ -460,15 +468,12 @@ export interface PairedAnalyticsRecord {
   readonly setupId: string;
 }
 
-export async function getPairedAnalyticsRecords(
-  input: AnalyticsFilterInput | unknown,
-  options: AnalyticsReadOptions = {},
-): Promise<AnalyticsReadResult<readonly PairedAnalyticsRecord[]>> {
-  const context = await resolveAnalyticsQueryContext(input, options);
-  if (!context.ok) return context;
+async function selectPairedAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly PairedAnalyticsRecord[]> {
   const db = getDb();
   const conditions = [
-    ...frameworkConditions(context.data),
+    ...frameworkConditions(context),
     isNull(trades.deletedAt),
     eq(trades.status, 'closed'),
     isNotNull(trades.actualR),
@@ -479,10 +484,10 @@ export async function getPairedAnalyticsRecords(
     isNotNull(trades.systemOutcome),
     isNotNull(trades.systemExitedAt),
   ];
-  if (context.data.filters.dateBounds.kind === 'bounded') {
+  if (context.filters.dateBounds.kind === 'bounded') {
     conditions.push(
-      ...dateConditions(trades.exitedAt, context.data.filters.dateBounds),
-      ...dateConditions(trades.systemExitedAt, context.data.filters.dateBounds),
+      ...dateConditions(trades.exitedAt, context.filters.dateBounds),
+      ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
     );
   }
 
@@ -502,16 +507,22 @@ export async function getPairedAnalyticsRecords(
     .where(and(...conditions))
     .orderBy(asc(trades.exitedAt), asc(trades.id));
 
-  return {
-    ok: true,
-    data: rows.map((row) => ({
-      ...row,
-      actualR: row.actualR as string,
-      systemR: row.systemR as string,
-      actualExitedAt: (row.actualExitedAt as Date).toISOString(),
-      systemExitedAt: (row.systemExitedAt as Date).toISOString(),
-    })),
-  };
+  return rows.map((row) => ({
+    ...row,
+    actualR: row.actualR as string,
+    systemR: row.systemR as string,
+    actualExitedAt: (row.actualExitedAt as Date).toISOString(),
+    systemExitedAt: (row.systemExitedAt as Date).toISOString(),
+  }));
+}
+
+export async function getPairedAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly PairedAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectPairedAnalyticsRecords(context.data) };
 }
 
 export interface RuleAnalyticsRecord {
@@ -529,12 +540,9 @@ export interface RuleAnalyticsRecord {
   readonly exitedAt: string;
 }
 
-export async function getRuleAnalyticsRecords(
-  input: AnalyticsFilterInput | unknown,
-  options: AnalyticsReadOptions = {},
-): Promise<AnalyticsReadResult<readonly RuleAnalyticsRecord[]>> {
-  const context = await resolveAnalyticsQueryContext(input, options);
-  if (!context.ok) return context;
+async function selectRuleAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly RuleAnalyticsRecord[]> {
   const db = getDb();
   const rows = await db
     .select({
@@ -556,24 +564,30 @@ export async function getRuleAnalyticsRecords(
     .innerJoin(strategyRules, eq(strategyRules.id, tradeRuleChecks.strategyRuleId))
     .where(
       and(
-        ...frameworkConditions(context.data),
+        ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.status, 'closed'),
         isNotNull(trades.exitedAt),
-        ...dateConditions(trades.exitedAt, context.data.filters.dateBounds),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
     .orderBy(asc(trades.exitedAt), asc(trades.id), asc(tradeRuleChecks.sortOrder));
 
-  return {
-    ok: true,
-    data: rows.map(({ setupVersionId, ...row }) => ({
-      ...row,
-      checkStatus: row.checkStatus as RuleCheckStatus,
-      scope: setupVersionId === null ? 'strategy' : 'setup',
-      exitedAt: (row.exitedAt as Date).toISOString(),
-    })),
-  };
+  return rows.map(({ setupVersionId, ...row }) => ({
+    ...row,
+    checkStatus: row.checkStatus as RuleCheckStatus,
+    scope: setupVersionId === null ? 'strategy' : 'setup',
+    exitedAt: (row.exitedAt as Date).toISOString(),
+  }));
+}
+
+export async function getRuleAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly RuleAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectRuleAnalyticsRecords(context.data) };
 }
 
 export interface MistakeAnalyticsRecord {
@@ -588,12 +602,9 @@ export interface MistakeAnalyticsRecord {
   readonly exitedAt: string;
 }
 
-export async function getMistakeAnalyticsRecords(
-  input: AnalyticsFilterInput | unknown,
-  options: AnalyticsReadOptions = {},
-): Promise<AnalyticsReadResult<readonly MistakeAnalyticsRecord[]>> {
-  const context = await resolveAnalyticsQueryContext(input, options);
-  if (!context.ok) return context;
+async function selectMistakeAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly MistakeAnalyticsRecord[]> {
   const db = getDb();
   const rows = await db
     .select({
@@ -612,18 +623,57 @@ export async function getMistakeAnalyticsRecords(
     .innerJoin(mistakeTypes, eq(mistakeTypes.id, tradeMistakes.mistakeTypeId))
     .where(
       and(
-        ...frameworkConditions(context.data),
+        ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.status, 'closed'),
         isNotNull(trades.exitedAt),
         eq(mistakeTypes.isSystem, true),
-        ...dateConditions(trades.exitedAt, context.data.filters.dateBounds),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
     .orderBy(asc(trades.exitedAt), asc(trades.id), asc(mistakeTypes.sortOrder));
 
+  return rows.map((row) => ({ ...row, exitedAt: (row.exitedAt as Date).toISOString() }));
+}
+
+export async function getMistakeAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly MistakeAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectMistakeAnalyticsRecords(context.data) };
+}
+
+export interface AnalyticsRawPopulations {
+  readonly filters: ResolvedAnalyticsFilters;
+  readonly trader: readonly TraderAnalyticsRecord[];
+  readonly system: readonly SystemAnalyticsRecord[];
+  readonly paired: readonly PairedAnalyticsRecord[];
+  readonly rules: readonly RuleAnalyticsRecord[];
+  readonly mistakes: readonly MistakeAnalyticsRecord[];
+}
+
+/**
+ * Resolves authenticated scope once, then runs the five independent fixed-
+ * shape projections in parallel. Existing individual reads remain available
+ * for focused callers and retain identical SQL semantics.
+ */
+export async function getAnalyticsRawPopulations(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<AnalyticsRawPopulations>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  const [trader, system, paired, rules, mistakes] = await Promise.all([
+    selectTraderAnalyticsRecords(context.data),
+    selectSystemAnalyticsRecords(context.data),
+    selectPairedAnalyticsRecords(context.data),
+    selectRuleAnalyticsRecords(context.data),
+    selectMistakeAnalyticsRecords(context.data),
+  ]);
   return {
     ok: true,
-    data: rows.map((row) => ({ ...row, exitedAt: (row.exitedAt as Date).toISOString() })),
+    data: { filters: context.data.filters, trader, system, paired, rules, mistakes },
   };
 }
