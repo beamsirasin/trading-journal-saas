@@ -24,6 +24,7 @@
     "test:money": "vitest run src/lib/money",
     "test:time": "vitest run src/lib/time",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "analytics:benchmark": "node --env-file=.env.local scripts/benchmark-analytics.mjs",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d",

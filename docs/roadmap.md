@@ -17,8 +17,8 @@ The MVP roadmap is dependency-ordered and independently reviewable. A phase may 
 | [06](phases/PHASE-06-strategies.md)              | Strategies & Versions                                      | ✅ **Complete**                 | Workspace-owned Strategies, nested Setups, five-table versioned domain, structured Rules, immutable locked Versions with copy-on-write, archive-only lifecycle, real management UI       |
 | [07](phases/PHASE-07-calc-engine.md)             | Trade Model & Calculation Engine                           | ✅ **Complete**                 | Trade schema plus pure per-Trade and aggregate/attribution/equity engines                                                                                                                |
 | [08](phases/PHASE-08-journal.md)                 | Trade Journal                                              | ✅ **Complete**                 | Real creation/list/detail, lifecycles, corrections, Rules/Mistakes, soft deletion                                                                                                        |
-| [09](phases/PHASE-09-analytics.md)               | Dashboard & Analytics                                      | ▶ **Next implementation phase** | Real attribution data behind the Phase 01 surfaces                                                                                                                                       |
-| [10](phases/PHASE-10-settings.md)                | Settings                                                   | ⬜ Not started                  | Profile, workspace, subscription, export                                                                                                                                                 |
+| [09](phases/PHASE-09-analytics.md)               | Dashboard & Analytics                                      | ✅ **Complete**                 | Real attribution data behind the authenticated Dashboard and deep Analytics surfaces                                                                                                     |
+| [10](phases/PHASE-10-settings.md)                | Settings                                                   | ▶ **Next implementation phase** | Profile, workspace, subscription, export                                                                                                                                                 |
 | [11](phases/PHASE-11-admin.md)                   | SaaS Administration                                        | ⬜ Not started                  | Admin role, oversight, audit log                                                                                                                                                         |
 | [12](phases/PHASE-12-hardening.md)               | Hardening & Launch                                         | ⬜ Not started                  | Security, a11y, performance, deploy                                                                                                                                                      |
 
@@ -153,6 +153,17 @@ Phase 08 is officially complete across 08A–08F. Full contract: [PHASE-08-journ
 - **Boundary and presentation** — strict Zod Server Actions expose no trusted/derived inputs, DAL reads remain available in every access mode, money uses registry-aware minor-unit conversion (including JPY/unknown-currency handling), and time input/display uses the persisted IANA timezone.
 - **Regression closeout (08F)** — Trade unit/component, focused Phase 06–08 PostgreSQL, full guarded PostgreSQL, focused Trade production E2E, and a subsequent uncontaminated full repository production E2E all passed. Phase 09 can consume the persisted snapshots; it must not recalculate authoritative Trade values in SQL or React.
 
+## What Phase 09 delivered
+
+Phase 09 is officially complete across 09A–09F. Full contract: [PHASE-09-analytics.md](phases/PHASE-09-analytics.md).
+
+- **Scoped historical read model** — authenticated workspace-scoped fixed-shape Trader, System, paired, Rule, and Mistake projections with strict active/All/archived Account and Strategy/Setup/Version identity filters.
+- **Calendar semantics** — `30d`, `90d`, and `all` only (`90d` default), with persisted-IANA local-calendar bounds converted to half-open UTC ranges. Trader uses `exited_at`, System uses `system_exited_at`, and paired bounded inclusion requires both.
+- **Canonical composition** — every aggregate, attribution, adherence, equity, and drawdown result delegates to Phase 07D. System and Trader populations and curves remain independent; paired values come from the identical same-Trade population. Explicit unavailable/integrity states never become numeric zero, `NaN`, or `Infinity`.
+- **Real product surfaces** — `/app` is the active-Account 30D/90D/All overview; `/app/analytics` adds All Accounts plus Strategy, Setup, and Strategy Version filters, complete System/Trader R metrics, paired comparison, independent equity charts, Rule adherence, and count-only canonical Mistakes. Historical Trade rows retain pinned Version labels.
+- **Boundaries preserved** — authenticated analytics import no demo fixtures, aggregate no currency P&L, perform no FX conversion, and state no verdict/grade/confidence, Discipline Score, or mistake cost.
+- **Measured closeout (09F)** — the 5,000-Trade benchmark remained in single-digit milliseconds for every representative query and required no migration `0009`; focused and complete unit/PostgreSQL/production-E2E regressions passed with responsive EN/TH coverage.
+
 ## Sequencing rationale
 
 **Design system early (01).** A token set that nothing consumes cannot be reviewed. Building the marketing site and the application shell against it exercises every token, every state, and every breakpoint before any of it is load-bearing for real data — and it is far cheaper to change a token now than after eight phases depend on it.
@@ -163,7 +174,7 @@ Phase 08 is officially complete across 08A–08F. Full contract: [PHASE-08-journ
 
 **Entitlements before billing expansion (03C → 04).** Active-account creation and restoration limits already execute server-side inside their mutation transactions. Phase 04 adds customer billing and checkout without weakening that authorization boundary or inventing plan-specific feature gates.
 
-**Analytics (09) now replaces data rather than building screens.** Phase 01 already shipped the analytics surfaces against fixtures, so Phase 09 swaps the fixture source for the engine's output and adds what only real data can justify.
+**Analytics replaces authenticated fixtures with measured read models (09).** The public `/demo` fixtures remain explicitly labelled and isolated; authenticated Dashboard/Analytics consume persisted snapshots and the Phase 07D engine.
 
 ## Superseded
 

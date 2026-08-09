@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phases 03–08 are officially complete; Phase 09 — Dashboard & Analytics is next. Authentication, tenant/workspace isolation, accounts and entitlements, billing foundations, the versioned Strategy/Setup/Rule domain, the Trade schema and pure calculation engine, and the real Trade Journal are implemented. Trade writes flow through strict Server Actions into authoritative services; authenticated DAL reads provide cursor-paginated list/detail/create options with historical labels resolved from each Trade's pinned Strategy/Setup Version snapshots. Phase 09 must add workspace-scoped analytics read models over the persisted snapshots; it must not rederive per-Trade R/outcomes or calculate formulas in React.
+**Status:** Phases 03–09 are officially complete; Phase 10 — Settings is next. Authenticated workspace-scoped analytics reads now project persisted Trade snapshots into separate Trader, System, paired, Rule, and Mistake populations. `src/server/services/analytics.ts` composes them only through Phase 07D helpers for the real `/app` and `/app/analytics` routes; authenticated analytics import no demo fixtures and never rederive per-Trade R/outcomes or canonical formulas in SQL/React.
 
 ## 1. Shape
 
@@ -95,7 +95,7 @@ drizzle/                  Generated SQL migrations — 0000_init_auth_tenancy.sq
 
 **`server/db/queries/` is the only place raw database access is allowed.** Every helper takes a `WorkspaceContext` first and injects `workspace_id`. Writing an unscoped query should require deliberately bypassing this directory, not merely forgetting a filter.
 
-**`lib/demo/` contains no arithmetic.** It holds static presentation fixtures for the Phase 01 prototype. A formula written there to make a demo surface move would be a second implementation of the calculation engine, outside `lib/calc/`, untested and free to disagree with the real one. It is deleted or reduced to test fixtures once Phase 09 wires real data in. See [ADR 0006](decisions/0006-design-system-and-demo-data.md).
+**`lib/demo/` contains no arithmetic.** It holds static presentation fixtures only for the explicitly labelled public `/demo` tour. Authenticated `/app` and `/app/analytics` use real workspace data and do not import this boundary. A formula written here would be a second implementation of the calculation engine outside `lib/calc/`. See [ADR 0006](decisions/0006-design-system-and-demo-data.md).
 
 **`config/plans.ts` is the authoritative paid-plan registry.** Presentation and server-side entitlement resolution share it so prices, plan keys, and 1/5/15 active-account allowances cannot drift. The trial's 1-account allowance remains a separate explicit constant. Phase 3C already enforces create/restore limits in the mutation transaction; Phase 04 adds billing and checkout without creating a second entitlement source.
 

@@ -56,7 +56,7 @@ describe('EmptyTradingDashboard', () => {
   it('shows the honest no-trades explanation', () => {
     renderDashboard();
     expect(screen.getByText('No trades recorded yet')).toBeInTheDocument();
-    expect(screen.getByText(/trade journaling is coming/i)).toBeInTheDocument();
+    expect(screen.getByText(/log a trade to begin/i)).toBeInTheDocument();
   });
 
   it('renders no KPI/metric cards', () => {
@@ -89,7 +89,7 @@ describe('NoActiveTradingAccountRecovery', () => {
         <NoActiveTradingAccountRecovery />
       </NextIntlClientProvider>,
     );
-    const link = screen.getByRole('link', { name: 'Set up a trading account' });
-    expect(link).toHaveAttribute('href', expect.stringContaining('/app/onboarding'));
+    const link = screen.getByRole('link', { name: 'Manage trading accounts' });
+    expect(link).toHaveAttribute('href', expect.stringContaining('/app/accounts'));
   });
 });

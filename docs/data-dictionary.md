@@ -329,7 +329,7 @@ Migration: [`drizzle/0008_trade_domain_and_discipline.sql`](../drizzle/0008_trad
 
 **Why derived values are persisted:** analytics over thousands of trades must not recompute decimals per row, and a later engine fix must not silently rewrite historical numbers. `calc_version` makes recomputation an explicit, auditable backfill.
 
-**Phase 08 write/read paths are live.** `createTrade` resolves and pins the current Strategy Version and exact Setup Version under the canonical workspace/member/entitlement/framework lock order, locks the Strategy Version on first reference, inserts the Trade, snapshots applicable Rules, and writes audit metadata atomically. Lifecycle and correction services persist `planned_r`/`actual_r`/`system_r` and outcomes only through `src/lib/calc/trade.ts` composition helpers; Actions strictly reject every derived/trusted field. `listWorkspaceTrades` and `getWorkspaceTradeDetail` exclude `deleted_at IS NOT NULL` and resolve historical Strategy/Setup labels from the pinned snapshots, never current Version names. Phase 08 provides no restore/deleted view or aggregate analytics read model.
+**Phase 08 write/read paths and Phase 09 analytics reads are live.** `createTrade` resolves and pins the current Strategy Version and exact Setup Version under the canonical workspace/member/entitlement/framework lock order, locks the Strategy Version on first reference, inserts the Trade, snapshots applicable Rules, and writes audit metadata atomically. Lifecycle and correction services persist `planned_r`/`actual_r`/`system_r` and outcomes only through `src/lib/calc/trade.ts` composition helpers; Actions strictly reject every derived/trusted field. `listWorkspaceTrades`/`getWorkspaceTradeDetail` use pinned labels, while `src/server/dal/analytics.ts` projects separate eligible Trader, System, paired, Rule, and Mistake populations by identity. Aggregate formulas remain outside SQL in Phase 07D. There is still no restore/deleted Trade view.
 
 ### `mistake_types`
 
@@ -347,7 +347,7 @@ Migration: [`drizzle/0008_trade_domain_and_discipline.sql`](../drizzle/0008_trad
 
 Seeded (fixed deterministic ids, `ON CONFLICT ... DO NOTHING` for idempotent replay): moved stop · early exit · oversized position · no setup · revenge trade · chased entry · ignored invalidation · moved target · no stop. **Every one of the nine is seeded with one deliberately neutral default: `severity = 'moderate'`, `default_weight = '1.0000'`** (Phase 07B correction) — the source documents name the nine types but define no evidence-backed relative severity or weight, so Phase 07 MVP does not invent unjustified differentiation. `src/config/mistakes.ts`'s `MISTAKE_SEVERITY_WEIGHTS` (minor `0.15` / moderate `0.35` / severe `0.60`) remains a separate, general severity → weight framework, reserved for a later phase's evidence-backed differentiated weighting — not applied to these nine rows.
 
-Editing a severity or default weight does **not** retroactively rewrite historical discipline scores — `trade_mistakes.severity_at_time`/`weight_at_time` snapshot the values in effect when the trade was saved.
+Editing a severity or default weight cannot retroactively rewrite historical snapshots — `trade_mistakes.severity_at_time`/`weight_at_time` preserve the values in effect when the Trade was saved. No Discipline Score currently consumes them.
 
 ### `trade_mistakes`
 
@@ -396,7 +396,7 @@ Every platform-admin mutation writes a row. Non-negotiable: admins act on other 
 | `trades`            | `(workspace_id, strategy_version_id)` — `trades_workspace_strategy_version_idx`                                                                                            | Implemented (Phase 07B) |
 | `trades`            | `(workspace_id, status)` — `trades_workspace_status_idx`                                                                                                                   | Implemented (Phase 07B) |
 | `trades`            | `(workspace_id, trading_account_id)`, `(workspace_id, deleted_at)`, `(id, workspace_id)` unique, `(id, strategy_version_id)` unique, `(workspace_id, mutation_key)` unique | Implemented (Phase 07B) |
-| `trade_mistakes`    | `(mistake_type_id)` — mistake cost ranking; `(workspace_id)`                                                                                                               | Implemented (Phase 07B) |
+| `trade_mistakes`    | `(mistake_type_id)` — Phase 09 count-only frequency reads; `(workspace_id)`                                                                                                | Implemented (Phase 07B) |
 | `trade_rule_checks` | `(trade_id, rule_key)` unique, `(workspace_id)`, `(rule_key)` — cross-Version logical-rule analysis                                                                        | Implemented (Phase 07B) |
 | `mistake_types`     | `(key)` unique WHERE `is_system`; `(workspace_id, key)` unique WHERE NOT `is_system`; `(workspace_id, is_archived)`                                                        | Implemented (Phase 07B) |
 

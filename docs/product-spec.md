@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phases 03–08 are officially complete; Phase 09 — Dashboard & Analytics is next. Authentication, tenant-isolated workspaces, onboarding, trading accounts, entitlements, billing foundations, workspace-owned versioned Strategies/Setups/Rules, the pure calculation engine, and the real Trade Journal are implemented. `/app/trades` and `/app/trades/new` now record and display persisted Planned/Actual/System snapshots through authenticated DAL/Server Actions, with server-resolved historical Version pinning, lifecycle/correction workflows, Rule/Mistake interaction, and soft deletion. Aggregate analytics UI and date-bucketed reporting remain Phase 09; Discipline Score, mistake-cost attribution, and verdict thresholds still require explicit approved policy.
+**Status:** Living document. Phases 03–09 are officially complete; Phase 10 — Settings is next. The real Dashboard and deep Analytics now report authenticated workspace data over persisted Trade snapshots with strict historical filters, separate System/Trader populations, same-Trade paired comparison, canonical R metrics, independent equity curves, Rule adherence, and count-only Mistakes. Discipline Score, mistake-cost attribution, verdict thresholds, FX/currency portfolio analytics, and advanced/global filters still require explicit approved policy.
 
 ## 1. The problem
 
@@ -35,7 +35,7 @@ Metrics: System Win Rate · System Avg R · System Expectancy · System Profit F
 
 The realised result of actual entries, management, exits, and costs.
 
-Metrics: Actual Win Rate · Actual Avg R · Actual Expectancy · Actual Profit Factor · Actual Total R · Actual Max Drawdown · Discipline Score · Execution Efficiency · Edge Leakage.
+Metrics: Actual Win Rate · Actual Avg R/Expectancy · Actual Profit Factor · Actual Total R · Actual Max Drawdown. Execution Efficiency and Edge Leakage are paired comparison metrics over Trades eligible on both axes; they are not Trader-population aggregates. Discipline Score remains deferred.
 
 ### R-multiples
 
@@ -56,7 +56,7 @@ The bottom-left cell matters as much as the top-right. A trader rewarded for dev
 
 ### Discipline and mistakes
 
-Each trade may carry mistakes from a taxonomy (moved stop, early exit, oversized, revenge trade, chased entry, …), each weighted by severity. These aggregate into a Discipline Score and, joined with R data, into a ranking of mistakes by **cost in R** rather than by frequency.
+Each Trade may carry one or more of the nine canonical system Mistakes. Phase 09 reports deterministic distinct-Trade frequency only. Snapshotted severity/weight fields preserve future design room, but no Discipline Score or mistake-cost/leakage attribution exists until an explicit non-double-counting policy is approved.
 
 ## 4. MVP scope
 
@@ -82,8 +82,8 @@ The product works if a user can answer, within a month of journaling:
 
 1. Does my strategy have an edge?
 2. How much of that edge am I capturing?
-3. Which specific mistake costs me the most?
-4. Is my discipline improving?
+3. Which canonical mistakes occur most frequently?
+4. What objective proportion of evaluated Rule checks did I follow?
 
 ## 8. Known limitations
 
@@ -97,6 +97,6 @@ Mitigations: prefill the system outcome where plan and execution agree, keep the
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
 | 1   | ~~Do plan limits match how traders actually segment accounts?~~ **Locked in Phase 3C**: Starter 1 / Trader 5 / Professional 15, gating exclusively on active trading-account count, identical feature set across plans. See `src/config/plans.ts` and CLAUDE.md A3.      | Phase 3C ✓ |
 | 2   | **Locked in Phase 3C:** 7-day trial, exactly 1 active trading account, every feature unlocked, and no user-data deletion at expiry. The allowance is not derived from any paid plan.                                                                                     | Phase 3C ✓ |
-| 3   | What is the minimum closed-trade count before a verdict may be stated?                                                                                                                                                                                                   | Phase 09   |
+| 3   | What is the minimum closed-trade count before a verdict may be stated? Phase 09 deliberately shipped measurements without verdicts; approve this policy before any later verdict layer.                                                                                  | Deferred   |
 | 4   | **Locked in Phase 07C:** `BREAK_EVEN_TOLERANCE_R` is `0.05R`, a global Calculation Engine Version 1 constant (`src/config/trade-calc.ts`) — identical for every Workspace and every Trading Account, not per-account configuration. See CLAUDE.md A1.                    | Phase 07 ✓ |
 | 5   | **Locked for launch/future implementation:** VAT collection disabled at launch; future exclusive VAT is admin-configured, initially prepared as 7%, server-calculated in integer minor units, snapshotted immutably, and presented/calculated for customers by Phase 04. | 04/11/12   |

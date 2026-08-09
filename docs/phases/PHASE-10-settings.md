@@ -2,6 +2,8 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
+**Status:** Next phase; not started. Readiness audit required before implementation because several original bullets below are provisional and conflict with later locked Phase 07–09 contracts.
+
 ## Goal
 
 Users control their profile, workspace, preferences, and subscription — including leaving the product cleanly.
@@ -20,7 +22,7 @@ Users control their profile, workspace, preferences, and subscription — includ
 
 - Name, slug (uniqueness validated; changing it invalidates existing links — warn)
 - Default trading account and default strategy for new trades
-- Mistake taxonomy management: add / edit / archive custom types, set severity. **Editing severity does not retroactively rewrite historical discipline scores** — the trade's penalty is snapshotted at save time. Say so in the UI.
+- **Provisional decision:** Mistake taxonomy management (add/edit/archive custom types and severity) was explicitly deferred by Phase 09. Approve the taxonomy, localization, historical-selector, and authorization contract before including it. Existing snapshots cannot be described as historical Discipline Scores because no score exists.
 - Owner-only actions gated by role, server-side
 
 ### Subscription (`/app/settings/billing`)
@@ -36,13 +38,12 @@ All paid plans show the same included features and analytics. Plan comparison di
 ### Data & danger zone
 
 - **Export all workspace data as JSON and CSV.** Available even in read-only/expired state — a user's data is theirs regardless of payment status.
-- Delete workspace: type-to-confirm, explicit list of what is destroyed, 30-day soft delete before hard delete
-- Delete account: cascades owned workspaces, same confirmation rigor
+- **Provisional decision:** workspace/account deletion requires type-to-confirm and an explicit destruction list, but the proposed 30-day soft-delete window and hard-delete job have no implemented schema/job contract yet. Decide ownership, recovery, retention, and cascade semantics before implementation.
 
 ### Preferences
 
 - Default risk model for new accounts
-- Default break-even tolerance for new accounts
+- **Provisional decision:** a per-account/default break-even tolerance conflicts with Phase 07C's locked global Calculation Engine Version 1 constant. Do not add it without an explicit engine-versioning and historical-backfill decision.
 - Reduced-motion override (independent of the OS setting)
 
 ## Out of scope

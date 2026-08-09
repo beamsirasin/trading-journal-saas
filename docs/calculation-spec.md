@@ -1,6 +1,6 @@
 # Calculation Specification
 
-**Status:** Phase 07's pure calculation engine and Phase 08's Trade Journal integration are officially complete. Phase 08 services now call the Phase 07C composition helpers for every create/lifecycle/correction dependency and persist their derived snapshots; strict Actions and React never calculate or submit those values. Phase 07D's `aggregate`/`attribution`/`equity` functions remain pure and unused by Trade writes/UI, ready for Phase 09 workspace-scoped analytics read models. **This document is the one canonical formula document. Deliberately NOT implemented:** Discipline Score, weighted mistake penalties, mistake-cost attribution/ranking, and verdict sample-size thresholds; each still requires explicit evidence-backed policy. Date-bucketed/SQL analytics reporting remains Phase 09.
+**Status:** Phase 07's pure calculation engine, Phase 08's Trade Journal integration, and Phase 09's analytics composition are officially complete. Trade services call Phase 07C helpers for persisted snapshots; Phase 09 workspace-scoped read models project eligible rows and `src/lib/analytics/metrics.ts` delegates every aggregate, attribution, and equity result to Phase 07D. SQL, Actions, routes, React, and charts contain no second canonical formula. **This document is the one canonical formula document. Deliberately NOT implemented:** Discipline Score, weighted mistake penalties, mistake-cost attribution/ranking, verdict sample-size thresholds, or FX/currency portfolio analytics.
 
 **Implemented in Phase 00b:** the money and time primitives the engine builds on — [`src/lib/money/`](../src/lib/money/) and [`src/lib/time/`](../src/lib/time/). See [ADR 0002](decisions/0002-money-representation.md) and [ADR 0003](decisions/0003-time-model.md).
 
@@ -112,7 +112,7 @@ systemR  = systemGrossR − systemCostR
 
 ### `pending`/`no_trade` behavior
 
-`resolveSystemR` (`src/lib/calc/trade.ts`) is the one function that respects `Trade.system_status`'s three-state lifecycle before attempting any arithmetic: `pending` returns `{ ok: false, reason: 'unresolved_system_outcome' }`, `no_trade` returns `{ ok: false, reason: 'system_no_trade' }`, and only `resolved` reaches `systemR`'s actual calculation. Neither `pending` nor `no_trade` is ever represented as a System R of `0` — CLAUDE.md's null-result discipline ("0 means no data" is forbidden) applies to the per-trade engine exactly as it will to Phase 07D's aggregates.
+`resolveSystemR` (`src/lib/calc/trade.ts`) is the one function that respects `Trade.system_status`'s three-state lifecycle before attempting any arithmetic: `pending` returns `{ ok: false, reason: 'unresolved_system_outcome' }`, `no_trade` returns `{ ok: false, reason: 'system_no_trade' }`, and only `resolved` reaches `systemR`'s actual calculation. Neither `pending` nor `no_trade` is ever represented as a System R of `0` — CLAUDE.md's null-result discipline ("0 means no data" is forbidden) applies equally to the per-Trade engine and Phase 07D aggregates.
 
 ### Why system and actual use different denominators
 

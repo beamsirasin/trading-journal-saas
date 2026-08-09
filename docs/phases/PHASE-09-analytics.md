@@ -2,111 +2,89 @@
 
 **Depends on:** 08 · **Blocks:** 12
 
-**Status:** Next implementation phase. Phase 08 now provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build analytics read models over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
+**Status:** Complete. Phase 09A–09F delivered and verified the authenticated analytics read model, canonical composition, real Dashboard, deep Analytics experience, and full closeout. Phase 10 — Settings is next.
 
 ## Goal
 
-Make the product's central question visually obvious at a glance:
+Answer three different questions without collapsing their populations:
 
-> Did the trader lose because the strategy has no edge, or because they did not follow the strategy?
+1. **System performance:** what the resolved Strategy/Setup counterfactual produced.
+2. **Trader performance:** what the trader actually achieved on closed Trades.
+3. **Paired comparison:** the difference on the same Trades eligible on both axes.
 
-Every chart on the dashboard exists to answer that. Anything that does not is cut.
+Phase 07D remains the only canonical formula authority.
 
-## Scope
+## Delivered scope
 
-> **Load the `dataviz` skill before writing any chart code, choosing chart colors, or laying out the KPI row.**
+### Filters and date semantics
 
-### Dashboard (`/app` overview and `/app/analytics` detail)
+- Dashboard `/app`: active Trading Account only; `30d`, `90d`, `all`; default `90d`.
+- Deep `/app/analytics`: active Account by default, explicit All Accounts, archived historical Account identities, Strategy, Setup, and Strategy Version; `30d`, `90d`, `all`; default `90d`.
+- Unknown URL keys, array values, malformed UUIDs, invalid dependencies, and foreign-workspace identities return the same closed invalid-filter result and never broaden scope.
+- Bounded presets mean today plus the preceding 29/89 calendar days in the persisted user IANA timezone. Bounds are `[local start midnight, local day-after-end midnight)` converted to UTC through the shared DST-aware time primitives. No fixed-hour subtraction or browser/server timezone authority is used.
 
-Replace the remaining Phase 01 fixture-backed overview/analytics data sources in the existing localized route structure; do not add a parallel `/app/dashboard` route.
+Not implemented: `7d`, YTD, custom date, Symbol, Direction, Timeframe, or Session global filters.
 
-**1. Attribution summary — the hero**
+### Populations
 
-Side-by-side System vs Trader KPI columns with a delta between them:
+- **Trader:** `status = closed`, nondeleted, Actual R/outcome present, `exited_at` present; System state is irrelevant. Bounded filtering uses `exited_at`.
+- **System:** `system_status = resolved`, nondeleted, System R/outcome present, `system_exited_at` present; execution state is irrelevant. Bounded filtering uses `system_exited_at`.
+- **Paired:** the same Trade satisfies both eligibility contracts. In a bounded scope, both timestamps must fall inside the selected interval.
+- **Rules/Mistakes:** closed, nondeleted Trader population using `exited_at`.
 
-```
-                 SYSTEM      TRADER      Δ
-Total R           +24.5R      +11.2R    −13.3R
-Win rate           58%         44%       −14pt
-Avg R             +0.41R      +0.19R    −0.22R
-Expectancy        +0.41R      +0.19R    −0.22R
-Profit factor      1.9         1.3       −0.6
-Max drawdown      −6.2R      −11.8R     −5.6R
-```
+The DAL uses five fixed-shape workspace-scoped projections with no N+1 query path and no aggregate formula in SQL. Reads require an authenticated active membership but not a writable entitlement, so `writable`, `over_limit`, and `read_only` remain readable; removed members are denied.
 
-Plus a plain-language verdict only after Phase 09 explicitly approves and tests minimum-sample/edge/leakage thresholds, not vibes:
+### Metrics and availability
 
-- system edge positive + high leakage → _"Your strategy is working. Execution is costing you 13.3R."_
-- system edge negative → _"The strategy itself has no edge in this sample. Execution is not the primary problem."_
-- both negative → both stated, most severe first
-- insufficient sample → _"Not enough closed trades to draw a conclusion (12 of 30)."_
+System and Trader independently expose sample count, Total R, Win Rate, Expectancy/Average R, Profit Factor, Maximum Drawdown R, Average Win/Loss R, Payoff Ratio, and their own equity curve. The UI presents the identical Average R/Expectancy contract once as **Expectancy (Average R)**.
 
-**Never state a verdict until an approved minimum sample size exists, and never state one below it.** The threshold is a Phase 09 product decision, not an existing Phase 07/08 formula.
+Paired comparison exposes comparable count, paired System Total R, paired Actual Total R, Edge Leakage R, and Execution Efficiency. Paired totals always come from the identical same-Trade population. Edge Leakage is not clamped; Execution Efficiency is available only when paired System Total R is positive and may be negative or above 100%.
 
-**2. Dual equity curve** — cumulative system R and actual R on one axis. The gap between the lines _is_ edge leakage, and it is the single most important visual in the product.
+Every calculated value is `available`, explicitly `unavailable`, or a sanitized `data_integrity_error`. Supported unavailable reasons are `no_trades`, `no_wins`, `no_losses`, `no_profit_or_loss`, `no_comparable_trades`, `system_has_no_edge`, and `no_rule_checks`. None is rendered as accidental numeric zero, `NaN`, or `Infinity`.
 
-**3. Attribution KPI row** — paired Edge Leakage (R), Execution Efficiency (%), and objective Rule Adherence. A Followed-Plan Rate is allowed only if Phase 09 proves the stored population is meaningfully populated. Discipline Score remains deferred until an approved formula exists. Animated counters; `null` results render their reason, never `0`.
+### Equity, Rules, and Mistakes
 
-**4. Outcome quadrant matrix** — 2×2 of system × trader outcome, counts and total R per cell, click-through to the filtered trade list. The _system win / trader loss_ cell is visually emphasized: it is where the money is going.
+- Trader and System equity are independent event timelines ordered by their own exit timestamp and Trade id. They are not synchronized, interpolated, or interpreted as a visual Edge Leakage gap.
+- Charts use canonical cumulative-R strings; JavaScript number conversion occurs only for final SVG coordinates. Tooltips and accessible fallback tables retain high-precision canonical sources, use the persisted user timezone, honor reduced motion, and remain usable at 320px.
+- Rule Analytics preserves exactly `followed`, `violated`, `not_checked`, and `not_applicable`, plus evaluated count. Adherence is `followed / (followed + violated)`; unknown/inapplicable states stay outside the denominator.
+- Mistake Analytics supports the nine canonical system labels and ranks distinct Trade count only, deterministically by count then key. Multiple Mistakes per Trade are supported without cost, percentage, severity, or leakage attribution.
 
-**5. Mistake analysis** — frequency and filtered Trade drill-down may use canonical Mistake snapshots. Ranking Mistakes by R cost remains deferred because multi-Mistake Trades need an explicit non-double-counting attribution policy.
+### Product surfaces and isolation
 
-**6. Supporting** — R distribution histogram, performance by strategy version, day-of-week / time-of-day, current open positions.
+- `/app` renders real active-Account System and Trader headline panels, paired comparison, and recent real Trades with pinned historical Strategy/Setup labels. It intentionally has no equity or deep-filter duplication.
+- `/app/analytics` renders the complete metric panels, strict filters, paired comparison, two independent equity charts, Rule summary, and count-only Mistakes.
+- Authenticated routes import no `demoBundle` or fixture analytics. Static fixtures remain only for the explicitly labelled public `/demo`, which remains functional.
+- Analytics are R-first: no aggregate currency P&L, money equity/drawdown, or FX conversion exists.
+- No verdict, grade, confidence layer, Discipline Score, mistake-cost attribution, or “costliest mistake” claim exists in authenticated analytics.
 
-### Filters
+## Historical identity behavior
 
-Date range, trading account, Strategy, Setup, and Strategy Version. Applied server-side, reflected in the URL, shareable, and **workspace-scoped regardless of the URL contents**.
+Filter selectors use immutable IDs. Archived Accounts, Strategies, Setups, and Strategy Versions remain selectable when nondeleted Trade history exists. Selector presentation may use a current label when available, but Trade list/detail always render each Trade’s pinned Version labels; renaming current framework content does not rewrite historical Trade display.
 
-### Query & performance
+## Performance and migration result
 
-- SQL/read models own workspace scoping, soft-delete/status eligibility filters, filter joins, stable occurrence timestamps, and timezone date buckets. They read persisted R/outcome snapshots and never rederive them from prices/money.
-- The server analytics service consumes the canonical Phase 07D functions: `selectTraderEligible`/`selectSystemEligible`, `totalR`, `averageR`, `expectancyR`, `winRate`, `averageWinR`, `averageLossR`, `payoffRatio`, `profitFactor`, `equityCurveR`, `maximumDrawdownR`, `selectComparisonEligible`, `pairedEdgeLeakageR`, `executionEfficiency`, and `ruleAdherenceRate`. Do not duplicate those formulas in SQL or React; benchmark the read-model projection and only introduce materialization with an explicit consistency design.
-- Trader eligibility: closed, not deleted, `actual_r` and `trader_outcome` present, regardless of System state. System eligibility: resolved, not deleted, `system_r` and `system_outcome` present. Comparison eligibility is the paired intersection on the same Trade. `pending`, `no_trade`, open, canceled, and soft-deleted rows are never coerced to `0R`.
-- Indexes on `(workspace_id, trading_account_id, exited_at)` and `(workspace_id, strategy_version_id)`
-- Trader occurrence uses `exited_at`; System occurrence uses `system_exited_at`. Date bucketing and user-entered filter boundaries use the persisted user's **IANA timezone** (`CLAUDE.md` §7), converted to half-open UTC ranges—never browser/server timezone authority.
-- Exclude soft-deleted and open trades from closed-trade aggregates
-- Target < 500ms at 5,000 trades; seed a benchmark fixture and measure
+The guarded `pnpm run analytics:benchmark` creates and removes a deterministic 5,000-Trade fixture only in `TEST_DATABASE_URL`. At 09F closeout, all eight representative plans used indexes; execution ranged from 0.288 ms to 5.118 ms, with bounded in-memory sorts and zero shared-block reads. No measurable regression justified another index, so migrations `0000`–`0008` remain unchanged and no migration `0009` exists.
 
-### Presentation
+## Closeout verification
 
-- Skeletons matching final layout (no layout shift), smooth chart transitions, animated KPI values
-- Empty state teaches: what the dashboard will show once trades exist, with a link to log one
-- Charts degrade on mobile — fewer ticks, simplified legends, scroll containers for wide content; **never a horizontally scrolling page**
-- Chart color follows the `dataviz` skill's palette and semantic tokens; system vs actual must remain distinguishable in both themes and for color-vision deficiency (not color alone — differentiate by line style/weight too)
+- Focused analytics unit/component: 8 files, 90 tests passed.
+- Focused Phase 06–09 PostgreSQL: 13 files, 340 tests passed.
+- Complete guarded PostgreSQL: 35 files, 541 tests passed on PostgreSQL 18.4.
+- Focused production Analytics/Dashboard/public-demo matrix: 31 passed; four intentional cross-project skips (desktop-only on Mobile Chrome and mobile-only on Chromium).
+- Full repository production E2E: 383 passed and six intentional project-matrix skips across 389 collected tests, after correcting stale pre-Phase-09 empty-state assertions and completing a later uncontaminated full run.
+- Repository format, lint, typecheck, unit, schema check, production build, and client scan passed as final clean closeout gates; see the Phase 09F handoff for command-level detail.
 
-## Out of scope
+## Deferred
 
-Custom report builder, PDF export, scheduled email reports, AI commentary, benchmark comparison, Monte Carlo, Discipline Score, weighted mistake penalties, mistake-cost attribution/ranking, custom Mistake taxonomy CRUD, and recalculation of authoritative Trade snapshots.
+- Discipline Score and weighted mistake penalties.
+- Mistake-cost/lost-R/leakage attribution and custom Mistake taxonomy.
+- Verdicts, grades, confidence, and minimum-sample policy.
+- FX/currency portfolio analytics and aggregate money equity/drawdown.
+- Custom date, `7d`, YTD, and Symbol/Direction/Session/Timeframe global filters.
+- Advanced breakdowns, outcome quadrant UI/drill-down, broker imports, Monte Carlo, AI coaching, partial fills, scaling, and multi-leg analytics.
 
-## Deliverables
+## Phase 10 readiness
 
-```
-src/server/dal/analytics.ts (or one documented analytics read-model boundary)
-src/server/services/analytics.ts
-src/components/charts/**   src/components/dashboard/**
-src/app/[locale]/(app)/app/(main)/{page.tsx,analytics/**}
-drizzle/0009_*.sql only if measured query plans require indexes (Phase 09, never Phase 08)
-src/**/{analytics,timezone-bucketing,verdict-thresholds}*.test.ts
-```
+Phase 10 is **Settings**: profile/preferences, workspace controls, subscription/billing history, data export, and danger-zone lifecycle. Existing authentication, membership/role checks, entitlement modes, active-account preferences, persisted IANA timezone, billing snapshots, and complete Phase 09 analytics provide its dependencies.
 
-## Definition of Done
-
-- [ ] System vs trader comparison is the first thing visible
-- [ ] Any verdict thresholds are explicitly approved, documented, and unit-tested, including the insufficient-sample path; otherwise no verdict is rendered
-- [ ] Dual equity curve renders correctly with sparse and dense data
-- [ ] Quadrant matrix links through to correctly filtered lists
-- [ ] Trader/System/paired populations differ exactly as the calculation spec defines; all exclude soft-deleted Trades
-- [ ] `null` calc results render their reason, never `0`
-- [ ] Timezone bucketing tested across a DST boundary and a non-UTC user
-- [ ] Filters cannot widen scope beyond the workspace
-- [ ] No authoritative snapshot or aggregate formula is recalculated in React
-- [ ] < 500ms at 5,000 trades on the benchmark fixture
-- [ ] Charts readable in dark and light, and without color discrimination
-- [ ] Four states, responsive, accessible, reduced-motion honored
-- [ ] Typecheck, lint, tests, build pass
-
-## Risks
-
-- **Small samples produce confident nonsense.** Enforce a minimum-sample gate on every verdict; show the count driving each conclusion.
-- **Dashboard scope creep.** Six sections is already a lot. Anything not serving the attribution question is deferred.
-- **Timezone bucketing bugs are invisible.** They quietly shift trades between days and skew every time-based insight. Test explicitly against DST.
+Before implementation, Phase 10 must resolve its stale/provisional assumptions about custom Mistake taxonomy versus Phase 09’s explicit deferral, references to nonexistent historical Discipline Scores, configurable break-even defaults versus the global Phase 07C constant, workspace/account soft-delete and hard-delete-job semantics, OAuth provider metadata, importable export schema/versioning, and which existing `/app/settings` surface is replaced or extended.

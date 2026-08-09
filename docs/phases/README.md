@@ -32,7 +32,7 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 **Server entitlements before billing (03C → 04).** Account creation and restoration already enforce the active-account allowance server-side. Phase 04 builds billing and checkout on that boundary; the UI is never the control.
 
-**Analytics replaces data, not screens (09).** Phase 01 built the analytics surfaces against fixtures. Phase 09 swaps the source.
+**Analytics replaces authenticated fixtures with measured read models (09).** The public `/demo` fixtures remain labelled and isolated; authenticated Dashboard/Analytics use persisted snapshots and Phase 07D.
 
 ## Superseded
 
@@ -42,4 +42,4 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 ## Status
 
-Phases 00–08, including [Phase 08 — Trade Journal](PHASE-08-journal.md), are complete. [Phase 09 — Dashboard & Analytics](PHASE-09-analytics.md) is the next implementation phase.
+Phases 00–09, including [Phase 09 — Dashboard & Analytics](PHASE-09-analytics.md), are complete. [Phase 10 — Settings](PHASE-10-settings.md) is the next implementation phase.

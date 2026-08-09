@@ -6,12 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Link } from '@/i18n/navigation';
 
 /**
- * The honest, real (non-demo) dashboard for `/app`, replacing `DemoDashboard`
- * once onboarding is complete. Renders only what is actually known — the
- * account just created — never an invented P&L, win rate, expectancy, or
- * chart, which is exactly what the fixture-driven demo shows instead. Trade
- * journaling itself is Phase 08+; this makes that explicit rather than
- * leaving an empty gap or, worse, a fabricated number.
+ * The honest empty state for a real active Account. It renders only what is
+ * known and directs the user to record a Trade; it never substitutes fixture
+ * P&L, win rate, expectancy, or chart data.
  *
  * `useTranslations` rather than `getTranslations` — same reasoning as
  * `TradingAccountIndicator`: `account` is already resolved by the caller, so
@@ -23,23 +20,7 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
 
   return (
     <div className="flex flex-col gap-6">
-      <Card role="region" aria-label={t('activeAccountRegionLabel')}>
-        <CardHeader>
-          <CardTitle>{account.name}</CardTitle>
-          <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-5 sm:grid-cols-3">
-          <SummaryStat
-            label={t('accountModeLabel')}
-            value={t(`accountModeValues.${account.accountMode}`)}
-          />
-          <SummaryStat label={t('baseCurrencyLabel')} value={account.baseCurrency} />
-          <SummaryStat
-            label={t('startingBalanceLabel')}
-            value={`${account.startingBalance} ${account.baseCurrency}`}
-          />
-        </CardContent>
-      </Card>
+      <ActiveTradingAccountSummaryCard account={account} />
 
       <div className="border-border bg-card flex flex-col items-start gap-3 rounded-lg border p-6 sm:flex-row sm:items-center sm:gap-4">
         <Rocket className="text-primary size-6 shrink-0" aria-hidden="true" />
@@ -51,6 +32,33 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
         </div>
       </div>
     </div>
+  );
+}
+
+export function ActiveTradingAccountSummaryCard({
+  account,
+}: {
+  account: ActiveTradingAccountSummary;
+}) {
+  const t = useTranslations('dashboard');
+  return (
+    <Card role="region" aria-label={t('activeAccountRegionLabel')}>
+      <CardHeader>
+        <CardTitle>{account.name}</CardTitle>
+        <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-5 sm:grid-cols-3">
+        <SummaryStat
+          label={t('accountModeLabel')}
+          value={t(`accountModeValues.${account.accountMode}`)}
+        />
+        <SummaryStat label={t('baseCurrencyLabel')} value={account.baseCurrency} />
+        <SummaryStat
+          label={t('startingBalanceLabel')}
+          value={`${account.startingBalance} ${account.baseCurrency}`}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -81,7 +89,7 @@ export function NoActiveTradingAccountRecovery() {
         {t('noActiveAccountDescription')}
       </p>
       <Link
-        href="/app/onboarding"
+        href="/app/accounts"
         className="text-primary-foreground bg-primary hover:bg-primary/90 inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
       >
         {t('noActiveAccountCta')}

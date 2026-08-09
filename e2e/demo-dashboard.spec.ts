@@ -1,14 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { authStateFile } from './support/auth-state';
-import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
-
-// `/en/app*` routes need a real, database-verified session (Phase 02); `/en/demo`
-// does not. storageState is harmless for `/en/demo` (a public route, indifferent
-// to auth state), so it is set file-wide; the DB-availability skip below is
-// applied per-test, only for the routes that actually need it.
-test.use({ storageState: authStateFile });
-
 /**
  * The demo dashboard, on the one route that still renders it.
  *
@@ -122,48 +113,6 @@ test.describe('demo dashboard', () => {
       await expect(view.getByText('Actual: Loss').first()).toBeVisible();
     });
   }
-
-  /**
-   * PHASE 1.1 NEW COVERAGE. The full attribution metric set (System/Actual
-   * Expectancy, Profit Factor, Total R, Max Drawdown) that used to render on
-   * the dashboard now lives exclusively at `/en/app/analytics` — see
-   * `src/app/[locale]/(app)/app/analytics/page.tsx`.
-   */
-  test('/en/app/analytics shows the full system-vs-actual metric set', async ({ page }) => {
-    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
-    await page.goto('/en/app/analytics');
-
-    for (const label of [
-      'Win rate',
-      'Average R',
-      'Expectancy',
-      'Profit factor',
-      'Total R',
-      'Max drawdown',
-    ]) {
-      await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
-    }
-
-    const figure = page.getByRole('figure').filter({ hasText: 'Cumulative R over time' });
-    await expect(figure).toBeVisible();
-    await expect(figure.getByRole('table', { name: /cumulative r by week/i })).toBeAttached();
-  });
-
-  /**
-   * PHASE 1.1 NEW COVERAGE. The chart-backed mistake breakdown ("What your
-   * mistakes cost") that the dashboard used to show is now exclusive to the
-   * analytics page — the dashboard shows only the top-3 plain list (asserted
-   * above, per route).
-   */
-  test('/en/app/analytics shows the full mistake cost breakdown as a figure', async ({ page }) => {
-    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
-    await page.goto('/en/app/analytics');
-
-    const figure = page.getByRole('figure').filter({ hasText: 'What your mistakes cost' });
-    await expect(figure).toBeVisible();
-    await expect(figure.getByText('Moved stop').first()).toBeVisible();
-    await expect(figure.getByRole('table', { name: /cost in r by mistake/i })).toBeAttached();
-  });
 
   /**
    * PHASE 1.1 REWRITE. Edge Leakage is no longer a standalone KPI card on the
