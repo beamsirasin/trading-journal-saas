@@ -2,7 +2,16 @@
 
 **Depends on:** 08 · **Blocks:** 12
 
-**Status:** Next implementation phase. Phase 08 now provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build analytics read models over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
+**Status:** In progress. Phase 09A completed the repository/metric audit. Phase 09B implements the authenticated raw analytics read model, historical filters, deterministic date bounds, and measured query benchmark; metric composition and the `/app`/`/app/analytics` UI remain unimplemented. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
+
+## Phase 09B implementation boundary
+
+- The strict filter contract supports only `30d`, `90d`, and `all`; `90d` is the default. An omitted account filter resolves the trusted active Trading Account, the explicit `all` sentinel selects all workspace accounts, and an explicit UUID may select an archived historical Account. Strategy, Setup, and Strategy Version filters are UUID identities and their relationships are revalidated inside the active workspace.
+- Bounded presets mean the user's current local calendar day plus the preceding 29/89 local days. The persisted user IANA timezone resolves `[start local day 00:00, day after end 00:00)` through the existing DST-aware time primitives; the implementation never subtracts a fixed number of hours.
+- Trader reads use closed, nondeleted rows and `exited_at`; System reads use resolved, nondeleted rows and `system_exited_at` independently of execution status. Paired reads select the same Trade row and require both timestamps inside a bounded range. Rule and canonical-Mistake reads use the closed, nondeleted Trader population and `exited_at`.
+- Historical selectors include archived identities with nondeleted Trade history. Filtering always uses IDs. Selector display uses the current Strategy/Setup snapshot where available, otherwise the latest pinned historical snapshot; Trade list/detail continue to show each Trade's exact pinned labels.
+- The read model returns narrow serializable IDs, enum strings, canonical R strings, and ISO timestamps only. It performs no aggregate formula, currency sum, FX conversion, Rule adherence calculation, mistake percentage, severity weighting, or mistake-cost/leakage attribution.
+- The guarded opt-in benchmark (`pnpm run analytics:benchmark`) creates and removes a deterministic 5,000-Trade fixture only in `TEST_DATABASE_URL`. Eight required `EXPLAIN (ANALYZE, BUFFERS)` query shapes completed in 0.295–5.322 ms in the Phase 09B run, with zero shared-block reads and only small in-memory sorts. Existing indexes are adequate at the approved target scale; no migration `0009` is justified by this measurement.
 
 ## Goal
 
