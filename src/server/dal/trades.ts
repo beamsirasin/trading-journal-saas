@@ -117,6 +117,8 @@ export interface TradeListPage {
 export interface ListWorkspaceTradesParams {
   readonly limit?: number;
   readonly cursor?: string | null;
+  /** Optional trusted/read-scoped Account identity; workspace scope still applies independently. */
+  readonly tradingAccountId?: string;
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -177,6 +179,9 @@ export async function listWorkspaceTrades(
   const cursor = params.cursor ? decodeCursor(params.cursor) : null;
 
   const conditions = [eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)];
+  if (params.tradingAccountId !== undefined) {
+    conditions.push(eq(trades.tradingAccountId, params.tradingAccountId));
+  }
   if (cursor !== null) {
     conditions.push(
       sql`(${occurredAtExpr}, ${trades.id}) < (${cursor.occurredAt}::timestamptz, ${cursor.tradeId}::uuid)`,

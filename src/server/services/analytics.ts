@@ -1,11 +1,18 @@
 import 'server-only';
 
-import { composeAnalyticsSnapshot, type AnalyticsSnapshot } from '@/lib/analytics/metrics';
+import {
+  composeAnalyticsSnapshot,
+  composeDashboardOverview,
+  type AnalyticsSnapshot,
+  type DashboardOverview,
+} from '@/lib/analytics/metrics';
+import { resolveDashboardDatePreset } from '@/lib/analytics/presentation';
 import {
   getAnalyticsRawPopulations,
   type AnalyticsFilterErrorCode,
   type AnalyticsReadOptions,
 } from '@/server/dal/analytics';
+import { listWorkspaceTrades, type TradeListItem } from '@/server/dal/trades';
 
 export type AnalyticsServiceResult =
   | { readonly ok: true; readonly data: AnalyticsSnapshot }
@@ -37,5 +44,44 @@ export async function getAnalyticsSnapshot(
       rules: raw.data.rules,
       mistakes: raw.data.mistakes,
     }),
+  };
+}
+
+export interface DashboardOverviewData {
+  readonly overview: DashboardOverview;
+  readonly recentTrades: readonly TradeListItem[];
+}
+
+export type DashboardOverviewServiceResult =
+  | { readonly ok: true; readonly data: DashboardOverviewData }
+  | { readonly ok: false; readonly code: AnalyticsFilterErrorCode };
+
+/**
+ * Narrow `/app` contract: the caller supplies only a date-range value. The
+ * Account is always resolved from the active-account context, so this API
+ * cannot be used to request All Accounts or framework filters.
+ */
+export async function getDashboardOverview(
+  rangeInput: unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<DashboardOverviewServiceResult> {
+  const datePreset = resolveDashboardDatePreset(rangeInput);
+  const snapshot = await getAnalyticsSnapshot({ datePreset }, options);
+  if (!snapshot.ok) return snapshot;
+  const accountScope = snapshot.data.scope.accountScope;
+  if (accountScope.kind !== 'account' || accountScope.source !== 'active') {
+    return { ok: false, code: 'invalid_filters' };
+  }
+
+  const recent = await listWorkspaceTrades({
+    limit: 5,
+    tradingAccountId: accountScope.accountId,
+  });
+  return {
+    ok: true,
+    data: {
+      overview: composeDashboardOverview(snapshot.data),
+      recentTrades: recent.items,
+    },
   };
 }

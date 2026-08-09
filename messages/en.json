@@ -329,10 +329,70 @@
     "baseCurrencyLabel": "Base currency",
     "startingBalanceLabel": "Starting balance",
     "noTradesTitle": "No trades recorded yet",
-    "noTradesDescription": "Trade journaling is coming in the next phase. Once it ships, every trade you log here will show how much of your strategy's edge you actually captured.",
+    "noTradesDescription": "Log a Trade to begin building your real System and Trader performance history.",
     "noActiveAccountTitle": "No active trading account",
     "noActiveAccountDescription": "Your workspace does not have a usable trading account right now. Set one up to continue.",
-    "noActiveAccountCta": "Set up a trading account",
+    "noActiveAccountCta": "Manage trading accounts",
+    "real": {
+      "performanceTitle": "System vs Trader performance",
+      "performanceDescription": "Active account: {account}. Each side uses its own eligible Trade population.",
+      "dateRangeLabel": "Date range",
+      "range30": "30D",
+      "range90": "90D",
+      "rangeAll": "All",
+      "system": {
+        "title": "System Performance",
+        "description": "What the selected Strategy and Setup rules would have produced when resolved.",
+        "empty": "No eligible System Trades in this range yet. Resolve System outcomes to build this view."
+      },
+      "trader": {
+        "title": "Trader Performance",
+        "description": "What your actual entries, management, exits and costs produced.",
+        "empty": "No eligible closed Trader Trades in this range yet."
+      },
+      "totalR": "Total R",
+      "expectancy": "Expectancy R",
+      "winRate": "Win Rate",
+      "profitFactor": "Profit Factor",
+      "sampleCount": "{count, plural, one {# Trade} other {# Trades}}",
+      "comparison": {
+        "title": "Execution Comparison",
+        "description": "A same-Trade comparison of resolved System and actual results.",
+        "help": "Edge Leakage is System R minus Actual R on comparable Trades. Positive means less System R was captured; negative means execution exceeded the System result. It is a measurement, not a verdict."
+      },
+      "comparableTrades": "Comparable Trades",
+      "edgeLeakage": "Edge Leakage",
+      "executionEfficiency": "Execution Efficiency",
+      "unavailable": {
+        "no_trades": "No eligible Trades",
+        "no_wins": "No winning Trades",
+        "no_losses": "No losing Trades",
+        "no_profit_or_loss": "No profit or loss in this sample",
+        "no_comparable_trades": "No comparable Trades",
+        "system_has_no_edge": "No positive paired System edge",
+        "no_rule_checks": "No evaluated Rule checks",
+        "data_integrity_error": "Metric temporarily unavailable"
+      },
+      "recent": {
+        "title": "Recent Trades",
+        "description": "The five most recent Trades in the active account.",
+        "listLabel": "Recent Trades in the active account",
+        "actualR": "Actual R",
+        "systemR": "System R",
+        "viewAll": "View all Trades",
+        "emptyTitle": "No Trades in this account yet",
+        "emptyDescription": "Log your first Trade. Analytics will appear as Trader and System results become eligible.",
+        "logTrade": "Log a Trade"
+      },
+      "notAvailableShort": "—",
+      "viewFullAnalytics": "View full analytics",
+      "error": {
+        "title": "Dashboard data is unavailable",
+        "description": "We could not load this performance overview safely. Try reloading the Dashboard.",
+        "retry": "Reload Dashboard"
+      },
+      "loading": "Loading Dashboard performance and recent Trades"
+    },
     "netPnl": "Net P&L",
     "netPnlHint": "After commission, fees and swap.",
     "actualWinRate": "Actual Win Rate",

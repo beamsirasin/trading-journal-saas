@@ -23,23 +23,7 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
 
   return (
     <div className="flex flex-col gap-6">
-      <Card role="region" aria-label={t('activeAccountRegionLabel')}>
-        <CardHeader>
-          <CardTitle>{account.name}</CardTitle>
-          <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-5 sm:grid-cols-3">
-          <SummaryStat
-            label={t('accountModeLabel')}
-            value={t(`accountModeValues.${account.accountMode}`)}
-          />
-          <SummaryStat label={t('baseCurrencyLabel')} value={account.baseCurrency} />
-          <SummaryStat
-            label={t('startingBalanceLabel')}
-            value={`${account.startingBalance} ${account.baseCurrency}`}
-          />
-        </CardContent>
-      </Card>
+      <ActiveTradingAccountSummaryCard account={account} />
 
       <div className="border-border bg-card flex flex-col items-start gap-3 rounded-lg border p-6 sm:flex-row sm:items-center sm:gap-4">
         <Rocket className="text-primary size-6 shrink-0" aria-hidden="true" />
@@ -51,6 +35,33 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
         </div>
       </div>
     </div>
+  );
+}
+
+export function ActiveTradingAccountSummaryCard({
+  account,
+}: {
+  account: ActiveTradingAccountSummary;
+}) {
+  const t = useTranslations('dashboard');
+  return (
+    <Card role="region" aria-label={t('activeAccountRegionLabel')}>
+      <CardHeader>
+        <CardTitle>{account.name}</CardTitle>
+        <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-5 sm:grid-cols-3">
+        <SummaryStat
+          label={t('accountModeLabel')}
+          value={t(`accountModeValues.${account.accountMode}`)}
+        />
+        <SummaryStat label={t('baseCurrencyLabel')} value={account.baseCurrency} />
+        <SummaryStat
+          label={t('startingBalanceLabel')}
+          value={`${account.startingBalance} ${account.baseCurrency}`}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -81,7 +92,7 @@ export function NoActiveTradingAccountRecovery() {
         {t('noActiveAccountDescription')}
       </p>
       <Link
-        href="/app/onboarding"
+        href="/app/accounts"
         className="text-primary-foreground bg-primary hover:bg-primary/90 inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
       >
         {t('noActiveAccountCta')}

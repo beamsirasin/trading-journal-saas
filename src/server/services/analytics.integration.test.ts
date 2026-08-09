@@ -38,7 +38,7 @@ vi.mock('@/lib/auth/server', () => ({
   getAuth: () => ({ api: { getSession: async () => currentSession } }),
 }));
 
-const { getAnalyticsSnapshot } = await import('./analytics');
+const { getAnalyticsSnapshot, getDashboardOverview } = await import('./analytics');
 
 const db = getTestDb();
 const workspaceIds: string[] = [];
@@ -562,6 +562,10 @@ describe('analytics service (real PostgreSQL)', () => {
       ok: false,
       code: 'no_active_trading_account',
     });
+    expect(await getDashboardOverview(undefined, READ_OPTIONS)).toEqual({
+      ok: false,
+      code: 'no_active_trading_account',
+    });
   });
 
   it('rejects invalid and foreign filters without broadening the snapshot', async () => {
@@ -623,5 +627,122 @@ describe('analytics service (real PostgreSQL)', () => {
     } else {
       expect(result.code).toBe('no_active_trading_account');
     }
+  });
+
+  it('builds the Dashboard from active Account scope with strict 90D, 30D, and All ranges', async () => {
+    const fixture = await createFixture();
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.primary,
+      actualR: '2.0000',
+      traderOutcome: 'win',
+      systemR: '2.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-06-01T10:00:00Z'),
+      systemExitedAt: new Date('2026-06-01T11:00:00Z'),
+    });
+
+    const defaultRange = await getDashboardOverview(undefined, READ_OPTIONS);
+    if (!defaultRange.ok) throw new Error(defaultRange.code);
+    expect(defaultRange.data.overview.scope).toMatchObject({
+      datePreset: '90d',
+      accountScope: {
+        kind: 'account',
+        accountId: fixture.activeAccountId,
+        source: 'active',
+      },
+    });
+    expect(defaultRange.data.overview.trader.sampleCount).toBe(8);
+    expect(defaultRange.data.recentTrades).toHaveLength(5);
+    expect(
+      defaultRange.data.recentTrades.every(
+        (trade) => trade.tradingAccountName === 'Active Account',
+      ),
+    ).toBe(true);
+
+    const thirtyDays = await getDashboardOverview('30d', READ_OPTIONS);
+    if (!thirtyDays.ok) throw new Error(thirtyDays.code);
+    expect(thirtyDays.data.overview.scope.datePreset).toBe('30d');
+    expect(thirtyDays.data.overview.trader.sampleCount).toBe(7);
+
+    const allTime = await getDashboardOverview('all', READ_OPTIONS);
+    if (!allTime.ok) throw new Error(allTime.code);
+    expect(allTime.data.overview.scope.datePreset).toBe('all');
+    expect(allTime.data.overview.scope.accountScope.kind).toBe('account');
+    expect(allTime.data.overview.trader.sampleCount).toBe(8);
+    expect(allTime.data.overview.system.sampleCount).toBe(8);
+
+    const invalidRange = await getDashboardOverview('7d', READ_OPTIONS);
+    if (!invalidRange.ok) throw new Error(invalidRange.code);
+    expect(invalidRange.data.overview.scope.datePreset).toBe('90d');
+    expect(invalidRange.data.overview.trader.sampleCount).toBe(8);
+  });
+
+  it('refreshes Dashboard scope when the active Account changes and distinguishes no data', async () => {
+    const fixture = await createFixture();
+    const populated = await getDashboardOverview(undefined, READ_OPTIONS);
+    if (!populated.ok) throw new Error(populated.code);
+    expect(populated.data.overview.trader.sampleCount).toBeGreaterThan(0);
+
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: fixture.emptyAccountId })
+      .where(eq(userPreferences.userId, fixture.userId));
+    const empty = await getDashboardOverview(undefined, READ_OPTIONS);
+    if (!empty.ok) throw new Error(empty.code);
+    expect(empty.data.overview.scope.accountScope).toEqual({
+      kind: 'account',
+      accountId: fixture.emptyAccountId,
+      source: 'active',
+    });
+    expect(empty.data.overview.trader.sampleCount).toBe(0);
+    expect(empty.data.overview.system.sampleCount).toBe(0);
+    expect(empty.data.recentTrades).toEqual([]);
+  });
+
+  it('keeps recent Trade labels pinned after the current Strategy name changes', async () => {
+    const fixture = await createFixture();
+    const [renamed] = await db
+      .insert(strategyVersions)
+      .values({
+        workspaceId: fixture.workspaceId,
+        strategyId: fixture.primary.strategyId,
+        versionNumber: 2,
+        name: 'Renamed Current Strategy',
+      })
+      .returning({ id: strategyVersions.id });
+    if (renamed === undefined) throw new Error('renamed version insert failed');
+    await db
+      .update(strategies)
+      .set({ currentVersionId: renamed.id })
+      .where(eq(strategies.id, fixture.primary.strategyId));
+
+    const result = await getDashboardOverview(undefined, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    const primaryTrades = result.data.recentTrades.filter(
+      (trade) => trade.setupName === 'Primary Setup',
+    );
+    expect(primaryTrades.length).toBeGreaterThan(0);
+    expect(primaryTrades.every((trade) => trade.strategyName === 'Primary')).toBe(true);
+    expect(primaryTrades.every((trade) => trade.strategyName !== 'Renamed Current Strategy')).toBe(
+      true,
+    );
+  });
+
+  it('keeps Dashboard reads available in writable, over-limit, and read-only modes', async () => {
+    const fixture = await createFixture();
+    expect((await getDashboardOverview(undefined, READ_OPTIONS)).ok).toBe(true);
+
+    await db
+      .update(workspaceEntitlements)
+      .set({ status: 'active', planKey: 'starter' })
+      .where(eq(workspaceEntitlements.workspaceId, fixture.workspaceId));
+    expect((await getDashboardOverview(undefined, READ_OPTIONS)).ok).toBe(true);
+
+    await db
+      .update(workspaceEntitlements)
+      .set({ status: 'expired' })
+      .where(eq(workspaceEntitlements.workspaceId, fixture.workspaceId));
+    expect((await getDashboardOverview(undefined, READ_OPTIONS)).ok).toBe(true);
   });
 });

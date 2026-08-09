@@ -2,7 +2,7 @@
 
 **Depends on:** 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 09A completed the repository/metric audit, Phase 09B delivered the authenticated raw analytics read model, and Phase 09C composes its projections through the canonical Phase 07D engine into JSON-safe full and Dashboard-overview view models. The `/app` and `/app/analytics` UI remain unimplemented. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
+**Status:** In progress. Phase 09A completed the repository/metric audit, Phase 09B delivered the authenticated raw analytics read model, Phase 09C composes canonical analytics view models, and Phase 09D delivers the real active-account attribution overview at `/app`. The deep `/app/analytics` experience remains unimplemented for Phase 09E. Phase 08 provides persisted, server-derived Trade snapshots and authenticated workspace-scoped reads. Phase 09 must build over those snapshots; it must not rederive per-Trade R/outcomes or introduce the still-unapproved Discipline Score, mistake-cost attribution, or verdict thresholds by assumption.
 
 ## Phase 09B implementation boundary
 
@@ -21,6 +21,15 @@
 - The Rule model reports followed, violated, not-checked, not-applicable, evaluated count, and objective adherence. The Mistake model reports only deterministic distinct-Trade counts per canonical type, sorted by count then key. No weighted score, percentage, cost, lost R, or leakage attribution is composed.
 - One authenticated service resolves the scope once and runs the five fixed-shape projections in parallel before composing a JSON-safe snapshot. It preserves typed `no_active_trading_account`, `invalid_filters`, and `invalid_timezone` results without broadening scope. A compact pure Dashboard overview selects existing System/Trader headline metrics and paired comparison values without recalculation.
 - Phase 09C adds no verdict, quality grade, sample-confidence threshold, Discipline Score, aggregate currency P&L, or FX conversion. Dashboard cards, charts, route replacement, and all presentation behavior remain later Phase 09 work.
+
+## Phase 09D implementation boundary
+
+- The authenticated `/app` page now renders the real active Trading Account summary followed by separate System and Trader headline panels, the canonical same-Trade Execution Comparison, and five recent active-account Trades with historically pinned Strategy/Setup labels. It imports no demo fixtures and queries no database directly.
+- Dashboard scope is always the trusted active Account. The only public filter is the URL-backed `30d`/`90d`/`all` preset (`90d` default); invalid values pass through the strict analytics contract and safely fall back to `90d`. All Accounts and Strategy/Setup/Version filters remain absent from this surface.
+- System and Trader panels deliberately expose separate sample counts, Total R, Expectancy, Win Rate, and Profit Factor. The comparison shows comparable count, paired Edge Leakage, and unclamped Execution Efficiency. Canonical unavailable and sanitized integrity states render as explanations, never zero or raw failure codes.
+- Decimal-safe presentation formatting converts canonical strings to signed two-decimal R, percentages, and Profit Factor text without recomputing any metric. Static server-rendered values are used; no financial-number animation or browser-side date-range calculation is introduced.
+- Dashboard loading mirrors the Account, two performance panels, comparison, and recent-Trade structure. Empty System/Trader populations remain independent, no active Account routes to Account management, and unexpected/typed failures render sanitized guidance. EN/TH copy, keyboard-visible links, 44px range controls, mobile stacking, and 320px overflow coverage are included.
+- Phase 09D adds no equity chart, Rule/Mistake analytics UI, deep Analytics filters, verdict/grade/confidence layer, Discipline Score, mistake-cost attribution, aggregate currency P&L, or FX conversion. Those decisions and the real `/app/analytics` experience remain later Phase 09 work.
 
 ## Goal
 
