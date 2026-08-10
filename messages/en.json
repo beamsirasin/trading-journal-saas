@@ -1189,6 +1189,22 @@
       "ready": "Review the workspace's payment history. Entries may represent the current mock payment infrastructure and are not tax invoices or official receipts.",
       "onboardingRequired": "Billing history becomes available after you complete onboarding.",
       "view": "View billing history"
+    },
+    "dataExport": {
+      "title": "Data Export",
+      "description": "Download a versioned copy of the active workspace's trading data.",
+      "json": {
+        "title": "Structured JSON",
+        "description": "A complete schema-versioned relational export for durable backup and future processing.",
+        "download": "Download JSON"
+      },
+      "csv": {
+        "title": "CSV ZIP",
+        "description": "Spreadsheet-friendly normalized CSV files packaged in one ZIP archive.",
+        "download": "Download CSV ZIP"
+      },
+      "ownerOnly": "Only a workspace owner can export workspace data.",
+      "scopeNote": "Workspace Data Export includes trading history and sanitized billing snapshots, including archived and soft-deleted records. It excludes sign-in credentials, sessions, OAuth tokens, Audit Logs, and payment-provider identifiers."
     }
   },
   "onboarding": {

@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Download, type Page } from '@playwright/test';
+import { strFromU8, unzipSync } from 'fflate';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
 import { establishAuthenticatedSession } from './support/authenticate';
@@ -6,6 +7,21 @@ import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
 const PASSWORD = 'Correct-Horse9!';
+
+async function readDownload(download: Download): Promise<Buffer> {
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+async function clickAndReadDownload(page: Page, linkName: string): Promise<Buffer> {
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('link', { name: linkName }).click(),
+  ]);
+  return readDownload(download);
+}
 
 async function provision(label: string, options?: Parameters<typeof provisionVerifiedUser>[2]) {
   const { testUrl } = validateTestDatabaseEnvironment();
@@ -20,7 +36,7 @@ async function provision(label: string, options?: Parameters<typeof provisionVer
   );
 }
 
-test.describe('Phase 10C Settings', () => {
+test.describe('Phase 10D Settings', () => {
   test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
 
   test('requires authentication', async ({ page }) => {
@@ -32,7 +48,7 @@ test.describe('Phase 10C Settings', () => {
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
-    const user = await provision('desktop');
+    const user = await provision('desktop', { seedExportTrade: true });
     await establishAuthenticatedSession(page, user);
     await page.goto('/en/app/settings');
 
@@ -97,7 +113,48 @@ test.describe('Phase 10C Settings', () => {
     );
     await expect(page.getByRole('link', { name: /invoice|receipt/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /invoice|receipt|vat/i })).toHaveCount(0);
-    await expect(page.getByText(/Export|Security|Danger Zone/i)).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Data export' })).toBeVisible();
+    await expect(page.getByText(/Security|Danger Zone/i)).toHaveCount(0);
+
+    const jsonBytes = await clickAndReadDownload(page, 'Download JSON');
+    const jsonExport = JSON.parse(jsonBytes.toString('utf8')) as {
+      schemaVersion: number;
+      scope: { type: string; workspaceId: string };
+      data: {
+        workspace: { name: string }[];
+        trading_accounts: { name: string }[];
+        trades: { symbol: string; notes: string }[];
+      };
+    };
+    expect(jsonExport.schemaVersion).toBe(1);
+    expect(jsonExport.scope.type).toBe('workspace');
+    expect(jsonExport.data.workspace).toEqual([
+      expect.objectContaining({ name: 'Canonical Trading Workspace' }),
+    ]);
+    expect(jsonExport.data.trading_accounts).toEqual([
+      expect.objectContaining({ name: 'Main Trading Account' }),
+    ]);
+    expect(jsonExport.data.trades).toEqual([
+      expect.objectContaining({ symbol: 'ทองคำ', notes: '@export-e2e-note' }),
+    ]);
+    expect(jsonBytes.toString('utf8')).not.toContain(user.email);
+
+    const zipBytes = await clickAndReadDownload(page, 'Download CSV ZIP');
+    const files = unzipSync(zipBytes);
+    expect(Object.keys(files).sort()).toEqual(
+      expect.arrayContaining([
+        'manifest.json',
+        'workspace.csv',
+        'trading_accounts.csv',
+        'trades.csv',
+        'billing_transactions.csv',
+      ]),
+    );
+    expect(JSON.parse(strFromU8(files['manifest.json']!))).toMatchObject({ schemaVersion: 1 });
+    expect(strFromU8(files['workspace.csv']!)).toContain('Canonical Trading Workspace');
+    expect(strFromU8(files['trades.csv']!)).toContain('ทองคำ');
+    expect(strFromU8(files['trades.csv']!)).toContain("'@export-e2e-note");
+    expect(Buffer.from(zipBytes).includes(Buffer.from(user.email))).toBe(false);
   });
 
   test('keeps profile and timezone editable in a read-only workspace', async ({
@@ -127,6 +184,8 @@ test.describe('Phase 10C Settings', () => {
       'href',
       '/en/app/billing',
     );
+    const exportBytes = await clickAndReadDownload(page, 'Download JSON');
+    expect(JSON.parse(exportBytes.toString('utf8'))).toMatchObject({ schemaVersion: 1 });
   });
 
   test('keeps real summaries readable while an owner is over the account limit', async ({
@@ -168,6 +227,12 @@ test.describe('Phase 10C Settings', () => {
     );
     await expect(page.getByRole('link', { name: 'Manage trading accounts' })).toHaveCount(0);
 
+    const exportBytes = await clickAndReadDownload(page, 'Download JSON');
+    expect(JSON.parse(exportBytes.toString('utf8'))).toMatchObject({
+      schemaVersion: 1,
+      data: { workspace: [expect.objectContaining({ name: 'Personal workspace' })] },
+    });
+
     await page.goto('/en/app/accounts');
     await expect(page).toHaveURL(/\/en\/app\/onboarding$/);
   });
@@ -188,6 +253,8 @@ test.describe('Phase 10C Settings', () => {
         .getByRole('region', { name: 'Preferences' })
         .getByRole('button', { name: /Language: English/i }),
     ).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Download JSON' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Download CSV ZIP' })).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -201,6 +268,8 @@ test.describe('Phase 10C Settings', () => {
       page
         .getByRole('region', { name: 'Preferences' })
         .getByRole('button', { name: /Language: English/i }),
+      page.getByRole('link', { name: 'Download JSON' }),
+      page.getByRole('link', { name: 'Download CSV ZIP' }),
     ]) {
       const box = await control.boundingBox();
       expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(44);

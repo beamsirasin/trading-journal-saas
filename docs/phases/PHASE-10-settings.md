@@ -2,7 +2,19 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 10A audit, Phase 10B Profile & Preferences, and Phase 10C Workspace & Billing Integration are delivered; later Settings slices remain pending.
+**Status:** In progress. Phase 10A audit, Phase 10B Profile & Preferences, Phase 10C Workspace & Billing Integration, and Phase 10D Workspace Data Export are delivered; Security remains pending.
+
+## Phase 10D delivery
+
+- Workspace owners can download a versioned `schemaVersion: 1` relational export as structured JSON or a normalized CSV ZIP from the Settings Data Export section.
+- One explicit export registry governs both formats. It includes Workspace, Trading Accounts, Strategies and all versioned Setup/Rule history, Mistake identities referenced by Trades, Trades and their Rule/Mistake snapshots, and sanitized immutable Billing History.
+- Archived domain records and soft-deleted Trades remain present. Stored snapshots and relational identities are exported; analytics aggregates, recalculations, and unsupported scoring semantics are not.
+- Authentication records, credentials, sessions, tokens, OAuth/provider identifiers, mutation/idempotency keys, raw metadata, Audit Logs, server secrets, and payment-provider internals are excluded.
+- Export authorization is server-derived and owner-only. It remains available while writable, read-only/expired, over the Account limit, or before onboarding is complete.
+- JSON and CSV preserve exact decimal and large-integer money values as strings and timestamps as ISO 8601. User-authored CSV cells receive spreadsheet-formula injection protection.
+- A structural-only `data.exported` Audit event is required before a generated artifact is returned; Audit Log rows themselves are never included in exports.
+- The direct Route Handler uses one repeatable-read database snapshot and bounded in-memory generation. Phase 10D adds no migration, async export jobs, Import, Account Archive, Security/session controls, or deletion lifecycle.
+- Security remains Phase 10E; deletion remains deferred.
 
 ## Phase 10C delivery
 
@@ -12,7 +24,7 @@
 - Trading Accounts displays the canonical active Account and links to `/app/accounts`; no CRUD or second default-Account preference was duplicated.
 - Subscription reuses the Phase 04 presentation and links to `/app/plan`; Billing truthfully links to the immutable-snapshot history at `/app/billing`. No payment lifecycle or VAT control was duplicated.
 - Profile and Preferences remain available in every access mode. Pre-onboarding Settings remains reachable while Account, Plan, and Billing route guards remain unchanged.
-- Teams/member/invite UI remains deferred. Export remains Phase 10D, Security remains Phase 10E, and deletion remains deferred.
+- Teams/member/invite UI remains deferred. Export is delivered in Phase 10D, Security remains Phase 10E, and deletion remains deferred.
 - No migration was required.
 
 ## Phase 10B delivery

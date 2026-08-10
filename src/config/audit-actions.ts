@@ -45,6 +45,7 @@ export const AUDIT_ACTIONS = [
   'billing.checkout_failed',
   'billing.checkout_canceled',
   'billing.checkout_reconciled',
+  'data.exported',
   'strategy.created',
   'strategy.updated',
   'strategy.archived',

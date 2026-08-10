@@ -12,6 +12,7 @@ import { getSelfProfile, getSettingsWorkspaceSummary } from '@/server/auth/setti
 import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
+import { DataExportSection } from '@/components/settings/data-export-section';
 import { ProfileForm } from '@/components/settings/profile-form';
 import { TimezoneForm } from '@/components/settings/timezone-form';
 import { WorkspaceForm } from '@/components/settings/workspace-form';
@@ -232,6 +233,15 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
             </Link>
           </Button>
         </div>
+      </section>
+
+      <section aria-labelledby="data-export-heading" className="flex flex-col gap-4">
+        <SectionHeader
+          id="data-export-heading"
+          title={t('dataExport.title')}
+          description={t('dataExport.description')}
+        />
+        <DataExportSection role={settingsWorkspace.role} />
       </section>
     </Container>
   );

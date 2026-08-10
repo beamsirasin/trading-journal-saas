@@ -8,6 +8,11 @@ import { generateId } from '../../src/lib/identifiers';
 import {
   accounts,
   billingTransactions,
+  setups,
+  strategies,
+  strategySetupVersions,
+  strategyVersions,
+  trades,
   tradingAccounts,
   userPreferences,
   users,
@@ -85,6 +90,8 @@ export async function provisionVerifiedUser(
     readonly additionalAccounts?: number;
     /** Extra accounts seeded already archived — for restore-blocked fixtures. */
     readonly additionalArchivedAccounts?: number;
+    /** Seed one real Trade so export E2E can verify downloaded workspace data. */
+    readonly seedExportTrade?: boolean;
     /** Skip inserting a `workspace_entitlements` row entirely — the fail-closed anomaly state. */
     readonly omitEntitlementRow?: boolean;
   } = {},
@@ -103,6 +110,11 @@ export async function provisionVerifiedUser(
       workspaceMembers,
       userPreferences,
       tradingAccounts,
+      strategies,
+      strategyVersions,
+      setups,
+      strategySetupVersions,
+      trades,
       workspaceEntitlements,
       billingTransactions,
     },
@@ -180,6 +192,62 @@ export async function provisionVerifiedUser(
         activeWorkspaceId: workspaceId,
         activeTradingAccountId: accountId,
       });
+
+      if (options.seedExportTrade === true) {
+        const [strategy] = await db
+          .insert(strategies)
+          .values({ workspaceId })
+          .returning({ id: strategies.id });
+        if (strategy === undefined) throw new Error('Failed to seed export E2E strategy.');
+        const [strategyVersion] = await db
+          .insert(strategyVersions)
+          .values({
+            workspaceId,
+            strategyId: strategy.id,
+            versionNumber: 1,
+            name: 'Export E2E Strategy',
+          })
+          .returning({ id: strategyVersions.id });
+        if (strategyVersion === undefined) {
+          throw new Error('Failed to seed export E2E strategy version.');
+        }
+        await db
+          .update(strategies)
+          .set({ currentVersionId: strategyVersion.id })
+          .where(eq(strategies.id, strategy.id));
+        const [setup] = await db
+          .insert(setups)
+          .values({ workspaceId, strategyId: strategy.id })
+          .returning({ id: setups.id });
+        if (setup === undefined) throw new Error('Failed to seed export E2E setup.');
+        const [setupVersion] = await db
+          .insert(strategySetupVersions)
+          .values({
+            workspaceId,
+            strategyId: strategy.id,
+            strategyVersionId: strategyVersion.id,
+            setupId: setup.id,
+            name: 'Export E2E Setup',
+          })
+          .returning({ id: strategySetupVersions.id });
+        if (setupVersion === undefined) {
+          throw new Error('Failed to seed export E2E setup version.');
+        }
+        await db.insert(trades).values({
+          id: generateId(),
+          workspaceId,
+          tradingAccountId: accountId,
+          strategyId: strategy.id,
+          strategyVersionId: strategyVersion.id,
+          setupId: setup.id,
+          setupVersionId: setupVersion.id,
+          symbol: 'ทองคำ',
+          direction: 'long',
+          notes: '@export-e2e-note',
+          plannedEntry: '100',
+          plannedStop: '90',
+        });
+      }
 
       if (options.omitEntitlementRow !== true) {
         const entitlementOverride = options.entitlement;

@@ -18,6 +18,9 @@ describe('AuditLogMetadata is a closed, safe shape', () => {
   it('permits only IDs, structural scope, and field-name lists — never content', () => {
     expectTypeOf<AuditLogMetadata>().toEqualTypeOf<{
       readonly changedFields?: readonly string[];
+      readonly format?: string;
+      readonly scope?: string;
+      readonly schemaVersion?: number;
       readonly previousActiveTradingAccountId?: string;
       readonly newActiveTradingAccountId?: string;
       readonly billingTransactionId?: string;
