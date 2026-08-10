@@ -205,7 +205,7 @@ test.describe('responsive navigation', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/en/app/settings');
 
-    const save = await page.getByRole('button', { name: 'Save changes' }).boundingBox();
+    const save = await page.getByRole('button', { name: 'Save profile' }).boundingBox();
     expect(save?.width ?? 0).toBeGreaterThanOrEqual(44);
     expect(save?.height ?? 0).toBeGreaterThanOrEqual(44);
   });

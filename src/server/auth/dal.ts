@@ -261,7 +261,7 @@ export interface CurrentUserPreferences {
   readonly timezone: string;
 }
 
-/** Read-only — settings display reads through this; there is no write path yet (Phase 2 does not ship preference-editing UI beyond locale/theme). */
+/** Canonical account preference read used by Settings and server-rendered date presentation. */
 export async function getCurrentUserPreferences(): Promise<CurrentUserPreferences> {
   const { user } = await requireSession();
   const db = getDb();

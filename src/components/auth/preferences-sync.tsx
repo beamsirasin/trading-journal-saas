@@ -40,16 +40,18 @@ export function PreferencesSync({
     if (theme === undefined || theme === lastSyncedTheme.current) {
       return;
     }
-    lastSyncedTheme.current = theme;
-    void syncPreferences({ theme: theme as 'light' | 'dark' | 'system' });
+    void syncPreferences({ theme: theme as 'light' | 'dark' | 'system' }).then((result) => {
+      if (result.ok) lastSyncedTheme.current = theme;
+    });
   }, [theme]);
 
   useEffect(() => {
     if (locale === lastSyncedLocale.current) {
       return;
     }
-    lastSyncedLocale.current = locale;
-    void syncPreferences({ locale: locale as 'en' | 'th' });
+    void syncPreferences({ locale: locale as 'en' | 'th' }).then((result) => {
+      if (result.ok) lastSyncedLocale.current = locale;
+    });
   }, [locale]);
 
   return null;

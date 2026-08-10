@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { closeDb } from '@/server/db/client';
 import { rateLimits, users } from '@/server/db/schema';
@@ -48,21 +48,23 @@ const { getAuth } = await import('@/lib/auth/server');
 const createdUserIds: string[] = [];
 
 /**
- * Shared with `registration-hardening.integration.test.ts` and
- * `verification-email.integration.test.ts` — same fixed `"127.0.0.1"` test
- * identity, same real database-backed bucket (`rateLimit.storage: 'database'`
- * in `src/lib/auth/server.ts`). This test needs two dispatch calls to
- * succeed within the configured `max: 3`, so it resets the bucket itself
- * rather than assuming whichever integration file ran before it left the
- * bucket empty.
+ * Uses a file-specific reserved TEST-NET identity and resets its real
+ * database-backed bucket before and after use. This test needs two dispatch
+ * calls to succeed within the configured `max: 3` and must remain isolated
+ * even when another auth file or a previous process was interrupted.
  */
-const DISPATCH_RATE_LIMIT_KEY = '127.0.0.1|/send-verification-email';
+const TEST_CLIENT_IP = '203.0.113.12';
+const DISPATCH_RATE_LIMIT_KEY = `${TEST_CLIENT_IP}|/send-verification-email`;
 
 async function resetDispatchRateLimitBucket(): Promise<void> {
   await getTestDb().delete(rateLimits).where(eq(rateLimits.key, DISPATCH_RATE_LIMIT_KEY));
 }
 
 describe('Better Auth verification email failure handling (real database, mocked adapter)', () => {
+  beforeEach(async () => {
+    await resetDispatchRateLimitBucket();
+  });
+
   afterEach(async () => {
     sendVerificationEmailMock.mockReset();
     const db = getTestDb();
@@ -84,7 +86,11 @@ describe('Better Auth verification email failure handling (real database, mocked
     return auth.handler(
       new Request('http://localhost:3000/api/auth/send-verification-email', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+        headers: {
+          'content-type': 'application/json',
+          origin: 'http://localhost:3000',
+          'x-forwarded-for': TEST_CLIENT_IP,
+        },
         body: JSON.stringify({ email, callbackURL: '/verify-email/complete' }),
       }),
     );

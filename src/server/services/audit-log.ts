@@ -20,6 +20,11 @@ type Executor = Pick<Database, 'insert'>;
 export interface AuditLogMetadata {
   /** Names of fields that changed in an update — never their old/new values. */
   readonly changedFields?: readonly string[];
+  /** Security-sensitive data export structure only — never exported content. */
+  readonly format?: string;
+  readonly scope?: string;
+  readonly schemaVersion?: number;
+  readonly revokedCount?: number;
   readonly previousActiveTradingAccountId?: string;
   readonly newActiveTradingAccountId?: string;
   readonly billingTransactionId?: string;

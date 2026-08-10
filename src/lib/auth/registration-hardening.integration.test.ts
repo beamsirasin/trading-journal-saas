@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { closeDb } from '@/server/db/client';
 import { accounts, auditLogs, rateLimits, users, workspaces } from '@/server/db/schema';
@@ -54,7 +54,11 @@ function signUpEmailRequest(
   return auth.handler(
     new Request('http://localhost:3000/api/auth/sign-up/email', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://localhost:3000',
+        'x-forwarded-for': TEST_CLIENT_IP,
+      },
       body: JSON.stringify(body),
     }),
   );
@@ -81,6 +85,7 @@ function dispatchVerificationEmailRequest(
       headers: {
         'content-type': 'application/json',
         origin: 'http://localhost:3000',
+        'x-forwarded-for': TEST_CLIENT_IP,
         ...extraHeaders,
       },
       body: JSON.stringify({ email, callbackURL: '/verify-email/complete' }),
@@ -89,15 +94,14 @@ function dispatchVerificationEmailRequest(
 }
 
 /**
- * Better Auth's rate limiter falls back to a fixed `"127.0.0.1"` client
- * identity when `isTest()` is true and no `x-forwarded-for` header is
- * present (see `verification-email.integration.test.ts`'s identical
- * reasoning). `storage: 'database'` means the bucket persists across test
- * runs, so both buckets this file's flow touches are cleared before and
- * after use.
+ * This file sends a stable reserved TEST-NET identity. Database-backed
+ * buckets persist across processes, so using a file-specific key prevents
+ * another auth integration file from changing this file's allowance while
+ * clean-before/after protects retries after an interrupted run.
  */
-const SIGNUP_RATE_LIMIT_KEY = '127.0.0.1|/sign-up/email';
-const DISPATCH_RATE_LIMIT_KEY = '127.0.0.1|/send-verification-email';
+const TEST_CLIENT_IP = '203.0.113.13';
+const SIGNUP_RATE_LIMIT_KEY = `${TEST_CLIENT_IP}|/sign-up/email`;
+const DISPATCH_RATE_LIMIT_KEY = `${TEST_CLIENT_IP}|/send-verification-email`;
 
 async function resetRateLimitBuckets(): Promise<void> {
   const db = getTestDb();
@@ -116,6 +120,13 @@ function trackUser(userId: string | undefined) {
 }
 
 describe('Registration hardening (real Better Auth + database)', () => {
+  beforeEach(async () => {
+    // A prior interrupted integration process cannot be trusted to have run
+    // its afterEach cleanup. Start every test from empty shared IP+route
+    // buckets as well as cleaning after it.
+    await resetRateLimitBuckets();
+  });
+
   afterEach(async () => {
     const db = getTestDb();
     for (const userId of createdUserIds.splice(0)) {
@@ -184,7 +195,11 @@ describe('Registration hardening (real Better Auth + database)', () => {
       const response = await auth.handler(
         new Request('http://localhost:3000/api/auth/sign-in/email', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+          headers: {
+            'content-type': 'application/json',
+            origin: 'http://localhost:3000',
+            'x-forwarded-for': TEST_CLIENT_IP,
+          },
           body: JSON.stringify({ email, password: 'short' }),
         }),
       );

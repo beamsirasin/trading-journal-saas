@@ -2,7 +2,71 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
-**Status:** Next phase; not started. Readiness audit required before implementation because several original bullets below are provisional and conflict with later locked Phase 07–09 contracts.
+**Status:** Complete. Phase 10A–10F delivered and verified the real Settings surface. Phase 11 — SaaS Administration is next.
+
+## Phase 10F closeout
+
+- The single authenticated `/app/settings` route remains outside the completed-onboarding route group. Account-level Profile and Security load independently from workspace-scoped composition; if workspace repair/context is unavailable, Workspace/Account/Subscription/Billing/Export render localized unavailable states instead of taking down self-security.
+- Shared database-backed auth rate-limit tests now use stable file-specific TEST-NET identities and clean their exact buckets before and after use. This fixes genuine cross-file/interrupted-run contamination without changing production limits, assertions, or proxy behavior.
+- Focused Phase 10 unit/component coverage passed 12 files/78 tests. The complete configured PostgreSQL manifest passed all 39 files/570 tests both in deterministic non-overlapping batches and in a later uninterrupted canonical run (about 27 minutes 25 seconds). PostgreSQL was 18.4.
+- Production Settings E2E passed its complete intended matrix in Chromium and Mobile Chrome: Profile/timezone persistence, truthful Theme/Locale availability, Workspace and canonical destinations, real JSON/CSV ZIP downloads, Security password/session behavior, `read_only`, `over_limit`, pre-onboarding, and 320px layout.
+- A stale app-shell E2E assertion still targeted the pre-10B label `Save changes`; it was corrected to the canonical accessible label `Save profile`, passed in both browser projects, and was followed by a clean full 403-test production-build Playwright run with one worker.
+- The 5,000-Trade in-memory export observation measured approximately 38 ms for projection, 17 ms for JSON, and 67 ms for ZIP (about 121 ms total); JSON was 7,837,740 bytes and the deliberately repetitive ZIP was 42,958 bytes. No async export job is justified by this fixture.
+- Phase 10 required no migration: `0000`–`0008` remain unchanged and no `0009` exists.
+
+### Deletion remains deferred
+
+Phase 10 deliberately does not provide account or Workspace deletion, a disabled Danger Zone, or deletion-request jobs. `billing_transactions.workspace_id` uses `ON DELETE RESTRICT`; financial-record retention, Audit/billing anonymization, recovery windows, personal-Workspace recreation, provider-appropriate reauthentication, and ownership of a durable deletion-job system are unresolved. Deletion requires a separately approved lifecycle and migration rather than a cosmetic Settings control.
+
+## Phase 10E delivery
+
+- The single `/app/settings` page now includes account-level Security with safe sign-in-method labels, credential capability, password change, and active-session management. No raw auth account/session rows cross into React.
+- Password capability is derived server-side from a real `credential` account with a password. OAuth-only users receive truthful provider-based read-only copy; password creation, provider linking/unlinking, and email change remain deferred.
+- Change-password input is strict and reuses the complete registration password policy. Better Auth 1.6.25 verifies the current password and owns the credential mutation. The server then invokes Better Auth's separate canonical revoke-other-sessions operation and verifies readback; this preserves the current session row/cookie while revoking every other active session.
+- Better Auth's direct server API bypasses the HTTP-router rate limiter, so password attempts reuse the existing database-backed `rate_limits` table through a narrow per-user five-attempt/60-second application key. No migration was needed.
+- Active sessions are a SELF-only, token-free DTO with server-derived current-session identity, canonical created/expiry timestamps, and conservative browser/platform labels. Expired sessions, IP addresses, raw user agents, tokens, user IDs, and provider identifiers are excluded.
+- Individual revocation accepts only a session UUID. The server resolves a caller-owned OTHER session to its token entirely inside the server boundary, then invokes Better Auth's canonical token-based API. Current-session submission is rejected; foreign/missing IDs share the same idempotent non-revealing result.
+- Bulk revocation accepts an empty strict input and uses Better Auth's canonical revoke-other-sessions endpoint. A canonical readback must show no remaining active other sessions before a structural audit is written.
+- Password and session success audits are structural only (`changedFields`, `scope`, and `revokedCount`). Credential update, other-session revocation, and application audit persistence are separate canonical operations/transactions; no false atomicity is claimed. Password success is returned only after revocation readback and the audit write, and failures before those complete create no success audit.
+- Security has no Workspace, onboarding, membership, Trading Account, role, or entitlement dependency. It remains usable before onboarding and in `read_only`/`over_limit` modes.
+- Phase 10E adds no migration and no IP display, OAuth unlinking/linking, set-password flow, email change, MFA/passkeys, account/workspace deletion, team security, Audit Log UI, security alerts, device trust, or API keys. Phase 10 remains in progress pending 10F.
+
+## Phase 10D delivery
+
+- Workspace owners can download a versioned `schemaVersion: 1` relational export as structured JSON or a normalized CSV ZIP from the Settings Data Export section.
+- One explicit export registry governs both formats. It includes Workspace, Trading Accounts, Strategies and all versioned Setup/Rule history, Mistake identities referenced by Trades, Trades and their Rule/Mistake snapshots, and sanitized immutable Billing History.
+- Archived domain records and soft-deleted Trades remain present. Stored snapshots and relational identities are exported; analytics aggregates, recalculations, and unsupported scoring semantics are not.
+- Authentication records, credentials, sessions, tokens, OAuth/provider identifiers, mutation/idempotency keys, raw metadata, Audit Logs, server secrets, and payment-provider internals are excluded.
+- Export authorization is server-derived and owner-only. It remains available while writable, read-only/expired, over the Account limit, or before onboarding is complete.
+- JSON and CSV preserve exact decimal and large-integer money values as strings and timestamps as ISO 8601. User-authored CSV cells receive spreadsheet-formula injection protection.
+- A structural-only `data.exported` Audit event is required before a generated artifact is returned; Audit Log rows themselves are never included in exports.
+- The direct Route Handler uses one repeatable-read database snapshot and bounded in-memory generation. Phase 10D adds no migration, async export jobs, Import, Account Archive, Security/session controls, or deletion lifecycle.
+- Security remains Phase 10E; deletion remains deferred.
+
+## Phase 10C delivery
+
+- Settings composes a narrow, authenticated active-Workspace summary with the real personal Workspace name, kind, caller role, and canonical access mode; slug is hidden and cannot be edited.
+- Workspace owners may rename the active Workspace only under canonical `ordinary_write` authorization. Members, removed memberships, `read_only`, and `over_limit` callers are denied server-side.
+- Rename validation is strict and Unicode-safe. Same-name requests are no-ops; changed name plus field-name-only `workspace.updated` audit commit atomically in PostgreSQL.
+- Trading Accounts displays the canonical active Account and links to `/app/accounts`; no CRUD or second default-Account preference was duplicated.
+- Subscription reuses the Phase 04 presentation and links to `/app/plan`; Billing truthfully links to the immutable-snapshot history at `/app/billing`. No payment lifecycle or VAT control was duplicated.
+- Profile and Preferences remain available in every access mode. Pre-onboarding Settings remains reachable while Account, Plan, and Billing route guards remain unchanged.
+- Teams/member/invite UI remains deferred. Export is delivered in Phase 10D, Security remains Phase 10E, and deletion remains deferred.
+- No migration was required.
+
+## Phase 10B delivery
+
+- The single authenticated `/app/settings` route is reachable before onboarding completes; unrelated `(main)` routes retain their onboarding guard.
+- Display name is editable through the canonical Better Auth user API. Email, verification state, provider names, and an existing avatar are display-only.
+- Timezone is the database-authoritative account preference. Changing it affects future display and analytics date-range interpretation without rewriting stored timestamps.
+- Theme remains browser/device-authoritative through `next-themes`; the database records only the last authenticated observation.
+- Locale remains URL/cookie-routing-authoritative; the database records only the last authenticated observation.
+- The fabricated reporting currency and authenticated Settings demo fixtures were removed.
+- Trading Account, Plan, and Billing management remain in their canonical routes and are truthfully onboarding-gated from Settings.
+- No migration was required.
+- Workspace/Billing Settings integration remains Phase 10C, Export remains 10D, Security remains 10E, and deletion remains deferred from Phase 10 pending a separately approved lifecycle contract.
+
+The original scope notes below are planning history. Locked slice briefs take precedence where they narrow or supersede an earlier provisional bullet.
 
 ## Goal
 
