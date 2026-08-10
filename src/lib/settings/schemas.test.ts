@@ -1,13 +1,69 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ChangePasswordSchema,
   DISPLAY_NAME_MAX_LENGTH,
+  RevokeOtherSessionsSchema,
+  RevokeSessionSchema,
   SyncObservedPreferencesSchema,
   UpdateDisplayNameSchema,
   UpdateTimezoneSchema,
   UpdateWorkspaceNameSchema,
   WORKSPACE_NAME_MAX_LENGTH,
 } from './schemas';
+
+describe('account-security schemas', () => {
+  const valid = {
+    currentPassword: 'Current1!secure',
+    newPassword: 'Different2!secure',
+    confirmNewPassword: 'Different2!secure',
+  };
+
+  it('accepts the canonical registration password policy for a password change', () => {
+    expect(ChangePasswordSchema.parse(valid)).toEqual(valid);
+  });
+
+  it('keeps confirmation and same-password rules local to password changes', () => {
+    expect(
+      ChangePasswordSchema.safeParse({ ...valid, confirmNewPassword: 'Mismatch3!secure' }).success,
+    ).toBe(false);
+    expect(
+      ChangePasswordSchema.safeParse({
+        ...valid,
+        newPassword: valid.currentPassword,
+        confirmNewPassword: valid.currentPassword,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects weak passwords and every unknown or browser-forged policy field', () => {
+    expect(
+      ChangePasswordSchema.safeParse({
+        ...valid,
+        newPassword: 'weak',
+        confirmNewPassword: 'weak',
+      }).success,
+    ).toBe(false);
+    for (const extra of [
+      { userId: crypto.randomUUID() },
+      { email: 'victim@example.test' },
+      { revokeSessions: false },
+      { sessionId: crypto.randomUUID() },
+      { workspaceId: crypto.randomUUID() },
+    ]) {
+      expect(ChangePasswordSchema.safeParse({ ...valid, ...extra }).success).toBe(false);
+    }
+  });
+
+  it('accepts only one UUID session ID and an empty bulk-revocation input', () => {
+    const sessionId = crypto.randomUUID();
+    expect(RevokeSessionSchema.parse({ sessionId })).toEqual({ sessionId });
+    expect(RevokeSessionSchema.safeParse({ sessionId, token: 'secret' }).success).toBe(false);
+    expect(RevokeSessionSchema.safeParse({ sessionId: 'not-an-id' }).success).toBe(false);
+    expect(RevokeOtherSessionsSchema.parse({})).toEqual({});
+    expect(RevokeOtherSessionsSchema.safeParse({ sessionIds: [sessionId] }).success).toBe(false);
+  });
+});
 
 describe('UpdateDisplayNameSchema', () => {
   it.each(['Ada Lovelace', 'กานต์ เทรดเดอร์'])('accepts international display name %s', (name) => {

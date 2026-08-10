@@ -2,7 +2,20 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 10A audit, Phase 10B Profile & Preferences, Phase 10C Workspace & Billing Integration, and Phase 10D Workspace Data Export are delivered; Security remains pending.
+**Status:** In progress. Phase 10A audit, Phase 10B Profile & Preferences, Phase 10C Workspace & Billing Integration, Phase 10D Workspace Data Export, and Phase 10E Account Security are delivered; Phase 10F remains pending.
+
+## Phase 10E delivery
+
+- The single `/app/settings` page now includes account-level Security with safe sign-in-method labels, credential capability, password change, and active-session management. No raw auth account/session rows cross into React.
+- Password capability is derived server-side from a real `credential` account with a password. OAuth-only users receive truthful provider-based read-only copy; password creation, provider linking/unlinking, and email change remain deferred.
+- Change-password input is strict and reuses the complete registration password policy. Better Auth 1.6.25 verifies the current password and owns the credential mutation. The server then invokes Better Auth's separate canonical revoke-other-sessions operation and verifies readback; this preserves the current session row/cookie while revoking every other active session.
+- Better Auth's direct server API bypasses the HTTP-router rate limiter, so password attempts reuse the existing database-backed `rate_limits` table through a narrow per-user five-attempt/60-second application key. No migration was needed.
+- Active sessions are a SELF-only, token-free DTO with server-derived current-session identity, canonical created/expiry timestamps, and conservative browser/platform labels. Expired sessions, IP addresses, raw user agents, tokens, user IDs, and provider identifiers are excluded.
+- Individual revocation accepts only a session UUID. The server resolves a caller-owned OTHER session to its token entirely inside the server boundary, then invokes Better Auth's canonical token-based API. Current-session submission is rejected; foreign/missing IDs share the same idempotent non-revealing result.
+- Bulk revocation accepts an empty strict input and uses Better Auth's canonical revoke-other-sessions endpoint. A canonical readback must show no remaining active other sessions before a structural audit is written.
+- Password and session success audits are structural only (`changedFields`, `scope`, and `revokedCount`). Credential update, other-session revocation, and application audit persistence are separate canonical operations/transactions; no false atomicity is claimed. Password success is returned only after revocation readback and the audit write, and failures before those complete create no success audit.
+- Security has no Workspace, onboarding, membership, Trading Account, role, or entitlement dependency. It remains usable before onboarding and in `read_only`/`over_limit` modes.
+- Phase 10E adds no migration and no IP display, OAuth unlinking/linking, set-password flow, email change, MFA/passkeys, account/workspace deletion, team security, Audit Log UI, security alerts, device trust, or API keys. Phase 10 remains in progress pending 10F.
 
 ## Phase 10D delivery
 

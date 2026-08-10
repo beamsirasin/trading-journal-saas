@@ -24,6 +24,7 @@ export interface AuditLogMetadata {
   readonly format?: string;
   readonly scope?: string;
   readonly schemaVersion?: number;
+  readonly revokedCount?: number;
   readonly previousActiveTradingAccountId?: string;
   readonly newActiveTradingAccountId?: string;
   readonly billingTransactionId?: string;

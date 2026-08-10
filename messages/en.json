@@ -1120,6 +1120,78 @@
         "unexpected_error": "We couldn't save your timezone. Please try again."
       }
     },
+    "security": {
+      "title": "Security",
+      "description": "Review how you sign in, change your password when available, and manage your active sessions.",
+      "providers": {
+        "email_password": "Email/password",
+        "google": "Google",
+        "other": "Other sign-in method"
+      },
+      "methods": {
+        "title": "Sign-in methods",
+        "description": "These methods are linked to your account. Linking and unlinking are not available here."
+      },
+      "password": {
+        "title": "Password",
+        "description": "Changing your password signs out every other session while keeping this browser signed in.",
+        "unavailable": "Your account currently signs in through a linked provider. Password changes are not available for this account.",
+        "currentPassword": "Current password",
+        "newPassword": "New password",
+        "confirmNewPassword": "Confirm new password",
+        "submit": "Change password",
+        "changing": "Changing password…",
+        "changed": "Password changed. Other sessions have been signed out.",
+        "fieldErrors": {
+          "required": "Complete this password field.",
+          "password_policy": "Your new password must meet every requirement.",
+          "same_as_current": "Choose a password different from your current password.",
+          "password_mismatch": "The new passwords do not match.",
+          "validation": "Enter a valid password."
+        },
+        "errors": {
+          "unauthenticated": "Please sign in again to continue.",
+          "password_not_available": "Password changes are not available for this account.",
+          "incorrect_current_password": "Your current password is incorrect.",
+          "rate_limited": "Too many attempts. Wait a minute and try again.",
+          "unexpected_error": "We couldn't change your password. Please try again."
+        }
+      },
+      "sessions": {
+        "title": "Active sessions",
+        "description": "Review active browser sessions for your account. IP addresses and location are not shown.",
+        "current": "This session",
+        "created": "Signed in",
+        "expires": "Expires",
+        "revoke": "Sign out",
+        "revokeAll": "Sign out other sessions",
+        "none": "No other active sessions.",
+        "revoked": "The session was signed out.",
+        "allRevoked": "Other sessions were signed out. This session remains active.",
+        "cancel": "Cancel",
+        "revokeConfirmTitle": "Sign out this session?",
+        "revokeConfirmDescription": "{session} will need to sign in again.",
+        "revokeAllConfirmTitle": "Sign out all other sessions?",
+        "revokeAllConfirmDescription": "This session will remain active. Every other session will need to sign in again.",
+        "agents": {
+          "chrome_windows": "Chrome on Windows",
+          "chrome_macos": "Chrome on macOS",
+          "chrome_android": "Chrome on Android",
+          "edge_windows": "Microsoft Edge on Windows",
+          "firefox": "Firefox browser",
+          "safari_macos": "Safari on macOS",
+          "safari_ios": "Safari on iPhone or iPad",
+          "browser": "Web browser",
+          "other": "Other signed-in session"
+        },
+        "errors": {
+          "validation_error": "The session request was invalid.",
+          "unauthenticated": "Please sign in again to continue.",
+          "cannot_revoke_current_session": "Use the account menu to sign out this session.",
+          "unexpected_error": "We couldn't update your sessions. Refresh and try again."
+        }
+      }
+    },
     "workspace": {
       "title": "Workspace",
       "description": "Review the active personal workspace and rename it when your role and access allow changes.",

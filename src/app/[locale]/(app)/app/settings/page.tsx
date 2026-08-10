@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { isOnboardingComplete } from '@/lib/trading-accounts/onboarding-guard';
+import { getAccountSecurityView } from '@/server/auth/account-security-dal';
 import {
   getActiveTradingAccount,
   getActiveWorkspaceContext,
@@ -14,6 +15,7 @@ import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
 import { DataExportSection } from '@/components/settings/data-export-section';
 import { ProfileForm } from '@/components/settings/profile-form';
+import { SecuritySection } from '@/components/settings/security-section';
 import { TimezoneForm } from '@/components/settings/timezone-form';
 import { WorkspaceForm } from '@/components/settings/workspace-form';
 import { Container } from '@/components/shell/container';
@@ -60,10 +62,11 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   // this pre-onboarding route before those application rows exist; reading
   // preferences in parallel with the repair would race their creation.
   const workspace = await getActiveWorkspaceContext();
-  const [profile, preferences, settingsWorkspace] = await Promise.all([
+  const [profile, preferences, settingsWorkspace, security] = await Promise.all([
     getSelfProfile(),
     getCurrentUserPreferences(),
     getSettingsWorkspaceSummary(),
+    getAccountSecurityView(),
   ]);
   const onboardingComplete = isOnboardingComplete(workspace.onboardingCompletedAt);
   const [activeAccount, subscription] = onboardingComplete
@@ -115,6 +118,15 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
             </div>
           </div>
         </div>
+      </section>
+
+      <section aria-labelledby="security-heading" className="flex flex-col gap-4">
+        <SectionHeader
+          id="security-heading"
+          title={t('security.title')}
+          description={t('security.description')}
+        />
+        <SecuritySection security={security} timezone={preferences.timezone} />
       </section>
 
       <section aria-labelledby="workspace-heading" className="flex flex-col gap-4">

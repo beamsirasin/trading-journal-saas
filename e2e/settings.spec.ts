@@ -36,7 +36,7 @@ async function provision(label: string, options?: Parameters<typeof provisionVer
   );
 }
 
-test.describe('Phase 10D Settings', () => {
+test.describe('Phase 10 Settings through 10E', () => {
   test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
 
   test('requires authentication', async ({ page }) => {
@@ -58,7 +58,9 @@ test.describe('Phase 10D Settings', () => {
     await expect(page.getByTestId('demo-badge')).toHaveCount(0);
     await expect(page.getByText(/Reporting currency/i)).toHaveCount(0);
     await expect(page.getByText(/Danger Zone/i)).toHaveCount(0);
-    await expect(page.getByText('Email/password')).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Profile' }).getByText('Email/password'),
+    ).toBeVisible();
     await expect(page.getByText('Email is read-only in this release.')).toBeVisible();
     await expect(page.locator('input[type="email"]')).toHaveCount(0);
 
@@ -114,7 +116,8 @@ test.describe('Phase 10D Settings', () => {
     await expect(page.getByRole('link', { name: /invoice|receipt/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /invoice|receipt|vat/i })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Data export' })).toBeVisible();
-    await expect(page.getByText(/Security|Danger Zone/i)).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
+    await expect(page.getByText(/Danger Zone/i)).toHaveCount(0);
 
     const jsonBytes = await clickAndReadDownload(page, 'Download JSON');
     const jsonExport = JSON.parse(jsonBytes.toString('utf8')) as {
@@ -157,6 +160,79 @@ test.describe('Phase 10D Settings', () => {
     expect(Buffer.from(zipBytes).includes(Buffer.from(user.email))).toBe(false);
   });
 
+  test('changes a credential password while preserving this browser and revoking other sessions', async ({
+    page,
+    request,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+    const user = await provision('security-credential');
+    const newPassword = 'Settings-New8!Secure';
+    await establishAuthenticatedSession(page, user);
+
+    const otherSignIn = await request.post('/api/auth/sign-in/email', {
+      data: { email: user.email, password: user.password },
+    });
+    expect(otherSignIn.ok()).toBe(true);
+
+    await page.goto('/en/app/settings');
+    const security = page.getByRole('region', { name: 'Security' });
+    await expect(security.getByText('Email/password')).toBeVisible();
+    await expect(security.getByText('This session')).toBeVisible();
+    await expect(security.getByRole('button', { name: /Sign out\s*:/ })).toHaveCount(1);
+    await expect(security.getByText(/\b(?:token|IP address:\s*\d)/i)).toHaveCount(0);
+
+    await security.getByRole('button', { name: /Sign out\s*:/ }).click();
+    await page.getByRole('button', { name: /^Sign out$/ }).click();
+    await expect(security.getByText('The session was signed out.')).toBeVisible();
+    const revokedSessionReadback = await request.get(
+      '/api/auth/get-session?disableCookieCache=true',
+    );
+    expect(await revokedSessionReadback.json()).toBeNull();
+    await page.reload();
+    await expect(security.getByRole('button', { name: /Sign out\s*:/ })).toHaveCount(0);
+
+    const replacementOther = await request.post('/api/auth/sign-in/email', {
+      data: { email: user.email, password: user.password },
+    });
+    expect(replacementOther.ok()).toBe(true);
+    await page.reload();
+    await expect(security.getByRole('button', { name: /Sign out\s*:/ })).toHaveCount(1);
+
+    await page.getByLabel('Current password').fill(user.password);
+    await page.getByLabel(/^New password$/).fill(newPassword);
+    await page.getByLabel('Confirm new password').fill(newPassword);
+    await page.getByRole('button', { name: 'Change password' }).click();
+    await expect(
+      page.getByText('Password changed. Other sessions have been signed out.'),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/en\/app\/settings$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
+    await page.reload();
+    await expect(security.getByRole('button', { name: /Sign out\s*:/ })).toHaveCount(0);
+
+    const otherSessionReadback = await request.get('/api/auth/get-session?disableCookieCache=true');
+    expect(await otherSessionReadback.json()).toBeNull();
+    const currentSessionReadback = await page.request.get(
+      '/api/auth/get-session?disableCookieCache=true',
+    );
+    expect((await currentSessionReadback.json()) as unknown).not.toBeNull();
+
+    await page.getByRole('button', { name: /account menu/i }).click();
+    await page.getByRole('menuitem', { name: /log out/i }).click();
+    await expect(page).toHaveURL(/\/en\/login$/);
+
+    const oldPasswordSignIn = await page.request.post('/api/auth/sign-in/email', {
+      data: { email: user.email, password: user.password },
+    });
+    expect(oldPasswordSignIn.ok()).toBe(false);
+    const newPasswordSignIn = await page.request.post('/api/auth/sign-in/email', {
+      data: { email: user.email, password: newPassword },
+    });
+    expect(newPasswordSignIn.ok()).toBe(true);
+    await page.goto('/en/app/settings');
+    await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
+  });
+
   test('keeps profile and timezone editable in a read-only workspace', async ({
     page,
   }, testInfo) => {
@@ -175,6 +251,8 @@ test.describe('Phase 10D Settings', () => {
     await expect(page.getByText('Timezone saved.')).toBeVisible();
     await expect(page.getByLabel('Workspace name')).toHaveValue('Personal workspace');
     await expect(page.getByLabel('Workspace name')).toBeDisabled();
+    await expect(page.getByLabel('Current password')).toBeEnabled();
+    await expect(page.getByRole('heading', { name: 'Active sessions' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save workspace' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Manage plan' })).toHaveAttribute(
       'href',
@@ -203,6 +281,8 @@ test.describe('Phase 10D Settings', () => {
     await expect(page.getByLabel('Workspace name')).toBeDisabled();
     await expect(page.getByText('Starter').first()).toBeVisible();
     await expect(page.getByText('2 / 1')).toBeVisible();
+    await expect(page.getByLabel('Current password')).toBeEnabled();
+    await expect(page.getByText('This session')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Manage trading accounts' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Manage plan' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'View billing history' })).toBeVisible();
@@ -221,6 +301,8 @@ test.describe('Phase 10D Settings', () => {
     await expect(page.getByLabel('Timezone')).toBeEnabled();
     await expect(page.getByLabel('Workspace name')).toHaveValue('Personal workspace');
     await expect(page.getByLabel('Workspace name')).toBeDisabled();
+    await expect(page.getByLabel('Current password')).toBeEnabled();
+    await expect(page.getByText('This session')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Complete onboarding' }).first()).toHaveAttribute(
       'href',
       '/en/app/onboarding',
@@ -247,6 +329,9 @@ test.describe('Phase 10D Settings', () => {
     await expect(page.getByLabel('Display name')).toBeVisible();
     await expect(page.getByLabel('Timezone')).toBeVisible();
     await expect(page.getByLabel('Workspace name')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
+    await expect(page.getByLabel('Current password')).toBeVisible();
+    await expect(page.getByText('This session')).toBeVisible();
     await expect(page.getByRole('radio', { name: /System/ })).toBeVisible();
     await expect(
       page
@@ -265,6 +350,7 @@ test.describe('Phase 10D Settings', () => {
       page.getByRole('button', { name: 'Save profile' }),
       page.getByRole('button', { name: 'Save timezone' }),
       page.getByRole('button', { name: 'Save workspace' }),
+      page.getByRole('button', { name: 'Change password' }),
       page
         .getByRole('region', { name: 'Preferences' })
         .getByRole('button', { name: /Language: English/i }),
