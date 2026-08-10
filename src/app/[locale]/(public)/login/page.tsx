@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { redirect as redirectToPath } from 'next/navigation';
 
 import { safeCallbackPath } from '@/lib/auth/callback-url';
 import { isGoogleSignInConfigured } from '@/lib/auth/server';
@@ -52,6 +53,14 @@ export default async function LoginPage({
   const { callbackUrl } = await searchParams;
   const destination = safeCallbackPath(callbackUrl) ?? '/app';
   if (session !== null) {
+    // `/admin` is deliberately outside `[locale]` (Phase 11's locked
+    // contract) — next-intl's own `redirect()` would prepend the locale
+    // (`localePrefix: 'always'`), producing `/en/admin`, which must never
+    // exist. A plain Next.js redirect is not locale-aware, which is exactly
+    // what an already-locale-independent destination needs.
+    if (destination.startsWith('/admin')) {
+      redirectToPath(destination);
+    }
     redirect({ href: destination, locale: locale as AppLocale });
   }
 

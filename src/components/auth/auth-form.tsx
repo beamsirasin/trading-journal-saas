@@ -191,6 +191,17 @@ export function AuthForm({
       return;
     }
 
+    // `/admin` is deliberately outside `[locale]` (Phase 11's locked
+    // contract) — `router.push` here is next-intl's locale-aware wrapper
+    // (`localePrefix: 'always'`), which would prepend the locale and
+    // produce `/en/admin`. A plain browser navigation is not locale-aware,
+    // which is exactly what an already-locale-independent destination needs
+    // (and a hard navigation is the right crossing point from the
+    // customer i18n shell into the independent admin shell either way).
+    if (destination.startsWith('/admin')) {
+      window.location.assign(destination);
+      return;
+    }
     router.push(destination);
   }
 

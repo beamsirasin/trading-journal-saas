@@ -2,7 +2,9 @@
 
 **Depends on:** 04 · **Blocks:** 12
 
-**Status:** 🚧 In progress. **11A** (repository audit, security-boundary design, contract decisions) and **11B** (platform-admin persistence and authorization foundation) are delivered. **11C** (admin route shell, operator dashboard) is next; 11D–11G (oversight views, subscription overrides + admin audit UI, VAT configuration UI + runtime wiring, closeout) remain undelivered. Phase 11 is not complete.
+**Status:** 🚧 In progress. **11A** (repository audit, security-boundary design, contract decisions), **11B** (platform-admin persistence and authorization foundation), and **11C** (admin route shell, operator Overview dashboard) are delivered. 11D–11G (user/workspace oversight views, subscription overrides + admin audit UI, VAT configuration UI + runtime wiring, closeout) remain undelivered. Phase 11 is not complete.
+
+**11C delivered the first `/admin` UI** — a read-only Overview dashboard at `/admin`, deliberately outside `[locale]` and outside the customer `(app)` shell, EN-only (no `next-intl`), with its own root HTML layout (`src/app/admin/layout.tsx`) and a nested, authoritative auth-guard layout (`src/app/admin/(dashboard)/layout.tsx`) that calls `requirePlatformAdmin()` — never Workspace/entitlement/onboarding state. An authenticated non-admin gets a privacy-limited 404 (`src/app/admin/not-found.tsx`), never a 403 that would confirm the surface exists. The locked metric catalogue (total users, total workspaces, effective subscription-state counts, plan distribution, a supporting entitlement-source breakdown, and two 30-UTC-calendar-day activity trends — new users and Trades logged) is served by a dedicated cross-tenant admin DAL/service (`src/server/dal/admin/metrics.ts`, `src/server/services/admin/metrics.ts`) that reuses the canonical `resolveEffectiveEntitlement` resolver rather than a one-off SQL CASE expression. No admin mutation, no User/Workspace oversight page, no Audit UI, and no VAT UI/runtime wiring exist yet — all 11D+.
 
 **11B locked a deliberate deviation from this document's original sketch**, after the 11A audit's own instruction to "strongly assess whether a dedicated `platform_admins` table... is preferable": platform-admin authority is a dedicated **grant-history table** (`platform_admins`, one row per grant lifecycle, partial-unique-indexed to at most one active grant per user), not a `users.is_platform_admin boolean` flag. This isolates platform authority from a table Better Auth itself owns the shape of, and gives revocation history for free — see `docs/data-dictionary.md`'s "Phase 11B — Platform administration foundation" section for the implemented schema, and `src/server/auth/admin-dal.ts` for `requirePlatformAdmin()`. Every other locked decision below (single `platform_admin` role, DB-only provisioning via `scripts/platform-admin.mjs`, `admin_audit_log` dedicated table, VAT admin-owned persistence) matches this document's original intent.
 
@@ -88,7 +90,36 @@ drizzle/0009_platform_admin_foundation.sql
 + co-located unit and *.integration.test.ts files for all of the above
 ```
 
-Still outstanding: `src/server/actions/admin.ts`, `src/app/admin/**` — both 11C+. `src/server/auth/admin-guard.ts` is superseded by `admin-dal.ts`'s naming (matching this document's own §3's "conceptually, `src/server/auth/admin-dal.ts`").
+Still outstanding after 11B: `src/server/actions/admin.ts`, `src/app/admin/**` — both delivered in 11C below (mutations remain deferred). `src/server/auth/admin-guard.ts` is superseded by `admin-dal.ts`'s naming (matching this document's own §3's "conceptually, `src/server/auth/admin-dal.ts`").
+
+**11C actually delivered** (the first `/admin` UI — read-only route shell and operator Overview dashboard; no `admin.ts` Server Action file exists because 11C has no mutations to guard):
+
+```
+src/app/admin/layout.tsx                            (root HTML document — EN-only, no NextIntlClientProvider)
+src/app/admin/not-found.tsx                          (privacy-limited 404 — no AdminShell chrome)
+src/app/admin/(dashboard)/layout.tsx                 (authoritative guard: requireSession + requirePlatformAdmin)
+src/app/admin/(dashboard)/page.tsx
+src/app/admin/(dashboard)/loading.tsx
+src/app/admin/(dashboard)/error.tsx
+src/components/admin/admin-shell.tsx                 (header, "Overview"-only nav, sign-out)
+src/components/admin/admin-sign-out-button.tsx
+src/components/admin/admin-copy.ts                   (plain EN copy — no next-intl keys added)
+src/components/admin/admin-overview-page.tsx          (+ AdminOverviewSkeleton, + .test.tsx)
+src/components/admin/admin-count-table.tsx
+src/components/admin/admin-chart-container.tsx        (i18n-free fork of product/chart-container.tsx)
+src/components/admin/admin-activity-chart.tsx
+src/lib/admin/date-window.ts                          (resolveUtc30DayWindow, + .test.ts)
+src/server/dal/admin/metrics.ts                       (cross-tenant aggregate queries)
+src/server/services/admin/metrics.ts                  (getAdminOverviewDashboard, + .test.ts, + .integration.test.ts)
+src/proxy.ts                                          (narrow /admin optimistic branch, before next-intl)
+src/app/[locale]/(public)/login/page.tsx               (/admin callback bypasses locale-aware redirect)
+src/components/auth/auth-form.tsx                      (/admin callback bypasses locale-aware router.push)
+e2e/support/provision-platform-admin.ts                (guarded E2E grant/revoke helper)
+e2e/admin.spec.ts
+scripts/benchmark-admin-metrics.mjs
+```
+
+No `drizzle/0010_*.sql` — the representative-scale benchmark found no measurable need (see the 11C report for full `EXPLAIN` figures: every material query executes in 1–8ms with zero disk reads at ~5,000 users/Workspaces/entitlements and ~18,000 Trades).
 
 ## Definition of Done
 
