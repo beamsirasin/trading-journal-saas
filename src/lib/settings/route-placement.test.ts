@@ -34,6 +34,9 @@ describe('Phase 10D Settings route placement and source cleanup', () => {
     expect(source).toContain('<LanguageSwitcher');
     expect(source).toContain('<WorkspaceForm');
     expect(source).toContain('<DataExportSection');
+    expect(source).toContain('getWorkspaceSettingsState');
+    expect(source).toContain("status: 'unavailable'");
+    expect(source).toContain('<WorkspaceUnavailable');
     expect(source).toContain('getActiveTradingAccount');
     expect(source).toContain('getSubscriptionManagementPresentation');
     expect(source).toContain("'/app/accounts'");

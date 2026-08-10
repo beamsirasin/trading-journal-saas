@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { closeDb } from '@/server/db/client';
 import { rateLimits } from '@/server/db/schema';
@@ -20,12 +20,9 @@ import { closeTestDb, getTestDb } from '@/test/integration-db';
 const { getAuth } = await import('./server');
 
 /**
- * Better Auth's rate limiter falls back to a fixed `"127.0.0.1"` client
- * identity when `isTest()` is true and no `x-forwarded-for` header is
- * present (`@better-auth/core/utils/ip.ts::getIp`) — the same reasoning
- * `registration-hardening.integration.test.ts` documents for its own two
- * buckets. `storage: 'database'` means the bucket persists across test
- * runs, so it is cleared before and after use.
+ * Uses a file-specific reserved TEST-NET client identity. Database storage
+ * persists across test processes, so the exact bucket is cleared before and
+ * after use while remaining independent from sibling auth files.
  *
  * Outside a test/dev `NODE_ENV`, `getIp` returns `null` instead (no
  * `x-forwarded-for` header, no `trustedProxies` configured) and the key
@@ -33,7 +30,8 @@ const { getAuth } = await import('./server');
  * cause the Playwright E2E suite hit: every project, worker, and retry's
  * sign-in shared that one identical key with no way to tell them apart.
  */
-const SIGN_IN_RATE_LIMIT_KEY = '127.0.0.1|/sign-in/email';
+const TEST_CLIENT_IP = '203.0.113.14';
+const SIGN_IN_RATE_LIMIT_KEY = `${TEST_CLIENT_IP}|/sign-in/email`;
 
 async function resetRateLimitBucket(): Promise<void> {
   const db = getTestDb();
@@ -47,13 +45,21 @@ function signInEmailRequest(
   return auth.handler(
     new Request('http://localhost:3000/api/auth/sign-in/email', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://localhost:3000',
+        'x-forwarded-for': TEST_CLIENT_IP,
+      },
       body: JSON.stringify(body),
     }),
   );
 }
 
 describe('/sign-in/email rate limiting (real Better Auth + database)', () => {
+  beforeEach(async () => {
+    await resetRateLimitBucket();
+  });
+
   afterEach(async () => {
     await resetRateLimitBucket();
   });

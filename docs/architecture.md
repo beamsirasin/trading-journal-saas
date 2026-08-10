@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phases 03–09 are officially complete; Phase 10 — Settings is next. Authenticated workspace-scoped analytics reads now project persisted Trade snapshots into separate Trader, System, paired, Rule, and Mistake populations. `src/server/services/analytics.ts` composes them only through Phase 07D helpers for the real `/app` and `/app/analytics` routes; authenticated analytics import no demo fixtures and never rederive per-Trade R/outcomes or canonical formulas in SQL/React.
+**Status:** Phases 03–10 are officially complete; Phase 11 — SaaS Administration is next. The single authenticated `/app/settings` route sits outside the completed-onboarding route group and composes distinct trust scopes: self-only Profile/Preferences/Security; owner plus `ordinary_write` Workspace rename; canonical Account/Plan/Billing presentation; and owner-only, entitlement-independent Workspace export. Export uses one schema-versioned allowlist for JSON and CSV and never projects authentication/provider/Audit Log internals.
 
 ## 1. Shape
 

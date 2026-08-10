@@ -1,6 +1,6 @@
 # Product Specification
 
-**Status:** Living document. Phases 03–09 are officially complete; Phase 10 — Settings is next. The real Dashboard and deep Analytics now report authenticated workspace data over persisted Trade snapshots with strict historical filters, separate System/Trader populations, same-Trade paired comparison, canonical R metrics, independent equity curves, Rule adherence, and count-only Mistakes. Discipline Score, mistake-cost attribution, verdict thresholds, FX/currency portfolio analytics, and advanced/global filters still require explicit approved policy.
+**Status:** Living document. Phases 03–10 are officially complete; Phase 11 — SaaS Administration is next. Settings now provides real self-scoped Profile/Preferences and Account Security, owner-authorized Workspace controls, canonical Account/Plan/Billing navigation, and owner-only versioned Workspace export without exposing credentials, sessions, provider internals, Audit Logs, or server secrets. Discipline Score, mistake-cost attribution, verdict thresholds, FX/currency portfolio analytics, advanced/global filters, and account/workspace deletion still require explicit approved policy.
 
 ## 1. The problem
 

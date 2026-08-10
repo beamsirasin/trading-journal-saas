@@ -1110,6 +1110,7 @@
       "title": "Preferences",
       "description": "Set your account timezone and control this browser's theme and language.",
       "timezone": "Timezone",
+      "timezoneUnavailable": "Timezone is temporarily unavailable. Theme, language, Profile, and Security remain available.",
       "timezoneHelp": "Changing timezone changes how dates and analytics date ranges are displayed and interpreted. Stored historical timestamps are not changed.",
       "saveTimezone": "Save timezone",
       "saving": "Saving…",
@@ -1195,6 +1196,7 @@
     "workspace": {
       "title": "Workspace",
       "description": "Review the active personal workspace and rename it when your role and access allow changes.",
+      "unavailable": "Workspace information is temporarily unavailable. Account-level Profile and Security remain available.",
       "name": "Workspace name",
       "type": "Workspace type",
       "personal": "Personal workspace",
@@ -1232,6 +1234,7 @@
       "description": "Trading account management stays in its canonical workspace tool.",
       "ready": "Create, edit, activate, archive, and restore trading accounts on the Trading Accounts page.",
       "onboardingRequired": "Trading account management becomes available after you complete onboarding.",
+      "workspaceUnavailable": "Trading account management is temporarily unavailable because no active workspace context could be resolved.",
       "manage": "Manage trading accounts",
       "active": "Active account: {name}"
     },
@@ -1252,6 +1255,7 @@
       "seePlans": "Manage plan",
       "billingHistory": "Billing history",
       "onboardingRequired": "Plan and billing tools become available after you complete onboarding.",
+      "workspaceUnavailable": "Subscription information is temporarily unavailable because no active workspace context could be resolved.",
       "pendingDowngrade": "Downgrade to {plan} is scheduled for {date}.",
       "cancellationScheduled": "Cancellation is scheduled for {date}."
     },
@@ -1260,6 +1264,7 @@
       "description": "Billing history uses immutable payment snapshots from this workspace.",
       "ready": "Review the workspace's payment history. Entries may represent the current mock payment infrastructure and are not tax invoices or official receipts.",
       "onboardingRequired": "Billing history becomes available after you complete onboarding.",
+      "workspaceUnavailable": "Billing history is temporarily unavailable because no active workspace context could be resolved.",
       "view": "View billing history"
     },
     "dataExport": {
@@ -1276,6 +1281,7 @@
         "download": "Download CSV ZIP"
       },
       "ownerOnly": "Only a workspace owner can export workspace data.",
+      "workspaceUnavailable": "Workspace export is temporarily unavailable because no active workspace context could be resolved.",
       "scopeNote": "Workspace Data Export includes trading history and sanitized billing snapshots, including archived and soft-deleted records. It excludes sign-in credentials, sessions, OAuth tokens, Audit Logs, and payment-provider identifiers."
     }
   },

@@ -42,4 +42,4 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 ## Status
 
-Phases 00–09, including [Phase 09 — Dashboard & Analytics](PHASE-09-analytics.md), are complete. [Phase 10 — Settings](PHASE-10-settings.md) is the next implementation phase.
+Phases 00–10, including [Phase 10 — Settings](PHASE-10-settings.md), are complete. [Phase 11 — SaaS Administration](PHASE-11-admin.md) is the next implementation phase.

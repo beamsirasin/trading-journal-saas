@@ -224,8 +224,13 @@ describe('workspace export 5,000-Trade generation target', () => {
       workspaceId: 'workspace-a',
       source: { ...source, trades },
     });
+    const envelopeMs = performance.now() - startedAt;
+    const jsonStartedAt = performance.now();
     const json = serializeWorkspaceExportJson(envelope);
+    const jsonMs = performance.now() - jsonStartedAt;
+    const zipStartedAt = performance.now();
     const zip = createWorkspaceExportCsvZip(envelope);
+    const zipMs = performance.now() - zipStartedAt;
     const runtimeMs = performance.now() - startedAt;
 
     expect(envelope.data.trades).toHaveLength(5_000);
@@ -235,7 +240,7 @@ describe('workspace export 5,000-Trade generation target', () => {
     expect(runtimeMs).toBeLessThan(10_000);
 
     console.info(
-      `workspace-export-5000 runtime_ms=${runtimeMs.toFixed(1)} json_bytes=${Buffer.byteLength(json)} zip_bytes=${zip.byteLength}`,
+      `workspace-export-5000 envelope_ms=${envelopeMs.toFixed(1)} json_ms=${jsonMs.toFixed(1)} zip_ms=${zipMs.toFixed(1)} runtime_ms=${runtimeMs.toFixed(1)} json_bytes=${Buffer.byteLength(json)} zip_bytes=${zip.byteLength}`,
     );
   });
 });

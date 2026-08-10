@@ -58,18 +58,13 @@ function testAdapter(): CapturedTestEmailAdapter {
 const createdUserIds: string[] = [];
 
 /**
- * Better Auth's rate limiter (`@better-auth/core/utils/ip`'s `getIp`) falls
- * back to a fixed `"127.0.0.1"` client identity whenever `isTest()` is true
- * and no `x-forwarded-for` header is present — which is exactly this test
- * process (`NODE_ENV=test`, no forwarded header sent below). Combined with
- * the fixed request path, the key is always this exact string
- * (`createRateLimitKey`, `dist/api/rate-limiter/index.mjs`). Storage is
- * `database` (`src/lib/auth/server.ts`'s `rateLimit.storage`), so the
- * counter row persists in Postgres across test runs — cleared before and
- * after use so this test is isolated from anything else that has ever hit
- * this path with this IP.
+ * This file supplies a stable reserved TEST-NET identity so its persistent
+ * database bucket cannot collide with sibling auth integration files. The
+ * exact key is still cleared before and after use to isolate interrupted
+ * runs and retries.
  */
-const RESEND_RATE_LIMIT_KEY = '127.0.0.1|/send-verification-email';
+const TEST_CLIENT_IP = '203.0.113.11';
+const RESEND_RATE_LIMIT_KEY = `${TEST_CLIENT_IP}|/send-verification-email`;
 
 async function resetResendRateLimitBucket(): Promise<void> {
   await getTestDb().delete(rateLimits).where(eq(rateLimits.key, RESEND_RATE_LIMIT_KEY));
@@ -99,6 +94,7 @@ function sendVerificationEmailRequest(
       headers: {
         'content-type': 'application/json',
         origin: 'http://localhost:3000',
+        'x-forwarded-for': TEST_CLIENT_IP,
         ...extraHeaders,
       },
       body: JSON.stringify({ email, callbackURL: '/verify-email/complete' }),
@@ -107,8 +103,11 @@ function sendVerificationEmailRequest(
 }
 
 describe('Better Auth verification email delivery (real database)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     testAdapter().reset();
+    // Database-backed buckets survive an interrupted test process, so
+    // cleanup must happen before use as well as after rate-limit assertions.
+    await resetResendRateLimitBucket();
   });
 
   afterEach(async () => {
@@ -116,6 +115,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     for (const userId of createdUserIds.splice(0)) {
       await db.delete(users).where(eq(users.id, userId));
     }
+    await resetResendRateLimitBucket();
   });
 
   afterAll(async () => {
@@ -248,7 +248,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     await getTestDb().delete(rateLimits).where(eq(rateLimits.key, RESEND_RATE_LIMIT_KEY));
     await getTestDb().delete(rateLimits).where(eq(rateLimits.key, otherIpKey));
 
-    // Exhaust the default ("127.0.0.1") bucket first.
+    // Exhaust this file's default TEST-NET bucket first.
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const response = await sendVerificationEmailRequest(auth, email);
       expect(response.status).toBe(200);
@@ -257,7 +257,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     expect(blocked.status).toBe(429);
 
     // A distinct forwarded IP is a distinct rate-limit key, so it still has
-    // its full allowance even though "127.0.0.1" is exhausted.
+    // its full allowance even though this file's default bucket is exhausted.
     const otherIp = await sendVerificationEmailRequest(auth, email, {
       'x-forwarded-for': '203.0.113.5',
     });
@@ -281,7 +281,7 @@ describe('Better Auth verification email delivery (real database)', () => {
     if (user !== undefined) createdUserIds.push(user.id);
 
     await resetResendRateLimitBucket();
-    // Exhaust the resend bucket for "127.0.0.1".
+    // Exhaust this file's resend bucket.
     for (let attempt = 0; attempt < 4; attempt += 1) {
       await sendVerificationEmailRequest(auth, email);
     }

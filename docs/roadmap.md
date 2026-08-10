@@ -164,6 +164,18 @@ Phase 09 is officially complete across 09A–09F. Full contract: [PHASE-09-analy
 - **Boundaries preserved** — authenticated analytics import no demo fixtures, aggregate no currency P&L, perform no FX conversion, and state no verdict/grade/confidence, Discipline Score, or mistake cost.
 - **Measured closeout (09F)** — the 5,000-Trade benchmark remained in single-digit milliseconds for every representative query and required no migration `0009`; focused and complete unit/PostgreSQL/production-E2E regressions passed with responsive EN/TH coverage.
 
+## What Phase 10 delivered
+
+Phase 10 is officially complete across 10A–10F. Full contract: [PHASE-10-settings.md](phases/PHASE-10-settings.md).
+
+- **One real pre-onboarding Settings route** — `/app/settings` remains authenticated but sits outside the completed-onboarding route group. Self Profile, Theme/Locale, and Account Security remain available even when a workspace-scoped card is unavailable.
+- **Profile and truthful Preferences** — canonical display-name mutation; read-only email, verification/avatar/provider presentation; persisted IANA timezone; browser/device-authoritative Theme; URL/cookie-authoritative Locale. No fabricated reporting currency or cross-device Theme/Locale promise.
+- **Scoped Workspace and canonical destinations** — owner-only Workspace name changes require `ordinary_write`; Account, Plan, and Billing lifecycle stays in `/app/accounts`, `/app/plan`, and `/app/billing`.
+- **Versioned Workspace export** — owner-only schema-v1 JSON and normalized CSV ZIP over one explicit allowlist, including archived/versioned/soft-deleted trading history and sanitized billing snapshots. Credentials, sessions/tokens, provider internals, mutation keys, Audit Logs, and secrets are excluded. Export remains available in `read_only` and `over_limit`.
+- **Account Security** — safe sign-in methods, canonical password change for credential-backed users, current-session preservation, other-session revocation, token-free active-session presentation, no IP/location invention, and no workspace entitlement dependency.
+- **Measured closeout** — the 5,000-Trade in-memory fixture produced a 7,837,740-byte JSON artifact and a highly repetitive 42,958-byte ZIP in about 121 ms total (38 ms projection, 17 ms JSON, 67 ms ZIP). No async job or migration was warranted. Focused and complete unit/PostgreSQL/production-E2E regressions passed in EN/TH and through 320px.
+- **Explicitly deferred** — email change, avatar editing, reporting/date/number/risk defaults, custom Mistake taxonomy, teams/invites, provider linking/unlinking, MFA/passkeys, IP/location Security display, Audit Log UI/export, async export/import, and account/workspace deletion.
+
 ## Sequencing rationale
 
 **Design system early (01).** A token set that nothing consumes cannot be reviewed. Building the marketing site and the application shell against it exercises every token, every state, and every breakpoint before any of it is load-bearing for real data — and it is far cheaper to change a token now than after eight phases depend on it.
@@ -175,6 +187,8 @@ Phase 09 is officially complete across 09A–09F. Full contract: [PHASE-09-analy
 **Entitlements before billing expansion (03C → 04).** Active-account creation and restoration limits already execute server-side inside their mutation transactions. Phase 04 adds customer billing and checkout without weakening that authorization boundary or inventing plan-specific feature gates.
 
 **Analytics replaces authenticated fixtures with measured read models (09).** The public `/demo` fixtures remain explicitly labelled and isolated; authenticated Dashboard/Analytics consume persisted snapshots and the Phase 07D engine.
+
+**Settings separates account and tenant authorization (10).** Profile, preferences, and Security protect the authenticated person even without `ordinary_write`; Workspace rename retains tenant mutation authorization; export remains owner/membership-scoped but subscription-entitlement-independent.
 
 ## Superseded
 

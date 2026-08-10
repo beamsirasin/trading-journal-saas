@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, CircleAlert } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
@@ -9,7 +9,11 @@ import {
   getActiveWorkspaceContext,
   getCurrentUserPreferences,
 } from '@/server/auth/dal';
-import { getSelfProfile, getSettingsWorkspaceSummary } from '@/server/auth/settings-dal';
+import {
+  getSelfProfile,
+  getSettingsWorkspaceSummary,
+  type SettingsWorkspaceSummary,
+} from '@/server/auth/settings-dal';
 import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
 import { MetricLabel } from '@/components/product/metric';
 import { PageHeader, SectionHeader } from '@/components/product/page-header';
@@ -28,6 +32,36 @@ import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
+
+type WorkspaceSettingsState =
+  | {
+      readonly status: 'available';
+      readonly context: Awaited<ReturnType<typeof getActiveWorkspaceContext>>;
+      readonly summary: SettingsWorkspaceSummary;
+    }
+  | { readonly status: 'unavailable' };
+
+async function getWorkspaceSettingsState(): Promise<WorkspaceSettingsState> {
+  try {
+    const context = await getActiveWorkspaceContext();
+    const summary = await getSettingsWorkspaceSummary();
+    return { status: 'available', context, summary };
+  } catch {
+    // Tenant repair/read failures must not take down account-level Profile or
+    // Security. Workspace-scoped cards retain their own authorization and
+    // render a closed, truthful unavailable state.
+    return { status: 'unavailable' };
+  }
+}
+
+function WorkspaceUnavailable({ message }: { readonly message: string }) {
+  return (
+    <div className="bg-card border-border text-muted-foreground flex min-h-11 items-start gap-2 rounded-lg border p-5 text-sm sm:p-6">
+      <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <p>{message}</p>
+    </div>
+  );
+}
 
 export async function generateMetadata({
   params,
@@ -57,22 +91,22 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
   setRequestLocale(appLocale);
   const t = await getTranslations('settings');
   const tLanguage = await getTranslations('languageSwitcher');
-  // Resolve/repair the account's personal workspace and preferences first.
-  // A directly provisioned or recovered auth user can legitimately reach
-  // this pre-onboarding route before those application rows exist; reading
-  // preferences in parallel with the repair would race their creation.
-  const workspace = await getActiveWorkspaceContext();
-  const [profile, preferences, settingsWorkspace, security] = await Promise.all([
+  const [profile, security, workspaceState] = await Promise.all([
     getSelfProfile(),
-    getCurrentUserPreferences(),
-    getSettingsWorkspaceSummary(),
     getAccountSecurityView(),
+    getWorkspaceSettingsState(),
   ]);
-  const onboardingComplete = isOnboardingComplete(workspace.onboardingCompletedAt);
+  // Read preferences only after the workspace repair attempt. A missing row
+  // is a provisioning failure, but must not block account-level security.
+  const preferences = await getCurrentUserPreferences().catch(() => null);
+  const timezone = preferences?.timezone ?? 'UTC';
+  const onboardingComplete =
+    workspaceState.status === 'available' &&
+    isOnboardingComplete(workspaceState.context.onboardingCompletedAt);
   const [activeAccount, subscription] = onboardingComplete
     ? await Promise.all([
         getActiveTradingAccount(),
-        getSubscriptionManagementPresentation(appLocale, preferences.timezone),
+        getSubscriptionManagementPresentation(appLocale, timezone),
       ])
     : [null, null];
 
@@ -98,7 +132,14 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
         <div className="bg-card border-border flex flex-col gap-8 rounded-lg border p-5 sm:p-6">
           <div className="flex flex-col gap-3">
             <h3 className="text-card-title">{t('preferences.timezone')}</h3>
-            <TimezoneForm initialTimezone={preferences.timezone} />
+            {preferences === null ? (
+              <p className="text-muted-foreground flex min-h-11 items-center gap-2 text-sm">
+                <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                {t('preferences.timezoneUnavailable')}
+              </p>
+            ) : (
+              <TimezoneForm initialTimezone={preferences.timezone} />
+            )}
           </div>
           <div className="border-t pt-6">
             <ThemeSelector />
@@ -126,7 +167,7 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           title={t('security.title')}
           description={t('security.description')}
         />
-        <SecuritySection security={security} timezone={preferences.timezone} />
+        <SecuritySection security={security} timezone={timezone} />
       </section>
 
       <section aria-labelledby="workspace-heading" className="flex flex-col gap-4">
@@ -135,7 +176,11 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           title={t('workspace.title')}
           description={t('workspace.description')}
         />
-        <WorkspaceForm workspace={settingsWorkspace} />
+        {workspaceState.status === 'available' ? (
+          <WorkspaceForm workspace={workspaceState.summary} />
+        ) : (
+          <WorkspaceUnavailable message={t('workspace.unavailable')} />
+        )}
       </section>
 
       <section aria-labelledby="accounts-heading" className="flex flex-col gap-4">
@@ -147,7 +192,11 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
         <div className="bg-card border-border flex flex-col items-start gap-4 rounded-lg border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <div className="min-w-0">
             <p className="text-muted-foreground text-sm leading-relaxed">
-              {onboardingComplete ? t('accounts.ready') : t('accounts.onboardingRequired')}
+              {workspaceState.status === 'unavailable'
+                ? t('accounts.workspaceUnavailable')
+                : onboardingComplete
+                  ? t('accounts.ready')
+                  : t('accounts.onboardingRequired')}
             </p>
             {activeAccount === null ? null : (
               <p className="text-foreground mt-2 text-sm font-semibold break-words">
@@ -155,12 +204,14 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
               </p>
             )}
           </div>
-          <Button asChild variant="outline" className="min-h-11 shrink-0">
-            <Link href={onboardingComplete ? '/app/accounts' : '/app/onboarding'}>
-              {onboardingComplete ? t('accounts.manage') : t('completeOnboarding')}
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </Button>
+          {workspaceState.status === 'available' ? (
+            <Button asChild variant="outline" className="min-h-11 shrink-0">
+              <Link href={onboardingComplete ? '/app/accounts' : '/app/onboarding'}>
+                {onboardingComplete ? t('accounts.manage') : t('completeOnboarding')}
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </section>
 
@@ -171,7 +222,12 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           description={t('subscription.description')}
         />
         <div className="bg-card border-border flex flex-col gap-5 rounded-lg border p-5 sm:p-6">
-          {onboardingComplete ? (
+          {workspaceState.status === 'unavailable' ? (
+            <p className="text-muted-foreground flex min-h-11 items-center gap-2 text-sm">
+              <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+              {t('subscription.workspaceUnavailable')}
+            </p>
+          ) : onboardingComplete ? (
             <>
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex flex-col gap-1">
@@ -236,14 +292,20 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
         />
         <div className="bg-card border-border flex flex-col items-start gap-4 rounded-lg border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
           <p className="text-muted-foreground text-sm leading-relaxed">
-            {onboardingComplete ? t('billing.ready') : t('billing.onboardingRequired')}
+            {workspaceState.status === 'unavailable'
+              ? t('billing.workspaceUnavailable')
+              : onboardingComplete
+                ? t('billing.ready')
+                : t('billing.onboardingRequired')}
           </p>
-          <Button asChild variant="outline" className="min-h-11 shrink-0">
-            <Link href={onboardingComplete ? '/app/billing' : '/app/onboarding'}>
-              {onboardingComplete ? t('billing.view') : t('completeOnboarding')}
-              <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </Button>
+          {workspaceState.status === 'available' ? (
+            <Button asChild variant="outline" className="min-h-11 shrink-0">
+              <Link href={onboardingComplete ? '/app/billing' : '/app/onboarding'}>
+                {onboardingComplete ? t('billing.view') : t('completeOnboarding')}
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </section>
 
@@ -253,7 +315,11 @@ export default async function SettingsPage({ params }: { params: Promise<PagePar
           title={t('dataExport.title')}
           description={t('dataExport.description')}
         />
-        <DataExportSection role={settingsWorkspace.role} />
+        {workspaceState.status === 'available' ? (
+          <DataExportSection role={workspaceState.summary.role} />
+        ) : (
+          <WorkspaceUnavailable message={t('dataExport.workspaceUnavailable')} />
+        )}
       </section>
     </Container>
   );

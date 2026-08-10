@@ -2,7 +2,21 @@
 
 **Depends on:** 04, 08 · **Blocks:** 12
 
-**Status:** In progress. Phase 10A audit, Phase 10B Profile & Preferences, Phase 10C Workspace & Billing Integration, Phase 10D Workspace Data Export, and Phase 10E Account Security are delivered; Phase 10F remains pending.
+**Status:** Complete. Phase 10A–10F delivered and verified the real Settings surface. Phase 11 — SaaS Administration is next.
+
+## Phase 10F closeout
+
+- The single authenticated `/app/settings` route remains outside the completed-onboarding route group. Account-level Profile and Security load independently from workspace-scoped composition; if workspace repair/context is unavailable, Workspace/Account/Subscription/Billing/Export render localized unavailable states instead of taking down self-security.
+- Shared database-backed auth rate-limit tests now use stable file-specific TEST-NET identities and clean their exact buckets before and after use. This fixes genuine cross-file/interrupted-run contamination without changing production limits, assertions, or proxy behavior.
+- Focused Phase 10 unit/component coverage passed 12 files/78 tests. The complete configured PostgreSQL manifest passed all 39 files/570 tests both in deterministic non-overlapping batches and in a later uninterrupted canonical run (about 27 minutes 25 seconds). PostgreSQL was 18.4.
+- Production Settings E2E passed its complete intended matrix in Chromium and Mobile Chrome: Profile/timezone persistence, truthful Theme/Locale availability, Workspace and canonical destinations, real JSON/CSV ZIP downloads, Security password/session behavior, `read_only`, `over_limit`, pre-onboarding, and 320px layout.
+- A stale app-shell E2E assertion still targeted the pre-10B label `Save changes`; it was corrected to the canonical accessible label `Save profile`, passed in both browser projects, and was followed by a clean full 403-test production-build Playwright run with one worker.
+- The 5,000-Trade in-memory export observation measured approximately 38 ms for projection, 17 ms for JSON, and 67 ms for ZIP (about 121 ms total); JSON was 7,837,740 bytes and the deliberately repetitive ZIP was 42,958 bytes. No async export job is justified by this fixture.
+- Phase 10 required no migration: `0000`–`0008` remain unchanged and no `0009` exists.
+
+### Deletion remains deferred
+
+Phase 10 deliberately does not provide account or Workspace deletion, a disabled Danger Zone, or deletion-request jobs. `billing_transactions.workspace_id` uses `ON DELETE RESTRICT`; financial-record retention, Audit/billing anonymization, recovery windows, personal-Workspace recreation, provider-appropriate reauthentication, and ownership of a durable deletion-job system are unresolved. Deletion requires a separately approved lifecycle and migration rather than a cosmetic Settings control.
 
 ## Phase 10E delivery
 

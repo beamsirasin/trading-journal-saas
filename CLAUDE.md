@@ -3,8 +3,8 @@
 > This file is the standing contract for all work in this repository.
 > Read it before modifying code. Read the active phase document in [`docs/phases/`](docs/phases/) second.
 >
-> **Status:** Phases 03–09 are officially complete; Phase 10 — Settings is next. Phase 09 delivered the real active-Account Dashboard and deep Analytics over authenticated workspace-scoped read models: strict `30d`/`90d`/`all` calendar filters, separate System/Trader populations, same-Trade paired comparison, canonical R metrics and independent equity curves, Rule adherence, count-only Mistakes, historical identity filters, EN/TH, a 5,000-Trade benchmark, and production E2E. Phase 07D remains the only aggregate-formula authority; Discipline Score, mistake-cost attribution, verdicts, FX/currency portfolio analytics, and unsupported global filters remain deferred. The final paid-plan/billing/VAT/payment-provider contract remains unchanged from Phase 04.
-> **Last updated:** 2026-08-09 (Phase 09F — full regression and official Phase 09 closeout)
+> **Status:** Phases 03–10 are officially complete; Phase 11 — SaaS Administration is next. Phase 10 delivered the single pre-onboarding Settings surface with real self-scoped Profile/Preferences and Account Security, owner+writable Workspace rename, canonical Account/Plan/Billing navigation, and owner-only schema-versioned JSON/normalized CSV ZIP Workspace export that remains available in read-only and over-limit modes. No migration was required. Email change, avatar editing, provider linking/unlinking, MFA/passkeys, Audit Log UI/export, async import/export jobs, and account/workspace deletion remain deferred.
+> **Last updated:** 2026-08-10 (Phase 10F — full regression and official Phase 10 closeout)
 >
 > The master product instructions this repository was commissioned under are preserved verbatim in [Appendix A](#appendix-a--master-instructions-verbatim). Where this document elaborates on them, the appendix governs intent and this document governs implementation.
 
