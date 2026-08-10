@@ -1,6 +1,6 @@
 # Data Dictionary
 
-**Status:** Phases 03–10 are officially complete. Migrations remain exactly `0000`–`0008`: Phase 10 Settings required no schema change and consumes the existing user preferences, Workspace, billing snapshot, auth account/session, and rate-limit tables through narrow server-only read models. Phase 11 — SaaS Administration is the next schema-bearing phase. Phase 04C's schema (below) is fully consumed by customer billing, checkout, mock-provider integration, and the sanitized Workspace export; Phase 06 added the versioned Strategy/Setup/Rule domain and Phase 07B added the Trade/discipline domain consumed by the real Journal, Analytics, and export surfaces.
+**Status:** Phases 03–10 are officially complete. Migration `0009_platform_admin_foundation.sql` (Phase 11B) adds the platform-admin authority/audit/VAT-configuration foundation and one additive column (`workspace_entitlements.source`) — no other Phase 00–10 table changed. Phase 11 overall remains in progress: 11B ships persistence and authorization only, with no `/admin` UI, no admin subscription mutations, and no VAT runtime wiring yet (11C onward). Phase 04C's schema is fully consumed by customer billing, checkout, mock-provider integration, and the sanitized Workspace export; Phase 06 added the versioned Strategy/Setup/Rule domain and Phase 07B added the Trade/discipline domain consumed by the real Journal, Analytics, and export surfaces.
 
 Tables are added by re-exporting them from `src/server/db/schema/index.ts`.
 
@@ -38,7 +38,7 @@ Migration: [`drizzle/0000_init_auth_tenancy.sql`](../drizzle/0000_init_auth_tena
 | `image`                     | text        | Nullable — OAuth avatar URL                                               |
 | `created_at` / `updated_at` | timestamptz |                                                                           |
 
-Note: this table does **not** carry `timezone`/`is_platform_admin`/`onboarding_completed_at` — those were part of an earlier, superseded plan. Timezone lives on `user_preferences` (below); platform-admin and onboarding-completion tracking are deferred to the phases that need them (Phase 11, and a future onboarding-UI phase, respectively).
+Note: this table does **not** carry `timezone`/`is_platform_admin`/`onboarding_completed_at` — those were part of an earlier, superseded plan. Timezone lives on `user_preferences` (below); onboarding-completion tracking lives on `workspaces.onboarding_completed_at`. Platform-admin authority is **deliberately never** added to this table — Phase 11B's locked contract puts it in a dedicated `platform_admins` grant-history table instead (see "Phase 11 — Administration" below), isolating platform authority from a table Better Auth itself owns the shape of.
 
 ### `sessions`, `accounts`, `verifications`, `rate_limits` (Better Auth — owns these tables)
 
@@ -110,17 +110,20 @@ Migrations: [`drizzle/0003_add_workspace_entitlements.sql`](../drizzle/0003_add_
 
 The one authoritative source of a workspace's trial/subscription state. Phase 04C extends this table rather than creating a competing `subscriptions` table. New paid-billing fields remain nullable for historical pre-billing rows.
 
-| Column                                                                | Type                  | Notes                                                                             |
-| --------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------- |
-| `workspace_id`                                                        | uuid                  | Unique (`workspace_entitlements_workspace_idx`) — at most one row per workspace   |
-| `status`                                                              | text, CHECK           | `trialing` \| `active` \| `past_due` \| `canceled` \| `expired`                   |
-| `plan_key` / `pending_plan_key`                                       | text, CHECK           | Nullable; `starter` \| `trader` \| `professional`                                 |
-| `trial_started_at` / `trial_ends_at`                                  | timestamptz           | Original trial timestamps; never restarted or extended by the Phase 04C migration |
-| `current_period_started_at` / `_ends_at`                              | timestamptz           | Nullable; start cannot be after end                                               |
-| `cancel_at_period_end` / `canceled_at`                                | boolean / timestamptz | Flag defaults false; true requires a period end                                   |
-| `billing_currency` / `billing_interval`                               | text, CHECK           | Nullable; `THB` or `USD`, and `monthly` only                                      |
-| `pending_plan_effective_at`                                           | timestamptz           | Must be present exactly when `pending_plan_key` is present                        |
-| `provider_kind` / `provider_customer_id` / `provider_subscription_id` | text                  | Nullable; no provider behavior is implemented by this schema phase                |
+| Column                                                                | Type                  | Notes                                                                                                           |
+| --------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `workspace_id`                                                        | uuid                  | Unique (`workspace_entitlements_workspace_idx`) — at most one row per workspace                                 |
+| `status`                                                              | text, CHECK           | `trialing` \| `active` \| `past_due` \| `canceled` \| `expired`                                                 |
+| `plan_key` / `pending_plan_key`                                       | text, CHECK           | Nullable; `starter` \| `trader` \| `professional`                                                               |
+| `trial_started_at` / `trial_ends_at`                                  | timestamptz           | Original trial timestamps; never restarted or extended by the Phase 04C migration                               |
+| `current_period_started_at` / `_ends_at`                              | timestamptz           | Nullable; start cannot be after end                                                                             |
+| `cancel_at_period_end` / `canceled_at`                                | boolean / timestamptz | Flag defaults false; true requires a period end                                                                 |
+| `billing_currency` / `billing_interval`                               | text, CHECK           | Nullable; `THB` or `USD`, and `monthly` only                                                                    |
+| `pending_plan_effective_at`                                           | timestamptz           | Must be present exactly when `pending_plan_key` is present                                                      |
+| `provider_kind` / `provider_customer_id` / `provider_subscription_id` | text                  | Nullable; no provider behavior is implemented by this schema phase                                              |
+| `source`                                                              | text, CHECK           | Phase 11B. `trial` \| `paid` \| `complimentary` — entitlement provenance, never inferred from profit; see below |
+
+**Phase 11B — `source` (provenance, not payment):** `startTrialInTx` (`src/server/services/entitlement.ts`) always inserts `'trial'`; `activatePaidSubscriptionInTransaction` (`src/server/services/subscription-lifecycle.ts`) always sets `'paid'` on a real, trusted paid activation — the only two writers before Phase 11E, so the migration's one-time backfill (`CASE WHEN plan_key IS NOT NULL THEN 'paid' ELSE 'trial' END`) is fully deterministic, not a guess. Cancellation/expiry/upgrade never change this column. `'complimentary'` is reserved for a future Phase 11E admin grant action — nothing writes it yet. Column has `DEFAULT 'trial'` purely so pre-existing test fixtures across the Phase 04–10 suites that insert this table directly keep compiling; every real write path sets it explicitly.
 
 **Locked plan decision:** the trial grants exactly **1** active trading account for **7 days** with every feature unlocked — an explicit constant (`TRIAL_ACCOUNT_LIMIT`), never derived from any paid plan's limit. Paid plans gate exclusively on active (non-archived) trading-account count and otherwise share identical features and analytics: Starter (1 account, THB 149/USD 5 per month), Trader (5 accounts, THB 299/USD 9), Professional (15 accounts, THB 499/USD 15). Every paid plan includes unlimited strategies, setups, trades, and trade history. Archived accounts do not count; create and restore enforce the limit server-side. VAT collection is disabled at launch because the business is not initially VAT registered.
 
@@ -370,34 +373,75 @@ Unique `(trade_id, rule_key)` prevents a duplicate check for the same logical Ru
 
 ---
 
-## Phase 11 — Administration
+## Phase 11B — Platform administration foundation (implemented)
 
-### `admin_audit_log`
+Migration: [`drizzle/0009_platform_admin_foundation.sql`](../drizzle/0009_platform_admin_foundation.sql). Persistence and authorization only — no `/admin` route, no admin subscription mutation, no VAT runtime wiring exist yet (Phase 11C onward). See [ADR-equivalent reasoning in the Phase 11A audit] and `docs/phases/PHASE-11-admin.md`.
 
-`actor_user_id`, `action`, `target_type`, `target_id`, `before` (jsonb), `after` (jsonb), `reason`, `created_at`.
+### `platform_admins` (application-owned)
 
-Every platform-admin mutation writes a row. Non-negotiable: admins act on other people's data.
+One row per platform-admin GRANT lifecycle, not a mutable flag — a user may accumulate several historical rows (grant → revoke → grant again), all retained. **Deliberately not `users.is_platform_admin`**: isolates platform authority from a table Better Auth itself owns the shape of, and gives revocation history for free.
+
+| Column                                        | Type        | Notes                                                                                                                                                      |
+| --------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`                                     | text        | FK → `users`, **`ON DELETE RESTRICT`** — a user with any grant history, even fully revoked, cannot be deleted                                              |
+| `granted_at` / `revoked_at`                   | timestamptz | `revoked_at` NULL means the grant is currently active                                                                                                      |
+| `granted_by_admin_id` / `revoked_by_admin_id` | uuid        | Self-reference to this table's own `id` (which acting admin's grant authorized it) — nullable for the operational bootstrap/revoke script's `system` actor |
+
+At most one ACTIVE grant per user, enforced by a **partial unique index** `platform_admins_active_user_idx` (`user_id` WHERE `revoked_at IS NULL`) — not a plain `UNIQUE(user_id)`, which would forbid the required grant/revoke/re-grant history. Revocation is `UPDATE ... SET revoked_at`; rows are never deleted.
+
+### `admin_audit_log` (application-owned)
+
+The dedicated PLATFORM ADMIN audit trail — deliberately separate from workspace-tenant `audit_logs` (a platform admin acts on someone ELSE's data, a different trust register). Append-only, enforced by two triggers (`admin_audit_log_protect_content_trigger`, `admin_audit_log_protect_delete_trigger`): no content column may ever be UPDATEd, and no row may ever be DELETEd — with one narrow exception, `subject_user_id`/`subject_workspace_id` transitioning to NULL (their FKs are `ON DELETE SET NULL`, matching `audit_logs`' own subject-nulling precedent).
+
+| Column                                     | Type        | Notes                                                                                                                                                                                                                                                |
+| ------------------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `actor_kind`                               | text, CHECK | `platform_admin` \| `system` — CHECK-paired with `actor_admin_id`'s nullability                                                                                                                                                                      |
+| `actor_admin_id`                           | uuid        | FK → `platform_admins`, RESTRICT. NOT NULL iff `actor_kind = 'platform_admin'`; NULL iff `'system'`                                                                                                                                                  |
+| `action`                                   | text, CHECK | Closed vocabulary (`src/config/admin-audit-actions.ts`'s `ADMIN_AUDIT_ACTIONS`) — DB CHECK **and** TS allowlist, unlike `audit_logs.action` (TS-only), because this table's rows may be written by the raw-SQL bootstrap script outside the TS layer |
+| `subject_user_id` / `subject_workspace_id` | text / uuid | Both nullable and independent — a platform-level event (e.g. a VAT change) has neither                                                                                                                                                               |
+| `reason_code`                              | text, CHECK | Required. Closed vocabulary shared with `platform_vat_configuration.reason_code`                                                                                                                                                                     |
+| `reason_note`                              | text        | Optional, ≤500 characters (CHECK)                                                                                                                                                                                                                    |
+| `before_state` / `after_state`             | jsonb       | Allowlisted structural snapshot only (`AdminAuditStateSnapshot` in `src/server/services/admin-audit-log.ts`) — never a raw row dump, never PII/tokens/Trade content                                                                                  |
+
+Non-negotiable: admins act on other people's data, and every admin action writes a row here.
+
+### `platform_vat_configuration` (application-owned)
+
+Narrow, typed, **append-only** VAT configuration — deliberately not a generic `platform_settings` key/value table. Each change INSERTs a new row rather than updating the previous one; "effective config" is the latest row with `effective_at <= now()`. Enforced immutable by two triggers, the same append-only pattern as `admin_audit_log` (unconditional here — no FK ever nulls a column on this table).
+
+| Column                        | Type           | Notes                                                                       |
+| ----------------------------- | -------------- | --------------------------------------------------------------------------- |
+| `enabled`                     | boolean        |                                                                             |
+| `rate_basis_points`           | integer, CHECK | 0–10000, same bound as `billing_transactions.applied_vat_rate_basis_points` |
+| `effective_at`                | timestamptz    | Indexed (`platform_vat_configuration_effective_idx`)                        |
+| `created_by_admin_id`         | uuid           | FK → `platform_admins`, RESTRICT. NULL for the migration-seeded baseline    |
+| `reason_code` / `reason_note` | text           | Same shape as `admin_audit_log`'s                                           |
+
+Migration 0009 seeds exactly one **baseline row**: `enabled = false`, `rate_basis_points = 700`, `reason_code = 'bootstrap'`, `created_by_admin_id = NULL` — matching `src/config/billing.server.ts`'s `DEFAULT_VAT_CONFIGURATION` exactly. That constant, not this table, remains the live source checkout/quotation actually reads until Phase 11F switches the read path over; this row does not change production behavior today.
 
 ---
 
 ## Index plan
 
-| Table               | Index                                                                                                                                                                      | Status                  |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `users`             | `(email)` unique — `users_email_idx`                                                                                                                                       | Implemented (Phase 02)  |
-| `sessions`          | `(token)` unique, `(user_id)`                                                                                                                                              | Implemented (Phase 02)  |
-| `accounts`          | `(user_id)`, `(provider_id, account_id)` unique                                                                                                                            | Implemented (Phase 02)  |
-| `verifications`     | `(identifier)`                                                                                                                                                             | Implemented (Phase 02)  |
-| `rate_limits`       | `(key)` unique                                                                                                                                                             | Implemented (Phase 02)  |
-| `workspaces`        | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                                                                                                         | Implemented (Phase 02)  |
-| `workspace_members` | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces                                                                                      | Implemented (Phase 02)  |
-| `audit_logs`        | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                                                                                                          | Implemented (Phase 02)  |
-| `trades`            | `(workspace_id, trading_account_id, exited_at)` — `trades_workspace_account_exited_idx`                                                                                    | Implemented (Phase 07B) |
-| `trades`            | `(workspace_id, strategy_version_id)` — `trades_workspace_strategy_version_idx`                                                                                            | Implemented (Phase 07B) |
-| `trades`            | `(workspace_id, status)` — `trades_workspace_status_idx`                                                                                                                   | Implemented (Phase 07B) |
-| `trades`            | `(workspace_id, trading_account_id)`, `(workspace_id, deleted_at)`, `(id, workspace_id)` unique, `(id, strategy_version_id)` unique, `(workspace_id, mutation_key)` unique | Implemented (Phase 07B) |
-| `trade_mistakes`    | `(mistake_type_id)` — Phase 09 count-only frequency reads; `(workspace_id)`                                                                                                | Implemented (Phase 07B) |
-| `trade_rule_checks` | `(trade_id, rule_key)` unique, `(workspace_id)`, `(rule_key)` — cross-Version logical-rule analysis                                                                        | Implemented (Phase 07B) |
-| `mistake_types`     | `(key)` unique WHERE `is_system`; `(workspace_id, key)` unique WHERE NOT `is_system`; `(workspace_id, is_archived)`                                                        | Implemented (Phase 07B) |
+| Table                        | Index                                                                                                                                                                      | Status                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `users`                      | `(email)` unique — `users_email_idx`                                                                                                                                       | Implemented (Phase 02)  |
+| `sessions`                   | `(token)` unique, `(user_id)`                                                                                                                                              | Implemented (Phase 02)  |
+| `platform_admins`            | `(user_id)` unique WHERE `revoked_at IS NULL` — `platform_admins_active_user_idx`; `(user_id)` — `platform_admins_user_idx`                                                | Implemented (Phase 11B) |
+| `admin_audit_log`            | `(created_at)`, `(subject_user_id)`, `(subject_workspace_id)`                                                                                                              | Implemented (Phase 11B) |
+| `platform_vat_configuration` | `(effective_at)` — `platform_vat_configuration_effective_idx`                                                                                                              | Implemented (Phase 11B) |
+| `accounts`                   | `(user_id)`, `(provider_id, account_id)` unique                                                                                                                            | Implemented (Phase 02)  |
+| `verifications`              | `(identifier)`                                                                                                                                                             | Implemented (Phase 02)  |
+| `rate_limits`                | `(key)` unique                                                                                                                                                             | Implemented (Phase 02)  |
+| `workspaces`                 | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                                                                                                         | Implemented (Phase 02)  |
+| `workspace_members`          | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces                                                                                      | Implemented (Phase 02)  |
+| `audit_logs`                 | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                                                                                                          | Implemented (Phase 02)  |
+| `trades`                     | `(workspace_id, trading_account_id, exited_at)` — `trades_workspace_account_exited_idx`                                                                                    | Implemented (Phase 07B) |
+| `trades`                     | `(workspace_id, strategy_version_id)` — `trades_workspace_strategy_version_idx`                                                                                            | Implemented (Phase 07B) |
+| `trades`                     | `(workspace_id, status)` — `trades_workspace_status_idx`                                                                                                                   | Implemented (Phase 07B) |
+| `trades`                     | `(workspace_id, trading_account_id)`, `(workspace_id, deleted_at)`, `(id, workspace_id)` unique, `(id, strategy_version_id)` unique, `(workspace_id, mutation_key)` unique | Implemented (Phase 07B) |
+| `trade_mistakes`             | `(mistake_type_id)` — Phase 09 count-only frequency reads; `(workspace_id)`                                                                                                | Implemented (Phase 07B) |
+| `trade_rule_checks`          | `(trade_id, rule_key)` unique, `(workspace_id)`, `(rule_key)` — cross-Version logical-rule analysis                                                                        | Implemented (Phase 07B) |
+| `mistake_types`              | `(key)` unique WHERE `is_system`; `(workspace_id, key)` unique WHERE NOT `is_system`; `(workspace_id, is_archived)`                                                        | Implemented (Phase 07B) |
 
 Verify with `EXPLAIN ANALYZE` rather than assuming these are used.

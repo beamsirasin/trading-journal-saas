@@ -32,6 +32,24 @@ export const workspaceEntitlements = pgTable(
     status: text('status').notNull(),
     /** `null` until the workspace ever selects a paid plan — a trial has no plan key yet. */
     planKey: text('plan_key'),
+    /**
+     * Truthful entitlement provenance — added Phase 11B. NOT called
+     * `payment_source`: `trial` and `complimentary` are not payments.
+     * `startTrialInTx` (`src/server/services/entitlement.ts`) always sets
+     * `'trial'` explicitly on insert; `activatePaidSubscriptionInTransaction`
+     * (`src/server/services/subscription-lifecycle.ts`) always sets `'paid'`
+     * explicitly on its trial/expired/canceled -> active transition — the
+     * only two writers, so this column is fully deterministic, never
+     * inferred from profit or guessed. `'complimentary'` is reserved for a
+     * future Phase 11E admin grant; nothing in Phase 11B ever writes it.
+     * Cancellation/expiry never resets this — provenance survives the
+     * lifecycle that followed it. The `.default('trial')` exists ONLY so
+     * the many existing test fixtures across the Phase 04-10 suites that
+     * insert this table directly (bypassing the service layer) keep
+     * compiling unchanged; every real application write path sets this
+     * column explicitly rather than relying on the default.
+     */
+    source: text('source').notNull().default('trial'),
     /** `null` for a workspace whose trial has not yet started (onboarding incomplete). */
     trialStartedAt: timestamp('trial_started_at', { withTimezone: true }),
     trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
@@ -86,6 +104,10 @@ export const workspaceEntitlements = pgTable(
     check(
       'workspace_entitlements_pending_plan_pair_check',
       sql`(${table.pendingPlanKey} IS NULL AND ${table.pendingPlanEffectiveAt} IS NULL) OR (${table.pendingPlanKey} IS NOT NULL AND ${table.pendingPlanEffectiveAt} IS NOT NULL)`,
+    ),
+    check(
+      'workspace_entitlements_source_check',
+      sql`${table.source} IN ('trial', 'paid', 'complimentary')`,
     ),
   ],
 );

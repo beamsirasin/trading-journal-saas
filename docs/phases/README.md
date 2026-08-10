@@ -42,4 +42,4 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 ## Status
 
-Phases 00–10, including [Phase 10 — Settings](PHASE-10-settings.md), are complete. [Phase 11 — SaaS Administration](PHASE-11-admin.md) is the next implementation phase.
+Phases 00–10, including [Phase 10 — Settings](PHASE-10-settings.md), are complete. [Phase 11 — SaaS Administration](PHASE-11-admin.md) is in progress: 11B (platform-admin persistence and authorization foundation) is delivered; 11C (admin route shell and operator dashboard) is next. Phase 11 as a whole remains incomplete — no `/admin` UI, admin subscription mutation, or VAT runtime wiring exists yet.

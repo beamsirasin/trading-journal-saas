@@ -24,3 +24,6 @@ export * from './trades';
 export * from './mistake-types';
 export * from './trade-mistakes';
 export * from './trade-rule-checks';
+export * from './platform-admins';
+export * from './admin-audit-log';
+export * from './platform-vat-configuration';

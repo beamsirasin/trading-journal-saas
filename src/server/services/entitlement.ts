@@ -71,7 +71,13 @@ export async function startTrialInTx(
 
   const inserted = await tx
     .insert(workspaceEntitlements)
-    .values({ workspaceId, status: 'trialing', trialStartedAt: now, trialEndsAt })
+    .values({
+      workspaceId,
+      status: 'trialing',
+      trialStartedAt: now,
+      trialEndsAt,
+      source: 'trial',
+    })
     .onConflictDoNothing({ target: workspaceEntitlements.workspaceId })
     .returning({ id: workspaceEntitlements.id });
 

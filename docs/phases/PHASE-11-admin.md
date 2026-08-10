@@ -2,6 +2,10 @@
 
 **Depends on:** 04 · **Blocks:** 12
 
+**Status:** 🚧 In progress. **11A** (repository audit, security-boundary design, contract decisions) and **11B** (platform-admin persistence and authorization foundation) are delivered. **11C** (admin route shell, operator dashboard) is next; 11D–11G (oversight views, subscription overrides + admin audit UI, VAT configuration UI + runtime wiring, closeout) remain undelivered. Phase 11 is not complete.
+
+**11B locked a deliberate deviation from this document's original sketch**, after the 11A audit's own instruction to "strongly assess whether a dedicated `platform_admins` table... is preferable": platform-admin authority is a dedicated **grant-history table** (`platform_admins`, one row per grant lifecycle, partial-unique-indexed to at most one active grant per user), not a `users.is_platform_admin boolean` flag. This isolates platform authority from a table Better Auth itself owns the shape of, and gives revocation history for free — see `docs/data-dictionary.md`'s "Phase 11B — Platform administration foundation" section for the implemented schema, and `src/server/auth/admin-dal.ts` for `requirePlatformAdmin()`. Every other locked decision below (single `platform_admin` role, DB-only provisioning via `scripts/platform-admin.mjs`, `admin_audit_log` dedicated table, VAT admin-owned persistence) matches this document's original intent.
+
 ## Goal
 
 Minimum viable operator tooling: see who signed up, what they are paying, and fix a subscription when the mock flow misbehaves. Deliberately small.
@@ -65,6 +69,26 @@ src/app/admin/**
 drizzle/0009_admin.sql
 tests/admin/{access-control,audit-log,override-state-machine}.test.ts
 ```
+
+**11B actually delivered** (persistence/authorization foundation only — paths adapted to repository convention; tests are co-located `*.test.ts` / `*.integration.test.ts`, not a separate `tests/admin/` directory):
+
+```
+src/server/db/schema/platform-admins.ts
+src/server/db/schema/admin-audit-log.ts
+src/server/db/schema/platform-vat-configuration.ts
+src/server/db/schema/workspace-entitlements.ts     (added .source column)
+src/config/admin-audit-actions.ts
+src/server/auth/admin-dal.ts                        (requirePlatformAdmin / getOptionalPlatformAdmin)
+src/server/services/admin-audit-log.ts              (insertAdminAuditLog)
+src/server/services/platform-admin-provisioning.ts  (grantPlatformAdmin / revokePlatformAdmin)
+src/server/services/entitlement.ts                  (startTrialInTx now sets source: 'trial')
+src/server/services/subscription-lifecycle.ts        (activatePaidSubscriptionInTransaction now sets source: 'paid')
+scripts/platform-admin.mjs                          (operational grant/revoke — no UI, no route)
+drizzle/0009_platform_admin_foundation.sql
++ co-located unit and *.integration.test.ts files for all of the above
+```
+
+Still outstanding: `src/server/actions/admin.ts`, `src/app/admin/**` — both 11C+. `src/server/auth/admin-guard.ts` is superseded by `admin-dal.ts`'s naming (matching this document's own §3's "conceptually, `src/server/auth/admin-dal.ts`").
 
 ## Definition of Done
 

@@ -116,14 +116,18 @@ describe('Phase 07B trade-domain migration integrity (real database)', () => {
   });
 
   describe('applied state matches the committed journal', () => {
-    it('the journal records migration 0008 as the latest entry', () => {
+    it('the journal records migration 0008, in order', () => {
+      // Not "as the latest entry" — Phase 11B added migration 0009 on top of
+      // this one; this test only re-confirms 0008's own entry is still
+      // correctly recorded, not that nothing has been added since (the same
+      // relaxation strategy-domain-migration.integration.test.ts's own
+      // comment already documents for 0007 following the same evolution).
       const journal = JSON.parse(
         readFileSync(join(process.cwd(), 'drizzle', 'meta', '_journal.json'), 'utf8'),
       ) as { entries: { idx: number; tag: string }[] };
-      const last = journal.entries.at(-1);
-      expect(last?.idx).toBe(8);
-      expect(last?.tag).toBe('0008_trade_domain_and_discipline');
-      expect(journal.entries).toHaveLength(9);
+      const entry = journal.entries.find((e) => e.idx === 8);
+      expect(entry?.tag).toBe('0008_trade_domain_and_discipline');
+      expect(journal.entries.length).toBeGreaterThanOrEqual(9);
     });
 
     it('all four tables exist in the live database', async () => {

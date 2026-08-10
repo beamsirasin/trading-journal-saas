@@ -244,6 +244,11 @@ export async function activatePaidSubscriptionInTransaction(
       providerKind: input.providerKind ?? null,
       providerCustomerId: input.providerCustomerId ?? null,
       providerSubscriptionId: input.providerSubscriptionId ?? null,
+      // A real, trusted paid activation is the one event that makes this
+      // truthfully 'paid' provenance (`workspace_entitlements.source`'s
+      // schema comment) — regardless of whether the row arrived here from a
+      // trial, an expired trial, or a lapsed/canceled prior subscription.
+      source: 'paid',
       updatedAt: now,
     })
     .where(eq(workspaceEntitlements.id, row.id));
