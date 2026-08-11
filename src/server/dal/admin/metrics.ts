@@ -3,7 +3,7 @@ import 'server-only';
 import { count, sql } from 'drizzle-orm';
 
 import type { Database } from '@/server/db/client';
-import { users, workspaceEntitlements, workspaces } from '@/server/db/schema';
+import { users, workspaces } from '@/server/db/schema';
 
 /**
  * Cross-tenant admin read queries — deliberately a SEPARATE DAL from
@@ -29,44 +29,8 @@ export async function countAllWorkspaces(db: Database): Promise<number> {
   return row?.value ?? 0;
 }
 
-/** Every field `resolveEffectiveEntitlement` (`src/lib/entitlements/resolve.ts`) needs, plus `source` — one fixed, unfiltered query, no per-workspace N+1. */
-export interface AdminEntitlementRow {
-  readonly workspaceId: string;
-  readonly status: string;
-  readonly planKey: string | null;
-  readonly trialStartedAt: Date | null;
-  readonly trialEndsAt: Date | null;
-  readonly currentPeriodStartedAt: Date | null;
-  readonly currentPeriodEndsAt: Date | null;
-  readonly cancelAtPeriodEnd: boolean;
-  readonly canceledAt: Date | null;
-  readonly billingCurrency: string | null;
-  readonly billingInterval: string | null;
-  readonly pendingPlanKey: string | null;
-  readonly pendingPlanEffectiveAt: Date | null;
-  readonly source: string;
-}
-
-export async function listAllEntitlementRows(db: Database): Promise<AdminEntitlementRow[]> {
-  return db
-    .select({
-      workspaceId: workspaceEntitlements.workspaceId,
-      status: workspaceEntitlements.status,
-      planKey: workspaceEntitlements.planKey,
-      trialStartedAt: workspaceEntitlements.trialStartedAt,
-      trialEndsAt: workspaceEntitlements.trialEndsAt,
-      currentPeriodStartedAt: workspaceEntitlements.currentPeriodStartedAt,
-      currentPeriodEndsAt: workspaceEntitlements.currentPeriodEndsAt,
-      cancelAtPeriodEnd: workspaceEntitlements.cancelAtPeriodEnd,
-      canceledAt: workspaceEntitlements.canceledAt,
-      billingCurrency: workspaceEntitlements.billingCurrency,
-      billingInterval: workspaceEntitlements.billingInterval,
-      pendingPlanKey: workspaceEntitlements.pendingPlanKey,
-      pendingPlanEffectiveAt: workspaceEntitlements.pendingPlanEffectiveAt,
-      source: workspaceEntitlements.source,
-    })
-    .from(workspaceEntitlements);
-}
+/** Re-exported for existing callers (`src/server/services/admin/metrics.ts`) — the projection itself now lives in `./entitlements.ts`, shared with the Phase 11D User/Workspace oversight DAL. */
+export { listAllEntitlementRows, type AdminEntitlementRow } from './entitlements';
 
 export interface AdminDayCountRow {
   readonly day: string;

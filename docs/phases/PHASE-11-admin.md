@@ -2,9 +2,11 @@
 
 **Depends on:** 04 · **Blocks:** 12
 
-**Status:** 🚧 In progress. **11A** (repository audit, security-boundary design, contract decisions), **11B** (platform-admin persistence and authorization foundation), and **11C** (admin route shell, operator Overview dashboard) are delivered. 11D–11G (user/workspace oversight views, subscription overrides + admin audit UI, VAT configuration UI + runtime wiring, closeout) remain undelivered. Phase 11 is not complete.
+**Status:** 🚧 In progress. **11A** (repository audit, security-boundary design, contract decisions), **11B** (platform-admin persistence and authorization foundation), **11C** (admin route shell, operator Overview dashboard), and **11D** (privacy-limited, read-only User and Workspace oversight) are delivered. 11E–11G (subscription overrides + admin audit UI, VAT configuration UI + runtime wiring, closeout) remain undelivered. Phase 11 is not complete.
 
-**11C delivered the first `/admin` UI** — a read-only Overview dashboard at `/admin`, deliberately outside `[locale]` and outside the customer `(app)` shell, EN-only (no `next-intl`), with its own root HTML layout (`src/app/admin/layout.tsx`) and a nested, authoritative auth-guard layout (`src/app/admin/(dashboard)/layout.tsx`) that calls `requirePlatformAdmin()` — never Workspace/entitlement/onboarding state. An authenticated non-admin gets a privacy-limited 404 (`src/app/admin/not-found.tsx`), never a 403 that would confirm the surface exists. The locked metric catalogue (total users, total workspaces, effective subscription-state counts, plan distribution, a supporting entitlement-source breakdown, and two 30-UTC-calendar-day activity trends — new users and Trades logged) is served by a dedicated cross-tenant admin DAL/service (`src/server/dal/admin/metrics.ts`, `src/server/services/admin/metrics.ts`) that reuses the canonical `resolveEffectiveEntitlement` resolver rather than a one-off SQL CASE expression. No admin mutation, no User/Workspace oversight page, no Audit UI, and no VAT UI/runtime wiring exist yet — all 11D+.
+**11C delivered the first `/admin` UI** — a read-only Overview dashboard at `/admin`, deliberately outside `[locale]` and outside the customer `(app)` shell, EN-only (no `next-intl`), with its own root HTML layout (`src/app/admin/layout.tsx`) and a nested, authoritative auth-guard layout (`src/app/admin/(dashboard)/layout.tsx`) that calls `requirePlatformAdmin()` — never Workspace/entitlement/onboarding state. An authenticated non-admin gets a privacy-limited 404 (`src/app/admin/not-found.tsx`), never a 403 that would confirm the surface exists. The locked metric catalogue (total users, total workspaces, effective subscription-state counts, plan distribution, a supporting entitlement-source breakdown, and two 30-UTC-calendar-day activity trends — new users and Trades logged) is served by a dedicated cross-tenant admin DAL/service (`src/server/dal/admin/metrics.ts`, `src/server/services/admin/metrics.ts`) that reuses the canonical `resolveEffectiveEntitlement` resolver rather than a one-off SQL CASE expression. No admin mutation, no User/Workspace oversight page, no Audit UI, and no VAT UI/runtime wiring exist yet as of 11C — the first two shipped in 11D below.
+
+**11D delivered `/admin/users` and `/admin/workspaces`** — bounded, keyset-paginated, searchable list pages plus read-only detail pages, all still strictly read-only (no Server Action, no mutation affordance anywhere). A dedicated Admin DAL (`src/server/dal/admin/{users,workspaces,entitlements}.ts`) stays structurally isolated from ordinary tenant-scoped DAL — no `workspaceId?`/`skipTenantCheck?`/`adminMode?` escape hatch was added to any existing tenant DAL function, verified directly by a new tenant-isolation regression test. Search accepts either an exact ID or a case-insensitive name/email prefix (`src/lib/admin/search.ts`, safely `ILIKE ... ESCAPE '\'`-escaped); Workspaces additionally filter on `plan` and `source` (never on effective status, which is resolved for display only). A locked privacy contract enumerates fields that must never appear in any oversight DTO — password hash, session/token/IP, raw `accounts`/`sessions` rows, Trade P&L/R/outcome/content, Strategy content, billing-provider identifiers — enforced by both the DTO types themselves and a JSON-round-trip content assertion in every integration test. An unknown `userId`/`workspaceId` renders the same shared privacy-limited 404 the layout guard uses, never a 403. No `drizzle/0010_*.sql` — a dedicated benchmark (`scripts/benchmark-admin-oversight.mjs`) found every material query executes in under 5ms with under 300 shared buffer reads at ~5,000 users/Workspaces/entitlements/memberships scale, matching 11C's own "no migration without measured evidence" outcome.
 
 **11B locked a deliberate deviation from this document's original sketch**, after the 11A audit's own instruction to "strongly assess whether a dedicated `platform_admins` table... is preferable": platform-admin authority is a dedicated **grant-history table** (`platform_admins`, one row per grant lifecycle, partial-unique-indexed to at most one active grant per user), not a `users.is_platform_admin boolean` flag. This isolates platform authority from a table Better Auth itself owns the shape of, and gives revocation history for free — see `docs/data-dictionary.md`'s "Phase 11B — Platform administration foundation" section for the implemented schema, and `src/server/auth/admin-dal.ts` for `requirePlatformAdmin()`. Every other locked decision below (single `platform_admin` role, DB-only provisioning via `scripts/platform-admin.mjs`, `admin_audit_log` dedicated table, VAT admin-owned persistence) matches this document's original intent.
 
@@ -120,6 +122,38 @@ scripts/benchmark-admin-metrics.mjs
 ```
 
 No `drizzle/0010_*.sql` — the representative-scale benchmark found no measurable need (see the 11C report for full `EXPLAIN` figures: every material query executes in 1–8ms with zero disk reads at ~5,000 users/Workspaces/entitlements and ~18,000 Trades).
+
+**11D actually delivered** (read-only User and Workspace oversight — search, keyset pagination, plan/source filters, sanitized detail pages; still zero mutations):
+
+```
+src/lib/admin/search.ts                              (parseAdminSearchQuery, escapeLikePrefix, + .test.ts)
+src/lib/admin/cursor.ts                               ((createdAt,id) keyset cursor, + .test.ts)
+src/lib/admin/format.ts                                (shared UTC date formatting)
+src/server/dal/admin/users.ts                          (listAdminUsers, getAdminUserById, listProvidersForUsers, listActiveMembershipsForUsers)
+src/server/dal/admin/workspaces.ts                     (listAdminWorkspaces, getAdminWorkspaceById, listOwnersForWorkspaces, account/strategy/trade counts, billing summary queries)
+src/server/dal/admin/entitlements.ts                   (shared AdminEntitlementRow projection + toEntitlementRecord — factored out of metrics.ts, re-exported there unchanged)
+src/server/services/admin/user-oversight.ts            (getAdminUserList, getAdminUserDetail, + .integration.test.ts)
+src/server/services/admin/workspace-oversight.ts       (getAdminWorkspaceList, getAdminWorkspaceDetail, + .integration.test.ts)
+src/server/services/admin/tenant-isolation-regression.integration.test.ts
+src/server/auth/settings-dal.ts                        (toSafeProvider exported for reuse — no logic change)
+src/app/admin/(dashboard)/users/{page,loading}.tsx
+src/app/admin/(dashboard)/users/[userId]/{page,loading}.tsx
+src/app/admin/(dashboard)/workspaces/{page,loading}.tsx
+src/app/admin/(dashboard)/workspaces/[workspaceId]/{page,loading}.tsx
+src/components/admin/admin-user-list-page.tsx          (+ AdminUserListSkeleton)
+src/components/admin/admin-user-detail-page.tsx        (+ AdminUserDetailSkeleton)
+src/components/admin/admin-workspace-list-page.tsx     (+ AdminWorkspaceListSkeleton)
+src/components/admin/admin-workspace-detail-page.tsx   (+ AdminWorkspaceDetailSkeleton)
+src/components/admin/admin-user-search-form.tsx
+src/components/admin/admin-workspace-filter-form.tsx
+src/components/admin/admin-pagination-nav.tsx
+src/components/admin/admin-shell.tsx                    (nav: + Users, + Workspaces)
+src/components/admin/admin-copy.ts                       (+ users, workspaces, subscriptionLabels, providerLabels)
+e2e/admin-oversight.spec.ts
+scripts/benchmark-admin-oversight.mjs
+```
+
+Still outstanding after 11D: subscription overrides, `admin_audit_log` UI/export, VAT configuration UI, async import/export jobs, impersonation, account/workspace deletion — all 11E+.
 
 ## Definition of Done
 

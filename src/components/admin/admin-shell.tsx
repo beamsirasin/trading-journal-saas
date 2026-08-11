@@ -50,6 +50,22 @@ export function AdminShell({
                     {adminCopy.shell.nav.overview}
                   </Link>
                 </li>
+                <li>
+                  <Link
+                    href="/admin/users"
+                    className="text-foreground hover:bg-accent/50 flex min-h-11 items-center rounded-md px-3 text-sm font-medium"
+                  >
+                    {adminCopy.shell.nav.users}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/admin/workspaces"
+                    className="text-foreground hover:bg-accent/50 flex min-h-11 items-center rounded-md px-3 text-sm font-medium"
+                  >
+                    {adminCopy.shell.nav.workspaces}
+                  </Link>
+                </li>
               </ul>
             </nav>
           </div>

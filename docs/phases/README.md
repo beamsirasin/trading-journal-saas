@@ -42,4 +42,4 @@ Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document.
 
 ## Status
 
-Phases 00–10, including [Phase 10 — Settings](PHASE-10-settings.md), are complete. [Phase 11 — SaaS Administration](PHASE-11-admin.md) is in progress: 11B (platform-admin persistence/authorization foundation) and 11C (the EN-only `/admin` route shell and read-only operator Overview dashboard) are delivered; 11D (User/Workspace oversight views) is next. Phase 11 as a whole remains incomplete — no oversight pages, admin subscription mutation, Audit UI, or VAT runtime wiring exists yet.
+Phases 00–10, including [Phase 10 — Settings](PHASE-10-settings.md), are complete. [Phase 11 — SaaS Administration](PHASE-11-admin.md) is in progress: 11B (platform-admin persistence/authorization foundation), 11C (the EN-only `/admin` route shell and read-only operator Overview dashboard), and 11D (read-only, searchable/paginated `/admin/users` and `/admin/workspaces` list + detail pages) are delivered; 11E (subscription overrides + Audit UI) is next. Phase 11 as a whole remains incomplete — no admin subscription mutation, Audit UI, or VAT runtime wiring exists yet.
