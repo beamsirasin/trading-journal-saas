@@ -10,11 +10,13 @@ Most journals tell you your P&L. This one tells you where it came from:
 
 ## Status
 
-**Phases 03–10 are officially complete. Phase 11 — SaaS Administration is the next implementation phase.**
+**Phases 03–11 are officially complete. Phase 12 — Hardening & Launch Readiness is the next implementation phase.**
 
 Authentication, tenant-isolated personal workspaces, onboarding, trading-account management, entitlements, billing, versioned Strategies/Setups/Rules, the calculation engine, and the real Trade Journal are implemented. Phase 09 replaced authenticated fixture surfaces with a real active-Account `/app` Dashboard and deep `/app/analytics`: strict historical filters, separate System/Trader populations, paired comparison, canonical R metrics, independent equity curves, Rule adherence, and count-only Mistakes. Analytics remain R-first and use persisted IANA calendar ranges; Discipline Score, mistake-cost attribution, verdicts, and FX/currency portfolio analytics remain deliberately deferred. See [docs/roadmap.md](docs/roadmap.md#what-phase-09-delivered).
 
 Phase 10 made `/app/settings` a real bilingual, responsive surface available before onboarding: self-scoped Profile, authoritative timezone plus truthful browser Theme/URL Locale semantics, owner+writable Workspace rename, canonical Trading Account/Plan/Billing destinations, owner-only versioned Workspace JSON and normalized CSV ZIP export, and credential/session Account Security. Export includes archived and soft-deleted history while excluding authentication, provider, Audit Log, and server-secret data. Account/workspace deletion remains deferred pending a retention, anonymization, billing-record, job, and reauthentication contract. See [docs/roadmap.md](docs/roadmap.md#what-phase-10-delivered).
+
+Phase 11 added minimal SaaS administration: a dedicated `platform_admins` grant-history table (never a `users` flag, never derived from Workspace ownership) authorizes an EN-only, non-locale-prefixed `/admin` shell — a privacy-limited operator Overview (user/workspace counts, effective subscription states, plan distribution, 30-day new-user/trade activity; no revenue or trading-performance metrics), read-only User/Workspace oversight, exactly three named Subscription Support mutations (Extend Trial, Grant/Change Complimentary Plan, Revoke Complimentary Plan), an append-only Admin Audit log and UI, and DB-authoritative append-only platform VAT configuration (fail-closed, immediate-only, no customer control) wired into every quotation/checkout/billing-presentation path. Platform-admin provisioning and revocation remain a manual operational script; there is no web UI to grant or revoke admin authority. Impersonation, suspension, refunds/reconciliation, and payment-provider administration remain deferred. See [docs/roadmap.md](docs/roadmap.md#what-phase-11-delivered).
 
 The three final monthly paid plans have one identical feature set and differ only by the maximum number of active trading accounts: **Starter** (1 account, THB 149 or USD 5), **Trader** (5 accounts, THB 299 or USD 9), and **Professional** (15 accounts, THB 499 or USD 15). Every plan includes unlimited strategies, setups, trades, trade history, and the same analytics. Archived accounts do not consume the allowance; account creation and restoration are enforced server-side.
 
@@ -24,7 +26,7 @@ The trial lasts 7 days, allows 1 active trading account, and unlocks every featu
 
 ### Routes
 
-Every route lives under a locale prefix — `/en/...` or `/th/...` (`en` is the default fallback locale; there is no unprefixed route). See [ADR 0007](docs/decisions/0007-i18n-architecture.md).
+Every customer/public route lives under a locale prefix — `/en/...` or `/th/...` (`en` is the default fallback locale; there is no unprefixed customer route). See [ADR 0007](docs/decisions/0007-i18n-architecture.md). The sole exception is `/admin` (Phase 11): deliberately EN-only and non-locale-prefixed, outside `[locale]` entirely, since platform administration has no Thai audience and no per-locale concern.
 
 | Public                                                                               | Application                                                  |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -33,6 +35,8 @@ Every route lives under a locale prefix — `/en/...` or `/th/...` (`en` is the 
 | `/en/verify-email` · `/en/forgot-password` · `/en/reset-password` · `/en/auth-error` |                                                              |
 
 An unauthenticated visitor to any `/en/app/*` route is redirected to `/en/login?callbackUrl=...`; an authenticated visitor to `/en/login` or `/en/register` is redirected to `/en/app`. Swap `/en` for `/th` for the Thai version of any route.
+
+`/admin` (Overview, Users, Workspaces, Audit, VAT) requires an active `platform_admins` grant, checked server-side on every request — an unauthenticated visitor is redirected to `/en/login?callbackUrl=/admin`; an authenticated non-admin gets a privacy-limited 404. There is no `/en/admin` or `/th/admin`.
 
 ## Requirements
 

@@ -214,6 +214,22 @@ function buildRateLimitCustomRules(): Record<string, { window: number; max: numb
       '/reset-password': { window: 60, max: 50 },
       '/send-verification-email': { window: RESEND_VERIFICATION_WINDOW_SECONDS, max: 50 },
       '/sign-in/social': { window: 60, max: 50 },
+      // `/get-session` carries no rule of its own (see the comment on that
+      // path elsewhere in this codebase) and so inherits the top-level
+      // `rateLimit.max: 100` default in production — correct there, since a
+      // real single IP calling it 100+ times/minute is itself suspicious.
+      // The full `workers=1` E2E suite is a single continuous process that
+      // legitimately calls this exact path far more densely than any real
+      // user: `e2e/support/authenticate.ts`'s `verifySessionEstablished`
+      // issues one GET per session bootstrap, on top of ordinary
+      // client-side session polling on every authenticated page, all from
+      // one loopback IP across a ~450-test, ~20-minute run — discovered via
+      // Phase 11G's full-suite closeout run, which failed nine tests with
+      // `HTTP 429` from this exact path clustered late in the run once the
+      // global bucket was exhausted. Widened here, in the same already-
+      // guarded E2E-only branch as the other six paths above, never in the
+      // production branch below.
+      '/get-session': { window: 60, max: 500 },
     };
   }
 

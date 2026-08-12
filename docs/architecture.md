@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Phases 03–10 are officially complete; Phase 11 — SaaS Administration is next. The single authenticated `/app/settings` route sits outside the completed-onboarding route group and composes distinct trust scopes: self-only Profile/Preferences/Security; owner plus `ordinary_write` Workspace rename; canonical Account/Plan/Billing presentation; and owner-only, entitlement-independent Workspace export. Export uses one schema-versioned allowlist for JSON and CSV and never projects authentication/provider/Audit Log internals.
+**Status:** Phases 03–11 are officially complete; Phase 12 — Hardening & Launch Readiness is next. The single authenticated `/app/settings` route sits outside the completed-onboarding route group and composes distinct trust scopes: self-only Profile/Preferences/Security; owner plus `ordinary_write` Workspace rename; canonical Account/Plan/Billing presentation; and owner-only, entitlement-independent Workspace export. Export uses one schema-versioned allowlist for JSON and CSV and never projects authentication/provider/Audit Log internals. Phase 11 added a second, structurally separate trust scope outside `[locale]` entirely: `/admin`, authorized only by a dedicated `platform_admins` grant-history table, never by Workspace ownership or role.
 
 ## 1. Shape
 
