@@ -12,10 +12,10 @@ import { AdminSignOutButton } from './admin-sign-out-button';
  * Workspace, active Trading Account, and entitlement snapshot as props.
  * Nothing here depends on tenant state. Nav entries are added only as their
  * own routes ship (Phase 11's own "do not add placeholder nav entries"
- * instruction): Overview (11C), Users/Workspaces (11D), Audit (11E) exist;
- * VAT does not yet. The nav `<ul>` wraps (`flex-wrap`) so a narrow viewport
- * drops entries onto additional lines rather than overflowing horizontally
- * — this mattered starting at exactly 4 entries (11E's Audit link).
+ * instruction): Overview (11C), Users/Workspaces (11D), Audit (11E), VAT
+ * (11F). The nav `<ul>` wraps (`flex-wrap`) so a narrow viewport drops
+ * entries onto additional lines rather than overflowing horizontally — this
+ * mattered starting at exactly 4 entries (11E's Audit link).
  */
 export function AdminShell({
   user,
@@ -74,6 +74,14 @@ export function AdminShell({
                     className="text-foreground hover:bg-accent/50 flex min-h-11 items-center rounded-md px-3 text-sm font-medium"
                   >
                     {adminCopy.shell.nav.audit}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/admin/vat"
+                    className="text-foreground hover:bg-accent/50 flex min-h-11 items-center rounded-md px-3 text-sm font-medium"
+                  >
+                    {adminCopy.shell.nav.vat}
                   </Link>
                 </li>
               </ul>

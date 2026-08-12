@@ -6,6 +6,7 @@ import type { PersistedEntitlementStatus } from '@/lib/entitlements/resolve';
 import { getCurrentUserPreferences } from '@/server/auth/dal';
 import { getBillingPresentation } from '@/server/billing/presentation';
 import { getSubscriptionManagementPresentation } from '@/server/billing/subscription-management';
+import { getEffectivePlatformVatConfiguration } from '@/server/services/platform-vat-configuration';
 import { SubscriptionManagementControls } from '@/components/billing/subscription-management-controls';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
@@ -61,8 +62,11 @@ export default async function PlanPage({ params }: { params: Promise<PageParams>
   const t = await getTranslations('entitlements.plan');
   const tPricing = await getTranslations('pricing');
   const preferences = await getCurrentUserPreferences();
-  const subscription = await getSubscriptionManagementPresentation(appLocale, preferences.timezone);
-  const presentation = getBillingPresentation(appLocale);
+  const [subscription, vatConfiguration] = await Promise.all([
+    getSubscriptionManagementPresentation(appLocale, preferences.timezone),
+    getEffectivePlatformVatConfiguration(),
+  ]);
+  const presentation = getBillingPresentation(appLocale, vatConfiguration);
 
   if (subscription === null) {
     return (

@@ -5,10 +5,12 @@ import { MAX_SAFE_MINOR } from '@/lib/money';
 import {
   assertSupportedBillingCurrency,
   calculateExclusiveVat,
+  formatExactVatRatePercent,
   getDefaultBillingCurrency,
   getPlanDefinition,
   getPlanPrice,
   isSupportedBillingCurrency,
+  parseExactVatRatePercent,
   PLAN_DEFINITIONS,
   PLAN_KEYS,
   PRICE_BOOK,
@@ -249,5 +251,77 @@ describe('checkout quote integrity', () => {
       'subtotalMinor' | 'vatAmountMinor' | 'totalMinor' | 'activeTradingAccountLimit'
     >;
     expectTypeOf<CustomerMoneyOverride>().toEqualTypeOf<never>();
+  });
+});
+
+describe('parseExactVatRatePercent', () => {
+  it.each([
+    ['0', 0],
+    ['7', 700],
+    ['7.0', 700],
+    ['7.00', 700],
+    ['7.25', 725],
+    ['7.5', 750],
+    ['100', 10_000],
+    ['100.00', 10_000],
+  ])('parses %s to exactly %i basis points', (input, expected) => {
+    expect(parseExactVatRatePercent(input)).toBe(expected);
+  });
+
+  it('trims surrounding whitespace around an otherwise valid value', () => {
+    expect(parseExactVatRatePercent(' 7.25 ')).toBe(725);
+  });
+
+  it.each([
+    [''],
+    [' '],
+    ['-1'],
+    ['100.01'],
+    ['7.001'],
+    ['1e2'],
+    ['NaN'],
+    ['Infinity'],
+    ['7,25'],
+    ['seven'],
+    ['7.'],
+    ['.5'],
+  ])('rejects %j', (input) => {
+    expect(() => parseExactVatRatePercent(input)).toThrow(RangeError);
+  });
+
+  it('never produces a value the basis-point bounds would reject', () => {
+    for (const [input, expected] of [
+      ['0', 0],
+      ['100', 10_000],
+    ] as const) {
+      const basisPoints = parseExactVatRatePercent(input);
+      expect(basisPoints).toBe(expected);
+      expect(Number.isInteger(basisPoints)).toBe(true);
+    }
+  });
+});
+
+describe('formatExactVatRatePercent', () => {
+  it.each([
+    [700, '7.00'],
+    [725, '7.25'],
+    [0, '0.00'],
+    [10_000, '100.00'],
+    [750, '7.50'],
+    [1, '0.01'],
+  ])('formats %i basis points as %s', (basisPoints, expected) => {
+    expect(formatExactVatRatePercent(basisPoints)).toBe(expected);
+  });
+
+  it('round-trips through the parser for every representable two-decimal value', () => {
+    for (const percent of ['0.00', '7.00', '7.25', '50.50', '100.00']) {
+      const basisPoints = parseExactVatRatePercent(percent);
+      expect(formatExactVatRatePercent(basisPoints)).toBe(percent);
+    }
+  });
+
+  it('rejects an out-of-range basis-point value the same way calculateExclusiveVat does', () => {
+    expect(() => formatExactVatRatePercent(-1)).toThrow(RangeError);
+    expect(() => formatExactVatRatePercent(10_001)).toThrow(RangeError);
   });
 });

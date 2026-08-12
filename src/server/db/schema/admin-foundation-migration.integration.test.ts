@@ -453,12 +453,20 @@ describe('Phase 11B migration integrity (real database)', () => {
     });
 
     it('platform_vat_configuration is immutable: UPDATE and DELETE are unconditionally rejected', async () => {
+      // `effectiveAt` is deliberately far in the future: Phase 11F wires
+      // `getEffectivePlatformVatConfiguration()` to read the latest row with
+      // `effective_at <= now()`, so an immediately-effective row here would
+      // become the new "current" platform-wide VAT configuration for every
+      // OTHER integration test file that runs afterward in the same suite
+      // invocation (this table has no per-test isolation). This test only
+      // needs a row to exist to prove UPDATE/DELETE are rejected; it does
+      // not need that row to ever become effective.
       const [row] = await db
         .insert(platformVatConfiguration)
         .values({
           enabled: true,
           rateBasisPoints: 700,
-          effectiveAt: new Date(),
+          effectiveAt: new Date('2126-01-01T00:00:00Z'),
           reasonCode: 'configuration_change',
         })
         .returning({ id: platformVatConfiguration.id });

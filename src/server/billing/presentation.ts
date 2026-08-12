@@ -1,6 +1,5 @@
 import 'server-only';
 
-import { DEFAULT_VAT_CONFIGURATION } from '@/config/billing.server';
 import { PLAN_DEFINITIONS, SHARED_BILLING_FEATURE_KEYS, type PlanKey } from '@/config/plan-catalog';
 import {
   BILLING_CURRENCIES,
@@ -56,10 +55,17 @@ function plan(definition: (typeof PLAN_DEFINITIONS)[number]): BillingPlanPresent
   });
 }
 
-/** The only server boundary that turns billing configuration into browser-safe display data. */
+/**
+ * The only server boundary that turns billing configuration into browser-safe
+ * display data. `configuration` is REQUIRED, not defaulted — every caller
+ * must resolve it explicitly via `getEffectivePlatformVatConfiguration()`
+ * (`src/server/services/platform-vat-configuration.ts`) first. Phase 11F
+ * removed this function's own fallback specifically so a forgotten call
+ * site is a compile error, not a silent stale/wrong VAT state.
+ */
 export function getBillingPresentation(
   locale: BillingLocale,
-  configuration: VatConfiguration = DEFAULT_VAT_CONFIGURATION,
+  configuration: VatConfiguration,
 ): BillingPresentation {
   return Object.freeze({
     locale,
@@ -72,12 +78,15 @@ export function getBillingPresentation(
   });
 }
 
-/** Fresh trusted quotation for checkout; no customer-supplied money enters this function. */
+/**
+ * Fresh trusted quotation for checkout; no customer-supplied money enters
+ * this function. `configuration` is REQUIRED — see `getBillingPresentation`.
+ */
 export function getCheckoutQuotePresentation(
   locale: BillingLocale,
   planKey: PlanKey,
   currency: BillingCurrency,
-  configuration: VatConfiguration = DEFAULT_VAT_CONFIGURATION,
+  configuration: VatConfiguration,
 ): CheckoutQuotePresentation {
   const presentation = getBillingPresentation(locale, configuration);
   const selectedPlan = presentation.plans.find((candidate) => candidate.id === planKey);

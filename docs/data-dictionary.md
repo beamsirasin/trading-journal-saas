@@ -417,7 +417,9 @@ Narrow, typed, **append-only** VAT configuration — deliberately not a generic 
 | `created_by_admin_id`         | uuid           | FK → `platform_admins`, RESTRICT. NULL for the migration-seeded baseline    |
 | `reason_code` / `reason_note` | text           | Same shape as `admin_audit_log`'s                                           |
 
-Migration 0009 seeds exactly one **baseline row**: `enabled = false`, `rate_basis_points = 700`, `reason_code = 'bootstrap'`, `created_by_admin_id = NULL` — matching `src/config/billing.server.ts`'s `DEFAULT_VAT_CONFIGURATION` exactly. That constant, not this table, remains the live source checkout/quotation actually reads until Phase 11F switches the read path over; this row does not change production behavior today.
+Migration 0009 seeds exactly one **baseline row**: `enabled = false`, `rate_basis_points = 700`, `reason_code = 'bootstrap'`, `created_by_admin_id = NULL` — matching `src/config/billing.server.ts`'s constant of the time (`DEFAULT_VAT_CONFIGURATION`, since renamed `VAT_CONFIGURATION_LAUNCH_FIXTURE`) exactly.
+
+**Phase 11F wired the runtime**: `src/server/services/platform-vat-configuration.ts`'s `getEffectivePlatformVatConfiguration()`/`...InTx()` is now the ONE production resolver every quotation/checkout/billing-presentation call site uses — that legacy constant is no longer read by any production path, and survives only as a test-fixture literal. A missing effective row (impossible after migration 0009 under normal operation) throws `VatConfigurationUnavailableError` rather than silently resolving as VAT-disabled. `changeVatConfiguration` (`src/server/services/admin/vat-configuration-support.ts`, the only writer besides the migration seed) always INSERTs — never UPDATEs — with `effective_at` set to the mutation's own trusted transaction time (immediate changes only), and serializes concurrent changes by locking this table's oldest row (the immutable baseline) as a mutex before re-reading the current effective config.
 
 ---
 

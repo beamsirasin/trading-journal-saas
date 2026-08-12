@@ -34,10 +34,15 @@ import { platformAdmins } from './platform-admins';
  * (0 through 10000) — this CHECK is the database-level backstop for a row
  * inserted outside that code path (e.g. the migration's own baseline seed).
  *
- * Phase 11B creates this table and seeds one baseline row (migration 0009);
- * it does NOT wire checkout/quotation to read from it — `src/config/
- * billing.server.ts`'s `DEFAULT_VAT_CONFIGURATION` constant remains the
- * live source of truth until Phase 11F switches it over.
+ * Phase 11B created this table and seeded one baseline row (migration 0009)
+ * without wiring checkout/quotation to read from it — `src/config/
+ * billing.server.ts`'s `DEFAULT_VAT_CONFIGURATION` constant (since renamed
+ * to `VAT_CONFIGURATION_LAUNCH_FIXTURE`) was the live source of truth until
+ * then. **Phase 11F wired the runtime**: `src/server/services/platform-vat-
+ * configuration.ts`'s `getEffectivePlatformVatConfiguration()`/`...InTx()`
+ * is now the one production resolver every quotation/checkout/presentation
+ * call site uses; that legacy constant is no longer read by any production
+ * path.
  */
 export const platformVatConfiguration = pgTable(
   'platform_vat_configuration',

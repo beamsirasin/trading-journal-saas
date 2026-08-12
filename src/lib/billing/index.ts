@@ -40,6 +40,8 @@ export {
   assertValidVatRateBasisPoints,
   BASIS_POINTS_SCALE,
   calculateExclusiveVat,
+  formatExactVatRatePercent,
+  parseExactVatRatePercent,
   PREPARED_VAT_RATE_BASIS_POINTS,
   type ExclusiveVatCalculation,
 } from './vat';

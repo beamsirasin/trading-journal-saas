@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+﻿import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { PRICE_BOOK, quoteCheckout } from '@/lib/billing';

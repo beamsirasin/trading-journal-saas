@@ -92,11 +92,20 @@ await sql`
 // 0009_platform_admin_foundation.sql's own seed INSERT, made idempotent
 // with an explicit existence check since that INSERT has no ON CONFLICT
 // clause of its own (a fresh migrated database only ever runs it once).
+// `effective_at` deliberately uses a fixed, clearly-historical timestamp
+// instead of `now()`: the real migration's `now()` evaluates once, at
+// whenever the database was first created — normally long before any
+// fixture data. A RESET can run at any time, including after test files
+// that construct fixed-clock scenarios dated in 2026; seeding with real
+// "now" risks the reseeded baseline landing AFTER such a fixed test date,
+// which would make Phase 11F's `effective_at <= now` resolver find no
+// baseline row for that date and fail closed incorrectly. A date earlier
+// than every fixed test-clock instant in this codebase avoids that.
 await sql`
   INSERT INTO "platform_vat_configuration"
     ("id", "enabled", "rate_basis_points", "effective_at", "created_by_admin_id", "reason_code", "reason_note", "created_at")
   SELECT
-    gen_random_uuid(), false, 700, now(), NULL, 'bootstrap',
+    gen_random_uuid(), false, 700, '2000-01-01T00:00:00Z'::timestamptz, NULL, 'bootstrap',
     'Launch baseline seeded by migration 0009: VAT disabled, rate prepared at 7.00%. Mirrors src/config/billing.server.ts DEFAULT_VAT_CONFIGURATION, which remains the live source until Phase 11F wiring.',
     now()
   WHERE NOT EXISTS (SELECT 1 FROM "platform_vat_configuration")
