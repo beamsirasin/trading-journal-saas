@@ -10,10 +10,12 @@ import { AdminSignOutButton } from './admin-sign-out-button';
  * The independent admin shell — deliberately NOT `AppShell`
  * (`src/components/shell/app-shell.tsx`), which requires an active
  * Workspace, active Trading Account, and entitlement snapshot as props.
- * Nothing here depends on tenant state; the only navigation entry in
- * Phase 11C is Overview (Phase 11's own "do not add placeholder nav
- * entries" instruction) — Users/Workspaces/Subscriptions/Audit/VAT are
- * added only as their own routes ship.
+ * Nothing here depends on tenant state. Nav entries are added only as their
+ * own routes ship (Phase 11's own "do not add placeholder nav entries"
+ * instruction): Overview (11C), Users/Workspaces (11D), Audit (11E) exist;
+ * VAT does not yet. The nav `<ul>` wraps (`flex-wrap`) so a narrow viewport
+ * drops entries onto additional lines rather than overflowing horizontally
+ * — this mattered starting at exactly 4 entries (11E's Audit link).
  */
 export function AdminShell({
   user,
@@ -40,7 +42,7 @@ export function AdminShell({
               {adminCopy.shell.badge}
             </span>
             <nav aria-label={adminCopy.shell.badge}>
-              <ul className="flex items-center gap-1">
+              <ul className="flex flex-wrap items-center gap-1">
                 <li>
                   {/* Plain `next/link`, deliberately not `@/i18n/navigation`'s locale-aware `Link` — `/admin` sits outside `[locale]` and must never gain a prepended locale segment. */}
                   <Link
@@ -64,6 +66,14 @@ export function AdminShell({
                     className="text-foreground hover:bg-accent/50 flex min-h-11 items-center rounded-md px-3 text-sm font-medium"
                   >
                     {adminCopy.shell.nav.workspaces}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/admin/audit"
+                    className="text-foreground hover:bg-accent/50 flex min-h-11 items-center rounded-md px-3 text-sm font-medium"
+                  >
+                    {adminCopy.shell.nav.audit}
                   </Link>
                 </li>
               </ul>

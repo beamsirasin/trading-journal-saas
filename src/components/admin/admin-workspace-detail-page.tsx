@@ -6,6 +6,7 @@ import type { AdminWorkspaceDetail } from '@/server/services/admin/workspace-ove
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 
 import { adminCopy } from './admin-copy';
+import { AdminSubscriptionSupport } from './admin-subscription-support';
 
 const STATUS_VARIANT: Record<EntitlementStatus, BadgeVariant> = {
   trialing: 'brand',
@@ -150,6 +151,12 @@ export function AdminWorkspaceDetailPage({ workspace }: { workspace: AdminWorksp
           />
         </dl>
       </section>
+
+      <AdminSubscriptionSupport
+        workspaceId={workspace.workspaceId}
+        source={workspace.subscription.source}
+        trialEndsAt={workspace.subscription.trialEndsAt}
+      />
 
       <section
         aria-labelledby="admin-workspace-billing-heading"

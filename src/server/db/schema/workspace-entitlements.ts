@@ -36,12 +36,19 @@ export const workspaceEntitlements = pgTable(
      * Truthful entitlement provenance — added Phase 11B. NOT called
      * `payment_source`: `trial` and `complimentary` are not payments.
      * `startTrialInTx` (`src/server/services/entitlement.ts`) always sets
-     * `'trial'` explicitly on insert; `activatePaidSubscriptionInTransaction`
+     * `'trial'` explicitly on insert. `grantComplimentaryPlan`
+     * (`src/server/services/admin/subscription-support.ts`, Phase 11E)
+     * always sets `'complimentary'` explicitly, with a null commercial
+     * period/currency/interval — complimentary access is Admin-granted, not
+     * paid, and is never represented with fabricated billing fields.
+     * `activatePaidSubscriptionInTransaction`
      * (`src/server/services/subscription-lifecycle.ts`) always sets `'paid'`
-     * explicitly on its trial/expired/canceled -> active transition — the
-     * only two writers, so this column is fully deterministic, never
-     * inferred from profit or guessed. `'complimentary'` is reserved for a
-     * future Phase 11E admin grant; nothing in Phase 11B ever writes it.
+     * explicitly on its trial/expired/canceled/complimentary -> active
+     * transition, populating the real period/currency/interval from a
+     * trusted paid-activation input — the only three writers, so this
+     * column is fully deterministic, never inferred from profit or guessed.
+     * This is also the ONLY path by which a complimentary row becomes
+     * `'paid'`: no Admin action can set `source:'paid'` directly.
      * Cancellation/expiry never resets this — provenance survives the
      * lifecycle that followed it. The `.default('trial')` exists ONLY so
      * the many existing test fixtures across the Phase 04-10 suites that

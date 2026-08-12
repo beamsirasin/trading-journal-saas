@@ -92,5 +92,6 @@ export function toEntitlementRecord(row: AdminEntitlementRow): EntitlementRecord
     billingInterval: row.billingInterval as EntitlementRecord['billingInterval'],
     pendingPlanKey: row.pendingPlanKey as PlanKey | null,
     pendingPlanEffectiveAt: row.pendingPlanEffectiveAt,
+    source: row.source as 'trial' | 'paid' | 'complimentary',
   };
 }

@@ -120,14 +120,24 @@ test.describe('Admin User/Workspace oversight (Phase 11D)', () => {
     await page.getByRole('link', { name: 'Personal workspace' }).first().click();
     await expect(page.getByRole('heading', { name: 'Personal workspace' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Usage' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Subscription' })).toBeVisible();
+    // `.first()`: Phase 11E added a second, distinct "Subscription Support"
+    // heading further down the same page, which also substring-matches.
+    await expect(page.getByRole('heading', { name: 'Subscription' }).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Billing' })).toBeVisible();
 
-    // No mutation affordance anywhere (Phase 11D is read-only by contract).
+    // Phase 11D itself remains read-only, but the Workspace detail page now
+    // also renders Phase 11E's Subscription Support controls (Extend Trial /
+    // Grant or Revoke Complimentary), which are legitimate for a trial- or
+    // complimentary-sourced Workspace — this filtered-by-`plan=professional`
+    // result may land on either a paid or a complimentary Workspace, so only
+    // the actions Phase 11E itself explicitly forbids are asserted absent
+    // here, never a blanket "no grant/extend button" claim.
     await expect(page.getByRole('button', { name: /suspend/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /delete/i })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /extend trial/i })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /grant/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /impersonate/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /refund/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^cancel subscription$/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /recover/i })).toHaveCount(0);
   });
 
   test('an unknown userId or workspaceId in the URL renders the same privacy-limited 404', async ({

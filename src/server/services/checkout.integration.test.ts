@@ -275,12 +275,28 @@ describe('trusted checkout service (real PostgreSQL)', () => {
     ).toHaveLength(0);
   });
 
-  it('activates trial, expired, and canceled workspaces and preserves trial history exactly once', async () => {
+  it('activates trial, expired, canceled, and complimentary workspaces and preserves trial history exactly once', async () => {
     const cases = [
       { entitlement: {}, planKey: 'starter' as const },
       { entitlement: {}, planKey: 'trader' as const },
       { entitlement: { status: 'expired' }, planKey: 'professional' as const },
       { entitlement: { ...activePaid('starter'), status: 'canceled' }, planKey: 'trader' as const },
+      {
+        // Complimentary access has no commercial period at all — this is the
+        // canonical real-paid activation path, reachable from the customer's
+        // own checkout, that is the ONLY way a complimentary workspace's
+        // `source` becomes `'paid'`.
+        entitlement: {
+          status: 'active',
+          source: 'complimentary',
+          planKey: 'starter',
+          billingCurrency: null,
+          billingInterval: null,
+          currentPeriodStartedAt: null,
+          currentPeriodEndsAt: null,
+        },
+        planKey: 'professional' as const,
+      },
     ];
 
     for (const testCase of cases) {
@@ -300,6 +316,7 @@ describe('trusted checkout service (real PostgreSQL)', () => {
       expect(retry.reused).toBe(true);
       expect(after).toMatchObject({
         status: 'active',
+        source: 'paid',
         planKey: testCase.planKey,
         billingCurrency: 'USD',
         billingInterval: 'monthly',

@@ -216,6 +216,112 @@ describe('resolveEffectiveEntitlement — active plan', () => {
   });
 });
 
+describe('resolveEffectiveEntitlement — complimentary', () => {
+  function complimentaryRecord(overrides: Partial<EntitlementRecord> = {}): EntitlementRecord {
+    return record({
+      status: 'active',
+      source: 'complimentary',
+      planKey: 'trader',
+      currentPeriodStartedAt: null,
+      currentPeriodEndsAt: null,
+      billingCurrency: null,
+      billingInterval: null,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      ...overrides,
+    });
+  }
+
+  it('is truthfully active with the granted plan allowance and no commercial period at all', () => {
+    const effective = resolveEffectiveEntitlement(complimentaryRecord(), 2, NOW);
+    expect(effective.effectiveStatus).toBe('active');
+    expect(effective.accessMode).toBe('writable');
+    expect(effective.accountLimit).toBe(5);
+    expect(effective.denialReason).toBeNull();
+    expect(effective.currentPeriodStartedAt).toBeNull();
+    expect(effective.currentPeriodEndsAt).toBeNull();
+    expect(effective.billingCurrency).toBeNull();
+    expect(effective.billingInterval).toBeNull();
+  });
+
+  it('has no automatic expiry — remains active arbitrarily far in the future', () => {
+    const farFuture = new Date('2099-01-01T00:00:00Z');
+    const effective = resolveEffectiveEntitlement(complimentaryRecord(), 1, farFuture);
+    expect(effective.effectiveStatus).toBe('active');
+    expect(effective.effectivePeriodEnd).toBeNull();
+  });
+
+  it('enforces the granted plan allowance exactly like a paid plan', () => {
+    const atLimit = resolveEffectiveEntitlement(
+      complimentaryRecord({ planKey: 'starter' }),
+      1,
+      NOW,
+    );
+    expect(atLimit.accountLimit).toBe(1);
+    expect(atLimit.canCreateAccount).toBe(false);
+    expect(atLimit.blockReason).toBe('account_limit_reached');
+  });
+
+  it('fails closed for an unrecognized plan key', () => {
+    const unknown = resolveEffectiveEntitlement(
+      complimentaryRecord({ planKey: 'enterprise' as never }),
+      1,
+      NOW,
+    );
+    expect(unknown.effectiveStatus).toBe('expired');
+    expect(unknown.accountLimit).toBeNull();
+    expect(unknown.blockReason).toBe('unknown_plan');
+  });
+
+  it('fails closed for a legacy/corrupt row carrying fabricated commercial fields — never trusted as either shape', () => {
+    const corrupt = resolveEffectiveEntitlement(
+      complimentaryRecord({
+        currentPeriodStartedAt: new Date('2026-01-01T00:00:00Z'),
+        currentPeriodEndsAt: new Date('2126-01-01T00:00:00Z'),
+        billingCurrency: 'USD',
+        billingInterval: 'monthly',
+      }),
+      1,
+      NOW,
+    );
+    expect(corrupt.effectiveStatus).toBe('expired');
+    expect(corrupt.accessMode).toBe('read_only');
+    expect(corrupt.denialReason).toBe('malformed_entitlement');
+  });
+
+  it('fails closed for a complimentary row with a cancellation flag set — that state cannot exist truthfully', () => {
+    const corrupt = resolveEffectiveEntitlement(
+      complimentaryRecord({ cancelAtPeriodEnd: true }),
+      1,
+      NOW,
+    );
+    expect(corrupt.effectiveStatus).toBe('expired');
+    expect(corrupt.denialReason).toBe('malformed_entitlement');
+  });
+
+  it('is unaffected by trialStartedAt/trialEndsAt — the resolver does not read the preserved baseline for the active branch', () => {
+    const pastTrial = resolveEffectiveEntitlement(
+      complimentaryRecord({
+        trialStartedAt: new Date('2020-01-01T00:00:00Z'),
+        trialEndsAt: new Date('2020-01-08T00:00:00Z'),
+      }),
+      1,
+      NOW,
+    );
+    expect(pastTrial.effectiveStatus).toBe('active');
+  });
+
+  it('does not resolve an ordinary active-paid row (source undefined) through the complimentary branch', () => {
+    const paid = resolveEffectiveEntitlement(
+      record({ status: 'active', planKey: 'trader' }),
+      1,
+      NOW,
+    );
+    expect(paid.effectiveStatus).toBe('active');
+    expect(paid.billingCurrency).toBe('USD');
+  });
+});
+
 describe('resolveEffectiveEntitlement — canceled', () => {
   it('blocks create and restore even when under the last known limit', () => {
     const canceled = resolveEffectiveEntitlement(

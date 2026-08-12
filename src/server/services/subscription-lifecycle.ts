@@ -139,7 +139,14 @@ function requireActivePaid(row: EntitlementRow): void {
   }
 }
 
-async function lockWorkspaceAndEntitlement(
+/**
+ * Exported for reuse by `src/server/services/admin/subscription-support.ts`
+ * (Phase 11E) — the Admin trial-extension/complimentary-grant/complimentary-
+ * revoke transitions must lock in the identical workspace-then-entitlement
+ * order every customer transition already uses, not a second, possibly
+ * divergent lock sequence.
+ */
+export async function lockWorkspaceAndEntitlement(
   tx: Executor,
   workspaceId: string,
 ): Promise<EntitlementRow> {
@@ -221,7 +228,18 @@ export async function activatePaidSubscriptionInTransaction(
     row.status === 'active' &&
     row.currentPeriodEndsAt !== null &&
     now.getTime() >= row.currentPeriodEndsAt.getTime();
-  if ((row.status === 'active' && !activePeriodEnded) || row.status === 'past_due') {
+  // An active-complimentary row (Admin-granted, no commercial period behind
+  // it — `source === 'complimentary'`) is a valid entry point for the SAME
+  // canonical real-paid activation every trial/expired/canceled row already
+  // uses. This is the ONLY way `source` becomes `'paid'` starting from a
+  // complimentary row: it happens here, driven entirely by `input`'s trusted
+  // paid-activation fields, never by an Admin mutation. A genuinely active
+  // PAID period must still go through upgrade/recovery, unchanged.
+  const isComplimentaryActive = row.status === 'active' && row.source === 'complimentary';
+  if (
+    (row.status === 'active' && !activePeriodEnded && !isComplimentaryActive) ||
+    row.status === 'past_due'
+  ) {
     throw lifecycleError(
       'invalid_lifecycle_transition',
       'Use upgrade or recovery for an existing paid lifecycle',

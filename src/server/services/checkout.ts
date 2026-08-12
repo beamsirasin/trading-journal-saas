@@ -311,6 +311,16 @@ function determineCheckoutIntent(
   if (entitlement.status !== 'active') {
     throw checkoutError('checkout_not_allowed', 'Checkout is not allowed for this lifecycle');
   }
+  // Complimentary access (Admin-granted, no commercial period) is a valid
+  // real-checkout starting point — the only way `source` becomes `'paid'`
+  // for a complimentary workspace is a genuine paid activation, and that
+  // activation must be reachable from the customer's own checkout, not only
+  // from Admin. There is no paid shape to validate here: the trusted period/
+  // currency/interval this checkout produces come entirely from `input`
+  // (the customer's own selection), never from the complimentary row.
+  if (entitlement.source === 'complimentary') {
+    return 'activation';
+  }
 
   const pendingPairValid =
     (entitlement.pendingPlanKey === null && entitlement.pendingPlanEffectiveAt === null) ||

@@ -3,7 +3,7 @@ import 'server-only';
 import { and, eq, isNull } from 'drizzle-orm';
 import { cache } from 'react';
 
-import { getDb } from '@/server/db/client';
+import { getDb, type Database } from '@/server/db/client';
 import { platformAdmins } from '@/server/db/schema';
 
 import { getOptionalSession, type SessionUser } from './dal';
@@ -85,4 +85,42 @@ export async function requirePlatformAdmin(): Promise<PlatformAdminContext> {
     throw new PlatformAdminRequiredError();
   }
   return context;
+}
+
+/** Structurally matches both `getDb()` and a Drizzle transaction handle. */
+type LockExecutor = Pick<Database, 'select'>;
+
+/**
+ * The in-transaction admin-authority recheck (Phase 11E) — deliberately
+ * separate from `getOptionalPlatformAdmin()`/`requirePlatformAdmin()` above,
+ * which are wrapped in React's per-request `cache()` and always call
+ * `getDb()` directly, so neither can be safely reused inside a mutation
+ * transaction: the cached result predates the transaction's lock and could
+ * be stale relative to a concurrent revoke, and neither accepts a `tx`.
+ *
+ * `SELECT ... FOR UPDATE` locks the caller's own active-grant row (if any) —
+ * using the exact `(user_id) WHERE revoked_at IS NULL` shape
+ * `platform_admins_active_user_idx` already indexes. A concurrent revoke
+ * updating that same row blocks until this transaction commits or rolls
+ * back; once unblocked, PostgreSQL's READ COMMITTED semantics mean this
+ * query re-evaluates its WHERE clause and correctly returns no row if the
+ * revoke won the race — so a grant revoked before (or during, if it commits
+ * first) this transaction reaches this point is never honored by it.
+ *
+ * Returns `null` rather than throwing — the caller decides the appropriate
+ * high-risk-mutation failure mode (this module's callers always treat `null`
+ * as fatal, but the distinction keeps this a pure predicate matching
+ * `getOptionalPlatformAdmin()`'s own shape).
+ */
+export async function lockActivePlatformAdminGrant(
+  tx: LockExecutor,
+  userId: string,
+): Promise<{ readonly adminGrantId: string } | null> {
+  const [grant] = await tx
+    .select({ id: platformAdmins.id })
+    .from(platformAdmins)
+    .where(and(eq(platformAdmins.userId, userId), isNull(platformAdmins.revokedAt)))
+    .for('update');
+
+  return grant === undefined ? null : { adminGrantId: grant.id };
 }
