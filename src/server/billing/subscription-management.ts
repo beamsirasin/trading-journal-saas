@@ -3,6 +3,7 @@ import 'server-only';
 import { and, eq, inArray } from 'drizzle-orm';
 
 import type { PlanKey } from '@/config/plan-catalog';
+import type { VatConfiguration } from '@/lib/billing';
 import type {
   DowngradeOption,
   SubscriptionManagementPresentation,
@@ -13,6 +14,7 @@ import { formatInstant } from '@/lib/time';
 import { getActiveWorkspaceContext, getWorkspaceEntitlement } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import { billingTransactions } from '@/server/db/schema';
+import { getEffectivePlatformVatConfiguration } from '@/server/services/platform-vat-configuration';
 
 import { getBillingPresentation } from './presentation';
 
@@ -36,8 +38,9 @@ export function buildSubscriptionManagementPresentation(
   locale: BillingLocale,
   timezone: string,
   hasNonTerminalCheckout: boolean,
+  vatConfiguration: VatConfiguration,
 ): SubscriptionManagementPresentation {
-  const billing = getBillingPresentation(locale);
+  const billing = getBillingPresentation(locale, vatConfiguration);
   const currency = entitlement.billingCurrency ?? billing.defaultCurrency;
   const option = (planKey: PlanKey): SubscriptionPlanOption => {
     const plan = billing.plans.find((candidate) => candidate.id === planKey);
@@ -135,7 +138,7 @@ export async function getSubscriptionManagementPresentation(
   timezone: string,
 ): Promise<SubscriptionManagementPresentation | null> {
   const { workspaceId } = await getActiveWorkspaceContext();
-  const [entitlement, nonTerminal] = await Promise.all([
+  const [entitlement, nonTerminal, vatConfiguration] = await Promise.all([
     getWorkspaceEntitlement(),
     getDb()
       .select({ id: billingTransactions.id })
@@ -147,6 +150,7 @@ export async function getSubscriptionManagementPresentation(
         ),
       )
       .limit(1),
+    getEffectivePlatformVatConfiguration(),
   ]);
   if (entitlement === null) return null;
 
@@ -155,5 +159,6 @@ export async function getSubscriptionManagementPresentation(
     locale,
     timezone,
     nonTerminal.length > 0,
+    vatConfiguration,
   );
 }

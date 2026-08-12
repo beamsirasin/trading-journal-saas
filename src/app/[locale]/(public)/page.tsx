@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { getBillingPresentation } from '@/server/billing/presentation';
+import { getEffectivePlatformVatConfiguration } from '@/server/services/platform-vat-configuration';
 import { AttributionSection } from '@/components/marketing/attribution-section';
 import { CtaSection } from '@/components/marketing/cta-section';
 import { FaqSection } from '@/components/marketing/faq-section';
@@ -53,7 +54,8 @@ export default async function HomePage({ params }: { params: Promise<PageParams>
   const { locale } = await params;
   const appLocale = locale as AppLocale;
   setRequestLocale(appLocale);
-  const billingPresentation = getBillingPresentation(appLocale);
+  const vatConfiguration = await getEffectivePlatformVatConfiguration();
+  const billingPresentation = getBillingPresentation(appLocale, vatConfiguration);
 
   return (
     <>

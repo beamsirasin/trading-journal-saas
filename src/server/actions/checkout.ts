@@ -104,6 +104,7 @@ function mapError(error: unknown): CheckoutActionResult {
     case 'invalid_provider_result':
     case 'invalid_billing_period':
     case 'stale_provider_result':
+    case 'configuration_unavailable':
       return { ok: false, code: 'payment_unavailable' };
   }
 }

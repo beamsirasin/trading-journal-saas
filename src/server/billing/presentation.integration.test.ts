@@ -2,10 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import { getBillingPresentation, getCheckoutQuotePresentation } from './presentation';
 
+/**
+ * Pure presentation-math coverage — `configuration` is passed explicitly
+ * here on purpose, isolating this suite from the real database. Phase 11F
+ * proves the PRODUCTION resolution path (`getEffectivePlatformVatConfiguration`)
+ * separately, in `platform-vat-configuration.integration.test.ts` and in
+ * `checkout.integration.test.ts`'s default (no injected `vatConfiguration`)
+ * path, which genuinely requires the TEST database's migration-0009
+ * baseline row to exist.
+ */
+const BASELINE = { enabled: false, rateBasisPoints: 700 } as const;
+
 describe('safe billing presentation', () => {
   it('derives all prices and locale defaults without exposing bigint', () => {
-    const en = getBillingPresentation('en');
-    const th = getBillingPresentation('th');
+    const en = getBillingPresentation('en', BASELINE);
+    const th = getBillingPresentation('th', BASELINE);
     expect(en.defaultCurrency).toBe('USD');
     expect(th.defaultCurrency).toBe('THB');
     expect(en.plans.map((plan) => [plan.id, plan.activeTradingAccountLimit])).toEqual([
@@ -24,7 +35,7 @@ describe('safe billing presentation', () => {
   });
 
   it('keeps VAT disabled at launch and presents trusted exclusive VAT when enabled', () => {
-    const launch = getCheckoutQuotePresentation('en', 'starter', 'THB');
+    const launch = getCheckoutQuotePresentation('en', 'starter', 'THB', BASELINE);
     expect(launch).toMatchObject({
       subtotal: { amountMinor: '14900' },
       vat: { enabled: false, amount: { amountMinor: '0' } },

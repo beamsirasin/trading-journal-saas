@@ -60,6 +60,20 @@ describe('subscription lifecycle transitions (real database)', () => {
     });
   }
 
+  async function createComplimentaryWorkspace(
+    planKey: 'starter' | 'trader' | 'professional' = 'starter',
+  ): Promise<string> {
+    return createWorkspaceWithEntitlement({
+      status: 'active',
+      source: 'complimentary',
+      planKey,
+      billingCurrency: null,
+      billingInterval: null,
+      currentPeriodStartedAt: null,
+      currentPeriodEndsAt: null,
+    });
+  }
+
   afterEach(async () => {
     const db = getTestDb();
     for (const workspaceId of workspaceIds.splice(0)) {
@@ -148,6 +162,51 @@ describe('subscription lifecycle transitions (real database)', () => {
         clock,
       ),
     ).rejects.toMatchObject({ code: 'stale_period' });
+  });
+
+  it('activates a complimentary workspace to real paid — the ONLY way source becomes paid from complimentary', async () => {
+    const db = getTestDb();
+    const workspaceId = await createComplimentaryWorkspace('starter');
+    const input = {
+      workspaceId,
+      planKey: 'professional' as const, // deliberately different from the comp plan
+      billingCurrency: 'THB' as const, // deliberately different from any comp default
+      billingInterval: 'monthly' as const,
+      periodStartedAt: PERIOD_START,
+      periodEndsAt: PERIOD_END,
+      providerKind: 'trusted-test',
+      providerCustomerId: 'cust_123',
+      providerSubscriptionId: 'sub_123',
+    };
+
+    await expect(activatePaidSubscription(input, createFixedClock(NOW))).resolves.toEqual({
+      changed: true,
+    });
+
+    const [row] = await db
+      .select()
+      .from(workspaceEntitlements)
+      .where(eq(workspaceEntitlements.workspaceId, workspaceId));
+    // Every paid field comes from the trusted activation input, not from
+    // whatever the complimentary row happened to carry (it carried none).
+    expect(row).toMatchObject({
+      status: 'active',
+      source: 'paid',
+      planKey: 'professional',
+      billingCurrency: 'THB',
+      billingInterval: 'monthly',
+      providerKind: 'trusted-test',
+      providerCustomerId: 'cust_123',
+      providerSubscriptionId: 'sub_123',
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      pendingPlanKey: null,
+    });
+    expect(row?.currentPeriodStartedAt?.toISOString()).toBe(PERIOD_START.toISOString());
+    expect(row?.currentPeriodEndsAt?.toISOString()).toBe(PERIOD_END.toISOString());
+
+    const audits = await db.select().from(auditLogs).where(eq(auditLogs.workspaceId, workspaceId));
+    expect(audits.filter((audit) => audit.action === 'subscription.activated')).toHaveLength(1);
   });
 
   it('applies only a strictly larger immediate upgrade and clears obsolete pending state', async () => {

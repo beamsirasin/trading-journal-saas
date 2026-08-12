@@ -9,6 +9,7 @@ import {
   getBillingPresentation,
   getCheckoutQuotePresentation,
 } from '@/server/billing/presentation';
+import { getEffectivePlatformVatConfiguration } from '@/server/services/platform-vat-configuration';
 import { CheckoutExperience } from '@/components/billing/checkout-experience';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
@@ -73,8 +74,9 @@ export default async function CheckoutPage({
   }
 
   const capability = await getBillingCheckoutCapability(userId);
-  const presentation = getBillingPresentation(appLocale);
-  const quote = getCheckoutQuotePresentation(appLocale, plan, currency);
+  const vatConfiguration = await getEffectivePlatformVatConfiguration();
+  const presentation = getBillingPresentation(appLocale, vatConfiguration);
+  const quote = getCheckoutQuotePresentation(appLocale, plan, currency, vatConfiguration);
   const currentPlan =
     entitlement?.effectivePlanKey === null || entitlement?.effectivePlanKey === undefined
       ? null

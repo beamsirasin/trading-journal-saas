@@ -119,6 +119,28 @@ jobs:
       - name: Apply migrations to a fresh database
         run: pnpm db:test:prepare
 
+      # Migration 0009 seeds the single platform_vat_configuration baseline
+      # row with `effective_at = now()` AT MIGRATION-APPLY TIME (correct,
+      # unchanged production behavior — see that migration). Several
+      # integration tests (e.g. checkout.integration.test.ts) exercise the
+      # DB-authoritative VAT resolver (Phase 11F) against a FIXED simulated
+      # clock in the past. On a freshly migrated CI database, the baseline's
+      # real "now" can land AFTER that fixed test clock, so the resolver
+      # correctly finds no yet-effective configuration and fails closed —
+      # exactly as designed, just exercised at the wrong instant. This
+      # guarded, TEST-only reset re-seeds the same baseline with a fixed,
+      # clearly-historical `effective_at` (2000-01-01) that predates every
+      # fixed test clock in this codebase, matching the exact initialization
+      # local development and prior manual verification already relied on
+      # (`pnpm db:test:reset`). It is gated by the identical
+      # `validateTestDatabaseEnvironment` safety check as every other
+      # destructive test script (TEST_DATABASE_URL must name a `test`/`e2e`
+      # database distinct from DATABASE_URL, plus TEST_DATABASE_ACK above) —
+      # this changes TEST initialization only, never production migration
+      # 0009 or the production VAT resolver.
+      - name: Reset guarded TEST database to its deterministic baseline
+        run: pnpm db:test:reset
+
       - name: Integration tests
         run: pnpm test:integration
 
@@ -179,6 +201,15 @@ jobs:
 
       - name: Apply migrations
         run: pnpm db:test:prepare
+
+      # Same guarded, deterministic TEST-only re-seed as the integration
+      # job (see that job's fuller comment) — this job's fresh CI database
+      # would otherwise carry the same real-"now" VAT baseline timestamp.
+      # No fixed-past-clock E2E spec currently depends on this, but applying
+      # the identical initialization here keeps both jobs' TEST database
+      # state consistent and guards against a future spec that does.
+      - name: Reset guarded TEST database to its deterministic baseline
+        run: pnpm db:test:reset
 
       # No Google credentials, no email provider — every DB-dependent auth
       # spec exercises the real email/password flow only; Google-button and

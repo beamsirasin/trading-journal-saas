@@ -6,6 +6,8 @@ import { buildSubscriptionManagementPresentation } from './subscription-manageme
 
 vi.mock('server-only', () => ({}));
 
+const VAT_BASELINE = { enabled: false, rateBasisPoints: 700 } as const;
+
 function entitlement(overrides: Partial<EffectiveEntitlement> = {}): EffectiveEntitlement {
   return {
     workspaceId: 'workspace-1',
@@ -51,6 +53,7 @@ describe('subscription-management presentation', () => {
       'en',
       'UTC',
       false,
+      VAT_BASELINE,
     );
     expect(model.currentPlan?.id).toBe(planKey);
     expect(model.downgradeOptions.map((option) => option.id)).toEqual(downgrade);
@@ -78,6 +81,7 @@ describe('subscription-management presentation', () => {
         'en',
         'UTC',
         false,
+        VAT_BASELINE,
       );
       expect(model.upgradeOptions.map((option) => option.id)).toEqual([
         'starter',
@@ -100,6 +104,7 @@ describe('subscription-management presentation', () => {
       'en',
       'UTC',
       false,
+      VAT_BASELINE,
     );
     expect(pastDue.blockReason).toBe('past_due');
     expect(pastDue.upgradeOptions).toHaveLength(0);
@@ -113,6 +118,7 @@ describe('subscription-management presentation', () => {
       'en',
       'UTC',
       false,
+      VAT_BASELINE,
     );
     expect(malformed.blockReason).toBe('malformed');
     expect(malformed.upgradeOptions).toHaveLength(0);
@@ -129,6 +135,7 @@ describe('subscription-management presentation', () => {
       'en',
       'UTC',
       false,
+      VAT_BASELINE,
     );
     expect(model.downgradeOptions).toEqual(
       expect.arrayContaining([
@@ -147,12 +154,19 @@ describe('subscription-management presentation', () => {
       'th',
       'Asia/Bangkok',
       false,
+      VAT_BASELINE,
     );
     expect(pending.pendingDowngrade?.plan.id).toBe('starter');
     expect(pending.canCancelPendingDowngrade).toBe(true);
     expect(pending.downgradeOptions).toHaveLength(0);
 
-    const blocked = buildSubscriptionManagementPresentation(entitlement(), 'en', 'UTC', true);
+    const blocked = buildSubscriptionManagementPresentation(
+      entitlement(),
+      'en',
+      'UTC',
+      true,
+      VAT_BASELINE,
+    );
     expect(blocked.blockReason).toBe('checkout_in_progress');
     expect(blocked.upgradeOptions).toHaveLength(0);
     expect(blocked.canScheduleCancellation).toBe(false);

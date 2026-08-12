@@ -2,7 +2,6 @@ import 'server-only';
 
 import { and, eq, inArray, ne } from 'drizzle-orm';
 
-import { DEFAULT_VAT_CONFIGURATION } from '@/config/billing.server';
 import { getPlanDefinition, isPlanKey, type PlanKey } from '@/config/plan-catalog';
 import {
   decideBillingStatusTransition,
@@ -24,6 +23,7 @@ import {
   workspaces,
 } from '@/server/db/schema';
 import type { PaymentProvider, ProviderPayment } from '@/server/payments/payment-provider';
+import { getEffectivePlatformVatConfigurationInTx } from '@/server/services/platform-vat-configuration';
 
 import { insertAuditLog } from './audit-log';
 import {
@@ -49,7 +49,8 @@ export type CheckoutErrorCode =
   | 'stale_provider_result'
   | 'payment_failed'
   | 'transaction_not_found'
-  | 'cross_workspace_access_denied';
+  | 'cross_workspace_access_denied'
+  | 'configuration_unavailable';
 
 export class CheckoutError extends Error {
   readonly code: CheckoutErrorCode;
@@ -311,6 +312,16 @@ function determineCheckoutIntent(
   if (entitlement.status !== 'active') {
     throw checkoutError('checkout_not_allowed', 'Checkout is not allowed for this lifecycle');
   }
+  // Complimentary access (Admin-granted, no commercial period) is a valid
+  // real-checkout starting point — the only way `source` becomes `'paid'`
+  // for a complimentary workspace is a genuine paid activation, and that
+  // activation must be reachable from the customer's own checkout, not only
+  // from Admin. There is no paid shape to validate here: the trusted period/
+  // currency/interval this checkout produces come entirely from `input`
+  // (the customer's own selection), never from the complimentary row.
+  if (entitlement.source === 'complimentary') {
+    return 'activation';
+  }
 
   const pendingPairValid =
     (entitlement.pendingPlanKey === null && entitlement.pendingPlanEffectiveAt === null) ||
@@ -459,11 +470,30 @@ async function prepareCheckout(
     }
 
     const intent = determineCheckoutIntent(entitlement, input, now);
+    // Resolved through the SAME open transaction as everything else this
+    // checkout does — one consistent VAT snapshot for the whole commercial
+    // operation, never a second read that could race a concurrent Admin
+    // change mid-checkout. `dependencies.vatConfiguration` remains an
+    // explicit test-injection seam ONLY (never a production default): when
+    // absent, this is the one and only production path, and a missing DB
+    // configuration fails the checkout closed rather than silently applying
+    // no VAT.
+    let vatConfiguration = dependencies.vatConfiguration;
+    if (vatConfiguration === undefined) {
+      try {
+        vatConfiguration = await getEffectivePlatformVatConfigurationInTx(tx, now);
+      } catch {
+        throw checkoutError(
+          'configuration_unavailable',
+          'Checkout is temporarily unavailable. Please try again shortly.',
+        );
+      }
+    }
     const quote = (dependencies.quote ?? quoteCheckout)({
       planKey: input.planKey,
       currency: input.currency,
       billingInterval: input.billingInterval,
-      vatConfiguration: dependencies.vatConfiguration ?? DEFAULT_VAT_CONFIGURATION,
+      vatConfiguration,
     });
     const vatEnabled = quote.vatEnabled;
     const [created] = await tx

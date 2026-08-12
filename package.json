@@ -33,6 +33,8 @@
     "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
     "db:test:prepare": "node scripts/prepare-test-db.mjs",
+    "db:test:reset": "node scripts/reset-test-database.mjs",
+    "platform-admin": "node scripts/platform-admin.mjs",
     "email:verify": "node scripts/email-verify.mjs",
     "email:smoke": "node scripts/email-smoke.mjs",
     "scan:client": "node scripts/scan-client-assets.mjs",

@@ -24,6 +24,14 @@ export interface EntitlementRecord {
   readonly billingInterval: BillingInterval | null;
   readonly pendingPlanKey: PlanKey | null;
   readonly pendingPlanEffectiveAt: Date | null;
+  /**
+   * Provenance of the current `active` grant. Optional and defaults to undefined
+   * (ordinary paid behavior) so every pre-existing caller is unaffected.
+   * `'complimentary'` is the only value that changes resolution: it is an
+   * Admin-granted access period with no real payment behind it, so it is
+   * validated against a null commercial shape instead of a paid shape.
+   */
+  readonly source?: 'trial' | 'paid' | 'complimentary';
 }
 
 export { TRIAL_ACCOUNT_LIMIT };
@@ -123,6 +131,30 @@ export function resolveEffectiveEntitlement(
       denialReason = 'trial_expired';
     } else {
       effectiveStatus = 'trialing';
+    }
+  } else if (record.status === 'active' && record.source === 'complimentary') {
+    // Complimentary access has no commercial period: it is Admin-granted, not
+    // paid. A truthful complimentary row carries null period/currency/interval
+    // and no cancellation state — anything else (e.g. a legacy row that was
+    // written with fabricated commercial fields) cannot be safely interpreted
+    // and fails closed to `expired` rather than being trusted as either shape.
+    const complimentaryShapeValid =
+      effectivePlanValid &&
+      pendingPairValid &&
+      record.currentPeriodStartedAt === null &&
+      record.currentPeriodEndsAt === null &&
+      record.billingCurrency === null &&
+      record.billingInterval === null &&
+      !record.cancelAtPeriodEnd &&
+      record.canceledAt === null;
+
+    accountLimit = effectivePlanValid ? planAccountLimit(effectivePlanKey) : null;
+    if (!complimentaryShapeValid) {
+      effectiveStatus = 'expired';
+      denialReason =
+        effectivePlanKey !== null && !effectivePlanValid ? 'unknown_plan' : 'malformed_entitlement';
+    } else {
+      effectiveStatus = 'active';
     }
   } else if (record.status === 'active') {
     const periodValid =

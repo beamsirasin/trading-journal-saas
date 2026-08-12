@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { TRIAL_DAYS } from '@/config/plans';
 import { getBillingPresentation } from '@/server/billing/presentation';
+import { getEffectivePlatformVatConfiguration } from '@/server/services/platform-vat-configuration';
 import { FaqSection } from '@/components/marketing/faq-section';
 import { PricingSection } from '@/components/marketing/pricing-section';
 import { Container } from '@/components/shell/container';
@@ -45,7 +46,8 @@ export default async function PricingPage({ params }: { params: Promise<PagePara
   const appLocale = locale as AppLocale;
   setRequestLocale(appLocale);
   const t = await getTranslations('pricingPage');
-  const billingPresentation = getBillingPresentation(appLocale);
+  const vatConfiguration = await getEffectivePlatformVatConfiguration();
+  const billingPresentation = getBillingPresentation(appLocale, vatConfiguration);
 
   return (
     <>

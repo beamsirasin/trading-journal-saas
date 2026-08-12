@@ -34,7 +34,8 @@ export interface SettingsWorkspaceSummary {
   readonly renameAvailability: WorkspaceRenameAvailability;
 }
 
-function toSafeProvider(providerId: string): LinkedAuthProvider {
+/** Exported for reuse by `src/server/services/admin/user-oversight.ts` (Phase 11D) — the one canonical mapping, never a second copy with different behavior. */
+export function toSafeProvider(providerId: string): LinkedAuthProvider {
   if (providerId === 'credential') return 'email_password';
   if (providerId === 'google') return 'google';
   return 'other';

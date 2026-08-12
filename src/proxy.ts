@@ -39,12 +39,27 @@ import { routing, type AppLocale } from '@/i18n/routing';
  * verified check that correctly falls through to rendering the form instead
  * of looping when the cookie is invalid. That is the only place this
  * redirect needs to happen.
+ *
+ * 3. Phase 11C's `/admin` optimistic branch, checked BEFORE `intlMiddleware`
+ *    ever runs. `/admin` is deliberately outside `[locale]` (Phase 11's
+ *    locked contract: EN-only, no `/en/admin`/`/th/admin`) — but next-intl's
+ *    `localePrefix: 'always'` means `intlMiddleware` would otherwise treat
+ *    any non-locale-prefixed path, `/admin` included, as needing a locale
+ *    redirect. Returning early here is what prevents that; this branch never
+ *    reaches next-intl at all. Same cookie-presence-only optimism as the
+ *    `/app` branch above, and the same reason: `src/server/auth/admin-dal.ts`'s
+ *    `requirePlatformAdmin()` is the actual, database-verified boundary,
+ *    re-checked inside the `/admin` layout and again inside every admin
+ *    service — this is only a fast, unauthoritative UX shortcut.
  */
 
 const intlMiddleware = createMiddleware(routing);
 
 const LOCALE_PATTERN = routing.locales.join('|');
 const APP_PATH_PATTERN = new RegExp(`^/(${LOCALE_PATTERN})/app(/|$)`);
+const ADMIN_PATH_PATTERN = /^\/admin(\/|$)/;
+/** The one canonical, EN-only login destination `/admin` redirects an unauthenticated visitor to — never a second login page. */
+const ADMIN_LOGIN_PATH = `/${routing.defaultLocale}/login`;
 
 function localeFromPathname(pathname: string): AppLocale {
   const first = pathname.split('/')[1];
@@ -54,6 +69,20 @@ function localeFromPathname(pathname: string): AppLocale {
 }
 
 export default function proxy(request: NextRequest): NextResponse {
+  const { pathname: adminCheckPathname } = request.nextUrl;
+  if (ADMIN_PATH_PATTERN.test(adminCheckPathname)) {
+    if (getSessionCookie(request) === null) {
+      const loginUrl = new URL(ADMIN_LOGIN_PATH, request.url);
+      // Same "built from the current request's own already-resolved path,
+      // validated again by the destination" posture as the `/app` branch —
+      // `safeCallbackPath` (`src/lib/auth/callback-url.ts`) accepts any
+      // same-origin absolute path, `/admin` included.
+      loginUrl.searchParams.set('callbackUrl', adminCheckPathname + request.nextUrl.search);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next();
+  }
+
   const response = intlMiddleware(request);
 
   // A redirect/rewrite from next-intl itself (e.g. `/` -> `/en`) — let it

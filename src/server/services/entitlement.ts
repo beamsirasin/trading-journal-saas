@@ -45,6 +45,7 @@ function toRecord(row: EntitlementRow): EntitlementRecord {
     billingInterval: row.billingInterval as EntitlementRecord['billingInterval'],
     pendingPlanKey: row.pendingPlanKey as PlanKey | null,
     pendingPlanEffectiveAt: row.pendingPlanEffectiveAt,
+    source: row.source as 'trial' | 'paid' | 'complimentary',
   };
 }
 
@@ -71,7 +72,13 @@ export async function startTrialInTx(
 
   const inserted = await tx
     .insert(workspaceEntitlements)
-    .values({ workspaceId, status: 'trialing', trialStartedAt: now, trialEndsAt })
+    .values({
+      workspaceId,
+      status: 'trialing',
+      trialStartedAt: now,
+      trialEndsAt,
+      source: 'trial',
+    })
     .onConflictDoNothing({ target: workspaceEntitlements.workspaceId })
     .returning({ id: workspaceEntitlements.id });
 

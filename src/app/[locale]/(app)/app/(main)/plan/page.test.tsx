@@ -52,6 +52,12 @@ vi.mock('@/server/billing/presentation', () => ({
     })),
   }),
 }));
+// The page resolves VAT from the DB (Phase 11F) before calling
+// `getBillingPresentation` above — that resolver is `server-only` and does
+// real I/O, so it is mocked here rather than exercised.
+vi.mock('@/server/services/platform-vat-configuration', () => ({
+  getEffectivePlatformVatConfiguration: async () => ({ enabled: false, rateBasisPoints: 700 }),
+}));
 vi.mock('@/server/actions/subscription-management', () => ({
   schedulePlanDowngradeAction: vi.fn(),
   cancelPlanDowngradeAction: vi.fn(),
