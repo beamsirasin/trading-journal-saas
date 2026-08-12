@@ -9,22 +9,38 @@ import {
   revokePlatformAdminForE2e,
 } from './support/provision-platform-admin';
 import { provisionVerifiedUser } from './support/provision-user';
+import { resetPlatformVatConfigurationForE2e } from './support/reset-platform-vat';
 
 test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
 
 /**
- * Phase 11F VAT E2E — deliberately serialized (`mode: 'serial'`), and
- * intended to be run in FOCUSED isolation from the rest of the E2E suite
- * (`npx playwright test e2e/admin-vat.spec.ts`), not mixed into a
- * `fullyParallel` run of the whole repository. `platform_vat_configuration`
- * is one platform-wide row, not scoped to a Workspace like every other E2E
- * fixture in this repo — a test here that enables VAT would otherwise race
- * with unrelated specs (`checkout.spec.ts`, the landing/pricing specs) that
- * assert VAT is disabled. 11G's later complete `workers=1` full-repository
- * E2E run is the point at which full-suite ordering safety is established;
- * this file's own tests restore VAT to disabled before finishing regardless.
+ * Phase 11F VAT E2E — deliberately serialized (`mode: 'serial'`).
+ * `platform_vat_configuration` is one platform-wide row, not scoped to a
+ * Workspace like every other E2E fixture in this repo — a test here that
+ * enables VAT would otherwise leave it enabled for every unrelated spec
+ * that runs afterward in the same single-worker CI job.
+ *
+ * Every mutating test below already ends with its own UI-driven "restore
+ * baseline" step, but that alone is not sufficient: Phase 11G's post-merge
+ * CI investigation found a transient UI-timing failure partway through the
+ * FIRST serial test (waiting for the "VAT configuration changed." toast,
+ * after VAT was already enabled) causes `mode: 'serial'` to skip every
+ * subsequent test in this file — including the only ones that restore the
+ * baseline — permanently leaving VAT enabled for the rest of the run and
+ * cascading into unrelated failures in `checkout.spec.ts`,
+ * `entitlements.spec.ts`, and any other spec asserting VAT is disabled.
+ * This `afterAll` is the actual safety net: it runs exactly once after
+ * every test in this file finishes, regardless of whether they passed,
+ * failed, or were skipped, and restores the baseline via a direct guarded
+ * database write — never through the UI, which is what was flaking.
  */
 test.describe.configure({ mode: 'serial' });
+
+test.afterAll(async () => {
+  if (!hasE2eDatabase) return;
+  const { testUrl } = validateTestDatabaseEnvironment();
+  await resetPlatformVatConfigurationForE2e(testUrl);
+});
 
 function uniqueEmail(prefix: string, projectName: string): string {
   return `${prefix}-${projectName}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
