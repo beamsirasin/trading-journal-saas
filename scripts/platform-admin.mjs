@@ -37,11 +37,16 @@
  * — running this script implies operator-with-database-access authority, not
  * an authenticated platform-admin session (Phase 11's own instruction).
  *
- * Never prints credentials. Prints only the resolved host (never the full
- * connection string) and stable IDs (never email/name) in confirmation
- * output, matching `admin_audit_log`'s own "stable IDs only" redaction
- * policy — this script's terminal output is operator-facing, not persisted,
- * but keeping it minimal costs nothing and avoids setting a bad precedent.
+ * Never prints credentials — only the resolved host (never the full
+ * connection string) appears in output. Phase 12B added the resolved
+ * email address to the dry-run and confirmation lines (previously only the
+ * generated user id): the operator invoking this script already has direct
+ * `DATABASE_URL` access, so an email address exposes nothing that access
+ * doesn't already permit, and its absence was a real gap — a valid-but-
+ * wrong `--email`/`--user-id` argument (an operator typo landing on a real,
+ * different, verified account) resolved silently to that account's id with
+ * nothing in the output an operator could recognize as wrong before
+ * `--yes` committed it. Echoing the matched email is the confirmation step.
  */
 import nextEnv from '@next/env';
 import postgres from 'postgres';
@@ -115,8 +120,8 @@ const connectionHost = new URL(databaseUrl).hostname;
 try {
   const [user] =
     options.email !== undefined
-      ? await sql`SELECT id, email_verified FROM users WHERE email = ${options.email} LIMIT 1`
-      : await sql`SELECT id, email_verified FROM users WHERE id = ${options.userId} LIMIT 1`;
+      ? await sql`SELECT id, email, email_verified FROM users WHERE email = ${options.email} LIMIT 1`
+      : await sql`SELECT id, email, email_verified FROM users WHERE id = ${options.userId} LIMIT 1`;
 
   if (user === undefined) {
     console.error(
@@ -136,11 +141,11 @@ try {
     if (command === 'grant') {
       if (activeGrant !== undefined) {
         console.log(
-          `[platform-admin] user ${user.id} already has an active grant (${activeGrant.id}) — idempotent no-op, nothing to do.`,
+          `[platform-admin] user ${user.id} (${user.email}) already has an active grant (${activeGrant.id}) — idempotent no-op, nothing to do.`,
         );
       } else if (!options.yes) {
         console.log(
-          `[platform-admin] DRY RUN (pass --yes to apply): would grant platform-admin authority to user ${user.id} on ${connectionHost}, reason "${options.reasonCode}".`,
+          `[platform-admin] DRY RUN (pass --yes to apply): would grant platform-admin authority to user ${user.id} (${user.email}) on ${connectionHost}, reason "${options.reasonCode}". Confirm this is the intended person before re-running with --yes.`,
         );
       } else {
         const grantId = uuidv7();
@@ -158,17 +163,17 @@ try {
           `;
         });
         console.log(
-          `[platform-admin] granted. grant id: ${grantId}, audit id: ${auditId}, user id: ${user.id}`,
+          `[platform-admin] granted. grant id: ${grantId}, audit id: ${auditId}, user id: ${user.id} (${user.email})`,
         );
       }
     } else {
       if (activeGrant === undefined) {
         console.log(
-          `[platform-admin] user ${user.id} has no active grant — idempotent no-op, nothing to do.`,
+          `[platform-admin] user ${user.id} (${user.email}) has no active grant — idempotent no-op, nothing to do.`,
         );
       } else if (!options.yes) {
         console.log(
-          `[platform-admin] DRY RUN (pass --yes to apply): would revoke platform-admin grant ${activeGrant.id} for user ${user.id} on ${connectionHost}, reason "${options.reasonCode}".`,
+          `[platform-admin] DRY RUN (pass --yes to apply): would revoke platform-admin grant ${activeGrant.id} for user ${user.id} (${user.email}) on ${connectionHost}, reason "${options.reasonCode}". Confirm this is the intended person before re-running with --yes.`,
         );
       } else {
         const auditId = uuidv7();
@@ -184,7 +189,7 @@ try {
           `;
         });
         console.log(
-          `[platform-admin] revoked. grant id: ${activeGrant.id}, audit id: ${auditId}, user id: ${user.id}`,
+          `[platform-admin] revoked. grant id: ${activeGrant.id}, audit id: ${auditId}, user id: ${user.id} (${user.email})`,
         );
       }
     }

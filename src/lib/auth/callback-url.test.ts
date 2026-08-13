@@ -45,4 +45,35 @@ describe('safeCallbackPath', () => {
     expect(safeCallbackPath(undefined)).toBeNull();
     expect(safeCallbackPath('')).toBeNull();
   });
+
+  // Phase 12B regression coverage: WHATWG URL parsing strips ASCII tab and
+  // newline from the whole input before parsing begins, so a single leading
+  // slash followed by a tab/newline and a second slash can canonicalize into
+  // `//evil.example` — a protocol-relative URL — even though the raw
+  // `candidate.startsWith('//')` check above never sees two adjacent
+  // slashes. The sentinel-origin comparison (not the startsWith check alone)
+  // is what actually catches this.
+  it('rejects tab-injected protocol-relative smuggling', () => {
+    expect(safeCallbackPath('/\t/evil.example')).toBeNull();
+    expect(safeCallbackPath('/\t\t/evil.example')).toBeNull();
+  });
+
+  it('rejects newline-injected protocol-relative smuggling', () => {
+    expect(safeCallbackPath('/\n/evil.example')).toBeNull();
+    expect(safeCallbackPath('/\r/evil.example')).toBeNull();
+  });
+
+  // Percent-encoding is NOT decoded before the backslash/slash separator
+  // check the WHATWG parser performs, so an encoded backslash or slash stays
+  // literal path text rather than becoming a separator — these resolve
+  // same-origin and are legitimately safe to accept, not a bypass.
+  it('accepts percent-encoded backslash/slash as literal same-origin path text', () => {
+    expect(safeCallbackPath('/%5Cevil.example')).toBe('/%5Cevil.example');
+    expect(safeCallbackPath('/%2Fevil.example')).toBe('/%2Fevil.example');
+  });
+
+  it('rejects a candidate combining a leading slash with an embedded absolute URL scheme', () => {
+    expect(safeCallbackPath('/\\/evil.example')).toBeNull();
+    expect(safeCallbackPath('/\t\\evil.example')).toBeNull();
+  });
 });

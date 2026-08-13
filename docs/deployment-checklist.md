@@ -112,6 +112,35 @@ Run these by hand against the deployed environment after the automated checks pa
 
 Do not claim in any of the above that real payments can be collected — every smoke test here is about the mock provider staying correctly inert, not about exercising a real charge.
 
+## Security headers (Phase 12B)
+
+Reference: [`next.config.ts`](../next.config.ts), [`e2e/security-headers.spec.ts`](../e2e/security-headers.spec.ts).
+
+A single blanket `headers()` rule in `next.config.ts` applies to every route — public pages, `/app/*`, `/admin`, auth pages, and API routes alike, including redirect responses from `src/proxy.ts`'s middleware and Better Auth's own `/api/auth/*` route. Nothing in this application needs a relaxed policy for a subset of routes (no route is ever framed, no route uses camera/microphone/geolocation/payment browser APIs), so one rule set is deliberate, not an oversight.
+
+- [ ] `X-Content-Type-Options: nosniff` — present on every route.
+- [ ] `X-Frame-Options: DENY` — present on every route. Chosen over relying on CSP's `frame-ancestors` alone because CSP is Report-Only (below) and therefore does not itself block framing yet.
+- [ ] `Referrer-Policy: strict-origin-when-cross-origin` — present on every route.
+- [ ] `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()` — a deliberately minimal deny-by-default allowlist; nothing in this codebase uses any of these APIs today, so nothing is exception-listed.
+- [ ] `Strict-Transport-Security: max-age=31536000` — present only when `NODE_ENV=production` (i.e. `next build && next start`; never `next dev`). No `preload` (irreversible without a domain-submission decision) and no `includeSubDomains` (no subdomain inventory exists). **Not yet verified against a live Vercel deployment** — if Vercel's platform also injects this header for the production domain, reconcile rather than assume; a duplicate `Strict-Transport-Security` header should be resolved to one canonical value at first real deploy.
+- [ ] `Content-Security-Policy-Report-Only` — present on every route, **not enforcing**. See disposition below.
+
+### CSP disposition
+
+**Report-Only, not enforcing, and deliberately deferred from enforcement.** The `next-themes` flash-prevention script (`src/components/theme/theme-provider.tsx`) is a blocking inline script with no nonce wiring, and Radix (via shadcn/ui) sets inline `style` attributes for popover/dialog/tooltip positioning — an enforcing policy without `'unsafe-inline'` on both `script-src` and `style-src`, or a nonce architecture, would break theming and floating-UI positioning today. A future real payment provider's script/frame/connect requirements are also unknown and must not be guessed at.
+
+Current Report-Only policy: `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`. No report endpoint exists yet — violations surface in browser devtools only, which is sufficient for the groundwork this slice does. No hardcoded external resource domain (fonts, analytics, tracking) exists anywhere in the codebase to allowlist.
+
+**Enforcing CSP, and the nonce-based rewrite of the theme script it requires, is explicitly deferred** — it is a larger, `src/proxy.ts`-touching change that belongs with (or shortly after) the real payment-provider integration, once that provider's own script/frame requirements are known and don't force a second policy rewrite immediately after the first.
+
+### Test/mock production guards (re-verified, unchanged)
+
+Re-confirmed against current source in Phase 12B, not modified: the mock payment provider (`src/config/billing-capability.server.ts`) and the auth rate-limit widening (`src/lib/auth/server.ts`'s `buildRateLimitCustomRules`) both fail closed on a missing/malformed `E2E_TEST_MODE`, and both additionally require a loopback `BETTER_AUTH_URL` — `NODE_ENV=production` with `E2E_TEST_MODE=true` alone is insufficient in either case. The payment guard has a third layer: even with the seam armed, only a fixed set of e2e-provisioned identities can reach the mock provider. No production email or payment integration was added in this slice — both remain explicitly unavailable/fail-closed by design.
+
+### Known development-only diagnostic
+
+The `next-themes`/React inline-script console diagnostic observed in development is unchanged and undisturbed by Phase 12B. Production behavior, theme correctness, and the theme E2E suite all continue to pass (see `e2e/theme.spec.ts`); no workaround was applied and none is currently justified. `ThemeProvider` was not modified in this slice.
+
 ## Rate limiting (documented gap, not fixed here)
 
 Current billing-abuse protection is entirely durable-database-based, with no request-rate limiting layer:
