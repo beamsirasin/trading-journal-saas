@@ -55,6 +55,8 @@ const FAILURE_CLASSIFICATION = {
   invalid_system_cost: 'data_integrity_error',
   unresolved_system_outcome: 'data_integrity_error',
   system_no_trade: 'data_integrity_error',
+  invalid_planned_risk: 'data_integrity_error',
+  invalid_planned_reward: 'data_integrity_error',
   no_trades: 'no_trades',
   no_wins: 'no_wins',
   no_losses: 'no_losses',

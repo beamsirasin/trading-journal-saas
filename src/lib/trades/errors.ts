@@ -22,6 +22,9 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'blank_symbol',
   'invalid_direction',
   'invalid_plan',
+  'no_plan_representation',
+  'planned_r_mismatch',
+  'system_requires_price_plan',
   'trading_account_not_found',
   'trading_account_archived',
   'strategy_not_found',
@@ -81,6 +84,9 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'setup_archived',
   'setup_snapshot_missing',
   'invalid_plan',
+  'no_plan_representation',
+  'planned_r_mismatch',
+  'system_requires_price_plan',
   'invalid_status_transition',
   'invalid_initial_risk',
   'invalid_exit_time',
@@ -129,6 +135,9 @@ export function mapServiceErrorToPublicCode(
     case 'setup_archived':
     case 'setup_snapshot_missing':
     case 'invalid_plan':
+    case 'no_plan_representation':
+    case 'planned_r_mismatch':
+    case 'system_requires_price_plan':
     case 'invalid_status_transition':
     case 'invalid_initial_risk':
     case 'invalid_exit_time':
@@ -163,6 +172,10 @@ export function mapPlanCalcReasonToFieldErrors(reason: CalcFailureReason): Field
       return { plannedStop: [reason] };
     case 'invalid_target_direction':
       return { plannedTarget: [reason] };
+    case 'invalid_planned_risk':
+      return { plannedRiskMinor: [reason] };
+    case 'invalid_planned_reward':
+      return { plannedRewardMinor: [reason] };
     default:
       return { plannedEntry: [reason] };
   }

@@ -107,20 +107,71 @@ export const trades = pgTable(
     timeframe: text('timeframe'),
     session: text('session'),
     confirmationNotes: text('confirmation_notes'),
-    /** 1–5, a bounded rating — never a financial value, plain `smallint` is safe (CLAUDE.md §5). */
+    /**
+     * 0–100, a bounded rating — never a financial value, plain `smallint`
+     * is safe (CLAUDE.md §5) and comfortably covers this range. Widened
+     * from 1–5 in migration 0010 (Founder-UAT Trade Plan UX correction
+     * slice); see `trades_confidence_check` and that migration's own
+     * backfill comment.
+     */
     confidence: smallint('confidence'),
     tradingviewUrl: text('tradingview_url'),
     notes: text('notes'),
 
     // -------------------------------------------------------------------
-    // Plan — the system's proposal. Entry/stop are required from creation;
-    // a Trade always starts with a plan, even in `status = 'planned'`.
+    // Chart attachment — Image upload (migration 0010). Distinct from
+    // `tradingview_url` above (a Trade may carry a chart LINK, an uploaded
+    // IMAGE, both, or neither). Never a blob/base64 column (CLAUDE.md's "no
+    // unnecessary Vercel-only features" spirit extends to never storing
+    // binary content in Postgres). A Chart screenshot is tenant-private user
+    // content (Founder review, private-storage correction) — the object is
+    // uploaded to private object storage and NO public URL is ever
+    // persisted here; `chart_attachment_storage_key` is the minimum stable
+    // private object identity needed to retrieve it, and only the
+    // authenticated application delivery route
+    // (`src/app/api/trades/[tradeId]/chart-attachment/route.ts`) ever reads
+    // it back, after independently re-deriving session + Workspace
+    // authorization. Both columns are populated together or not at all
+    // (`trades_chart_attachment_check`). The storage key is always
+    // server-generated/random (see `src/lib/storage/`), never derived from
+    // the user-supplied filename.
     // -------------------------------------------------------------------
-    plannedEntry: numeric('planned_entry', { precision: 20, scale: 10 }).notNull(),
-    plannedStop: numeric('planned_stop', { precision: 20, scale: 10 }).notNull(),
+    chartAttachmentStorageKey: text('chart_attachment_storage_key'),
+    chartAttachmentUploadedAt: timestamp('chart_attachment_uploaded_at', { withTimezone: true }),
+
+    // -------------------------------------------------------------------
+    // Plan — the system's proposal. A Trade always starts with a plan, even
+    // in `status = 'planned'`, but since migration 0010 (Founder-UAT Trade
+    // Plan UX correction slice) that plan may be expressed as Price
+    // (`planned_entry`/`planned_stop`/`planned_target`), Money
+    // (`planned_risk_minor`/`planned_reward_minor`, below), or both at once
+    // — `planned_entry`/`planned_stop` are nullable so a Money-only plan
+    // never has to fabricate placeholder prices. `trades_planned_price_shape_check`
+    // still requires entry+stop to be a complete, direction-valid pair
+    // whenever EITHER is present; `trades_plan_minimum_check` still requires
+    // at least one representation (Price or Money) on every row — see both
+    // checks below.
+    // -------------------------------------------------------------------
+    plannedEntry: numeric('planned_entry', { precision: 20, scale: 10 }),
+    plannedStop: numeric('planned_stop', { precision: 20, scale: 10 }),
     plannedTarget: numeric('planned_target', { precision: 20, scale: 10 }),
     /** Informational only — Planned R (CLAUDE.md §6) is a pure per-unit ratio and never uses position size. */
     plannedPositionSize: numeric('planned_position_size', { precision: 20, scale: 10 }),
+
+    // -------------------------------------------------------------------
+    // Plan — Money mode (migration 0010). Truthful monetary risk/reward,
+    // account-currency `bigint` minor units — the Trading Account's own
+    // `base_currency`, never a second currency field on `trades` itself.
+    // Deliberately NOT `actual_initial_risk_minor`/`net_pnl_minor`: those are
+    // ACTUAL-execution authoritative inputs (CLAUDE.md §6); reusing them for
+    // a PLAN would conflate "what the trader intended" with "what actually
+    // happened." `planned_reward_minor` may be exactly zero (a
+    // break-even-or-better plan is meaningful); `planned_risk_minor` must be
+    // strictly positive whenever present, and a Reward may never be present
+    // without a Risk — see `trades_planned_money_check`.
+    // -------------------------------------------------------------------
+    plannedRiskMinor: bigint('planned_risk_minor', { mode: 'bigint' }),
+    plannedRewardMinor: bigint('planned_reward_minor', { mode: 'bigint' }),
 
     // -------------------------------------------------------------------
     // Actual execution. `actual_initial_stop` is the stop AS FIRST PLACED,
@@ -288,7 +339,7 @@ export const trades = pgTable(
     ),
     check(
       'trades_confidence_check',
-      sql`${table.confidence} IS NULL OR ${table.confidence} BETWEEN 1 AND 5`,
+      sql`${table.confidence} IS NULL OR ${table.confidence} BETWEEN 0 AND 100`,
     ),
     check('trades_calc_version_check', sql`${table.calcVersion} > 0`),
     check('trades_system_cost_r_check', sql`${table.systemCostR} >= 0`),
@@ -308,17 +359,69 @@ export const trades = pgTable(
     // planned risk and a Stop or Target on the wrong side of Entry at the
     // database layer, not merely at the Zod/service boundary (CLAUDE.md §6:
     // "riskPerUnit must be strictly positive... reject at validation, never
-    // silently proceed").
+    // silently proceed"). Migration 0010 (Founder-UAT Trade Plan UX
+    // correction slice) widened this from "Entry/Stop always present" to
+    // "Entry/Stop present as a complete, valid pair, OR both entirely
+    // absent" — a lone Entry, a lone Stop, or a Target with neither is never
+    // valid shape, matching `composePlannedR`'s own defensive fragment
+    // rejection in `src/lib/calc/trade.ts`.
     check(
-      'trades_planned_price_direction_check',
+      'trades_planned_price_shape_check',
       sql`(
-        ${table.direction} = 'long'
-        AND ${table.plannedStop} < ${table.plannedEntry}
-        AND (${table.plannedTarget} IS NULL OR ${table.plannedTarget} > ${table.plannedEntry})
+        ${table.plannedEntry} IS NULL AND ${table.plannedStop} IS NULL AND ${table.plannedTarget} IS NULL
       ) OR (
-        ${table.direction} = 'short'
-        AND ${table.plannedStop} > ${table.plannedEntry}
-        AND (${table.plannedTarget} IS NULL OR ${table.plannedTarget} < ${table.plannedEntry})
+        ${table.plannedEntry} IS NOT NULL AND ${table.plannedStop} IS NOT NULL
+        AND (
+          (
+            ${table.direction} = 'long'
+            AND ${table.plannedStop} < ${table.plannedEntry}
+            AND (${table.plannedTarget} IS NULL OR ${table.plannedTarget} > ${table.plannedEntry})
+          ) OR (
+            ${table.direction} = 'short'
+            AND ${table.plannedStop} > ${table.plannedEntry}
+            AND (${table.plannedTarget} IS NULL OR ${table.plannedTarget} < ${table.plannedEntry})
+          )
+        )
+      )`,
+    ),
+
+    // Money-mode plan integrity (migration 0010) — mirrors the Price side's
+    // own posture: Risk must be strictly positive whenever present, Reward
+    // may be exactly zero but never negative, and a Reward can never appear
+    // without a Risk to normalize it against (the Money-mode equivalent of
+    // "a Target with neither Entry nor Stop").
+    check(
+      'trades_planned_money_check',
+      sql`(${table.plannedRiskMinor} IS NULL OR ${table.plannedRiskMinor} > 0)
+        AND (${table.plannedRewardMinor} IS NULL OR ${table.plannedRewardMinor} >= 0)
+        AND (${table.plannedRewardMinor} IS NULL OR ${table.plannedRiskMinor} IS NOT NULL)`,
+    ),
+
+    // The Founder-UAT "minimum plan validity" floor (migration 0010): every
+    // Trade must carry at least one complete, meaningful Plan representation
+    // — a full Price pair (Entry+Stop) or a Money Risk. Never enforced only
+    // client-side; this is the database-authoritative backstop behind the
+    // same rule `trade-management.ts`'s `createTrade`/`updateTradePlan`/
+    // `correctTradeIdentity` already enforce before ever reaching this
+    // constraint.
+    check(
+      'trades_plan_minimum_check',
+      sql`(${table.plannedEntry} IS NOT NULL AND ${table.plannedStop} IS NOT NULL)
+        OR ${table.plannedRiskMinor} IS NOT NULL`,
+    ),
+
+    // Chart-attachment terminal fields (migration 0010) — populated together
+    // or not at all, the same all-or-nothing posture
+    // `trades_system_status_consistency_check` already establishes for a
+    // different field group.
+    check(
+      'trades_chart_attachment_check',
+      sql`(
+        ${table.chartAttachmentStorageKey} IS NULL
+        AND ${table.chartAttachmentUploadedAt} IS NULL
+      ) OR (
+        ${table.chartAttachmentStorageKey} IS NOT NULL
+        AND ${table.chartAttachmentUploadedAt} IS NOT NULL
       )`,
     ),
 

@@ -443,11 +443,22 @@ describe('Phase 07B trade domain (real database)', () => {
   });
 
   describe('bounded-field constraints', () => {
-    it('rejects an out-of-range confidence value', async () => {
+    it('accepts the full widened 0-100 confidence range (migration 0010)', async () => {
       const fw = await createFramework();
-      await expect(insertTrade({ ...basePlannedTrade(fw), confidence: 6 })).rejects.toMatchObject({
+      for (const confidence of [0, 1, 50, 99, 100]) {
+        const [row] = await insertTrade({ ...basePlannedTrade(fw), confidence });
+        expect(row?.confidence).toBe(confidence);
+      }
+    });
+
+    it('rejects an out-of-range confidence value (below 0 or above 100)', async () => {
+      const fw = await createFramework();
+      await expect(insertTrade({ ...basePlannedTrade(fw), confidence: -1 })).rejects.toMatchObject({
         cause: { code: '23514' },
       });
+      await expect(insertTrade({ ...basePlannedTrade(fw), confidence: 101 })).rejects.toMatchObject(
+        { cause: { code: '23514' } },
+      );
     });
 
     it('rejects a non-positive calc_version', async () => {
@@ -455,6 +466,120 @@ describe('Phase 07B trade domain (real database)', () => {
       await expect(insertTrade({ ...basePlannedTrade(fw), calcVersion: 0 })).rejects.toMatchObject({
         cause: { code: '23514' },
       });
+    });
+  });
+
+  describe('Price/Money plan independence (Founder-UAT correction slice, migration 0010)', () => {
+    it('accepts a Trade with no Price fields at all when a Money Risk is present', async () => {
+      const fw = await createFramework();
+      const [row] = await insertTrade({
+        workspaceId,
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        strategyVersionId: fw.strategyVersionId,
+        setupId: fw.setupId,
+        setupVersionId: fw.setupVersionId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedRiskMinor: 5000n,
+      });
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedRiskMinor).toBe(5000n);
+    });
+
+    it('rejects a lone Entry without a Stop (trades_planned_price_shape_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({
+          ...basePlannedTrade(fw),
+          plannedStop: null,
+          plannedTarget: null,
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('rejects neither Price nor Money present (trades_plan_minimum_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({
+          workspaceId,
+          tradingAccountId: fw.tradingAccountId,
+          strategyId: fw.strategyId,
+          strategyVersionId: fw.strategyVersionId,
+          setupId: fw.setupId,
+          setupVersionId: fw.setupVersionId,
+          symbol: 'EURUSD',
+          direction: 'long',
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('rejects a non-positive planned_risk_minor (trades_planned_money_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({ ...basePlannedTrade(fw), plannedRiskMinor: 0n }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      await expect(
+        insertTrade({ ...basePlannedTrade(fw), plannedRiskMinor: -1n }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('rejects a negative planned_reward_minor (trades_planned_money_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({ ...basePlannedTrade(fw), plannedRiskMinor: 5000n, plannedRewardMinor: -1n }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('accepts a zero planned_reward_minor (a break-even-or-better plan)', async () => {
+      const fw = await createFramework();
+      const [row] = await insertTrade({
+        ...basePlannedTrade(fw),
+        plannedRiskMinor: 5000n,
+        plannedRewardMinor: 0n,
+      });
+      expect(row?.plannedRewardMinor).toBe(0n);
+    });
+
+    it('rejects a planned_reward_minor present without a planned_risk_minor (trades_planned_money_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({ ...basePlannedTrade(fw), plannedRewardMinor: 15000n }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+  });
+
+  describe('Chart attachment integrity (migration 0010, private storage — Founder review)', () => {
+    it('rejects a chart_attachment_storage_key without its uploaded-at pair (trades_chart_attachment_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({
+          ...basePlannedTrade(fw),
+          chartAttachmentStorageKey: `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`,
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('rejects an uploaded-at timestamp without its storage key (trades_chart_attachment_check)', async () => {
+      const fw = await createFramework();
+      await expect(
+        insertTrade({
+          ...basePlannedTrade(fw),
+          chartAttachmentUploadedAt: new Date('2026-08-05T00:00:00Z'),
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('accepts a complete chart attachment pair — no url column exists', async () => {
+      const fw = await createFramework();
+      const storageKey = `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`;
+      const [row] = await insertTrade({
+        ...basePlannedTrade(fw),
+        chartAttachmentStorageKey: storageKey,
+        chartAttachmentUploadedAt: new Date('2026-08-05T00:00:00Z'),
+      });
+      expect(row?.chartAttachmentStorageKey).toBe(storageKey);
+      expect(row).not.toHaveProperty('chartAttachmentUrl');
     });
   });
 

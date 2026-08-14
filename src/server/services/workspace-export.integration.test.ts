@@ -426,6 +426,41 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
     expect(serializeWorkspaceExportJson(envelope)).not.toContain(SENTINELS.foreign);
   });
 
+  it('exports Money-plan/Confidence/Chart-attachment fields truthfully, and NEVER the internal private storage key (migration 0010, Founder review: private storage, no URL column)', async () => {
+    const db = getTestDb();
+    const seeded = await seedHistoricalWorkspace(db);
+    const storageKey = `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`;
+    await db
+      .update(trades)
+      .set({
+        plannedRiskMinor: 5000n,
+        plannedRewardMinor: 15000n,
+        confidence: 62,
+        chartAttachmentStorageKey: storageKey,
+        chartAttachmentUploadedAt: new Date('2026-08-05T00:00:00Z'),
+      })
+      .where(eq(trades.id, seeded.trade.id));
+
+    const source = await readWorkspaceExportSource(seeded.workspace.id, seeded.owner.id);
+    const envelope = createWorkspaceExportEnvelope({
+      exportedAt: NOW,
+      productVersion: '0.1.0',
+      workspaceId: seeded.workspace.id,
+      source,
+    });
+    const exportedTrade = envelope.data.trades.find((row) => row.id === seeded.trade.id);
+    expect(exportedTrade).toMatchObject({
+      plannedRiskMinor: '5000',
+      plannedRewardMinor: '15000',
+      confidence: 62,
+      hasChartAttachment: true,
+      chartAttachmentUploadedAt: '2026-08-05T00:00:00.000Z',
+    });
+    expect(Object.keys(exportedTrade ?? {})).not.toContain('chartAttachmentStorageKey');
+    expect(Object.keys(exportedTrade ?? {})).not.toContain('chartAttachmentUrl');
+    expect(serializeWorkspaceExportJson(envelope)).not.toContain(storageKey);
+  });
+
   it('excludes exact auth, provider, billing-internal and audit sentinels from JSON and ZIP', async () => {
     const seeded = await seedHistoricalWorkspace(getTestDb());
     const source = await readWorkspaceExportSource(seeded.workspace.id, seeded.owner.id);

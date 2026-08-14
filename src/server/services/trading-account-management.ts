@@ -14,7 +14,13 @@ import type {
   UpdateAccountData,
 } from '@/lib/trading-accounts/schema';
 import { getDb } from '@/server/db/client';
-import { tradingAccounts, userPreferences, workspaceMembers, workspaces } from '@/server/db/schema';
+import {
+  trades,
+  tradingAccounts,
+  userPreferences,
+  workspaceMembers,
+  workspaces,
+} from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
 import { lockAndResolveEntitlement } from './entitlement';
@@ -44,7 +50,7 @@ class MembershipError extends Error {
 
 export type ArchiveErrorCode = 'not_found' | 'last_account';
 export type ActivateErrorCode = 'not_found' | 'archived';
-export type UpdateErrorCode = 'not_found' | 'archived';
+export type UpdateErrorCode = 'not_found' | 'archived' | 'base_currency_locked';
 
 export type CreateTradingAccountResult =
   | { readonly ok: true; readonly accountId: string; readonly alreadyCreated: boolean }
@@ -217,6 +223,20 @@ const FIELD_COMPARISON_KEYS: readonly (keyof AccountFieldsData)[] = [
  * Audits only which field NAMES changed, never old or new values — a
  * starting balance or risk percentage is exactly the kind of financial
  * figure CLAUDE.md's audit-metadata rules forbid recording.
+ *
+ * `base_currency` is frozen the instant ANY Trade has ever referenced this
+ * account (Founder review: historical monetary-integrity blocker) —
+ * `planned_risk_minor`/`planned_reward_minor`/`actual_initial_risk_minor`/
+ * `net_pnl_minor` are bigint minor units whose currency is implied entirely
+ * by this column, never stored per-Trade, so changing it after even one
+ * Trade exists would silently reinterpret every historical monetary value
+ * under the new currency. The check below counts Trade rows INCLUDING
+ * soft-deleted ones (a deleted Trade still preserves historical monetary
+ * meaning — CLAUDE.md A7) and is skipped entirely when the submitted value
+ * equals the current one (a same-currency resubmission is always a safe
+ * no-op, never gated). An archived account cannot reach this check at all —
+ * the archived-account rejection above already blocks every field edit, so
+ * archival can never be used to bypass the freeze.
  */
 export async function updateTradingAccount(
   workspaceId: string,
@@ -234,14 +254,36 @@ export async function updateTradingAccount(
     const denied = await mutationDenial(tx, workspaceId, 'ordinary_write', clock);
     if (denied !== null) return { ok: false, code: denied };
 
-    const existing = await tx.query.tradingAccounts.findFirst({
-      where: and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)),
-    });
+    // `FOR UPDATE` — this transaction is about to decide, from THIS row's
+    // current `base_currency`, whether a currency change is even attempted;
+    // that decision must not be made against a row a concurrent transaction
+    // could still change underneath it before this one commits.
+    const [existing] = await tx
+      .select()
+      .from(tradingAccounts)
+      .where(and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)))
+      .for('update');
     if (existing === undefined) {
       return { ok: false, code: 'not_found' };
     }
     if (existing.isArchived) {
       return { ok: false, code: 'archived' };
+    }
+
+    if (input.baseCurrency !== existing.baseCurrency) {
+      // An existence check, not a load — `limit(1)` on the indexed
+      // `trading_account_id` FK column, never fetching or counting every
+      // Trade row. No `deleted_at` filter: a soft-deleted Trade still
+      // preserves historical monetary meaning under the account's original
+      // currency and must freeze it exactly like a live Trade does.
+      const [referencingTrade] = await tx
+        .select({ id: trades.id })
+        .from(trades)
+        .where(and(eq(trades.tradingAccountId, accountId), eq(trades.workspaceId, workspaceId)))
+        .limit(1);
+      if (referencingTrade !== undefined) {
+        return { ok: false, code: 'base_currency_locked' };
+      }
     }
 
     const changedFields = FIELD_COMPARISON_KEYS.filter((key) => existing[key] !== input[key]);

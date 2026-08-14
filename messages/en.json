@@ -513,12 +513,15 @@
       "stop": "Stop",
       "target": "Target",
       "positionSize": "Planned position size",
+      "plannedRisk": "Planned risk",
+      "plannedReward": "Planned reward",
       "plannedR": "Planned R",
       "timeframe": "Timeframe",
       "session": "Session",
       "confidence": "Confidence",
       "confirmationNotes": "Confirmation notes",
       "tradingViewUrl": "TradingView URL",
+      "chartAttachment": "Chart image",
       "notes": "Notes",
       "createdAt": "Created",
       "enteredAt": "Entered",
@@ -545,6 +548,8 @@
       "back": "Back to trades",
       "selectPrompt": "Select a Trade to view its full journal entry.",
       "openChart": "Open TradingView chart",
+      "openChartImage": "Open chart image",
+      "chartImageAlt": "Uploaded chart image",
       "notOpened": "This Trade has not been opened. No actual execution has been recorded.",
       "systemPending": "The System result is Pending. System R and outcome are not available yet.",
       "systemNoTrade": "The pinned Strategy and Setup would not have permitted this Trade. System R is not available.",
@@ -670,6 +675,11 @@
         "plan": "Plan",
         "review": "Review & Create"
       },
+      "stepper": {
+        "completed": "Completed",
+        "current": "Current step",
+        "locked": "Not yet available"
+      },
       "accountTitle": "Choose a Trading Account",
       "accountDescription": "Only active Trading Accounts are available.",
       "chooseAccount": "Choose an account",
@@ -678,8 +688,59 @@
       "chooseStrategy": "Choose a Strategy",
       "chooseSetup": "Choose a Setup",
       "planTitle": "Record the Plan",
+      "sections": {
+        "corePlan": "Core plan",
+        "context": "Context",
+        "confidence": "Confidence",
+        "chart": "Chart attachment",
+        "notes": "Notes"
+      },
+      "plan": {
+        "priceTitle": "Price",
+        "moneyTitle": "Money / Risk & Reward",
+        "addPrice": "Add a Price plan",
+        "hidePrice": "Hide Price plan",
+        "addMoney": "Add a Money plan",
+        "hideMoney": "Hide Money plan",
+        "mismatchTitle": "Price and Money plans disagree",
+        "mismatchBody": "Price implies {priceR}, but Money implies {moneyR}. Adjust one before continuing.",
+        "mismatchBlocked": "Price and Money plans disagree — adjust one before continuing.",
+        "previewR": "Planned R: {value}",
+        "previewAgree": "Price and Money agree"
+      },
+      "quickSelect": {
+        "groupLabel": "Quick values for {label}",
+        "addFavorite": "Add {value} to favorites",
+        "removeFavorite": "Remove {value} from favorites",
+        "addCurrent": "Add \"{value}\" to favorites"
+      },
+      "confidence": {
+        "level": {
+          "veryLow": "Very Low",
+          "low": "Low",
+          "neutral": "Neutral",
+          "high": "High",
+          "veryHigh": "Very High"
+        },
+        "clear": "Clear confidence"
+      },
+      "chart": {
+        "linkOption": "Link",
+        "uploadOption": "Upload image",
+        "uploadLabel": "Upload image",
+        "uploadHint": "PNG, JPEG or WEBP, up to 3 MB. Stored privately — only you can view it.",
+        "uploading": "Uploading…",
+        "remove": "Remove image",
+        "previewAlt": "Uploaded chart preview"
+      },
       "reviewTitle": "Review the planned Trade",
       "versionPinNote": "The Version shown is informational. The server resolves and pins the authoritative Version at creation time.",
+      "review": {
+        "chartAttachment": "Chart attachment",
+        "linkProvided": "Link provided",
+        "imageProvided": "Image provided",
+        "noAttachment": "Not provided"
+      },
       "back": "Back",
       "continue": "Continue",
       "create": "Create Trade",
@@ -709,7 +770,13 @@
       "invalidField": "Check this value.",
       "invalidRiskDirection": "The Stop is on the wrong side of Entry for this direction.",
       "zeroRisk": "Entry and Stop must be different.",
-      "invalidTargetDirection": "The Target is on the wrong side of Entry for this direction."
+      "invalidTargetDirection": "The Target is on the wrong side of Entry for this direction.",
+      "incompletePricePlan": "Entry and Stop are both required together.",
+      "incompleteMoneyPlan": "Planned risk is required before a planned reward.",
+      "noPlanRepresentation": "Enter a Price plan (Entry/Stop) or a Money plan (planned risk).",
+      "invalidPlannedRisk": "Enter a valid planned risk amount greater than zero.",
+      "invalidPlannedReward": "Enter a valid planned reward amount.",
+      "invalidChartAttachment": "This chart image could not be attached. Try uploading it again."
     },
     "ruleStatus": {
       "followed": "Followed",
@@ -744,6 +811,9 @@
       "setup_archived": "This Setup is archived. Restore it first, then you can make changes.",
       "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
       "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
+      "no_plan_representation": "Enter a Price plan (Entry/Stop) or a Money plan (planned risk) before creating this Trade.",
+      "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",
+      "system_requires_price_plan": "The System result needs a Price plan (Entry/Stop) — this Trade currently has none.",
       "invalid_status_transition": "This Trade cannot make that change from its current status.",
       "invalid_initial_risk": "Initial risk must be a positive amount.",
       "invalid_exit_time": "The exit time cannot be before the entry time.",
@@ -753,6 +823,12 @@
       "rule_check_not_found": "This Rule check could not be found on this Trade.",
       "mistake_type_not_found": "This mistake type could not be found.",
       "mistake_type_not_usable": "This mistake type is not available in this workspace.",
+      "storage_not_configured": "Image upload is not available yet in this deployment.",
+      "unsupported_file_type": "Choose a PNG, JPEG, or WEBP image.",
+      "invalid_file_signature": "This file's contents don't match a supported image format.",
+      "file_too_large": "This image is too large. Choose a file under 3 MB.",
+      "invalid_file": "Choose an image file to upload.",
+      "invalid_storage_key": "This image could not be identified. Please upload it again.",
       "unexpected_error": "Something went wrong. Please try again."
     }
   },
@@ -1304,6 +1380,7 @@
       "backtest": "Backtest"
     },
     "baseCurrencyLabel": "Base currency",
+    "baseCurrencyLockedHint": "This account has recorded trades, so its currency can't be changed.",
     "startingBalanceLabel": "Starting balance",
     "timezoneLabel": "Timezone",
     "riskPerTradeLabel": "Default risk per trade",
@@ -1378,6 +1455,7 @@
       "not_found": "This trading account could not be found.",
       "forbidden": "You do not have permission to do that.",
       "archived": "An archived account cannot be made active. Restore it first.",
+      "base_currency_locked": "The account currency can't be changed after trades have been recorded.",
       "last_account": "You cannot archive your last trading account. Create another trading account first.",
       "trial_expired": "Your trial has expired. Upgrade your plan to create or restore trading accounts.",
       "subscription_expired": "Your paid access period has ended. Renew your subscription to make changes.",

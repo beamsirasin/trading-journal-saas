@@ -42,41 +42,52 @@ export function hasActualExecution(status: TradeStatus): boolean {
 // ---------------------------------------------------------------------------
 
 export interface PlanFieldsCurrent {
-  readonly plannedEntry: string;
-  readonly plannedStop: string;
+  readonly plannedEntry: string | null;
+  readonly plannedStop: string | null;
   readonly plannedTarget: string | null;
+  readonly plannedRiskMinor: bigint | null;
+  readonly plannedRewardMinor: bigint | null;
 }
 
 /**
- * A patch's `plannedTarget` distinguishes three states via presence, not
- * value: the key absent = "leave Target unchanged"; present with `null` =
- * "clear the Target"; present with a string = "set the Target." TypeScript
- * cannot express "optional but distinguish absent from explicit undefined"
- * for a plain object literal, so callers use `'plannedTarget' in patch`
- * (this module's `hasOwnProperty`-based check, not `!== undefined`) to tell
- * the three apart — see {@link resolvePlanFieldsPatch}.
+ * Every Plan field below distinguishes three states via PRESENCE, not
+ * value: the key absent = "leave this field unchanged"; present with
+ * `null` = "clear this field"; present with a value = "set this field."
+ * TypeScript cannot express "optional but distinguish absent from explicit
+ * undefined" for a plain object literal, so callers use
+ * `Object.hasOwn(patch, '<field>')` (this module's convention, not
+ * `!== undefined`) to tell the three apart — see
+ * {@link resolvePlanFieldsPatch}. Migration 0010 (Founder-UAT Trade Plan UX
+ * correction slice) extended this tri-state convention from `plannedTarget`
+ * alone to `plannedEntry`/`plannedStop` too (a Trade may now clear its
+ * entire Price plan down to a Money-only plan) and added the two Money
+ * fields under the identical convention.
  */
 export interface PlanFieldsPatch {
-  readonly plannedEntry?: string;
-  readonly plannedStop?: string;
+  readonly plannedEntry?: string | null;
+  readonly plannedStop?: string | null;
   readonly plannedTarget?: string | null;
+  readonly plannedRiskMinor?: bigint | null;
+  readonly plannedRewardMinor?: bigint | null;
 }
 
 export interface ResolvedPlanFields {
-  readonly plannedEntry: string;
-  readonly plannedStop: string;
+  readonly plannedEntry: string | null;
+  readonly plannedStop: string | null;
   /** `null` when the effective Target is absent — Target is optional (locked Phase 08 decision), and a Trade may have no Target. */
   readonly plannedTarget: string | null;
-  /** True when any of entry/stop/target participate in this edit — the trigger for recomputing `planned_r` at all. */
+  readonly plannedRiskMinor: bigint | null;
+  readonly plannedRewardMinor: bigint | null;
+  /** True when any Plan field (Price or Money) participates in this edit — the trigger for recomputing `planned_r` at all. */
   readonly planFieldsTouched: boolean;
-  /** True only when entry or stop actually change value — the trigger for recomputing `system_r`/`system_outcome` when System is resolved (Target never affects the System formula). */
+  /** True only when entry or stop actually change value — the trigger for recomputing `system_r`/`system_outcome` when System is resolved (Target and every Money field never affect the System formula, which is always Price-based). */
   readonly entryOrStopChanged: boolean;
 }
 
 /**
  * Resolves a partial Plan-field patch against the Trade's current stored
  * values into the effective new values, plus which recomputations the patch
- * requires. Pure: does not call `composePlanned`/`composeSystemResolve`
+ * requires. Pure: does not call `composePlannedR`/`composeSystemResolve`
  * itself — `trade-management.ts` does that, using the effective values this
  * function returns.
  */
@@ -84,18 +95,37 @@ export function resolvePlanFieldsPatch(
   current: PlanFieldsCurrent,
   patch: PlanFieldsPatch,
 ): ResolvedPlanFields {
-  const plannedEntry = patch.plannedEntry ?? current.plannedEntry;
-  const plannedStop = patch.plannedStop ?? current.plannedStop;
+  const entryProvided = Object.hasOwn(patch, 'plannedEntry');
+  const stopProvided = Object.hasOwn(patch, 'plannedStop');
   const targetProvided = Object.hasOwn(patch, 'plannedTarget');
+  const riskProvided = Object.hasOwn(patch, 'plannedRiskMinor');
+  const rewardProvided = Object.hasOwn(patch, 'plannedRewardMinor');
+
+  const plannedEntry = entryProvided ? (patch.plannedEntry ?? null) : current.plannedEntry;
+  const plannedStop = stopProvided ? (patch.plannedStop ?? null) : current.plannedStop;
   const plannedTarget = targetProvided ? (patch.plannedTarget ?? null) : current.plannedTarget;
+  const plannedRiskMinor = riskProvided
+    ? (patch.plannedRiskMinor ?? null)
+    : current.plannedRiskMinor;
+  const plannedRewardMinor = rewardProvided
+    ? (patch.plannedRewardMinor ?? null)
+    : current.plannedRewardMinor;
 
   const entryOrStopChanged =
-    (patch.plannedEntry !== undefined && patch.plannedEntry !== current.plannedEntry) ||
-    (patch.plannedStop !== undefined && patch.plannedStop !== current.plannedStop);
+    (entryProvided && plannedEntry !== current.plannedEntry) ||
+    (stopProvided && plannedStop !== current.plannedStop);
   const planFieldsTouched =
-    patch.plannedEntry !== undefined || patch.plannedStop !== undefined || targetProvided;
+    entryProvided || stopProvided || targetProvided || riskProvided || rewardProvided;
 
-  return { plannedEntry, plannedStop, plannedTarget, planFieldsTouched, entryOrStopChanged };
+  return {
+    plannedEntry,
+    plannedStop,
+    plannedTarget,
+    plannedRiskMinor,
+    plannedRewardMinor,
+    planFieldsTouched,
+    entryOrStopChanged,
+  };
 }
 
 // ---------------------------------------------------------------------------

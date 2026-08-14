@@ -3,9 +3,10 @@ import 'server-only';
 import { and, eq } from 'drizzle-orm';
 
 import { CALC_VERSION } from '@/config/trade-calc';
-import { composePlanned, composeSystemResolve, composeTraderClose } from '@/lib/calc/trade';
+import { composePlannedR, composeSystemResolve, composeTraderClose } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { authorizeWorkspaceMutation, type MutationDenialReason } from '@/lib/entitlements/resolve';
+import { getChartAttachmentStorage } from '@/lib/storage/chart-attachment-storage';
 import { systemClock, type Clock } from '@/lib/time';
 import {
   isSystemExitReason,
@@ -114,7 +115,7 @@ import {
  *
  * Nothing in this file calls `src/lib/calc/{aggregate,attribution,equity}.ts`
  * — those are Phase 09's read-path job, over already-persisted snapshots.
- * Only the per-Trade composers (`composePlanned`/`composeTraderClose`/
+ * Only the per-Trade composers (`composePlannedR`/`composeTraderClose`/
  * `composeSystemResolve`) and `classifyOutcome` are ever called here, and
  * always as the SOLE source of a derived value — no formula is ever
  * hand-duplicated at a call site in this file.
@@ -361,17 +362,37 @@ export interface CreateTradeInput {
   readonly setupId: string;
   readonly symbol: string;
   readonly direction: string;
-  readonly plannedEntry: string;
-  readonly plannedStop: string;
-  /** Optional (locked Phase 08B decision) — a Trade may have a Plan with no Target. */
+  /**
+   * Price and Money are independent, both-optional representations of the
+   * same Plan (Founder-UAT Trade Plan UX correction slice, migration 0010)
+   * — a Trade may supply Price only, Money only, or both. Neither is
+   * "required" at this interface's level; `createTrade` itself enforces the
+   * "at least one representation" floor (`no_plan_representation`), the
+   * same floor `trades_plan_minimum_check` enforces at the database layer.
+   */
+  readonly plannedEntry?: string | null;
+  readonly plannedStop?: string | null;
+  /** Optional (locked Phase 08B decision) — a Price plan may have no Target. */
   readonly plannedTarget?: string | null;
   readonly plannedPositionSize?: string | null;
+  /** Account-currency minor units, in the Trading Account's own `base_currency`. Reward may be omitted (a Money plan may have no Reward, symmetric with Target). */
+  readonly plannedRiskMinor?: bigint | null;
+  readonly plannedRewardMinor?: bigint | null;
   readonly timeframe?: string | null;
   readonly session?: string | null;
   readonly confirmationNotes?: string | null;
   readonly confidence?: number | null;
   readonly tradingviewUrl?: string | null;
   readonly notes?: string | null;
+  /**
+   * The private object-storage key, already uploaded (via
+   * `src/lib/storage/`'s adapter, `access: 'private'`) before this call —
+   * `createTrade` never performs the upload itself. If this transaction
+   * ultimately fails for any reason, the caller's `createTrade` wrapper
+   * best-effort deletes the now-orphaned object (see below) — never a
+   * public URL, only this stable private key.
+   */
+  readonly chartAttachmentStorageKey?: string | null;
 }
 
 export type CreateTradeErrorCode =
@@ -379,6 +400,8 @@ export type CreateTradeErrorCode =
   | 'blank_symbol'
   | 'invalid_direction'
   | 'invalid_plan'
+  | 'no_plan_representation'
+  | 'planned_r_mismatch'
   | 'trading_account_not_found'
   | 'trading_account_archived'
   | 'strategy_not_found'
@@ -411,7 +434,7 @@ export async function createTrade(
 ): Promise<CreateTradeResult> {
   const db = getDb();
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx): Promise<CreateTradeResult> => {
     // Steps 1–2.
     const membershipDenial = await lockWorkspaceAndVerifyMembership(tx, workspaceId, userId);
     if (membershipDenial !== null) return { ok: false, code: membershipDenial };
@@ -435,42 +458,35 @@ export async function createTrade(
     if (!symbol.ok) return { ok: false, code: 'blank_symbol' };
     if (!isTradeDirection(input.direction)) return { ok: false, code: 'invalid_direction' };
 
-    // Validate the Plan's risk shape unconditionally (Target-independent);
-    // compute planned_r via composePlanned ONLY when a Target was supplied —
-    // composePlanned's own `missing_input` for an absent Target is not a
-    // Trade-creation failure (locked Phase 08B decision), so it is never
-    // even called in that case; plannedR is stored as null instead. Never
-    // hand-duplicates the risk-per-unit formula: composePlanned/its shared
-    // risk-context validation are the only source.
-    let plannedR: string | null = null;
-    if (input.plannedTarget !== null && input.plannedTarget !== undefined) {
-      const composed = composePlanned(
-        input.direction,
-        input.plannedEntry,
-        input.plannedStop,
-        input.plannedTarget,
-      );
-      if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
-      plannedR = composed.value.plannedR;
-    } else {
-      // No Target: still validate entry/stop shape by itself, reusing the
-      // same composePlanned call with a synthetic check — done via the risk
-      // context `composePlanned` builds internally is not directly
-      // reachable here without a Target, so validate through `classifyOutcome`
-      // is not applicable either. Reuse composePlanned is not possible
-      // without a target; fall back to the same underlying primitive it
-      // uses for risk validation.
-      const riskOnly = composePlanned(input.direction, input.plannedEntry, input.plannedStop, '0');
-      // A synthetic Target of '0' only exists to exercise risk-per-unit
-      // validation; a real `invalid_target_direction`/`missing_input`
-      // failure caused by the synthetic value itself must never leak out —
-      // only risk-shape failures (missing_input for entry/stop/direction,
-      // invalid_decimal, invalid_direction, zero_risk, invalid_risk_direction)
-      // are genuine Trade-creation failures in the no-Target case.
-      if (!riskOnly.ok && isRiskShapeFailure(riskOnly.reason)) {
-        return { ok: false, code: 'invalid_plan', calcReason: riskOnly.reason };
-      }
+    // The Founder-UAT "minimum plan validity" floor (migration 0010) — the
+    // same invariant `trades_plan_minimum_check` enforces at the database
+    // layer, checked here first so its dedicated error code is never masked
+    // by a generic `invalid_plan`/`missing_input`.
+    const hasPricePlan =
+      input.plannedEntry !== null &&
+      input.plannedEntry !== undefined &&
+      input.plannedStop !== null &&
+      input.plannedStop !== undefined;
+    const hasMoneyPlan = input.plannedRiskMinor !== null && input.plannedRiskMinor !== undefined;
+    if (!hasPricePlan && !hasMoneyPlan) {
+      return { ok: false, code: 'no_plan_representation' };
     }
+
+    // `composePlannedR` validates whichever representation(s) are present
+    // (never hand-duplicating the risk-per-unit/Money-ratio formulas) and
+    // detects a Price/Money disagreement rather than silently picking one —
+    // see `src/lib/calc/trade.ts`'s own doc comment.
+    const composed = composePlannedR({
+      direction: input.direction,
+      plannedEntry: input.plannedEntry ?? null,
+      plannedStop: input.plannedStop ?? null,
+      plannedTarget: input.plannedTarget ?? null,
+      plannedRiskMinor: input.plannedRiskMinor ?? null,
+      plannedRewardMinor: input.plannedRewardMinor ?? null,
+    });
+    if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
+    if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
+    const plannedR = composed.value.plannedR;
 
     // Step 5 — plain scoped read, not FOR UPDATE (see module comment).
     const account = await tx.query.tradingAccounts.findFirst({
@@ -539,10 +555,14 @@ export async function createTrade(
         confidence: input.confidence ?? null,
         tradingviewUrl: normalizeOptionalText(input.tradingviewUrl),
         notes: normalizeOptionalText(input.notes),
-        plannedEntry: input.plannedEntry,
-        plannedStop: input.plannedStop,
+        chartAttachmentStorageKey: input.chartAttachmentStorageKey ?? null,
+        chartAttachmentUploadedAt: input.chartAttachmentStorageKey ? clock.now() : null,
+        plannedEntry: input.plannedEntry ?? null,
+        plannedStop: input.plannedStop ?? null,
         plannedTarget: input.plannedTarget ?? null,
         plannedPositionSize: input.plannedPositionSize ?? null,
+        plannedRiskMinor: input.plannedRiskMinor ?? null,
+        plannedRewardMinor: input.plannedRewardMinor ?? null,
         plannedR,
       })
       .onConflictDoNothing({ target: [trades.workspaceId, trades.mutationKey] })
@@ -591,17 +611,33 @@ export async function createTrade(
 
     return { ok: true, tradeId: created.id, alreadyCreated: false };
   });
-}
 
-/** The risk-shape-only subset of `CalcFailureReason` — genuine failures even when no Target is supplied. */
-function isRiskShapeFailure(reason: CalcFailureReason): boolean {
-  return (
-    reason === 'missing_input' ||
-    reason === 'invalid_decimal' ||
-    reason === 'invalid_direction' ||
-    reason === 'zero_risk' ||
-    reason === 'invalid_risk_direction'
-  );
+  // Best-effort orphan cleanup (Founder review §5): if a Chart image was
+  // already uploaded to private storage but this transaction did NOT end in
+  // a usable Trade, the object is now unreferenced by anything. Deleting it
+  // is attempted here, with the request's own knowledge of the key, but its
+  // success is never allowed to affect the function's real result — DB
+  // correctness must never depend on storage cleanup succeeding. A rare
+  // process/network failure between the transaction's outcome and this
+  // delete can still leave a private orphan object; that residual case is
+  // acceptable operational storage-GC work (private orphans carry only a
+  // storage-cost risk, never a confidentiality one), not a correctness bug.
+  if (
+    !result.ok &&
+    input.chartAttachmentStorageKey !== null &&
+    input.chartAttachmentStorageKey !== undefined
+  ) {
+    const storage = getChartAttachmentStorage();
+    if (storage !== null) {
+      try {
+        await storage.delete(input.chartAttachmentStorageKey);
+      } catch {
+        // Best-effort only — see doc comment above.
+      }
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -626,7 +662,13 @@ export type UpdateTradePlanResult =
     }
   | {
       readonly ok: false;
-      readonly code: WorkspaceAccessDenial | 'trade_not_found' | 'invalid_plan';
+      readonly code:
+        | WorkspaceAccessDenial
+        | 'trade_not_found'
+        | 'invalid_plan'
+        | 'no_plan_representation'
+        | 'planned_r_mismatch'
+        | 'system_requires_price_plan';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -659,6 +701,8 @@ export async function updateTradePlan(
         plannedEntry: trade.plannedEntry,
         plannedStop: trade.plannedStop,
         plannedTarget: trade.plannedTarget,
+        plannedRiskMinor: trade.plannedRiskMinor,
+        plannedRewardMinor: trade.plannedRewardMinor,
       },
       input,
     );
@@ -669,20 +713,33 @@ export async function updateTradePlan(
     let calcVersionBump = false;
 
     if (resolved.planFieldsTouched) {
-      if (resolved.plannedTarget === null) {
-        plannedR = null;
-      } else {
-        const composed = composePlanned(
-          trade.direction,
-          resolved.plannedEntry,
-          resolved.plannedStop,
-          resolved.plannedTarget,
-        );
-        if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
-        plannedR = composed.value.plannedR;
+      // The Founder-UAT "minimum plan validity" floor — an edit must never
+      // leave a Trade with neither a Price nor a Money representation.
+      const hasPricePlan = resolved.plannedEntry !== null && resolved.plannedStop !== null;
+      const hasMoneyPlan = resolved.plannedRiskMinor !== null;
+      if (!hasPricePlan && !hasMoneyPlan) {
+        return { ok: false, code: 'no_plan_representation' };
       }
 
+      const composed = composePlannedR({
+        direction: trade.direction,
+        plannedEntry: resolved.plannedEntry,
+        plannedStop: resolved.plannedStop,
+        plannedTarget: resolved.plannedTarget,
+        plannedRiskMinor: resolved.plannedRiskMinor,
+        plannedRewardMinor: resolved.plannedRewardMinor,
+      });
+      if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
+      if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
+      plannedR = composed.value.plannedR;
+
       if (resolved.entryOrStopChanged && trade.systemStatus === 'resolved') {
+        // The System counterfactual is always Price-based (CLAUDE.md §1) —
+        // an edit that clears the Price plan can never leave System
+        // `resolved` pointing at a denominator that no longer exists.
+        if (resolved.plannedEntry === null || resolved.plannedStop === null) {
+          return { ok: false, code: 'system_requires_price_plan' };
+        }
         const composedSystem = composeSystemResolve(
           trade.direction,
           resolved.plannedEntry,
@@ -721,6 +778,10 @@ export async function updateTradePlan(
     if (resolved.plannedEntry !== trade.plannedEntry) changedFields.push('plannedEntry');
     if (resolved.plannedStop !== trade.plannedStop) changedFields.push('plannedStop');
     if (resolved.plannedTarget !== trade.plannedTarget) changedFields.push('plannedTarget');
+    if (resolved.plannedRiskMinor !== trade.plannedRiskMinor)
+      changedFields.push('plannedRiskMinor');
+    if (resolved.plannedRewardMinor !== trade.plannedRewardMinor)
+      changedFields.push('plannedRewardMinor');
     if (nextPlannedPositionSize !== trade.plannedPositionSize)
       changedFields.push('plannedPositionSize');
     if (nextTimeframe !== trade.timeframe) changedFields.push('timeframe');
@@ -740,6 +801,8 @@ export async function updateTradePlan(
         plannedEntry: resolved.plannedEntry,
         plannedStop: resolved.plannedStop,
         plannedTarget: resolved.plannedTarget,
+        plannedRiskMinor: resolved.plannedRiskMinor,
+        plannedRewardMinor: resolved.plannedRewardMinor,
         plannedPositionSize: nextPlannedPositionSize,
         timeframe: nextTimeframe,
         session: nextSession,
@@ -803,7 +866,9 @@ export type CorrectTradeIdentityResult =
         | 'trade_not_found'
         | 'blank_symbol'
         | 'invalid_direction'
-        | 'invalid_plan';
+        | 'invalid_plan'
+        | 'planned_r_mismatch'
+        | 'system_requires_price_plan';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -857,20 +922,30 @@ export async function correctTradeIdentity(
     if (input.plannedStop !== undefined) nextStop = input.plannedStop;
 
     if (directionChanged || entryStopTouched) {
-      if (trade.plannedTarget === null) {
-        // Still must validate the risk shape holds under the new direction/prices.
-        const riskOnly = composePlanned(nextDirection, nextEntry, nextStop, '0');
-        if (!riskOnly.ok && isRiskShapeFailure(riskOnly.reason)) {
-          return { ok: false, code: 'invalid_plan', calcReason: riskOnly.reason };
-        }
-        plannedR = null;
-      } else {
-        const composed = composePlanned(nextDirection, nextEntry, nextStop, trade.plannedTarget);
-        if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
-        plannedR = composed.value.plannedR;
-      }
+      // `composePlannedR` gracefully handles `nextEntry`/`nextStop` both
+      // being `null` (a Money-only Trade whose Symbol/Direction is being
+      // corrected without ever having had a Price plan) — no separate
+      // risk-shape-only branch is needed, unlike the pre-0010 synthetic-
+      // Target workaround this replaced. Direction changing under an
+      // existing Money plan is also re-validated here: a flip can newly
+      // put a previously-agreeing Price/Money pair into disagreement.
+      const composed = composePlannedR({
+        direction: nextDirection,
+        plannedEntry: nextEntry,
+        plannedStop: nextStop,
+        plannedTarget: trade.plannedTarget,
+        plannedRiskMinor: trade.plannedRiskMinor,
+        plannedRewardMinor: trade.plannedRewardMinor,
+      });
+      if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
+      if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
+      plannedR = composed.value.plannedR;
 
       if (trade.systemStatus === 'resolved') {
+        // The System counterfactual is always Price-based (CLAUDE.md §1).
+        if (nextEntry === null || nextStop === null) {
+          return { ok: false, code: 'system_requires_price_plan' };
+        }
         const composedSystem = composeSystemResolve(
           nextDirection,
           nextEntry,

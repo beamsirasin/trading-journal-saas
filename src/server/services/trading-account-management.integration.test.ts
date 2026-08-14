@@ -4,6 +4,11 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import type { CreateAccountData, UpdateAccountData } from '@/lib/trading-accounts/schema';
 import {
   auditLogs,
+  setups,
+  strategies,
+  strategySetupVersions,
+  strategyVersions,
+  trades,
   tradingAccounts,
   userPreferences,
   users,
@@ -129,6 +134,68 @@ async function seedAccount(
     .returning({ id: tradingAccounts.id });
   if (account === undefined) throw new Error('failed to seed account');
   return account.id;
+}
+
+/**
+ * The minimum pinned framework + one Trade row a real Trade requires,
+ * inserted directly (bypassing `trade-management.ts`'s services, matching
+ * this file's own `seedAccount` convention) — only what's needed to prove
+ * the historical-currency freeze (Founder review), not a full Trade
+ * lifecycle. `softDeleted` seeds `deleted_at` directly: the freeze must
+ * treat a soft-deleted Trade identically to a live one.
+ */
+async function seedTradeForAccount(
+  db: ReturnType<typeof getTestDb>,
+  workspaceId: string,
+  accountId: string,
+  overrides: { softDeleted?: boolean } = {},
+): Promise<string> {
+  const [strategy] = await db
+    .insert(strategies)
+    .values({ workspaceId, mutationKey: crypto.randomUUID() })
+    .returning({ id: strategies.id });
+  if (strategy === undefined) throw new Error('failed to insert strategy');
+  const [version] = await db
+    .insert(strategyVersions)
+    .values({ workspaceId, strategyId: strategy.id, versionNumber: 1, name: 'v1' })
+    .returning({ id: strategyVersions.id });
+  if (version === undefined) throw new Error('failed to insert strategy version');
+  const [setup] = await db
+    .insert(setups)
+    .values({ workspaceId, strategyId: strategy.id, mutationKey: crypto.randomUUID() })
+    .returning({ id: setups.id });
+  if (setup === undefined) throw new Error('failed to insert setup');
+  const [setupVersion] = await db
+    .insert(strategySetupVersions)
+    .values({
+      workspaceId,
+      strategyId: strategy.id,
+      strategyVersionId: version.id,
+      setupId: setup.id,
+      name: 'General Setup',
+    })
+    .returning({ id: strategySetupVersions.id });
+  if (setupVersion === undefined) throw new Error('failed to insert setup version');
+
+  const [trade] = await db
+    .insert(trades)
+    .values({
+      workspaceId,
+      tradingAccountId: accountId,
+      strategyId: strategy.id,
+      strategyVersionId: version.id,
+      setupId: setup.id,
+      setupVersionId: setupVersion.id,
+      symbol: 'EURUSD',
+      direction: 'long',
+      plannedEntry: '1.1000000000',
+      plannedStop: '1.0950000000',
+      plannedTarget: '1.1100000000',
+      deletedAt: overrides.softDeleted === true ? new Date() : null,
+    })
+    .returning({ id: trades.id });
+  if (trade === undefined) throw new Error('failed to insert trade');
+  return trade.id;
 }
 
 async function activateAccount(
@@ -413,6 +480,169 @@ describe('trading-account-management (real database)', () => {
       expect(serialized).not.toContain('42');
       expect(rows[0]?.metadata).toMatchObject({
         changedFields: expect.arrayContaining(['name', 'startingBalance', 'riskPerTradePercent']),
+      });
+    });
+
+    describe('historical currency freeze (Founder review — monetary-integrity blocker)', () => {
+      it('A: an account with zero Trades may change currency freely (USD -> THB)', async () => {
+        const db = getTestDb();
+        const userId = await createUser(db, 'owner');
+        createdUserIds.push(userId);
+        const workspaceId = await createWorkspaceWithOwner(db, userId);
+        const accountId = await seedAccount(db, workspaceId, { name: 'No Trades Yet' });
+
+        const result = await updateTradingAccount(workspaceId, userId, accountId, {
+          name: 'No Trades Yet',
+          accountMode: 'live',
+          baseCurrency: 'THB',
+          startingBalance: '10000',
+          timezone: 'UTC',
+        });
+
+        expect(result.ok).toBe(true);
+        const [updated] = await db
+          .select()
+          .from(tradingAccounts)
+          .where(eq(tradingAccounts.id, accountId));
+        expect(updated?.baseCurrency).toBe('THB');
+      });
+
+      it('B: an account with a Trade rejects a currency change (USD -> THB)', async () => {
+        const db = getTestDb();
+        const userId = await createUser(db, 'owner');
+        createdUserIds.push(userId);
+        const workspaceId = await createWorkspaceWithOwner(db, userId);
+        const accountId = await seedAccount(db, workspaceId, { name: 'Has A Trade' });
+        await seedTradeForAccount(db, workspaceId, accountId);
+
+        const result = await updateTradingAccount(workspaceId, userId, accountId, {
+          name: 'Has A Trade',
+          accountMode: 'live',
+          baseCurrency: 'THB',
+          startingBalance: '10000',
+          timezone: 'UTC',
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.code).toBe('base_currency_locked');
+        const [untouched] = await db
+          .select()
+          .from(tradingAccounts)
+          .where(eq(tradingAccounts.id, accountId));
+        expect(untouched?.baseCurrency).toBe('USD');
+      });
+
+      it('C: an account with a Trade allows resubmitting the SAME currency (USD -> USD, no-op)', async () => {
+        const db = getTestDb();
+        const userId = await createUser(db, 'owner');
+        createdUserIds.push(userId);
+        const workspaceId = await createWorkspaceWithOwner(db, userId);
+        const accountId = await seedAccount(db, workspaceId, { name: 'Has A Trade' });
+        await seedTradeForAccount(db, workspaceId, accountId);
+
+        const result = await updateTradingAccount(workspaceId, userId, accountId, {
+          name: 'Renamed, Same Currency',
+          accountMode: 'live',
+          baseCurrency: 'USD',
+          startingBalance: '10000',
+          timezone: 'UTC',
+        });
+
+        expect(result.ok).toBe(true);
+        const [updated] = await db
+          .select()
+          .from(tradingAccounts)
+          .where(eq(tradingAccounts.id, accountId));
+        expect(updated?.baseCurrency).toBe('USD');
+        expect(updated?.name).toBe('Renamed, Same Currency');
+      });
+
+      it('D: an account with only a SOFT-DELETED Trade still rejects a currency change (USD -> THB)', async () => {
+        const db = getTestDb();
+        const userId = await createUser(db, 'owner');
+        createdUserIds.push(userId);
+        const workspaceId = await createWorkspaceWithOwner(db, userId);
+        const accountId = await seedAccount(db, workspaceId, { name: 'Soft-Deleted Trade Only' });
+        await seedTradeForAccount(db, workspaceId, accountId, { softDeleted: true });
+
+        const result = await updateTradingAccount(workspaceId, userId, accountId, {
+          name: 'Soft-Deleted Trade Only',
+          accountMode: 'live',
+          baseCurrency: 'THB',
+          startingBalance: '10000',
+          timezone: 'UTC',
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.code).toBe('base_currency_locked');
+      });
+
+      it('E: a rejected currency change does not block updating another valid field in the SAME call', async () => {
+        const db = getTestDb();
+        const userId = await createUser(db, 'owner');
+        createdUserIds.push(userId);
+        const workspaceId = await createWorkspaceWithOwner(db, userId);
+        const accountId = await seedAccount(db, workspaceId, { name: 'Has A Trade' });
+        await seedTradeForAccount(db, workspaceId, accountId);
+
+        // The currency-change attempt in this SAME call is rejected...
+        const rejected = await updateTradingAccount(workspaceId, userId, accountId, {
+          name: 'Has A Trade',
+          accountMode: 'live',
+          baseCurrency: 'THB',
+          startingBalance: '10000',
+          timezone: 'UTC',
+        });
+        expect(rejected.ok).toBe(false);
+
+        // ...but a SEPARATE call touching only an otherwise-editable field
+        // (never baseCurrency) succeeds normally — the freeze is scoped to
+        // the currency field alone, never the whole account.
+        const accepted = await updateTradingAccount(workspaceId, userId, accountId, {
+          name: 'Renamed After Rejection',
+          accountMode: 'demo',
+          baseCurrency: 'USD',
+          startingBalance: '25000',
+          timezone: 'UTC',
+        });
+        expect(accepted.ok).toBe(true);
+        const [updated] = await db
+          .select()
+          .from(tradingAccounts)
+          .where(eq(tradingAccounts.id, accountId));
+        expect(updated?.name).toBe('Renamed After Rejection');
+        expect(updated?.accountMode).toBe('demo');
+        expect(updated?.startingBalance).toBe('25000.0000000000');
+        expect(updated?.baseCurrency).toBe('USD');
+      });
+
+      it('F: cross-tenant authorization is unaffected — another workspace cannot even reach the currency-lock decision', async () => {
+        const db = getTestDb();
+        const userA = await createUser(db, 'user-a');
+        const userB = await createUser(db, 'user-b');
+        createdUserIds.push(userA, userB);
+        const workspaceA = await createWorkspaceWithOwner(db, userA);
+        const workspaceB = await createWorkspaceWithOwner(db, userB);
+        const accountBId = await seedAccount(db, workspaceB, { name: "B's Account" });
+        await seedTradeForAccount(db, workspaceB, accountBId);
+
+        const result = await updateTradingAccount(workspaceA, userA, accountBId, {
+          name: 'Hijacked Rename',
+          accountMode: 'demo',
+          baseCurrency: 'THB',
+          startingBalance: '1',
+          timezone: 'UTC',
+        });
+
+        // Cross-tenant denial (`not_found`) still wins — an attacker learns
+        // nothing about whether the target account even has Trades.
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.code).toBe('not_found');
+        const [untouched] = await db
+          .select()
+          .from(tradingAccounts)
+          .where(eq(tradingAccounts.id, accountBId));
+        expect(untouched?.baseCurrency).toBe('USD');
       });
     });
   });

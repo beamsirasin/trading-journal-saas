@@ -39,10 +39,14 @@ const base: TradeDetailModel = {
   confirmationNotes: null,
   tradingviewUrl: null,
   notes: null,
+  hasChartAttachment: false,
+  chartAttachmentUploadedAt: null,
   plannedEntry: '100.0000',
   plannedStop: '90.0000',
   plannedTarget: null,
   plannedPositionSize: null,
+  plannedRiskMinor: null,
+  plannedRewardMinor: null,
   plannedR: null,
   actualEntry: null,
   actualInitialStop: null,
@@ -109,6 +113,23 @@ describe('TradeDetail', () => {
     expect(screen.getByText(/System result is Pending/)).toBeInTheDocument();
     expect(screen.getAllByText('Not available').length).toBeGreaterThan(0);
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
+  });
+
+  it('renders a Chart attachment via the authenticated delivery route, never a stored URL', () => {
+    renderDetail({
+      ...base,
+      hasChartAttachment: true,
+      chartAttachmentUploadedAt: '2026-08-08T00:00:00.000Z',
+    });
+    const image = screen.getByAltText('Uploaded chart image') as HTMLImageElement;
+    expect(image.src).toBe(`http://localhost:3000/api/trades/${base.tradeId}/chart-attachment`);
+    const link = screen.getByRole('link', { name: /Open chart image/ });
+    expect(link).toHaveAttribute('href', `/api/trades/${base.tradeId}/chart-attachment`);
+  });
+
+  it('renders no Chart attachment section when the Trade has none', () => {
+    renderDetail({ ...base, hasChartAttachment: false });
+    expect(screen.queryByAltText('Uploaded chart image')).not.toBeInTheDocument();
   });
 
   it('renders resolved System and closed Trader independently with safe money formatting', () => {

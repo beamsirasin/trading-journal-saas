@@ -98,7 +98,7 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
               <FormInput
                 id="open-entry"
                 name="actualEntry"
-                defaultValue={trade.plannedEntry}
+                defaultValue={trade.plannedEntry ?? ''}
                 required
               />
             </TradeField>
@@ -106,7 +106,7 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
               <FormInput
                 id="open-stop"
                 name="actualInitialStop"
-                defaultValue={trade.plannedStop}
+                defaultValue={trade.plannedStop ?? ''}
                 required
               />
             </TradeField>

@@ -51,3 +51,12 @@ export function getMigrationDatabaseUrl(): string {
 export function resetServerEnvCache(): void {
   cached = undefined;
 }
+
+/**
+ * `undefined` when Chart-attachment upload is unconfigured — never throws.
+ * Callers (`src/lib/storage/chart-attachment-storage.ts`) treat this as the
+ * capability check itself, not merely a missing-config error.
+ */
+export function getBlobReadWriteToken(): string | undefined {
+  return getServerEnv().BLOB_READ_WRITE_TOKEN;
+}

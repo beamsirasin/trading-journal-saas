@@ -7,8 +7,10 @@ import {
   actualR,
   classifyOutcome,
   composePlanned,
+  composePlannedR,
   composeSystemResolve,
   composeTraderClose,
+  moneyPlannedR,
   plannedR,
   resolveSystemR,
   systemGrossR,
@@ -96,6 +98,40 @@ describe('plannedR', () => {
         '100000000002.0000000000',
       ),
     ).toEqual({ ok: true, value: '3.0000' });
+  });
+});
+
+describe('moneyPlannedR', () => {
+  it('+2R from a reward twice the risk', () => {
+    expect(moneyPlannedR(1000n, 2000n)).toEqual({ ok: true, value: '2.0000' });
+  });
+
+  it('0R when reward is exactly zero (a valid break-even-or-better plan)', () => {
+    expect(moneyPlannedR(1000n, 0n)).toEqual({ ok: true, value: '0.0000' });
+  });
+
+  it('rejects a non-positive planned risk', () => {
+    expect(moneyPlannedR(0n, 1000n)).toEqual({ ok: false, reason: 'invalid_planned_risk' });
+    expect(moneyPlannedR(-1000n, 1000n)).toEqual({ ok: false, reason: 'invalid_planned_risk' });
+  });
+
+  it('rejects a negative planned reward', () => {
+    expect(moneyPlannedR(1000n, -1n)).toEqual({ ok: false, reason: 'invalid_planned_reward' });
+  });
+
+  it('treats an absent reward as missing_input, not an error about risk', () => {
+    expect(moneyPlannedR(1000n, null)).toEqual({ ok: false, reason: 'missing_input' });
+    expect(moneyPlannedR(1000n, undefined)).toEqual({ ok: false, reason: 'missing_input' });
+  });
+
+  it('treats an absent risk as missing_input', () => {
+    expect(moneyPlannedR(null, 1000n)).toEqual({ ok: false, reason: 'missing_input' });
+  });
+
+  it('never crosses a JS number — a value far beyond Number.MAX_SAFE_INTEGER stays exact', () => {
+    const risk = 10_000_000_000_000_000n;
+    const reward = 30_000_000_000_000_000n;
+    expect(moneyPlannedR(risk, reward)).toEqual({ ok: true, value: '3.0000' });
   });
 });
 
@@ -358,6 +394,203 @@ describe('per-Trade snapshot composition', () => {
   });
 });
 
+describe('composePlannedR — combined Price + Money (migration 0010)', () => {
+  const base = {
+    direction: 'long',
+    plannedEntry: null as string | null,
+    plannedStop: null as string | null,
+    plannedTarget: null as string | null,
+    plannedRiskMinor: null as bigint | null,
+    plannedRewardMinor: null as bigint | null,
+  };
+
+  it('Price-only: Entry/Stop/Target present, Money entirely absent', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedTarget: '130',
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        priceR: '3.0000',
+        moneyR: null,
+        plannedR: '3.0000',
+        source: 'price',
+        mismatch: false,
+      },
+    });
+  });
+
+  it('Price-only, no Target: risk shape still validated, plannedR stays null', () => {
+    const result = composePlannedR({ ...base, plannedEntry: '100', plannedStop: '90' });
+    expect(result).toEqual({
+      ok: true,
+      value: { priceR: null, moneyR: null, plannedR: null, source: 'none', mismatch: false },
+    });
+  });
+
+  it('Money-only: risk/reward present, Price entirely absent', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedRiskMinor: 1000n,
+      plannedRewardMinor: 3000n,
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        priceR: null,
+        moneyR: '3.0000',
+        plannedR: '3.0000',
+        source: 'money',
+        mismatch: false,
+      },
+    });
+  });
+
+  it('Money-only, no Reward: risk validated, plannedR stays null', () => {
+    const result = composePlannedR({ ...base, plannedRiskMinor: 1000n });
+    expect(result).toEqual({
+      ok: true,
+      value: { priceR: null, moneyR: null, plannedR: null, source: 'none', mismatch: false },
+    });
+  });
+
+  it('neither Price nor Money present at all: a legitimate, non-error empty snapshot', () => {
+    expect(composePlannedR(base)).toEqual({
+      ok: true,
+      value: { priceR: null, moneyR: null, plannedR: null, source: 'none', mismatch: false },
+    });
+  });
+
+  it('Both present and agreeing exactly: Price precedence, mismatch false', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedTarget: '130',
+      plannedRiskMinor: 1000n,
+      plannedRewardMinor: 3000n,
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        priceR: '3.0000',
+        moneyR: '3.0000',
+        plannedR: '3.0000',
+        source: 'both',
+        mismatch: false,
+      },
+    });
+  });
+
+  it('Both present, exactly at the 0.0500R tolerance boundary: accepted, no mismatch', () => {
+    // Price R = 3.0000 (reward 30 / risk 10). Money R = 3050/1000 = 3.0500 —
+    // difference is exactly PLANNED_R_AGREEMENT_TOLERANCE_R (0.0500), and the
+    // comparison is strictly-greater-than, so the boundary value itself must
+    // still agree.
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedTarget: '130',
+      plannedRiskMinor: 1000n,
+      plannedRewardMinor: 3050n,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.mismatch).toBe(false);
+  });
+
+  it('Both present, one minor unit beyond the 0.0500R tolerance boundary: mismatch true', () => {
+    // Money R = 3051/1000 = 3.0510 — difference from Price R (3.0000) is
+    // 0.0510, one ten-thousandth of an R beyond the 0.0500 tolerance.
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedTarget: '130',
+      plannedRiskMinor: 1000n,
+      plannedRewardMinor: 3051n,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.mismatch).toBe(true);
+  });
+
+  it('Both present, well beyond tolerance: mismatch true, Price-precedence value still returned', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedTarget: '130', // priceR = 3.0000
+      plannedRiskMinor: 1000n,
+      plannedRewardMinor: 5000n, // moneyR = 5.0000
+    });
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        priceR: '3.0000',
+        moneyR: '5.0000',
+        plannedR: '3.0000',
+        source: 'both',
+        mismatch: true,
+      },
+    });
+  });
+
+  it('rejects an invalid Price pair even when Money is valid', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '110', // wrong side for long
+      plannedRiskMinor: 1000n,
+      plannedRewardMinor: 2000n,
+    });
+    expect(result).toEqual({ ok: false, reason: 'invalid_risk_direction' });
+  });
+
+  it('rejects an invalid Money risk even when Price is valid', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedRiskMinor: -1000n,
+      plannedRewardMinor: 2000n,
+    });
+    expect(result).toEqual({ ok: false, reason: 'invalid_planned_risk' });
+  });
+
+  it('rejects a Price fragment: Entry without Stop', () => {
+    expect(composePlannedR({ ...base, plannedEntry: '100' })).toEqual({
+      ok: false,
+      reason: 'missing_input',
+    });
+  });
+
+  it('rejects a Price fragment: Target without Entry/Stop', () => {
+    expect(composePlannedR({ ...base, plannedTarget: '130' })).toEqual({
+      ok: false,
+      reason: 'missing_input',
+    });
+  });
+
+  it('rejects a Money fragment: Reward without Risk', () => {
+    expect(composePlannedR({ ...base, plannedRewardMinor: 2000n })).toEqual({
+      ok: false,
+      reason: 'missing_input',
+    });
+  });
+
+  it('never crosses Number for the Money side inside a combined computation', () => {
+    const result = composePlannedR({
+      ...base,
+      plannedRiskMinor: 10_000_000_000_000_000n,
+      plannedRewardMinor: 30_000_000_000_000_000n,
+    });
+    expect(result.ok && result.value.moneyR).toBe('3.0000');
+  });
+});
+
 describe('precision — engine does not regress to binary floating point', () => {
   it('a Planned R built from 0.1/0.2/0.3-shaped prices is exact', () => {
     // Entry 0.3, Stop 0.1 (risk 0.2), Target 0.7 (reward 0.4) => R = 2
@@ -473,14 +706,20 @@ describe('no monetary price-derived P&L (regression protection)', () => {
         'actualR',
         'classifyOutcome',
         'composePlanned',
+        'composePlannedR',
         'composeSystemResolve',
         'composeTraderClose',
+        'moneyPlannedR',
         'plannedR',
         'resolveSystemR',
         'systemGrossR',
         'systemR',
       ].sort(),
     );
+  });
+
+  it('moneyPlannedR takes only two bigint account-currency inputs — no price, quantity, or multiplier parameter', () => {
+    expect(moneyPlannedR.length).toBe(2);
   });
 
   it('actualR takes only two bigint account-currency inputs — no price, quantity, or multiplier parameter', () => {

@@ -77,6 +77,18 @@ describe('trades/errors — mapPlanCalcReasonToFieldErrors', () => {
       plannedEntry: ['invalid_decimal'],
     });
   });
+
+  it('invalid_planned_risk maps to plannedRiskMinor', () => {
+    expect(mapPlanCalcReasonToFieldErrors('invalid_planned_risk')).toEqual({
+      plannedRiskMinor: ['invalid_planned_risk'],
+    });
+  });
+
+  it('invalid_planned_reward maps to plannedRewardMinor', () => {
+    expect(mapPlanCalcReasonToFieldErrors('invalid_planned_reward')).toEqual({
+      plannedRewardMinor: ['invalid_planned_reward'],
+    });
+  });
 });
 
 describe('trades/errors — mapSystemCalcReasonToFieldErrors', () => {

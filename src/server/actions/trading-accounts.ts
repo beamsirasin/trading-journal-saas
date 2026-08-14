@@ -65,7 +65,13 @@ export type UpdateTradingAccountActionResult =
   | {
       readonly ok: false;
       readonly code:
-        'validation' | 'not_found' | 'archived' | 'forbidden' | 'unexpected' | MutationDenialReason;
+        | 'validation'
+        | 'not_found'
+        | 'archived'
+        | 'base_currency_locked'
+        | 'forbidden'
+        | 'unexpected'
+        | MutationDenialReason;
     };
 
 export async function updateTradingAccountAction(

@@ -1,6 +1,7 @@
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ExternalLink, ImageIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { confidenceLevelKey } from '@/lib/trades/constants';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import {
   TradeMistakesEditor,
@@ -109,9 +110,29 @@ export function TradeDetail({
 
       <Section id="trade-plan" title={t('detail.sections.plan')}>
         <dl className="divide-border divide-y">
-          <DetailRow label={t('field.entry')} value={trade.plannedEntry} />
-          <DetailRow label={t('field.stop')} value={trade.plannedStop} />
-          <DetailRow label={t('field.target')} value={trade.plannedTarget ?? t('common.notSet')} />
+          {trade.plannedEntry === null ? null : (
+            <>
+              <DetailRow label={t('field.entry')} value={trade.plannedEntry} />
+              <DetailRow label={t('field.stop')} value={trade.plannedStop ?? '—'} />
+              <DetailRow
+                label={t('field.target')}
+                value={trade.plannedTarget ?? t('common.notSet')}
+              />
+            </>
+          )}
+          {trade.plannedRiskMinor === null ? null : (
+            <>
+              <DetailRow label={t('field.plannedRisk')} value={money(trade.plannedRiskMinor)} />
+              <DetailRow
+                label={t('field.plannedReward')}
+                value={
+                  trade.plannedRewardMinor === null
+                    ? t('common.notSet')
+                    : money(trade.plannedRewardMinor)
+                }
+              />
+            </>
+          )}
           <DetailRow
             label={t('field.positionSize')}
             value={trade.plannedPositionSize ?? t('common.notSet')}
@@ -127,7 +148,10 @@ export function TradeDetail({
             <DetailRow label={t('field.session')} value={trade.session} />
           )}
           {trade.confidence === null ? null : (
-            <DetailRow label={t('field.confidence')} value={`${trade.confidence}/5`} />
+            <DetailRow
+              label={t('field.confidence')}
+              value={`${trade.confidence}/100 · ${t(`create.confidence.level.${confidenceLevelKey(trade.confidence)}`)}`}
+            />
           )}
           {trade.confirmationNotes === null ? null : (
             <DetailRow label={t('field.confirmationNotes')} value={trade.confirmationNotes} />
@@ -144,6 +168,29 @@ export function TradeDetail({
                 >
                   {t('detail.openChart')} <ExternalLink className="size-4" aria-hidden="true" />
                 </a>
+              }
+            />
+          )}
+          {!trade.hasChartAttachment ? null : (
+            <DetailRow
+              label={t('field.chartAttachment')}
+              value={
+                <div className="flex flex-col items-start gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- served by our own authenticated, private-storage-backed route, never a static/remote host next/image could optimize. */}
+                  <img
+                    src={`/api/trades/${trade.tradeId}/chart-attachment`}
+                    alt={t('detail.chartImageAlt')}
+                    className="border-border max-h-64 w-auto rounded-md border object-contain"
+                  />
+                  <a
+                    href={`/api/trades/${trade.tradeId}/chart-attachment`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary inline-flex min-h-11 items-center gap-1 text-xs underline-offset-4 hover:underline"
+                  >
+                    {t('detail.openChartImage')} <ImageIcon className="size-4" aria-hidden="true" />
+                  </a>
+                </div>
               }
             />
           )}

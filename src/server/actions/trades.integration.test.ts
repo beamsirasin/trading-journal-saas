@@ -326,6 +326,63 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       });
     });
 
+    it('creates a Money-only Trade through the full action -> Zod -> service -> database path', async () => {
+      const { fw } = await freshFixture();
+      const result = await createTradeAction({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedRiskMinor: '5000',
+        plannedRewardMinor: '15000',
+      });
+      expect(result.ok).toBe(true);
+      assertJsonSerializable(result);
+    });
+
+    it('rejects neither Price nor Money present — caught by the Zod shape refine before the service ever runs', async () => {
+      const { fw } = await freshFixture();
+      const result = await createTradeAction({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        symbol: 'EURUSD',
+        direction: 'long',
+      });
+      // `CreateTradeSchema`'s own `no_plan_representation` refine (an
+      // earlier, cheaper defense-in-depth layer — CLAUDE.md §4's "never let
+      // the client be the only enforcement layer" cuts both ways: Zod is
+      // ALSO not the only layer, see the equivalent database-level
+      // `trades_plan_minimum_check` and this same rejection reachable
+      // straight from the service in the `trade-management` suite) fires
+      // before `createTrade` — surfaced as `validation_error`, not the
+      // service's own `no_plan_representation` code.
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'validation_error',
+          fieldErrors: { plannedEntry: ['no_plan_representation'] },
+        },
+      });
+      assertJsonSerializable(result);
+    });
+
+    it('rejects a Price/Money disagreement with planned_r_mismatch and persists nothing', async () => {
+      const { fw, workspaceId } = await freshFixture();
+      const result = await createTradeAction(
+        baseCreateInput(fw, { plannedRiskMinor: '1000', plannedRewardMinor: '50000' }), // Money R = 50, Price R = 2
+      );
+      expect(result).toEqual({ ok: false, error: { code: 'planned_r_mismatch' } });
+      const events = await db
+        .select()
+        .from(auditLogs)
+        .where(and(eq(auditLogs.action, 'trade.created'), eq(auditLogs.workspaceId, workspaceId)));
+      expect(events).toHaveLength(0);
+    });
+
     describe('idempotent replay', () => {
       it('an exact replay returns the same Trade and revalidates again', async () => {
         const { fw } = await freshFixture();
@@ -443,6 +500,29 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       expect(cleared.ok).toBe(true);
       if (!cleared.ok) return;
       expect(cleared.data.plannedR).toBeNull();
+    });
+
+    it('adds a Money plan alongside the existing Price plan through the action layer', async () => {
+      const { tradeId } = await createdTrade(); // Price R = 2.0000
+      const result = await updateTradePlanAction({
+        tradeId,
+        plannedRiskMinor: '1000',
+        plannedRewardMinor: '2000', // Money R = 2.0000, agrees
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.plannedR).toBe('2.0000');
+      assertJsonSerializable(result);
+    });
+
+    it('rejects a Money patch that disagrees with the existing Price plan', async () => {
+      const { tradeId } = await createdTrade(); // Price R = 2.0000
+      const result = await updateTradePlanAction({
+        tradeId,
+        plannedRiskMinor: '1000',
+        plannedRewardMinor: '50000', // Money R = 50.0000
+      });
+      expect(result).toEqual({ ok: false, error: { code: 'planned_r_mismatch' } });
     });
   });
 

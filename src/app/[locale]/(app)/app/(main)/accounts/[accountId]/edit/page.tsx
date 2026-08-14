@@ -90,6 +90,7 @@ export default async function EditTradingAccountPage({ params }: { params: Promi
       <TradingAccountForm
         mode="edit"
         accountId={account.id}
+        baseCurrencyLocked={account.hasTrades}
         initialValues={{
           name: account.name,
           brokerName: account.brokerName ?? '',

@@ -190,10 +190,20 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('confidence', 'confidence', 'integer'),
       column('tradingviewUrl', 'tradingview_url', 'user_text'),
       column('notes', 'notes', 'user_text'),
+      // The internal private-storage key is deliberately never exported
+      // (Founder review: "internal storage keys must not leak through
+      // customer export unless explicitly required for portability and
+      // safe to expose" — it is not required here, since export is a
+      // data/backup artifact, not a re-hosting mechanism). Only a truthful
+      // presence flag plus the upload timestamp are exported.
+      column('hasChartAttachment', 'has_chart_attachment', 'boolean'),
+      column('chartAttachmentUploadedAt', 'chart_attachment_uploaded_at', 'timestamp'),
       column('plannedEntry', 'planned_entry', 'decimal'),
       column('plannedStop', 'planned_stop', 'decimal'),
       column('plannedTarget', 'planned_target', 'decimal'),
       column('plannedPositionSize', 'planned_position_size', 'decimal'),
+      column('plannedRiskMinor', 'planned_risk_minor', 'bigint'),
+      column('plannedRewardMinor', 'planned_reward_minor', 'bigint'),
       column('actualEntry', 'actual_entry', 'decimal'),
       column('actualInitialStop', 'actual_initial_stop', 'decimal'),
       column('actualExit', 'actual_exit', 'decimal'),

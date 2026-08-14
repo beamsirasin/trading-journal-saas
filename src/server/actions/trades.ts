@@ -235,16 +235,19 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       setupId: parsed.data.setupId,
       symbol: parsed.data.symbol,
       direction: parsed.data.direction,
-      plannedEntry: parsed.data.plannedEntry,
-      plannedStop: parsed.data.plannedStop,
+      plannedEntry: parsed.data.plannedEntry ?? null,
+      plannedStop: parsed.data.plannedStop ?? null,
       plannedTarget: parsed.data.plannedTarget ?? null,
       plannedPositionSize: parsed.data.plannedPositionSize ?? null,
+      plannedRiskMinor: parsed.data.plannedRiskMinor ?? null,
+      plannedRewardMinor: parsed.data.plannedRewardMinor ?? null,
       timeframe: parsed.data.timeframe ?? null,
       session: parsed.data.session ?? null,
       confirmationNotes: parsed.data.confirmationNotes ?? null,
       confidence: parsed.data.confidence ?? null,
       tradingviewUrl: parsed.data.tradingviewUrl ?? null,
       notes: parsed.data.notes ?? null,
+      chartAttachmentStorageKey: parsed.data.chartAttachmentStorageKey ?? null,
     });
     if (!result.ok) return planFailure(result);
     revalidateTradeRoutes();

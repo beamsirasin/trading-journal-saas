@@ -99,9 +99,39 @@ export function isMistakeSeverity(value: unknown): value is MistakeSeverity {
   return typeof value === 'string' && (MISTAKE_SEVERITIES as readonly string[]).includes(value);
 }
 
-/** `confidence` — a bounded 1–5 rating, never a financial value; plain `number` is safe here. */
-export const CONFIDENCE_MIN = 1;
-export const CONFIDENCE_MAX = 5;
+/**
+ * `confidence` — an optional bounded 0–100 integer rating, never a financial
+ * value; plain `number` is safe here. Widened from a 1–5 rating in migration
+ * 0010 (Founder-UAT Trade Plan UX correction slice); every existing value
+ * was backfilled 1→10, 2→30, 3→50, 4→70, 5→90 — the qualitative center of
+ * each old bucket — see `drizzle/0010_trade_plan_price_money_confidence.sql`.
+ */
+export const CONFIDENCE_MIN = 0;
+export const CONFIDENCE_MAX = 100;
+
+/**
+ * The five qualitative ranges every Confidence value maps to (locked
+ * product copy: Very Low/Low/Neutral/High/Very High), shared by the
+ * create-form's interactive control and every read surface (Trade detail,
+ * Review step) so the boundary math lives in exactly one place, never
+ * re-derived per call site. Boundaries are inclusive of their upper bound —
+ * `0` itself is `veryLow`.
+ */
+export const CONFIDENCE_LEVELS = [
+  { key: 'veryLow', max: 20 },
+  { key: 'low', max: 40 },
+  { key: 'neutral', max: 60 },
+  { key: 'high', max: 80 },
+  { key: 'veryHigh', max: 100 },
+] as const;
+export type ConfidenceLevelKey = (typeof CONFIDENCE_LEVELS)[number]['key'];
+
+const VERY_HIGH_LEVEL_KEY: ConfidenceLevelKey = 'veryHigh';
+
+export function confidenceLevelKey(value: number): ConfidenceLevelKey {
+  const level = CONFIDENCE_LEVELS.find((candidate) => value <= candidate.max);
+  return level?.key ?? VERY_HIGH_LEVEL_KEY;
+}
 
 /**
  * `system_exit_reason` values legal on a RESOLVE (`pending -> resolved`, or a
@@ -132,6 +162,18 @@ export const RESOLVABLE_SYSTEM_EXIT_REASONS = [
 export const SYMBOL_MAX_LENGTH = 20;
 export const TIMEFRAME_MAX_LENGTH = 20;
 export const SESSION_MAX_LENGTH = 40;
+
+/**
+ * Founder-UAT correction slice — quick-select SUGGESTIONS only, never a
+ * closed enum: `timeframe`/`session` remain free-text columns with no CHECK
+ * constraint, and the create-form quick-select control always accepts a
+ * custom value. Symbol intentionally has no equivalent constant — the brief
+ * is explicit that Symbol suggestions come only from the user's own
+ * Favorites/Recents, never a hard-coded assumption about what everyone
+ * trades.
+ */
+export const TIMEFRAME_QUICK_SUGGESTIONS = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'] as const;
+export const SESSION_QUICK_SUGGESTIONS = ['Asia', 'London', 'New York'] as const;
 export const CONFIRMATION_NOTES_MAX_LENGTH = 2000;
 export const NOTES_MAX_LENGTH = 4000;
 export const TRADINGVIEW_URL_MAX_LENGTH = 2000;

@@ -98,6 +98,16 @@ export const serverEnvSchema = z.object({
   EMAIL_FROM_ADDRESS: z.preprocess(emptyToUndefined, z.email().optional()),
   /** Optional display name for the From header (e.g. "Trading OS"). */
   EMAIL_FROM_NAME: optionalString,
+
+  // Founder-UAT Trade Plan UX correction slice (migration 0010) — Chart
+  // attachment object storage. Vercel Blob's read/write token; its mere
+  // presence is this app's capability check
+  // (`src/lib/storage/chart-attachment-storage.ts`'s
+  // `isChartAttachmentStorageConfigured`) for whether Trade-creation Upload
+  // is a real, functioning feature or a truthfully-hidden one. Never
+  // required — an unconfigured deployment must build and serve every other
+  // route normally, with Upload simply absent.
+  BLOB_READ_WRITE_TOKEN: optionalString,
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;

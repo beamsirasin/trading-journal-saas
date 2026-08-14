@@ -24,3 +24,17 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   }),
 });
+
+// jsdom does not implement URL.createObjectURL/revokeObjectURL. The Trade
+// Chart-upload preview (`trade-create-form.tsx`) uses these to preview a
+// locally-selected File without ever needing a fetchable remote URL (the
+// uploaded Blob itself is private) — a fixed, distinguishable stub value is
+// enough for component tests to assert against.
+Object.defineProperty(URL, 'createObjectURL', {
+  writable: true,
+  value: vi.fn(() => 'blob:mock-object-url'),
+});
+Object.defineProperty(URL, 'revokeObjectURL', {
+  writable: true,
+  value: vi.fn(),
+});

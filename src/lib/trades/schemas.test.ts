@@ -289,6 +289,210 @@ describe('trades/schemas — money (bigint integer-string) parsing', () => {
   });
 });
 
+describe('trades/schemas — CreateTradeSchema Price/Money independence (migration 0010)', () => {
+  function baseIdentity() {
+    return {
+      mutationKey: uuid1,
+      tradingAccountId: uuid2,
+      strategyId: uuid3,
+      setupId: uuid1,
+      symbol: 'EURUSD',
+      direction: 'long' as const,
+    };
+  }
+
+  it('accepts a Price-only Plan (no Money fields at all)', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedEntry: '1.1000000000',
+      plannedStop: '1.0950000000',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a Money-only Plan (no Price fields at all)', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedRiskMinor: '5000',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts both Price and Money together', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedEntry: '1.1000000000',
+      plannedStop: '1.0950000000',
+      plannedRiskMinor: '5000',
+      plannedRewardMinor: '15000',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects neither Price nor Money present (no_plan_representation)', () => {
+    const result = CreateTradeSchema.safeParse(baseIdentity());
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects Entry without Stop', () => {
+    const result = CreateTradeSchema.safeParse({ ...baseIdentity(), plannedEntry: '1.1' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a Target without a complete Price pair, even with Money present', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedTarget: '1.12',
+      plannedRiskMinor: '5000',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a Reward without a Risk', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedEntry: '1.1',
+      plannedStop: '1.09',
+      plannedRewardMinor: '15000',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-positive plannedRiskMinor', () => {
+    const result = CreateTradeSchema.safeParse({ ...baseIdentity(), plannedRiskMinor: '0' });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts plannedRewardMinor of exactly "0" (a break-even-or-better plan)', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedRiskMinor: '5000',
+      plannedRewardMinor: '0',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.plannedRewardMinor).toBe(0n);
+  });
+
+  it('accepts Confidence across the full widened 0-100 range', () => {
+    for (const confidence of [0, 1, 50, 99, 100]) {
+      const result = CreateTradeSchema.safeParse({
+        ...baseIdentity(),
+        plannedEntry: '1.1',
+        plannedStop: '1.09',
+        confidence,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it('rejects Confidence outside 0-100', () => {
+    for (const confidence of [-1, 101]) {
+      const result = CreateTradeSchema.safeParse({
+        ...baseIdentity(),
+        plannedEntry: '1.1',
+        plannedStop: '1.09',
+        confidence,
+      });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('accepts a valid chart attachment storage key alone (no URL concept exists — private storage, Founder review)', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedEntry: '1.1',
+      plannedStop: '1.09',
+      chartAttachmentStorageKey:
+        'trade-charts/019112a0-0000-7000-8000-000000000002/019112a0-0000-7000-8000-000000000003.png',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a malformed chart attachment storage key', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedEntry: '1.1',
+      plannedStop: '1.09',
+      chartAttachmentStorageKey: 'not-a-real-storage-key',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a chart attachment url — no such field exists (.strict() rejects the unknown key)', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      plannedEntry: '1.1',
+      plannedStop: '1.09',
+      chartAttachmentUrl: 'https://abc123.public.blob.vercel-storage.com/trade-charts/x.png',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('trades/schemas — UpdateTradePlanSchema patch semantics (migration 0010)', () => {
+  it('accepts a patch that only sets Money fields, leaving Price entirely absent (unchanged, not asserted)', () => {
+    const result = UpdateTradePlanSchema.safeParse({
+      tradeId: uuid1,
+      plannedRiskMinor: '5000',
+      plannedRewardMinor: '15000',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts explicitly clearing Entry and Stop together (down to Money-only)', () => {
+    const result = UpdateTradePlanSchema.safeParse({
+      tradeId: uuid1,
+      plannedEntry: null,
+      plannedStop: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.plannedEntry).toBeNull();
+      expect(result.data.plannedStop).toBeNull();
+    }
+  });
+
+  it('rejects setting Entry while explicitly clearing Stop in the same patch', () => {
+    const result = UpdateTradePlanSchema.safeParse({
+      tradeId: uuid1,
+      plannedEntry: '1.1',
+      plannedStop: null,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts touching only plannedStop, leaving plannedEntry key entirely absent', () => {
+    const result = UpdateTradePlanSchema.safeParse({ tradeId: uuid1, plannedStop: '1.0900000000' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts touching only plannedTarget — the "requires a Price pair" rule is a server-side, merged-state concern, not a Zod shape concern', () => {
+    const result = UpdateTradePlanSchema.safeParse({
+      tradeId: uuid1,
+      plannedTarget: '1.1200000000',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects setting a Reward while explicitly clearing Risk in the same patch', () => {
+    const result = UpdateTradePlanSchema.safeParse({
+      tradeId: uuid1,
+      plannedRiskMinor: null,
+      plannedRewardMinor: '15000',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts clearing Reward alongside clearing Risk', () => {
+    const result = UpdateTradePlanSchema.safeParse({
+      tradeId: uuid1,
+      plannedRiskMinor: null,
+      plannedRewardMinor: null,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe('trades/schemas — decimal-string validation', () => {
   it('rejects a plannedEntry with a comma thousands separator', () => {
     const result = CreateTradeSchema.safeParse({ ...baseCreateInput(), plannedEntry: '1,100' });

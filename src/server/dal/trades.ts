@@ -2,6 +2,7 @@ import 'server-only';
 
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
+import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
 import type {
   MistakeSeverity,
   OutcomeValue,
@@ -297,11 +298,23 @@ export interface TradeDetail {
   readonly confirmationNotes: string | null;
   readonly tradingviewUrl: string | null;
   readonly notes: string | null;
+  /**
+   * Never the storage key or a URL (Founder review, private-storage
+   * correction) — presentation-only presence flag. When `true`, the client
+   * renders an `<img>` pointing at the authenticated delivery route
+   * (`/api/trades/[tradeId]/chart-attachment`), which re-derives its own
+   * session + Workspace authorization independently of this read.
+   */
+  readonly hasChartAttachment: boolean;
+  readonly chartAttachmentUploadedAt: string | null;
 
-  readonly plannedEntry: string;
-  readonly plannedStop: string;
+  readonly plannedEntry: string | null;
+  readonly plannedStop: string | null;
   readonly plannedTarget: string | null;
   readonly plannedPositionSize: string | null;
+  /** Account-currency minor units, in `tradingAccountBaseCurrency` — the Money-mode Plan (migration 0010). */
+  readonly plannedRiskMinor: string | null;
+  readonly plannedRewardMinor: string | null;
   readonly plannedR: string | null;
 
   readonly actualEntry: string | null;
@@ -433,11 +446,15 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       confirmationNotes: trade.confirmationNotes,
       tradingviewUrl: trade.tradingviewUrl,
       notes: trade.notes,
+      hasChartAttachment: trade.chartAttachmentStorageKey !== null,
+      chartAttachmentUploadedAt: dateToIso(trade.chartAttachmentUploadedAt),
 
       plannedEntry: trade.plannedEntry,
       plannedStop: trade.plannedStop,
       plannedTarget: trade.plannedTarget,
       plannedPositionSize: trade.plannedPositionSize,
+      plannedRiskMinor: minorToString(trade.plannedRiskMinor),
+      plannedRewardMinor: minorToString(trade.plannedRewardMinor),
       plannedR: trade.plannedR,
 
       actualEntry: trade.actualEntry,
@@ -489,6 +506,40 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
   };
 }
 
+export type GetTradeChartAttachmentKeyResult =
+  | { readonly ok: true; readonly storageKey: string }
+  | { readonly ok: false; readonly code: 'trade_not_found' | 'no_attachment' };
+
+/**
+ * The one lookup behind the authenticated Chart-attachment delivery route
+ * (`src/app/api/trades/[tradeId]/chart-attachment/route.ts`) — deliberately
+ * separate from `getWorkspaceTradeDetail` (which fetches Rule checks and
+ * Mistakes this narrow read never needs). Identical workspace-scoping
+ * posture: a Trade belonging to another Workspace, a nonexistent Trade, and
+ * a soft-deleted Trade all resolve to the SAME `trade_not_found` — the same
+ * privacy-safe denial `getWorkspaceTradeDetail` already establishes, so a
+ * caller can never distinguish "not yours" from "doesn't exist" by probing
+ * this endpoint. `no_attachment` is returned only once the Trade is already
+ * proven to belong to the caller's own Workspace, so it carries no
+ * cross-tenant information.
+ */
+export async function getWorkspaceTradeChartAttachmentKey(
+  tradeId: string,
+): Promise<GetTradeChartAttachmentKeyResult> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const [row] = await db
+    .select({ chartAttachmentStorageKey: trades.chartAttachmentStorageKey })
+    .from(trades)
+    .where(
+      and(eq(trades.id, tradeId), eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)),
+    );
+  if (row === undefined) return { ok: false, code: 'trade_not_found' };
+  if (row.chartAttachmentStorageKey === null) return { ok: false, code: 'no_attachment' };
+  return { ok: true, storageKey: row.chartAttachmentStorageKey };
+}
+
 // ---------------------------------------------------------------------------
 // Trade-creation selectors
 // ---------------------------------------------------------------------------
@@ -518,6 +569,23 @@ export interface TradeCreateStrategyOption {
 export interface TradeCreateOptions {
   readonly tradingAccounts: readonly TradeCreateAccountOption[];
   readonly strategies: readonly TradeCreateStrategyOption[];
+  /**
+   * Not a secret — already implicit in the authenticated session/cookies and
+   * used elsewhere client-side (e.g. `/app/strategies?strategy=` links).
+   * Exposed here so the client-only Symbol/Timeframe/Session favorites
+   * (`localStorage`, Founder-UAT correction slice) can scope their storage
+   * key per Workspace instead of leaking across Workspaces sharing one
+   * browser.
+   */
+  readonly workspaceId: string;
+  /**
+   * Trade-creation Upload's truthful capability check (Founder-UAT Trade
+   * Plan UX correction slice §10) — `false` whenever `BLOB_READ_WRITE_TOKEN`
+   * is unset, in which case the client hides the Upload option entirely
+   * rather than showing a permanently-disabled fake control. See
+   * `src/lib/storage/chart-attachment-storage.ts`.
+   */
+  readonly chartUploadConfigured: boolean;
 }
 
 /**
@@ -622,5 +690,7 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
       baseCurrency: a.baseCurrency,
     })),
     strategies: strategyOptions,
+    workspaceId,
+    chartUploadConfigured: isChartAttachmentStorageConfigured(),
   };
 }

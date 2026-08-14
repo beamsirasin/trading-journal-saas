@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+import {
+  CHART_ATTACHMENT_STORAGE_KEY_MAX_LENGTH,
+  isValidChartAttachmentStorageKey,
+} from '@/lib/storage/chart-attachment';
 import { parseInstant } from '@/lib/time/parse';
 
 import { hasNoControlOrHtmlCharacters } from '../trading-accounts/validation';
@@ -140,6 +144,29 @@ const patchableSignedMinorField = () =>
     .optional()
     .transform((value) => (value === null || value === undefined ? value : BigInt(value)));
 
+/** Tri-state unsigned minor-unit money (migration 0010's `plannedRewardMinor`) — see {@link patchableTextField}'s doc comment for the presence convention. */
+const patchableUnsignedMinorField = () =>
+  z
+    .string()
+    .regex(UNSIGNED_INTEGER_PATTERN)
+    .max(MINOR_UNIT_MAX_LENGTH)
+    .nullable()
+    .optional()
+    .transform((value) => (value === null || value === undefined ? value : BigInt(value)));
+
+/** Tri-state strictly-positive minor-unit money (migration 0010's `plannedRiskMinor`) — see {@link patchableTextField}'s doc comment for the presence convention. */
+const patchablePositiveMinorField = () =>
+  z
+    .string()
+    .regex(UNSIGNED_INTEGER_PATTERN)
+    .max(MINOR_UNIT_MAX_LENGTH)
+    .nullable()
+    .optional()
+    .transform((value) => (value === null || value === undefined ? value : BigInt(value)))
+    .refine((value) => value === null || value === undefined || value > 0n, {
+      message: 'must_be_positive',
+    });
+
 /**
  * A strict ISO-8601 instant with an explicit offset, parsed on the trusted
  * server side via `@/lib/time`'s `parseInstant` — never `new Date(string)`
@@ -179,11 +206,68 @@ const patchableTradingViewUrlField = () =>
     .nullable()
     .optional();
 
+/**
+ * Chart attachment (migration 0010) — never a raw blob/base64: the client
+ * uploads through `src/lib/storage/`'s adapter FIRST (a separate Server
+ * Action, into PRIVATE object storage — Founder review), then passes only
+ * the resulting storage key through here. No URL field exists anywhere in
+ * this domain: retrieval is exclusively through the authenticated delivery
+ * route. `.refine` checks the key is shaped like something THIS app's own
+ * upload path would have produced (server-generated-key-shaped) — see
+ * `src/lib/storage/chart-attachment.ts`'s own doc comment for why a forged
+ * value here carries no cross-tenant risk even so.
+ */
+const chartAttachmentStorageKeyField = () =>
+  z
+    .string()
+    .max(CHART_ATTACHMENT_STORAGE_KEY_MAX_LENGTH)
+    .refine(isValidChartAttachmentStorageKey, { message: 'invalid_chart_attachment_key' });
+
+/**
+ * Shared cross-field Plan invariants (Founder-UAT Trade Plan UX correction
+ * slice, migration 0010) — applied identically to `createTrade` and
+ * `updateTradePlan`'s SHAPE only (never the risk-direction/Money-ratio
+ * MATH, which stays exclusively `src/lib/calc/trade.ts`'s job): Entry/Stop
+ * must arrive as a complete pair or not at all, a Target requires that
+ * pair, a Reward requires a Risk, and — createTrade only — at least one
+ * representation must be present at all (`updateTradePlan`'s patch may
+ * legitimately touch neither Price nor Money field while still leaving an
+ * EXISTING representation on the Trade untouched, so that floor cannot be
+ * expressed as a pure Zod shape rule there; the service layer enforces it
+ * instead). Client-side enforcement only ever narrows what an honest client
+ * can send — `trade-management.ts`/`trades_plan_minimum_check` remain the
+ * real, non-bypassable authority (CLAUDE.md §4).
+ */
+function applyPlanShapeRefinements<
+  T extends z.ZodType<{
+    readonly plannedEntry?: string | null | undefined;
+    readonly plannedStop?: string | null | undefined;
+    readonly plannedTarget?: string | null | undefined;
+    readonly plannedRiskMinor?: bigint | null | undefined;
+    readonly plannedRewardMinor?: bigint | null | undefined;
+  }>,
+>(schema: T) {
+  return schema
+    .refine(
+      (data) => ((data.plannedEntry ?? null) === null) === ((data.plannedStop ?? null) === null),
+      { message: 'incomplete_price_plan', path: ['plannedStop'] },
+    )
+    .refine(
+      (data) => (data.plannedTarget ?? null) === null || (data.plannedEntry ?? null) !== null,
+      { message: 'incomplete_price_plan', path: ['plannedTarget'] },
+    )
+    .refine(
+      (data) =>
+        (data.plannedRewardMinor ?? null) === null || (data.plannedRiskMinor ?? null) !== null,
+      { message: 'incomplete_money_plan', path: ['plannedRewardMinor'] },
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 1. createTrade
 // ---------------------------------------------------------------------------
 
-export const CreateTradeSchema = z
+const CreateTradeObjectSchema = z
   .object({
     mutationKey: uuidField(),
     tradingAccountId: uuidField(),
@@ -191,19 +275,37 @@ export const CreateTradeSchema = z
     setupId: uuidField(),
     symbol: requiredTextField(SYMBOL_MAX_LENGTH),
     direction: directionField(),
-    plannedEntry: decimalField(),
-    plannedStop: decimalField(),
-    /** Optional (locked Phase 08B decision) — omit or send `null` for a Target-less Plan. */
+    /**
+     * Price and Money are independent, both-optional Plan representations
+     * (Founder-UAT correction slice) — a Trade may supply Price only, Money
+     * only, or both. `applyPlanShapeRefinements` enforces pairing/ordering
+     * shape; `no_plan_representation` below enforces the "at least one"
+     * floor.
+     */
+    plannedEntry: decimalField().nullable().optional(),
+    plannedStop: decimalField().nullable().optional(),
+    /** Optional (locked Phase 08B decision) — omit or send `null` for a Target-less Price plan. */
     plannedTarget: decimalField().nullable().optional(),
     plannedPositionSize: decimalField().nullable().optional(),
+    /** Account-currency minor units, in the Trading Account's own `base_currency`. */
+    plannedRiskMinor: positiveMinorField().nullable().optional(),
+    plannedRewardMinor: unsignedMinorField().nullable().optional(),
     timeframe: optionalTextField(TIMEFRAME_MAX_LENGTH),
     session: optionalTextField(SESSION_MAX_LENGTH),
     confirmationNotes: optionalTextField(CONFIRMATION_NOTES_MAX_LENGTH),
     confidence: confidenceField().optional(),
     tradingviewUrl: tradingViewUrlField(),
     notes: optionalTextField(NOTES_MAX_LENGTH),
+    chartAttachmentStorageKey: chartAttachmentStorageKeyField().nullable().optional(),
   })
   .strict();
+
+export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSchema).refine(
+  (data) =>
+    ((data.plannedEntry ?? null) !== null && (data.plannedStop ?? null) !== null) ||
+    (data.plannedRiskMinor ?? null) !== null,
+  { message: 'no_plan_representation', path: ['plannedEntry'] },
+);
 export type CreateTradeActionInput = z.input<typeof CreateTradeSchema>;
 export type CreateTradeActionData = z.output<typeof CreateTradeSchema>;
 
@@ -211,14 +313,16 @@ export type CreateTradeActionData = z.output<typeof CreateTradeSchema>;
 // 2. updateTradePlan
 // ---------------------------------------------------------------------------
 
-export const UpdateTradePlanSchema = z
+const UpdateTradePlanObjectSchema = z
   .object({
     tradeId: uuidField(),
-    plannedEntry: decimalField().optional(),
-    plannedStop: decimalField().optional(),
-    /** Presence-sensitive — see {@link patchableTextField}. */
+    /** Presence-sensitive — migration 0010 widened this from set-only to tri-state, so a Price plan can be cleared down to Money-only. See {@link patchableTextField}. */
+    plannedEntry: patchableDecimalField(),
+    plannedStop: patchableDecimalField(),
     plannedTarget: patchableDecimalField(),
     plannedPositionSize: patchableDecimalField(),
+    plannedRiskMinor: patchablePositiveMinorField(),
+    plannedRewardMinor: patchableUnsignedMinorField(),
     timeframe: patchableTextField(TIMEFRAME_MAX_LENGTH),
     session: patchableTextField(SESSION_MAX_LENGTH),
     confirmationNotes: patchableTextField(CONFIRMATION_NOTES_MAX_LENGTH),
@@ -227,6 +331,36 @@ export const UpdateTradePlanSchema = z
     notes: patchableTextField(NOTES_MAX_LENGTH),
   })
   .strict();
+
+/**
+ * A PATCH cannot safely apply {@link applyPlanShapeRefinements}'s "Target
+ * requires a Price pair"/"Reward requires a Risk"/"at least one
+ * representation" rules — those depend on the Trade's CURRENT stored state
+ * (a key genuinely ABSENT here means "leave unchanged," not "clear"), which
+ * this isolated Zod schema never sees. `updateTradePlan`
+ * (`src/server/services/trade-management.ts`) merges the patch against the
+ * stored Trade via `resolvePlanFieldsPatch` and re-runs the equivalent
+ * checks there — the real, non-bypassable authority for this patch's
+ * cross-field integrity (CLAUDE.md §4). The one check that IS safe to make
+ * here, without any server state: if a caller explicitly provides BOTH
+ * halves of a pair in the SAME call, their null-ness must agree — sending
+ * `{ plannedEntry: '100', plannedStop: null }` in one patch is never
+ * meaningful.
+ */
+export const UpdateTradePlanSchema = UpdateTradePlanObjectSchema.refine(
+  (data) =>
+    !Object.hasOwn(data, 'plannedEntry') ||
+    !Object.hasOwn(data, 'plannedStop') ||
+    (data.plannedEntry === null) === (data.plannedStop === null),
+  { message: 'incomplete_price_plan', path: ['plannedStop'] },
+).refine(
+  (data) =>
+    !Object.hasOwn(data, 'plannedRiskMinor') ||
+    !Object.hasOwn(data, 'plannedRewardMinor') ||
+    data.plannedRewardMinor === null ||
+    data.plannedRiskMinor !== null,
+  { message: 'incomplete_money_plan', path: ['plannedRewardMinor'] },
+);
 export type UpdateTradePlanActionInput = z.input<typeof UpdateTradePlanSchema>;
 export type UpdateTradePlanActionData = z.output<typeof UpdateTradePlanSchema>;
 

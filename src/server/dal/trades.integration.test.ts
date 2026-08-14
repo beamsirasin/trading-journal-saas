@@ -60,8 +60,12 @@ vi.mock('@/lib/auth/server', () => ({
   }),
 }));
 
-const { getTradeCreateOptions, getWorkspaceTradeDetail, listWorkspaceTrades } =
-  await import('./trades');
+const {
+  getTradeCreateOptions,
+  getWorkspaceTradeChartAttachmentKey,
+  getWorkspaceTradeDetail,
+  listWorkspaceTrades,
+} = await import('./trades');
 
 function sessionFor(userId: string): MockSession {
   return {
@@ -382,6 +386,131 @@ describe('trades DAL (real database)', () => {
     });
   });
 
+  describe('getWorkspaceTradeDetail — Price/Money/Confidence/Chart attachment (migration 0010)', () => {
+    it('truthfully renders a Money-only Trade with null Price fields and populated Money fields', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedRiskMinor: 5000n,
+        plannedRewardMinor: 15000n,
+      });
+      if (!created.ok) throw new Error('create failed');
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.plannedEntry).toBeNull();
+      expect(detail.trade.plannedStop).toBeNull();
+      expect(detail.trade.plannedTarget).toBeNull();
+      expect(detail.trade.plannedRiskMinor).toBe('5000');
+      expect(detail.trade.plannedRewardMinor).toBe('15000');
+      expect(detail.trade.plannedR).toBe('3.0000');
+      expect(detail.trade.hasChartAttachment).toBe(false);
+      expect(detail.trade.chartAttachmentUploadedAt).toBeNull();
+    });
+
+    it('round-trips Confidence across the full widened 0-100 range', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw, { confidence: 7 }));
+      if (!created.ok) throw new Error('create failed');
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.confidence).toBe(7);
+    });
+
+    it('round-trips a private chart attachment storage key and stamps an uploadedAt timestamp, exposing only a presence flag', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const storageKey = `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`;
+      const created = await createTrade(workspaceId, userId, {
+        ...basePlanInput(fw),
+        chartAttachmentStorageKey: storageKey,
+      });
+      if (!created.ok) throw new Error('create failed');
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.hasChartAttachment).toBe(true);
+      expect(detail.trade.chartAttachmentUploadedAt).not.toBeNull();
+      // Never a URL, and never the raw storage key — the read-side Trade
+      // Detail payload carries only a truthful presence flag (Founder
+      // review: private storage, no public URL).
+      expect(JSON.stringify(detail.trade)).not.toContain(storageKey);
+      expect(JSON.stringify(detail.trade)).not.toContain('chartAttachmentStorageKey');
+      expect(JSON.stringify(detail.trade)).not.toContain('chartAttachmentUrl');
+    });
+  });
+
+  describe('getWorkspaceTradeChartAttachmentKey — authorization proof (Founder review §4)', () => {
+    it("the owning Workspace can retrieve its own Trade's storage key", async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const storageKey = `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`;
+      const created = await createTrade(workspaceId, userId, {
+        ...basePlanInput(fw),
+        chartAttachmentStorageKey: storageKey,
+      });
+      if (!created.ok) throw new Error('create failed');
+
+      const result = await getWorkspaceTradeChartAttachmentKey(created.tradeId);
+      expect(result).toEqual({ ok: true, storageKey });
+    });
+
+    it('a Trade with no attachment resolves to no_attachment, never a key', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+
+      const result = await getWorkspaceTradeChartAttachmentKey(created.tradeId);
+      expect(result).toEqual({ ok: false, code: 'no_attachment' });
+    });
+
+    it("a DIFFERENT Workspace cannot retrieve another Workspace's attachment key — identical denial to a nonexistent Trade", async () => {
+      const ownerA = await freshWorkspace();
+      const fwA = await createFramework(db, ownerA.workspaceId, ownerA.userId);
+      const created = await createTrade(ownerA.workspaceId, ownerA.userId, {
+        ...basePlanInput(fwA),
+        chartAttachmentStorageKey: `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`,
+      });
+      if (!created.ok) throw new Error('create failed');
+
+      // `freshWorkspace()` switches `currentSession` to this new owner as a
+      // side effect — the DAL call below genuinely runs as a different user
+      // in a different Workspace.
+      await freshWorkspace();
+      const crossWorkspaceResult = await getWorkspaceTradeChartAttachmentKey(created.tradeId);
+      const nonexistentResult = await getWorkspaceTradeChartAttachmentKey(crypto.randomUUID());
+
+      expect(crossWorkspaceResult).toEqual({ ok: false, code: 'trade_not_found' });
+      expect(crossWorkspaceResult).toEqual(nonexistentResult);
+    });
+
+    it('a soft-deleted Trade is not_found, identically to one that never existed', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, {
+        ...basePlanInput(fw),
+        chartAttachmentStorageKey: `trade-charts/${crypto.randomUUID()}/${crypto.randomUUID()}.png`,
+      });
+      if (!created.ok) throw new Error('create failed');
+      await softDeleteTrade(workspaceId, userId, created.tradeId);
+
+      const result = await getWorkspaceTradeChartAttachmentKey(created.tradeId);
+      expect(result).toEqual({ ok: false, code: 'trade_not_found' });
+    });
+  });
+
   describe('detail/list — soft-deleted Trade excluded, workspace isolation', () => {
     it('excludes a soft-deleted Trade from both list and detail', async () => {
       const { userId, workspaceId } = await freshWorkspace();
@@ -520,6 +649,15 @@ describe('trades DAL (real database)', () => {
       expect(serialized).not.toContain('versionId');
       expect(serialized).not.toContain('VersionId');
       expect(options.strategies.some((s) => s.strategyId === fw.strategyId)).toBe(true);
+    });
+
+    it("reports the caller's own workspaceId and a boolean chartUploadConfigured (Founder-UAT correction slice)", async () => {
+      const { workspaceId } = await freshWorkspace();
+      const options = await getTradeCreateOptions();
+      expect(options.workspaceId).toBe(workspaceId);
+      expect(typeof options.chartUploadConfigured).toBe('boolean');
+      // No BLOB_READ_WRITE_TOKEN is configured in this test environment.
+      expect(options.chartUploadConfigured).toBe(false);
     });
   });
 

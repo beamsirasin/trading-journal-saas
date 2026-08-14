@@ -71,6 +71,13 @@
       "when": 1786361396886,
       "tag": "0009_platform_admin_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786618396560,
+      "tag": "0010_trade_plan_price_money_confidence",
+      "breakpoints": true
     }
   ]
 }

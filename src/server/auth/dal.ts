@@ -8,7 +8,13 @@ import { getAuth } from '@/lib/auth/server';
 import type { EffectiveEntitlement } from '@/lib/entitlements/resolve';
 import type { AccountMode } from '@/lib/trading-accounts/constants';
 import { getDb } from '@/server/db/client';
-import { tradingAccounts, userPreferences, workspaceMembers, workspaces } from '@/server/db/schema';
+import {
+  trades,
+  tradingAccounts,
+  userPreferences,
+  workspaceMembers,
+  workspaces,
+} from '@/server/db/schema';
 import { readEffectiveEntitlement } from '@/server/services/entitlement';
 import { ensurePersonalWorkspace } from '@/server/services/workspace-provisioning';
 
@@ -452,6 +458,17 @@ export async function listWorkspaceTradingAccounts(): Promise<TradingAccountReco
 }
 
 /**
+ * Adds only what the Edit page needs beyond `TradingAccountRecord`: whether
+ * this account may still have its `base_currency` changed (Founder review:
+ * historical monetary-integrity blocker). This is presentation information
+ * only — the server action/service call remains the authoritative,
+ * non-bypassable enforcement point regardless of what this flag says.
+ */
+export interface TradingAccountEditRecord extends TradingAccountRecord {
+  readonly hasTrades: boolean;
+}
+
+/**
  * A single account, authorized against the caller's active workspace.
  * Returns `null` both when the ID does not exist at all AND when it belongs
  * to another workspace — deliberately indistinguishable, so the edit page
@@ -460,15 +477,26 @@ export async function listWorkspaceTradingAccounts(): Promise<TradingAccountReco
  */
 export async function getWorkspaceTradingAccountById(
   accountId: string,
-): Promise<TradingAccountRecord | null> {
+): Promise<TradingAccountEditRecord | null> {
   const { workspaceId } = await getActiveWorkspaceContext();
   const db = getDb();
 
   const account = await db.query.tradingAccounts.findFirst({
     where: and(eq(tradingAccounts.id, accountId), eq(tradingAccounts.workspaceId, workspaceId)),
   });
+  if (account === undefined) return null;
 
-  return account === undefined ? null : toTradingAccountRecord(account);
+  // An existence check, not a load — INCLUDING soft-deleted Trades, the
+  // same "at least one Trade ever referenced this account" rule
+  // `updateTradingAccount` enforces authoritatively. This flag only shapes
+  // the UI; it is never itself trusted as authorization.
+  const [referencingTrade] = await db
+    .select({ id: trades.id })
+    .from(trades)
+    .where(and(eq(trades.tradingAccountId, accountId), eq(trades.workspaceId, workspaceId)))
+    .limit(1);
+
+  return { ...toTradingAccountRecord(account), hasTrades: referencingTrade !== undefined };
 }
 
 /**

@@ -35,6 +35,8 @@ type TradingAccountFormProps =
       readonly mode: 'edit';
       readonly accountId: string;
       readonly initialValues: TradingAccountFormValues;
+      /** True once any Trade (including soft-deleted) has ever referenced this account — presentation only; the server remains authoritative. */
+      readonly baseCurrencyLocked: boolean;
     };
 
 /**
@@ -84,6 +86,8 @@ export function TradingAccountForm(props: TradingAccountFormProps) {
   ) {
     setValues((current) => ({ ...current, [field]: value }));
   }
+
+  const baseCurrencyLocked = props.mode === 'edit' && props.baseCurrencyLocked;
 
   const accountModeOptions = ACCOUNT_MODES.map((mode) => ({
     value: mode,
@@ -204,12 +208,17 @@ export function TradingAccountForm(props: TradingAccountFormProps) {
             <select
               id={`${formId}-currency`}
               value={values.baseCurrency}
+              disabled={baseCurrencyLocked}
               onChange={(event) => setField('baseCurrency', event.target.value.toUpperCase())}
               aria-invalid={errors.baseCurrency !== undefined}
               aria-describedby={
-                errors.baseCurrency === undefined ? undefined : `${formId}-currency-error`
+                baseCurrencyLocked
+                  ? `${formId}-currency-locked-hint`
+                  : errors.baseCurrency === undefined
+                    ? undefined
+                    : `${formId}-currency-error`
               }
-              className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive flex h-11 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
+              className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive flex h-11 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {SUGGESTED_BASE_CURRENCIES.map((code) => (
                 <option key={code} value={code}>
@@ -217,7 +226,11 @@ export function TradingAccountForm(props: TradingAccountFormProps) {
                 </option>
               ))}
             </select>
-            {errors.baseCurrency === undefined ? null : (
+            {baseCurrencyLocked ? (
+              <p id={`${formId}-currency-locked-hint`} className="text-muted-foreground text-xs">
+                {t('baseCurrencyLockedHint')}
+              </p>
+            ) : errors.baseCurrency === undefined ? null : (
               <p id={`${formId}-currency-error`} role="alert" className="text-destructive text-xs">
                 {t(`errors.${errors.baseCurrency}`)}
               </p>

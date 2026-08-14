@@ -97,11 +97,30 @@ async function createPlannedTrade(page: Page) {
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
   await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
   await page.getByRole('button', { name: /Continue/ }).click();
-  await page.getByLabel('Symbol').fill('XAUUSD');
+  await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await page.getByRole('button', { name: 'Long' }).click();
   await page.getByLabel('Entry').fill('100');
   await page.getByLabel('Stop').fill('90');
   await page.getByLabel(/Target/).fill('130');
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create Trade' }).click();
+  await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+}
+
+/** Founder-UAT Trade Plan UX correction slice — a Money-only Plan (no Price fields at all). */
+async function createMoneyOnlyPlannedTrade(page: Page) {
+  await page.getByRole('link', { name: 'Log a trade' }).first().click();
+  await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+  await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
+  await page.getByRole('button', { name: /Continue/ }).click();
+  await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
+  await page.getByRole('button', { name: 'Short' }).click();
+  await page.getByRole('button', { name: 'Add a Money plan' }).click();
+  await page.getByLabel('Planned risk').fill('100.00');
+  await page.getByLabel(/Planned reward/).fill('300.00');
   await page.getByRole('button', { name: /Continue/ }).click();
   await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
   await page.getByRole('button', { name: 'Create Trade' }).click();
@@ -192,6 +211,149 @@ test.describe('real Trade Journal creation', () => {
     await deleteDialog.getByRole('button', { name: 'Delete Trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades$/);
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toHaveCount(0);
+  });
+
+  test('creates a Money-only Trade (no Price fields) and renders it truthfully', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-money-only');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await createMoneyOnlyPlannedTrade(page);
+    await expect(page.getByRole('heading', { name: 'EURUSD' })).toBeVisible();
+    await expect(page.getByText('Short').first()).toBeVisible();
+    // A Money-only Trade never fabricates Price fields — Entry is truthfully absent.
+    await expect(page.getByText('Entry', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Planned risk')).toBeVisible();
+    await expect(page.getByText('Planned reward')).toBeVisible();
+    await expect(page.getByText('+3.00R')).toBeVisible();
+  });
+
+  test('blocks creation when Price and Money plans disagree, and allows it once resolved', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-mismatch');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await page.getByRole('link', { name: 'Log a trade' }).first().click();
+    await page.getByRole('button', { name: /Continue/ }).click();
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+    await page.getByRole('button', { name: /Continue/ }).click();
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByLabel('Entry').fill('100');
+    await page.getByLabel('Stop').fill('90');
+    await page.getByLabel(/Target/).fill('130'); // Price implies +3R
+    await page.getByRole('button', { name: 'Add a Money plan' }).click();
+    await page.getByLabel('Planned risk').fill('50.00');
+    await page.getByLabel(/Planned reward/).fill('500.00'); // Money implies +10R
+
+    await expect(page.getByText('Price and Money plans disagree')).toBeVisible();
+    await page.getByRole('button', { name: /Continue/ }).click();
+    await expect(
+      page.getByText('Price and Money plans disagree — adjust one before continuing.'),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toHaveCount(0);
+
+    // Resolve the disagreement — Money now agrees with Price (+3R) — and proceed.
+    await page.getByLabel(/Planned reward/).fill('150.00');
+    await expect(page.getByText('Price and Money plans disagree')).toHaveCount(0);
+    await page.getByRole('button', { name: /Continue/ }).click();
+    await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
+    await page.getByRole('button', { name: 'Create Trade' }).click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+  });
+
+  test('Trade Plan screen has no horizontal overflow and stays usable at 390px/768px/1024px (responsive gap)', async ({
+    page,
+  }) => {
+    test.skip(
+      test.info().project.name !== 'chromium',
+      'Viewport sweep on the desktop Chromium engine — not a mobile-device profile',
+    );
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-responsive');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+
+    for (const width of [390, 768, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/en/app/trades/new');
+
+      // Stepper usable: every step control renders within the viewport.
+      const stepper = page.getByRole('list', { name: 'Trade creation progress' });
+      await expect(stepper).toBeVisible();
+      const stepperBox = await stepper.boundingBox();
+      expect(stepperBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+
+      await page.getByRole('button', { name: /Continue/ }).click();
+      await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+      await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
+      await page.getByRole('button', { name: /Continue/ }).click();
+
+      // Long/Short usable: both direction buttons are visible, and clicking
+      // one visibly selects it (not color-only — Founder-UAT correction
+      // slice, `aria-pressed` plus a checkmark icon).
+      const longButton = page.getByRole('button', { name: 'Long' });
+      const shortButton = page.getByRole('button', { name: 'Short' });
+      await expect(longButton).toBeVisible();
+      await expect(shortButton).toBeVisible();
+      await longButton.click();
+      await expect(longButton).toHaveAttribute('aria-pressed', 'true');
+
+      // A favorite Symbol chip wraps within its container rather than
+      // forcing page-level horizontal scroll. A width-specific symbol keeps
+      // each loop iteration's favorite distinct — favorites persist in
+      // localStorage across the `page.goto` calls within this same test.
+      const symbol = `SYM${width}`;
+      const symbolField = page.getByRole('textbox', { name: 'Symbol' });
+      await symbolField.fill(symbol);
+      await page.getByRole('button', { name: `Add "${symbol}" to favorites` }).click();
+      const quickValues = page.getByRole('group', { name: 'Quick values for Symbol' });
+      // `exact: true` — the favorite-toggle button's own aria-label ("Remove
+      // SYM390 from favorites") contains the symbol as a substring, and
+      // Playwright's default accessible-name matching is substring-based
+      // (the same footgun already fixed once this slice for `getByLabel`).
+      await expect(quickValues.getByRole('button', { name: symbol, exact: true })).toBeVisible();
+      const quickValuesBox = await quickValues.boundingBox();
+      expect(quickValuesBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+
+      // Price/Money disclosure does not overflow — opening the Money
+      // section (Price is open by default) stays within the viewport.
+      await page.getByRole('button', { name: 'Add a Money plan' }).click();
+      const moneyHeading = page.getByRole('heading', { name: 'Money / Risk & Reward' });
+      await expect(moneyHeading).toBeVisible();
+      const moneySectionBox = await moneyHeading.locator('..').locator('..').boundingBox();
+      expect(moneySectionBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+
+      // Confidence slider remains usable: focusable, keyboard-operable, and
+      // its value genuinely changes.
+      const slider = page.getByRole('slider', { name: 'Confidence' });
+      await expect(slider).toBeVisible();
+      await slider.focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(slider).not.toHaveAttribute('aria-valuenow', '50');
+
+      // Attachment UI (the TradingView URL field, since Upload is
+      // unconfigured in this environment) does not clip.
+      const chartField = page.getByLabel('TradingView URL');
+      await expect(chartField).toBeVisible();
+      const chartBox = await chartField.boundingBox();
+      expect(chartBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+
+      // No document-level horizontal overflow at this width.
+      const dimensions = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+    }
   });
 
   test('mobile creation remains usable without horizontal overflow', async ({ page }) => {

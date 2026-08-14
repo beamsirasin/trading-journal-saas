@@ -625,6 +625,105 @@ describe('trade-management (real database)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Price/Money independence (Founder-UAT Trade Plan UX correction slice,
+  // migration 0010) — against a real database, so `trades_planned_price_shape_check`/
+  // `trades_planned_money_check`/`trades_plan_minimum_check`/`trades_confidence_check`
+  // are exercised for real, not merely assumed from the Zod/service layer.
+  // -------------------------------------------------------------------------
+  describe('createTrade — Price/Money independence (migration 0010)', () => {
+    it('accepts a Money-only Plan (no Price fields at all) and persists null Price columns', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedRiskMinor: 5000n,
+        plannedRewardMinor: 15000n,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedStop).toBeNull();
+      expect(row?.plannedTarget).toBeNull();
+      expect(row?.plannedRiskMinor).toBe(5000n);
+      expect(row?.plannedRewardMinor).toBe(15000n);
+      expect(row?.plannedR).toBe('3.0000');
+    });
+
+    it('accepts Price and Money together when they agree, Price-precedence stored in planned_r', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, { plannedRiskMinor: 5000n, plannedRewardMinor: 10000n }), // Money R = 2.0000, matches Price R
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row?.plannedR).toBe('2.0000');
+      expect(row?.plannedRiskMinor).toBe(5000n);
+    });
+
+    it('rejects Price and Money that disagree beyond tolerance — nothing is persisted', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, { plannedRiskMinor: 5000n, plannedRewardMinor: 50000n }), // Money R = 10.0000, Price R = 2.0000
+      );
+      expect(result).toMatchObject({ ok: false, code: 'planned_r_mismatch' });
+    });
+
+    it('rejects neither Price nor Money present (no_plan_representation)', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        symbol: 'EURUSD',
+        direction: 'long',
+      });
+      expect(result).toMatchObject({ ok: false, code: 'no_plan_representation' });
+    });
+
+    it('rejects a non-positive plannedRiskMinor at the database layer even if it slipped past the service (defense in depth)', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedRiskMinor: -1n,
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        code: 'invalid_plan',
+        calcReason: 'invalid_planned_risk',
+      });
+    });
+
+    it('persists Confidence across the full widened 0-100 range', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, { confidence: 73 }),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row?.confidence).toBe(73);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Plan correction
   // -------------------------------------------------------------------------
   describe('updateTradePlan', () => {
@@ -725,6 +824,83 @@ describe('trade-management (real database)', () => {
       expect(result.ok).toBe(true);
       const row = await readTrade(tradeId);
       expect(row?.status).toBe('canceled');
+    });
+
+    // -----------------------------------------------------------------------
+    // Price/Money independence (migration 0010)
+    // -----------------------------------------------------------------------
+
+    it('clears Entry/Stop down to a Money-only Plan when a Money representation already exists', async () => {
+      const { tradeId } = await createPlanned({
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 2000n, // agrees with basePlanInput's Price R (2.0000)
+      });
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+      });
+      expect(result.ok).toBe(true);
+      const row = await readTrade(tradeId);
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedStop).toBeNull();
+      // Money alone now determines planned_r: 2000/1000 = 2.0000.
+      expect(row?.plannedR).toBe('2.0000');
+    });
+
+    it('rejects clearing Entry/Stop when no Money representation exists (no_plan_representation)', async () => {
+      const { tradeId } = await createPlanned();
+      const before = await readTrade(tradeId);
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: null,
+        plannedStop: null,
+      });
+      expect(result).toMatchObject({ ok: false, code: 'no_plan_representation' });
+      const after = await readTrade(tradeId);
+      expect(after).toEqual(before);
+    });
+
+    it('rejects a patch that would leave Price and Money disagreeing (planned_r_mismatch) — nothing persists', async () => {
+      const { tradeId } = await createPlanned(); // Price R = 2.0000
+      const before = await readTrade(tradeId);
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 50000n, // Money R = 50.0000
+      });
+      expect(result).toMatchObject({ ok: false, code: 'planned_r_mismatch' });
+      const after = await readTrade(tradeId);
+      expect(after).toEqual(before);
+    });
+
+    it('rejects clearing the Price plan while the System result is already resolved (system_requires_price_plan)', async () => {
+      const { tradeId } = await createPlanned({
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 2000n, // agrees with basePlanInput's Price R (2.0000)
+      });
+      const resolved = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        systemExitPrice: '1.1100000000',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemExitReason: 'target_hit',
+        systemCostR: '0.0000',
+      });
+      expect(resolved.ok).toBe(true);
+      const before = await readTrade(tradeId);
+
+      // Target must be cleared alongside Entry/Stop here — otherwise a
+      // stale Target would orphan itself (Target present, Entry/Stop
+      // absent), which `composePlannedR` correctly rejects first as its own
+      // `invalid_plan`/`missing_input` fragment error, a real but DIFFERENT
+      // validation failure than the one this test targets. A genuine UI
+      // correction always resends Target's current value (or null)
+      // alongside Entry/Stop — see `PlanCorrectionDialog`.
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+      });
+      expect(result).toMatchObject({ ok: false, code: 'system_requires_price_plan' });
+      const after = await readTrade(tradeId);
+      expect(after).toEqual(before);
     });
   });
 
@@ -1498,7 +1674,7 @@ describe('trade-management (real database)', () => {
 
       // Identical values -> no changed fields -> no audit event.
       await updateTradePlan(workspaceId, actorUserId, created.tradeId, {
-        plannedEntry: basePlanInput(fw).plannedEntry,
+        plannedEntry: basePlanInput(fw).plannedEntry ?? '1.1000000000',
       });
 
       const events = await db

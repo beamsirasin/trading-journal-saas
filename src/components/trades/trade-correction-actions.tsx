@@ -13,6 +13,7 @@ import {
   NativeSelect,
   TradeField,
 } from '@/components/trades/trade-action-form';
+import { parseTradeMoneyInput, tradeMoneyInputValue } from '@/components/trades/trade-form-values';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -40,14 +41,33 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
     event.preventDefault();
     setFeedback(null);
     const data = new FormData(event.currentTarget);
+    const currency = trade.tradingAccountBaseCurrency;
+
+    const riskRaw = String(data.get('plannedRiskMinor') ?? '').trim();
+    let plannedRiskMinor: string | null = null;
+    if (riskRaw !== '') {
+      const risk = parseTradeMoneyInput(riskRaw, currency, { allowZero: false });
+      if (!risk.ok) return setFeedback(t('lifecycle.validation.money'));
+      plannedRiskMinor = risk.value;
+    }
+    const rewardRaw = String(data.get('plannedRewardMinor') ?? '').trim();
+    let plannedRewardMinor: string | null = null;
+    if (rewardRaw !== '') {
+      const reward = parseTradeMoneyInput(rewardRaw, currency, { allowZero: true });
+      if (!reward.ok) return setFeedback(t('lifecycle.validation.money'));
+      plannedRewardMinor = reward.value;
+    }
+
+    const confidence = String(data.get('confidence') ?? '').trim();
     startTransition(async () => {
-      const confidence = String(data.get('confidence') ?? '').trim();
       const result = await updateTradePlanAction({
         tradeId: trade.tradeId,
-        plannedEntry: String(data.get('plannedEntry') ?? ''),
-        plannedStop: String(data.get('plannedStop') ?? ''),
+        plannedEntry: String(data.get('plannedEntry') ?? '').trim() || null,
+        plannedStop: String(data.get('plannedStop') ?? '').trim() || null,
         plannedTarget: String(data.get('plannedTarget') ?? '').trim() || null,
         plannedPositionSize: String(data.get('plannedPositionSize') ?? '').trim() || null,
+        plannedRiskMinor,
+        plannedRewardMinor,
         timeframe: String(data.get('timeframe') ?? '').trim() || null,
         session: String(data.get('session') ?? '').trim() || null,
         confirmationNotes: String(data.get('confirmationNotes') ?? '').trim() || null,
@@ -74,21 +94,15 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
           <div className="grid gap-4 sm:grid-cols-2">
-            <TradeField id="plan-entry" label={t('field.entry')}>
+            <TradeField id="plan-entry" label={t('field.entry')} hint={t('common.optional')}>
               <FormInput
                 id="plan-entry"
                 name="plannedEntry"
-                defaultValue={trade.plannedEntry}
-                required
+                defaultValue={trade.plannedEntry ?? ''}
               />
             </TradeField>
-            <TradeField id="plan-stop" label={t('field.stop')}>
-              <FormInput
-                id="plan-stop"
-                name="plannedStop"
-                defaultValue={trade.plannedStop}
-                required
-              />
+            <TradeField id="plan-stop" label={t('field.stop')} hint={t('common.optional')}>
+              <FormInput id="plan-stop" name="plannedStop" defaultValue={trade.plannedStop ?? ''} />
             </TradeField>
             <TradeField
               id="plan-target"
@@ -108,6 +122,36 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
                 defaultValue={trade.plannedPositionSize ?? ''}
               />
             </TradeField>
+            <TradeField
+              id="plan-risk"
+              label={t('field.plannedRisk')}
+              hint={t('lifecycle.execution.moneyHint', {
+                currency: trade.tradingAccountBaseCurrency,
+              })}
+            >
+              <FormInput
+                id="plan-risk"
+                name="plannedRiskMinor"
+                defaultValue={tradeMoneyInputValue(
+                  trade.plannedRiskMinor,
+                  trade.tradingAccountBaseCurrency,
+                )}
+              />
+            </TradeField>
+            <TradeField
+              id="plan-reward"
+              label={t('field.plannedReward')}
+              hint={t('common.optional')}
+            >
+              <FormInput
+                id="plan-reward"
+                name="plannedRewardMinor"
+                defaultValue={tradeMoneyInputValue(
+                  trade.plannedRewardMinor,
+                  trade.tradingAccountBaseCurrency,
+                )}
+              />
+            </TradeField>
             <TradeField id="plan-timeframe" label={t('field.timeframe')}>
               <FormInput
                 id="plan-timeframe"
@@ -118,19 +162,20 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
             <TradeField id="plan-session" label={t('field.session')}>
               <FormInput id="plan-session" name="session" defaultValue={trade.session ?? ''} />
             </TradeField>
-            <TradeField id="plan-confidence" label={t('field.confidence')}>
-              <NativeSelect
+            <TradeField
+              id="plan-confidence"
+              label={t('field.confidence')}
+              hint={t('common.optional')}
+            >
+              <FormInput
                 id="plan-confidence"
                 name="confidence"
+                type="number"
+                min={0}
+                max={100}
+                step={1}
                 defaultValue={trade.confidence?.toString() ?? ''}
-              >
-                <option value="">{t('common.notSet')}</option>
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <option key={value} value={value}>
-                    {value}/5
-                  </option>
-                ))}
-              </NativeSelect>
+              />
             </TradeField>
             <TradeField id="plan-chart" label={t('field.tradingViewUrl')}>
               <FormInput
@@ -177,13 +222,19 @@ export function IdentityCorrectionDialog({ trade }: { trade: TradeDetail }) {
     event.preventDefault();
     setFeedback(null);
     const data = new FormData(event.currentTarget);
+    // plannedEntry/plannedStop stay OMITTED (never an empty string) when
+    // blank — this correction never clears a Price plan, only sets it
+    // alongside a Direction change; a Money-only Trade may correct its
+    // Symbol/Direction with these left blank entirely.
+    const entryRaw = String(data.get('plannedEntry') ?? '').trim();
+    const stopRaw = String(data.get('plannedStop') ?? '').trim();
     startTransition(async () => {
       const result = await correctTradeIdentityAction({
         tradeId: trade.tradeId,
         symbol: String(data.get('symbol') ?? ''),
         direction: String(data.get('direction') ?? ''),
-        plannedEntry: String(data.get('plannedEntry') ?? ''),
-        plannedStop: String(data.get('plannedStop') ?? ''),
+        ...(entryRaw === '' ? {} : { plannedEntry: entryRaw }),
+        ...(stopRaw === '' ? {} : { plannedStop: stopRaw }),
       });
       const code = actionErrorCode(result);
       if (code !== null) return setFeedback(errorMessage(t, code));
@@ -217,20 +268,18 @@ export function IdentityCorrectionDialog({ trade }: { trade: TradeDetail }) {
             </NativeSelect>
           </TradeField>
           <div className="grid gap-4 sm:grid-cols-2">
-            <TradeField id="identity-entry" label={t('field.entry')}>
+            <TradeField id="identity-entry" label={t('field.entry')} hint={t('common.optional')}>
               <FormInput
                 id="identity-entry"
                 name="plannedEntry"
-                defaultValue={trade.plannedEntry}
-                required
+                defaultValue={trade.plannedEntry ?? ''}
               />
             </TradeField>
-            <TradeField id="identity-stop" label={t('field.stop')}>
+            <TradeField id="identity-stop" label={t('field.stop')} hint={t('common.optional')}>
               <FormInput
                 id="identity-stop"
                 name="plannedStop"
-                defaultValue={trade.plannedStop}
-                required
+                defaultValue={trade.plannedStop ?? ''}
               />
             </TradeField>
           </div>

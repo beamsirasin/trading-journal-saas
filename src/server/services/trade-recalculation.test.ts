@@ -46,6 +46,8 @@ describe('trade-recalculation (pure)', () => {
       plannedEntry: '1.1000000000',
       plannedStop: '1.0950000000',
       plannedTarget: '1.1100000000',
+      plannedRiskMinor: null as bigint | null,
+      plannedRewardMinor: null as bigint | null,
     };
 
     it('an empty patch changes nothing and touches no plan fields', () => {
@@ -54,6 +56,8 @@ describe('trade-recalculation (pure)', () => {
         plannedEntry: current.plannedEntry,
         plannedStop: current.plannedStop,
         plannedTarget: current.plannedTarget,
+        plannedRiskMinor: null,
+        plannedRewardMinor: null,
         planFieldsTouched: false,
         entryOrStopChanged: false,
       });
@@ -101,6 +105,51 @@ describe('trade-recalculation (pure)', () => {
       const resolved = resolvePlanFieldsPatch(current, { plannedEntry: current.plannedEntry });
       expect(resolved.entryOrStopChanged).toBe(false);
       expect(resolved.planFieldsTouched).toBe(true);
+    });
+
+    it('explicitly clearing Entry AND Stop (migration 0010: down to a Money-only plan) touches plan fields and marks entryOrStopChanged', () => {
+      const resolved = resolvePlanFieldsPatch(current, { plannedEntry: null, plannedStop: null });
+      expect(resolved.plannedEntry).toBeNull();
+      expect(resolved.plannedStop).toBeNull();
+      expect(resolved.planFieldsTouched).toBe(true);
+      expect(resolved.entryOrStopChanged).toBe(true);
+    });
+
+    it('a Money-only current Trade (null Price fields) stays null when untouched', () => {
+      const moneyOnly = {
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 3000n,
+      };
+      const resolved = resolvePlanFieldsPatch(moneyOnly, {});
+      expect(resolved).toEqual({
+        ...moneyOnly,
+        planFieldsTouched: false,
+        entryOrStopChanged: false,
+      });
+    });
+
+    it('setting Risk/Reward on a Price-only Trade touches plan fields but never marks entryOrStopChanged', () => {
+      const resolved = resolvePlanFieldsPatch(current, {
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 3000n,
+      });
+      expect(resolved.plannedRiskMinor).toBe(1000n);
+      expect(resolved.plannedRewardMinor).toBe(3000n);
+      expect(resolved.plannedEntry).toBe(current.plannedEntry);
+      expect(resolved.planFieldsTouched).toBe(true);
+      expect(resolved.entryOrStopChanged).toBe(false);
+    });
+
+    it('explicitly clearing Risk (null) touches plan fields without marking entryOrStopChanged', () => {
+      const withMoney = { ...current, plannedRiskMinor: 1000n, plannedRewardMinor: 3000n };
+      const resolved = resolvePlanFieldsPatch(withMoney, { plannedRiskMinor: null });
+      expect(resolved.plannedRiskMinor).toBeNull();
+      expect(resolved.plannedRewardMinor).toBe(3000n);
+      expect(resolved.planFieldsTouched).toBe(true);
+      expect(resolved.entryOrStopChanged).toBe(false);
     });
   });
 

@@ -1,4 +1,8 @@
-import { BREAK_EVEN_TOLERANCE_R, CALC_VERSION } from '@/config/trade-calc';
+import {
+  BREAK_EVEN_TOLERANCE_R,
+  CALC_VERSION,
+  PLANNED_R_AGREEMENT_TOLERANCE_R,
+} from '@/config/trade-calc';
 import { type OutcomeValue } from '@/lib/trades/constants';
 
 import {
@@ -60,6 +64,40 @@ export function plannedR(
 
   const reward = isLong ? targetDecimal.minus(entryDecimal) : entryDecimal.minus(targetDecimal);
   return calcOk(toCanonicalR(reward.dividedBy(riskPerUnit)));
+}
+
+// ---------------------------------------------------------------------------
+// Planned R — Money mode (Founder-UAT Trade Plan UX slice, migration 0010)
+// ---------------------------------------------------------------------------
+
+/**
+ * `moneyPlannedR = plannedRewardMinor / plannedRiskMinor` — the Money-mode
+ * equivalent of {@link plannedR}, for a trader who journals planned
+ * risk/reward directly in account-currency minor units instead of prices.
+ * Deliberately the SAME shape as {@link actualR}: two authoritative `bigint`
+ * inputs converted to `Decimal` through exact string conversion, never a JS
+ * `number` division. `plannedRiskMinor` must be strictly positive (mirrors
+ * `actualInitialRiskMinor`'s own guard); `plannedRewardMinor` may be zero
+ * (a break-even-or-better plan is meaningful) but never negative. Absent
+ * Reward is `missing_input` — the Money-mode analogue of an absent Target —
+ * callers treat that as "no Money R to compute," never a hard failure, the
+ * same convention `composePlannedR` and `createTrade`/`updateTradePlan`
+ * already apply to a Target-less Price plan.
+ */
+export function moneyPlannedR(
+  plannedRiskMinor: bigint | null | undefined,
+  plannedRewardMinor: bigint | null | undefined,
+): CalcResult<string> {
+  if (plannedRiskMinor === null || plannedRiskMinor === undefined) return calcErr('missing_input');
+  if (plannedRiskMinor <= 0n) return calcErr('invalid_planned_risk');
+  if (plannedRewardMinor === null || plannedRewardMinor === undefined) {
+    return calcErr('missing_input');
+  }
+  if (plannedRewardMinor < 0n) return calcErr('invalid_planned_reward');
+
+  const risk = bigintToCalcDecimal(plannedRiskMinor);
+  const reward = bigintToCalcDecimal(plannedRewardMinor);
+  return calcOk(toCanonicalR(reward.dividedBy(risk)));
 }
 
 // ---------------------------------------------------------------------------
@@ -324,4 +362,134 @@ export function composePlanned(
   const rResult = plannedR(direction, plannedEntry, plannedStop, plannedTarget);
   if (!rResult.ok) return rResult;
   return calcOk({ plannedR: rResult.value });
+}
+
+// ---------------------------------------------------------------------------
+// Planned R — combined Price + Money composition (Founder-UAT Trade Plan UX
+// slice, migration 0010)
+// ---------------------------------------------------------------------------
+
+export type PlannedRSource = 'price' | 'money' | 'both' | 'none';
+
+export interface PlannedRSnapshot {
+  /** Price-mode R, or `null` when no complete Price plan (Entry+Stop) is present, or present without a Target. */
+  readonly priceR: string | null;
+  /** Money-mode R, or `null` when no Risk is present, or present without a Reward. */
+  readonly moneyR: string | null;
+  /** The single value `trades.planned_r` persists — see this function's own doc comment for precedence. */
+  readonly plannedR: string | null;
+  /** Which representation(s) actually produced an R value. */
+  readonly source: PlannedRSource;
+  /**
+   * True only when BOTH `priceR` and `moneyR` are present and disagree by
+   * more than `PLANNED_R_AGREEMENT_TOLERANCE_R`. The service layer
+   * (`trade-management.ts`) treats this as a hard rejection — it never
+   * persists a mismatched snapshot — so `plannedR` here still carries the
+   * Price-precedence value only so a caller that forgets to check `mismatch`
+   * fails toward the pre-0010 formula, never toward a silent `null`.
+   */
+  readonly mismatch: boolean;
+}
+
+/**
+ * The one function that composes `trades.planned_r` from whichever Plan
+ * representation(s) are present on a Trade. Neither Price nor Money is
+ * required BY THIS FUNCTION — the Founder-UAT slice's "at least one
+ * representation" floor is a separate, service-layer rule, because a
+ * correction that touches only Money fields on a Trade that already has a
+ * valid Price plan must remain valid here even though that one call's Money
+ * inputs alone would not satisfy the floor.
+ *
+ * Fails (a genuine `CalcResult` error) only when a representation that IS at
+ * least partially present is invalid or incomplete — a Price pair present
+ * but risk-direction-invalid, an Entry/Stop/Target fragment missing its
+ * partner, a Money Risk present but non-positive, or a Reward present
+ * without a Risk. A representation that is entirely ABSENT never fails; its
+ * R is simply `null` — the same convention an absent Target on an
+ * otherwise-valid Price plan already used before this slice.
+ *
+ * Precedence when both are present and AGREE (within tolerance): Price is
+ * the persisted canonical `plannedR` — an arbitrary but deterministic and
+ * documented choice, chosen specifically because it means this migration
+ * changes zero existing all-Price Trades' stored value. When both are
+ * present and DISAGREE beyond tolerance, `mismatch: true` is returned
+ * instead — see {@link PlannedRSnapshot.mismatch}.
+ */
+export function composePlannedR(input: {
+  readonly direction: string | null | undefined;
+  readonly plannedEntry: string | null | undefined;
+  readonly plannedStop: string | null | undefined;
+  readonly plannedTarget: string | null | undefined;
+  readonly plannedRiskMinor: bigint | null | undefined;
+  readonly plannedRewardMinor: bigint | null | undefined;
+}): CalcResult<PlannedRSnapshot> {
+  const entryProvided = input.plannedEntry !== null && input.plannedEntry !== undefined;
+  const stopProvided = input.plannedStop !== null && input.plannedStop !== undefined;
+  const targetProvided = input.plannedTarget !== null && input.plannedTarget !== undefined;
+
+  let priceR: string | null = null;
+  if (entryProvided && stopProvided) {
+    const riskContext = resolvePlannedRiskContext(
+      input.direction,
+      input.plannedEntry,
+      input.plannedStop,
+    );
+    if (!riskContext.ok) return riskContext;
+    if (targetProvided) {
+      const priceResult = plannedR(
+        input.direction,
+        input.plannedEntry,
+        input.plannedStop,
+        input.plannedTarget,
+      );
+      if (!priceResult.ok) return priceResult;
+      priceR = priceResult.value;
+    }
+  } else if (entryProvided || stopProvided || targetProvided) {
+    // Entry alone, Stop alone, or a Target with neither — an incomplete
+    // fragment, never silently ignored.
+    return calcErr('missing_input');
+  }
+
+  const riskProvided = input.plannedRiskMinor !== null && input.plannedRiskMinor !== undefined;
+  const rewardProvided =
+    input.plannedRewardMinor !== null && input.plannedRewardMinor !== undefined;
+
+  let moneyR: string | null = null;
+  if (riskProvided) {
+    if ((input.plannedRiskMinor as bigint) <= 0n) return calcErr('invalid_planned_risk');
+    if (rewardProvided) {
+      const moneyResult = moneyPlannedR(input.plannedRiskMinor, input.plannedRewardMinor);
+      if (!moneyResult.ok) return moneyResult;
+      moneyR = moneyResult.value;
+    }
+  } else if (rewardProvided) {
+    // A Reward without a Risk cannot be normalized into an R at all.
+    return calcErr('missing_input');
+  }
+
+  let mismatch = false;
+  if (priceR !== null && moneyR !== null) {
+    const priceDecimal = parseCalcDecimal(priceR);
+    const moneyDecimal = parseCalcDecimal(moneyR);
+    const tolerance = parseCalcDecimal(PLANNED_R_AGREEMENT_TOLERANCE_R);
+    /* istanbul ignore next -- priceR/moneyR are this module's own toCanonicalR output and PLANNED_R_AGREEMENT_TOLERANCE_R is a compile-time constant; unreachable unless one of those is corrupted. */
+    if (priceDecimal === null || moneyDecimal === null || tolerance === null) {
+      throw new Error(
+        'composePlannedR: a canonical R value or the agreement-tolerance constant failed to parse — this is an engine bug, not a routine input error.',
+      );
+    }
+    mismatch = priceDecimal.minus(moneyDecimal).absoluteValue().greaterThan(tolerance);
+  }
+
+  const source: PlannedRSource =
+    priceR !== null && moneyR !== null
+      ? 'both'
+      : priceR !== null
+        ? 'price'
+        : moneyR !== null
+          ? 'money'
+          : 'none';
+
+  return calcOk({ priceR, moneyR, plannedR: priceR ?? moneyR, source, mismatch });
 }

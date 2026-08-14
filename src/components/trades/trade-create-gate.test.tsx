@@ -15,6 +15,7 @@ vi.mock('@/i18n/navigation', () => ({
   ),
 }));
 vi.mock('@/server/actions/trades', () => ({ createTradeAction: vi.fn() }));
+vi.mock('@/server/actions/chart-attachment', () => ({ uploadChartAttachmentAction: vi.fn() }));
 
 const account = { tradingAccountId: 'a', name: 'Main', accountMode: 'live', baseCurrency: 'USD' };
 const strategy = {
@@ -35,7 +36,12 @@ function renderGate(props: React.ComponentProps<typeof TradeCreateGate>) {
 describe('TradeCreateGate', () => {
   it('blocks direct creation in read-only mode and keeps a safe path back to history', () => {
     renderGate({
-      options: { tradingAccounts: [account], strategies: [strategy] },
+      options: {
+        tradingAccounts: [account],
+        strategies: [strategy],
+        workspaceId: 'ws-1',
+        chartUploadConfigured: false,
+      },
       canWrite: false,
       writeBlockReason: 'read_only_workspace',
     });
@@ -48,10 +54,33 @@ describe('TradeCreateGate', () => {
   });
 
   it.each([
-    [{ tradingAccounts: [], strategies: [strategy] }, 'No active Trading Account', '/app/accounts'],
-    [{ tradingAccounts: [account], strategies: [] }, 'No active Strategy', '/app/strategies'],
     [
-      { tradingAccounts: [account], strategies: [{ ...strategy, setups: [] }] },
+      {
+        tradingAccounts: [],
+        strategies: [strategy],
+        workspaceId: 'ws-1',
+        chartUploadConfigured: false,
+      },
+      'No active Trading Account',
+      '/app/accounts',
+    ],
+    [
+      {
+        tradingAccounts: [account],
+        strategies: [],
+        workspaceId: 'ws-1',
+        chartUploadConfigured: false,
+      },
+      'No active Strategy',
+      '/app/strategies',
+    ],
+    [
+      {
+        tradingAccounts: [account],
+        strategies: [{ ...strategy, setups: [] }],
+        workspaceId: 'ws-1',
+        chartUploadConfigured: false,
+      },
       'No usable Setup',
       '/app/strategies',
     ],

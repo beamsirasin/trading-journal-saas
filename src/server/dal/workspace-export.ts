@@ -204,10 +204,14 @@ export async function readWorkspaceExportSource(
           confidence: trades.confidence,
           tradingviewUrl: trades.tradingviewUrl,
           notes: trades.notes,
+          chartAttachmentStorageKey: trades.chartAttachmentStorageKey,
+          chartAttachmentUploadedAt: trades.chartAttachmentUploadedAt,
           plannedEntry: trades.plannedEntry,
           plannedStop: trades.plannedStop,
           plannedTarget: trades.plannedTarget,
           plannedPositionSize: trades.plannedPositionSize,
+          plannedRiskMinor: trades.plannedRiskMinor,
+          plannedRewardMinor: trades.plannedRewardMinor,
           actualEntry: trades.actualEntry,
           actualInitialStop: trades.actualInitialStop,
           actualExit: trades.actualExit,
@@ -338,7 +342,13 @@ export async function readWorkspaceExportSource(
         strategy_setup_versions: setupVersionRows,
         strategy_rules: ruleRows,
         mistake_types: mistakeTypeRows,
-        trades: tradeRows,
+        // The internal private-storage key never leaves this function — only
+        // a truthful presence flag is exported (see `workspace-export.ts`'s
+        // registry column comment).
+        trades: tradeRows.map(({ chartAttachmentStorageKey, ...rest }) => ({
+          ...rest,
+          hasChartAttachment: chartAttachmentStorageKey !== null,
+        })),
         trade_rule_checks: checkRows,
         trade_mistakes: mistakeRows,
         billing_transactions: billingRows,

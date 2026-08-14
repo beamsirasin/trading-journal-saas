@@ -55,10 +55,15 @@ function renderCreateForm() {
   );
 }
 
-function renderEditForm() {
+function renderEditForm(baseCurrencyLocked = false) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradingAccountForm mode="edit" accountId="account-1" initialValues={EDIT_INITIAL_VALUES} />
+      <TradingAccountForm
+        mode="edit"
+        accountId="account-1"
+        initialValues={EDIT_INITIAL_VALUES}
+        baseCurrencyLocked={baseCurrencyLocked}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -236,5 +241,32 @@ describe('TradingAccountForm — edit mode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('This trading account could not be found.')).toBeInTheDocument();
+  });
+
+  it('shows a localized error when the server rejects a currency change on an account with trades', async () => {
+    updateTradingAccountActionMock.mockResolvedValue({ ok: false, code: 'base_currency_locked' });
+    renderEditForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText(
+        "The account currency can't be changed after trades have been recorded.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the currency select editable when the account has never had a Trade', () => {
+    renderEditForm(false);
+    expect(screen.getByLabelText('Base currency')).toBeEnabled();
+    expect(screen.queryByText(/currency can't be changed/)).not.toBeInTheDocument();
+  });
+
+  it('locks the currency select and explains why once the account has a Trade — never lets the user discover the rule only after submitting', () => {
+    renderEditForm(true);
+    expect(screen.getByLabelText('Base currency')).toBeDisabled();
+    expect(
+      screen.getByText("This account has recorded trades, so its currency can't be changed."),
+    ).toBeInTheDocument();
   });
 });

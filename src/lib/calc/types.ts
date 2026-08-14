@@ -18,7 +18,12 @@ export type CalcResult<T> =
  * comment for exactly which reason it returns and why.
  *
  * The first ten (through `system_no_trade`) are Phase 07C's per-trade
- * reasons (`risk.ts`/`trade.ts`). The remaining seven are Phase 07D's
+ * reasons (`risk.ts`/`trade.ts`). `invalid_planned_risk`/`invalid_planned_reward`
+ * (Founder-UAT Trade Plan UX slice, migration 0010) are the Money-mode
+ * Planned R equivalents of `invalid_initial_risk` — a non-positive
+ * `planned_risk_minor` or a negative `planned_reward_minor`, mirroring the
+ * same value-domain guard `actualR` already applies to
+ * `actual_initial_risk_minor`. The remaining seven are Phase 07D's
  * aggregate/attribution/equity reasons (`aggregate.ts`/`attribution.ts`/
  * `equity.ts`) — a genuinely new failure state each: an empty eligible
  * population is not a legitimate zero sample (`no_trades`), a ratio with an
@@ -41,6 +46,8 @@ export const CALC_FAILURE_REASONS = [
   'invalid_system_cost',
   'unresolved_system_outcome',
   'system_no_trade',
+  'invalid_planned_risk',
+  'invalid_planned_reward',
   'no_trades',
   'no_wins',
   'no_losses',
