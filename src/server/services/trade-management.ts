@@ -1,7 +1,8 @@
 import 'server-only';
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
+import { isCanonicalEmotionKey } from '@/config/emotions';
 import { CALC_VERSION } from '@/config/trade-calc';
 import { composePlannedR, composeSystemResolve, composeTraderClose } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
@@ -19,11 +20,13 @@ import {
 import { normalizeOptionalText, normalizeRequiredText } from '@/lib/trades/validation';
 import { getDb, type Database } from '@/server/db/client';
 import {
+  emotionTypes,
   setups,
   strategies,
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeRuleChecks,
   trades,
   tradingAccounts,
@@ -394,6 +397,7 @@ export interface CreateTradeInput {
   readonly session?: string | null;
   readonly confirmationNotes?: string | null;
   readonly confidence?: number | null;
+  readonly emotionKeys?: readonly string[];
   readonly tradingviewUrl?: string | null;
   readonly notes?: string | null;
   /**
@@ -426,7 +430,10 @@ export type CreateTradeErrorCode =
   | 'duplicate_condition_answer'
   | 'unknown_condition_answer'
   | 'incomplete_condition_answers'
-  | 'invalid_condition_status';
+  | 'invalid_condition_status'
+  | 'duplicate_emotion_key'
+  | 'unknown_emotion_key'
+  | 'emotion_type_not_usable';
 
 type SetupConditionInputErrorCode = Extract<
   CreateTradeErrorCode,
@@ -487,6 +494,37 @@ export async function createTrade(
       // Step 4.
       const denial = await resolveMutationDenial(tx, workspaceId, clock);
       if (denial !== null) return { ok: false, code: denial };
+
+      const emotionKeys = input.emotionKeys ?? [];
+      if (new Set(emotionKeys).size !== emotionKeys.length) {
+        return { ok: false, code: 'duplicate_emotion_key' };
+      }
+      if (!emotionKeys.every(isCanonicalEmotionKey)) {
+        return { ok: false, code: 'unknown_emotion_key' };
+      }
+      const selectedEmotionTypes =
+        emotionKeys.length === 0
+          ? []
+          : await tx
+              .select({
+                id: emotionTypes.id,
+                key: emotionTypes.key,
+                workspaceId: emotionTypes.workspaceId,
+              })
+              .from(emotionTypes)
+              .where(
+                and(
+                  inArray(emotionTypes.key, emotionKeys),
+                  eq(emotionTypes.isSystem, true),
+                  eq(emotionTypes.isArchived, false),
+                ),
+              );
+      if (
+        selectedEmotionTypes.length !== emotionKeys.length ||
+        selectedEmotionTypes.some((emotion) => emotion.workspaceId !== null)
+      ) {
+        return { ok: false, code: 'emotion_type_not_usable' };
+      }
 
       const symbol = normalizeRequiredText(input.symbol);
       if (!symbol.ok) return { ok: false, code: 'blank_symbol' };
@@ -592,6 +630,7 @@ export async function createTrade(
           session: normalizeOptionalText(input.session),
           confirmationNotes: normalizeOptionalText(input.confirmationNotes),
           confidence: input.confidence ?? null,
+          emotionsRecordedAt: clock.now(),
           tradingviewUrl: normalizeOptionalText(input.tradingviewUrl),
           notes: normalizeOptionalText(input.notes),
           chartAttachmentStorageKey: input.chartAttachmentStorageKey ?? null,
@@ -627,14 +666,6 @@ export async function createTrade(
       }
 
       // Step 14.
-      await insertRuleSnapshotsInTx(tx, {
-        workspaceId,
-        tradeId: created.id,
-        strategyVersionId: version.id,
-        setupVersionId: setupVersion.id,
-      });
-
-      // Step 15.
       const conditionSnapshots = await snapshotTradeSetupConditionsInTx(tx, {
         workspaceId,
         tradeId: created.id,
@@ -653,6 +684,24 @@ export async function createTrade(
               `createTrade condition snapshot invariant failed: ${conditionSnapshots.code}`,
             );
         }
+      }
+
+      // Step 15.
+      await insertRuleSnapshotsInTx(tx, {
+        workspaceId,
+        tradeId: created.id,
+        strategyVersionId: version.id,
+        setupVersionId: setupVersion.id,
+      });
+
+      if (selectedEmotionTypes.length > 0) {
+        await tx.insert(tradeEmotions).values(
+          selectedEmotionTypes.map((emotion) => ({
+            tradeId: created.id,
+            emotionTypeId: emotion.id,
+            workspaceId,
+          })),
+        );
       }
 
       // Step 16.

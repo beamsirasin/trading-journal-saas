@@ -39,6 +39,8 @@ const base: TradeDetailModel = {
   confirmationNotes: null,
   tradingviewUrl: null,
   notes: null,
+  reviewNotes: null,
+  emotionsRecordedAt: null,
   hasChartAttachment: false,
   chartAttachmentUploadedAt: null,
   plannedEntry: '100.0000',
@@ -92,12 +94,14 @@ const base: TradeDetailModel = {
     },
   ],
   mistakeCatalog: [],
+  emotions: [],
+  emotionCatalog: [],
   createdAt: '2026-08-08T00:00:00.000Z',
   updatedAt: '2026-08-08T00:00:00.000Z',
 };
 
 function renderDetail(trade: TradeDetailModel) {
-  render(
+  return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <TradeDetail trade={trade} timezone="Asia/Bangkok" locale="en-GB" canWrite={false} />
     </NextIntlClientProvider>,
@@ -125,6 +129,33 @@ describe('TradeDetail', () => {
   it('renders no Confidence row when unset', () => {
     renderDetail({ ...base, confidence: null });
     expect(screen.queryByText('Confidence')).not.toBeInTheDocument();
+  });
+
+  it('distinguishes historical not-recorded Emotions from a recorded zero selection', () => {
+    const first = renderDetail(base);
+    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
+    first.unmount();
+    renderDetail({
+      ...base,
+      emotionsRecordedAt: '2026-08-08T00:00:00.000Z',
+      emotions: [],
+    });
+    expect(screen.getByText('No emotions selected')).toBeInTheDocument();
+  });
+
+  it('renders localized selected Emotions and distinct post-trade review notes', () => {
+    renderDetail({
+      ...base,
+      emotionsRecordedAt: '2026-08-08T00:00:00.000Z',
+      emotions: [
+        { key: 'calm', label: 'Calm' },
+        { key: 'focused', label: 'Focused' },
+      ],
+      reviewNotes: 'I waited for the close and followed the plan.',
+    });
+    expect(screen.getByText('Calm')).toBeInTheDocument();
+    expect(screen.getByText('Focused')).toBeInTheDocument();
+    expect(screen.getByText('I waited for the close and followed the plan.')).toBeInTheDocument();
   });
 
   it('renders a Chart attachment via the authenticated delivery route, never a stored URL', () => {

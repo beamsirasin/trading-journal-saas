@@ -43,6 +43,11 @@ const conditionB = {
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  emotionCatalog: [
+    { key: 'calm', label: 'Calm' },
+    { key: 'focused', label: 'Focused' },
+    { key: 'fomo', label: 'FOMO' },
+  ],
   tradingAccounts: [
     {
       tradingAccountId: '018f0000-0000-7000-8000-000000000001',
@@ -143,11 +148,37 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByLabelText('Symbol')).toBeVisible();
     expect(screen.getByText('Setup Conditions')).toBeVisible();
     expect(screen.getAllByText('Confidence').length).toBeGreaterThan(0);
+    expect(screen.getByText('How are you feeling?')).toBeVisible();
     expect(screen.getAllByText('Entry Reason').length).toBeGreaterThan(0);
     expect(screen.getByText('Chart attachment')).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'Save Trade' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
     expect(screen.queryByText('Review the planned Trade')).not.toBeInTheDocument();
+  });
+
+  it('supports accessible optional Emotion multi-select and preserves it across Strategy changes', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+    renderForm();
+    const calm = screen.getByRole('button', { name: 'Calm' });
+    const fomo = screen.getByRole('button', { name: 'FOMO' });
+    expect(calm).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(calm);
+    fireEvent.click(fomo);
+    fireEvent.click(screen.getByLabelText(/75%/));
+    fireEvent.change(screen.getByLabelText(/Entry Reason/), {
+      target: { value: 'Reason remains stable.' },
+    });
+    expect(calm).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(screen.getByLabelText('Strategy'), {
+      target: { value: options.strategies[1].strategyId },
+    });
+    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText(/75%/)).toBeChecked();
+    expect(screen.getByLabelText(/Entry Reason/)).toHaveValue('Reason remains stable.');
+    fillPricePlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(createTradeActionMock.mock.calls[0]?.[0].emotionKeys).toEqual(['calm', 'fomo']);
   });
 
   it('loads Conditions and previews adherence without a 0/0 state', () => {

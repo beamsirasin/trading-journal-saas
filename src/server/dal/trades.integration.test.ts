@@ -632,6 +632,24 @@ describe('trades DAL (real database)', () => {
   });
 
   describe('getTradeCreateOptions — selector', () => {
+    it('returns the ten active canonical Emotion keys in deterministic order without IDs', async () => {
+      await freshWorkspace();
+      const options = await getTradeCreateOptions();
+      expect(options.emotionCatalog.map((emotion) => emotion.key)).toEqual([
+        'calm',
+        'focused',
+        'fearful',
+        'fomo',
+        'greedy',
+        'hesitant',
+        'revenge',
+        'excited',
+        'tired',
+        'frustrated',
+      ]);
+      expect(JSON.stringify(options.emotionCatalog)).not.toContain('id');
+    });
+
     it('returns current Setup Conditions in deterministic order with an opaque concurrency token', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);
@@ -716,6 +734,31 @@ describe('trades DAL (real database)', () => {
   });
 
   describe('detail includes System fields once resolved', () => {
+    it('returns the persisted Emotion marker so old absence and recorded zero stay distinct', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+      await db
+        .update(trades)
+        .set({ emotionsRecordedAt: null })
+        .where(eq(trades.id, created.tradeId));
+      const historical = await getWorkspaceTradeDetail(created.tradeId);
+      expect(historical).toMatchObject({
+        ok: true,
+        trade: { emotionsRecordedAt: null, emotions: [] },
+      });
+      await db
+        .update(trades)
+        .set({ emotionsRecordedAt: new Date('2026-08-15T00:00:00Z') })
+        .where(eq(trades.id, created.tradeId));
+      const recordedZero = await getWorkspaceTradeDetail(created.tradeId);
+      expect(recordedZero).toMatchObject({
+        ok: true,
+        trade: { emotionsRecordedAt: '2026-08-15T00:00:00.000Z', emotions: [] },
+      });
+    });
+
     it('reflects resolved System R/outcome and open Actual fields', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);

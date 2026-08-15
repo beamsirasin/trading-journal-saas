@@ -16,6 +16,7 @@ import type {
 import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
+  emotionTypes,
   mistakeTypes,
   setupConditions,
   setups,
@@ -23,6 +24,7 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -300,6 +302,9 @@ export interface TradeDetail {
   readonly confirmationNotes: string | null;
   readonly tradingviewUrl: string | null;
   readonly notes: string | null;
+  readonly reviewNotes: string | null;
+  /** Null means the historical Trade predates explicit emotion capture. */
+  readonly emotionsRecordedAt: string | null;
   /**
    * Never the storage key or a URL (Founder review, private-storage
    * correction) — presentation-only presence flag. When `true`, the client
@@ -346,6 +351,8 @@ export interface TradeDetail {
   readonly mistakes: readonly TradeMistakeDetail[];
   /** The nine active, platform-owned mistake types available in the Phase 08 journal UI. */
   readonly mistakeCatalog: readonly TradeMistakeOption[];
+  readonly emotions: readonly TradeEmotionOption[];
+  readonly emotionCatalog: readonly TradeEmotionOption[];
 
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -425,6 +432,19 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .where(and(eq(mistakeTypes.isSystem, true), eq(mistakeTypes.isArchived, false)))
     .orderBy(asc(mistakeTypes.sortOrder), asc(mistakeTypes.key));
 
+  const emotionRows = await db
+    .select({ key: emotionTypes.key, label: emotionTypes.label })
+    .from(tradeEmotions)
+    .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
+    .where(eq(tradeEmotions.tradeId, tradeId))
+    .orderBy(asc(emotionTypes.sortOrder), asc(emotionTypes.key));
+
+  const emotionCatalogRows = await db
+    .select({ key: emotionTypes.key, label: emotionTypes.label })
+    .from(emotionTypes)
+    .where(and(eq(emotionTypes.isSystem, true), eq(emotionTypes.isArchived, false)))
+    .orderBy(asc(emotionTypes.sortOrder), asc(emotionTypes.key));
+
   return {
     ok: true,
     trade: {
@@ -448,6 +468,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       confirmationNotes: trade.confirmationNotes,
       tradingviewUrl: trade.tradingviewUrl,
       notes: trade.notes,
+      reviewNotes: trade.reviewNotes,
+      emotionsRecordedAt: dateToIso(trade.emotionsRecordedAt),
       hasChartAttachment: trade.chartAttachmentStorageKey !== null,
       chartAttachmentUploadedAt: dateToIso(trade.chartAttachmentUploadedAt),
 
@@ -501,6 +523,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
         note: m.note,
       })),
       mistakeCatalog: mistakeCatalogRows,
+      emotions: emotionRows,
+      emotionCatalog: emotionCatalogRows,
 
       createdAt: trade.createdAt.toISOString(),
       updatedAt: trade.updatedAt.toISOString(),
@@ -580,6 +604,7 @@ export interface TradeCreateStrategyOption {
 export interface TradeCreateOptions {
   readonly tradingAccounts: readonly TradeCreateAccountOption[];
   readonly strategies: readonly TradeCreateStrategyOption[];
+  readonly emotionCatalog: readonly TradeEmotionOption[];
   /**
    * Not a secret — already implicit in the authenticated session/cookies and
    * used elsewhere client-side (e.g. `/app/strategies?strategy=` links).
@@ -597,6 +622,11 @@ export interface TradeCreateOptions {
    * `src/lib/storage/chart-attachment-storage.ts`.
    */
   readonly chartUploadConfigured: boolean;
+}
+
+export interface TradeEmotionOption {
+  readonly key: string;
+  readonly label: string;
 }
 
 /**
@@ -625,6 +655,11 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     where: and(eq(tradingAccounts.workspaceId, workspaceId), eq(tradingAccounts.isArchived, false)),
     orderBy: [asc(tradingAccounts.createdAt), asc(tradingAccounts.id)],
   });
+  const emotionCatalog = await db
+    .select({ key: emotionTypes.key, label: emotionTypes.label })
+    .from(emotionTypes)
+    .where(and(eq(emotionTypes.isSystem, true), eq(emotionTypes.isArchived, false)))
+    .orderBy(asc(emotionTypes.sortOrder), asc(emotionTypes.key));
 
   const strategyRows = await db
     .select()
@@ -735,6 +770,7 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
       baseCurrency: a.baseCurrency,
     })),
     strategies: strategyOptions,
+    emotionCatalog,
     workspaceId,
     chartUploadConfigured: isChartAttachmentStorageConfigured(),
   };

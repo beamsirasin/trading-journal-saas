@@ -4,6 +4,8 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   auditLogs,
+  tradeEmotions,
+  trades,
   tradingAccounts,
   userPreferences,
   users,
@@ -81,10 +83,12 @@ const {
   markSystemNoTradeAction,
   openTradeAction,
   removeTradeMistakeAction,
+  replaceTradeEmotionsAction,
   resolveSystemTradeAction,
   softDeleteTradeAction,
   updateTradePlanAction,
   updateTradeRuleCheckAction,
+  updateTradeReviewNotesAction,
 } = await import('./trades');
 
 type Db = ReturnType<typeof getTestDb>;
@@ -207,6 +211,7 @@ function baseCreateInput(fw: Framework, overrides: Record<string, unknown> = {})
     setupId: fw.setupId,
     conditionSetToken: createConditionSetToken(fw.setupVersionId),
     conditionAnswers: [],
+    emotionKeys: [],
     symbol: 'EURUSD',
     direction: 'long' as const,
     plannedEntry: '1.1000000000',
@@ -282,6 +287,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         setupId: crypto.randomUUID(),
         conditionSetToken: 'a'.repeat(64),
         conditionAnswers: [],
+        emotionKeys: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedEntry: '1.1',
@@ -351,6 +357,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         setupId: fw.setupId,
         conditionSetToken: createConditionSetToken(fw.setupVersionId),
         conditionAnswers: [],
+        emotionKeys: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedRiskMinor: '5000',
@@ -379,6 +386,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         setupId: fw.setupId,
         conditionSetToken: createConditionSetToken(fw.setupVersionId),
         conditionAnswers: [],
+        emotionKeys: [],
         symbol: 'EURUSD',
         direction: 'long',
       });
@@ -737,6 +745,39 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         mistakeTypeId: mistakeType.id,
       });
       expect(removedAgain).toMatchObject({ ok: true, data: { alreadyRemoved: true } });
+    });
+  });
+
+  describe('replaceTradeEmotionsAction / updateTradeReviewNotesAction', () => {
+    it('validates and persists both correction operations through the public action boundary', async () => {
+      const { tradeId } = await createdTrade();
+      const emotions = await replaceTradeEmotionsAction({
+        tradeId,
+        emotionKeys: ['calm', 'focused'],
+      });
+      expect(emotions).toEqual({
+        ok: true,
+        data: { tradeId, emotionKeys: ['calm', 'focused'] },
+      });
+      expect(
+        await db.select().from(tradeEmotions).where(eq(tradeEmotions.tradeId, tradeId)),
+      ).toHaveLength(2);
+
+      const review = await updateTradeReviewNotesAction({
+        tradeId,
+        reviewNotes: 'Stayed patient.',
+      });
+      expect(review).toEqual({ ok: true, data: { tradeId, reviewNotes: 'Stayed patient.' } });
+      const stored = await db.query.trades.findFirst({ where: eq(trades.id, tradeId) });
+      expect(stored?.reviewNotes).toBe('Stayed patient.');
+      assertJsonSerializable(review);
+    });
+
+    it('rejects duplicate Emotion keys at the strict schema boundary', async () => {
+      const { tradeId } = await createdTrade();
+      expect(
+        await replaceTradeEmotionsAction({ tradeId, emotionKeys: ['calm', 'calm'] }),
+      ).toMatchObject({ ok: false, error: { code: 'validation_error' } });
     });
   });
 

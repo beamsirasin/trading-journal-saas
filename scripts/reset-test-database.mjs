@@ -23,7 +23,7 @@
  * TEST_DATABASE_ACK) — it can never run against production, and no
  * equivalent exists in any production/runtime code path.
  *
- * TWO WRINKLES, both because CASCADE follows the full transitive FK closure,
+ * THREE WRINKLES, all because CASCADE follows the full transitive FK closure,
  * not just direct children:
  *
  * 1. `mistake_types` is not purely tenant fixture data — its nine canonical
@@ -39,7 +39,11 @@
  *    migration 0009's single bootstrap row (`enabled=false`, 700 basis
  *    points, `reason_code='bootstrap'`) is removed with it.
  *
- * This script re-seeds both immediately after truncating, using the EXACT
+ * 3. Phase 13D's `emotion_types` has the same mixed global-system/custom
+ *    tenancy shape as `mistake_types`, so its ten canonical rows are also
+ *    removed by the cascade.
+ *
+ * This script re-seeds all three immediately after truncating, using the EXACT
  * INSERTs the source migrations use — copied verbatim rather than
  * re-derived, so they can never silently drift from what a fresh migrated
  * database actually contains.
@@ -88,6 +92,24 @@ await sql`
   ON CONFLICT ("key") WHERE "is_system" DO NOTHING
 `;
 
+// Re-seed the ten canonical system Emotion types — copied verbatim from
+// drizzle/0012_emotions_and_review.sql.
+await sql`
+  INSERT INTO "emotion_types" ("id", "workspace_id", "key", "label", "is_system", "is_archived", "sort_order")
+  VALUES
+    ('019b6d40-7a00-7000-8000-000000000001', NULL, 'calm', 'Calm', true, false, 0),
+    ('019b6d40-7a00-7000-8000-000000000002', NULL, 'focused', 'Focused', true, false, 1),
+    ('019b6d40-7a00-7000-8000-000000000003', NULL, 'fearful', 'Fearful', true, false, 2),
+    ('019b6d40-7a00-7000-8000-000000000004', NULL, 'fomo', 'FOMO', true, false, 3),
+    ('019b6d40-7a00-7000-8000-000000000005', NULL, 'greedy', 'Greedy', true, false, 4),
+    ('019b6d40-7a00-7000-8000-000000000006', NULL, 'hesitant', 'Hesitant', true, false, 5),
+    ('019b6d40-7a00-7000-8000-000000000007', NULL, 'revenge', 'Revenge', true, false, 6),
+    ('019b6d40-7a00-7000-8000-000000000008', NULL, 'excited', 'Excited', true, false, 7),
+    ('019b6d40-7a00-7000-8000-000000000009', NULL, 'tired', 'Tired', true, false, 8),
+    ('019b6d40-7a00-7000-8000-00000000000a', NULL, 'frustrated', 'Frustrated', true, false, 9)
+  ON CONFLICT ("key") WHERE "is_system" DO NOTHING
+`;
+
 // Re-seed the single VAT bootstrap row — copied verbatim from drizzle/
 // 0009_platform_admin_foundation.sql's own seed INSERT, made idempotent
 // with an explicit existence check since that INSERT has no ON CONFLICT
@@ -118,13 +140,17 @@ const [{ count: auditCount }] = await sql`select count(*)::int as count from adm
 const [{ count: systemMistakeCount }] = await sql`
   select count(*)::int as count from mistake_types where is_system
 `;
+const [{ count: systemEmotionCount }] = await sql`
+  select count(*)::int as count from emotion_types where is_system
+`;
 const [{ count: vatConfigCount }] =
   await sql`select count(*)::int as count from platform_vat_configuration`;
 
 console.log(
   `[reset-test-database] post-reset counts — users=${userCount} workspaces=${workspaceCount} ` +
     `platform_admins=${adminCount} admin_audit_log=${auditCount} ` +
-    `system_mistake_types=${systemMistakeCount} platform_vat_configuration=${vatConfigCount}`,
+    `system_mistake_types=${systemMistakeCount} system_emotion_types=${systemEmotionCount} ` +
+    `platform_vat_configuration=${vatConfigCount}`,
 );
 
 if (
@@ -133,6 +159,7 @@ if (
   adminCount !== 0 ||
   auditCount !== 0 ||
   systemMistakeCount !== 9 ||
+  systemEmotionCount !== 10 ||
   vatConfigCount < 1
 ) {
   await sql.end();

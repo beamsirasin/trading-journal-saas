@@ -563,7 +563,8 @@
         "execution": "Actual Execution",
         "system": "System Result",
         "rules": "Rules",
-        "mistakes": "Mistakes"
+        "mistakes": "Mistakes",
+        "reflection": "Emotions & Post-Trade Review"
       },
       "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" }
     },
@@ -634,6 +635,17 @@
         "remove": "Remove",
         "choose": "Choose a mistake type."
       },
+      "reflection": {
+        "emotions": "Emotions",
+        "reviewNotes": "Post-trade review",
+        "notRecorded": "Not recorded",
+        "noneSelected": "No emotions selected",
+        "selectHint": "Select every emotion that applied. Zero is a valid answer.",
+        "saveEmotions": "Save emotions",
+        "saveReview": "Save review",
+        "saving": "Saving…",
+        "saved": "Saved"
+      },
       "cancelTrade": {
         "action": "Cancel planned Trade",
         "title": "Cancel this planned Trade?",
@@ -662,6 +674,18 @@
       "ignored_invalidation": "Ignored invalidation",
       "moved_target": "Moved target",
       "no_stop": "No stop"
+    },
+    "emotions": {
+      "calm": "Calm",
+      "focused": "Focused",
+      "fearful": "Fearful",
+      "fomo": "FOMO",
+      "greedy": "Greedy",
+      "hesitant": "Hesitant",
+      "revenge": "Revenge",
+      "excited": "Excited",
+      "tired": "Tired",
+      "frustrated": "Frustrated"
     },
     "create": {
       "pageTitle": "Log a planned Trade",
@@ -693,6 +717,7 @@
         "context": "Context",
         "conditions": "Setup Conditions",
         "confidence": "Confidence",
+        "emotions": "How are you feeling?",
         "entryReason": "Entry Reason",
         "chart": "Chart attachment",
         "notes": "Notes"
@@ -726,6 +751,9 @@
         },
         "clear": "Clear confidence",
         "hint": "How confident are you in this setup?"
+      },
+      "emotions": {
+        "description": "Optional. Select every emotion present as you enter this Trade."
       },
       "conditions": {
         "description": "Check every condition that is met now. Unchecked conditions are saved as Not Met.",
@@ -827,6 +855,7 @@
       "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
       "stale_setup_conditions": "This Setup changed while you were entering the Trade. Reload the current Conditions and review them again.",
       "invalid_setup_condition_answers": "The Setup Condition answers are no longer valid. Reload the page and review the current Conditions.",
+      "invalid_emotion_selection": "The emotion selection is no longer valid. Reload the page and try again.",
       "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
       "no_plan_representation": "Enter a Price plan (Entry/Stop) or a Money plan (planned risk) before creating this Trade.",
       "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",

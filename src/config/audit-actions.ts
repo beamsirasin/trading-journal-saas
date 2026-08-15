@@ -76,6 +76,7 @@ export const AUDIT_ACTIONS = [
   'trade.rule_check_updated',
   'trade.mistake_added',
   'trade.mistake_removed',
+  'trade.emotions_corrected',
   'trade.deleted',
 ] as const;
 

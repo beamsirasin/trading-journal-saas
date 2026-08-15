@@ -32,6 +32,7 @@ const strategy = {
     },
   ],
 };
+const emotionCatalog = [{ key: 'calm', label: 'Calm' }];
 
 function renderGate(props: React.ComponentProps<typeof TradeCreateGate>) {
   return render(
@@ -49,6 +50,7 @@ describe('TradeCreateGate', () => {
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        emotionCatalog,
       },
       canWrite: false,
       writeBlockReason: 'read_only_workspace',
@@ -68,6 +70,7 @@ describe('TradeCreateGate', () => {
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        emotionCatalog,
       },
       'No active Trading Account',
       '/app/accounts',
@@ -78,6 +81,7 @@ describe('TradeCreateGate', () => {
         strategies: [],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        emotionCatalog,
       },
       'No active Strategy',
       '/app/strategies',
@@ -88,6 +92,7 @@ describe('TradeCreateGate', () => {
         strategies: [{ ...strategy, setups: [] }],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        emotionCatalog,
       },
       'No usable Setup',
       '/app/strategies',

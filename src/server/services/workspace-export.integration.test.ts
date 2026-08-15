@@ -14,6 +14,7 @@ import {
   accounts,
   auditLogs,
   billingTransactions,
+  emotionTypes,
   mistakeTypes,
   sessions,
   setupConditions,
@@ -22,6 +23,7 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -509,6 +511,48 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
     expect(serializeWorkspaceExportJson(envelope)).not.toContain(storageKey);
   });
 
+  it('exports Emotion taxonomy, Trade links, capture marker, and Review notes in schema v3', async () => {
+    const db = getTestDb();
+    const seeded = await seedHistoricalWorkspace(db);
+    const [calm] = await db
+      .select({ id: emotionTypes.id })
+      .from(emotionTypes)
+      .where(eq(emotionTypes.key, 'calm'));
+    if (calm === undefined) throw new Error('canonical calm Emotion missing');
+    await db.insert(tradeEmotions).values({
+      tradeId: seeded.trade.id,
+      emotionTypeId: calm.id,
+      workspaceId: seeded.workspace.id,
+    });
+    await db
+      .update(trades)
+      .set({
+        emotionsRecordedAt: new Date('2026-08-05T01:00:00Z'),
+        reviewNotes: 'A post-trade lesson, distinct from Entry Reason.',
+      })
+      .where(eq(trades.id, seeded.trade.id));
+
+    const source = await readWorkspaceExportSource(seeded.workspace.id, seeded.owner.id);
+    const envelope = createWorkspaceExportEnvelope({
+      exportedAt: NOW,
+      productVersion: '0.1.0',
+      workspaceId: seeded.workspace.id,
+      source,
+    });
+    expect(envelope.schemaVersion).toBe(3);
+    expect(envelope.data.emotion_types.find((row) => row.id === calm.id)).toMatchObject({
+      key: 'calm',
+      isSystem: true,
+    });
+    expect(envelope.data.trade_emotions).toContainEqual(
+      expect.objectContaining({ tradeId: seeded.trade.id, emotionTypeId: calm.id }),
+    );
+    expect(envelope.data.trades.find((row) => row.id === seeded.trade.id)).toMatchObject({
+      reviewNotes: 'A post-trade lesson, distinct from Entry Reason.',
+      emotionsRecordedAt: '2026-08-05T01:00:00.000Z',
+    });
+  });
+
   it('excludes exact auth, provider, billing-internal and audit sentinels from JSON and ZIP', async () => {
     const seeded = await seedHistoricalWorkspace(getTestDb());
     const source = await readWorkspaceExportSource(seeded.workspace.id, seeded.owner.id);
@@ -658,7 +702,7 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     const clock = createFixedClock(NOW);
     const json = await prepareCurrentWorkspaceExport('json', { clock });
     const csv = await prepareCurrentWorkspaceExport('csv', { clock });
-    expect(JSON.parse(json.body as string).schemaVersion).toBe(2);
+    expect(JSON.parse(json.body as string).schemaVersion).toBe(3);
     expect(csv.body).toBeInstanceOf(Uint8Array);
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
@@ -672,11 +716,11 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(events).toEqual([
       {
         action: 'data.exported',
-        metadata: { format: 'json', scope: 'workspace', schemaVersion: 2 },
+        metadata: { format: 'json', scope: 'workspace', schemaVersion: 3 },
       },
       {
         action: 'data.exported',
-        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 2 },
+        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 3 },
       },
     ]);
     expect(JSON.stringify(events)).not.toMatch(/พื้นที่ทำงาน|ทองคำ|@example/);

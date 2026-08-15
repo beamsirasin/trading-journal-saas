@@ -151,6 +151,7 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
   const [isPending, setIsPending] = useState(false);
   const [confirmUnmetOpen, setConfirmUnmetOpen] = useState(false);
   const [conditionMetByKey, setConditionMetByKey] = useState<Record<string, boolean>>({});
+  const [emotionKeys, setEmotionKeys] = useState<string[]>([]);
   const initialAccount =
     options.tradingAccounts.length === 1
       ? (options.tradingAccounts[0]?.tradingAccountId ?? '')
@@ -410,6 +411,7 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
       timeframe: values.timeframe,
       session: values.session,
       ...(confidence === undefined ? {} : { confidence }),
+      emotionKeys,
       confirmationNotes: values.confirmationNotes,
       tradingviewUrl: values.tradingviewUrl,
       notes: values.notes,
@@ -815,6 +817,41 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
               onChange={(next) => setField('confidence', next === null ? '' : String(next))}
             />
           </div>
+
+          <fieldset className="grid gap-3">
+            <legend className="text-label text-muted-foreground uppercase">
+              {t('create.sections.emotions')}
+            </legend>
+            <p className="text-muted-foreground text-sm">{t('create.emotions.description')}</p>
+            <div className="flex flex-wrap gap-2">
+              {options.emotionCatalog.map((emotion) => {
+                const selected = emotionKeys.includes(emotion.key);
+                return (
+                  <button
+                    key={emotion.key}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() =>
+                      setEmotionKeys((current) =>
+                        current.includes(emotion.key)
+                          ? current.filter((key) => key !== emotion.key)
+                          : [...current, emotion.key],
+                      )
+                    }
+                    className={cn(
+                      'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors',
+                      selected
+                        ? 'border-primary bg-primary/10 text-foreground ring-primary/25 ring-2'
+                        : 'border-border bg-card hover:bg-accent/50',
+                    )}
+                  >
+                    {selected ? <Check aria-hidden="true" size={15} /> : null}
+                    {t(`emotions.${emotion.key}`)}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
 
           <div className="grid gap-3">
             <h3 className="text-label text-muted-foreground uppercase">

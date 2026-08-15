@@ -6,6 +6,7 @@ import type { WorkspaceExportSource } from '@/lib/export/workspace-export';
 import { getDb } from '@/server/db/client';
 import {
   billingTransactions,
+  emotionTypes,
   mistakeTypes,
   setupConditions,
   setups,
@@ -13,6 +14,7 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -226,6 +228,8 @@ export async function readWorkspaceExportSource(
           confidence: trades.confidence,
           tradingviewUrl: trades.tradingviewUrl,
           notes: trades.notes,
+          reviewNotes: trades.reviewNotes,
+          emotionsRecordedAt: trades.emotionsRecordedAt,
           chartAttachmentStorageKey: trades.chartAttachmentStorageKey,
           chartAttachmentUploadedAt: trades.chartAttachmentUploadedAt,
           plannedEntry: trades.plannedEntry,
@@ -330,6 +334,33 @@ export async function readWorkspaceExportSource(
           asc(tradeSetupConditionChecks.conditionKey),
         );
 
+      const emotionRows = await tx
+        .select({
+          tradeId: tradeEmotions.tradeId,
+          emotionTypeId: tradeEmotions.emotionTypeId,
+          workspaceId: tradeEmotions.workspaceId,
+          createdAt: tradeEmotions.createdAt,
+        })
+        .from(tradeEmotions)
+        .where(eq(tradeEmotions.workspaceId, workspaceId))
+        .orderBy(asc(tradeEmotions.tradeId), asc(tradeEmotions.emotionTypeId));
+
+      const emotionTypeRows = await tx
+        .select({
+          id: emotionTypes.id,
+          workspaceId: emotionTypes.workspaceId,
+          key: emotionTypes.key,
+          label: emotionTypes.label,
+          isSystem: emotionTypes.isSystem,
+          isArchived: emotionTypes.isArchived,
+          sortOrder: emotionTypes.sortOrder,
+          createdAt: emotionTypes.createdAt,
+          updatedAt: emotionTypes.updatedAt,
+        })
+        .from(emotionTypes)
+        .where(or(eq(emotionTypes.workspaceId, workspaceId), eq(emotionTypes.isSystem, true)))
+        .orderBy(asc(emotionTypes.isSystem), asc(emotionTypes.sortOrder), asc(emotionTypes.id));
+
       const referencedMistakeTypeIds = [...new Set(mistakeRows.map((row) => row.mistakeTypeId))];
       const mistakeTypeRows = await tx
         .select({
@@ -387,6 +418,7 @@ export async function readWorkspaceExportSource(
         strategy_rules: ruleRows,
         setup_conditions: setupConditionRows,
         mistake_types: mistakeTypeRows,
+        emotion_types: emotionTypeRows,
         // The internal private-storage key never leaves this function — only
         // a truthful presence flag is exported (see `workspace-export.ts`'s
         // registry column comment).
@@ -397,6 +429,7 @@ export async function readWorkspaceExportSource(
         trade_rule_checks: checkRows,
         trade_setup_condition_checks: setupConditionCheckRows,
         trade_mistakes: mistakeRows,
+        trade_emotions: emotionRows,
         billing_transactions: billingRows,
       };
     },

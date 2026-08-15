@@ -2,7 +2,7 @@
 
 **Depends on:** 08, 09 · **Blocks:** 13B–13I
 
-**Status:** 13A — Contract Freeze and 13B — Setup Conditions Domain are **complete**. Migration `0011_setup_conditions_domain.sql` implements the two-table persistence model, Strategy/Setup authoring and COW, immutable dormant Trade snapshots, tenant-safe export, and tests. 13C–13I have **not started**. The existing Trade-create UI intentionally records zero Condition snapshots until 13C supplies explicit answers.
+**Status:** 13A–13D are **complete**. Migration `0011_setup_conditions_domain.sql` implements Setup Conditions; 13C replaced the retired wizard with the single-page Journal Entry; migration `0012_emotions_and_review.sql` implements canonical Emotions, atomic Entry capture/correction, and the distinct Post-Trade Review field. 13E–13I have not started.
 
 This document supersedes the exploratory _Journal V2 Gap Audit_ (2026-08-15, unpublished research artifact) wherever the two disagree. The audit is accepted as research; several of its recommendations are corrected below after Founder review. Every correction is called out explicitly, with the reason, so implementers don't silently reintroduce the audit's original (superseded) framing.
 
@@ -475,7 +475,9 @@ No dependency-driven reordering is recommended beyond this — 13B before 13C be
 - `trade_setup_condition_checks` stores immutable server-authoritative key/label/order/status snapshots with exact Trade/Setup Version/source-row composite FKs. Status is exactly `met | not_met`.
 - The future-capture helper accepts only keys and binary answers, requires exactly one answer for every authoritative Condition, and rejects duplicates, omissions, foreign keys, wrong Workspaces, and Setup Version mismatches. It is dormant until 13C; the old Trade flow still writes zero rows truthfully.
 - Existing `strategy_rules.is_pre_trade_check = true` rows remain intact and COW preserves them. New Rule authoring no longer exposes or creates that legacy meaning; Setup Conditions own new pre-entry authoring.
-- Workspace export schema version 2 includes both new datasets. No adherence aggregate or analytics surface was added.
+- Workspace export schema version 2 includes both Setup Condition datasets. No adherence aggregate or analytics surface was added.
+- Phase 13C captures complete Setup Condition answers from the single-page Entry surface and preserves the stale-set guard and unmet-answer confirmation.
+- Phase 13D adds the ten canonical bilingual Emotion choices, `emotion_types`, `trade_emotions`, nullable `trades.review_notes`, and nullable `trades.emotions_recorded_at`. The marker distinguishes historical “not recorded” from a recorded zero selection. Create and correction accept keys only, resolve active system rows authoritatively, write atomically, and remain entitlement/audit guarded. Workspace export schema version 3 includes both Emotion datasets and both new Trade fields.
 
 ---
 
@@ -540,9 +542,9 @@ Except for the required `CLAUDE.md` authority correction called out above, none 
 - [x] Existing Strategy COW copies every Condition with a new row ID and remapped Setup Version while preserving `condition_key`
 - [x] PostgreSQL protects locked Condition rows and immutable Trade snapshots, including the workspace-delete exception
 - [x] Future Trade snapshot helper validates an explicit complete binary answer set from authoritative source rows
-- [x] Current Trade creation remains unchanged and writes zero Condition snapshots until 13C
+- [x] Phase 13C Trade creation captures authoritative Condition snapshots from the single-page Entry
 - [x] Legacy pre-trade Rule history is preserved while new Rule authoring is Execution Rule-only
-- [x] Workspace export schema version 2 includes Conditions and their snapshots
+- [x] Workspace export schema version 3 includes Conditions, Emotions, their links/snapshots, and Review fields
 - [x] No Setup Adherence analytics or customer-facing Trade checklist/list/detail surface shipped early
 
 ## Risks (carried into 13B–13I, not resolved here)

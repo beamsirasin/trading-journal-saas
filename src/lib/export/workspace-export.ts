@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 2 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 3 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -16,10 +16,12 @@ export type WorkspaceExportDatasetName =
   | 'strategy_rules'
   | 'setup_conditions'
   | 'mistake_types'
+  | 'emotion_types'
   | 'trades'
   | 'trade_rule_checks'
   | 'trade_setup_condition_checks'
   | 'trade_mistakes'
+  | 'trade_emotions'
   | 'billing_transactions';
 
 type ColumnKind =
@@ -207,6 +209,8 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('confidence', 'confidence', 'integer'),
       column('tradingviewUrl', 'tradingview_url', 'user_text'),
       column('notes', 'notes', 'user_text'),
+      column('reviewNotes', 'review_notes', 'user_text'),
+      column('emotionsRecordedAt', 'emotions_recorded_at', 'timestamp'),
       // The internal private-storage key is deliberately never exported
       // (Founder review: "internal storage keys must not leak through
       // customer export unless explicitly required for portability and
@@ -248,6 +252,21 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('status', 'status', 'text'),
       column('followedPlan', 'followed_plan', 'boolean'),
       column('deletedAt', 'deleted_at', 'timestamp'),
+      column('createdAt', 'created_at', 'timestamp'),
+      column('updatedAt', 'updated_at', 'timestamp'),
+    ],
+  },
+  {
+    name: 'emotion_types',
+    csvFilename: 'emotion_types.csv',
+    columns: [
+      column('id', 'id', 'id'),
+      column('workspaceId', 'workspace_id', 'id'),
+      column('key', 'key', 'text'),
+      column('label', 'label', 'user_text'),
+      column('isSystem', 'is_system', 'boolean'),
+      column('isArchived', 'is_archived', 'boolean'),
+      column('sortOrder', 'sort_order', 'integer'),
       column('createdAt', 'created_at', 'timestamp'),
       column('updatedAt', 'updated_at', 'timestamp'),
     ],
@@ -300,6 +319,16 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('severityAtTime', 'severity_at_time', 'text'),
       column('createdAt', 'created_at', 'timestamp'),
       column('updatedAt', 'updated_at', 'timestamp'),
+    ],
+  },
+  {
+    name: 'trade_emotions',
+    csvFilename: 'trade_emotions.csv',
+    columns: [
+      column('tradeId', 'trade_id', 'id'),
+      column('emotionTypeId', 'emotion_type_id', 'id'),
+      column('workspaceId', 'workspace_id', 'id'),
+      column('createdAt', 'created_at', 'timestamp'),
     ],
   },
   {

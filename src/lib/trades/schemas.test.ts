@@ -11,9 +11,11 @@ import {
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
   RemoveTradeMistakeSchema,
+  ReplaceTradeEmotionsSchema,
   ResolveSystemTradeSchema,
   SoftDeleteTradeSchema,
   UpdateTradePlanSchema,
+  UpdateTradeReviewNotesSchema,
   UpdateTradeRuleCheckSchema,
 } from './schemas';
 
@@ -29,6 +31,7 @@ function baseCreateInput() {
     setupId: uuid1,
     conditionSetToken: 'a'.repeat(64),
     conditionAnswers: [],
+    emotionKeys: [],
     symbol: 'EURUSD',
     direction: 'long' as const,
     plannedEntry: '1.1000000000',
@@ -67,6 +70,34 @@ describe('trades/schemas — valid input', () => {
       ],
     });
     expect(result.success).toBe(true);
+  });
+
+  it('accepts zero or multiple canonical Emotions and rejects duplicates or unknown keys', () => {
+    expect(CreateTradeSchema.safeParse({ ...baseCreateInput(), emotionKeys: [] }).success).toBe(
+      true,
+    );
+    expect(
+      CreateTradeSchema.safeParse({ ...baseCreateInput(), emotionKeys: ['calm', 'fomo'] }).success,
+    ).toBe(true);
+    expect(
+      CreateTradeSchema.safeParse({ ...baseCreateInput(), emotionKeys: ['calm', 'calm'] }).success,
+    ).toBe(false);
+    expect(
+      CreateTradeSchema.safeParse({ ...baseCreateInput(), emotionKeys: ['invented'] }).success,
+    ).toBe(false);
+  });
+
+  it('validates Emotion replacement and nullable post-trade review notes', () => {
+    expect(
+      ReplaceTradeEmotionsSchema.safeParse({ tradeId: uuid1, emotionKeys: ['focused'] }).success,
+    ).toBe(true);
+    expect(
+      ReplaceTradeEmotionsSchema.safeParse({ tradeId: uuid1, emotionKeys: ['focused', 'focused'] })
+        .success,
+    ).toBe(false);
+    expect(
+      UpdateTradeReviewNotesSchema.safeParse({ tradeId: uuid1, reviewNotes: null }).success,
+    ).toBe(true);
   });
 
   it('CreateTradeSchema rejects client-supplied Condition snapshot content', () => {
@@ -331,6 +362,7 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
       setupId: uuid1,
       conditionSetToken: 'a'.repeat(64),
       conditionAnswers: [],
+      emotionKeys: [],
       symbol: 'EURUSD',
       direction: 'long' as const,
     };

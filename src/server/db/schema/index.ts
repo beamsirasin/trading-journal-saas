@@ -25,6 +25,8 @@ export * from './trades';
 export * from './trade-setup-condition-checks';
 export * from './mistake-types';
 export * from './trade-mistakes';
+export * from './emotion-types';
+export * from './trade-emotions';
 export * from './trade-rule-checks';
 export * from './platform-admins';
 export * from './admin-audit-log';

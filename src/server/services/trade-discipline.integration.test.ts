@@ -4,9 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   auditLogs,
+  emotionTypes,
   mistakeTypes,
+  tradeEmotions,
   tradeMistakes,
   tradeRuleChecks,
+  trades,
   tradingAccounts,
   users,
   workspaceEntitlements,
@@ -16,7 +19,13 @@ import {
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { createSetup, createStrategy, createStrategyRule } from './strategy-management';
-import { attachTradeMistake, removeTradeMistake, updateTradeRuleCheck } from './trade-discipline';
+import {
+  attachTradeMistake,
+  removeTradeMistake,
+  replaceTradeEmotions,
+  updateTradeReviewNotes,
+  updateTradeRuleCheck,
+} from './trade-discipline';
 import { createTrade, softDeleteTrade, type CreateTradeInput } from './trade-management';
 
 type Db = ReturnType<typeof getTestDb>;
@@ -439,6 +448,224 @@ describe('trade-discipline (real database)', () => {
         .where(and(eq(auditLogs.action, 'trade.mistake_removed'), eq(auditLogs.entityId, tradeId)));
       expect(removedEvents).toHaveLength(1);
       expect(removedEvents[0]?.metadata).toEqual({ tradeId, mistakeTypeId });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 13D Emotion and post-trade reflection corrections
+  // -------------------------------------------------------------------------
+  describe('Emotion and post-trade review corrections', () => {
+    beforeAll(async () => {
+      // The earlier discipline cases intentionally create one active account
+      // per isolated framework. Archive those completed fixtures so this
+      // later domain group does not trip the Professional plan's 15-account
+      // entitlement limit for a reason unrelated to Emotions.
+      await db
+        .update(tradingAccounts)
+        .set({ isArchived: true })
+        .where(eq(tradingAccounts.workspaceId, workspaceId));
+    });
+
+    it('creates Emotion links atomically from canonical keys and records the zero/nonzero marker', async () => {
+      const fw = await createFramework(db, workspaceId, actorUserId);
+      const input = basePlanInput(fw, { emotionKeys: ['calm', 'fomo'] });
+      const created = await createTrade(workspaceId, actorUserId, input);
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const links = await db
+        .select({ emotionTypeId: tradeEmotions.emotionTypeId, key: emotionTypes.key })
+        .from(tradeEmotions)
+        .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
+        .where(eq(tradeEmotions.tradeId, created.tradeId));
+      expect(links.map((row) => row.key).sort()).toEqual(['calm', 'fomo']);
+      await expect(
+        db.insert(tradeEmotions).values({
+          tradeId: created.tradeId,
+          workspaceId,
+          emotionTypeId: links[0]!.emotionTypeId,
+        }),
+      ).rejects.toThrow();
+      expect(await createTrade(workspaceId, actorUserId, input)).toMatchObject({
+        ok: true,
+        tradeId: created.tradeId,
+        alreadyCreated: true,
+      });
+      expect(
+        await db.select().from(tradeEmotions).where(eq(tradeEmotions.tradeId, created.tradeId)),
+      ).toHaveLength(2);
+      const row = await db.query.trades.findFirst({
+        where: eq(trades.id, created.tradeId),
+      });
+      expect(row?.emotionsRecordedAt).toBeInstanceOf(Date);
+    });
+
+    it('rejects duplicate and unknown keys without leaving a Trade behind', async () => {
+      const fw = await createFramework(db, workspaceId, actorUserId);
+      for (const emotionKeys of [['calm', 'calm'], ['invented']]) {
+        const mutationKey = crypto.randomUUID();
+        const result = await createTrade(
+          workspaceId,
+          actorUserId,
+          basePlanInput(fw, { mutationKey, emotionKeys }),
+        );
+        expect(result.ok).toBe(false);
+        const row = await db.query.trades.findFirst({
+          where: and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, mutationKey)),
+        });
+        expect(row).toBeUndefined();
+      }
+    });
+
+    it('rejects an archived canonical Emotion authoritatively without creating a Trade', async () => {
+      const fw = await createFramework(db, workspaceId, actorUserId);
+      await db
+        .update(emotionTypes)
+        .set({ isArchived: true })
+        .where(eq(emotionTypes.key, 'frustrated'));
+      try {
+        const mutationKey = crypto.randomUUID();
+        expect(
+          await createTrade(
+            workspaceId,
+            actorUserId,
+            basePlanInput(fw, { mutationKey, emotionKeys: ['frustrated'] }),
+          ),
+        ).toMatchObject({ ok: false, code: 'emotion_type_not_usable' });
+        expect(
+          await db.query.trades.findFirst({
+            where: and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, mutationKey)),
+          }),
+        ).toBeUndefined();
+      } finally {
+        await db
+          .update(emotionTypes)
+          .set({ isArchived: false })
+          .where(eq(emotionTypes.key, 'frustrated'));
+      }
+    });
+
+    it('records a new zero-Emotion Trade distinctly from a historical not-recorded row', async () => {
+      const fw = await createFramework(db, workspaceId, actorUserId);
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, { emotionKeys: [] }),
+      );
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+      const current = await db.query.trades.findFirst({ where: eq(trades.id, created.tradeId) });
+      expect(current?.emotionsRecordedAt).toBeInstanceOf(Date);
+      expect(
+        await db.select().from(tradeEmotions).where(eq(tradeEmotions.tradeId, created.tradeId)),
+      ).toHaveLength(0);
+
+      // Existing pre-0012 rows receive no backfill; NULL plus zero links is
+      // the persisted historical "not recorded" shape.
+      await db
+        .update(trades)
+        .set({ emotionsRecordedAt: null })
+        .where(eq(trades.id, created.tradeId));
+      const historical = await db.query.trades.findFirst({ where: eq(trades.id, created.tradeId) });
+      expect(historical?.emotionsRecordedAt).toBeNull();
+    });
+
+    it('database-enforces foreign custom-Emotion isolation and Workspace cascade', async () => {
+      const { tradeId } = await createTradeWithRule();
+      const [foreignType] = await db
+        .insert(emotionTypes)
+        .values({
+          workspaceId: otherWorkspaceId,
+          key: `custom-${crypto.randomUUID()}`,
+          label: 'Foreign custom emotion',
+          isSystem: false,
+        })
+        .returning({ id: emotionTypes.id });
+      if (foreignType === undefined) throw new Error('custom Emotion insert failed');
+      await expect(
+        db.insert(tradeEmotions).values({
+          tradeId,
+          workspaceId,
+          emotionTypeId: foreignType.id,
+        }),
+      ).rejects.toThrow();
+
+      const user = await createUser(db, 'p13d-cascade');
+      const ws = await createWorkspace(db, user);
+      allWorkspaceIds.push(ws);
+      const fw = await createFramework(db, ws, user);
+      const created = await createTrade(ws, user, basePlanInput(fw, { emotionKeys: ['calm'] }));
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+      await db.delete(workspaces).where(eq(workspaces.id, ws));
+      expect(
+        await db.select().from(tradeEmotions).where(eq(tradeEmotions.tradeId, created.tradeId)),
+      ).toHaveLength(0);
+    });
+
+    it('atomically replaces Emotions, supports a recorded zero, saves review notes, and audits no content', async () => {
+      const fw = await createFramework(db, workspaceId, actorUserId);
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, { emotionKeys: ['fearful'] }),
+      );
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+
+      expect(
+        await replaceTradeEmotions(workspaceId, actorUserId, created.tradeId, ['calm', 'focused']),
+      ).toEqual({ ok: true });
+      expect(await replaceTradeEmotions(workspaceId, actorUserId, created.tradeId, [])).toEqual({
+        ok: true,
+      });
+      const links = await db
+        .select()
+        .from(tradeEmotions)
+        .where(eq(tradeEmotions.tradeId, created.tradeId));
+      expect(links).toHaveLength(0);
+
+      const secret = 'private review content';
+      expect(
+        await updateTradeReviewNotes(workspaceId, actorUserId, created.tradeId, secret),
+      ).toEqual({ ok: true, reviewNotes: secret });
+      expect(
+        await updateTradeReviewNotes(workspaceId, actorUserId, created.tradeId, 'corrected review'),
+      ).toEqual({ ok: true, reviewNotes: 'corrected review' });
+      const row = await db.query.trades.findFirst({ where: eq(trades.id, created.tradeId) });
+      expect(row?.reviewNotes).toBe('corrected review');
+      expect(row?.emotionsRecordedAt).toBeInstanceOf(Date);
+
+      const events = await db
+        .select({ action: auditLogs.action, metadata: auditLogs.metadata })
+        .from(auditLogs)
+        .where(eq(auditLogs.entityId, created.tradeId));
+      expect(events.map((event) => event.action)).toEqual(
+        expect.arrayContaining(['trade.emotions_corrected', 'trade.corrected']),
+      );
+      expect(JSON.stringify(events)).not.toContain(secret);
+    });
+
+    it('rejects Emotion and review correction in a read-only Workspace', async () => {
+      const user = await createUser(db, 'p13d-reflection-ro');
+      const ws = await createWorkspace(db, user);
+      allWorkspaceIds.push(ws);
+      const fw = await createFramework(db, ws, user);
+      const created = await createTrade(ws, user, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+      await db
+        .update(workspaceEntitlements)
+        .set({
+          status: 'canceled',
+          currentPeriodStartedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+          currentPeriodEndsAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        })
+        .where(eq(workspaceEntitlements.workspaceId, ws));
+      expect(await replaceTradeEmotions(ws, user, created.tradeId, ['calm'])).toMatchObject({
+        ok: false,
+        code: 'read_only_workspace',
+      });
+      expect(await updateTradeReviewNotes(ws, user, created.tradeId, 'blocked')).toMatchObject({
+        ok: false,
+        code: 'read_only_workspace',
+      });
     });
   });
 

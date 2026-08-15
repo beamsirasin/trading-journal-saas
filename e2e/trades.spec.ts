@@ -293,6 +293,8 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
+    await page.getByRole('button', { name: 'Fearful' }).click();
+    await page.getByRole('button', { name: 'Hesitant' }).click();
     await page.getByLabel('Entry Reason').fill('Breakout confirmed on the retest.');
     await page.getByRole('button', { name: 'Save Trade' }).click();
     const dialog = page.getByRole('alertdialog');
@@ -301,6 +303,39 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     const tradeId = new URL(page.url()).searchParams.get('trade');
     if (tradeId === null) throw new Error('created Trade ID missing from URL');
+    await expect(page.getByRole('button', { name: 'Fearful' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('button', { name: 'Hesitant' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    const reviewNotes = page.getByRole('textbox', { name: 'Post-trade review', exact: true });
+    await reviewNotes.fill('Stayed patient after entry.');
+    await page.getByRole('button', { name: 'Save review' }).click();
+    await expect(page.getByText('Saved')).toBeVisible();
+    await page.reload();
+    await expect(reviewNotes).toHaveValue('Stayed patient after entry.');
+    await page.getByRole('button', { name: 'Fearful' }).click();
+    await page.getByRole('button', { name: 'Hesitant' }).click();
+    await page.getByRole('button', { name: 'Focused' }).click();
+    await page.getByRole('button', { name: 'Save emotions' }).click();
+    await expect(page.getByText('Saved')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('button', { name: 'Fearful' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await reviewNotes.fill('Waited for confirmation and managed risk.');
+    await page.getByRole('button', { name: 'Save review' }).click();
+    await expect(page.getByText('Saved')).toBeVisible();
+    await page.reload();
+    await expect(reviewNotes).toHaveValue('Waited for confirmation and managed risk.');
     expect(await readConditionChecks(tradeId)).toEqual([
       { label: 'Breakout candle closed', checkStatus: 'met' },
       { label: 'Retest held', checkStatus: 'met' },
@@ -329,6 +364,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Save Trade' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+    await expect(page.getByText('No emotions selected')).toBeVisible();
   });
 
   test('blocks creation when Price and Money plans disagree, and allows it once resolved', async ({
@@ -451,6 +487,16 @@ test.describe('real Trade Journal creation', () => {
       // drag gesture), so it is not itself a valid click target.
       await confidenceGroup.locator('[data-slot="confidence-option"][data-step="75"]').click();
       await expect(highOption).toBeChecked();
+
+      const calmEmotion = page.getByRole('button', { name: 'Calm' });
+      await expect(calmEmotion).toBeVisible();
+      const emotionContainer = calmEmotion.locator('..');
+      const emotionBox = await emotionContainer.boundingBox();
+      expect(emotionBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+      if (width === 390) {
+        await calmEmotion.click();
+        await expect(calmEmotion).toHaveAttribute('aria-pressed', 'true');
+      }
 
       // Attachment UI (the TradingView URL field, since Upload is
       // unconfigured in this environment) does not clip.

@@ -99,6 +99,8 @@ export function isMistakeSeverity(value: unknown): value is MistakeSeverity {
   return typeof value === 'string' && (MISTAKE_SEVERITIES as readonly string[]).includes(value);
 }
 
+export const REVIEW_NOTES_MAX_LENGTH = 4000;
+
 /**
  * `confidence` — an optional Confidence rating restricted to exactly five
  * steps (Founder-UAT Confidence redesign — locked product decision).

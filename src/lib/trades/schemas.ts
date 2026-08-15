@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { EMOTION_KEYS } from '@/config/emotions';
 import { SETUP_CONDITION_CHECK_STATUSES } from '@/lib/setup-conditions/snapshots';
 import {
   CHART_ATTACHMENT_STORAGE_KEY_MAX_LENGTH,
@@ -14,6 +15,7 @@ import {
   MISTAKE_NOTE_MAX_LENGTH,
   NOTES_MAX_LENGTH,
   RESOLVABLE_SYSTEM_EXIT_REASONS,
+  REVIEW_NOTES_MAX_LENGTH,
   RULE_CHECK_STATUSES,
   SESSION_MAX_LENGTH,
   SYMBOL_MAX_LENGTH,
@@ -57,6 +59,13 @@ const setupConditionAnswerField = () =>
       status: z.enum(SETUP_CONDITION_CHECK_STATUSES),
     })
     .strict();
+
+const emotionKeysField = () =>
+  z.array(z.enum(EMOTION_KEYS)).superRefine((keys, context) => {
+    if (new Set(keys).size !== keys.length) {
+      context.addIssue({ code: 'custom', message: 'duplicate_emotion_key' });
+    }
+  });
 
 const requiredTextField = (maxLength: number) =>
   z
@@ -314,6 +323,8 @@ const CreateTradeObjectSchema = z
     session: optionalTextField(SESSION_MAX_LENGTH),
     confirmationNotes: optionalTextField(CONFIRMATION_NOTES_MAX_LENGTH),
     confidence: confidenceField().optional(),
+    /** Stable taxonomy keys only; IDs and labels remain server-owned. */
+    emotionKeys: emotionKeysField(),
     tradingviewUrl: tradingViewUrlField(),
     notes: optionalTextField(NOTES_MAX_LENGTH),
     chartAttachmentStorageKey: chartAttachmentStorageKeyField().nullable().optional(),
@@ -593,4 +604,31 @@ export type RemoveTradeMistakeActionInput = z.input<typeof RemoveTradeMistakeSch
 export type RemoveTradeMistakeActionData = z.output<typeof RemoveTradeMistakeSchema>;
 
 /** A trusted, already-validated Trade ID — used by read actions/DAL callers that only need shape validation, no full object schema. */
+// ---------------------------------------------------------------------------
+// 15. replaceTradeEmotions
+// ---------------------------------------------------------------------------
+
+export const ReplaceTradeEmotionsSchema = z
+  .object({ tradeId: uuidField(), emotionKeys: emotionKeysField() })
+  .strict();
+export type ReplaceTradeEmotionsActionInput = z.input<typeof ReplaceTradeEmotionsSchema>;
+export type ReplaceTradeEmotionsActionData = z.output<typeof ReplaceTradeEmotionsSchema>;
+
+// ---------------------------------------------------------------------------
+// 16. updateTradeReviewNotes
+// ---------------------------------------------------------------------------
+
+export const UpdateTradeReviewNotesSchema = z
+  .object({
+    tradeId: uuidField(),
+    reviewNotes: z
+      .string()
+      .max(REVIEW_NOTES_MAX_LENGTH)
+      .refine(hasNoControlOrHtmlCharacters, { message: 'invalid_characters' })
+      .nullable(),
+  })
+  .strict();
+export type UpdateTradeReviewNotesActionInput = z.input<typeof UpdateTradeReviewNotesSchema>;
+export type UpdateTradeReviewNotesActionData = z.output<typeof UpdateTradeReviewNotesSchema>;
+
 export const TradeIdSchema = uuidField();

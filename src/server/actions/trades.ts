@@ -22,9 +22,11 @@ import {
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
   RemoveTradeMistakeSchema,
+  ReplaceTradeEmotionsSchema,
   ResolveSystemTradeSchema,
   SoftDeleteTradeSchema,
   UpdateTradePlanSchema,
+  UpdateTradeReviewNotesSchema,
   UpdateTradeRuleCheckSchema,
 } from '@/lib/trades/schemas';
 import {
@@ -35,6 +37,8 @@ import {
 import {
   attachTradeMistake,
   removeTradeMistake,
+  replaceTradeEmotions,
+  updateTradeReviewNotes,
   updateTradeRuleCheck,
 } from '@/server/services/trade-discipline';
 import {
@@ -247,6 +251,7 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       session: parsed.data.session ?? null,
       confirmationNotes: parsed.data.confirmationNotes ?? null,
       confidence: parsed.data.confidence ?? null,
+      emotionKeys: parsed.data.emotionKeys,
       tradingviewUrl: parsed.data.tradingviewUrl ?? null,
       notes: parsed.data.notes ?? null,
       chartAttachmentStorageKey: parsed.data.chartAttachmentStorageKey ?? null,
@@ -713,6 +718,62 @@ export async function removeTradeMistakeAction(
       ok: true,
       data: { tradeId, mistakeTypeId, alreadyRemoved: result.alreadyRemoved },
     };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 15. replaceTradeEmotionsAction
+// ---------------------------------------------------------------------------
+
+export async function replaceTradeEmotionsAction(input: unknown): Promise<
+  TradeActionResult<{
+    readonly tradeId: string;
+    readonly emotionKeys: readonly string[];
+  }>
+> {
+  const parsed = ReplaceTradeEmotionsSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const result = await replaceTradeEmotions(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.tradeId,
+      parsed.data.emotionKeys,
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    return { ok: true, data: parsed.data };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 16. updateTradeReviewNotesAction
+// ---------------------------------------------------------------------------
+
+export async function updateTradeReviewNotesAction(input: unknown): Promise<
+  TradeActionResult<{
+    readonly tradeId: string;
+    readonly reviewNotes: string | null;
+  }>
+> {
+  const parsed = UpdateTradeReviewNotesSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const result = await updateTradeReviewNotes(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.tradeId,
+      parsed.data.reviewNotes,
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    return { ok: true, data: { tradeId: parsed.data.tradeId, reviewNotes: result.reviewNotes } };
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
   }

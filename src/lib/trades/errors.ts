@@ -38,6 +38,9 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'unknown_condition_answer',
   'incomplete_condition_answers',
   'invalid_condition_status',
+  'duplicate_emotion_key',
+  'unknown_emotion_key',
+  'emotion_type_not_usable',
   'invalid_status_transition',
   'invalid_initial_risk',
   'invalid_exit_time',
@@ -90,6 +93,7 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'setup_snapshot_missing',
   'stale_setup_conditions',
   'invalid_setup_condition_answers',
+  'invalid_emotion_selection',
   'invalid_plan',
   'no_plan_representation',
   'planned_r_mismatch',
@@ -161,6 +165,10 @@ export function mapServiceErrorToPublicCode(
     case 'incomplete_condition_answers':
     case 'invalid_condition_status':
       return 'invalid_setup_condition_answers';
+    case 'duplicate_emotion_key':
+    case 'unknown_emotion_key':
+    case 'emotion_type_not_usable':
+      return 'invalid_emotion_selection';
     default:
       return 'unexpected_error';
   }

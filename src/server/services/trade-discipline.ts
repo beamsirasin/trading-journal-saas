@@ -1,12 +1,20 @@
 import 'server-only';
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
+import { isCanonicalEmotionKey } from '@/config/emotions';
 import { systemClock, type Clock } from '@/lib/time';
 import { isRuleCheckStatus } from '@/lib/trades/constants';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb } from '@/server/db/client';
-import { mistakeTypes, tradeMistakes, tradeRuleChecks } from '@/server/db/schema';
+import {
+  emotionTypes,
+  mistakeTypes,
+  tradeEmotions,
+  tradeMistakes,
+  tradeRuleChecks,
+  trades,
+} from '@/server/db/schema';
 
 import { insertAuditLog } from './audit-log';
 import { acquireTradeWriteContext, type WorkspaceAccessDenial } from './trade-management';
@@ -227,5 +235,119 @@ export async function removeTradeMistake(
     });
 
     return { ok: true, alreadyRemoved: false };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 4. replaceTradeEmotions
+// ---------------------------------------------------------------------------
+
+export type ReplaceTradeEmotionsResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly code:
+        | WorkspaceAccessDenial
+        | 'trade_not_found'
+        | 'duplicate_emotion_key'
+        | 'unknown_emotion_key'
+        | 'emotion_type_not_usable';
+    };
+
+/** Replaces the complete selection in one transaction; an empty selection is recorded truthfully. */
+export async function replaceTradeEmotions(
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  emotionKeys: readonly string[],
+  clock: Clock = systemClock,
+): Promise<ReplaceTradeEmotionsResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+
+    if (new Set(emotionKeys).size !== emotionKeys.length) {
+      return { ok: false, code: 'duplicate_emotion_key' };
+    }
+    if (!emotionKeys.every(isCanonicalEmotionKey)) {
+      return { ok: false, code: 'unknown_emotion_key' };
+    }
+
+    const selected =
+      emotionKeys.length === 0
+        ? []
+        : await tx
+            .select({ id: emotionTypes.id, workspaceId: emotionTypes.workspaceId })
+            .from(emotionTypes)
+            .where(
+              and(
+                inArray(emotionTypes.key, emotionKeys),
+                eq(emotionTypes.isSystem, true),
+                eq(emotionTypes.isArchived, false),
+              ),
+            );
+    if (
+      selected.length !== emotionKeys.length ||
+      selected.some((row) => row.workspaceId !== null)
+    ) {
+      return { ok: false, code: 'emotion_type_not_usable' };
+    }
+
+    await tx.delete(tradeEmotions).where(eq(tradeEmotions.tradeId, tradeId));
+    if (selected.length > 0) {
+      await tx
+        .insert(tradeEmotions)
+        .values(selected.map((emotion) => ({ tradeId, emotionTypeId: emotion.id, workspaceId })));
+    }
+    const recordedAt = clock.now();
+    await tx
+      .update(trades)
+      .set({ emotionsRecordedAt: recordedAt, updatedAt: recordedAt })
+      .where(eq(trades.id, tradeId));
+    await insertAuditLog(tx, {
+      action: 'trade.emotions_corrected',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'trade',
+      entityId: tradeId,
+      metadata: { tradeId, changedFields: ['emotionKeys'] },
+    });
+    return { ok: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 5. updateTradeReviewNotes
+// ---------------------------------------------------------------------------
+
+export type UpdateTradeReviewNotesResult =
+  | { readonly ok: true; readonly reviewNotes: string | null }
+  | { readonly ok: false; readonly code: WorkspaceAccessDenial | 'trade_not_found' };
+
+export async function updateTradeReviewNotes(
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  reviewNotes: string | null,
+  clock: Clock = systemClock,
+): Promise<UpdateTradeReviewNotesResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+    const normalized = normalizeOptionalText(reviewNotes);
+    const updatedAt = clock.now();
+    await tx
+      .update(trades)
+      .set({ reviewNotes: normalized, updatedAt })
+      .where(eq(trades.id, tradeId));
+    await insertAuditLog(tx, {
+      action: 'trade.corrected',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'trade',
+      entityId: tradeId,
+      metadata: { tradeId, changedFields: ['reviewNotes'] },
+    });
+    return { ok: true, reviewNotes: normalized };
   });
 }

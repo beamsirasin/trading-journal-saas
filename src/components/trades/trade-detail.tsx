@@ -10,6 +10,7 @@ import {
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeLifecycleActions } from '@/components/trades/trade-lifecycle-actions';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
+import { TradeReflectionEditor } from '@/components/trades/trade-reflection-editor';
 import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
@@ -267,6 +268,17 @@ export function TradeDetail({
 
       <Section id="trade-rules" title={t('detail.sections.rules')}>
         <TradeRulesEditor tradeId={trade.tradeId} rules={trade.ruleChecks} canWrite={canWrite} />
+      </Section>
+
+      <Section id="trade-reflection" title={t('detail.sections.reflection')}>
+        <TradeReflectionEditor
+          tradeId={trade.tradeId}
+          emotions={trade.emotions}
+          emotionCatalog={trade.emotionCatalog}
+          emotionsRecorded={trade.emotionsRecordedAt !== null}
+          reviewNotes={trade.reviewNotes}
+          canWrite={canWrite}
+        />
       </Section>
 
       <Section id="trade-mistakes" title={t('detail.sections.mistakes')}>

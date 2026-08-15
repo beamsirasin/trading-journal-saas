@@ -120,6 +120,10 @@ export const trades = pgTable(
     confidence: smallint('confidence'),
     tradingviewUrl: text('tradingview_url'),
     notes: text('notes'),
+    /** Post-trade reflection, distinct from pre-trade Entry Reason and legacy notes. */
+    reviewNotes: text('review_notes'),
+    /** NULL on historical rows; non-NULL means emotion capture occurred, including a zero selection. */
+    emotionsRecordedAt: timestamp('emotions_recorded_at', { withTimezone: true }),
 
     // -------------------------------------------------------------------
     // Chart attachment — Image upload (migration 0010). Distinct from
