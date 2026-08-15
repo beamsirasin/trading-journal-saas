@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   auditLogs,
   mistakeTypes,
@@ -79,6 +80,7 @@ interface Framework {
   readonly tradingAccountId: string;
   readonly strategyId: string;
   readonly setupId: string;
+  readonly setupVersionId: string;
 }
 
 async function createFramework(
@@ -98,7 +100,17 @@ async function createFramework(
     sortOrder: 0,
   });
   if (!setup.ok) throw new Error(`setup creation failed: ${setup.code}`);
-  return { tradingAccountId, strategyId: strategy.strategyId, setupId: setup.setupId };
+  const snapshot = await db.query.strategySetupVersions.findFirst({
+    where: (table, { and: andOp, eq: eqOp }) =>
+      andOp(eqOp(table.strategyVersionId, setup.versionId), eqOp(table.setupId, setup.setupId)),
+  });
+  if (snapshot === undefined) throw new Error('setup snapshot missing');
+  return {
+    tradingAccountId,
+    strategyId: strategy.strategyId,
+    setupId: setup.setupId,
+    setupVersionId: snapshot.id,
+  };
 }
 
 function basePlanInput(fw: Framework, overrides: Partial<CreateTradeInput> = {}): CreateTradeInput {
@@ -107,6 +119,8 @@ function basePlanInput(fw: Framework, overrides: Partial<CreateTradeInput> = {})
     tradingAccountId: fw.tradingAccountId,
     strategyId: fw.strategyId,
     setupId: fw.setupId,
+    conditionSetToken: createConditionSetToken(fw.setupVersionId),
+    conditionAnswers: [],
     symbol: 'EURUSD',
     direction: 'long',
     plannedEntry: '1.1000000000',

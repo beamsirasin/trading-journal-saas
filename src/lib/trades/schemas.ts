@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { SETUP_CONDITION_CHECK_STATUSES } from '@/lib/setup-conditions/snapshots';
 import {
   CHART_ATTACHMENT_STORAGE_KEY_MAX_LENGTH,
   isValidChartAttachmentStorageKey,
@@ -48,6 +49,14 @@ import { isValidTradingViewUrl } from './validation';
  */
 
 const uuidField = () => z.string().uuid();
+const conditionSetTokenField = () => z.string().regex(/^[a-f0-9]{64}$/);
+const setupConditionAnswerField = () =>
+  z
+    .object({
+      conditionKey: uuidField(),
+      status: z.enum(SETUP_CONDITION_CHECK_STATUSES),
+    })
+    .strict();
 
 const requiredTextField = (maxLength: number) =>
   z
@@ -280,6 +289,10 @@ const CreateTradeObjectSchema = z
     tradingAccountId: uuidField(),
     strategyId: uuidField(),
     setupId: uuidField(),
+    /** Opaque optimistic-concurrency guard, never an authoritative Version ID. */
+    conditionSetToken: conditionSetTokenField(),
+    /** Labels/order/Version ownership are resolved exclusively on the server. */
+    conditionAnswers: z.array(setupConditionAnswerField()),
     symbol: requiredTextField(SYMBOL_MAX_LENGTH),
     direction: directionField(),
     /**

@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   mistakeTypes,
   strategySetupVersions,
@@ -16,6 +17,7 @@ import {
   archiveSetup,
   archiveStrategy,
   createSetup,
+  createSetupCondition,
   createStrategy,
   createStrategyRule,
   updateSetupContent,
@@ -143,6 +145,7 @@ interface Framework {
   readonly tradingAccountId: string;
   readonly strategyId: string;
   readonly setupId: string;
+  readonly setupVersionId: string;
 }
 
 async function createFramework(
@@ -162,7 +165,17 @@ async function createFramework(
     sortOrder: 0,
   });
   if (!setup.ok) throw new Error(`setup creation failed: ${setup.code}`);
-  return { tradingAccountId, strategyId: strategy.strategyId, setupId: setup.setupId };
+  const snapshot = await db.query.strategySetupVersions.findFirst({
+    where: (table, { and: andOp, eq: eqOp }) =>
+      andOp(eqOp(table.strategyVersionId, setup.versionId), eqOp(table.setupId, setup.setupId)),
+  });
+  if (snapshot === undefined) throw new Error('setup snapshot missing');
+  return {
+    tradingAccountId,
+    strategyId: strategy.strategyId,
+    setupId: setup.setupId,
+    setupVersionId: snapshot.id,
+  };
 }
 
 function basePlanInput(fw: Framework, overrides: Partial<CreateTradeInput> = {}): CreateTradeInput {
@@ -171,6 +184,8 @@ function basePlanInput(fw: Framework, overrides: Partial<CreateTradeInput> = {})
     tradingAccountId: fw.tradingAccountId,
     strategyId: fw.strategyId,
     setupId: fw.setupId,
+    conditionSetToken: createConditionSetToken(fw.setupVersionId),
+    conditionAnswers: [],
     symbol: 'EURUSD',
     direction: 'long',
     plannedEntry: '1.1000000000',
@@ -240,10 +255,23 @@ describe('trades DAL (real database)', () => {
       );
       if (!renamedSetup.ok) throw new Error('setup rename failed');
 
+      const refreshedOptions = await getTradeCreateOptions();
+      const currentSetup = refreshedOptions.strategies
+        .find((strategy) => strategy.strategyId === fw.strategyId)
+        ?.setups.find((setup) => setup.setupId === fw.setupId);
+      if (currentSetup === undefined) throw new Error('refreshed Setup option missing');
+
       const newTrade = await createTrade(
         workspaceId,
         userId,
-        basePlanInput(fw, { mutationKey: crypto.randomUUID() }),
+        basePlanInput(fw, {
+          mutationKey: crypto.randomUUID(),
+          conditionSetToken: currentSetup.conditionSetToken,
+          conditionAnswers: currentSetup.conditions.map((condition) => ({
+            conditionKey: condition.conditionKey,
+            status: 'not_met',
+          })),
+        }),
       );
       if (!newTrade.ok) throw new Error('new create failed');
 
@@ -395,6 +423,8 @@ describe('trades DAL (real database)', () => {
         tradingAccountId: fw.tradingAccountId,
         strategyId: fw.strategyId,
         setupId: fw.setupId,
+        conditionSetToken: createConditionSetToken(fw.setupVersionId),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedRiskMinor: 5000n,
@@ -602,6 +632,30 @@ describe('trades DAL (real database)', () => {
   });
 
   describe('getTradeCreateOptions — selector', () => {
+    it('returns current Setup Conditions in deterministic order with an opaque concurrency token', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const later = await createSetupCondition(workspaceId, userId, fw.strategyId, fw.setupId, {
+        label: 'Later',
+        sortOrder: 20,
+      });
+      const earlier = await createSetupCondition(workspaceId, userId, fw.strategyId, fw.setupId, {
+        label: 'Earlier',
+        sortOrder: 10,
+      });
+      if (!later.ok || !earlier.ok) throw new Error('condition creation failed');
+
+      const options = await getTradeCreateOptions();
+      const setup = options.strategies
+        .find((strategy) => strategy.strategyId === fw.strategyId)
+        ?.setups.find((candidate) => candidate.setupId === fw.setupId);
+      expect(setup?.conditionSetToken).toBe(createConditionSetToken(fw.setupVersionId));
+      expect(setup?.conditions).toEqual([
+        { conditionKey: earlier.conditionKey, label: 'Earlier', sortOrder: 10 },
+        { conditionKey: later.conditionKey, label: 'Later', sortOrder: 20 },
+      ]);
+    });
+
     it('excludes archived Trading Accounts, Strategies, and Setups', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);

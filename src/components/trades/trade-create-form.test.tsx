@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,6 +29,17 @@ vi.mock('@/server/actions/chart-attachment', () => ({
   deleteChartAttachmentAction: (...args: unknown[]) => deleteChartAttachmentActionMock(...args),
 }));
 
+const conditionA = {
+  conditionKey: '018f0000-0000-7000-8000-000000000010',
+  label: 'Breakout candle closed',
+  sortOrder: 0,
+} as const;
+const conditionB = {
+  conditionKey: '018f0000-0000-7000-8000-000000000011',
+  label: 'Retest held',
+  sortOrder: 1,
+} as const;
+
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
@@ -46,18 +57,44 @@ const options = {
       name: 'Breakout',
       currentVersionNumber: 3,
       setups: [
-        { setupId: '018f0000-0000-7000-8000-000000000003', name: 'Retest', sortOrder: 0 },
-        { setupId: '018f0000-0000-7000-8000-000000000004', name: 'Momentum', sortOrder: 1 },
+        {
+          setupId: '018f0000-0000-7000-8000-000000000003',
+          name: 'Retest',
+          sortOrder: 0,
+          conditionSetToken: 'a'.repeat(64),
+          conditions: [conditionA, conditionB],
+        },
+        {
+          setupId: '018f0000-0000-7000-8000-000000000004',
+          name: 'Momentum',
+          sortOrder: 1,
+          conditionSetToken: 'b'.repeat(64),
+          conditions: [
+            {
+              conditionKey: '018f0000-0000-7000-8000-000000000012',
+              label: 'Momentum expanded',
+              sortOrder: 0,
+            },
+          ],
+        },
       ],
     },
     {
       strategyId: '018f0000-0000-7000-8000-000000000005',
       name: 'Reversal',
       currentVersionNumber: 1,
-      setups: [{ setupId: '018f0000-0000-7000-8000-000000000006', name: 'Sweep', sortOrder: 0 }],
+      setups: [
+        {
+          setupId: '018f0000-0000-7000-8000-000000000006',
+          name: 'Sweep',
+          sortOrder: 0,
+          conditionSetToken: 'c'.repeat(64),
+          conditions: [],
+        },
+      ],
     },
   ],
-} as const;
+} as const satisfies TradeCreateOptions;
 
 function renderForm(customOptions: TradeCreateOptions = options) {
   return render(
@@ -67,28 +104,26 @@ function renderForm(customOptions: TradeCreateOptions = options) {
   );
 }
 
-function continueButton() {
-  return screen.getByRole('button', { name: /Continue/ });
-}
-
-function reachPlan() {
-  fireEvent.click(continueButton());
+function chooseRetest() {
   fireEvent.change(screen.getByLabelText('Strategy'), {
     target: { value: options.strategies[0].strategyId },
   });
   fireEvent.change(screen.getByLabelText('Setup'), {
     target: { value: options.strategies[0].setups[0].setupId },
   });
-  fireEvent.click(continueButton());
 }
 
-function fillPlan(target = '') {
+function fillPricePlan() {
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('button', { name: 'Long' }));
   fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
   fireEvent.change(screen.getByLabelText('Stop'), { target: { value: '90' } });
-  if (target !== '')
-    fireEvent.change(screen.getByLabelText(/Target/), { target: { value: target } });
+  fireEvent.change(screen.getByLabelText(/Target/), { target: { value: '130' } });
+}
+
+function checkAllConditions() {
+  fireEvent.click(screen.getByLabelText(conditionA.label));
+  fireEvent.click(screen.getByLabelText(conditionB.label));
 }
 
 beforeEach(() => {
@@ -100,8 +135,226 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('TradeCreateForm', () => {
-  it('requires an Account when multiple active options prevent automatic selection', () => {
+describe('TradeCreateForm — Phase 13C single-page entry', () => {
+  it('renders all sections together with one Save Trade action and no wizard', () => {
+    renderForm();
+    expect(screen.getByLabelText('Trading Account')).toBeVisible();
+    expect(screen.getByLabelText('Strategy')).toBeVisible();
+    expect(screen.getByLabelText('Symbol')).toBeVisible();
+    expect(screen.getByText('Setup Conditions')).toBeVisible();
+    expect(screen.getAllByText('Confidence').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Entry Reason').length).toBeGreaterThan(0);
+    expect(screen.getByText('Chart attachment')).toBeVisible();
+    expect(screen.getAllByRole('button', { name: 'Save Trade' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Review the planned Trade')).not.toBeInTheDocument();
+  });
+
+  it('loads Conditions and previews adherence without a 0/0 state', () => {
+    renderForm();
+    chooseRetest();
+    expect(screen.getByText(conditionA.label)).toBeVisible();
+    expect(screen.getByText(conditionB.label)).toBeVisible();
+    expect(screen.getByText('0/2 met · 0%')).toBeVisible();
+    fireEvent.click(screen.getByLabelText(conditionA.label));
+    expect(screen.getByText('1/2 met · 50%')).toBeVisible();
+  });
+
+  it('derives the required 3/5 and 60% preview from checkbox state', () => {
+    const fiveConditions = Array.from({ length: 5 }, (_, index) => ({
+      conditionKey: `018f0000-0000-7000-8000-00000000002${index}`,
+      label: `Condition ${index + 1}`,
+      sortOrder: index,
+    }));
+    renderForm({
+      ...options,
+      strategies: [
+        {
+          ...options.strategies[0],
+          setups: [
+            {
+              ...options.strategies[0].setups[0],
+              conditions: fiveConditions,
+            },
+          ],
+        },
+      ],
+    });
+    fireEvent.change(screen.getByLabelText('Strategy'), {
+      target: { value: options.strategies[0].strategyId },
+    });
+    for (const label of ['Condition 1', 'Condition 2', 'Condition 3']) {
+      fireEvent.click(screen.getByLabelText(label));
+    }
+    expect(screen.getByText('3/5 met · 60%')).toBeVisible();
+  });
+
+  it('shows zero-Condition N/A and saves directly with an empty answer set', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Strategy'), {
+      target: { value: options.strategies[1].strategyId },
+    });
+    expect(screen.getByText('Not configured')).toBeVisible();
+    expect(screen.queryByText(/0\/0/)).not.toBeInTheDocument();
+    fillPricePlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(createTradeActionMock.mock.calls[0]?.[0]).toMatchObject({
+      conditionSetToken: 'c'.repeat(64),
+      conditionAnswers: [],
+    });
+  });
+
+  it('saves all-met Conditions directly using keys and statuses only', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+    renderForm();
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.conditionSetToken).toBe('a'.repeat(64));
+    expect(payload.conditionAnswers).toEqual([
+      { conditionKey: conditionA.conditionKey, status: 'met' },
+      { conditionKey: conditionB.conditionKey, status: 'met' },
+    ]);
+    expect(JSON.stringify(payload.conditionAnswers)).not.toContain('label');
+    expect(payload).not.toHaveProperty('setupVersionId');
+    expect(payload).not.toHaveProperty('strategyVersionId');
+  });
+
+  it('still submits a Money-only Plan with optional Entry Reason and Confidence', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+    renderForm();
+    chooseRetest();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'EURUSD' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Short' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
+    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '100.00' } });
+    fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '300.00' } });
+    fireEvent.click(screen.getByLabelText(/75%/));
+    fireEvent.change(screen.getByLabelText(/Entry Reason/), {
+      target: { value: 'Clear confirmation at the level.' },
+    });
+    checkAllConditions();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(createTradeActionMock.mock.calls[0]?.[0]).toMatchObject({
+      plannedEntry: null,
+      plannedStop: null,
+      plannedRiskMinor: '10000',
+      plannedRewardMinor: '30000',
+      confidence: 75,
+      confirmationNotes: 'Clear confirmation at the level.',
+    });
+  });
+
+  it('keeps Price/Money mismatch as a blocking validation error', async () => {
+    renderForm();
+    chooseRetest();
+    fillPricePlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
+    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50.00' } });
+    fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '500.00' } });
+    checkAllConditions();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    expect(screen.getAllByText('Price and Money plans disagree').length).toBeGreaterThan(0);
+    expect(createTradeActionMock).not.toHaveBeenCalled();
+  });
+
+  it('requires confirmation when a Condition is unmet', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+    renderForm();
+    chooseRetest();
+    fillPricePlan();
+    fireEvent.click(screen.getByLabelText(conditionA.label));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    expect(createTradeActionMock).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText(/1 of 2 Conditions are met \(50%\)/)).toBeVisible();
+    expect(within(dialog).getByText(/saved as Not Met/)).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(createTradeActionMock.mock.calls[0]?.[0].conditionAnswers).toEqual([
+      { conditionKey: conditionA.conditionKey, status: 'met' },
+      { conditionKey: conditionB.conditionKey, status: 'not_met' },
+    ]);
+  });
+
+  it('resets answers when Setup or Strategy changes', () => {
+    renderForm();
+    chooseRetest();
+    fireEvent.click(screen.getByLabelText(conditionA.label));
+    fireEvent.change(screen.getByLabelText('Setup'), {
+      target: { value: options.strategies[0].setups[1].setupId },
+    });
+    fireEvent.change(screen.getByLabelText('Setup'), {
+      target: { value: options.strategies[0].setups[0].setupId },
+    });
+    expect(screen.getByLabelText(conditionA.label)).not.toBeChecked();
+    fireEvent.click(screen.getByLabelText(conditionA.label));
+    fireEvent.change(screen.getByLabelText('Strategy'), {
+      target: { value: options.strategies[1].strategyId },
+    });
+    fireEvent.change(screen.getByLabelText('Strategy'), {
+      target: { value: options.strategies[0].strategyId },
+    });
+    fireEvent.change(screen.getByLabelText('Setup'), {
+      target: { value: options.strategies[0].setups[0].setupId },
+    });
+    expect(screen.getByLabelText(conditionA.label)).not.toBeChecked();
+  });
+
+  it('keeps a stable mutation key across server failure and retry', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+    renderForm();
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(2));
+    expect(createTradeActionMock.mock.calls[0]?.[0].mutationKey).toBe(
+      createTradeActionMock.mock.calls[1]?.[0].mutationKey,
+    );
+  });
+
+  it('keeps values and shows stale-version recovery guidance', async () => {
+    createTradeActionMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'stale_setup_conditions' },
+    });
+    renderForm();
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    expect(await screen.findByText(/Setup changed while you were entering/)).toBeVisible();
+    expect(screen.getByLabelText('Symbol')).toHaveValue('XAUUSD');
+  });
+
+  it('navigates to the canonical Trade after success', async () => {
+    createTradeActionMock.mockResolvedValue({
+      ok: true,
+      data: { tradeId: '018f0000-0000-7000-8000-000000000099', alreadyCreated: false },
+    });
+    renderForm();
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(
+        '/app/trades?trade=018f0000-0000-7000-8000-000000000099',
+      ),
+    );
+  });
+
+  it('blocks Save with an accessible Account error and clears it after a valid selection', async () => {
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
     renderForm({
       ...options,
       tradingAccounts: [
@@ -114,398 +367,191 @@ describe('TradeCreateForm', () => {
         },
       ],
     });
-    fireEvent.click(continueButton());
-    expect(screen.getByText('Choose a Trading Account.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Trading Account')).toHaveAttribute('aria-invalid', 'true');
-  });
 
-  it('renders real selector options and requires Strategy and Setup', () => {
-    renderForm();
-    expect(screen.getByRole('option', { name: /Main USD/ })).toBeInTheDocument();
-    fireEvent.click(continueButton());
-    fireEvent.click(continueButton());
-    expect(screen.getByText('Choose a Strategy.')).toBeInTheDocument();
-    expect(screen.getByText('Choose a Setup.')).toBeInTheDocument();
-  });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    expect(createTradeActionMock).not.toHaveBeenCalled();
+    const account = screen.getByLabelText('Trading Account');
+    expect(account).toHaveAttribute('aria-invalid', 'true');
+    expect(account).toHaveAttribute('aria-describedby', 'trade-account-error');
+    expect(document.getElementById('trade-account-error')).toHaveTextContent(
+      'Choose a Trading Account.',
+    );
 
-  it('clears an incompatible Setup when Strategy changes', () => {
-    renderForm();
-    fireEvent.click(continueButton());
-    fireEvent.change(screen.getByLabelText('Strategy'), {
-      target: { value: options.strategies[0].strategyId },
-    });
-    fireEvent.change(screen.getByLabelText('Setup'), {
-      target: { value: options.strategies[0].setups[1].setupId },
-    });
+    fireEvent.change(account, { target: { value: options.tradingAccounts[0].tradingAccountId } });
+    expect(account).toHaveAttribute('aria-invalid', 'false');
+    expect(account).not.toHaveAttribute('aria-describedby');
     fireEvent.change(screen.getByLabelText('Strategy'), {
       target: { value: options.strategies[1].strategyId },
     });
-    expect(screen.getByLabelText('Setup')).toHaveValue(options.strategies[1].setups[0].setupId);
-    expect(screen.queryByRole('option', { name: 'Momentum' })).not.toBeInTheDocument();
-  });
-
-  it('preserves blank Target as null and never submits Version IDs', async () => {
-    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
-    renderForm();
-    reachPlan();
-    fillPlan();
-    fireEvent.click(continueButton());
-    expect(screen.queryByText(/^Target$/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Create Trade' }));
+    fillPricePlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload.plannedTarget).toBeNull();
-    expect(payload.plannedRiskMinor).toBeNull();
-    expect(payload.plannedRewardMinor).toBeNull();
-    expect(payload).not.toHaveProperty('strategyVersionId');
-    expect(payload).not.toHaveProperty('setupVersionId');
   });
 
-  it('keeps one stable mutationKey across server failures, back navigation, and retry', async () => {
-    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
+  it('presents and clears accessible Strategy and Setup errors on the single page', () => {
     renderForm();
-    reachPlan();
-    fillPlan('130');
-    fireEvent.click(continueButton());
-    fireEvent.click(screen.getByRole('button', { name: 'Create Trade' }));
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    fireEvent.click(continueButton());
-    fireEvent.click(screen.getByRole('button', { name: 'Create Trade' }));
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(2));
-    expect(createTradeActionMock.mock.calls[0]?.[0].mutationKey).toBe(
-      createTradeActionMock.mock.calls[1]?.[0].mutationKey,
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+
+    const strategy = screen.getByLabelText('Strategy');
+    const setup = screen.getByLabelText('Setup');
+    expect(strategy).toHaveAttribute('aria-invalid', 'true');
+    expect(strategy).toHaveAttribute('aria-describedby', 'trade-strategy-error');
+    expect(document.getElementById('trade-strategy-error')).toHaveTextContent('Choose a Strategy.');
+    expect(setup).toHaveAttribute('aria-invalid', 'true');
+    expect(setup).toHaveAttribute('aria-describedby', 'trade-setup-error');
+    expect(document.getElementById('trade-setup-error')).toHaveTextContent('Choose a Setup.');
+    expect(createTradeActionMock).not.toHaveBeenCalled();
+
+    fireEvent.change(strategy, { target: { value: options.strategies[0].strategyId } });
+    expect(strategy).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByRole('option', { name: 'Retest' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Momentum' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    expect(setup).toHaveAttribute('aria-invalid', 'true');
+    expect(setup).toHaveAttribute('aria-describedby', 'trade-setup-error');
+    expect(document.getElementById('trade-setup-error')).toHaveTextContent('Choose a Setup.');
+
+    fireEvent.change(setup, { target: { value: options.strategies[0].setups[0].setupId } });
+    expect(setup).toHaveAttribute('aria-invalid', 'false');
+    expect(setup).not.toHaveAttribute('aria-describedby');
   });
 
-  it('maps a server field error to Stop and keeps values on the form', async () => {
+  it('maps a server Stop error accessibly while preserving and correcting single-page state', async () => {
     createTradeActionMock.mockResolvedValue({
       ok: false,
       error: { code: 'invalid_plan', fieldErrors: { plannedStop: ['invalid_risk_direction'] } },
     });
     renderForm();
-    reachPlan();
-    fillPlan('130');
-    fireEvent.click(continueButton());
-    fireEvent.click(screen.getByRole('button', { name: 'Create Trade' }));
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
+    fireEvent.change(screen.getByLabelText(/Entry Reason/), {
+      target: { value: 'Retest confirmation remained intact.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+
     expect(
       await screen.findByText('The Stop is on the wrong side of Entry for this direction.'),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Stop')).toHaveValue('90');
-    expect(screen.getByLabelText('Stop')).toHaveAttribute('aria-invalid', 'true');
-  });
-
-  it.each([false, true])(
-    'navigates to the canonical Trade on success (replay=%s)',
-    async (alreadyCreated) => {
-      createTradeActionMock.mockResolvedValue({
-        ok: true,
-        data: { tradeId: '018f0000-0000-7000-8000-000000000099', alreadyCreated },
-      });
-      renderForm();
-      reachPlan();
-      fillPlan('130');
-      fireEvent.click(continueButton());
-      fireEvent.click(screen.getByRole('button', { name: 'Create Trade' }));
-      await waitFor(() =>
-        expect(pushMock).toHaveBeenCalledWith(
-          '/app/trades?trade=018f0000-0000-7000-8000-000000000099',
-        ),
-      );
-    },
-  );
-});
-
-describe('TradeCreateForm — clickable stepper', () => {
-  it('renders every future step disabled before its prerequisites are met', () => {
-    // The single Trading Account auto-fills stage 0, so Strategy & Setup
-    // (stage 1) is immediately reachable — only steps beyond the first
-    // unmet prerequisite (Plan, Review) stay disabled.
-    renderForm();
-    expect(screen.getByRole('button', { name: /Strategy & Setup/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Plan/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Review & Create/ })).toBeDisabled();
-  });
-
-  it('rejects a direct forward click to Plan before Strategy/Setup are chosen', () => {
-    renderForm();
-    // The single Trading Account pre-fills stage 0, but stage 1
-    // (Strategy/Setup) is still empty — Plan must stay unreachable.
-    const planStepButton = screen.getByRole('button', { name: /^Plan/ });
-    expect(planStepButton).toBeDisabled();
-    fireEvent.click(planStepButton);
-    expect(screen.queryByLabelText('Symbol')).not.toBeInTheDocument();
-  });
-
-  it('allows a direct forward click once prerequisites are satisfied, and allows a direct backward click preserving state', () => {
-    renderForm();
-    fireEvent.click(continueButton());
-    fireEvent.change(screen.getByLabelText('Strategy'), {
-      target: { value: options.strategies[0].strategyId },
-    });
-    fireEvent.change(screen.getByLabelText('Setup'), {
-      target: { value: options.strategies[0].setups[0].setupId },
-    });
-    fireEvent.click(continueButton());
-    fillPlan('130');
-
-    // Jump straight back to the Account step via the stepper (not Back).
-    fireEvent.click(screen.getByRole('button', { name: /^Account/ }));
-    expect(screen.getByLabelText('Trading Account')).toBeInTheDocument();
-
-    // Jump forward again directly to Plan (now reachable) — Symbol/Direction/Entry/Stop survive.
-    fireEvent.click(screen.getByRole('button', { name: /^Plan/ }));
+    ).toBeVisible();
+    const stop = screen.getByLabelText('Stop');
+    expect(stop).toHaveValue('90');
+    expect(stop).toHaveAttribute('aria-invalid', 'true');
+    expect(stop).toHaveAttribute('aria-describedby', 'trade-stop-error');
     expect(screen.getByLabelText('Symbol')).toHaveValue('XAUUSD');
-    expect(screen.getByRole('button', { name: 'Long' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByLabelText('Entry')).toHaveValue('100');
+    expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
+    expect(screen.getByLabelText(/Target/)).toHaveValue('130');
+    expect(screen.getByLabelText(conditionA.label)).toBeChecked();
+    expect(screen.getByLabelText(/Entry Reason/)).toHaveValue(
+      'Retest confirmation remained intact.',
+    );
+
+    fireEvent.change(stop, { target: { value: '85' } });
+    expect(stop).toHaveAttribute('aria-invalid', 'false');
+    expect(stop).not.toHaveAttribute('aria-describedby');
+    expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
+    expect(screen.getByLabelText(/Target/)).toHaveValue('130');
+    expect(screen.getByLabelText(conditionB.label)).toBeChecked();
   });
 
-  it('marks the current step and passed-through steps distinctly', () => {
+  it('preserves Price and Money values when the Money disclosure is closed and reopened', () => {
     renderForm();
-    fireEvent.click(continueButton());
-    const accountStep = screen.getByRole('button', { name: /^Account/ });
-    const strategyStep = screen.getByRole('button', { name: /^Strategy & Setup/ });
-    expect(accountStep).not.toBeDisabled();
-    expect(strategyStep).toHaveAttribute('aria-current', 'step');
-  });
-
-  it('blocks jumping directly to Review while the live Price/Money Planned R disagree', () => {
-    renderForm();
-    reachPlan();
-    fillPlan('130'); // Price plan implies +3R
+    fillPricePlan();
     fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
-    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '500' } }); // Money implies +10R
-    fireEvent.click(screen.getByRole('button', { name: /^Review & Create/ }));
-    expect(
-      screen.queryByRole('heading', { name: 'Review the planned Trade' }),
-    ).not.toBeInTheDocument();
-  });
-});
+    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50.00' } });
+    fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '150.00' } });
 
-describe('TradeCreateForm — Long/Short direction', () => {
-  it('gives Long and Short distinguishable selected/unselected states beyond color alone (text + aria-pressed)', () => {
-    renderForm();
-    reachPlan();
-    const long = screen.getByRole('button', { name: 'Long' });
-    const short = screen.getByRole('button', { name: 'Short' });
-    expect(long).toHaveAttribute('aria-pressed', 'false');
-    expect(short).toHaveAttribute('aria-pressed', 'false');
-
-    fireEvent.click(long);
-    expect(long).toHaveAttribute('aria-pressed', 'true');
-    expect(short).toHaveAttribute('aria-pressed', 'false');
-
-    fireEvent.click(short);
-    expect(long).toHaveAttribute('aria-pressed', 'false');
-    expect(short).toHaveAttribute('aria-pressed', 'true');
-  });
-});
-
-describe('TradeCreateForm — Price/Money progressive disclosure', () => {
-  it('shows the Price plan open and the Money plan collapsed behind an "Add" action by default', () => {
-    renderForm();
-    reachPlan();
-    expect(screen.getByLabelText('Entry')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Planned risk')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add a Money plan' })).toBeInTheDocument();
-  });
-
-  it('accepts a Money-only Plan (Price left closed and empty) and reaches Review', () => {
-    renderForm();
-    reachPlan();
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
-    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50' } });
-    fireEvent.click(continueButton());
-    expect(screen.getByRole('heading', { name: 'Review the planned Trade' })).toBeInTheDocument();
-    expect(screen.queryByText('Entry')).not.toBeInTheDocument();
-  });
-
-  it('preserves Price values when the Money section is opened and closed again', () => {
-    renderForm();
-    reachPlan();
-    fillPlan();
-    fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
-    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50' } });
     fireEvent.click(screen.getByRole('button', { name: 'Hide Money plan' }));
     expect(screen.queryByLabelText('Planned risk')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
+    expect(screen.getByLabelText('Stop')).toHaveValue('90');
+    expect(screen.getByLabelText(/Target/)).toHaveValue('130');
+
     fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
-    expect(screen.getByLabelText('Planned risk')).toHaveValue('50');
-    expect(screen.getByLabelText('Entry')).toHaveValue('100');
+    expect(screen.getByLabelText('Planned risk')).toHaveValue('50.00');
+    expect(screen.getByLabelText(/Planned reward/)).toHaveValue('150.00');
+    expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
+    expect(screen.getByLabelText('Stop')).toHaveValue('90');
   });
 
-  it('shows a live Planned R preview once a single representation is complete', () => {
+  it('shows the live Planned R preview for a complete Price-only plan', () => {
     renderForm();
-    reachPlan();
-    fillPlan('130');
-    expect(screen.getByText('Planned R: +3.00R')).toBeInTheDocument();
+    fillPricePlan();
+    expect(screen.getByText('Planned R: +3.00R')).toBeVisible();
   });
 
-  it('shows a disagreement banner and blocks Continue when Price and Money imply different Planned R', () => {
-    renderForm();
-    reachPlan();
-    fillPlan('130'); // +3R
-    fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
-    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '500' } }); // +10R
-    expect(screen.getByText('Price and Money plans disagree')).toBeInTheDocument();
-    fireEvent.click(continueButton());
-    expect(
-      screen.getByText('Price and Money plans disagree — adjust one before continuing.'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', { name: 'Review the planned Trade' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('allows Price and Money together when they agree within tolerance', () => {
-    renderForm();
-    reachPlan();
-    fillPlan('130'); // +3R
-    fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
-    fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '150' } }); // +3R
-    expect(screen.queryByText('Price and Money plans disagree')).not.toBeInTheDocument();
-    fireEvent.click(continueButton());
-    expect(screen.getByRole('heading', { name: 'Review the planned Trade' })).toBeInTheDocument();
-  });
-});
-
-describe('TradeCreateForm — Confidence (five-step selector)', () => {
-  it('renders a five-step segmented group and moves by keyboard', () => {
-    renderForm();
-    reachPlan();
-    const group = screen.getByRole('group', { name: 'Confidence' });
-    for (const name of [
-      '0% · Very Low',
-      '25% · Low',
-      '50% · Neutral',
-      '75% · High',
-      '100% · Very High',
-    ]) {
-      expect(screen.getByRole('radio', { name })).toBeInTheDocument();
-    }
-    fireEvent.keyDown(group, { key: 'End' });
-    expect(screen.getByText('100% · Very High')).toBeInTheDocument();
-  });
-
-  it('selects a step by clicking it directly', () => {
-    renderForm();
-    reachPlan();
-    fireEvent.click(screen.getByRole('radio', { name: '75% · High' }));
-    expect(screen.getByRole('radio', { name: '75% · High' })).toBeChecked();
-    expect(screen.getByText('75% · High')).toBeInTheDocument();
-  });
-});
-
-describe('TradeCreateForm — Review & Create summary', () => {
-  it('shows Confidence as "Not set" when omitted, and "X% · Label" once chosen', () => {
-    renderForm();
-    reachPlan();
-    fillPlan('130');
-    fireEvent.click(continueButton());
-    expect(screen.getByText('Not set')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /^Plan/ }));
-    fireEvent.click(screen.getByRole('radio', { name: '25% · Low' }));
-    fireEvent.click(continueButton());
-    expect(screen.getByText('25% · Low')).toBeInTheDocument();
-    expect(screen.queryByText(/25\/100/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\/5\b/)).not.toBeInTheDocument();
-  });
-
-  it('shows Chart attachment status truthfully — "Not provided" then "Link provided"', () => {
-    renderForm();
-    reachPlan();
-    fillPlan('130');
-    fireEvent.click(continueButton());
-    expect(screen.getByText('Not provided')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /^Plan/ }));
-    fireEvent.change(screen.getByLabelText(/TradingView URL/), {
-      target: { value: 'https://www.tradingview.com/chart/abc' },
-    });
-    fireEvent.click(continueButton());
-    expect(screen.getByText('Link provided')).toBeInTheDocument();
-    expect(screen.queryByText('Not provided')).not.toBeInTheDocument();
-  });
-});
-
-describe('TradeCreateForm — Chart upload capability', () => {
-  it('hides the Upload option entirely when chart storage is not configured', () => {
+  it('omits Upload UI when chart storage is unconfigured while retaining TradingView URL', () => {
     renderForm({ ...options, chartUploadConfigured: false });
-    reachPlan();
     expect(screen.queryByRole('button', { name: 'Upload image' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/TradingView URL/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Upload image')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/TradingView URL/)).toBeVisible();
   });
 
-  it('shows the Upload option and uploads a valid image when storage is configured', async () => {
+  it('uploads a private chart and submits only its authoritative storage key', async () => {
     uploadChartAttachmentActionMock.mockResolvedValue({
       ok: true,
       data: { storageKey: 'trade-charts/ws/obj.png' },
     });
     createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
     renderForm({ ...options, chartUploadConfigured: true });
-    reachPlan();
-    fillPlan('130');
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
     fireEvent.click(screen.getByRole('button', { name: 'Upload image' }));
 
-    const file = new File(['fake-bytes'], 'chart.png', { type: 'image/png' });
-    const input = screen.getByLabelText('Upload image') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [file] } });
-
-    // The preview is a LOCAL object-URL of the selected file, never a
-    // remote URL — the uploaded Blob is private (Founder review).
+    const file = new File(['fake-png-bytes'], 'chart.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Upload image'), { target: { files: [file] } });
     const preview = (await screen.findByAltText('Uploaded chart preview')) as HTMLImageElement;
     expect(preview.src).toBe('blob:mock-object-url');
     expect(uploadChartAttachmentActionMock).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(continueButton());
-    fireEvent.click(screen.getByRole('button', { name: 'Create Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.chartAttachmentStorageKey).toBe('trade-charts/ws/obj.png');
-    expect('chartAttachmentUrl' in payload).toBe(false);
+    expect(payload).not.toHaveProperty('chartAttachmentUrl');
+    expect(payload.tradingviewUrl).toBe('');
   });
 
-  it('lets the user remove an uploaded image before creating the Trade, and best-effort deletes it from storage', async () => {
+  it('removes an uploaded chart, clears the payload key, and invokes best-effort deletion', async () => {
     uploadChartAttachmentActionMock.mockResolvedValue({
       ok: true,
-      data: { storageKey: 'trade-charts/ws/obj.png' },
+      data: { storageKey: 'trade-charts/ws/remove-me.png' },
     });
+    createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
     renderForm({ ...options, chartUploadConfigured: true });
-    reachPlan();
+    chooseRetest();
+    fillPricePlan();
+    checkAllConditions();
     fireEvent.click(screen.getByRole('button', { name: 'Upload image' }));
-    const file = new File(['fake-bytes'], 'chart.png', { type: 'image/png' });
+    const file = new File(['fake-webp-bytes'], 'chart.webp', { type: 'image/webp' });
     fireEvent.change(screen.getByLabelText('Upload image'), { target: { files: [file] } });
     await screen.findByAltText('Uploaded chart preview');
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove image' }));
     expect(screen.queryByAltText('Uploaded chart preview')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Upload image')).toBeInTheDocument();
-    expect(deleteChartAttachmentActionMock).toHaveBeenCalledWith('trade-charts/ws/obj.png');
-  });
-});
+    expect(deleteChartAttachmentActionMock).toHaveBeenCalledWith('trade-charts/ws/remove-me.png');
 
-describe('TradeCreateForm — Symbol favorites (localStorage)', () => {
-  it('adds a typed Symbol to favorites and it survives a remount (workspace-scoped persistence)', () => {
-    const { unmount } = renderForm();
-    reachPlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(createTradeActionMock.mock.calls[0]?.[0].chartAttachmentStorageKey).toBeNull();
+  });
+
+  it('persists a Symbol favorite across remounts and scopes it to the Workspace', () => {
+    const firstRender = renderForm();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'btcusd' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add "BTCUSD" to favorites' }));
-    unmount();
+    firstRender.unmount();
 
-    renderForm();
-    fireEvent.click(continueButton());
-    fireEvent.change(screen.getByLabelText('Strategy'), {
-      target: { value: options.strategies[0].strategyId },
+    const sameWorkspace = renderForm();
+    expect(screen.getByRole('button', { name: /^BTCUSD$/ })).toBeInTheDocument();
+    sameWorkspace.unmount();
+
+    renderForm({
+      ...options,
+      workspaceId: '018f0000-0000-7000-8000-0000000000ee',
     });
-    fireEvent.change(screen.getByLabelText('Setup'), {
-      target: { value: options.strategies[0].setups[0].setupId },
-    });
-    fireEvent.click(continueButton());
-    expect(screen.getByRole('button', { name: 'BTCUSD' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^BTCUSD$/ })).not.toBeInTheDocument();
   });
 });

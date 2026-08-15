@@ -33,6 +33,11 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'setup_not_found',
   'setup_archived',
   'setup_snapshot_missing',
+  'stale_setup_conditions',
+  'duplicate_condition_answer',
+  'unknown_condition_answer',
+  'incomplete_condition_answers',
+  'invalid_condition_status',
   'invalid_status_transition',
   'invalid_initial_risk',
   'invalid_exit_time',
@@ -83,6 +88,8 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'setup_not_found',
   'setup_archived',
   'setup_snapshot_missing',
+  'stale_setup_conditions',
+  'invalid_setup_condition_answers',
   'invalid_plan',
   'no_plan_representation',
   'planned_r_mismatch',
@@ -134,6 +141,7 @@ export function mapServiceErrorToPublicCode(
     case 'setup_not_found':
     case 'setup_archived':
     case 'setup_snapshot_missing':
+    case 'stale_setup_conditions':
     case 'invalid_plan':
     case 'no_plan_representation':
     case 'planned_r_mismatch':
@@ -148,6 +156,11 @@ export function mapServiceErrorToPublicCode(
     case 'mistake_type_not_found':
     case 'mistake_type_not_usable':
       return code;
+    case 'duplicate_condition_answer':
+    case 'unknown_condition_answer':
+    case 'incomplete_condition_answers':
+    case 'invalid_condition_status':
+      return 'invalid_setup_condition_answers';
     default:
       return 'unexpected_error';
   }

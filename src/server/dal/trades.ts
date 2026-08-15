@@ -2,6 +2,7 @@ import 'server-only';
 
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
 import type {
   MistakeSeverity,
@@ -16,6 +17,7 @@ import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
   mistakeTypes,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
@@ -556,6 +558,15 @@ export interface TradeCreateSetupOption {
   /** The CURRENT Setup Version's name — a live selector value, not a historical label; see the module doc comment for why Trade list/detail use the pinned name instead. */
   readonly name: string;
   readonly sortOrder: number;
+  /** Opaque concurrency guard only; the server still resolves the authoritative Version under lock. */
+  readonly conditionSetToken: string;
+  readonly conditions: readonly TradeCreateConditionOption[];
+}
+
+export interface TradeCreateConditionOption {
+  readonly conditionKey: string;
+  readonly label: string;
+  readonly sortOrder: number;
 }
 
 export interface TradeCreateStrategyOption {
@@ -603,9 +614,8 @@ export interface TradeCreateOptions {
  * if one other Strategy is momentarily malformed.
  *
  * Fixed-count batched queries regardless of how many Strategies/Setups exist
- * (no N+1): one for accounts, one for Strategies, one for their current
- * Versions, one for their Setups, one for those Setups' current-Version
- * snapshots.
+ * (no N+1): accounts, Strategies, current Versions, Setups, current Setup
+ * snapshots, then all Conditions for those snapshots.
  */
 export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
   const { workspaceId } = await getActiveWorkspaceContext();
@@ -658,6 +668,35 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
           .from(strategySetupVersions)
           .where(inArray(strategySetupVersions.strategyVersionId, currentVersionIds));
   const snapshotBySetupId = new Map(snapshotRows.map((s) => [s.setupId, s]));
+  const snapshotIds = snapshotRows.map((snapshot) => snapshot.id);
+  const conditionRows =
+    snapshotIds.length === 0
+      ? []
+      : await db
+          .select({
+            setupVersionId: setupConditions.setupVersionId,
+            conditionKey: setupConditions.conditionKey,
+            label: setupConditions.label,
+            sortOrder: setupConditions.sortOrder,
+          })
+          .from(setupConditions)
+          .where(
+            and(
+              eq(setupConditions.workspaceId, workspaceId),
+              inArray(setupConditions.setupVersionId, snapshotIds),
+            ),
+          )
+          .orderBy(asc(setupConditions.sortOrder), asc(setupConditions.conditionKey));
+  const conditionsBySetupVersionId = new Map<string, TradeCreateConditionOption[]>();
+  for (const condition of conditionRows) {
+    const list = conditionsBySetupVersionId.get(condition.setupVersionId) ?? [];
+    list.push({
+      conditionKey: condition.conditionKey,
+      label: condition.label,
+      sortOrder: condition.sortOrder,
+    });
+    conditionsBySetupVersionId.set(condition.setupVersionId, list);
+  }
 
   const strategyOptions: TradeCreateStrategyOption[] = [];
   for (const strategy of strategyRows) {
@@ -670,7 +709,13 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
       if (!setupIdSet.has(setup.id)) continue;
       const snapshot = snapshotBySetupId.get(setup.id);
       if (snapshot === undefined) continue;
-      setupOptions.push({ setupId: setup.id, name: snapshot.name, sortOrder: snapshot.sortOrder });
+      setupOptions.push({
+        setupId: setup.id,
+        name: snapshot.name,
+        sortOrder: snapshot.sortOrder,
+        conditionSetToken: createConditionSetToken(snapshot.id),
+        conditions: conditionsBySetupVersionId.get(snapshot.id) ?? [],
+      });
     }
     setupOptions.sort((a, b) => a.sortOrder - b.sortOrder);
 

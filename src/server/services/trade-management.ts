@@ -6,6 +6,8 @@ import { CALC_VERSION } from '@/config/trade-calc';
 import { composePlannedR, composeSystemResolve, composeTraderClose } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { authorizeWorkspaceMutation, type MutationDenialReason } from '@/lib/entitlements/resolve';
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
+import type { SetupConditionAnswer } from '@/lib/setup-conditions/snapshots';
 import { getChartAttachmentStorage } from '@/lib/storage/chart-attachment-storage';
 import { systemClock, type Clock } from '@/lib/time';
 import {
@@ -31,6 +33,7 @@ import {
 
 import { insertAuditLog } from './audit-log';
 import { lockAndResolveEntitlement } from './entitlement';
+import { snapshotTradeSetupConditionsInTx } from './setup-condition-snapshots';
 import { lockStrategyVersionForReferenceInTx } from './strategy-versioning';
 import {
   canCancelFromStatus,
@@ -87,13 +90,18 @@ import {
  *     selected Setup identity AND the locked current Strategy Version — the
  *     one query that proves the client's Setup selection is genuinely
  *     available inside the Version this Trade is about to pin.
- * 11. `lockStrategyVersionForReferenceInTx` (`strategy-versioning.ts`,
+ * 11. Compare the opaque Condition-set concurrency token against that
+ *     server-resolved Setup Version; stale entry screens stop here.
+ * 12. `lockStrategyVersionForReferenceInTx` (`strategy-versioning.ts`,
  *     already built in Phase 06) — locks the Version this Trade references,
  *     idempotently, exactly once per Version's lifetime.
- * 12. Insert the Trade row.
- * 13. Snapshot every applicable `strategy_rules` row into `trade_rule_checks`
+ * 13. Insert the Trade row.
+ * 14. Snapshot every applicable `strategy_rules` row into `trade_rule_checks`
  *     (`not_checked`).
- * 14. Write the `trade.created` audit event.
+ * 15. Validate and snapshot every authoritative Setup Condition with its
+ *     explicit `met`/`not_met` answer.
+ * 16. Write the `trade.created` audit event. Any Condition failure throws
+ *     through the transaction so every create-side write is all-or-nothing.
  *
  * No function in this file ever acquires a later-numbered lock before an
  * earlier one, so nothing here can deadlock against `strategy-management.ts`
@@ -360,6 +368,10 @@ export interface CreateTradeInput {
   readonly tradingAccountId: string;
   readonly strategyId: string;
   readonly setupId: string;
+  /** Opaque optimistic-concurrency token for the Condition set rendered by the client. */
+  readonly conditionSetToken: string;
+  /** Stable logical keys plus binary answers only; all snapshot content remains server-owned. */
+  readonly conditionAnswers: readonly SetupConditionAnswer[];
   readonly symbol: string;
   readonly direction: string;
   /**
@@ -409,7 +421,27 @@ export type CreateTradeErrorCode =
   | 'strategy_current_version_missing'
   | 'setup_not_found'
   | 'setup_archived'
-  | 'setup_snapshot_missing';
+  | 'setup_snapshot_missing'
+  | 'stale_setup_conditions'
+  | 'duplicate_condition_answer'
+  | 'unknown_condition_answer'
+  | 'incomplete_condition_answers'
+  | 'invalid_condition_status';
+
+type SetupConditionInputErrorCode = Extract<
+  CreateTradeErrorCode,
+  | 'duplicate_condition_answer'
+  | 'unknown_condition_answer'
+  | 'incomplete_condition_answers'
+  | 'invalid_condition_status'
+>;
+
+class SetupConditionSnapshotFailure extends Error {
+  constructor(readonly code: SetupConditionInputErrorCode) {
+    super(code);
+    this.name = 'SetupConditionSnapshotFailure';
+  }
+}
 
 export type CreateTradeResult =
   | { readonly ok: true; readonly tradeId: string; readonly alreadyCreated: boolean }
@@ -434,183 +466,221 @@ export async function createTrade(
 ): Promise<CreateTradeResult> {
   const db = getDb();
 
-  const result = await db.transaction(async (tx): Promise<CreateTradeResult> => {
-    // Steps 1–2.
-    const membershipDenial = await lockWorkspaceAndVerifyMembership(tx, workspaceId, userId);
-    if (membershipDenial !== null) return { ok: false, code: membershipDenial };
+  let result: CreateTradeResult;
+  try {
+    result = await db.transaction(async (tx): Promise<CreateTradeResult> => {
+      // Steps 1–2.
+      const membershipDenial = await lockWorkspaceAndVerifyMembership(tx, workspaceId, userId);
+      if (membershipDenial !== null) return { ok: false, code: membershipDenial };
 
-    // Step 3 — exact workspace-scoped mutation-key replay lookup, BEFORE
-    // entitlement. The replay request's mutable Plan fields are never
-    // compared against the stored Trade — they may legitimately have
-    // changed since the original create (locked Phase 08B decision).
-    const existing = await tx.query.trades.findFirst({
-      where: and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, input.mutationKey)),
-    });
-    if (existing !== undefined) {
-      return { ok: true, tradeId: existing.id, alreadyCreated: true };
-    }
+      // Step 3 — exact workspace-scoped mutation-key replay lookup, BEFORE
+      // entitlement. The replay request's mutable Plan fields are never
+      // compared against the stored Trade — they may legitimately have
+      // changed since the original create (locked Phase 08B decision).
+      const existing = await tx.query.trades.findFirst({
+        where: and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, input.mutationKey)),
+      });
+      if (existing !== undefined) {
+        return { ok: true, tradeId: existing.id, alreadyCreated: true };
+      }
 
-    // Step 4.
-    const denial = await resolveMutationDenial(tx, workspaceId, clock);
-    if (denial !== null) return { ok: false, code: denial };
+      // Step 4.
+      const denial = await resolveMutationDenial(tx, workspaceId, clock);
+      if (denial !== null) return { ok: false, code: denial };
 
-    const symbol = normalizeRequiredText(input.symbol);
-    if (!symbol.ok) return { ok: false, code: 'blank_symbol' };
-    if (!isTradeDirection(input.direction)) return { ok: false, code: 'invalid_direction' };
+      const symbol = normalizeRequiredText(input.symbol);
+      if (!symbol.ok) return { ok: false, code: 'blank_symbol' };
+      if (!isTradeDirection(input.direction)) return { ok: false, code: 'invalid_direction' };
 
-    // The Founder-UAT "minimum plan validity" floor (migration 0010) — the
-    // same invariant `trades_plan_minimum_check` enforces at the database
-    // layer, checked here first so its dedicated error code is never masked
-    // by a generic `invalid_plan`/`missing_input`.
-    const hasPricePlan =
-      input.plannedEntry !== null &&
-      input.plannedEntry !== undefined &&
-      input.plannedStop !== null &&
-      input.plannedStop !== undefined;
-    const hasMoneyPlan = input.plannedRiskMinor !== null && input.plannedRiskMinor !== undefined;
-    if (!hasPricePlan && !hasMoneyPlan) {
-      return { ok: false, code: 'no_plan_representation' };
-    }
+      // The Founder-UAT "minimum plan validity" floor (migration 0010) — the
+      // same invariant `trades_plan_minimum_check` enforces at the database
+      // layer, checked here first so its dedicated error code is never masked
+      // by a generic `invalid_plan`/`missing_input`.
+      const hasPricePlan =
+        input.plannedEntry !== null &&
+        input.plannedEntry !== undefined &&
+        input.plannedStop !== null &&
+        input.plannedStop !== undefined;
+      const hasMoneyPlan = input.plannedRiskMinor !== null && input.plannedRiskMinor !== undefined;
+      if (!hasPricePlan && !hasMoneyPlan) {
+        return { ok: false, code: 'no_plan_representation' };
+      }
 
-    // `composePlannedR` validates whichever representation(s) are present
-    // (never hand-duplicating the risk-per-unit/Money-ratio formulas) and
-    // detects a Price/Money disagreement rather than silently picking one —
-    // see `src/lib/calc/trade.ts`'s own doc comment.
-    const composed = composePlannedR({
-      direction: input.direction,
-      plannedEntry: input.plannedEntry ?? null,
-      plannedStop: input.plannedStop ?? null,
-      plannedTarget: input.plannedTarget ?? null,
-      plannedRiskMinor: input.plannedRiskMinor ?? null,
-      plannedRewardMinor: input.plannedRewardMinor ?? null,
-    });
-    if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
-    if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
-    const plannedR = composed.value.plannedR;
-
-    // Step 5 — plain scoped read, not FOR UPDATE (see module comment).
-    const account = await tx.query.tradingAccounts.findFirst({
-      where: and(
-        eq(tradingAccounts.id, input.tradingAccountId),
-        eq(tradingAccounts.workspaceId, workspaceId),
-      ),
-    });
-    if (account === undefined) return { ok: false, code: 'trading_account_not_found' };
-    if (account.isArchived) return { ok: false, code: 'trading_account_archived' };
-
-    // Step 6.
-    const strategyLock = await lockStrategyRowForTrade(tx, workspaceId, input.strategyId);
-    if (!strategyLock.ok) return strategyLock;
-    if (strategyLock.strategy.isArchived) return { ok: false, code: 'strategy_archived' };
-
-    // Steps 7–8.
-    const versionLock = await lockCurrentVersionRowForTrade(tx, strategyLock.strategy);
-    if (!versionLock.ok) return versionLock;
-    const version = versionLock.version;
-
-    // Step 9 — plain scoped read, not FOR UPDATE (see module comment).
-    const setup = await tx.query.setups.findFirst({
-      where: and(
-        eq(setups.id, input.setupId),
-        eq(setups.workspaceId, workspaceId),
-        eq(setups.strategyId, input.strategyId),
-      ),
-    });
-    if (setup === undefined) return { ok: false, code: 'setup_not_found' };
-    if (setup.isArchived) return { ok: false, code: 'setup_archived' };
-
-    // Step 10.
-    const setupVersion = await tx.query.strategySetupVersions.findFirst({
-      where: and(
-        eq(strategySetupVersions.strategyVersionId, version.id),
-        eq(strategySetupVersions.setupId, setup.id),
-      ),
-    });
-    if (setupVersion === undefined) return { ok: false, code: 'setup_snapshot_missing' };
-
-    // Step 11.
-    const lockResult = await lockStrategyVersionForReferenceInTx(
-      tx,
-      { workspaceId, strategyId: input.strategyId, versionId: version.id, actorUserId: userId },
-      clock,
-    );
-    if (!lockResult.ok) return lockResult;
-
-    // Step 12.
-    const inserted = await tx
-      .insert(trades)
-      .values({
-        workspaceId,
-        mutationKey: input.mutationKey,
-        tradingAccountId: input.tradingAccountId,
-        strategyId: input.strategyId,
-        strategyVersionId: version.id,
-        setupId: setup.id,
-        setupVersionId: setupVersion.id,
-        symbol: symbol.value,
+      // `composePlannedR` validates whichever representation(s) are present
+      // (never hand-duplicating the risk-per-unit/Money-ratio formulas) and
+      // detects a Price/Money disagreement rather than silently picking one —
+      // see `src/lib/calc/trade.ts`'s own doc comment.
+      const composed = composePlannedR({
         direction: input.direction,
-        timeframe: normalizeOptionalText(input.timeframe),
-        session: normalizeOptionalText(input.session),
-        confirmationNotes: normalizeOptionalText(input.confirmationNotes),
-        confidence: input.confidence ?? null,
-        tradingviewUrl: normalizeOptionalText(input.tradingviewUrl),
-        notes: normalizeOptionalText(input.notes),
-        chartAttachmentStorageKey: input.chartAttachmentStorageKey ?? null,
-        chartAttachmentUploadedAt: input.chartAttachmentStorageKey ? clock.now() : null,
         plannedEntry: input.plannedEntry ?? null,
         plannedStop: input.plannedStop ?? null,
         plannedTarget: input.plannedTarget ?? null,
-        plannedPositionSize: input.plannedPositionSize ?? null,
         plannedRiskMinor: input.plannedRiskMinor ?? null,
         plannedRewardMinor: input.plannedRewardMinor ?? null,
-        plannedR,
-      })
-      .onConflictDoNothing({ target: [trades.workspaceId, trades.mutationKey] })
-      .returning({ id: trades.id });
-
-    const created = inserted[0];
-    if (created === undefined) {
-      // Unreachable given the workspace-row-serialized idempotency check
-      // above — kept as a defensive re-read, matching createStrategy's own
-      // posture on an impossible conflict.
-      const raced = await tx.query.trades.findFirst({
-        where: and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, input.mutationKey)),
       });
-      if (raced === undefined) {
-        throw new Error(
-          `createTrade: conflict reported but no row found for mutation key in workspace ${workspaceId}`,
-        );
+      if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
+      if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
+      const plannedR = composed.value.plannedR;
+
+      // Step 5 — plain scoped read, not FOR UPDATE (see module comment).
+      const account = await tx.query.tradingAccounts.findFirst({
+        where: and(
+          eq(tradingAccounts.id, input.tradingAccountId),
+          eq(tradingAccounts.workspaceId, workspaceId),
+        ),
+      });
+      if (account === undefined) return { ok: false, code: 'trading_account_not_found' };
+      if (account.isArchived) return { ok: false, code: 'trading_account_archived' };
+
+      // Step 6.
+      const strategyLock = await lockStrategyRowForTrade(tx, workspaceId, input.strategyId);
+      if (!strategyLock.ok) return strategyLock;
+      if (strategyLock.strategy.isArchived) return { ok: false, code: 'strategy_archived' };
+
+      // Steps 7–8.
+      const versionLock = await lockCurrentVersionRowForTrade(tx, strategyLock.strategy);
+      if (!versionLock.ok) return versionLock;
+      const version = versionLock.version;
+
+      // Step 9 — plain scoped read, not FOR UPDATE (see module comment).
+      const setup = await tx.query.setups.findFirst({
+        where: and(
+          eq(setups.id, input.setupId),
+          eq(setups.workspaceId, workspaceId),
+          eq(setups.strategyId, input.strategyId),
+        ),
+      });
+      if (setup === undefined) return { ok: false, code: 'setup_not_found' };
+      if (setup.isArchived) return { ok: false, code: 'setup_archived' };
+
+      // Step 10.
+      const setupVersion = await tx.query.strategySetupVersions.findFirst({
+        where: and(
+          eq(strategySetupVersions.strategyVersionId, version.id),
+          eq(strategySetupVersions.setupId, setup.id),
+        ),
+      });
+      if (setupVersion === undefined) return { ok: false, code: 'setup_snapshot_missing' };
+
+      // Step 11.
+      if (input.conditionSetToken !== createConditionSetToken(setupVersion.id)) {
+        return { ok: false, code: 'stale_setup_conditions' };
       }
-      return { ok: true, tradeId: raced.id, alreadyCreated: true };
-    }
 
-    // Step 13.
-    await insertRuleSnapshotsInTx(tx, {
-      workspaceId,
-      tradeId: created.id,
-      strategyVersionId: version.id,
-      setupVersionId: setupVersion.id,
-    });
+      // Step 12.
+      const lockResult = await lockStrategyVersionForReferenceInTx(
+        tx,
+        { workspaceId, strategyId: input.strategyId, versionId: version.id, actorUserId: userId },
+        clock,
+      );
+      if (!lockResult.ok) return lockResult;
 
-    // Step 14.
-    await insertAuditLog(tx, {
-      action: 'trade.created',
-      workspaceId,
-      actorUserId: userId,
-      entityType: 'trade',
-      entityId: created.id,
-      metadata: {
+      // Step 13.
+      const inserted = await tx
+        .insert(trades)
+        .values({
+          workspaceId,
+          mutationKey: input.mutationKey,
+          tradingAccountId: input.tradingAccountId,
+          strategyId: input.strategyId,
+          strategyVersionId: version.id,
+          setupId: setup.id,
+          setupVersionId: setupVersion.id,
+          symbol: symbol.value,
+          direction: input.direction,
+          timeframe: normalizeOptionalText(input.timeframe),
+          session: normalizeOptionalText(input.session),
+          confirmationNotes: normalizeOptionalText(input.confirmationNotes),
+          confidence: input.confidence ?? null,
+          tradingviewUrl: normalizeOptionalText(input.tradingviewUrl),
+          notes: normalizeOptionalText(input.notes),
+          chartAttachmentStorageKey: input.chartAttachmentStorageKey ?? null,
+          chartAttachmentUploadedAt: input.chartAttachmentStorageKey ? clock.now() : null,
+          plannedEntry: input.plannedEntry ?? null,
+          plannedStop: input.plannedStop ?? null,
+          plannedTarget: input.plannedTarget ?? null,
+          plannedPositionSize: input.plannedPositionSize ?? null,
+          plannedRiskMinor: input.plannedRiskMinor ?? null,
+          plannedRewardMinor: input.plannedRewardMinor ?? null,
+          plannedR,
+        })
+        .onConflictDoNothing({ target: [trades.workspaceId, trades.mutationKey] })
+        .returning({ id: trades.id });
+
+      const created = inserted[0];
+      if (created === undefined) {
+        // Unreachable given the workspace-row-serialized idempotency check
+        // above — kept as a defensive re-read, matching createStrategy's own
+        // posture on an impossible conflict.
+        const raced = await tx.query.trades.findFirst({
+          where: and(
+            eq(trades.workspaceId, workspaceId),
+            eq(trades.mutationKey, input.mutationKey),
+          ),
+        });
+        if (raced === undefined) {
+          throw new Error(
+            `createTrade: conflict reported but no row found for mutation key in workspace ${workspaceId}`,
+          );
+        }
+        return { ok: true, tradeId: raced.id, alreadyCreated: true };
+      }
+
+      // Step 14.
+      await insertRuleSnapshotsInTx(tx, {
+        workspaceId,
         tradeId: created.id,
-        tradingAccountId: input.tradingAccountId,
-        strategyId: input.strategyId,
         strategyVersionId: version.id,
-        setupId: setup.id,
         setupVersionId: setupVersion.id,
-      },
-    });
+      });
 
-    return { ok: true, tradeId: created.id, alreadyCreated: false };
-  });
+      // Step 15.
+      const conditionSnapshots = await snapshotTradeSetupConditionsInTx(tx, {
+        workspaceId,
+        tradeId: created.id,
+        setupVersionId: setupVersion.id,
+        answers: input.conditionAnswers,
+      });
+      if (!conditionSnapshots.ok) {
+        switch (conditionSnapshots.code) {
+          case 'duplicate_condition_answer':
+          case 'unknown_condition_answer':
+          case 'incomplete_condition_answers':
+          case 'invalid_condition_status':
+            throw new SetupConditionSnapshotFailure(conditionSnapshots.code);
+          default:
+            throw new Error(
+              `createTrade condition snapshot invariant failed: ${conditionSnapshots.code}`,
+            );
+        }
+      }
+
+      // Step 16.
+      await insertAuditLog(tx, {
+        action: 'trade.created',
+        workspaceId,
+        actorUserId: userId,
+        entityType: 'trade',
+        entityId: created.id,
+        metadata: {
+          tradeId: created.id,
+          tradingAccountId: input.tradingAccountId,
+          strategyId: input.strategyId,
+          strategyVersionId: version.id,
+          setupId: setup.id,
+          setupVersionId: setupVersion.id,
+        },
+      });
+
+      return { ok: true, tradeId: created.id, alreadyCreated: false };
+    });
+  } catch (error) {
+    if (error instanceof SetupConditionSnapshotFailure) {
+      result = { ok: false, code: error.code };
+    } else {
+      throw error;
+    }
+  }
 
   // Best-effort orphan cleanup (Founder review §5): if a Chart image was
   // already uploaded to private storage but this transaction did NOT end in

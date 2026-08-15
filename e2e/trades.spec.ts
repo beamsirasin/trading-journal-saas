@@ -1,15 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
 import {
+  setupConditions,
   setups,
   strategies,
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeSetupConditionChecks,
   workspaces,
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
@@ -26,7 +28,7 @@ async function provisionJournalUser(prefix: string) {
   });
 }
 
-async function seedFramework(userId: string): Promise<void> {
+async function seedFramework(userId: string, withConditions = true): Promise<void> {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
   const db = drizzle(client, {
@@ -36,6 +38,7 @@ async function seedFramework(userId: string): Promise<void> {
       strategyVersions,
       strategyRules,
       setups,
+      setupConditions,
       strategySetupVersions,
     },
   });
@@ -77,14 +80,53 @@ async function seedFramework(userId: string): Promise<void> {
       .values({ workspaceId: workspace.id, strategyId: strategy.id })
       .returning();
     if (setup === undefined) throw new Error('Trade E2E Setup insert failed');
-    await db.insert(strategySetupVersions).values({
-      workspaceId: workspace.id,
-      strategyId: strategy.id,
-      strategyVersionId: version.id,
-      setupId: setup.id,
-      name: 'Clean Retest',
-      sortOrder: 0,
-    });
+    const [setupVersion] = await db
+      .insert(strategySetupVersions)
+      .values({
+        workspaceId: workspace.id,
+        strategyId: strategy.id,
+        strategyVersionId: version.id,
+        setupId: setup.id,
+        name: 'Clean Retest',
+        sortOrder: 0,
+      })
+      .returning({ id: strategySetupVersions.id });
+    if (setupVersion === undefined) throw new Error('Trade E2E Setup Version insert failed');
+    if (withConditions) {
+      await db.insert(setupConditions).values(
+        [
+          'Breakout candle closed',
+          'Retest held',
+          'Volume expanded',
+          'Invalidation is clear',
+          'Session is aligned',
+        ].map((label, sortOrder) => ({
+          workspaceId: workspace.id,
+          setupId: setup.id,
+          setupVersionId: setupVersion.id,
+          label,
+          sortOrder,
+        })),
+      );
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+async function readConditionChecks(tradeId: string) {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, { schema: { tradeSetupConditionChecks } });
+  try {
+    return await db
+      .select({
+        label: tradeSetupConditionChecks.label,
+        checkStatus: tradeSetupConditionChecks.checkStatus,
+      })
+      .from(tradeSetupConditionChecks)
+      .where(eq(tradeSetupConditionChecks.tradeId, tradeId))
+      .orderBy(asc(tradeSetupConditionChecks.sortOrder));
   } finally {
     await client.end();
   }
@@ -93,18 +135,19 @@ async function seedFramework(userId: string): Promise<void> {
 async function createPlannedTrade(page: Page) {
   await page.getByRole('link', { name: 'Log a trade' }).first().click();
   await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
-  await page.getByRole('button', { name: /Continue/ }).click();
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-  await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
-  await page.getByRole('button', { name: /Continue/ }).click();
+  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await page.getByRole('button', { name: 'Long' }).click();
-  await page.getByLabel('Entry').fill('100');
+  await page.getByLabel('Entry', { exact: true }).fill('100');
   await page.getByLabel('Stop').fill('90');
   await page.getByLabel(/Target/).fill('130');
-  await page.getByRole('button', { name: /Continue/ }).click();
-  await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
-  await page.getByRole('button', { name: 'Create Trade' }).click();
+  await page.getByLabel('Breakout candle closed').check();
+  await page.getByLabel('Retest held').check();
+  await page.getByLabel('Volume expanded').check();
+  await page.getByLabel('Invalidation is clear').check();
+  await page.getByLabel('Session is aligned').check();
+  await page.getByRole('button', { name: 'Save Trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
 
@@ -112,18 +155,19 @@ async function createPlannedTrade(page: Page) {
 async function createMoneyOnlyPlannedTrade(page: Page) {
   await page.getByRole('link', { name: 'Log a trade' }).first().click();
   await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
-  await page.getByRole('button', { name: /Continue/ }).click();
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-  await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
-  await page.getByRole('button', { name: /Continue/ }).click();
+  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
   await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
   await page.getByRole('button', { name: 'Short' }).click();
   await page.getByRole('button', { name: 'Add a Money plan' }).click();
   await page.getByLabel('Planned risk').fill('100.00');
   await page.getByLabel(/Planned reward/).fill('300.00');
-  await page.getByRole('button', { name: /Continue/ }).click();
-  await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
-  await page.getByRole('button', { name: 'Create Trade' }).click();
+  await page.getByLabel('Breakout candle closed').check();
+  await page.getByLabel('Retest held').check();
+  await page.getByLabel('Volume expanded').check();
+  await page.getByLabel('Invalidation is clear').check();
+  await page.getByLabel('Session is aligned').check();
+  await page.getByRole('button', { name: 'Save Trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
 
@@ -232,6 +276,61 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('+3.00R')).toBeVisible();
   });
 
+  test('confirms unmet Conditions and persists the exact mixed snapshots', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-conditions');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades/new');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByLabel('Entry', { exact: true }).fill('1.25');
+    await page.getByLabel('Stop').fill('1.24');
+    await page.getByLabel('Breakout candle closed').check();
+    await page.getByLabel('Retest held').check();
+    await page.getByLabel('Volume expanded').check();
+    await expect(page.getByText('3/5 met · 60%')).toBeVisible();
+    await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
+    await page.getByLabel('Entry Reason').fill('Breakout confirmed on the retest.');
+    await page.getByRole('button', { name: 'Save Trade' }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog.getByText(/3 of 5 Conditions are met \(60%\)/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save Trade' }).click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+    const tradeId = new URL(page.url()).searchParams.get('trade');
+    if (tradeId === null) throw new Error('created Trade ID missing from URL');
+    expect(await readConditionChecks(tradeId)).toEqual([
+      { label: 'Breakout candle closed', checkStatus: 'met' },
+      { label: 'Retest held', checkStatus: 'met' },
+      { label: 'Volume expanded', checkStatus: 'met' },
+      { label: 'Invalidation is clear', checkStatus: 'not_met' },
+      { label: 'Session is aligned', checkStatus: 'not_met' },
+    ]);
+  });
+
+  test('zero-Condition Setup shows Not configured and saves without a warning', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-zero-conditions');
+    await seedFramework(user.id, false);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades/new');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+    await expect(page.getByText('Not configured')).toBeVisible();
+    await expect(page.getByText(/0\/0/)).toHaveCount(0);
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByLabel('Entry', { exact: true }).fill('150');
+    await page.getByLabel('Stop').fill('149');
+    await page.getByRole('button', { name: 'Save Trade' }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+  });
+
   test('blocks creation when Price and Money plans disagree, and allows it once resolved', async ({
     page,
   }) => {
@@ -242,12 +341,10 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades');
     await page.getByRole('link', { name: 'Log a trade' }).first().click();
-    await page.getByRole('button', { name: /Continue/ }).click();
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-    await page.getByRole('button', { name: /Continue/ }).click();
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
-    await page.getByLabel('Entry').fill('100');
+    await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop').fill('90');
     await page.getByLabel(/Target/).fill('130'); // Price implies +3R
     await page.getByRole('button', { name: 'Add a Money plan' }).click();
@@ -255,18 +352,21 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel(/Planned reward/).fill('500.00'); // Money implies +10R
 
     await expect(page.getByText('Price and Money plans disagree')).toBeVisible();
-    await page.getByRole('button', { name: /Continue/ }).click();
+    await page.getByRole('button', { name: 'Save Trade' }).click();
     await expect(
       page.getByText('Price and Money plans disagree — adjust one before continuing.'),
     ).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
 
     // Resolve the disagreement — Money now agrees with Price (+3R) — and proceed.
     await page.getByLabel(/Planned reward/).fill('150.00');
     await expect(page.getByText('Price and Money plans disagree')).toHaveCount(0);
-    await page.getByRole('button', { name: /Continue/ }).click();
-    await expect(page.getByRole('heading', { name: 'Review the planned Trade' })).toBeVisible();
-    await page.getByRole('button', { name: 'Create Trade' }).click();
+    await page.getByLabel('Breakout candle closed').check();
+    await page.getByLabel('Retest held').check();
+    await page.getByLabel('Volume expanded').check();
+    await page.getByLabel('Invalidation is clear').check();
+    await page.getByLabel('Session is aligned').check();
+    await page.getByRole('button', { name: 'Save Trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
   });
 
@@ -286,16 +386,13 @@ test.describe('real Trade Journal creation', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/en/app/trades/new');
 
-      // Stepper usable: every step control renders within the viewport.
-      const stepper = page.getByRole('list', { name: 'Trade creation progress' });
-      await expect(stepper).toBeVisible();
-      const stepperBox = await stepper.boundingBox();
-      expect(stepperBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+      const form = page.locator('form');
+      await expect(form).toBeVisible();
+      const formBox = await form.boundingBox();
+      expect(formBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
 
-      await page.getByRole('button', { name: /Continue/ }).click();
       await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-      await expect(page.getByLabel('Setup')).toHaveValue(/.+/);
-      await page.getByRole('button', { name: /Continue/ }).click();
+      await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
 
       // Long/Short usable: both direction buttons are visible, and clicking
       // one visibly selects it (not color-only — Founder-UAT correction
@@ -426,9 +523,7 @@ test.describe('Confidence pill drag interaction', () => {
     await page.goto('/en/app/trades');
     await page.getByRole('link', { name: 'Log a trade' }).first().click();
     await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
-    await page.getByRole('button', { name: /Continue/ }).click();
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-    await page.getByRole('button', { name: /Continue/ }).click();
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
   }
@@ -438,8 +533,8 @@ test.describe('Confidence pill drag interaction', () => {
     await page.locator(`[data-slot="confidence-option"][data-step="${step}"]`).click();
   }
 
-  /** Drags the pill from its current position to an absolute viewport X, via several intermediate moves so Framer recognizes a real pan rather than a click. */
-  async function dragPillTo(page: Page, toX: number) {
+  /** Moves a held pill to an absolute viewport X via enough intermediate events for Motion to recognize a pan. */
+  async function beginPillDragTo(page: Page, toX: number) {
     const pill = page.locator('[data-slot="confidence-pill"]');
     const pillBox = await pill.boundingBox();
     if (!pillBox) throw new Error('Confidence pill has no geometry');
@@ -450,6 +545,11 @@ test.describe('Confidence pill drag interaction', () => {
     await page.mouse.move(startX + (toX - startX) * 0.3, y, { steps: 5 });
     await page.mouse.move(startX + (toX - startX) * 0.7, y, { steps: 5 });
     await page.mouse.move(toX, y, { steps: 5 });
+  }
+
+  /** Drags and releases the pill at an absolute viewport X. */
+  async function dragPillTo(page: Page, toX: number) {
+    await beginPillDragTo(page, toX);
     await page.mouse.up();
   }
 
@@ -517,19 +617,34 @@ test.describe('Confidence pill drag interaction', () => {
     await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
 
     const track = await trackBox(page);
-    // Target well beyond the left edge of the track.
-    await dragPillTo(page, track.x - 400);
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-    const pillAfterLeft = await page.locator('[data-slot="confidence-pill"]').boundingBox();
-    expect(pillAfterLeft?.x ?? -1).toBeGreaterThanOrEqual(track.x - 1);
+    // Motion's hard constraint must clamp the rendered pill even while the
+    // synthetic pointer is outside the track. Cancel after inspecting it:
+    // headless Chromium does not emit dragend for that artificial gesture.
+    const pill = page.locator('[data-slot="confidence-pill"]');
+    await beginPillDragTo(page, track.x - 1);
+    const pillPastLeft = await pill.boundingBox();
+    const leftScaleTolerance = (pillPastLeft?.width ?? 0) * 0.02 + 1;
+    expect(pillPastLeft?.x ?? -1).toBeGreaterThanOrEqual(track.x - leftScaleTolerance);
+    await pill.dispatchEvent('pointercancel');
+    await page.mouse.up();
+    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
 
-    // Target well beyond the right edge of the track.
-    await dragPillTo(page, track.x + track.width + 400);
-    await expect(page.getByRole('radio', { name: '100% · Very High' })).toBeChecked();
-    const pillAfterRight = await page.locator('[data-slot="confidence-pill"]').boundingBox();
-    expect((pillAfterRight?.x ?? 0) + (pillAfterRight?.width ?? 0)).toBeLessThanOrEqual(
-      track.x + track.width + 1,
+    // A valid release in the outer step commits the exact boundary value.
+    await dragPillTo(page, track.x + track.width * 0.05);
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
+
+    await beginPillDragTo(page, track.x + track.width + 1);
+    const pillPastRight = await pill.boundingBox();
+    const rightScaleTolerance = (pillPastRight?.width ?? 0) * 0.02 + 1;
+    expect((pillPastRight?.x ?? 0) + (pillPastRight?.width ?? 0)).toBeLessThanOrEqual(
+      track.x + track.width + rightScaleTolerance,
     );
+    await pill.dispatchEvent('pointercancel');
+    await page.mouse.up();
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
+
+    await dragPillTo(page, track.x + track.width * 0.95);
+    await expect(page.getByRole('radio', { name: '100% · Very High' })).toBeChecked();
   });
 
   test('a cancelled pointer gesture leaves the Confidence value in a valid, unchanged discrete state', async ({

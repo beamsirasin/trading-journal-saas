@@ -27,6 +27,8 @@ function baseCreateInput() {
     tradingAccountId: uuid2,
     strategyId: uuid3,
     setupId: uuid1,
+    conditionSetToken: 'a'.repeat(64),
+    conditionAnswers: [],
     symbol: 'EURUSD',
     direction: 'long' as const,
     plannedEntry: '1.1000000000',
@@ -54,6 +56,37 @@ describe('trades/schemas — valid input', () => {
       notes: 'Entered on the retest.',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('CreateTradeSchema accepts binary Setup Condition answers', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseCreateInput(),
+      conditionAnswers: [
+        { conditionKey: uuid2, status: 'met' },
+        { conditionKey: uuid3, status: 'not_met' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CreateTradeSchema rejects client-supplied Condition snapshot content', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseCreateInput(),
+      conditionAnswers: [{ conditionKey: uuid2, status: 'met', label: 'forged' }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('CreateTradeSchema rejects invalid Condition status and malformed concurrency tokens', () => {
+    expect(
+      CreateTradeSchema.safeParse({
+        ...baseCreateInput(),
+        conditionAnswers: [{ conditionKey: uuid2, status: 'partial' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateTradeSchema.safeParse({ ...baseCreateInput(), conditionSetToken: uuid1 }).success,
+    ).toBe(false);
   });
 
   it('OpenTradeSchema accepts valid primitive open data', () => {
@@ -296,6 +329,8 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
       tradingAccountId: uuid2,
       strategyId: uuid3,
       setupId: uuid1,
+      conditionSetToken: 'a'.repeat(64),
+      conditionAnswers: [],
       symbol: 'EURUSD',
       direction: 'long' as const,
     };

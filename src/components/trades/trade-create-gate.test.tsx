@@ -22,7 +22,15 @@ const strategy = {
   strategyId: 's',
   name: 'Breakout',
   currentVersionNumber: 1,
-  setups: [{ setupId: 'x', name: 'Retest', sortOrder: 0 }],
+  setups: [
+    {
+      setupId: 'x',
+      name: 'Retest',
+      sortOrder: 0,
+      conditionSetToken: 'a'.repeat(64),
+      conditions: [],
+    },
+  ],
 };
 
 function renderGate(props: React.ComponentProps<typeof TradeCreateGate>) {

@@ -233,6 +233,8 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       tradingAccountId: parsed.data.tradingAccountId,
       strategyId: parsed.data.strategyId,
       setupId: parsed.data.setupId,
+      conditionSetToken: parsed.data.conditionSetToken,
+      conditionAnswers: parsed.data.conditionAnswers,
       symbol: parsed.data.symbol,
       direction: parsed.data.direction,
       plannedEntry: parsed.data.plannedEntry ?? null,

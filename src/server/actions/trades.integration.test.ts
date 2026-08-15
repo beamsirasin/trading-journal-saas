@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   auditLogs,
   tradingAccounts,
@@ -165,6 +166,7 @@ interface Framework {
   readonly tradingAccountId: string;
   readonly strategyId: string;
   readonly setupId: string;
+  readonly setupVersionId: string;
 }
 
 async function createFramework(
@@ -184,7 +186,17 @@ async function createFramework(
     sortOrder: 0,
   });
   if (!setup.ok) throw new Error(`setup creation failed: ${setup.code}`);
-  return { tradingAccountId, strategyId: strategy.strategyId, setupId: setup.setupId };
+  const snapshot = await db.query.strategySetupVersions.findFirst({
+    where: (table, { and: andOp, eq: eqOp }) =>
+      andOp(eqOp(table.strategyVersionId, setup.versionId), eqOp(table.setupId, setup.setupId)),
+  });
+  if (snapshot === undefined) throw new Error('setup snapshot missing');
+  return {
+    tradingAccountId,
+    strategyId: strategy.strategyId,
+    setupId: setup.setupId,
+    setupVersionId: snapshot.id,
+  };
 }
 
 function baseCreateInput(fw: Framework, overrides: Record<string, unknown> = {}) {
@@ -193,6 +205,8 @@ function baseCreateInput(fw: Framework, overrides: Record<string, unknown> = {})
     tradingAccountId: fw.tradingAccountId,
     strategyId: fw.strategyId,
     setupId: fw.setupId,
+    conditionSetToken: createConditionSetToken(fw.setupVersionId),
+    conditionAnswers: [],
     symbol: 'EURUSD',
     direction: 'long' as const,
     plannedEntry: '1.1000000000',
@@ -266,6 +280,8 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         tradingAccountId: crypto.randomUUID(),
         strategyId: crypto.randomUUID(),
         setupId: crypto.randomUUID(),
+        conditionSetToken: 'a'.repeat(64),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedEntry: '1.1',
@@ -333,12 +349,24 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         tradingAccountId: fw.tradingAccountId,
         strategyId: fw.strategyId,
         setupId: fw.setupId,
+        conditionSetToken: createConditionSetToken(fw.setupVersionId),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedRiskMinor: '5000',
         plannedRewardMinor: '15000',
       });
       expect(result.ok).toBe(true);
+      assertJsonSerializable(result);
+    });
+
+    it('returns a stable public stale-Conditions error without creating a Trade', async () => {
+      const { fw } = await freshFixture();
+      const result = await createTradeAction(
+        baseCreateInput(fw, { conditionSetToken: '0'.repeat(64) }),
+      );
+      expect(result).toEqual({ ok: false, error: { code: 'stale_setup_conditions' } });
+      expect(revalidatePath).not.toHaveBeenCalled();
       assertJsonSerializable(result);
     });
 
@@ -349,6 +377,8 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         tradingAccountId: fw.tradingAccountId,
         strategyId: fw.strategyId,
         setupId: fw.setupId,
+        conditionSetToken: createConditionSetToken(fw.setupVersionId),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
       });

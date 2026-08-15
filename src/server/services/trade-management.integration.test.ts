@@ -1,6 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   auditLogs,
   strategyVersions,
@@ -152,6 +153,8 @@ function basePlanInput(fw: Framework, overrides: Partial<CreateTradeInput> = {})
     tradingAccountId: fw.tradingAccountId,
     strategyId: fw.strategyId,
     setupId: fw.setupId,
+    conditionSetToken: createConditionSetToken(fw.setupVersionId),
+    conditionAnswers: [],
     symbol: 'EURUSD',
     direction: 'long',
     plannedEntry: '1.1000000000',
@@ -215,17 +218,23 @@ describe('trade-management (real database)', () => {
   // Create
   // -------------------------------------------------------------------------
   describe('createTrade', () => {
-    it('accepts a valid planned Trade', async () => {
+    it('atomically creates a Trade and snapshots its authoritative Setup Conditions', async () => {
       const fw = await freshFramework();
       const condition = await createSetupCondition(
         workspaceId,
         actorUserId,
         fw.strategyId,
         fw.setupId,
-        { label: 'Configured but not shown by the old Trade flow', sortOrder: 0 },
+        { label: 'Breakout candle closed', sortOrder: 0 },
       );
       if (!condition.ok) throw new Error(`condition creation failed: ${condition.code}`);
-      const result = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
+      const result = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, {
+          conditionAnswers: [{ conditionKey: condition.conditionKey, status: 'met' }],
+        }),
+      );
       expect(result).toMatchObject({ ok: true, alreadyCreated: false });
       if (!result.ok) return;
       const row = await readTrade(result.tradeId);
@@ -235,7 +244,134 @@ describe('trade-management (real database)', () => {
         .select()
         .from(tradeSetupConditionChecks)
         .where(eq(tradeSetupConditionChecks.tradeId, result.tradeId));
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]).toMatchObject({
+        workspaceId,
+        setupVersionId: fw.setupVersionId,
+        conditionKey: condition.conditionKey,
+        label: 'Breakout candle closed',
+        sortOrder: 0,
+        checkStatus: 'met',
+      });
+    });
+
+    it('persists mixed met/not_met answers and an exact replay does not duplicate snapshots', async () => {
+      const fw = await freshFramework();
+      const first = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        fw.strategyId,
+        fw.setupId,
+        { label: 'First condition', sortOrder: 20 },
+      );
+      const second = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        fw.strategyId,
+        fw.setupId,
+        { label: 'Second condition', sortOrder: 10 },
+      );
+      if (!first.ok || !second.ok) throw new Error('condition creation failed');
+      const input = basePlanInput(fw, {
+        conditionAnswers: [
+          { conditionKey: first.conditionKey, status: 'not_met' },
+          { conditionKey: second.conditionKey, status: 'met' },
+        ],
+      });
+
+      const created = await createTrade(workspaceId, actorUserId, input);
+      const replay = await createTrade(workspaceId, actorUserId, input);
+      expect(created).toMatchObject({ ok: true, alreadyCreated: false });
+      expect(replay).toMatchObject({ ok: true, alreadyCreated: true });
+      if (!created.ok) return;
+
+      const snapshots = await db
+        .select()
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.tradeId, created.tradeId))
+        .orderBy(asc(tradeSetupConditionChecks.sortOrder));
+      expect(snapshots).toHaveLength(2);
+      expect(snapshots.map((snapshot) => [snapshot.label, snapshot.checkStatus])).toEqual([
+        ['Second condition', 'met'],
+        ['First condition', 'not_met'],
+      ]);
+    });
+
+    it('creates zero Condition snapshots for a genuinely unconfigured Setup', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const snapshots = await db
+        .select()
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.tradeId, result.tradeId));
       expect(snapshots).toHaveLength(0);
+    });
+
+    it('rolls back the Trade when the Condition answer set is incomplete', async () => {
+      const fw = await freshFramework();
+      const condition = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        fw.strategyId,
+        fw.setupId,
+        { label: 'Must be answered', sortOrder: 0 },
+      );
+      if (!condition.ok) throw new Error('condition creation failed');
+      const input = basePlanInput(fw, { conditionAnswers: [] });
+      const result = await createTrade(workspaceId, actorUserId, input);
+      expect(result).toEqual({ ok: false, code: 'incomplete_condition_answers' });
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(eq(trades.mutationKey, input.mutationKey));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('rejects a cross-workspace Condition key and rolls back the Trade', async () => {
+      const fw = await freshFramework();
+      const other = await freshFramework(otherWorkspaceId, otherActorUserId);
+      const foreign = await createSetupCondition(
+        otherWorkspaceId,
+        otherActorUserId,
+        other.strategyId,
+        other.setupId,
+        { label: 'Foreign Condition', sortOrder: 0 },
+      );
+      if (!foreign.ok) throw new Error('foreign condition creation failed');
+      const input = basePlanInput(fw, {
+        conditionAnswers: [{ conditionKey: foreign.conditionKey, status: 'met' }],
+      });
+      const result = await createTrade(workspaceId, actorUserId, input);
+      expect(result).toEqual({ ok: false, code: 'unknown_condition_answer' });
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(eq(trades.mutationKey, input.mutationKey));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('rejects answers rendered from the prior Version after a concurrent Strategy edit', async () => {
+      const fw = await freshFramework();
+      const lockVersion = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
+      if (!lockVersion.ok) throw new Error('version-locking Trade create failed');
+      const changed = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        fw.strategyId,
+        fw.setupId,
+        { label: 'Added concurrently', sortOrder: 0, changeNote: 'Add entry evidence' },
+      );
+      if (!changed.ok) throw new Error(`condition edit failed: ${changed.code}`);
+      const input = basePlanInput(fw);
+      const result = await createTrade(workspaceId, actorUserId, input);
+      expect(result).toEqual({ ok: false, code: 'stale_setup_conditions' });
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(eq(trades.mutationKey, input.mutationKey));
+      expect(rows).toHaveLength(0);
     });
 
     it('Target optional => planned_r null', async () => {
@@ -611,7 +747,10 @@ describe('trade-management (real database)', () => {
         const second = await createTrade(
           workspaceId,
           actorUserId,
-          basePlanInput(fw, { tradingAccountId: secondAccount }),
+          basePlanInput(fw, {
+            tradingAccountId: secondAccount,
+            conditionSetToken: createConditionSetToken(setupV2.id),
+          }),
         );
         expect(second.ok).toBe(true);
         if (!second.ok) return;
@@ -657,6 +796,8 @@ describe('trade-management (real database)', () => {
         tradingAccountId: fw.tradingAccountId,
         strategyId: fw.strategyId,
         setupId: fw.setupId,
+        conditionSetToken: createConditionSetToken(fw.setupVersionId),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedRiskMinor: 5000n,
@@ -704,6 +845,8 @@ describe('trade-management (real database)', () => {
         tradingAccountId: fw.tradingAccountId,
         strategyId: fw.strategyId,
         setupId: fw.setupId,
+        conditionSetToken: createConditionSetToken(fw.setupVersionId),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
       });
@@ -717,6 +860,8 @@ describe('trade-management (real database)', () => {
         tradingAccountId: fw.tradingAccountId,
         strategyId: fw.strategyId,
         setupId: fw.setupId,
+        conditionSetToken: createConditionSetToken(fw.setupVersionId),
+        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
         plannedRiskMinor: -1n,

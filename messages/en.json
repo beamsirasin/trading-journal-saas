@@ -691,7 +691,9 @@
       "sections": {
         "corePlan": "Core plan",
         "context": "Context",
+        "conditions": "Setup Conditions",
         "confidence": "Confidence",
+        "entryReason": "Entry Reason",
         "chart": "Chart attachment",
         "notes": "Notes"
       },
@@ -725,6 +727,17 @@
         "clear": "Clear confidence",
         "hint": "How confident are you in this setup?"
       },
+      "conditions": {
+        "description": "Check every condition that is met now. Unchecked conditions are saved as Not Met.",
+        "chooseSetup": "Choose a Setup to load its current Conditions.",
+        "notConfigured": "Not configured",
+        "adherence": "{met}/{total} met · {percentage}%",
+        "confirmTitle": "Save with unmet Setup Conditions?",
+        "confirmDescription": "{met} of {total} Conditions are met ({percentage}%). {unmet} will be saved as Not Met.",
+        "uncheckedSavedNotMet": "This does not block the Trade. It preserves what was true at entry time.",
+        "goBack": "Review conditions",
+        "confirmSave": "Save Trade"
+      },
       "chart": {
         "linkOption": "Link",
         "uploadOption": "Upload image",
@@ -745,6 +758,7 @@
       "back": "Back",
       "continue": "Continue",
       "create": "Create Trade",
+      "saveTrade": "Save Trade",
       "creating": "Creating…"
     },
     "prerequisite": {
@@ -811,6 +825,8 @@
       "setup_not_found": "This Setup could not be found.",
       "setup_archived": "This Setup is archived. Restore it first, then you can make changes.",
       "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
+      "stale_setup_conditions": "This Setup changed while you were entering the Trade. Reload the current Conditions and review them again.",
+      "invalid_setup_condition_answers": "The Setup Condition answers are no longer valid. Reload the page and review the current Conditions.",
       "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
       "no_plan_representation": "Enter a Price plan (Entry/Stop) or a Money plan (planned risk) before creating this Trade.",
       "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",
