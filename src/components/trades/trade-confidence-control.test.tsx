@@ -120,4 +120,47 @@ describe('TradeConfidenceControl', () => {
     // Clamped at 100, never overshoots or lands off-step.
     expect(radio(OPTION_NAME[100])).toBeChecked();
   });
+
+  // Framer Motion's drag gesture relies on real pointer-capture and layout
+  // geometry that jsdom does not provide, so genuine drag-and-snap behavior
+  // is proven by the Playwright coverage in e2e/trades.spec.ts, not here.
+  // These tests cover what RTL *can* prove: the drag surface's structural
+  // contract stays correct alongside the unchanged click/keyboard paths.
+  describe('drag surface (structural contract)', () => {
+    it('renders no draggable pill when unset', () => {
+      const { container } = renderControl(null);
+      expect(container.querySelector('[data-slot="confidence-pill"]')).not.toBeInTheDocument();
+    });
+
+    it('renders exactly one draggable pill once a step is selected', () => {
+      const { container } = renderControl(50);
+      const pills = container.querySelectorAll('[data-slot="confidence-pill"]');
+      expect(pills).toHaveLength(1);
+      expect(pills[0]).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('the pill is aria-hidden and every step keeps its own accessible name from the radio, not the decorative overlay text', () => {
+      renderControl(50);
+      for (const step of [0, 25, 50, 75, 100] as const) {
+        expect(radio(OPTION_NAME[step])).toBeInTheDocument();
+      }
+    });
+
+    it('dispatching pointer events at the pill without a recognized Framer drag gesture never calls onChange with an off-step value', () => {
+      renderControl(25);
+      const pill = document.querySelector('[data-slot="confidence-pill"]');
+      expect(pill).not.toBeNull();
+      // jsdom has no real layout, so this cannot exercise Framer's drag
+      // state machine — it only proves that firing raw pointer events at
+      // the pill can't sneak an intermediate value into the committed
+      // radio state.
+      fireEvent.pointerDown(pill as Element, { clientX: 10 });
+      fireEvent.pointerMove(pill as Element, { clientX: 43 });
+      fireEvent.pointerUp(pill as Element, { clientX: 43 });
+      expect(radio(OPTION_NAME[25])).toBeChecked();
+      for (const step of [0, 50, 75, 100] as const) {
+        expect(radio(OPTION_NAME[step])).not.toBeChecked();
+      }
+    });
+  });
 });

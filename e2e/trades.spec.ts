@@ -348,7 +348,11 @@ test.describe('real Trade Journal creation', () => {
       // clicks the same visible surface rather than the hidden input's own
       // (zero-size, unreliable-to-hit) point.
       const highOption = page.getByRole('radio', { name: '75% · High' });
-      await confidenceGroup.getByText('75%', { exact: true }).click();
+      // Clicks the styled (visible, pointer-events-auto) label directly —
+      // the segment's step number is rendered in a separate
+      // `pointer-events-none` overlay layer (so it never steals the pill's
+      // drag gesture), so it is not itself a valid click target.
+      await confidenceGroup.locator('[data-slot="confidence-option"][data-step="75"]').click();
       await expect(highOption).toBeChecked();
 
       // Attachment UI (the TradingView URL field, since Upload is
@@ -403,5 +407,186 @@ test.describe('real Trade Journal creation', () => {
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
     const back = await page.getByRole('link', { name: 'Back to trades' }).first().boundingBox();
     expect(back?.height ?? 0).toBeGreaterThanOrEqual(44);
+  });
+});
+
+/**
+ * Founder-UAT Confidence drag interaction. RTL/jsdom cannot exercise Framer
+ * Motion's drag gesture (it needs real layout and real pointer capture), so
+ * this is the actual proof that dragging the pill snaps to a valid discrete
+ * step and never persists an intermediate value.
+ */
+test.describe('Confidence pill drag interaction', () => {
+  test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
+
+  async function reachConfidenceStep(page: Page, prefix: string) {
+    const user = await provisionJournalUser(prefix);
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await page.getByRole('link', { name: 'Log a trade' }).first().click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await page.getByRole('button', { name: /Continue/ }).click();
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+    await page.getByRole('button', { name: /Continue/ }).click();
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
+    await page.getByRole('button', { name: 'Long' }).click();
+  }
+
+  /** Clicks a Confidence segment's styled (visible) label — the step number itself renders in a separate pointer-events-none overlay, so it is not a valid click target. */
+  async function clickConfidenceOption(page: Page, step: 0 | 25 | 50 | 75 | 100) {
+    await page.locator(`[data-slot="confidence-option"][data-step="${step}"]`).click();
+  }
+
+  /** Drags the pill from its current position to an absolute viewport X, via several intermediate moves so Framer recognizes a real pan rather than a click. */
+  async function dragPillTo(page: Page, toX: number) {
+    const pill = page.locator('[data-slot="confidence-pill"]');
+    const pillBox = await pill.boundingBox();
+    if (!pillBox) throw new Error('Confidence pill has no geometry');
+    const startX = pillBox.x + pillBox.width / 2;
+    const y = pillBox.y + pillBox.height / 2;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await page.mouse.move(startX + (toX - startX) * 0.3, y, { steps: 5 });
+    await page.mouse.move(startX + (toX - startX) * 0.7, y, { steps: 5 });
+    await page.mouse.move(toX, y, { steps: 5 });
+    await page.mouse.up();
+  }
+
+  async function trackBox(page: Page) {
+    const box = await page.locator('[data-slot="confidence-track"]').boundingBox();
+    if (!box) throw new Error('Confidence track has no geometry');
+    return box;
+  }
+
+  test('dragging the pill from 0% toward 25% snaps to exactly 25%', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
+    test.setTimeout(120_000);
+    await reachConfidenceStep(page, 'e2e-confidence-drag-a');
+    await clickConfidenceOption(page, 0);
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
+
+    const track = await trackBox(page);
+    // Ratio 0.25 of the track's width maps to nearest index round(0.25*4)=1 -> 25%.
+    await dragPillTo(page, track.x + track.width * 0.25);
+
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).not.toBeChecked();
+    // The live "25% · Low" value readout sits in the header row above the
+    // fieldset, not inside the `group` itself, so it's asserted page-wide.
+    await expect(page.getByText('25% · Low', { exact: true })).toBeVisible();
+  });
+
+  test('dragging the pill from 25% toward 75% snaps to exactly 75%', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
+    test.setTimeout(120_000);
+    await reachConfidenceStep(page, 'e2e-confidence-drag-b');
+    await clickConfidenceOption(page, 25);
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+
+    const track = await trackBox(page);
+    // Ratio 0.75 of the track's width maps to nearest index round(0.75*4)=3 -> 75%.
+    await dragPillTo(page, track.x + track.width * 0.75);
+
+    await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '25% · Low' })).not.toBeChecked();
+  });
+
+  test('dragging near a step boundary picks the geometrically nearest step', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
+    test.setTimeout(120_000);
+    await reachConfidenceStep(page, 'e2e-confidence-drag-c');
+    await clickConfidenceOption(page, 50);
+    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
+
+    // The 50%/75% boundary sits at ratio 0.625 (round(x*4) flips from 2 to 3
+    // there). 0.60 is nearer to 50%; 0.66 is nearer to 75%.
+    const track = await trackBox(page);
+    await dragPillTo(page, track.x + track.width * 0.6);
+    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
+
+    await dragPillTo(page, track.x + track.width * 0.66);
+    await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
+  });
+
+  test('drag cannot push the pill past the 0% or 100% bounds of the track', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
+    test.setTimeout(120_000);
+    await reachConfidenceStep(page, 'e2e-confidence-drag-d');
+    await clickConfidenceOption(page, 50);
+    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
+
+    const track = await trackBox(page);
+    // Target well beyond the left edge of the track.
+    await dragPillTo(page, track.x - 400);
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
+    const pillAfterLeft = await page.locator('[data-slot="confidence-pill"]').boundingBox();
+    expect(pillAfterLeft?.x ?? -1).toBeGreaterThanOrEqual(track.x - 1);
+
+    // Target well beyond the right edge of the track.
+    await dragPillTo(page, track.x + track.width + 400);
+    await expect(page.getByRole('radio', { name: '100% · Very High' })).toBeChecked();
+    const pillAfterRight = await page.locator('[data-slot="confidence-pill"]').boundingBox();
+    expect((pillAfterRight?.x ?? 0) + (pillAfterRight?.width ?? 0)).toBeLessThanOrEqual(
+      track.x + track.width + 1,
+    );
+  });
+
+  test('a cancelled pointer gesture leaves the Confidence value in a valid, unchanged discrete state', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
+    test.setTimeout(120_000);
+    await reachConfidenceStep(page, 'e2e-confidence-drag-e');
+    await clickConfidenceOption(page, 25);
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+
+    const pill = page.locator('[data-slot="confidence-pill"]');
+    const pillBox = await pill.boundingBox();
+    if (!pillBox) throw new Error('Confidence pill has no geometry');
+    const startX = pillBox.x + pillBox.width / 2;
+    const y = pillBox.y + pillBox.height / 2;
+
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await page.mouse.move(startX + 60, y, { steps: 5 });
+    // Interrupt the gesture with a real pointercancel — nothing was ever
+    // persisted mid-drag, so cancelling must leave the last committed value
+    // exactly as it was, not some in-between value.
+    await pill.dispatchEvent('pointercancel');
+    await page.mouse.up();
+
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+    const checkedCount = await page.getByRole('radio', { checked: true }).count();
+    expect(checkedCount).toBe(1);
+  });
+
+  test('dragging the pill on a narrow 390px mobile viewport snaps correctly with no page scroll hijack', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Touch-capable viewport coverage');
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await reachConfidenceStep(page, 'e2e-confidence-drag-mobile');
+    const confidenceGroup = page.getByRole('group', { name: 'Confidence' });
+    await expect(confidenceGroup).toBeVisible();
+    const groupBox = await confidenceGroup.boundingBox();
+    expect(groupBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(390);
+
+    await clickConfidenceOption(page, 0);
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
+
+    const track = await trackBox(page);
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    await dragPillTo(page, track.x + track.width * 0.9);
+    await expect(page.getByRole('radio', { name: '100% · Very High' })).toBeChecked();
+    const scrollAfter = await page.evaluate(() => window.scrollY);
+    expect(scrollAfter).toBe(scrollBefore);
+
+    const dimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
   });
 });
