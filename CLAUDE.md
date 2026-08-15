@@ -174,14 +174,16 @@ initialRiskAmount = riskPerUnit × positionSize × contractMultiplier   [minor u
 
 netResult = grossPnL − commission − fees − swap                        [minor units]
 
-actualR   = netResult / actualInitialRiskAmount
+actualR   = netResult / actualInitialRiskAmount   [current runtime V1 Money path]
 plannedR  = plannedRewardPerUnit / plannedRiskPerUnit
 ```
+
+**Phase 13A Journal V2 supersession (frozen design; runtime implementation pending 13E):** Actual Result has an explicit persisted mode. Price mode derives `Actual R = SUM((closed_bps / 10000) × direction-aware leg R)` from actual entry, actual initial stop, and Exit prices without requiring or fabricating monetary risk/P&L. Money mode derives `Actual R = SUM(realized_pnl_minor) / actual_initial_risk_minor`, without weighting each already-realized P&L leg by closed fraction again. When both complete representations exist, Money is authoritative for Trader Performance and Price remains diagnostic context; no strict equality invariant is permitted. See `docs/phases/PHASE-13-journal-v2.md` §§3–4. The runtime remains Money-only until 13E ships.
 
 ### System vs actual use different denominators — deliberately
 
 - **System R** is computed from `plannedEntry`, `plannedStop`, and the rule-defined exit. It answers "what did the strategy offer?"
-- **Actual R** is computed from `actualEntry`, `actualInitialStop`, and the real exit and costs. It answers "what did the trader take?"
+- **Actual R** is computed from the authoritative source selected by `actual_result_mode`: Price geometry or realized Money. It answers "what did the trader take?"
 
 Both are expressed in R, which is precisely what makes them comparable even when the trader sized the position differently from the plan. That normalization is the point.
 
@@ -211,13 +213,15 @@ Divide-by-zero, empty sets, and all-wins/all-losses cases return `null` with an 
 ### Attribution metrics
 
 ```
-edgeLeakageR       = systemTotalR − actualTotalR
-                     (positive = trader destroyed edge; negative = trader added value by deviating)
+executionGapR      = actualTotalR − systemTotalR
+                     (negative = trader captured less than the System; positive = trader outperformed the System)
 
 executionEfficiency = actualTotalR / systemTotalR
                       defined only when systemTotalR > 0; otherwise null
                       (a ratio against a negative or zero system edge is meaningless, not merely undefined)
 ```
+
+**Phase 13A authority/runtime note:** `executionGapR` above is the frozen product contract and supersedes the older `edgeLeakageR` sign. The current runtime still computes and names the legacy `systemTotalR − actualTotalR` value; Phase 13H must flip and rename the implementation, tests, fixtures, analytics fields, and copy together. Until 13H ships, the legacy runtime behavior is compatibility state, not product authority.
 
 **Discipline Score and mistake-cost attribution have no approved formula and remain unimplemented.** `config/mistakes.ts` contains a general severity-weight configuration and Phase 08 snapshots severity/weight historically, but neither fact authorizes a 0–100 penalty formula or allocation of one Trade's leakage across multiple Mistakes. Do not implement either without an explicit evidence-backed decision and non-double-counting policy.
 
