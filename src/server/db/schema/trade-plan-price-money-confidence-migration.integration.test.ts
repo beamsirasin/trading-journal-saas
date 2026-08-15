@@ -98,19 +98,29 @@ describe('migration 0010 — Trade Plan Price/Money/Confidence integrity (real d
       }
     });
 
-    it('widens the confidence CHECK to 0-100', () => {
-      expect(migrationSql).toMatch(/"confidence" BETWEEN 0 AND 100/);
+    it('restricts the confidence CHECK to exactly five steps (Founder-UAT Confidence redesign — updated in place, no 0011)', () => {
+      expect(migrationSql).toMatch(
+        /"confidence" IS NULL OR "trades"\."confidence" IN \(0, 25, 50, 75, 100\)/,
+      );
+      expect(migrationSql).not.toMatch(/BETWEEN 0 AND 100/);
     });
 
-    it('backfills existing 1-5 confidence values via the exact locked mapping (1→10, 2→30, 3→50, 4→70, 5→90)', () => {
+    it('backfills existing 1-5 confidence values via the exact locked mapping (1→0, 2→25, 3→50, 4→75, 5→100)', () => {
       expect(migrationSql).toMatch(/UPDATE "trades" SET "confidence" = CASE "confidence"/);
-      expect(migrationSql).toMatch(/WHEN 1 THEN 10/);
-      expect(migrationSql).toMatch(/WHEN 2 THEN 30/);
+      expect(migrationSql).toMatch(/WHEN 1 THEN 0/);
+      expect(migrationSql).toMatch(/WHEN 2 THEN 25/);
       expect(migrationSql).toMatch(/WHEN 3 THEN 50/);
-      expect(migrationSql).toMatch(/WHEN 4 THEN 70/);
-      expect(migrationSql).toMatch(/WHEN 5 THEN 90/);
-      // The backfill must run before the new 0-100 check is added, and after
-      // the old 1-5 check is dropped, so it is never evaluated against
+      expect(migrationSql).toMatch(/WHEN 4 THEN 75/);
+      expect(migrationSql).toMatch(/WHEN 5 THEN 100/);
+      // The superseded interim 10/30/50/70/90 midpoint mapping must never
+      // reappear — this exact assertion is what would catch a regression to
+      // that earlier uncommitted draft.
+      expect(migrationSql).not.toMatch(/WHEN 1 THEN 10\b/);
+      expect(migrationSql).not.toMatch(/WHEN 2 THEN 30\b/);
+      expect(migrationSql).not.toMatch(/WHEN 4 THEN 70\b/);
+      expect(migrationSql).not.toMatch(/WHEN 5 THEN 90\b/);
+      // The backfill must run before the new five-step check is added, and
+      // after the old 1-5 check is dropped, so it is never evaluated against
       // either constraint mid-flight.
       const dropIdx = migrationSql.indexOf('DROP CONSTRAINT "trades_confidence_check"');
       const updateIdx = migrationSql.indexOf('UPDATE "trades" SET "confidence"');

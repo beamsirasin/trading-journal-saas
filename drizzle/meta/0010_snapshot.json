@@ -1,5 +1,5 @@
 {
-  "id": "7cbe548d-0d2f-4910-840b-1a99a7bf95ea",
+  "id": "1f53dd97-b12f-436f-8ea1-b2b4d7acf41c",
   "prevId": "31c264c9-8e57-4b57-a573-a80ed64f8d91",
   "version": "7",
   "dialect": "postgresql",
@@ -3435,7 +3435,7 @@
         },
         "trades_confidence_check": {
           "name": "trades_confidence_check",
-          "value": "\"trades\".\"confidence\" IS NULL OR \"trades\".\"confidence\" BETWEEN 0 AND 100"
+          "value": "\"trades\".\"confidence\" IS NULL OR \"trades\".\"confidence\" IN (0, 25, 50, 75, 100)"
         },
         "trades_calc_version_check": {
           "name": "trades_calc_version_check",

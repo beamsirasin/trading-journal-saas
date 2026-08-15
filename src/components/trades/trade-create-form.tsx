@@ -22,8 +22,10 @@ import {
 } from '@/lib/storage/chart-attachment';
 import {
   confidenceLevelKey,
+  isConfidenceStep,
   SESSION_QUICK_SUGGESTIONS,
   TIMEFRAME_QUICK_SUGGESTIONS,
+  type ConfidenceStep,
 } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
 import {
@@ -71,7 +73,7 @@ interface Values {
   plannedRewardMinor: string;
   timeframe: string;
   session: string;
-  /** '' | '0'..'100' — migration 0010 widened Confidence from 1–5. */
+  /** '' | '0' | '25' | '50' | '75' | '100' — Founder-UAT Confidence redesign; no other value is ever set. */
   confidence: string;
   confirmationNotes: string;
   tradingviewUrl: string;
@@ -117,10 +119,10 @@ function translatePlanErrors(
   return out;
 }
 
-function parseConfidence(value: string): number | undefined {
+function parseConfidence(value: string): ConfidenceStep | undefined {
   if (value.trim() === '') return undefined;
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return isConfidenceStep(parsed) ? parsed : undefined;
 }
 
 const DIRECTION_STYLE = {
@@ -463,7 +465,7 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
   const confidenceReviewValue =
     confidenceNum === undefined
       ? t('common.notSet')
-      : `${confidenceNum}/100 · ${t(`create.confidence.level.${confidenceLevelKey(confidenceNum)}`)}`;
+      : `${confidenceNum}% · ${t(`create.confidence.level.${confidenceLevelKey(confidenceNum)}`)}`;
   const liveSnapshot = stage === 2 ? computeLiveSnapshot() : null;
 
   return (

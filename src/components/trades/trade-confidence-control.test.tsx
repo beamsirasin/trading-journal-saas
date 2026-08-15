@@ -21,90 +21,103 @@ function renderControl(initial: number | null = null) {
   );
 }
 
-function slider() {
-  return screen.getByRole('slider', { name: 'Confidence' });
+function radio(name: string) {
+  return screen.getByRole('radio', { name });
 }
 
+const OPTION_NAME: Record<0 | 25 | 50 | 75 | 100, string> = {
+  0: '0% · Very Low',
+  25: '25% · Low',
+  50: '50% · Neutral',
+  75: '75% · High',
+  100: '100% · Very High',
+};
+
 describe('TradeConfidenceControl', () => {
-  it('renders unset with "Not set" and a neutral aria-valuetext', () => {
+  it('renders unset with "Not set", no step checked, and no reset affordance', () => {
     renderControl(null);
     expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
-    expect(slider()).toHaveAttribute('aria-valuetext', 'Not set');
+    for (const step of [0, 25, 50, 75, 100] as const) {
+      expect(radio(OPTION_NAME[step])).not.toBeChecked();
+    }
+    expect(screen.queryByRole('button', { name: 'Clear confidence' })).not.toBeInTheDocument();
   });
 
-  it('exposes the full 0-100 ARIA range', () => {
-    renderControl(42);
-    const el = slider();
-    expect(el).toHaveAttribute('aria-valuemin', '0');
-    expect(el).toHaveAttribute('aria-valuemax', '100');
-    expect(el).toHaveAttribute('aria-valuenow', '42');
-  });
-
-  it('maps every qualitative boundary correctly', () => {
-    renderControl(0);
-    expect(screen.getByText('0/100 · Very Low')).toBeInTheDocument();
-    renderControl(20);
-    expect(screen.getByText('20/100 · Very Low')).toBeInTheDocument();
-    renderControl(21);
-    expect(screen.getByText('21/100 · Low')).toBeInTheDocument();
-    renderControl(50);
-    expect(screen.getByText('50/100 · Neutral')).toBeInTheDocument();
-    renderControl(61);
-    expect(screen.getByText('61/100 · High')).toBeInTheDocument();
-    renderControl(100);
-    expect(screen.getByText('100/100 · Very High')).toBeInTheDocument();
-  });
-
-  it('moves by keyboard (ArrowRight/ArrowLeft, step 1) and clamps at the lower boundary', () => {
-    renderControl(0);
-    const el = slider();
-    fireEvent.keyDown(el, { key: 'ArrowLeft' });
-    expect(screen.getByText('0/100 · Very Low')).toBeInTheDocument();
-
-    fireEvent.keyDown(el, { key: 'ArrowRight' });
-    expect(screen.getByText('1/100 · Very Low')).toBeInTheDocument();
-  });
-
-  it('clamps at the upper boundary', () => {
-    renderControl(100);
-    fireEvent.keyDown(slider(), { key: 'ArrowRight' });
-    expect(screen.getByText('100/100 · Very High')).toBeInTheDocument();
-  });
-
-  it('PageUp/PageDown step by 10', () => {
-    renderControl(50);
-    const el = slider();
-    fireEvent.keyDown(el, { key: 'PageUp' });
-    expect(screen.getByText('60/100 · Neutral')).toBeInTheDocument();
-    fireEvent.keyDown(el, { key: 'PageDown' });
-    fireEvent.keyDown(el, { key: 'PageDown' });
-    expect(screen.getByText('40/100 · Low')).toBeInTheDocument();
-  });
-
-  it('Home jumps to 0 and End jumps to 100', () => {
-    renderControl(50);
-    const el = slider();
-    fireEvent.keyDown(el, { key: 'End' });
-    expect(screen.getByText('100/100 · Very High')).toBeInTheDocument();
-    fireEvent.keyDown(el, { key: 'Home' });
-    expect(screen.getByText('0/100 · Very Low')).toBeInTheDocument();
-  });
-
-  it('arrow keys from unset start at the neutral midpoint (50)', () => {
+  it('exposes an accessible group name of "Confidence"', () => {
     renderControl(null);
-    const el = slider();
-    fireEvent.keyDown(el, { key: 'ArrowRight' });
-    expect(screen.getByText('51/100 · Neutral')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Confidence' })).toBeInTheDocument();
   });
 
-  it('clears back to unset via the Clear control', () => {
+  it.each([0, 25, 50, 75, 100] as const)('selects %i%% by clicking its segment', (step) => {
+    renderControl(null);
+    fireEvent.click(radio(OPTION_NAME[step]));
+    expect(radio(OPTION_NAME[step])).toBeChecked();
+    expect(screen.getByText(OPTION_NAME[step])).toBeInTheDocument();
+  });
+
+  it('changes selection from one step to another', () => {
+    renderControl(25);
+    expect(radio(OPTION_NAME[25])).toBeChecked();
+    fireEvent.click(radio(OPTION_NAME[75]));
+    expect(radio(OPTION_NAME[75])).toBeChecked();
+    expect(radio(OPTION_NAME[25])).not.toBeChecked();
+  });
+
+  it('clears back to unset via the reset affordance, shown only when a value is selected', () => {
+    renderControl(50);
+    const resetButton = screen.getByRole('button', { name: 'Clear confidence' });
+    fireEvent.click(resetButton);
+    expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
+    expect(radio(OPTION_NAME[50])).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Clear confidence' })).not.toBeInTheDocument();
+  });
+
+  it('ArrowRight moves forward one discrete step at a time and clamps at 100', () => {
     renderControl(75);
-    fireEvent.click(screen.getByRole('button', { name: 'Clear confidence' }));
-    expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    fireEvent.keyDown(group, { key: 'ArrowRight' });
+    expect(radio(OPTION_NAME[100])).toBeChecked();
+    fireEvent.keyDown(group, { key: 'ArrowRight' });
+    expect(radio(OPTION_NAME[100])).toBeChecked();
   });
 
-  it('is keyboard-focusable via a single tab stop', () => {
-    renderControl(30);
-    expect(slider()).toHaveAttribute('tabIndex', '0');
+  it('ArrowLeft moves backward one discrete step at a time and clamps at 0', () => {
+    renderControl(25);
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    fireEvent.keyDown(group, { key: 'ArrowLeft' });
+    expect(radio(OPTION_NAME[0])).toBeChecked();
+    fireEvent.keyDown(group, { key: 'ArrowLeft' });
+    expect(radio(OPTION_NAME[0])).toBeChecked();
+  });
+
+  it('ArrowRight from unset lands on the first step (0%)', () => {
+    renderControl(null);
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    fireEvent.keyDown(group, { key: 'ArrowRight' });
+    expect(radio(OPTION_NAME[0])).toBeChecked();
+  });
+
+  it('Home jumps straight to 0% from any step', () => {
+    renderControl(75);
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    fireEvent.keyDown(group, { key: 'Home' });
+    expect(radio(OPTION_NAME[0])).toBeChecked();
+  });
+
+  it('End jumps straight to 100% from any step', () => {
+    renderControl(25);
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    fireEvent.keyDown(group, { key: 'End' });
+    expect(radio(OPTION_NAME[100])).toBeChecked();
+  });
+
+  it('never produces a value between the five allowed steps, no matter how many arrow presses', () => {
+    renderControl(0);
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    for (let i = 0; i < 12; i += 1) {
+      fireEvent.keyDown(group, { key: 'ArrowRight' });
+    }
+    // Clamped at 100, never overshoots or lands off-step.
+    expect(radio(OPTION_NAME[100])).toBeChecked();
   });
 });

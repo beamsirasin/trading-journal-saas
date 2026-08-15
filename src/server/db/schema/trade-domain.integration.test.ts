@@ -443,9 +443,9 @@ describe('Phase 07B trade domain (real database)', () => {
   });
 
   describe('bounded-field constraints', () => {
-    it('accepts the full widened 0-100 confidence range (migration 0010)', async () => {
+    it('accepts exactly the five allowed confidence steps (Founder-UAT Confidence redesign, migration 0010 updated in place)', async () => {
       const fw = await createFramework();
-      for (const confidence of [0, 1, 50, 99, 100]) {
+      for (const confidence of [0, 25, 50, 75, 100]) {
         const [row] = await insertTrade({ ...basePlannedTrade(fw), confidence });
         expect(row?.confidence).toBe(confidence);
       }
@@ -459,6 +459,15 @@ describe('Phase 07B trade domain (real database)', () => {
       await expect(insertTrade({ ...basePlannedTrade(fw), confidence: 101 })).rejects.toMatchObject(
         { cause: { code: '23514' } },
       );
+    });
+
+    it('rejects every in-range value that is not one of the five allowed steps', async () => {
+      const fw = await createFramework();
+      for (const confidence of [1, 10, 30, 51, 73, 99]) {
+        await expect(insertTrade({ ...basePlannedTrade(fw), confidence })).rejects.toMatchObject({
+          cause: { code: '23514' },
+        });
+      }
     });
 
     it('rejects a non-positive calc_version', async () => {

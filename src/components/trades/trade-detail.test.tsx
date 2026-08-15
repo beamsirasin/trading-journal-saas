@@ -115,6 +115,18 @@ describe('TradeDetail', () => {
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
   });
 
+  it('renders Confidence as "X% · Label", never "/100" or "/5"', () => {
+    renderDetail({ ...base, confidence: 75 });
+    expect(screen.getByText('75% · High')).toBeInTheDocument();
+    expect(screen.queryByText(/75\/100/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/5\b/)).not.toBeInTheDocument();
+  });
+
+  it('renders no Confidence row when unset', () => {
+    renderDetail({ ...base, confidence: null });
+    expect(screen.queryByText('Confidence')).not.toBeInTheDocument();
+  });
+
   it('renders a Chart attachment via the authenticated delivery route, never a stored URL', () => {
     renderDetail({
       ...base,

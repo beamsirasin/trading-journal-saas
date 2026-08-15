@@ -1,17 +1,20 @@
 ALTER TABLE "trades" DROP CONSTRAINT "trades_planned_price_direction_check";--> statement-breakpoint
 ALTER TABLE "trades" DROP CONSTRAINT "trades_confidence_check";--> statement-breakpoint
--- Confidence backfill: 1-5 -> 0-100, preserving the qualitative center of
--- each old bucket (Founder-UAT Trade Plan UX correction slice). Must run
--- while no CHECK constrains "confidence" (the old 1-5 check was just
--- dropped above; the new 0-100 check is added at the end of this
--- migration), and before the new check is added, so this is never
--- momentarily invalid under either constraint.
+-- Confidence backfill: 1-5 -> exactly one of 0/25/50/75/100 (Founder-UAT
+-- Confidence redesign). Migration 0010 has not been committed/merged yet,
+-- so this backfill was updated IN PLACE rather than superseded by a new
+-- migration -- this replaces an earlier uncommitted draft that mapped to a
+-- continuous 10/30/50/70/90 midpoint scheme; that mapping is superseded and
+-- must not be reintroduced. Must run while no CHECK constrains "confidence"
+-- (the old 1-5 check was just dropped above; the new five-step check is
+-- added at the end of this migration), and before the new check is added,
+-- so this is never momentarily invalid under either constraint.
 UPDATE "trades" SET "confidence" = CASE "confidence"
-  WHEN 1 THEN 10
-  WHEN 2 THEN 30
+  WHEN 1 THEN 0
+  WHEN 2 THEN 25
   WHEN 3 THEN 50
-  WHEN 4 THEN 70
-  WHEN 5 THEN 90
+  WHEN 4 THEN 75
+  WHEN 5 THEN 100
   ELSE "confidence"
 END
 WHERE "confidence" IS NOT NULL;--> statement-breakpoint
@@ -49,4 +52,4 @@ ALTER TABLE "trades" ADD CONSTRAINT "trades_chart_attachment_check" CHECK ((
         "trades"."chart_attachment_storage_key" IS NOT NULL
         AND "trades"."chart_attachment_uploaded_at" IS NOT NULL
       ));--> statement-breakpoint
-ALTER TABLE "trades" ADD CONSTRAINT "trades_confidence_check" CHECK ("trades"."confidence" IS NULL OR "trades"."confidence" BETWEEN 0 AND 100);
+ALTER TABLE "trades" ADD CONSTRAINT "trades_confidence_check" CHECK ("trades"."confidence" IS NULL OR "trades"."confidence" IN (0, 25, 50, 75, 100));

@@ -108,11 +108,14 @@ export const trades = pgTable(
     session: text('session'),
     confirmationNotes: text('confirmation_notes'),
     /**
-     * 0–100, a bounded rating — never a financial value, plain `smallint`
-     * is safe (CLAUDE.md §5) and comfortably covers this range. Widened
-     * from 1–5 in migration 0010 (Founder-UAT Trade Plan UX correction
-     * slice); see `trades_confidence_check` and that migration's own
-     * backfill comment.
+     * Exactly one of 0/25/50/75/100, or NULL — never a financial value,
+     * plain `smallint` is safe (CLAUDE.md §5). Migration 0010 has not been
+     * committed/merged yet, so its schema and backfill were updated IN
+     * PLACE for this Founder-UAT Confidence redesign rather than
+     * superseded by a new migration — see `trades_confidence_check` and
+     * that migration's own updated backfill comment. Supersedes BOTH
+     * earlier uncommitted drafts: a continuous 0–100 range, and before that
+     * a 1–5 rating.
      */
     confidence: smallint('confidence'),
     tradingviewUrl: text('tradingview_url'),
@@ -339,7 +342,7 @@ export const trades = pgTable(
     ),
     check(
       'trades_confidence_check',
-      sql`${table.confidence} IS NULL OR ${table.confidence} BETWEEN 0 AND 100`,
+      sql`${table.confidence} IS NULL OR ${table.confidence} IN (0, 25, 50, 75, 100)`,
     ),
     check('trades_calc_version_check', sql`${table.calcVersion} > 0`),
     check('trades_system_cost_r_check', sql`${table.systemCostR} >= 0`),

@@ -49,7 +49,7 @@ describe('trades/schemas — valid input', () => {
       timeframe: '4H',
       session: 'London',
       confirmationNotes: 'Confluence with the daily trend.',
-      confidence: 4,
+      confidence: 75,
       tradingviewUrl: 'https://www.tradingview.com/chart/abc123/',
       notes: 'Entered on the retest.',
     });
@@ -373,8 +373,8 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
     if (result.success) expect(result.data.plannedRewardMinor).toBe(0n);
   });
 
-  it('accepts Confidence across the full widened 0-100 range', () => {
-    for (const confidence of [0, 1, 50, 99, 100]) {
+  it('accepts exactly the five allowed Confidence steps (Founder-UAT Confidence redesign)', () => {
+    for (const confidence of [0, 25, 50, 75, 100]) {
       const result = CreateTradeSchema.safeParse({
         ...baseIdentity(),
         plannedEntry: '1.1',
@@ -385,8 +385,8 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
     }
   });
 
-  it('rejects Confidence outside 0-100', () => {
-    for (const confidence of [-1, 101]) {
+  it('rejects every Confidence value that is not one of the five allowed steps, even from a bypassing client', () => {
+    for (const confidence of [-1, 1, 10, 30, 51, 73, 99, 101]) {
       const result = CreateTradeSchema.safeParse({
         ...baseIdentity(),
         plannedEntry: '1.1',

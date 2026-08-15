@@ -709,17 +709,19 @@ describe('trade-management (real database)', () => {
       });
     });
 
-    it('persists Confidence across the full widened 0-100 range', async () => {
-      const fw = await freshFramework();
-      const result = await createTrade(
-        workspaceId,
-        actorUserId,
-        basePlanInput(fw, { confidence: 73 }),
-      );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      const row = await readTrade(result.tradeId);
-      expect(row?.confidence).toBe(73);
+    it('persists Confidence across the five allowed steps (Founder-UAT Confidence redesign)', async () => {
+      for (const confidence of [0, 25, 50, 75, 100] as const) {
+        const fw = await freshFramework();
+        const result = await createTrade(
+          workspaceId,
+          actorUserId,
+          basePlanInput(fw, { confidence }),
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) continue;
+        const row = await readTrade(result.tradeId);
+        expect(row?.confidence).toBe(confidence);
+      }
     });
   });
 

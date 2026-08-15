@@ -373,25 +373,47 @@ describe('TradeCreateForm — Price/Money progressive disclosure', () => {
   });
 });
 
-describe('TradeCreateForm — Confidence 0-100', () => {
-  it('renders a slider with the full ARIA range and moves by keyboard', () => {
+describe('TradeCreateForm — Confidence (five-step selector)', () => {
+  it('renders a five-step segmented group and moves by keyboard', () => {
     renderForm();
     reachPlan();
-    const el = screen.getByRole('slider', { name: 'Confidence' });
-    expect(el).toHaveAttribute('aria-valuemin', '0');
-    expect(el).toHaveAttribute('aria-valuemax', '100');
-    fireEvent.keyDown(el, { key: 'End' });
-    expect(screen.getByText('100/100 · Very High')).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: 'Confidence' });
+    for (const name of [
+      '0% · Very Low',
+      '25% · Low',
+      '50% · Neutral',
+      '75% · High',
+      '100% · Very High',
+    ]) {
+      expect(screen.getByRole('radio', { name })).toBeInTheDocument();
+    }
+    fireEvent.keyDown(group, { key: 'End' });
+    expect(screen.getByText('100% · Very High')).toBeInTheDocument();
+  });
+
+  it('selects a step by clicking it directly', () => {
+    renderForm();
+    reachPlan();
+    fireEvent.click(screen.getByRole('radio', { name: '75% · High' }));
+    expect(screen.getByRole('radio', { name: '75% · High' })).toBeChecked();
+    expect(screen.getByText('75% · High')).toBeInTheDocument();
   });
 });
 
 describe('TradeCreateForm — Review & Create summary', () => {
-  it('shows Confidence as "Not set" when omitted, and the qualitative label once chosen', () => {
+  it('shows Confidence as "Not set" when omitted, and "X% · Label" once chosen', () => {
     renderForm();
     reachPlan();
     fillPlan('130');
     fireEvent.click(continueButton());
     expect(screen.getByText('Not set')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Plan/ }));
+    fireEvent.click(screen.getByRole('radio', { name: '25% · Low' }));
+    fireEvent.click(continueButton());
+    expect(screen.getByText('25% · Low')).toBeInTheDocument();
+    expect(screen.queryByText(/25\/100/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/5\b/)).not.toBeInTheDocument();
   });
 
   it('shows Chart attachment status truthfully — "Not provided" then "Link provided"', () => {

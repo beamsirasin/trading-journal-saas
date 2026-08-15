@@ -8,9 +8,8 @@ import { parseInstant } from '@/lib/time/parse';
 
 import { hasNoControlOrHtmlCharacters } from '../trading-accounts/validation';
 import {
-  CONFIDENCE_MAX,
-  CONFIDENCE_MIN,
   CONFIRMATION_NOTES_MAX_LENGTH,
+  isConfidenceStep,
   MISTAKE_NOTE_MAX_LENGTH,
   NOTES_MAX_LENGTH,
   RESOLVABLE_SYSTEM_EXIT_REASONS,
@@ -186,7 +185,15 @@ const instantField = () =>
 const directionField = () => z.enum(TRADE_DIRECTIONS);
 const checkStatusField = () => z.enum(RULE_CHECK_STATUSES);
 const resolvableSystemExitReasonField = () => z.enum(RESOLVABLE_SYSTEM_EXIT_REASONS);
-const confidenceField = () => z.number().int().min(CONFIDENCE_MIN).max(CONFIDENCE_MAX);
+/**
+ * Confidence is restricted to exactly five steps (Founder-UAT Confidence
+ * redesign) — `isConfidenceStep` is the single source of truth shared with
+ * the DB's `trades_confidence_check` and the interactive control itself, so
+ * a malicious or buggy client sending e.g. `73` is rejected here, never
+ * merely disallowed by the UI.
+ */
+const confidenceField = () =>
+  z.number().int().refine(isConfidenceStep, { message: 'invalid_confidence' });
 
 const tradingViewUrlField = () =>
   z.preprocess(

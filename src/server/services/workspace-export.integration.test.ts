@@ -435,7 +435,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       .set({
         plannedRiskMinor: 5000n,
         plannedRewardMinor: 15000n,
-        confidence: 62,
+        confidence: 75,
         chartAttachmentStorageKey: storageKey,
         chartAttachmentUploadedAt: new Date('2026-08-05T00:00:00Z'),
       })
@@ -452,7 +452,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
     expect(exportedTrade).toMatchObject({
       plannedRiskMinor: '5000',
       plannedRewardMinor: '15000',
-      confidence: 62,
+      confidence: 75,
       hasChartAttachment: true,
       chartAttachmentUploadedAt: '2026-08-05T00:00:00.000Z',
     });

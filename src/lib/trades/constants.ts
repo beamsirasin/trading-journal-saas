@@ -100,37 +100,52 @@ export function isMistakeSeverity(value: unknown): value is MistakeSeverity {
 }
 
 /**
- * `confidence` — an optional bounded 0–100 integer rating, never a financial
- * value; plain `number` is safe here. Widened from a 1–5 rating in migration
- * 0010 (Founder-UAT Trade Plan UX correction slice); every existing value
- * was backfilled 1→10, 2→30, 3→50, 4→70, 5→90 — the qualitative center of
- * each old bucket — see `drizzle/0010_trade_plan_price_money_confidence.sql`.
+ * `confidence` — an optional Confidence rating restricted to exactly five
+ * steps (Founder-UAT Confidence redesign — locked product decision).
+ * Migration 0010 has not been committed/merged yet, so its schema and
+ * backfill were updated IN PLACE rather than superseded by a new migration
+ * — see `drizzle/0010_trade_plan_price_money_confidence.sql`'s own doc
+ * comment. This supersedes BOTH earlier uncommitted drafts of that same
+ * migration: a continuous 0–100 range, and before that a 1–5 rating. No
+ * integer outside `CONFIDENCE_STEPS` is ever a valid persisted value —
+ * enforced at every layer (`trades_confidence_check`, the Zod schemas, and
+ * this control itself never producing anything else).
  */
-export const CONFIDENCE_MIN = 0;
-export const CONFIDENCE_MAX = 100;
+export const CONFIDENCE_STEPS = [0, 25, 50, 75, 100] as const;
+export type ConfidenceStep = (typeof CONFIDENCE_STEPS)[number];
+export function isConfidenceStep(value: number): value is ConfidenceStep {
+  return (CONFIDENCE_STEPS as readonly number[]).includes(value);
+}
 
 /**
- * The five qualitative ranges every Confidence value maps to (locked
- * product copy: Very Low/Low/Neutral/High/Very High), shared by the
- * create-form's interactive control and every read surface (Trade detail,
- * Review step) so the boundary math lives in exactly one place, never
- * re-derived per call site. Boundaries are inclusive of their upper bound —
- * `0` itself is `veryLow`.
+ * One semantic label per step (locked product copy: Very Low/Low/Neutral/
+ * High/Very High), shared by the interactive control and every read surface
+ * (Trade detail, Review step, correction dialog) so the mapping lives in
+ * exactly one place, never re-derived per call site. A 1:1 mapping, not a
+ * range — every step has exactly one label, and no other value can occur.
  */
 export const CONFIDENCE_LEVELS = [
-  { key: 'veryLow', max: 20 },
-  { key: 'low', max: 40 },
-  { key: 'neutral', max: 60 },
-  { key: 'high', max: 80 },
-  { key: 'veryHigh', max: 100 },
-] as const;
+  { key: 'veryLow', value: 0 },
+  { key: 'low', value: 25 },
+  { key: 'neutral', value: 50 },
+  { key: 'high', value: 75 },
+  { key: 'veryHigh', value: 100 },
+] as const satisfies readonly { key: string; value: ConfidenceStep }[];
 export type ConfidenceLevelKey = (typeof CONFIDENCE_LEVELS)[number]['key'];
 
-const VERY_HIGH_LEVEL_KEY: ConfidenceLevelKey = 'veryHigh';
-
+/**
+ * Throws for anything outside the five allowed steps rather than guessing a
+ * nearest label — every caller either already validated the value (a Zod
+ * schema, the DB's own CHECK constraint, or this control's own onChange) or
+ * has a genuine bug worth surfacing loudly, never silently mislabeling
+ * corrupted data.
+ */
 export function confidenceLevelKey(value: number): ConfidenceLevelKey {
-  const level = CONFIDENCE_LEVELS.find((candidate) => value <= candidate.max);
-  return level?.key ?? VERY_HIGH_LEVEL_KEY;
+  const level = CONFIDENCE_LEVELS.find((candidate) => candidate.value === value);
+  if (level === undefined) {
+    throw new Error(`confidenceLevelKey: ${value} is not one of the five allowed Confidence steps`);
+  }
+  return level.key;
 }
 
 /**

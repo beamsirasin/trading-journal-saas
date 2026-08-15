@@ -722,7 +722,8 @@
           "high": "High",
           "veryHigh": "Very High"
         },
-        "clear": "Clear confidence"
+        "clear": "Clear confidence",
+        "hint": "How confident are you in this setup?"
       },
       "chart": {
         "linkOption": "Link",

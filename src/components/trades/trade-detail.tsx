@@ -150,7 +150,7 @@ export function TradeDetail({
           {trade.confidence === null ? null : (
             <DetailRow
               label={t('field.confidence')}
-              value={`${trade.confidence}/100 · ${t(`create.confidence.level.${confidenceLevelKey(trade.confidence)}`)}`}
+              value={`${trade.confidence}% · ${t(`create.confidence.level.${confidenceLevelKey(trade.confidence)}`)}`}
             />
           )}
           {trade.confirmationNotes === null ? null : (

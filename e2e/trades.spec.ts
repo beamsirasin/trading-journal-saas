@@ -332,13 +332,24 @@ test.describe('real Trade Journal creation', () => {
       const moneySectionBox = await moneyHeading.locator('..').locator('..').boundingBox();
       expect(moneySectionBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
 
-      // Confidence slider remains usable: focusable, keyboard-operable, and
-      // its value genuinely changes.
-      const slider = page.getByRole('slider', { name: 'Confidence' });
-      await expect(slider).toBeVisible();
-      await slider.focus();
-      await page.keyboard.press('ArrowRight');
-      await expect(slider).not.toHaveAttribute('aria-valuenow', '50');
+      // Confidence's five-step selector remains usable at this width: all
+      // five segments stay immediately available (no horizontal scroll to
+      // reach any of them — Founder-UAT Confidence redesign §9), and
+      // clicking one genuinely selects it.
+      const confidenceGroup = page.getByRole('group', { name: 'Confidence' });
+      await expect(confidenceGroup).toBeVisible();
+      const confidenceGroupBox = await confidenceGroup.boundingBox();
+      expect(confidenceGroupBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(width);
+      // The radio input itself is visually hidden in favor of its styled
+      // label (the same native-radio-plus-styled-label architecture
+      // `src/components/ui/segmented-control.tsx` already establishes) — a
+      // real user clicks the visible "75%" label, which the browser's own
+      // label/for association forwards to the hidden input, so the test
+      // clicks the same visible surface rather than the hidden input's own
+      // (zero-size, unreliable-to-hit) point.
+      const highOption = page.getByRole('radio', { name: '75% · High' });
+      await confidenceGroup.getByText('75%', { exact: true }).click();
+      await expect(highOption).toBeChecked();
 
       // Attachment UI (the TradingView URL field, since Upload is
       // unconfigured in this environment) does not clip.

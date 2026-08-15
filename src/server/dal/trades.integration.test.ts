@@ -415,16 +415,16 @@ describe('trades DAL (real database)', () => {
       expect(detail.trade.chartAttachmentUploadedAt).toBeNull();
     });
 
-    it('round-trips Confidence across the full widened 0-100 range', async () => {
+    it('round-trips Confidence across the five allowed steps (Founder-UAT Confidence redesign)', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);
-      const created = await createTrade(workspaceId, userId, basePlanInput(fw, { confidence: 7 }));
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw, { confidence: 25 }));
       if (!created.ok) throw new Error('create failed');
 
       const detail = await getWorkspaceTradeDetail(created.tradeId);
       expect(detail.ok).toBe(true);
       if (!detail.ok) return;
-      expect(detail.trade.confidence).toBe(7);
+      expect(detail.trade.confidence).toBe(25);
     });
 
     it('round-trips a private chart attachment storage key and stamps an uploadedAt timestamp, exposing only a presence flag', async () => {

@@ -13,6 +13,7 @@ import {
   NativeSelect,
   TradeField,
 } from '@/components/trades/trade-action-form';
+import { TradeConfidenceControl } from '@/components/trades/trade-confidence-control';
 import { parseTradeMoneyInput, tradeMoneyInputValue } from '@/components/trades/trade-form-values';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +37,9 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+  // Confidence is a controlled 5-step selector, not a plain form field —
+  // its value is never read from `FormData` (see `submit` below).
+  const [confidence, setConfidence] = useState<number | null>(trade.confidence);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,7 +62,6 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
       plannedRewardMinor = reward.value;
     }
 
-    const confidence = String(data.get('confidence') ?? '').trim();
     startTransition(async () => {
       const result = await updateTradePlanAction({
         tradeId: trade.tradeId,
@@ -71,7 +74,7 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
         timeframe: String(data.get('timeframe') ?? '').trim() || null,
         session: String(data.get('session') ?? '').trim() || null,
         confirmationNotes: String(data.get('confirmationNotes') ?? '').trim() || null,
-        confidence: confidence === '' ? null : Number.parseInt(confidence, 10),
+        confidence,
         tradingviewUrl: String(data.get('tradingviewUrl') ?? '').trim() || null,
         notes: String(data.get('notes') ?? '').trim() || null,
       });
@@ -162,21 +165,6 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
             <TradeField id="plan-session" label={t('field.session')}>
               <FormInput id="plan-session" name="session" defaultValue={trade.session ?? ''} />
             </TradeField>
-            <TradeField
-              id="plan-confidence"
-              label={t('field.confidence')}
-              hint={t('common.optional')}
-            >
-              <FormInput
-                id="plan-confidence"
-                name="confidence"
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                defaultValue={trade.confidence?.toString() ?? ''}
-              />
-            </TradeField>
             <TradeField id="plan-chart" label={t('field.tradingViewUrl')}>
               <FormInput
                 id="plan-chart"
@@ -186,6 +174,12 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
               />
             </TradeField>
           </div>
+          <TradeConfidenceControl
+            id="plan-confidence"
+            label={t('field.confidence')}
+            value={confidence}
+            onChange={setConfidence}
+          />
           <TradeField id="plan-confirmation" label={t('field.confirmationNotes')}>
             <FormTextarea
               id="plan-confirmation"
