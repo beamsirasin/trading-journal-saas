@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
+  setupConditions,
   setups,
   strategies,
   strategyRules,
@@ -203,6 +204,15 @@ export interface StrategySetupDetail {
   readonly sortOrder: number;
 }
 
+export interface SetupConditionDetail {
+  readonly conditionId: string;
+  readonly conditionKey: string;
+  readonly setupId: string;
+  readonly setupVersionId: string;
+  readonly label: string;
+  readonly sortOrder: number;
+}
+
 export interface StrategyVersionSummary {
   readonly versionId: string;
   readonly versionNumber: number;
@@ -218,6 +228,7 @@ export interface StrategyDetail {
   readonly updatedAt: Date;
   readonly currentVersion: StrategyListCurrentVersion;
   readonly setups: readonly StrategySetupDetail[];
+  readonly setupConditionsBySetupId: Readonly<Record<string, readonly SetupConditionDetail[]>>;
   readonly strategyLevelRules: readonly StrategyRuleDetail[];
   readonly setupLevelRulesBySetupId: Readonly<Record<string, readonly StrategyRuleDetail[]>>;
   readonly versionCount: number;
@@ -311,6 +322,36 @@ export async function getWorkspaceStrategyDetail(
   }
   setupDetails.sort((a, b) => a.sortOrder - b.sortOrder);
 
+  const conditionRows =
+    snapshotRows.length === 0
+      ? []
+      : await db
+          .select()
+          .from(setupConditions)
+          .where(
+            and(
+              eq(setupConditions.workspaceId, workspaceId),
+              inArray(
+                setupConditions.setupVersionId,
+                snapshotRows.map((snapshot) => snapshot.id),
+              ),
+            ),
+          );
+  const setupConditionsBySetupId: Record<string, SetupConditionDetail[]> = {};
+  for (const condition of conditionRows) {
+    (setupConditionsBySetupId[condition.setupId] ??= []).push({
+      conditionId: condition.id,
+      conditionKey: condition.conditionKey,
+      setupId: condition.setupId,
+      setupVersionId: condition.setupVersionId,
+      label: condition.label,
+      sortOrder: condition.sortOrder,
+    });
+  }
+  for (const list of Object.values(setupConditionsBySetupId)) {
+    list.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
   const ruleRows = await db
     .select()
     .from(strategyRules)
@@ -371,6 +412,7 @@ export async function getWorkspaceStrategyDetail(
         isCurrentVersionLocked: currentVersion.lockedAt !== null,
       },
       setups: setupDetails,
+      setupConditionsBySetupId,
       strategyLevelRules,
       setupLevelRulesBySetupId,
       versionCount: versionCountRow?.total ?? 0,

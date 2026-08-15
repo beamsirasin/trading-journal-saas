@@ -71,6 +71,12 @@ export const strategySetupVersions = pgTable(
     // (which the Version-level FK alone cannot distinguish). `id` alone is
     // already unique; this pair is too.
     uniqueIndex('strategy_setup_versions_id_setup_idx').on(table.id, table.setupId),
+    // Composite-FK plumbing for version-owned Setup Conditions.
+    uniqueIndex('strategy_setup_versions_id_setup_workspace_idx').on(
+      table.id,
+      table.setupId,
+      table.workspaceId,
+    ),
     foreignKey({
       name: 'strategy_setup_versions_version_strategy_fk',
       columns: [table.strategyVersionId, table.strategyId],

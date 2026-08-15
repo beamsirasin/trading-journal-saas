@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CreateSetupConditionSchema,
   CreateSetupSchema,
   CreateStrategyRuleSchema,
   CreateStrategySchema,
+  RemoveSetupConditionSchema,
   RemoveStrategyRuleSchema,
   SetupLifecycleSchema,
   StrategyIdSchema,
   StrategyLifecycleSchema,
+  UpdateSetupConditionSchema,
   UpdateSetupContentSchema,
   UpdateStrategyContentSchema,
   UpdateStrategyRuleSchema,
@@ -195,7 +198,6 @@ describe('CreateStrategyRuleSchema', () => {
     category: 'entry' as const,
     title: 'Confirm trend direction',
     isRequired: true,
-    isPreTradeCheck: true,
     sortOrder: 0,
   });
 
@@ -218,9 +220,10 @@ describe('CreateStrategyRuleSchema', () => {
     expect(CreateStrategyRuleSchema.safeParse(rest).success).toBe(false);
   });
 
-  it('requires isPreTradeCheck explicitly (not optional)', () => {
-    const { isPreTradeCheck: _isPreTradeCheck, ...rest } = base();
-    expect(CreateStrategyRuleSchema.safeParse(rest).success).toBe(false);
+  it('rejects the retired pre-trade authoring flag', () => {
+    expect(CreateStrategyRuleSchema.safeParse({ ...base(), isPreTradeCheck: true }).success).toBe(
+      false,
+    );
   });
 
   it('rejects a blank title', () => {
@@ -246,10 +249,42 @@ describe('UpdateStrategyRuleSchema', () => {
       category: 'risk' as const,
       title: 'Risk check',
       isRequired: false,
-      isPreTradeCheck: false,
       sortOrder: 1,
     };
     expect(UpdateStrategyRuleSchema.safeParse(valid).success).toBe(true);
+  });
+});
+
+describe('Setup Condition schemas', () => {
+  const base = () => ({
+    strategyId: uuid(),
+    setupId: uuid(),
+    label: 'Wave structure is valid',
+    sortOrder: 0,
+  });
+
+  it('accepts create input without a client-supplied condition key', () => {
+    expect(CreateSetupConditionSchema.safeParse(base()).success).toBe(true);
+    expect(CreateSetupConditionSchema.safeParse({ ...base(), conditionKey: uuid() }).success).toBe(
+      false,
+    );
+  });
+
+  it('rejects blank labels and negative ordering', () => {
+    expect(CreateSetupConditionSchema.safeParse({ ...base(), label: '' }).success).toBe(false);
+    expect(CreateSetupConditionSchema.safeParse({ ...base(), sortOrder: -1 }).success).toBe(false);
+  });
+
+  it('keys updates and removals by server-issued condition key', () => {
+    const conditionKey = uuid();
+    expect(UpdateSetupConditionSchema.safeParse({ ...base(), conditionKey }).success).toBe(true);
+    expect(
+      RemoveSetupConditionSchema.safeParse({
+        strategyId: base().strategyId,
+        setupId: base().setupId,
+        conditionKey,
+      }).success,
+    ).toBe(true);
   });
 });
 

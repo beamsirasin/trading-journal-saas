@@ -78,6 +78,13 @@
       "when": 1786702771504,
       "tag": "0010_trade_plan_price_money_confidence",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786781952734,
+      "tag": "0011_setup_conditions_domain",
+      "breakpoints": true
     }
   ]
 }

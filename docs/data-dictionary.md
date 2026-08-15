@@ -188,7 +188,7 @@ No `current_balance` column exists (Phase 07+ ledger work). No `deleted_at` colu
 
 Migration: [`drizzle/0007_strategies_and_setups.sql`](../drizzle/0007_strategies_and_setups.sql). Phase 06B delivered the schema, forward migration, and database-enforced version immutability below; Phase 06C delivered the server-side domain services on top of it (`src/server/services/strategy-management.ts`, `strategy-versioning.ts`) — creation, copy-on-write, archive/restore lifecycle, structured Rule mutations, and a Phase 08 version-locking helper; Phase 06D delivered the authenticated read DAL (`src/server/dal/strategies.ts`), Zod-validated Server Actions (`src/server/actions/strategies.ts`), the closed public error mapping, and en/th localization on top of that; Phase 06E replaced the Phase 01 fixture preview with the real, responsive `/app/strategies` management UI (`src/components/strategies/`) on top of that boundary (see [PHASE-06-strategies.md](phases/PHASE-06-strategies.md)). This section replaces its original pre-implementation draft, which modeled a Setup as a jsonb checklist field rather than a distinct entity, put `timeframe`/`instrument_class` directly on `strategies`, and included a `deleted_at` column inconsistent with every other table's archive-only convention — Phase 06A's audit found all three stale against the approved model.
 
-Five tables, all workspace-owned (`ON DELETE CASCADE`, the ordinary tenant-owned-record convention — not `billing_transactions`' deliberately stronger `RESTRICT`, confirmed unweakened by this migration). Deleting the owning workspace is allowed to cascade away even _locked_ strategy history — see [Immutability](#strategy_versions-versioned-content) below for the narrowly-scoped exception that makes this true without weakening direct-delete protection.
+Six tables, all workspace-owned (`ON DELETE CASCADE`, the ordinary tenant-owned-record convention — not `billing_transactions`' deliberately stronger `RESTRICT`, confirmed unweakened by this migration). Phase 13B adds `setup_conditions` without changing the five Phase 06 tables. Deleting the owning workspace is allowed to cascade away even _locked_ strategy history — see [Immutability](#strategy_versions-versioned-content) below for the narrowly-scoped exception that makes this true without weakening direct-delete protection.
 
 ### `strategies` (identity row only)
 
@@ -261,7 +261,7 @@ No `expected_minimum_r`, `target_guidance`, `timeframe`, `symbol`, `wave_number`
 
 **Immutability:** protected by a `BEFORE INSERT OR UPDATE OR DELETE` trigger (`strategy_setup_versions_protect_locked`) once the parent `strategy_versions.locked_at` is set — checked against both the old and new `strategy_version_id` on UPDATE, so a row cannot be reassigned out of a locked version's child set as a back door. The `DELETE` branch shares the same narrow workspace-gone exception `strategy_versions` uses (see above) — removable directly only as part of the owning workspace itself being deleted.
 
-**Indexes:** unique `strategy_setup_versions_version_setup_idx (strategy_version_id, setup_id)`; `strategy_setup_versions_version_sort_idx (strategy_version_id, sort_order)`; unique `strategy_setup_versions_id_version_idx (id, strategy_version_id)` (composite-FK plumbing for `strategy_rules`).
+**Indexes:** unique `strategy_setup_versions_version_setup_idx (strategy_version_id, setup_id)`; `strategy_setup_versions_version_sort_idx (strategy_version_id, sort_order)`; unique `strategy_setup_versions_id_version_idx (id, strategy_version_id)` (composite-FK plumbing for `strategy_rules`); unique `strategy_setup_versions_id_setup_workspace_idx (id, setup_id, workspace_id)` (Phase 13B composite-FK plumbing for `setup_conditions`).
 
 ### `strategy_rules` (structured, versioned rule content)
 
@@ -287,6 +287,27 @@ No severity weight, penalty value, or analytics result lives here — that belon
 **Immutability:** same protection pattern as `strategy_setup_versions`, via `strategy_rules_protect_locked`, including the same `DELETE`-branch workspace-gone exception.
 
 **Indexes:** unique `strategy_rules_version_rule_key_idx (strategy_version_id, rule_key)`; `strategy_rules_version_sort_idx (strategy_version_id, sort_order)`; `strategy_rules_setup_version_idx (setup_version_id)`.
+
+`is_pre_trade_check = true` remains historically truthful and is still copied unchanged by COW. Phase 13B removes that choice from new Rule authoring and forces newly created Rules to `false`; pre-entry authoring now belongs to the separate Setup Conditions domain. No historical Rule is migrated, reinterpreted, or silently flipped.
+
+### `setup_conditions` (Phase 13B version-owned Setup content)
+
+Migration: [`drizzle/0011_setup_conditions_domain.sql`](../drizzle/0011_setup_conditions_domain.sql). A Condition belongs to one exact `strategy_setup_versions` row. It has no separate identity table: `id` identifies the version row, while server-generated `condition_key` is the stable logical identity copied into later Strategy Versions.
+
+| Column                    | Type        | Notes                                                                                         |
+| ------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7; regenerated during COW                                                                |
+| `workspace_id`            | uuid        | FK → `workspaces.id`, `ON DELETE CASCADE`                                                     |
+| `setup_id`                | uuid        | FK → `setups.id`, `ON DELETE CASCADE`                                                         |
+| `setup_version_id`        | uuid        | FK → `strategy_setup_versions.id`; composite FK proves the same Setup and Workspace           |
+| `condition_key`           | uuid        | Server-generated stable identity; unique with `setup_version_id`; preserved across COW/rename |
+| `label`                   | text        | Required, CHECK non-blank                                                                     |
+| `sort_order`              | integer     | CHECK `>= 0`; default `0`; numeric authoring is the accessible non-drag reorder path          |
+| `created_at`/`updated_at` | timestamptz |                                                                                               |
+
+**Immutability:** `setup_conditions_protect_locked` resolves the owning Setup Version's parent `strategy_versions.locked_at`. INSERT/UPDATE/DELETE is rejected once locked; DELETE has only the established workspace-gone cascade exception. Authorized mutations use the existing Strategy lock order and authoritative `copyCurrentVersionInTx`; copied rows receive new `id`/`setup_version_id` values and preserve `condition_key`, label, and order. Removing from an unlocked current Version deletes that Version's row; removing after lock first copies, then omits the Condition from the new Version.
+
+**Indexes:** unique `(setup_version_id, condition_key)`; unique `(id, setup_version_id, condition_key, workspace_id)` for exact historical snapshot references; `(setup_version_id, sort_order)`; `(workspace_id)`.
 
 ### Name uniqueness
 
@@ -375,6 +396,25 @@ Replaces the stale `trade_checklist_results(trade_id, checklist_item_id, was_sat
 
 Unique `(trade_id, rule_key)` prevents a duplicate check for the same logical Rule on the same Trade. A composite foreign key `(trade_id, strategy_version_id)` → `trades(id, strategy_version_id)` (a **new** index, `trades_id_strategy_version_idx`) guarantees a Rule check can only ever reference the exact Strategy Version its own Trade is pinned to.
 
+### `trade_setup_condition_checks` (Phase 13B immutable Entry snapshot)
+
+This table is intentionally distinct from `trade_rule_checks`. It snapshots whether each configured Setup Condition was `met` or `not_met` at Entry; it has no persisted `not_checked`, scoring, weight, or adherence aggregate.
+
+| Column                    | Type        | Notes                                                                                             |
+| ------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| `id`                      | uuid        | UUIDv7                                                                                            |
+| `workspace_id`            | uuid        | FK → `workspaces.id`, `ON DELETE CASCADE`                                                         |
+| `trade_id`                | uuid        | FK → `trades.id`; composite FKs prove Workspace and the Trade's pinned Setup Version              |
+| `setup_condition_id`      | uuid        | Exact source `setup_conditions.id`                                                                |
+| `setup_version_id`        | uuid        | Must equal the Trade's pinned `setup_version_id`                                                  |
+| `condition_key`           | uuid        | Stable logical key; exact composite FK with source row                                            |
+| `label`                   | text        | Server-authoritative historical snapshot, CHECK non-blank; never rendered from live Setup content |
+| `sort_order`              | integer     | Server-authoritative historical snapshot, CHECK `>= 0`                                            |
+| `check_status`            | text, CHECK | Exactly `met` \| `not_met`                                                                        |
+| `created_at`/`updated_at` | timestamptz |                                                                                                   |
+
+Unique `(trade_id, condition_key)` prevents duplicate answers. `trade_setup_condition_checks_protect_snapshot` rejects UPDATE/DELETE after insertion, with only the same workspace-deletion cascade exception used by locked Strategy history. The Phase 13B helper validates an explicit, complete answer set against the Trade's pinned Setup Version and copies ID/key/label/order from authoritative server rows. It is deliberately not called by the Phase 08 Trade-create flow yet: until Phase 13C presents the checklist, old-flow Trades have zero rows, meaning “Conditions not recorded,” never fabricated `not_met` answers or 0% adherence. Zero configured Conditions derives to N/A (`null`), not 0%.
+
 ---
 
 ## Phase 11B — Platform administration foundation (implemented)
@@ -429,25 +469,27 @@ Migration 0009 seeds exactly one **baseline row**: `enabled = false`, `rate_basi
 
 ## Index plan
 
-| Table                        | Index                                                                                                                                                                      | Status                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `users`                      | `(email)` unique — `users_email_idx`                                                                                                                                       | Implemented (Phase 02)  |
-| `sessions`                   | `(token)` unique, `(user_id)`                                                                                                                                              | Implemented (Phase 02)  |
-| `platform_admins`            | `(user_id)` unique WHERE `revoked_at IS NULL` — `platform_admins_active_user_idx`; `(user_id)` — `platform_admins_user_idx`                                                | Implemented (Phase 11B) |
-| `admin_audit_log`            | `(created_at)`, `(subject_user_id)`, `(subject_workspace_id)`                                                                                                              | Implemented (Phase 11B) |
-| `platform_vat_configuration` | `(effective_at)` — `platform_vat_configuration_effective_idx`                                                                                                              | Implemented (Phase 11B) |
-| `accounts`                   | `(user_id)`, `(provider_id, account_id)` unique                                                                                                                            | Implemented (Phase 02)  |
-| `verifications`              | `(identifier)`                                                                                                                                                             | Implemented (Phase 02)  |
-| `rate_limits`                | `(key)` unique                                                                                                                                                             | Implemented (Phase 02)  |
-| `workspaces`                 | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                                                                                                         | Implemented (Phase 02)  |
-| `workspace_members`          | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces                                                                                      | Implemented (Phase 02)  |
-| `audit_logs`                 | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                                                                                                          | Implemented (Phase 02)  |
-| `trades`                     | `(workspace_id, trading_account_id, exited_at)` — `trades_workspace_account_exited_idx`                                                                                    | Implemented (Phase 07B) |
-| `trades`                     | `(workspace_id, strategy_version_id)` — `trades_workspace_strategy_version_idx`                                                                                            | Implemented (Phase 07B) |
-| `trades`                     | `(workspace_id, status)` — `trades_workspace_status_idx`                                                                                                                   | Implemented (Phase 07B) |
-| `trades`                     | `(workspace_id, trading_account_id)`, `(workspace_id, deleted_at)`, `(id, workspace_id)` unique, `(id, strategy_version_id)` unique, `(workspace_id, mutation_key)` unique | Implemented (Phase 07B) |
-| `trade_mistakes`             | `(mistake_type_id)` — Phase 09 count-only frequency reads; `(workspace_id)`                                                                                                | Implemented (Phase 07B) |
-| `trade_rule_checks`          | `(trade_id, rule_key)` unique, `(workspace_id)`, `(rule_key)` — cross-Version logical-rule analysis                                                                        | Implemented (Phase 07B) |
-| `mistake_types`              | `(key)` unique WHERE `is_system`; `(workspace_id, key)` unique WHERE NOT `is_system`; `(workspace_id, is_archived)`                                                        | Implemented (Phase 07B) |
+| Table                          | Index                                                                                                                                                                      | Status                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `users`                        | `(email)` unique — `users_email_idx`                                                                                                                                       | Implemented (Phase 02)  |
+| `sessions`                     | `(token)` unique, `(user_id)`                                                                                                                                              | Implemented (Phase 02)  |
+| `platform_admins`              | `(user_id)` unique WHERE `revoked_at IS NULL` — `platform_admins_active_user_idx`; `(user_id)` — `platform_admins_user_idx`                                                | Implemented (Phase 11B) |
+| `admin_audit_log`              | `(created_at)`, `(subject_user_id)`, `(subject_workspace_id)`                                                                                                              | Implemented (Phase 11B) |
+| `platform_vat_configuration`   | `(effective_at)` — `platform_vat_configuration_effective_idx`                                                                                                              | Implemented (Phase 11B) |
+| `accounts`                     | `(user_id)`, `(provider_id, account_id)` unique                                                                                                                            | Implemented (Phase 02)  |
+| `verifications`                | `(identifier)`                                                                                                                                                             | Implemented (Phase 02)  |
+| `rate_limits`                  | `(key)` unique                                                                                                                                                             | Implemented (Phase 02)  |
+| `workspaces`                   | `(personal_owner_user_id)` unique, partial WHERE kind = 'personal'                                                                                                         | Implemented (Phase 02)  |
+| `workspace_members`            | `(workspace_id, user_id)` unique, `(user_id)` — resolving a session to its workspaces                                                                                      | Implemented (Phase 02)  |
+| `audit_logs`                   | `(workspace_id, created_at)` — `audit_logs_workspace_created_idx`                                                                                                          | Implemented (Phase 02)  |
+| `trades`                       | `(workspace_id, trading_account_id, exited_at)` — `trades_workspace_account_exited_idx`                                                                                    | Implemented (Phase 07B) |
+| `trades`                       | `(workspace_id, strategy_version_id)` — `trades_workspace_strategy_version_idx`                                                                                            | Implemented (Phase 07B) |
+| `trades`                       | `(workspace_id, status)` — `trades_workspace_status_idx`                                                                                                                   | Implemented (Phase 07B) |
+| `trades`                       | `(workspace_id, trading_account_id)`, `(workspace_id, deleted_at)`, `(id, workspace_id)` unique, `(id, strategy_version_id)` unique, `(workspace_id, mutation_key)` unique | Implemented (Phase 07B) |
+| `trade_mistakes`               | `(mistake_type_id)` — Phase 09 count-only frequency reads; `(workspace_id)`                                                                                                | Implemented (Phase 07B) |
+| `trade_rule_checks`            | `(trade_id, rule_key)` unique, `(workspace_id)`, `(rule_key)` — cross-Version logical-rule analysis                                                                        | Implemented (Phase 07B) |
+| `setup_conditions`             | `(setup_version_id, condition_key)` unique, exact-source composite unique, `(setup_version_id, sort_order)`, `(workspace_id)`                                              | Implemented (Phase 13B) |
+| `trade_setup_condition_checks` | `(trade_id, condition_key)` unique, `(workspace_id)`, `(condition_key)`                                                                                                    | Implemented (Phase 13B) |
+| `mistake_types`                | `(key)` unique WHERE `is_system`; `(workspace_id, key)` unique WHERE NOT `is_system`; `(workspace_id, is_archived)`                                                        | Implemented (Phase 07B) |
 
 Verify with `EXPLAIN ANALYZE` rather than assuming these are used.

@@ -389,8 +389,9 @@ test.describe('strategy, setup and rule management', () => {
     await expect(detail).toBeVisible();
     await expect(page.getByText('No rules yet')).toBeVisible();
 
-    // Create a Strategy-level Rule with a specific category, required
-    // relaxed, and Pre-trade check enabled.
+    // New Rule authoring is Execution Rule-only now that Setup Conditions
+    // own pre-entry truth. Historical badges remain readable, but this form
+    // no longer offers the legacy pre-trade flag.
     await page.getByRole('button', { name: 'New rule' }).click();
     await expect(
       page.getByLabel('Scope').locator('option', { hasText: 'Strategy-level' }),
@@ -398,14 +399,14 @@ test.describe('strategy, setup and rule management', () => {
     await page.getByLabel('Category').selectOption({ label: 'Risk' });
     await page.getByLabel('Rule title').fill('Risk per trade must not exceed 1%');
     await page.getByLabel('Required').uncheck();
-    await page.getByLabel('Pre-trade check').check();
+    await expect(page.getByLabel('Pre-trade check')).toHaveCount(0);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
 
     await expect(page.getByText('Strategy-level rules')).toBeVisible();
     const strategyGroup = ruleGroup(page, 'Strategy-level rules');
     await expect(strategyGroup.getByText('Risk per trade must not exceed 1%')).toBeVisible();
     await expect(strategyGroup.getByText('Risk', { exact: true })).toBeVisible();
-    await expect(strategyGroup.getByText('Pre-trade check')).toBeVisible();
+    await expect(strategyGroup.getByText('Pre-trade check')).toHaveCount(0);
     await expect(strategyGroup.getByText('Required', { exact: true })).toHaveCount(0);
     // No internal Rule row id is ever rendered — only `ruleKey`-addressed
     // controls (the Edit/Remove buttons above, by title) reach the DOM.
@@ -462,7 +463,7 @@ test.describe('strategy, setup and rule management', () => {
     await page.getByLabel('Scope').selectOption({ label: 'Sweep and Reclaim' });
     await page.getByLabel('Category').selectOption({ label: 'Invalidation' });
     await page.getByLabel('Rule title').fill('Wait for a swept-liquidity reclaim close');
-    await page.getByLabel('Pre-trade check').check();
+    await expect(page.getByLabel('Pre-trade check')).toHaveCount(0);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
 
     // Grouped beneath the correct Setup — never under the other Setup or
@@ -470,7 +471,7 @@ test.describe('strategy, setup and rule management', () => {
     const sweepGroup = ruleGroup(page, 'Sweep and Reclaim');
     await expect(sweepGroup.getByText('Wait for a swept-liquidity reclaim close')).toBeVisible();
     await expect(sweepGroup.getByText('Invalidation', { exact: true })).toBeVisible();
-    await expect(sweepGroup.getByText('Pre-trade check')).toBeVisible();
+    await expect(sweepGroup.getByText('Pre-trade check')).toHaveCount(0);
     // No internal Rule row id is ever rendered.
     expect(await sweepGroup.innerText()).not.toMatch(UUID_PATTERN);
 
@@ -508,6 +509,108 @@ test.describe('strategy, setup and rule management', () => {
     await expect(page.getByText('No rules yet', { exact: true })).toBeVisible();
 
     await expect(page.getByRole('button', { name: /^delete$/i })).toHaveCount(0);
+  });
+
+  test('Setup Condition authoring: create, accessible reorder, rename, and remove at 390px', async ({
+    page,
+  }) => {
+    const user = await provisionOnboardedUser('e2e-setup-conditions-unlocked');
+    const workspaceId = await resolveWorkspaceId(user.id);
+    const strategyId = await seedStrategy(workspaceId, 'Wave Continuation');
+    await seedSetup(workspaceId, strategyId, 'Wave 3 Entry', 0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, 'en', user);
+    await page.goto(`/en/app/strategies?strategy=${strategyId}`);
+    const section = page
+      .getByRole('heading', { name: 'Setup Conditions' })
+      .locator('xpath=ancestor::section');
+    await expect(section).toBeVisible();
+    const addButton = section.getByRole('button', { name: 'Add condition' });
+    expect((await addButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+    await addButton.click();
+    await page.getByLabel('Condition', { exact: true }).fill('Wave structure complete');
+    await page.getByLabel('Sort order').fill('0');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(section.getByText('Wave structure complete')).toBeVisible();
+
+    await addButton.click();
+    await page.getByLabel('Condition', { exact: true }).fill('RSI confirmation');
+    await page.getByLabel('Sort order').fill('1');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(section.getByText('RSI confirmation')).toBeVisible();
+
+    // Numeric sort order is the keyboard-operable, non-drag reorder path.
+    await section.getByRole('button', { name: 'Edit condition: Wave structure complete' }).click();
+    await page.getByLabel('Sort order').fill('2');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await section.getByRole('button', { name: 'Edit condition: RSI confirmation' }).click();
+    await page.getByLabel('Condition', { exact: true }).fill('RSI confirmation on 4H');
+    await page.getByLabel('Sort order').fill('0');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(section.getByText('RSI confirmation on 4H')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    const rendered = await section.locator('ol li').allTextContents();
+    expect(rendered[0]).toContain('RSI confirmation on 4H');
+    expect(rendered[1]).toContain('Wave structure complete');
+
+    await section
+      .getByRole('button', { name: 'Remove condition: Wave structure complete' })
+      .click();
+    await expect(page.getByRole('alertdialog')).toContainText(
+      'Locked historical versions retain their copy',
+    );
+    await page.getByRole('button', { name: 'Remove condition', exact: true }).click();
+    await expect(section.getByText('Wave structure complete')).toHaveCount(0);
+    await expect(section.getByText('RSI confirmation on 4H')).toBeVisible();
+
+    const widths = await page.evaluate(() => ({
+      client: document.documentElement.clientWidth,
+      scroll: document.documentElement.scrollWidth,
+    }));
+    expect(widths.scroll).toBeLessThanOrEqual(widths.client + 1);
+  });
+
+  test('locked Setup Condition edit requires a note and produces Strategy COW', async ({
+    page,
+  }) => {
+    const user = await provisionOnboardedUser('e2e-setup-conditions-locked');
+    const workspaceId = await resolveWorkspaceId(user.id);
+    const strategyId = await seedStrategy(workspaceId, 'Locked Wave Strategy');
+    await seedSetup(workspaceId, strategyId, 'Locked Wave Setup', 0);
+
+    await loginAs(page, 'en', user);
+    await page.goto(`/en/app/strategies?strategy=${strategyId}`);
+    const section = page
+      .getByRole('heading', { name: 'Setup Conditions' })
+      .locator('xpath=ancestor::section');
+    await section.getByRole('button', { name: 'Add condition' }).click();
+    await page.getByLabel('Condition', { exact: true }).fill('Original historical condition');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(section.getByText('Original historical condition')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    await lockCurrentVersion(strategyId);
+    await page.reload();
+    await expect(page.getByText('Locked version')).toBeVisible();
+    await section
+      .getByRole('button', { name: 'Edit condition: Original historical condition' })
+      .click();
+    await page.getByLabel('Condition', { exact: true }).fill('Condition in current version');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(
+      page.getByText('Some details are not valid. Please check the form and try again.'),
+    ).toBeVisible();
+    await page.getByLabel('Change note').fill('Clarify the setup confirmation');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(section.getByText('Condition in current version')).toBeVisible();
+    await expect(
+      detailRegion(page, 'Locked Wave Strategy').getByText('Current version 2'),
+    ).toBeVisible();
   });
 
   test('locked-Version copy-on-write: editing requires a change note and creates the next Version', async ({

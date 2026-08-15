@@ -48,6 +48,15 @@ These are technical terms a Thai-speaking retail trader already uses in English,
 | System Win Rate    | `อัตราชนะตามระบบ`                                                                            |
 | Actual Win Rate    | `อัตราชนะจริง`                                                                               |
 
+**Journal V2 Setup Condition terms (Phase 13B):**
+
+| English          | Thai                                   | Note                                                                                                 |
+| ---------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Setup Conditions | `เงื่อนไขของเซ็ตอัพ`                   | Pre-entry facts configured per Setup Version; distinct from execution `Rules` (`กฎ`)                 |
+| Condition        | `เงื่อนไข`                             | User-authored label content is never translated; this is UI chrome only                              |
+| Met / Not Met    | `ตรงตามเงื่อนไข` / `ไม่ตรงตามเงื่อนไข` | Final Entry-snapshot binary state; no persisted “not checked” state                                  |
+| Setup Adherence  | `การทำตามเงื่อนไขของเซ็ตอัพ`           | Reserved for Phase 13G/13H presentation; zero configured Conditions is “ไม่ได้ตั้งค่า / N/A,” not 0% |
+
 ## 4. Metric-label convention
 
 A metric name that is a standard, internationally-recognized trading-analytics term (Profit Factor, Expectancy, Average R) is left in English even mid-sentence in Thai copy, exactly as a Thai financial news article would leave "P/E ratio" untranslated. A metric name built from ordinary words (Win Rate → อัตราชนะ, Discipline Score → คะแนนวินัย, Net P&L → กำไร/ขาดทุนสุทธิ) is translated, because the Thai phrase is at least as precise as the English one and a Thai trader would never say the English term instead.

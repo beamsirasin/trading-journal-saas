@@ -136,6 +136,39 @@ export type SetupLifecycleInput = z.input<typeof SetupLifecycleSchema>;
 export type SetupLifecycleData = z.output<typeof SetupLifecycleSchema>;
 
 // ---------------------------------------------------------------------------
+// Setup Conditions
+// ---------------------------------------------------------------------------
+
+export const CreateSetupConditionSchema = z
+  .object({
+    strategyId: uuidField(),
+    setupId: uuidField(),
+    label: requiredTextField(RULE_TITLE_MAX_LENGTH),
+    sortOrder: sortOrderField(),
+    changeNote: changeNoteField(),
+  })
+  .strict();
+export type CreateSetupConditionInput = z.input<typeof CreateSetupConditionSchema>;
+export type CreateSetupConditionData = z.output<typeof CreateSetupConditionSchema>;
+
+export const UpdateSetupConditionSchema = CreateSetupConditionSchema.extend({
+  conditionKey: uuidField(),
+}).strict();
+export type UpdateSetupConditionInput = z.input<typeof UpdateSetupConditionSchema>;
+export type UpdateSetupConditionData = z.output<typeof UpdateSetupConditionSchema>;
+
+export const RemoveSetupConditionSchema = z
+  .object({
+    strategyId: uuidField(),
+    setupId: uuidField(),
+    conditionKey: uuidField(),
+    changeNote: changeNoteField(),
+  })
+  .strict();
+export type RemoveSetupConditionInput = z.input<typeof RemoveSetupConditionSchema>;
+export type RemoveSetupConditionData = z.output<typeof RemoveSetupConditionSchema>;
+
+// ---------------------------------------------------------------------------
 // Rules
 // ---------------------------------------------------------------------------
 
@@ -149,7 +182,6 @@ export const CreateStrategyRuleSchema = z
     title: requiredTextField(RULE_TITLE_MAX_LENGTH),
     description: optionalTextField(STRATEGY_TEXT_MAX_LENGTH),
     isRequired: z.boolean(),
-    isPreTradeCheck: z.boolean(),
     sortOrder: sortOrderField(),
     changeNote: changeNoteField(),
   })
@@ -166,7 +198,6 @@ export const UpdateStrategyRuleSchema = z
     title: requiredTextField(RULE_TITLE_MAX_LENGTH),
     description: optionalTextField(STRATEGY_TEXT_MAX_LENGTH),
     isRequired: z.boolean(),
-    isPreTradeCheck: z.boolean(),
     sortOrder: sortOrderField(),
     changeNote: changeNoteField(),
   })

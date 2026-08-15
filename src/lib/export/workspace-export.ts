@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 1 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 2 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -14,9 +14,11 @@ export type WorkspaceExportDatasetName =
   | 'setups'
   | 'strategy_setup_versions'
   | 'strategy_rules'
+  | 'setup_conditions'
   | 'mistake_types'
   | 'trades'
   | 'trade_rule_checks'
+  | 'trade_setup_condition_checks'
   | 'trade_mistakes'
   | 'billing_transactions';
 
@@ -156,6 +158,21 @@ export const WORKSPACE_EXPORT_REGISTRY = [
     ],
   },
   {
+    name: 'setup_conditions',
+    csvFilename: 'setup_conditions.csv',
+    columns: [
+      column('id', 'id', 'id'),
+      column('workspaceId', 'workspace_id', 'id'),
+      column('setupId', 'setup_id', 'id'),
+      column('setupVersionId', 'setup_version_id', 'id'),
+      column('conditionKey', 'condition_key', 'id'),
+      column('label', 'label', 'user_text'),
+      column('sortOrder', 'sort_order', 'integer'),
+      column('createdAt', 'created_at', 'timestamp'),
+      column('updatedAt', 'updated_at', 'timestamp'),
+    ],
+  },
+  {
     name: 'mistake_types',
     csvFilename: 'mistake_types.csv',
     columns: [
@@ -251,6 +268,23 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('isRequired', 'is_required', 'boolean'),
       column('isPreTradeCheck', 'is_pre_trade_check', 'boolean'),
       column('sortOrder', 'sort_order', 'integer'),
+      column('createdAt', 'created_at', 'timestamp'),
+      column('updatedAt', 'updated_at', 'timestamp'),
+    ],
+  },
+  {
+    name: 'trade_setup_condition_checks',
+    csvFilename: 'trade_setup_condition_checks.csv',
+    columns: [
+      column('id', 'id', 'id'),
+      column('workspaceId', 'workspace_id', 'id'),
+      column('tradeId', 'trade_id', 'id'),
+      column('setupConditionId', 'setup_condition_id', 'id'),
+      column('setupVersionId', 'setup_version_id', 'id'),
+      column('conditionKey', 'condition_key', 'id'),
+      column('label', 'label', 'user_text'),
+      column('sortOrder', 'sort_order', 'integer'),
+      column('checkStatus', 'check_status', 'text'),
       column('createdAt', 'created_at', 'timestamp'),
       column('updatedAt', 'updated_at', 'timestamp'),
     ],

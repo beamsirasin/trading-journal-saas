@@ -43,7 +43,6 @@ interface RuleValues {
   readonly title: string;
   readonly description: string;
   readonly isRequired: boolean;
-  readonly isPreTradeCheck: boolean;
   readonly sortOrder: string;
 }
 
@@ -124,7 +123,6 @@ function RuleFormBody(
           title: '',
           description: '',
           isRequired: true,
-          isPreTradeCheck: false,
           sortOrder: String(props.defaultSortOrder),
         },
   );
@@ -187,7 +185,6 @@ function RuleFormBody(
             title: values.title.trim(),
             description: values.description.trim() === '' ? undefined : values.description.trim(),
             isRequired: values.isRequired,
-            isPreTradeCheck: values.isPreTradeCheck,
             sortOrder,
             changeNote: isLocked ? changeNote.trim() : undefined,
           })
@@ -198,7 +195,6 @@ function RuleFormBody(
             title: values.title.trim(),
             description: values.description.trim() === '' ? undefined : values.description.trim(),
             isRequired: values.isRequired,
-            isPreTradeCheck: values.isPreTradeCheck,
             sortOrder,
             changeNote: isLocked ? changeNote.trim() : undefined,
           });
@@ -297,20 +293,6 @@ function RuleFormBody(
           className="border-input size-4 rounded"
         />
         <span className="text-foreground font-medium">{t('isRequiredLabel')}</span>
-      </label>
-
-      <label
-        htmlFor="rule-is-pretrade"
-        className="border-border bg-muted/30 flex min-h-11 cursor-pointer items-center gap-3 rounded-md border p-3 text-sm"
-      >
-        <input
-          id="rule-is-pretrade"
-          type="checkbox"
-          checked={values.isPreTradeCheck}
-          onChange={(event) => setField('isPreTradeCheck', event.target.checked)}
-          className="border-input size-4 rounded"
-        />
-        <span className="text-foreground font-medium">{t('isPreTradeCheckLabel')}</span>
       </label>
 
       <StrategyField id="rule-sort-order" label={t('sortOrderLabel')} error={sortOrderError}>

@@ -7,6 +7,7 @@ import { getDb } from '@/server/db/client';
 import {
   billingTransactions,
   mistakeTypes,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
@@ -15,6 +16,7 @@ import {
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
   workspaceMembers,
   workspaces,
@@ -187,6 +189,26 @@ export async function readWorkspaceExportSource(
           asc(strategyRules.id),
         );
 
+      const setupConditionRows = await tx
+        .select({
+          id: setupConditions.id,
+          workspaceId: setupConditions.workspaceId,
+          setupId: setupConditions.setupId,
+          setupVersionId: setupConditions.setupVersionId,
+          conditionKey: setupConditions.conditionKey,
+          label: setupConditions.label,
+          sortOrder: setupConditions.sortOrder,
+          createdAt: setupConditions.createdAt,
+          updatedAt: setupConditions.updatedAt,
+        })
+        .from(setupConditions)
+        .where(eq(setupConditions.workspaceId, workspaceId))
+        .orderBy(
+          asc(setupConditions.setupVersionId),
+          asc(setupConditions.sortOrder),
+          asc(setupConditions.conditionKey),
+        );
+
       const tradeRows = await tx
         .select({
           id: trades.id,
@@ -286,6 +308,28 @@ export async function readWorkspaceExportSource(
         .where(eq(tradeMistakes.workspaceId, workspaceId))
         .orderBy(asc(tradeMistakes.tradeId), asc(tradeMistakes.mistakeTypeId));
 
+      const setupConditionCheckRows = await tx
+        .select({
+          id: tradeSetupConditionChecks.id,
+          workspaceId: tradeSetupConditionChecks.workspaceId,
+          tradeId: tradeSetupConditionChecks.tradeId,
+          setupConditionId: tradeSetupConditionChecks.setupConditionId,
+          setupVersionId: tradeSetupConditionChecks.setupVersionId,
+          conditionKey: tradeSetupConditionChecks.conditionKey,
+          label: tradeSetupConditionChecks.label,
+          sortOrder: tradeSetupConditionChecks.sortOrder,
+          checkStatus: tradeSetupConditionChecks.checkStatus,
+          createdAt: tradeSetupConditionChecks.createdAt,
+          updatedAt: tradeSetupConditionChecks.updatedAt,
+        })
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.workspaceId, workspaceId))
+        .orderBy(
+          asc(tradeSetupConditionChecks.tradeId),
+          asc(tradeSetupConditionChecks.sortOrder),
+          asc(tradeSetupConditionChecks.conditionKey),
+        );
+
       const referencedMistakeTypeIds = [...new Set(mistakeRows.map((row) => row.mistakeTypeId))];
       const mistakeTypeRows = await tx
         .select({
@@ -341,6 +385,7 @@ export async function readWorkspaceExportSource(
         setups: setupRows,
         strategy_setup_versions: setupVersionRows,
         strategy_rules: ruleRows,
+        setup_conditions: setupConditionRows,
         mistake_types: mistakeTypeRows,
         // The internal private-storage key never leaves this function — only
         // a truthful presence flag is exported (see `workspace-export.ts`'s
@@ -350,6 +395,7 @@ export async function readWorkspaceExportSource(
           hasChartAttachment: chartAttachmentStorageKey !== null,
         })),
         trade_rule_checks: checkRows,
+        trade_setup_condition_checks: setupConditionCheckRows,
         trade_mistakes: mistakeRows,
         billing_transactions: billingRows,
       };

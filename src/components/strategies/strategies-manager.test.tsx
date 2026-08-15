@@ -70,6 +70,7 @@ function detail(overrides: Partial<StrategyDetailView> = {}): StrategyDetailView
       isCurrentVersionLocked: false,
     },
     setups: [],
+    setupConditionsBySetupId: {},
     strategyLevelRules: [],
     setupLevelRulesBySetupId: {},
     versionCount: 1,

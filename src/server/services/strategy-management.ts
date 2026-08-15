@@ -12,6 +12,7 @@ import {
 import { systemClock, type Clock } from '@/lib/time';
 import { getDb, type Database } from '@/server/db/client';
 import {
+  setupConditions,
   setups,
   strategies,
   strategyRules,
@@ -1535,6 +1536,340 @@ export async function removeStrategyRule(
       versionId: copyResult.newVersionId,
       versionNumber: copyResult.newVersionNumber,
       copied: true,
+      alreadyRemoved: false,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 8. Setup Conditions (Phase 13B)
+// ---------------------------------------------------------------------------
+
+async function resolveCurrentSetupSnapshot(
+  tx: Executor,
+  strategyVersionId: string,
+  setupId: string,
+) {
+  const [snapshot] = await tx
+    .select()
+    .from(strategySetupVersions)
+    .where(
+      and(
+        eq(strategySetupVersions.strategyVersionId, strategyVersionId),
+        eq(strategySetupVersions.setupId, setupId),
+      ),
+    );
+  return snapshot;
+}
+
+export interface CreateSetupConditionInput {
+  readonly label: string;
+  readonly sortOrder: number;
+  readonly changeNote?: string | null;
+}
+
+export type SetupConditionMutationResult =
+  | {
+      readonly ok: true;
+      readonly conditionKey: string;
+      readonly versionId: string;
+      readonly versionNumber: number;
+      readonly copied: boolean;
+    }
+  | {
+      readonly ok: false;
+      readonly code:
+        | WorkspaceAccessDenial
+        | 'strategy_not_found'
+        | 'strategy_archived'
+        | 'strategy_current_version_missing'
+        | 'setup_not_found'
+        | 'setup_archived'
+        | 'setup_snapshot_missing'
+        | 'condition_not_found'
+        | 'blank_condition_label'
+        | 'change_note_required';
+    };
+
+export async function createSetupCondition(
+  workspaceId: string,
+  userId: string,
+  strategyId: string,
+  setupId: string,
+  input: CreateSetupConditionInput,
+  clock: Clock = systemClock,
+): Promise<SetupConditionMutationResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireStrategyVersionWriteContext(tx, {
+      workspaceId,
+      userId,
+      strategyId,
+      clock,
+    });
+    if (!ctx.ok) return ctx;
+
+    const setupLock = await lockSetupRow(tx, workspaceId, strategyId, setupId);
+    if (!setupLock.ok) return setupLock;
+    if (setupLock.setup.isArchived) return { ok: false, code: 'setup_archived' };
+
+    const label = normalizeRequiredText(input.label);
+    if (!label.ok) return { ok: false, code: 'blank_condition_label' };
+
+    const currentSnapshot = await resolveCurrentSetupSnapshot(tx, ctx.version.id, setupId);
+    if (currentSnapshot === undefined) return { ok: false, code: 'setup_snapshot_missing' };
+
+    let targetVersionId = ctx.version.id;
+    let targetVersionNumber = ctx.version.versionNumber;
+    let targetSetupVersionId = currentSnapshot.id;
+    let copied = false;
+
+    if (ctx.version.lockedAt !== null) {
+      const changeNote = normalizeChangeNote(input.changeNote);
+      if (!changeNote.ok) return { ok: false, code: 'change_note_required' };
+      const copy = await copyCurrentVersionInTx(tx, {
+        workspaceId,
+        strategyId,
+        sourceVersion: ctx.version,
+        changeNote: changeNote.value,
+        actorUserId: userId,
+      });
+      const copiedSnapshot = await resolveCurrentSetupSnapshot(tx, copy.newVersionId, setupId);
+      if (copiedSnapshot === undefined) {
+        throw new Error('createSetupCondition: copied Setup snapshot is missing');
+      }
+      targetVersionId = copy.newVersionId;
+      targetVersionNumber = copy.newVersionNumber;
+      targetSetupVersionId = copiedSnapshot.id;
+      copied = true;
+    }
+
+    const [condition] = await tx
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId,
+        setupVersionId: targetSetupVersionId,
+        label: label.value,
+        sortOrder: input.sortOrder,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('createSetupCondition: insert failed');
+
+    await insertAuditLog(tx, {
+      action: 'strategy.setup_condition.created',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'setup_condition',
+      entityId: condition.id,
+      metadata: { strategyId, setupId, strategyVersionId: targetVersionId },
+    });
+
+    return {
+      ok: true,
+      conditionKey: condition.conditionKey,
+      versionId: targetVersionId,
+      versionNumber: targetVersionNumber,
+      copied,
+    };
+  });
+}
+
+export async function updateSetupCondition(
+  workspaceId: string,
+  userId: string,
+  strategyId: string,
+  setupId: string,
+  conditionKey: string,
+  input: CreateSetupConditionInput,
+  clock: Clock = systemClock,
+): Promise<SetupConditionMutationResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireStrategyVersionWriteContext(tx, {
+      workspaceId,
+      userId,
+      strategyId,
+      clock,
+    });
+    if (!ctx.ok) return ctx;
+    const setupLock = await lockSetupRow(tx, workspaceId, strategyId, setupId);
+    if (!setupLock.ok) return setupLock;
+    if (setupLock.setup.isArchived) return { ok: false, code: 'setup_archived' };
+
+    const label = normalizeRequiredText(input.label);
+    if (!label.ok) return { ok: false, code: 'blank_condition_label' };
+    const currentSnapshot = await resolveCurrentSetupSnapshot(tx, ctx.version.id, setupId);
+    if (currentSnapshot === undefined) return { ok: false, code: 'setup_snapshot_missing' };
+    const [current] = await tx
+      .select()
+      .from(setupConditions)
+      .where(
+        and(
+          eq(setupConditions.setupVersionId, currentSnapshot.id),
+          eq(setupConditions.conditionKey, conditionKey),
+        ),
+      );
+    if (current === undefined) return { ok: false, code: 'condition_not_found' };
+
+    let target = current;
+    let targetVersionId = ctx.version.id;
+    let targetVersionNumber = ctx.version.versionNumber;
+    let copied = false;
+    if (ctx.version.lockedAt !== null) {
+      const changeNote = normalizeChangeNote(input.changeNote);
+      if (!changeNote.ok) return { ok: false, code: 'change_note_required' };
+      const copy = await copyCurrentVersionInTx(tx, {
+        workspaceId,
+        strategyId,
+        sourceVersion: ctx.version,
+        changeNote: changeNote.value,
+        actorUserId: userId,
+      });
+      const copiedSnapshot = await resolveCurrentSetupSnapshot(tx, copy.newVersionId, setupId);
+      if (copiedSnapshot === undefined)
+        throw new Error('updateSetupCondition: copied snapshot missing');
+      const [copiedCondition] = await tx
+        .select()
+        .from(setupConditions)
+        .where(
+          and(
+            eq(setupConditions.setupVersionId, copiedSnapshot.id),
+            eq(setupConditions.conditionKey, conditionKey),
+          ),
+        );
+      if (copiedCondition === undefined) {
+        throw new Error('updateSetupCondition: copied condition missing');
+      }
+      target = copiedCondition;
+      targetVersionId = copy.newVersionId;
+      targetVersionNumber = copy.newVersionNumber;
+      copied = true;
+    }
+
+    await tx
+      .update(setupConditions)
+      .set({ label: label.value, sortOrder: input.sortOrder, updatedAt: new Date() })
+      .where(eq(setupConditions.id, target.id));
+    await insertAuditLog(tx, {
+      action: 'strategy.setup_condition.updated',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'setup_condition',
+      entityId: target.id,
+      metadata: { strategyId, setupId, strategyVersionId: targetVersionId, conditionKey },
+    });
+    return {
+      ok: true,
+      conditionKey,
+      versionId: targetVersionId,
+      versionNumber: targetVersionNumber,
+      copied,
+    };
+  });
+}
+
+export type RemoveSetupConditionResult =
+  | {
+      readonly ok: true;
+      readonly conditionKey: string;
+      readonly versionId: string;
+      readonly versionNumber: number;
+      readonly copied: boolean;
+      readonly alreadyRemoved: boolean;
+    }
+  | Exclude<SetupConditionMutationResult, { readonly ok: true }>;
+
+export async function removeSetupCondition(
+  workspaceId: string,
+  userId: string,
+  strategyId: string,
+  setupId: string,
+  conditionKey: string,
+  input: { readonly changeNote?: string | null } = {},
+  clock: Clock = systemClock,
+): Promise<RemoveSetupConditionResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireStrategyVersionWriteContext(tx, {
+      workspaceId,
+      userId,
+      strategyId,
+      clock,
+    });
+    if (!ctx.ok) return ctx;
+    const setupLock = await lockSetupRow(tx, workspaceId, strategyId, setupId);
+    if (!setupLock.ok) return setupLock;
+    if (setupLock.setup.isArchived) return { ok: false, code: 'setup_archived' };
+    const currentSnapshot = await resolveCurrentSetupSnapshot(tx, ctx.version.id, setupId);
+    if (currentSnapshot === undefined) return { ok: false, code: 'setup_snapshot_missing' };
+    const [current] = await tx
+      .select()
+      .from(setupConditions)
+      .where(
+        and(
+          eq(setupConditions.setupVersionId, currentSnapshot.id),
+          eq(setupConditions.conditionKey, conditionKey),
+        ),
+      );
+    if (current === undefined) {
+      return {
+        ok: true,
+        conditionKey,
+        versionId: ctx.version.id,
+        versionNumber: ctx.version.versionNumber,
+        copied: false,
+        alreadyRemoved: true,
+      };
+    }
+
+    let target = current;
+    let targetVersionId = ctx.version.id;
+    let targetVersionNumber = ctx.version.versionNumber;
+    let copied = false;
+    if (ctx.version.lockedAt !== null) {
+      const changeNote = normalizeChangeNote(input.changeNote);
+      if (!changeNote.ok) return { ok: false, code: 'change_note_required' };
+      const copy = await copyCurrentVersionInTx(tx, {
+        workspaceId,
+        strategyId,
+        sourceVersion: ctx.version,
+        changeNote: changeNote.value,
+        actorUserId: userId,
+      });
+      const copiedSnapshot = await resolveCurrentSetupSnapshot(tx, copy.newVersionId, setupId);
+      if (copiedSnapshot === undefined)
+        throw new Error('removeSetupCondition: copied snapshot missing');
+      const [copiedCondition] = await tx
+        .select()
+        .from(setupConditions)
+        .where(
+          and(
+            eq(setupConditions.setupVersionId, copiedSnapshot.id),
+            eq(setupConditions.conditionKey, conditionKey),
+          ),
+        );
+      if (copiedCondition === undefined) {
+        throw new Error('removeSetupCondition: copied condition missing');
+      }
+      target = copiedCondition;
+      targetVersionId = copy.newVersionId;
+      targetVersionNumber = copy.newVersionNumber;
+      copied = true;
+    }
+
+    await tx.delete(setupConditions).where(eq(setupConditions.id, target.id));
+    await insertAuditLog(tx, {
+      action: 'strategy.setup_condition.removed',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'setup_condition',
+      entityId: target.id,
+      metadata: { strategyId, setupId, strategyVersionId: targetVersionId, conditionKey },
+    });
+    return {
+      ok: true,
+      conditionKey,
+      versionId: targetVersionId,
+      versionNumber: targetVersionNumber,
+      copied,
       alreadyRemoved: false,
     };
   });

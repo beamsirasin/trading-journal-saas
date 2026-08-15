@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   auditLogs,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
@@ -20,11 +21,14 @@ import {
   archiveSetup,
   archiveStrategy,
   createSetup,
+  createSetupCondition,
   createStrategy,
   createStrategyRule,
+  removeSetupCondition,
   removeStrategyRule,
   restoreSetup,
   restoreStrategy,
+  updateSetupCondition,
   updateSetupContent,
   updateStrategyContent,
   updateStrategyRule,
@@ -1391,6 +1395,269 @@ describe('Phase 06C strategy-management (real database)', () => {
         title: 'Should fail',
       });
       expect(result).toMatchObject({ ok: false, code: 'setup_archived' });
+    });
+  });
+
+  describe('setup conditions', () => {
+    it('creates, renames, reorders, and removes unlocked Conditions without changing their key', async () => {
+      const created = await createReadyStrategy(workspaceId, 'Condition CRUD');
+      const setupA = await createSetup(workspaceId, actorUserId, created.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Wave continuation',
+        sortOrder: 0,
+      });
+      const setupB = await createSetup(workspaceId, actorUserId, created.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Range reclaim',
+        sortOrder: 1,
+      });
+      if (!setupA.ok || !setupB.ok) throw new Error('setup creation failed');
+
+      const first = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setupA.setupId,
+        { label: 'Wave 2 complete', sortOrder: 0 },
+      );
+      const independent = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setupB.setupId,
+        { label: 'Range reclaimed', sortOrder: 0 },
+      );
+      expect(first).toMatchObject({ ok: true, copied: false });
+      expect(independent).toMatchObject({ ok: true, copied: false });
+      if (!first.ok || !independent.ok) return;
+      expect(first.conditionKey).not.toBe(independent.conditionKey);
+
+      const renamed = await updateSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setupA.setupId,
+        first.conditionKey,
+        { label: 'Wave 2 structure complete', sortOrder: 3 },
+      );
+      expect(renamed).toMatchObject({
+        ok: true,
+        conditionKey: first.conditionKey,
+        copied: false,
+      });
+
+      const [renamedRow] = await db
+        .select()
+        .from(setupConditions)
+        .where(
+          and(
+            eq(setupConditions.workspaceId, workspaceId),
+            eq(setupConditions.conditionKey, first.conditionKey),
+          ),
+        );
+      expect(renamedRow).toMatchObject({
+        setupId: setupA.setupId,
+        label: 'Wave 2 structure complete',
+        sortOrder: 3,
+      });
+
+      const removed = await removeSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setupA.setupId,
+        first.conditionKey,
+      );
+      expect(removed).toMatchObject({ ok: true, copied: false, alreadyRemoved: false });
+      const remaining = await db
+        .select()
+        .from(setupConditions)
+        .where(eq(setupConditions.workspaceId, workspaceId));
+      expect(remaining.some((row) => row.conditionKey === first.conditionKey)).toBe(false);
+      expect(remaining.some((row) => row.conditionKey === independent.conditionKey)).toBe(true);
+    });
+
+    it('protects locked rows in PostgreSQL and updates through the authoritative COW path', async () => {
+      const created = await createReadyStrategy(workspaceId, 'Condition COW');
+      const setup = await createSetup(workspaceId, actorUserId, created.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Breakout retest',
+        sortOrder: 0,
+      });
+      if (!setup.ok) throw new Error('setup creation failed');
+      const condition = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setup.setupId,
+        { label: 'Retest holds', sortOrder: 2 },
+      );
+      if (!condition.ok) throw new Error('condition creation failed');
+
+      const [source] = await db
+        .select()
+        .from(setupConditions)
+        .where(
+          and(
+            eq(setupConditions.setupId, setup.setupId),
+            eq(setupConditions.conditionKey, condition.conditionKey),
+          ),
+        );
+      if (source === undefined) throw new Error('source condition missing');
+      await db
+        .update(strategyVersions)
+        .set({ lockedAt: new Date() })
+        .where(eq(strategyVersions.id, condition.versionId));
+
+      await expect(
+        db
+          .update(setupConditions)
+          .set({ label: 'Illegal direct mutation' })
+          .where(eq(setupConditions.id, source.id)),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      await expect(
+        db.delete(setupConditions).where(eq(setupConditions.id, source.id)),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+
+      const withoutNote = await updateSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setup.setupId,
+        condition.conditionKey,
+        { label: 'Retest closes above level', sortOrder: 1 },
+      );
+      expect(withoutNote).toMatchObject({ ok: false, code: 'change_note_required' });
+
+      const updated = await updateSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setup.setupId,
+        condition.conditionKey,
+        {
+          label: 'Retest closes above level',
+          sortOrder: 1,
+          changeNote: 'Clarify the retest requirement',
+        },
+      );
+      expect(updated).toMatchObject({
+        ok: true,
+        conditionKey: condition.conditionKey,
+        copied: true,
+        versionNumber: 2,
+      });
+      if (!updated.ok) return;
+
+      const rows = await db
+        .select()
+        .from(setupConditions)
+        .where(eq(setupConditions.conditionKey, condition.conditionKey));
+      expect(rows).toHaveLength(2);
+      const destination = rows.find((row) => row.id !== source.id);
+      expect(destination).toBeDefined();
+      expect(destination).toMatchObject({
+        conditionKey: source.conditionKey,
+        setupId: source.setupId,
+        label: 'Retest closes above level',
+        sortOrder: 1,
+      });
+      expect(destination?.setupVersionId).not.toBe(source.setupVersionId);
+      expect(source).toMatchObject({ label: 'Retest holds', sortOrder: 2 });
+    });
+
+    it('rejects cross-workspace and cross-Setup source keys privacy-safely', async () => {
+      const foreign = await createReadyStrategy(otherWorkspaceId, 'Foreign Conditions');
+      const foreignSetup = await createSetup(otherWorkspaceId, actorUserId, foreign.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Foreign setup',
+        sortOrder: 0,
+      });
+      if (!foreignSetup.ok) throw new Error('foreign setup creation failed');
+      const foreignCondition = await createSetupCondition(
+        otherWorkspaceId,
+        actorUserId,
+        foreign.strategyId,
+        foreignSetup.setupId,
+        { label: 'Foreign condition', sortOrder: 0 },
+      );
+      if (!foreignCondition.ok) throw new Error('foreign condition creation failed');
+
+      const local = await createReadyStrategy(workspaceId, 'Local Conditions');
+      const localSetup = await createSetup(workspaceId, actorUserId, local.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Local setup',
+        sortOrder: 0,
+      });
+      if (!localSetup.ok) throw new Error('local setup creation failed');
+      const crossWorkspace = await updateSetupCondition(
+        workspaceId,
+        actorUserId,
+        local.strategyId,
+        localSetup.setupId,
+        foreignCondition.conditionKey,
+        { label: 'Should not resolve', sortOrder: 0 },
+      );
+      expect(crossWorkspace).toMatchObject({ ok: false, code: 'condition_not_found' });
+
+      const localCondition = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        local.strategyId,
+        localSetup.setupId,
+        { label: 'Local condition', sortOrder: 0 },
+      );
+      if (!localCondition.ok) throw new Error('local condition creation failed');
+      const otherLocalSetup = await createSetup(workspaceId, actorUserId, local.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Other local setup',
+        sortOrder: 1,
+      });
+      if (!otherLocalSetup.ok) throw new Error('second local setup creation failed');
+      const crossSetup = await updateSetupCondition(
+        workspaceId,
+        actorUserId,
+        local.strategyId,
+        otherLocalSetup.setupId,
+        localCondition.conditionKey,
+        { label: 'Should not cross Setups', sortOrder: 0 },
+      );
+      expect(crossSetup).toMatchObject({ ok: false, code: 'condition_not_found' });
+    });
+
+    it('keeps archived Setup history readable while rejecting further Condition mutation', async () => {
+      const created = await createReadyStrategy(workspaceId, 'Archived Condition History');
+      const setup = await createSetup(workspaceId, actorUserId, created.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Historical setup',
+        sortOrder: 0,
+      });
+      if (!setup.ok) throw new Error('setup creation failed');
+      const condition = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setup.setupId,
+        { label: 'Historical condition', sortOrder: 0 },
+      );
+      if (!condition.ok) throw new Error('condition creation failed');
+      await archiveSetup(workspaceId, actorUserId, created.strategyId, setup.setupId);
+
+      const historicalRows = await db
+        .select()
+        .from(setupConditions)
+        .where(eq(setupConditions.conditionKey, condition.conditionKey));
+      expect(historicalRows).toHaveLength(1);
+      expect(historicalRows[0]?.label).toBe('Historical condition');
+      const rejected = await updateSetupCondition(
+        workspaceId,
+        actorUserId,
+        created.strategyId,
+        setup.setupId,
+        condition.conditionKey,
+        { label: 'No longer editable', sortOrder: 0 },
+      );
+      expect(rejected).toMatchObject({ ok: false, code: 'setup_archived' });
     });
   });
 

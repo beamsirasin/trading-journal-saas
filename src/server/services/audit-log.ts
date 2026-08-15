@@ -46,6 +46,7 @@ export interface AuditLogMetadata {
   readonly setupVersionId?: string;
   readonly ruleId?: string;
   readonly ruleKey?: string;
+  readonly conditionKey?: string;
   readonly versionNumber?: number;
   readonly ruleCategory?: string;
   /** `'strategy' | 'setup'` — never rule/setup/strategy content itself. */

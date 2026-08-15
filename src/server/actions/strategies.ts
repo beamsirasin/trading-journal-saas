@@ -5,12 +5,15 @@ import type { z } from 'zod';
 
 import { mapServiceErrorToPublicCode, type StrategyPublicErrorCode } from '@/lib/strategies/errors';
 import {
+  CreateSetupConditionSchema,
   CreateSetupSchema,
   CreateStrategyRuleSchema,
   CreateStrategySchema,
+  RemoveSetupConditionSchema,
   RemoveStrategyRuleSchema,
   SetupLifecycleSchema,
   StrategyLifecycleSchema,
+  UpdateSetupConditionSchema,
   UpdateSetupContentSchema,
   UpdateStrategyContentSchema,
   UpdateStrategyRuleSchema,
@@ -24,11 +27,14 @@ import {
   archiveSetup,
   archiveStrategy,
   createSetup,
+  createSetupCondition,
   createStrategy,
   createStrategyRule,
+  removeSetupCondition,
   removeStrategyRule,
   restoreSetup,
   restoreStrategy,
+  updateSetupCondition,
   updateSetupContent,
   updateStrategyContent,
   updateStrategyRule,
@@ -452,6 +458,135 @@ export async function restoreSetupAction(input: unknown): Promise<SetupLifecycle
 }
 
 // ---------------------------------------------------------------------------
+// Setup Conditions
+// ---------------------------------------------------------------------------
+
+export interface SetupConditionActionData {
+  readonly strategyId: string;
+  readonly setupId: string;
+  readonly conditionKey: string;
+  readonly versionId: string;
+  readonly versionNumber: number;
+  readonly copied: boolean;
+}
+
+export type SetupConditionActionResult = StrategyActionResult<SetupConditionActionData>;
+
+export async function createSetupConditionAction(
+  input: unknown,
+): Promise<SetupConditionActionResult> {
+  const parsed = CreateSetupConditionSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const result = await createSetupCondition(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.strategyId,
+      parsed.data.setupId,
+      {
+        label: parsed.data.label,
+        sortOrder: parsed.data.sortOrder,
+        changeNote: parsed.data.changeNote ?? null,
+      },
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateStrategyRoutes();
+    return {
+      ok: true,
+      data: {
+        strategyId: parsed.data.strategyId,
+        setupId: parsed.data.setupId,
+        conditionKey: result.conditionKey,
+        versionId: result.versionId,
+        versionNumber: result.versionNumber,
+        copied: result.copied,
+      },
+    };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export async function updateSetupConditionAction(
+  input: unknown,
+): Promise<SetupConditionActionResult> {
+  const parsed = UpdateSetupConditionSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const result = await updateSetupCondition(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.strategyId,
+      parsed.data.setupId,
+      parsed.data.conditionKey,
+      {
+        label: parsed.data.label,
+        sortOrder: parsed.data.sortOrder,
+        changeNote: parsed.data.changeNote ?? null,
+      },
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateStrategyRoutes();
+    return {
+      ok: true,
+      data: {
+        strategyId: parsed.data.strategyId,
+        setupId: parsed.data.setupId,
+        conditionKey: result.conditionKey,
+        versionId: result.versionId,
+        versionNumber: result.versionNumber,
+        copied: result.copied,
+      },
+    };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export type RemoveSetupConditionActionResult = StrategyActionResult<
+  SetupConditionActionData & { readonly alreadyRemoved: boolean }
+>;
+
+export async function removeSetupConditionAction(
+  input: unknown,
+): Promise<RemoveSetupConditionActionResult> {
+  const parsed = RemoveSetupConditionSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const result = await removeSetupCondition(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.strategyId,
+      parsed.data.setupId,
+      parsed.data.conditionKey,
+      { changeNote: parsed.data.changeNote ?? null },
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateStrategyRoutes();
+    return {
+      ok: true,
+      data: {
+        strategyId: parsed.data.strategyId,
+        setupId: parsed.data.setupId,
+        conditionKey: result.conditionKey,
+        versionId: result.versionId,
+        versionNumber: result.versionNumber,
+        copied: result.copied,
+        alreadyRemoved: result.alreadyRemoved,
+      },
+    };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rules
 // ---------------------------------------------------------------------------
 
@@ -484,7 +619,7 @@ export async function createStrategyRuleAction(
       title: parsed.data.title,
       description: parsed.data.description ?? null,
       isRequired: parsed.data.isRequired,
-      isPreTradeCheck: parsed.data.isPreTradeCheck,
+      isPreTradeCheck: false,
       sortOrder: parsed.data.sortOrder,
       changeNote: parsed.data.changeNote ?? null,
     });
@@ -540,7 +675,6 @@ export async function updateStrategyRuleAction(
         title: parsed.data.title,
         description: parsed.data.description ?? null,
         isRequired: parsed.data.isRequired,
-        isPreTradeCheck: parsed.data.isPreTradeCheck,
         sortOrder: parsed.data.sortOrder,
         changeNote: parsed.data.changeNote ?? null,
       },

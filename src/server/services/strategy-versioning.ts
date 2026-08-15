@@ -1,10 +1,11 @@
 import 'server-only';
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import { systemClock, type Clock } from '@/lib/time';
 import type { Database } from '@/server/db/client';
 import {
+  setupConditions,
   strategies,
   strategyRules,
   strategySetupVersions,
@@ -43,7 +44,9 @@ export interface CopyCurrentVersionResult {
  * Copies `sourceVersion`'s content (name/description/notes), every
  * `strategy_setup_versions` snapshot it owns (including snapshots for
  * currently-archived Setups — archive state never affects historical
- * content), and every `strategy_rules` row it owns (Strategy-level and
+ * content), every version-owned `setup_conditions` row (stable
+ * `condition_key`, new row ID, remapped `setup_version_id`), and every
+ * `strategy_rules` row it owns (Strategy-level and
  * Setup-level, `rule_key` preserved, `setup_version_id` remapped to the new
  * copy of the Setup Version it referenced) into a brand-new, unlocked
  * `strategy_versions` row, then atomically repoints
@@ -132,6 +135,37 @@ export async function copyCurrentVersionInTx(
         throw new Error('copyCurrentVersionInTx: setup version copy index out of range');
       }
       setupVersionIdMap.set(old.id, inserted.id);
+    }
+
+    const oldConditions = await tx
+      .select()
+      .from(setupConditions)
+      .where(
+        inArray(
+          setupConditions.setupVersionId,
+          oldSetupVersions.map((setupVersion) => setupVersion.id),
+        ),
+      );
+
+    if (oldConditions.length > 0) {
+      await tx.insert(setupConditions).values(
+        oldConditions.map((condition) => {
+          const newSetupVersionId = setupVersionIdMap.get(condition.setupVersionId);
+          if (newSetupVersionId === undefined) {
+            throw new Error(
+              `copyCurrentVersionInTx: condition ${condition.id} references setup_version_id ${condition.setupVersionId} with no corresponding copy`,
+            );
+          }
+          return {
+            workspaceId,
+            setupId: condition.setupId,
+            setupVersionId: newSetupVersionId,
+            conditionKey: condition.conditionKey,
+            label: condition.label,
+            sortOrder: condition.sortOrder,
+          };
+        }),
+      );
     }
   }
 

@@ -6,6 +6,7 @@ import {
   strategyVersions,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
   users,
   workspaceEntitlements,
@@ -14,7 +15,12 @@ import {
 } from '@/server/db/schema';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
-import { createSetup, createStrategy, createStrategyRule } from './strategy-management';
+import {
+  createSetup,
+  createSetupCondition,
+  createStrategy,
+  createStrategyRule,
+} from './strategy-management';
 import {
   cancelTrade,
   closeTrade,
@@ -211,12 +217,25 @@ describe('trade-management (real database)', () => {
   describe('createTrade', () => {
     it('accepts a valid planned Trade', async () => {
       const fw = await freshFramework();
+      const condition = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        fw.strategyId,
+        fw.setupId,
+        { label: 'Configured but not shown by the old Trade flow', sortOrder: 0 },
+      );
+      if (!condition.ok) throw new Error(`condition creation failed: ${condition.code}`);
       const result = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
       expect(result).toMatchObject({ ok: true, alreadyCreated: false });
       if (!result.ok) return;
       const row = await readTrade(result.tradeId);
       expect(row?.status).toBe('planned');
       expect(row?.systemStatus).toBe('pending');
+      const snapshots = await db
+        .select()
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.tradeId, result.tradeId));
+      expect(snapshots).toHaveLength(0);
     });
 
     it('Target optional => planned_r null', async () => {

@@ -23,10 +23,12 @@ export const STRATEGY_DOMAIN_ERROR_CODES = [
   'setup_archived',
   'setup_snapshot_missing',
   'rule_not_found',
+  'condition_not_found',
   'change_note_required',
   'invalid_rule_category',
   'blank_name',
   'blank_title',
+  'blank_condition_label',
   'read_only_workspace',
   'over_limit_workspace',
   'workspace_access_denied',
@@ -45,7 +47,8 @@ export function isStrategyDomainErrorCode(value: unknown): value is StrategyDoma
  * returns to the client, and what `messages/{en,th}.json`'s
  * `strategies.errors` namespace has a key for. A strict superset of
  * {@link STRATEGY_DOMAIN_ERROR_CODES} minus the two Zod-catchable
- * `blank_name`/`blank_title` codes (folded into `validation_error`), plus
+ * `blank_name`/`blank_title`/`blank_condition_label` codes (folded into
+ * `validation_error`), plus
  * four action-layer-only codes (`validation_error`, `unauthenticated`,
  * `conflict`, `unexpected_error`) that no service function ever returns
  * itself.
@@ -63,6 +66,7 @@ export const STRATEGY_PUBLIC_ERROR_CODES = [
   'setup_archived',
   'setup_snapshot_missing',
   'rule_not_found',
+  'condition_not_found',
   'change_note_required',
   'invalid_rule_category',
   'conflict',
@@ -80,7 +84,7 @@ export function isStrategyPublicErrorCode(value: unknown): value is StrategyPubl
 /**
  * Maps a service result code — {@link StrategyDomainErrorCode} or a
  * `MutationDenialReason` from `@/lib/entitlements/resolve` — to the public
- * surface a Server Action returns. `blank_name`/`blank_title` become
+ * surface a Server Action returns. Blank required-text codes become
  * `validation_error` (the Zod schema layer normally catches these first;
  * this is the defensive fallback when it does not, e.g. a value Zod's
  * `.min(1)` accepts but the service's trim-then-check rejects as blank).
@@ -101,6 +105,7 @@ export function mapServiceErrorToPublicCode(
   switch (code) {
     case 'blank_name':
     case 'blank_title':
+    case 'blank_condition_label':
       return 'validation_error';
     case 'strategy_not_found':
     case 'strategy_archived':
@@ -109,6 +114,7 @@ export function mapServiceErrorToPublicCode(
     case 'setup_archived':
     case 'setup_snapshot_missing':
     case 'rule_not_found':
+    case 'condition_not_found':
     case 'change_note_required':
     case 'invalid_rule_category':
     case 'workspace_access_denied':

@@ -2,9 +2,9 @@
 
 **Depends on:** 08, 09 · **Blocks:** 13B–13I
 
-**Status:** 13A — Contract Freeze is **complete**: this document is the frozen design contract. No runtime code, no `0011` migration, and no test changes have been made. 13B–13I (implementation) have **not started**. Phase 12 (Hardening & Launch Readiness) remains the last fully-shipped phase; this document does not change that.
+**Status:** 13A — Contract Freeze and 13B — Setup Conditions Domain are **complete**. Migration `0011_setup_conditions_domain.sql` implements the two-table persistence model, Strategy/Setup authoring and COW, immutable dormant Trade snapshots, tenant-safe export, and tests. 13C–13I have **not started**. The existing Trade-create UI intentionally records zero Condition snapshots until 13C supplies explicit answers.
 
-This document supersedes the exploratory *Journal V2 Gap Audit* (2026-08-15, unpublished research artifact) wherever the two disagree. The audit is accepted as research; several of its recommendations are corrected below after Founder review. Every correction is called out explicitly, with the reason, so implementers don't silently reintroduce the audit's original (superseded) framing.
+This document supersedes the exploratory _Journal V2 Gap Audit_ (2026-08-15, unpublished research artifact) wherever the two disagree. The audit is accepted as research; several of its recommendations are corrected below after Founder review. Every correction is called out explicitly, with the reason, so implementers don't silently reintroduce the audit's original (superseded) framing.
 
 ---
 
@@ -31,27 +31,27 @@ This is the **opposite sign** of the current `edgeLeakageR = systemR − actualR
 
 No DB migration is needed for the Gap itself — confirmed by inspection: `edgeLeakageR`/`pairedEdgeLeakageR` are pure functions computed at read time from already-persisted `actual_r`/`system_r` columns (`metrics.ts:234-238` passes already-fetched record values in); nothing about a sign flip touches storage.
 
-| Layer | File | Change required |
-|---|---|---|
-| Calc | `src/lib/calc/attribution.ts` | `edgeLeakageR`/`pairedEdgeLeakageR` bodies negate (`actual − system` instead of `system − actual`); doc comments rewritten |
-| Calc tests | `src/lib/calc/attribution.test.ts` | Every sign-specific assertion flips |
-| Analytics composition | `src/lib/analytics/metrics.ts:207,228,237` | Field carries the new sign through unchanged code — **rename is recommended, see below** |
-| Analytics tests | `src/lib/analytics/metrics.test.ts` | Sign-specific assertions flip |
-| Integration tests | `src/server/services/analytics.integration.test.ts` | Sign-specific assertions flip |
-| UI — analytics | `src/components/analytics/comparison-panel.tsx` | Consumes the value under `forceNeutral` styling; label + help text rewritten |
-| UI — dashboard | `src/components/dashboard/real-dashboard.tsx` | Same `forceNeutral` pattern, `DashboardMetric` |
-| UI — dashboard | `src/components/dashboard/mistake-summary.tsx` | Caption interpolation (`t('caption', { edgeLeakage })`) — wording depends on sign, review |
-| UI — marketing | `src/components/marketing/product-preview.tsx` | Static `KpiCard` with `tone="warning"` and a static hint string — both assume the old sign's "positive is the normal/bad case" framing |
-| UI — marketing | `src/components/marketing/attribution-section.tsx` | Conceptual copy about the metric — review for sign-dependent wording |
-| Demo fixtures | `src/lib/demo/fixtures.ts` | Doc comment invariant `edgeLeakageR === systemTotalR − actualTotalR` (line 16) must flip; the three seeded values (`'27.9'`, `'19.3'`, `'8.4'`, all currently positive under system-outperformed-actual scenarios) become **negative** under the new sign, since these fixtures encode "system beat actual" |
-| Demo fixtures | `src/lib/demo/types.ts` | Type/comment reference |
-| Demo tests | `src/lib/demo/fixtures.test.ts`, `src/components/dashboard/demo-dashboard.test.tsx`, `src/components/dashboard/real-dashboard.test.tsx`, `src/components/analytics/analytics-page.test.tsx` | Sign-specific assertions |
-| E2E | `e2e/demo-dashboard.spec.ts` | Asserts on rendered demo copy that references the value/sign |
-| i18n | `messages/en.json:132,361,421,1023` | Copy explicitly describes the **old** sign ("Positive means less System R was captured; negative means execution exceeded the System result") — must be rewritten to describe the new sign |
-| i18n | `messages/th.json` | Same strings, Thai locale — parallel rewrite |
-| **Product constitution** | **`CLAUDE.md` §6** | Updated in 13A with the authoritative `executionGapR = actualTotalR − systemTotalR` contract and an explicit note that the runtime remains on the legacy sign until the coordinated 13H correction. |
+| Layer                    | File                                                                                                                                                                                        | Change required                                                                                                                                                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Calc                     | `src/lib/calc/attribution.ts`                                                                                                                                                               | `edgeLeakageR`/`pairedEdgeLeakageR` bodies negate (`actual − system` instead of `system − actual`); doc comments rewritten                                                                                                                                                                                  |
+| Calc tests               | `src/lib/calc/attribution.test.ts`                                                                                                                                                          | Every sign-specific assertion flips                                                                                                                                                                                                                                                                         |
+| Analytics composition    | `src/lib/analytics/metrics.ts:207,228,237`                                                                                                                                                  | Field carries the new sign through unchanged code — **rename is recommended, see below**                                                                                                                                                                                                                    |
+| Analytics tests          | `src/lib/analytics/metrics.test.ts`                                                                                                                                                         | Sign-specific assertions flip                                                                                                                                                                                                                                                                               |
+| Integration tests        | `src/server/services/analytics.integration.test.ts`                                                                                                                                         | Sign-specific assertions flip                                                                                                                                                                                                                                                                               |
+| UI — analytics           | `src/components/analytics/comparison-panel.tsx`                                                                                                                                             | Consumes the value under `forceNeutral` styling; label + help text rewritten                                                                                                                                                                                                                                |
+| UI — dashboard           | `src/components/dashboard/real-dashboard.tsx`                                                                                                                                               | Same `forceNeutral` pattern, `DashboardMetric`                                                                                                                                                                                                                                                              |
+| UI — dashboard           | `src/components/dashboard/mistake-summary.tsx`                                                                                                                                              | Caption interpolation (`t('caption', { edgeLeakage })`) — wording depends on sign, review                                                                                                                                                                                                                   |
+| UI — marketing           | `src/components/marketing/product-preview.tsx`                                                                                                                                              | Static `KpiCard` with `tone="warning"` and a static hint string — both assume the old sign's "positive is the normal/bad case" framing                                                                                                                                                                      |
+| UI — marketing           | `src/components/marketing/attribution-section.tsx`                                                                                                                                          | Conceptual copy about the metric — review for sign-dependent wording                                                                                                                                                                                                                                        |
+| Demo fixtures            | `src/lib/demo/fixtures.ts`                                                                                                                                                                  | Doc comment invariant `edgeLeakageR === systemTotalR − actualTotalR` (line 16) must flip; the three seeded values (`'27.9'`, `'19.3'`, `'8.4'`, all currently positive under system-outperformed-actual scenarios) become **negative** under the new sign, since these fixtures encode "system beat actual" |
+| Demo fixtures            | `src/lib/demo/types.ts`                                                                                                                                                                     | Type/comment reference                                                                                                                                                                                                                                                                                      |
+| Demo tests               | `src/lib/demo/fixtures.test.ts`, `src/components/dashboard/demo-dashboard.test.tsx`, `src/components/dashboard/real-dashboard.test.tsx`, `src/components/analytics/analytics-page.test.tsx` | Sign-specific assertions                                                                                                                                                                                                                                                                                    |
+| E2E                      | `e2e/demo-dashboard.spec.ts`                                                                                                                                                                | Asserts on rendered demo copy that references the value/sign                                                                                                                                                                                                                                                |
+| i18n                     | `messages/en.json:132,361,421,1023`                                                                                                                                                         | Copy explicitly describes the **old** sign ("Positive means less System R was captured; negative means execution exceeded the System result") — must be rewritten to describe the new sign                                                                                                                  |
+| i18n                     | `messages/th.json`                                                                                                                                                                          | Same strings, Thai locale — parallel rewrite                                                                                                                                                                                                                                                                |
+| **Product constitution** | **`CLAUDE.md` §6**                                                                                                                                                                          | Updated in 13A with the authoritative `executionGapR = actualTotalR − systemTotalR` contract and an explicit note that the runtime remains on the legacy sign until the coordinated 13H correction.                                                                                                         |
 
-**Naming recommendation:** rename the internal calculator/field from `edgeLeakageR` to `executionGapR` at the same time the sign flips, rather than keeping the old name with an inverted meaning. Same name + opposite meaning is a strictly worse hazard for future readers/diffs than a deliberate, visible rename — a stale caller using the old sign convention would compile and silently produce inverted numbers. This is a correction to the prior audit's recommendation ("keep the internal name unchanged, only rename the customer-facing term"), made *because* the sign itself is now changing, not merely the label.
+**Naming recommendation:** rename the internal calculator/field from `edgeLeakageR` to `executionGapR` at the same time the sign flips, rather than keeping the old name with an inverted meaning. Same name + opposite meaning is a strictly worse hazard for future readers/diffs than a deliberate, visible rename — a stale caller using the old sign convention would compile and silently produce inverted numbers. This is a correction to the prior audit's recommendation ("keep the internal name unchanged, only rename the customer-facing term"), made _because_ the sign itself is now changing, not merely the label.
 
 **Secondary UX opportunity (not required for 13A, flag for 13H):** `forceNeutral` styling exists on every current display site specifically because the old sign was unintuitive (positive = bad). Under the new sign, positive = good and negative = bad — the normal convention — so `forceNeutral` could be replaced with standard sign-coloring in the Analytics extension phase. Not part of this freeze; noted so 13H doesn't miss it.
 
@@ -83,7 +83,7 @@ System R = gross System R − systemCostR   (unchanged formula, unchanged system
 
 ### Smallest correct schema/service delta
 
-1. **New nullable column** on `trades`: `system_gross_r_input NUMERIC(12,4)` — the direct gross-System-R value used whenever a Price plan is not being used as the resolution basis (Target Hit/Stop Hit/Break Even presets synthesize this value from the Money plan; Custom System Exit requires it as explicit trader input in *either* mode).
+1. **New nullable column** on `trades`: `system_gross_r_input NUMERIC(12,4)` — the direct gross-System-R value used whenever a Price plan is not being used as the resolution basis (Target Hit/Stop Hit/Break Even presets synthesize this value from the Money plan; Custom System Exit requires it as explicit trader input in _either_ mode).
 2. **CHECK constraint extension** — the `resolved` branch of `trades_system_status_consistency_check` gains an OR-shape exactly mirroring the existing `trades_plan_minimum_check` precedent (Price pair OR Money risk, `0010`):
    ```
    (planned_entry IS NOT NULL AND planned_stop IS NOT NULL AND system_exit_price IS NOT NULL)
@@ -161,16 +161,16 @@ Add a Trade-level `actual_result_mode = 'price' | 'money'` in migration slice 13
 
 **`trade_exits`** (new table, migration slice 13E):
 
-| Column | Type | Notes |
-|---|---|---|
-| `id`, `workspace_id`, `trade_id` | uuid | identity/tenancy, `workspace_id` denormalized directly on the row (not join-only), matching the `trade_mistakes` tenant-scoping precedent |
-| `sequence` | smallint | explicit ordering, avoids off-by-one ambiguity in UI |
-| `closed_bps` | integer | **authoritative**, `1–10000`, `10000 = 100%` |
-| `exit_price` | numeric(20,10), nullable | required and authoritative in Price mode; optional truthful context in Money mode |
-| `realized_pnl_minor` | bigint, nullable | required and authoritative in Money mode; null in Price mode — never fabricated from geometry |
-| `exit_reason` | text, nullable | free-text or small enum, context only |
-| `exited_at` | timestamptz, **required** | |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                           | Type                      | Notes                                                                                                                                     |
+| -------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `workspace_id`, `trade_id` | uuid                      | identity/tenancy, `workspace_id` denormalized directly on the row (not join-only), matching the `trade_mistakes` tenant-scoping precedent |
+| `sequence`                       | smallint                  | explicit ordering, avoids off-by-one ambiguity in UI                                                                                      |
+| `closed_bps`                     | integer                   | **authoritative**, `1–10000`, `10000 = 100%`                                                                                              |
+| `exit_price`                     | numeric(20,10), nullable  | required and authoritative in Price mode; optional truthful context in Money mode                                                         |
+| `realized_pnl_minor`             | bigint, nullable          | required and authoritative in Money mode; null in Price mode — never fabricated from geometry                                             |
+| `exit_reason`                    | text, nullable            | free-text or small enum, context only                                                                                                     |
+| `exited_at`                      | timestamptz, **required** |                                                                                                                                           |
+| `created_at`, `updated_at`       | timestamptz               |                                                                                                                                           |
 
 Use a positive `sequence` with a unique `(trade_id, sequence)` constraint. Keep the same-workspace parent integrity used by existing child tables. Every row must carry at least one result representation: `exit_price` or `realized_pnl_minor`; the Trade's persisted mode decides which one is required. No stored per-leg R column is justified — the Price-mode weighted sum or Money-mode aggregate is derived with Decimal under §3.
 
@@ -182,16 +182,16 @@ Use a positive `sequence` with a unique `(trade_id, sequence)` constraint. Keep 
 
 ### Trade-level aggregate-field semantics after V2
 
-| Existing field | Journal V2 semantics |
-|---|---|
-| `actual_entry` | authoritative Price input in Price mode; optional truthful execution context in Money mode. When present, it must be paired with `actual_initial_stop`. |
-| `actual_initial_stop` | authoritative Price denominator input in Price mode; optional truthful execution context in Money mode. It remains the stop **as first placed**, never a moved-stop value. |
-| `actual_initial_risk_minor` | authoritative input in Money mode and strictly positive; null/not required in Price mode. Never price-derived. |
-| `actual_exit` | compatibility/final-close cache, not an R input: on a newly finalized Trade it mirrors the Exit leg that brings cumulative `closed_bps` to 10000 when that leg has `exit_price`; otherwise null. Historical values are preserved verbatim. |
-| `net_pnl_minor` | derived final cache of `SUM(trade_exits.realized_pnl_minor)` in Money mode; null in Price mode. Never synthesized from price geometry. |
-| `actual_r` | mode-derived, persisted final snapshot rounded to four decimals; never client-supplied. Null until full close. |
-| `trader_outcome` | derived final snapshot classified from `actual_r` with the existing break-even tolerance; null until full close. |
-| `exited_at` | final-close lifecycle snapshot: the timestamp of the Exit that brings cumulative `closed_bps` to 10000; null while partially open. Historical values are preserved verbatim. |
+| Existing field              | Journal V2 semantics                                                                                                                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `actual_entry`              | authoritative Price input in Price mode; optional truthful execution context in Money mode. When present, it must be paired with `actual_initial_stop`.                                                                                    |
+| `actual_initial_stop`       | authoritative Price denominator input in Price mode; optional truthful execution context in Money mode. It remains the stop **as first placed**, never a moved-stop value.                                                                 |
+| `actual_initial_risk_minor` | authoritative input in Money mode and strictly positive; null/not required in Price mode. Never price-derived.                                                                                                                             |
+| `actual_exit`               | compatibility/final-close cache, not an R input: on a newly finalized Trade it mirrors the Exit leg that brings cumulative `closed_bps` to 10000 when that leg has `exit_price`; otherwise null. Historical values are preserved verbatim. |
+| `net_pnl_minor`             | derived final cache of `SUM(trade_exits.realized_pnl_minor)` in Money mode; null in Price mode. Never synthesized from price geometry.                                                                                                     |
+| `actual_r`                  | mode-derived, persisted final snapshot rounded to four decimals; never client-supplied. Null until full close.                                                                                                                             |
+| `trader_outcome`            | derived final snapshot classified from `actual_r` with the existing break-even tolerance; null until full close.                                                                                                                           |
+| `exited_at`                 | final-close lifecycle snapshot: the timestamp of the Exit that brings cumulative `closed_bps` to 10000; null while partially open. Historical values are preserved verbatim.                                                               |
 
 Partial-progress R, closed percentage, remaining percentage, and (for Money mode) realized P&L to date are derived from `trade_exits` on read while the Trade remains open; the terminal trade-level caches are not populated early.
 
@@ -218,34 +218,34 @@ The mode enum, row-local nullability/pairing, positivity, and direction checks b
 
 **`setup_conditions`** (new table, migration slice 13B) — direct sibling of `strategy_rules`, scoped to Setup Version:
 
-| Column | Type | Notes |
-|---|---|---|
-| `id`, `workspace_id` | uuid | |
-| `setup_id` | uuid FK | |
-| `setup_version_id` | uuid FK → `strategy_setup_versions`, **NOT NULL** | anchors this row to one immutable Setup Version snapshot |
-| `condition_key` | text | **stable identity across copy-on-write** — the same key reappears in a new row under a new `setup_version_id` when the Setup is edited forward |
-| `label` | text | the historical text for this exact version — immutable once the parent `strategy_version.locked_at` is set |
-| `sort_order` | integer | |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                     | Type                                              | Notes                                                                                                                                          |
+| -------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `workspace_id`       | uuid                                              |                                                                                                                                                |
+| `setup_id`                 | uuid FK                                           |                                                                                                                                                |
+| `setup_version_id`         | uuid FK → `strategy_setup_versions`, **NOT NULL** | anchors this row to one immutable Setup Version snapshot                                                                                       |
+| `condition_key`            | text                                              | **stable identity across copy-on-write** — the same key reappears in a new row under a new `setup_version_id` when the Setup is edited forward |
+| `label`                    | text                                              | the historical text for this exact version — immutable once the parent `strategy_version.locked_at` is set                                     |
+| `sort_order`               | integer                                           |                                                                                                                                                |
+| `created_at`, `updated_at` | timestamptz                                       |                                                                                                                                                |
 
 Protected by the exact same lock-immutability trigger pattern already proven three times in `drizzle/0007_strategies_and_setups.sql` (rejects UPDATE/DELETE once the parent Strategy Version is locked).
 
 **`trade_setup_condition_checks`** — direct sibling of `trade_rule_checks`, content-snapshotted at Trade creation:
 
-| Column | Type | Notes |
-|---|---|---|
-| `id`, `workspace_id`, `trade_id` | uuid | |
-| `setup_condition_id` | uuid FK | precise reference |
-| `setup_version_id`, `condition_key` | uuid, text | carried for cross-version identity continuity, mirroring `trade_rule_checks.rule_key` |
-| `label` | text | **snapshotted** at trade creation, never re-read live |
-| `check_status` | text | `met` \| `not_met` — **two values only**, see §6 |
-| `sort_order` | integer | |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                              | Type        | Notes                                                                                 |
+| ----------------------------------- | ----------- | ------------------------------------------------------------------------------------- |
+| `id`, `workspace_id`, `trade_id`    | uuid        |                                                                                       |
+| `setup_condition_id`                | uuid FK     | precise reference                                                                     |
+| `setup_version_id`, `condition_key` | uuid, text  | carried for cross-version identity continuity, mirroring `trade_rule_checks.rule_key` |
+| `label`                             | text        | **snapshotted** at trade creation, never re-read live                                 |
+| `check_status`                      | text        | `met` \| `not_met` — **two values only**, see §6                                      |
+| `sort_order`                        | integer     |                                                                                       |
+| `created_at`, `updated_at`          | timestamptz |                                                                                       |
 
 ### Proof the 2-table model is sufficient
 
 - **Copy-on-write:** editing a locked Setup inserts new `setup_conditions` rows with the same `condition_key` under the new `setup_version_id` — identical mechanism to `strategy_rules`, already proven correct.
-- **Historical text:** each version's row carries its own immutable `label` — no separate version table needed because the row itself *is* the version snapshot.
+- **Historical text:** each version's row carries its own immutable `label` — no separate version table needed because the row itself _is_ the version snapshot.
 - **Analytics across Setup Versions:** group by `condition_key` (stable) to compare the "same" condition across versions, or by `setup_condition_id` (exact) to isolate one version's wording — both queryable directly, no join to a third table required.
 - **Rename:** the next version's row for the same `condition_key` simply carries a new `label`; old trades' snapshots are untouched.
 - **Removal:** the next version's copy-forward simply does not re-insert that `condition_key`; older versions still have their row.
@@ -276,21 +276,26 @@ The Trade may still save with unmet/unchecked conditions — this is a disclosur
 **Corrected finding:** the prior audit collapsed these into one `SUM/SUM` formula, matching the existing `ruleAdherenceRate` precedent. The Founder correction is explicit that these are two different meanings and both must ship, clearly labeled:
 
 **Per Trade** (unchanged from the prior audit):
+
 ```
 setupAdherence = met / applicable
 ```
 
 **Primary period-level metric — Average Setup Adherence:**
+
 ```
 Average Setup Adherence = AVG(per-Trade setupAdherence)
 ```
+
 Weights **each Trade equally**, regardless of how many Conditions its Setup has.
 
 **Optional secondary metric — Conditions Met Rate:**
+
 ```
 Conditions Met Rate = SUM(met) / SUM(applicable)
 ```
-Weights **each individual Condition equally**, so Setups with more Conditions carry proportionally more weight in this number. This is the formula the prior audit proposed as the *only* aggregate — it remains available, but demoted to secondary and must never be labeled interchangeably with Average Setup Adherence.
+
+Weights **each individual Condition equally**, so Setups with more Conditions carry proportionally more weight in this number. This is the formula the prior audit proposed as the _only_ aggregate — it remains available, but demoted to secondary and must never be labeled interchangeably with Average Setup Adherence.
 
 Both are computed only over Trades where `setupAdherence` is defined (i.e., `applicable > 0`) — a zero-Condition Setup's Trades are excluded from both aggregates, consistent with §6's `N/A` contract, never coerced to `0` inside the aggregate either.
 
@@ -368,16 +373,16 @@ The prior audit proposed `label_en`/`label_th` columns on a new `emotion_types` 
 
 **`emotion_types`** (new table, migration slice 13D):
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | uuid | |
-| `workspace_id` | uuid, nullable | nullable-for-system-rows shape, mirroring `mistake_types` exactly — even though V1 seeds only system rows and ships no custom-Emotion authoring UI, keeping the shape consistent costs nothing and matches the proven tenancy-check pattern |
-| `key` | text | stable identity, used as the `messages/*.json` lookup key |
-| `label` | text | canonical English fallback (export/admin contexts), **not** the UI display string |
-| `is_system` | boolean | |
-| `is_archived` | boolean | |
-| `sort_order` | integer | |
-| `created_at`, `updated_at` | timestamptz | |
+| Column                     | Type           | Notes                                                                                                                                                                                                                                       |
+| -------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | uuid           |                                                                                                                                                                                                                                             |
+| `workspace_id`             | uuid, nullable | nullable-for-system-rows shape, mirroring `mistake_types` exactly — even though V1 seeds only system rows and ships no custom-Emotion authoring UI, keeping the shape consistent costs nothing and matches the proven tenancy-check pattern |
+| `key`                      | text           | stable identity, used as the `messages/*.json` lookup key                                                                                                                                                                                   |
+| `label`                    | text           | canonical English fallback (export/admin contexts), **not** the UI display string                                                                                                                                                           |
+| `is_system`                | boolean        |                                                                                                                                                                                                                                             |
+| `is_archived`              | boolean        |                                                                                                                                                                                                                                             |
+| `sort_order`               | integer        |                                                                                                                                                                                                                                             |
+| `created_at`, `updated_at` | timestamptz    |                                                                                                                                                                                                                                             |
 
 Same `mistake_types_tenancy_check`-style CHECK (`is_system ⟺ workspace_id IS NULL`) and the same partial-unique-index pair (system keys globally unique, custom keys unique per workspace).
 
@@ -385,11 +390,11 @@ Same `mistake_types_tenancy_check`-style CHECK (`is_system ⟺ workspace_id IS N
 
 **`trade_emotions`** — join table, direct sibling of `trade_mistakes` minus its severity/weight/note columns:
 
-| Column | Type |
-|---|---|
+| Column                        | Type               |
+| ----------------------------- | ------------------ |
 | `trade_id`, `emotion_type_id` | uuid, composite PK |
-| `workspace_id` | uuid |
-| `created_at` | timestamptz |
+| `workspace_id`                | uuid               |
+| `created_at`                  | timestamptz        |
 
 Reuses the exact hand-authored workspace-scope trigger `trade_mistakes` already has for its nullable-`workspace_id` system rows.
 
@@ -425,11 +430,11 @@ Setup Adherence and Execution Adherence are never merged into one number, at any
 
 **Locked V2 state machine:**
 
-| Axis | States | Transitions |
-|---|---|---|
-| Trade (`status`) | `planned, open, closed, canceled` | `planned→open→closed` (terminal); `planned→canceled` (terminal). **No new enum value.** |
-| Partial-open (derived, never persisted) | n/a | `open AND 0 < SUM(closed_bps) < 10000`; the Trade transitions to `closed` exactly when an Exit brings `SUM(closed_bps)` to `10000`, via the same guarded-transaction idiom `closeTrade` already uses |
-| System (`system_status`) | `pending, resolved, no_trade` | `pending→resolved`, `pending→no_trade`, `resolved↔no_trade` via correction. Fully independent of the Trade axis — **unchanged by every decision in this document**, including §2's Money-only extension (Money-only only changes *how* `resolved` computes `system_r`, never the state machine around it) |
+| Axis                                    | States                            | Transitions                                                                                                                                                                                                                                                                                               |
+| --------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trade (`status`)                        | `planned, open, closed, canceled` | `planned→open→closed` (terminal); `planned→canceled` (terminal). **No new enum value.**                                                                                                                                                                                                                   |
+| Partial-open (derived, never persisted) | n/a                               | `open AND 0 < SUM(closed_bps) < 10000`; the Trade transitions to `closed` exactly when an Exit brings `SUM(closed_bps)` to `10000`, via the same guarded-transaction idiom `closeTrade` already uses                                                                                                      |
+| System (`system_status`)                | `pending, resolved, no_trade`     | `pending→resolved`, `pending→no_trade`, `resolved↔no_trade` via correction. Fully independent of the Trade axis — **unchanged by every decision in this document**, including §2's Money-only extension (Money-only only changes _how_ `resolved` computes `system_r`, never the state machine around it) |
 
 ---
 
@@ -449,19 +454,28 @@ Setup Adherence and Execution Adherence are never merged into one number, at any
 
 **Corrected finding:** the prior audit recommended sequencing Emotions first purely because it was the cheapest/lowest-risk slice. Overridden — sequence by product-core dependency, not by ease:
 
-| Slice | Scope |
-|---|---|
-| **13A** | Contract Freeze — this document |
-| **13B** | Setup Conditions domain (§5, §6, §7 schema/service) |
-| **13C** | Single-page Journal Entry UX (§13) |
-| **13D** | Emotions + Review Note (§8, §12) |
-| **13E** | Actual Execution V2 + Partial Close (§3, §4, §10, §11) |
-| **13F** | Money-only System Resolution (§2) |
-| **13G** | Journal List/Detail redesign (§9 and related read-model work) |
+| Slice   | Scope                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **13A** | Contract Freeze — this document                                                                                                                  |
+| **13B** | Setup Conditions domain (§5, §6, §7 schema/service)                                                                                              |
+| **13C** | Single-page Journal Entry UX (§13)                                                                                                               |
+| **13D** | Emotions + Review Note (§8, §12)                                                                                                                 |
+| **13E** | Actual Execution V2 + Partial Close (§3, §4, §10, §11)                                                                                           |
+| **13F** | Money-only System Resolution (§2)                                                                                                                |
+| **13G** | Journal List/Detail redesign (§9 and related read-model work)                                                                                    |
 | **13H** | Analytics extensions (§1's Execution Gap rename/recolor follow-up, §7's dual adherence metrics, Confidence/Condition/Emotion analytics from §15) |
-| **13I** | Founder UAT / closeout |
+| **13I** | Founder UAT / closeout                                                                                                                           |
 
 No dependency-driven reordering is recommended beyond this — 13B before 13C because the Entry UX needs a real Setup Conditions checklist to render; 13D before 13E/13F because Emotions/Review Note are pure additions with no interaction with execution mechanics and are cheap to validate early without blocking on the higher-risk execution-model work; 13E before 13F because Partial Close's `trade_exits` table is a precondition for nothing in Money-only System Resolution, but both benefit from landing after the capture-side (13B–13D) is stable and UAT'd once; 13G/13H last because both need real captured data (Conditions, Emotions, Exits) to be meaningful to build and test against.
+
+### 13B implementation record
+
+- `setup_conditions` is version-owned content under an exact Setup Version. `condition_key` is generated server-side, survives rename/reorder/COW, and row IDs regenerate when the authoritative Strategy copy transaction remaps every Setup snapshot.
+- Unlocked current Versions edit in place. Locked Versions are protected by PostgreSQL and mutate only through the existing Strategy COW transaction and lock order. Removal deletes only from an unlocked/current copied Version; locked history remains intact.
+- `trade_setup_condition_checks` stores immutable server-authoritative key/label/order/status snapshots with exact Trade/Setup Version/source-row composite FKs. Status is exactly `met | not_met`.
+- The future-capture helper accepts only keys and binary answers, requires exactly one answer for every authoritative Condition, and rejects duplicates, omissions, foreign keys, wrong Workspaces, and Setup Version mismatches. It is dormant until 13C; the old Trade flow still writes zero rows truthfully.
+- Existing `strategy_rules.is_pre_trade_check = true` rows remain intact and COW preserves them. New Rule authoring no longer exposes or creates that legacy meaning; Setup Conditions own new pre-entry authoring.
+- Workspace export schema version 2 includes both new datasets. No adherence aggregate or analytics surface was added.
 
 ---
 
@@ -485,15 +499,15 @@ Broker sync, automatic market-price tracking, partial **entry**/scale-in, multip
 
 ## Documentation impact map
 
-| Doc | Why it will eventually need updating |
-|---|---|
-| `CLAUDE.md` §6 | Updated in 13A with a narrow Phase-13 supersession note for the dual Actual-result modes and corrected Execution Gap sign. It explicitly records that runtime remains on the legacy Money-only/opposite-sign behavior until 13E/13H. |
-| `docs/product-spec.md` | Setup Conditions, Emotions, Partial Close, and the corrected Execution Gap sign are all currently undocumented or documented with the old sign |
-| `docs/data-dictionary.md` | New tables (`setup_conditions`, `trade_setup_condition_checks`, `emotion_types`, `trade_emotions`, `trade_exits`) and the new `trades.system_gross_r_input`/`actual_result_mode`/`review_notes` columns |
-| `docs/roadmap.md` | Needs a Phase 13 row and status entries as 13B–13I land |
-| `docs/architecture.md` | Its `src/server/db/schema/` directory listing is already stale relative to Phase 06–08 and will need the Phase 13 tables added at the same time |
-| `docs/localization-glossary.md` | New terms: Setup Conditions, Setup Adherence, Execution Gap (sign-corrected), the 10 canonical Emotions |
-| `docs/phases/README.md` | Index table needs a Phase 13 row, matching the convention every other phase follows |
+| Doc                             | Why it will eventually need updating                                                                                                                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CLAUDE.md` §6                  | Updated in 13A with a narrow Phase-13 supersession note for the dual Actual-result modes and corrected Execution Gap sign. It explicitly records that runtime remains on the legacy Money-only/opposite-sign behavior until 13E/13H. |
+| `docs/product-spec.md`          | Setup Conditions, Emotions, Partial Close, and the corrected Execution Gap sign are all currently undocumented or documented with the old sign                                                                                       |
+| `docs/data-dictionary.md`       | New tables (`setup_conditions`, `trade_setup_condition_checks`, `emotion_types`, `trade_emotions`, `trade_exits`) and the new `trades.system_gross_r_input`/`actual_result_mode`/`review_notes` columns                              |
+| `docs/roadmap.md`               | Needs a Phase 13 row and status entries as 13B–13I land                                                                                                                                                                              |
+| `docs/architecture.md`          | Its `src/server/db/schema/` directory listing is already stale relative to Phase 06–08 and will need the Phase 13 tables added at the same time                                                                                      |
+| `docs/localization-glossary.md` | New terms: Setup Conditions, Setup Adherence, Execution Gap (sign-corrected), the 10 canonical Emotions                                                                                                                              |
+| `docs/phases/README.md`         | Index table needs a Phase 13 row, matching the convention every other phase follows                                                                                                                                                  |
 
 Except for the required `CLAUDE.md` authority correction called out above, none of these are edited in 13A; this table exists so 13B onward does not have to rediscover the list.
 
@@ -517,6 +531,19 @@ Except for the required `CLAUDE.md` authority correction called out above, none 
 - [x] Implementation sequence reordered to product-core dependency
 - [x] Classification re-evaluated and held at B with reasoning
 - [x] Zero runtime code, zero migrations, zero commits made in 13A
+
+## Definition of Done — 13B
+
+- [x] Exactly one additive migration (`0011_setup_conditions_domain.sql`); migration 0010 unchanged
+- [x] Two-table model implemented without a speculative identity table
+- [x] Setup Condition add/rename/reorder/remove authoring in EN/TH
+- [x] Existing Strategy COW copies every Condition with a new row ID and remapped Setup Version while preserving `condition_key`
+- [x] PostgreSQL protects locked Condition rows and immutable Trade snapshots, including the workspace-delete exception
+- [x] Future Trade snapshot helper validates an explicit complete binary answer set from authoritative source rows
+- [x] Current Trade creation remains unchanged and writes zero Condition snapshots until 13C
+- [x] Legacy pre-trade Rule history is preserved while new Rule authoring is Execution Rule-only
+- [x] Workspace export schema version 2 includes Conditions and their snapshots
+- [x] No Setup Adherence analytics or customer-facing Trade checklist/list/detail surface shipped early
 
 ## Risks (carried into 13B–13I, not resolved here)
 

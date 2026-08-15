@@ -251,7 +251,6 @@ function RuleRow({
                 title: rule.title,
                 description: rule.description ?? '',
                 isRequired: rule.isRequired,
-                isPreTradeCheck: rule.isPreTradeCheck,
                 sortOrder: String(rule.sortOrder),
               }}
               trigger={

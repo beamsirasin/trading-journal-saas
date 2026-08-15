@@ -16,6 +16,7 @@ import {
   billingTransactions,
   mistakeTypes,
   sessions,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
@@ -24,6 +25,7 @@ import {
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
   userPreferences,
   users,
@@ -253,6 +255,23 @@ async function seedHistoricalWorkspace(db: Db) {
     .returning({ id: strategyRules.id, ruleKey: strategyRules.ruleKey });
   if (rule === undefined) throw new Error('failed to seed export rule');
 
+  const [condition] = await db
+    .insert(setupConditions)
+    .values({
+      workspaceId: workspace.id,
+      setupId: setup.id,
+      setupVersionId: setupOne.id,
+      label: 'Retest confirmation',
+      sortOrder: 4,
+    })
+    .returning({
+      id: setupConditions.id,
+      conditionKey: setupConditions.conditionKey,
+      label: setupConditions.label,
+      sortOrder: setupConditions.sortOrder,
+    });
+  if (condition === undefined) throw new Error('failed to seed export Setup Condition');
+
   await db
     .update(strategyVersions)
     .set({ lockedAt: new Date('2026-06-01T00:00:00Z') })
@@ -291,6 +310,16 @@ async function seedHistoricalWorkspace(db: Db) {
     category: 'entry',
     isRequired: true,
     isPreTradeCheck: true,
+  });
+  await db.insert(tradeSetupConditionChecks).values({
+    workspaceId: workspace.id,
+    tradeId: trade.id,
+    setupConditionId: condition.id,
+    setupVersionId: setupOne.id,
+    conditionKey: condition.conditionKey,
+    label: condition.label,
+    sortOrder: condition.sortOrder,
+    checkStatus: 'met',
   });
   const [systemMistake] = await db
     .select({ id: mistakeTypes.id })
@@ -346,6 +375,7 @@ async function seedHistoricalWorkspace(db: Db) {
     setupOne,
     trade,
     rule,
+    condition,
     systemMistake,
     idempotencyKey,
   };
@@ -404,8 +434,22 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
     expect(envelope.data.setups[0]?.isArchived).toBe(true);
     expect(envelope.data.strategy_setup_versions).toHaveLength(2);
     expect(envelope.data.strategy_rules).toHaveLength(1);
+    expect(envelope.data.setup_conditions).toHaveLength(1);
+    expect(envelope.data.setup_conditions[0]).toMatchObject({
+      conditionKey: seeded.condition.conditionKey,
+      label: 'Retest confirmation',
+      sortOrder: 4,
+    });
     expect(envelope.data.trades[0]?.deletedAt).toBe('2026-08-08T00:00:00.000Z');
     expect(envelope.data.trade_rule_checks).toHaveLength(1);
+    expect(envelope.data.trade_setup_condition_checks).toHaveLength(1);
+    expect(envelope.data.trade_setup_condition_checks[0]).toMatchObject({
+      setupConditionId: seeded.condition.id,
+      conditionKey: seeded.condition.conditionKey,
+      label: 'Retest confirmation',
+      sortOrder: 4,
+      checkStatus: 'met',
+    });
     expect(envelope.data.trade_mistakes).toHaveLength(1);
     expect(envelope.data.mistake_types.some((row) => row.id === seeded.systemMistake.id)).toBe(
       true,
@@ -415,6 +459,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
     const versionIds = new Set(envelope.data.strategy_versions.map((row) => row.id));
     const setupIds = new Set(envelope.data.setups.map((row) => row.id));
     const ruleIds = new Set(envelope.data.strategy_rules.map((row) => row.id));
+    const conditionIds = new Set(envelope.data.setup_conditions.map((row) => row.id));
     const mistakeIds = new Set(envelope.data.mistake_types.map((row) => row.id));
     for (const trade of envelope.data.trades) {
       expect(strategyIds.has(trade.strategyId)).toBe(true);
@@ -422,6 +467,9 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       expect(setupIds.has(trade.setupId)).toBe(true);
     }
     expect(ruleIds.has(envelope.data.trade_rule_checks[0]?.strategyRuleId)).toBe(true);
+    expect(conditionIds.has(envelope.data.trade_setup_condition_checks[0]?.setupConditionId)).toBe(
+      true,
+    );
     expect(mistakeIds.has(envelope.data.trade_mistakes[0]?.mistakeTypeId)).toBe(true);
     expect(serializeWorkspaceExportJson(envelope)).not.toContain(SENTINELS.foreign);
   });
@@ -610,7 +658,7 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     const clock = createFixedClock(NOW);
     const json = await prepareCurrentWorkspaceExport('json', { clock });
     const csv = await prepareCurrentWorkspaceExport('csv', { clock });
-    expect(JSON.parse(json.body as string).schemaVersion).toBe(1);
+    expect(JSON.parse(json.body as string).schemaVersion).toBe(2);
     expect(csv.body).toBeInstanceOf(Uint8Array);
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
@@ -624,11 +672,11 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(events).toEqual([
       {
         action: 'data.exported',
-        metadata: { format: 'json', scope: 'workspace', schemaVersion: 1 },
+        metadata: { format: 'json', scope: 'workspace', schemaVersion: 2 },
       },
       {
         action: 'data.exported',
-        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 1 },
+        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 2 },
       },
     ]);
     expect(JSON.stringify(events)).not.toMatch(/พื้นที่ทำงาน|ทองคำ|@example/);

@@ -813,7 +813,6 @@ describe('Setup and Rule actions (real PostgreSQL)', () => {
       category: 'entry',
       title: 'Wait for close above level',
       isRequired: true,
-      isPreTradeCheck: true,
       sortOrder: 0,
     });
     expect(rule).toMatchObject({
@@ -833,7 +832,6 @@ describe('Setup and Rule actions (real PostgreSQL)', () => {
       category: 'entry',
       title: 'Wait for daily close above level',
       isRequired: true,
-      isPreTradeCheck: true,
       sortOrder: 0,
     });
     expect(updated).toMatchObject({ ok: true, data: { strategyId: strategy.strategyId, ruleKey } });
@@ -869,7 +867,6 @@ describe('Setup and Rule actions (real PostgreSQL)', () => {
       category: 'not-a-real-category',
       title: 'Bad rule',
       isRequired: true,
-      isPreTradeCheck: true,
       sortOrder: 0,
     } as never);
     expect(result).toMatchObject({ ok: false, error: { code: 'validation_error' } });

@@ -277,6 +277,8 @@ export const trades = pgTable(
     // Trade is pinned to — never a different, mismatched Version.
     uniqueIndex('trades_id_workspace_idx').on(table.id, table.workspaceId),
     uniqueIndex('trades_id_strategy_version_idx').on(table.id, table.strategyVersionId),
+    // Composite-FK plumbing for `trade_setup_condition_checks`.
+    uniqueIndex('trades_id_setup_version_idx').on(table.id, table.setupVersionId),
 
     // Tenant/parent integrity — every reference chains back to the same
     // workspace and the same Strategy, mirroring Phase 06's own composite-FK

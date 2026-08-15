@@ -123,7 +123,6 @@ describe('RuleFormDialog — edit', () => {
           title: 'Wait for confirmation',
           description: '',
           isRequired: true,
-          isPreTradeCheck: false,
           sortOrder: '0',
         }}
         trigger={<button>Open</button>}
@@ -158,7 +157,6 @@ describe('RuleFormDialog — edit', () => {
           title: 'Stop below the range low',
           description: '',
           isRequired: true,
-          isPreTradeCheck: false,
           sortOrder: '0',
         }}
         trigger={<button>Open</button>}

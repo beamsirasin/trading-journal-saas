@@ -55,9 +55,10 @@ describe('STRATEGY_PUBLIC_ERROR_CODES', () => {
     expect(isStrategyPublicErrorCode(null)).toBe(false);
   });
 
-  it('does not include the Zod-catchable blank_name/blank_title domain codes', () => {
+  it('does not include the Zod-catchable blank-label domain codes', () => {
     expect(STRATEGY_PUBLIC_ERROR_CODES).not.toContain('blank_name');
     expect(STRATEGY_PUBLIC_ERROR_CODES).not.toContain('blank_title');
+    expect(STRATEGY_PUBLIC_ERROR_CODES).not.toContain('blank_condition_label');
   });
 
   it('includes the four action-layer-only codes no service ever returns', () => {
@@ -68,14 +69,17 @@ describe('STRATEGY_PUBLIC_ERROR_CODES', () => {
 });
 
 describe('mapServiceErrorToPublicCode', () => {
-  it('folds blank_name/blank_title into validation_error', () => {
+  it('folds blank required-text errors into validation_error', () => {
     expect(mapServiceErrorToPublicCode('blank_name')).toBe('validation_error');
     expect(mapServiceErrorToPublicCode('blank_title')).toBe('validation_error');
+    expect(mapServiceErrorToPublicCode('blank_condition_label')).toBe('validation_error');
   });
 
-  it('passes every domain error code through unchanged, except blank_name/blank_title', () => {
+  it('passes every domain error code through unchanged, except blank required text', () => {
     for (const code of STRATEGY_DOMAIN_ERROR_CODES) {
-      if (code === 'blank_name' || code === 'blank_title') continue;
+      if (code === 'blank_name' || code === 'blank_title' || code === 'blank_condition_label') {
+        continue;
+      }
       expect(mapServiceErrorToPublicCode(code)).toBe(code);
     }
   });

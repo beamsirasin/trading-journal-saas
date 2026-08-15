@@ -9,6 +9,7 @@ import { archiveStrategyAction, restoreStrategyAction } from '@/server/actions/s
 import type { StrategyDetail } from '@/server/dal/strategies';
 import { SectionHeader } from '@/components/product/page-header';
 import { RulesManager } from '@/components/strategies/rules-manager';
+import { SetupConditionsManager } from '@/components/strategies/setup-conditions-manager';
 import { SetupList } from '@/components/strategies/setup-list';
 import { StrategyFormDialog } from '@/components/strategies/strategy-form';
 import { VersionSummary, type VersionHistoryEntry } from '@/components/strategies/version-summary';
@@ -208,6 +209,16 @@ export function StrategyDetail({
         ruleCountBySetupId={ruleCountBySetupId}
         canWrite={canWrite}
         writeBlockReason={writeBlockReason}
+        onMutated={onMutated}
+      />
+
+      <SetupConditionsManager
+        strategyId={strategy.strategyId}
+        setups={strategy.setups}
+        conditionsBySetupId={strategy.setupConditionsBySetupId}
+        isStrategyArchived={strategy.isStrategyArchived}
+        isCurrentVersionLocked={strategy.currentVersion.isCurrentVersionLocked}
+        canWrite={canWrite}
         onMutated={onMutated}
       />
 

@@ -53,9 +53,9 @@ function completeSource(): WorkspaceExportSource {
   ) as unknown as WorkspaceExportSource;
 }
 
-describe('workspace export schema-v1 registry', () => {
+describe('workspace export schema-v2 registry', () => {
   it('defines the complete normalized dataset and CSV inventory once', () => {
-    expect(WORKSPACE_EXPORT_SCHEMA_VERSION).toBe(1);
+    expect(WORKSPACE_EXPORT_SCHEMA_VERSION).toBe(2);
     expect(WORKSPACE_EXPORT_REGISTRY.map(({ name }) => name)).toEqual([
       'workspace',
       'trading_accounts',
@@ -64,13 +64,15 @@ describe('workspace export schema-v1 registry', () => {
       'setups',
       'strategy_setup_versions',
       'strategy_rules',
+      'setup_conditions',
       'mistake_types',
       'trades',
       'trade_rule_checks',
+      'trade_setup_condition_checks',
       'trade_mistakes',
       'billing_transactions',
     ]);
-    expect(new Set(WORKSPACE_EXPORT_REGISTRY.map(({ csvFilename }) => csvFilename)).size).toBe(12);
+    expect(new Set(WORKSPACE_EXPORT_REGISTRY.map(({ csvFilename }) => csvFilename)).size).toBe(14);
   });
 
   it('has no security, provider, audit, mutation, or unused scoring columns', () => {
@@ -115,7 +117,7 @@ describe('workspace export schema-v1 registry', () => {
         ],
       },
     });
-    expect(envelope.schemaVersion).toBe(1);
+    expect(envelope.schemaVersion).toBe(2);
     expect(envelope.exportedAt).toBe('2026-08-09T12:34:56.789Z');
     expect(envelope.scope).toEqual({ type: 'workspace', workspaceId: 'workspace-a' });
     expect(envelope.data.trades[0]?.actualInitialRiskMinor).toBe('10000000000000001');
@@ -200,7 +202,7 @@ describe('workspace CSV security and parity', () => {
       expect(strFromU8(archived)).toBe(contents.slice(1));
     }
     expect(JSON.parse(strFromU8(archive['manifest.json'] as Uint8Array))).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       productVersion: '0.1.0',
       nullRepresentation: 'empty CSV field',
     });
