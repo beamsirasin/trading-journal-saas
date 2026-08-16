@@ -24,11 +24,14 @@ const base: TradeDetailModel = {
   tradingAccountId: 'a',
   tradingAccountName: 'Main JPY',
   tradingAccountBaseCurrency: 'JPY',
+  tradingAccountIsArchived: false,
   strategyId: 's',
   strategyName: 'Pinned Breakout',
   strategyVersionNumber: 4,
+  strategyIsArchived: false,
   setupId: 'x',
   setupName: 'Pinned Retest',
+  setupIsArchived: false,
   status: 'planned',
   systemStatus: 'pending',
   systemResolutionKind: null,
@@ -78,6 +81,8 @@ const base: TradeDetailModel = {
   systemR: null,
   systemOutcome: null,
   systemResolvedAt: null,
+  setupConditionState: 'not_recorded',
+  setupConditionChecks: [],
   ruleChecks: [
     {
       ruleKey: 'r',
@@ -133,9 +138,9 @@ describe('TradeDetail', () => {
     expect(screen.queryByText(/\/5\b/)).not.toBeInTheDocument();
   });
 
-  it('renders no Confidence row when unset', () => {
+  it('renders a truthful not-set Confidence state, never an invented percentage', () => {
     renderDetail({ ...base, confidence: null });
-    expect(screen.queryByText('Confidence')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+% ·/)).not.toBeInTheDocument();
   });
 
   it('distinguishes historical not-recorded Emotions from a recorded zero selection', () => {
@@ -236,5 +241,80 @@ describe('TradeDetail', () => {
     expect(screen.getByText('FOMO entry')).toBeInTheDocument();
     expect(screen.getByText('Entered early')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /remove|attach|edit/i })).not.toBeInTheDocument();
+  });
+
+  it('shows Setup Conditions as historical not-recorded, distinct from a zero-Condition Setup', () => {
+    const first = renderDetail({ ...base, setupConditionState: 'not_recorded' });
+    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Not configured')).not.toBeInTheDocument();
+    first.unmount();
+
+    renderDetail({ ...base, setupConditionState: 'not_configured' });
+    expect(screen.getByText('Not configured')).toBeInTheDocument();
+  });
+
+  it('renders recorded Setup Conditions with an adherence count and per-item Met/Not met status', () => {
+    renderDetail({
+      ...base,
+      setupConditionState: 'recorded',
+      setupConditionChecks: [
+        { conditionKey: 'c1', label: 'Above the 200 EMA', sortOrder: 0, checkStatus: 'met' },
+        {
+          conditionKey: 'c2',
+          label: 'Volume confirms breakout',
+          sortOrder: 1,
+          checkStatus: 'not_met',
+        },
+      ],
+    });
+    expect(screen.getByText('1/2 met · 50%')).toBeInTheDocument();
+    expect(screen.getByText('Above the 200 EMA')).toBeInTheDocument();
+    expect(screen.getByText('Volume confirms breakout')).toBeInTheDocument();
+    expect(screen.getByText('Met')).toBeInTheDocument();
+    expect(screen.getByText('Not met')).toBeInTheDocument();
+  });
+
+  it('discloses an archived live Strategy, Setup, or Account without hiding the pinned historical label', () => {
+    renderDetail({
+      ...base,
+      strategyIsArchived: true,
+      setupIsArchived: true,
+      tradingAccountIsArchived: true,
+    });
+    expect(screen.getByText('Pinned Breakout')).toBeInTheDocument();
+    expect(screen.getByText('Pinned Retest')).toBeInTheDocument();
+    expect(screen.getByText('Main JPY')).toBeInTheDocument();
+    expect(screen.getAllByText('Archived').length).toBe(3);
+  });
+
+  it('renders no Archived badge when the live Strategy, Setup, and Account are all active', () => {
+    renderDetail(base);
+    expect(screen.queryByText('Archived')).not.toBeInTheDocument();
+  });
+
+  it('displays Entry Reason separately from legacy Notes', () => {
+    renderDetail({
+      ...base,
+      confirmationNotes: 'Waited for the retest to confirm.',
+      notes: 'General journal note.',
+    });
+    expect(screen.getByText('Entry Reason')).toBeInTheDocument();
+    expect(screen.getByText('Waited for the retest to confirm.')).toBeInTheDocument();
+    expect(screen.getByText('General journal note.')).toBeInTheDocument();
+  });
+
+  it('renders the System resolved time alongside the final System outcome', () => {
+    renderDetail({
+      ...base,
+      systemStatus: 'resolved',
+      systemResolutionKind: 'price_exit',
+      systemExitPrice: '130',
+      systemExitedAt: '2026-08-08T02:00:00.000Z',
+      systemExitReason: 'target_hit',
+      systemR: '3.0000',
+      systemOutcome: 'win',
+      systemResolvedAt: '2026-08-08T03:00:00.000Z',
+    });
+    expect(screen.getByText('System resolved')).toBeInTheDocument();
   });
 });

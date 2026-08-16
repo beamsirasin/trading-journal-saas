@@ -473,7 +473,8 @@
       "notAvailable": "ไม่มีข้อมูล",
       "notSet": "ยังไม่ได้ระบุ",
       "optional": "(ไม่บังคับ)",
-      "version": "เวอร์ชัน {number}"
+      "version": "เวอร์ชัน {number}",
+      "archived": "เก็บเข้าคลังแล้ว"
     },
     "direction": { "long": "Long", "short": "Short" },
     "status": {
@@ -493,7 +494,10 @@
       "account": "บัญชีเทรด",
       "execution": "การเทรดจริง",
       "trader": "เทรดเดอร์",
-      "system": "ระบบ"
+      "system": "ระบบ",
+      "realized": "R ที่รับรู้",
+      "remainingPercent": "เหลือ {percent}%",
+      "conditionsMet": "เซ็ตอัพ {met}/{total}"
     },
     "pagination": { "label": "หน้ารายการออเดอร์", "previous": "ก่อนหน้า", "next": "ถัดไป" },
     "empty": {
@@ -521,6 +525,7 @@
       "session": "ช่วงตลาด",
       "confidence": "ความมั่นใจ",
       "confirmationNotes": "บันทึกการยืนยัน",
+      "entryReason": "เหตุผลในการเข้าเทรด",
       "tradingViewUrl": "URL TradingView",
       "chartAttachment": "รูปภาพกราฟ",
       "notes": "บันทึก",
@@ -549,7 +554,8 @@
       "systemResolutionKind": "เกณฑ์การสรุปผล",
       "systemCostR": "ต้นทุน R ของระบบ",
       "systemR": "R ของระบบ",
-      "systemOutcome": "ผลของระบบ"
+      "systemOutcome": "ผลของระบบ",
+      "systemResolvedAt": "ระบบสรุปผลเมื่อ"
     },
     "detail": {
       "back": "กลับไปยังรายการออเดอร์",
@@ -567,13 +573,16 @@
       "sections": {
         "overview": "ภาพรวม",
         "plan": "แผน",
+        "entrySnapshot": "ข้อมูลตอนเข้าเทรด",
+        "conditions": "เงื่อนไขของเซ็ตอัพ",
         "execution": "การเทรดจริง",
         "system": "ผลของระบบ",
-        "rules": "กฎ",
-        "mistakes": "ข้อผิดพลาด",
-        "reflection": "อารมณ์และการทบทวนหลังเทรด"
+        "discipline": "วินัยและการทบทวน",
+        "rules": "กฎการเทรด",
+        "mistakes": "ข้อผิดพลาด"
       },
-      "ruleGroups": { "strategy": "กฎระดับกลยุทธ์", "setup": "กฎระดับเซ็ตอัพ" }
+      "ruleGroups": { "strategy": "กฎระดับกลยุทธ์", "setup": "กฎระดับเซ็ตอัพ" },
+      "conditions": { "met": "ตรงตามเงื่อนไข", "notMet": "ไม่ตรงตามเงื่อนไข" }
     },
     "lifecycle": {
       "title": "การดำเนินการกับออเดอร์",

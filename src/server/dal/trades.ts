@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { composeRealizedActual } from '@/lib/calc/trade';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
+import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots';
 import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
 import type {
   ActualResultMode,
@@ -32,6 +33,7 @@ import {
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
 } from '@/server/db/schema';
 
@@ -111,10 +113,38 @@ export interface TradeListItem {
   readonly strategyVersionNumber: number;
   readonly status: TradeStatus;
   readonly systemStatus: SystemStatus;
+  readonly plannedR: string | null;
   readonly actualR: string | null;
   readonly systemR: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly systemOutcome: OutcomeValue | null;
+  /**
+   * Closed/remaining basis points as of this read — `0`/`10_000` for any
+   * Trade with no Exit legs (never fetched per-row; see the batched Exit
+   * query in `listWorkspaceTrades`). Meaningful for a partially-exited
+   * `open` Trade; a `closed` Trade's authoritative final figure is `actualR`
+   * above, not this pair.
+   */
+  readonly closedBps: number;
+  readonly remainingBps: number;
+  /**
+   * Realized R to date for a partially-exited `open` Trade, derived
+   * in-process via `composeRealizedActual` from the same batched Exit read
+   * — `null` whenever not meaningful (no exits yet, or already closed, in
+   * which case `actualR` is authoritative). Never a second competing
+   * calculation of the closed figure.
+   */
+  readonly realizedRToDate: string | null;
+  /**
+   * Setup Condition adherence, batched from `trade_setup_condition_checks`
+   * (Phase 13G, §9/§22) — `null` whenever no Condition snapshot rows exist
+   * for this Trade (historical/not-recorded or a zero-Condition Setup
+   * Version). The List deliberately does not distinguish those two `null`
+   * cases from each other; Trade Detail is authoritative for that
+   * three-state disclosure.
+   */
+  readonly setupConditionMetCount: number | null;
+  readonly setupConditionTotalCount: number | null;
 }
 
 export interface TradeListPage {
@@ -205,10 +235,15 @@ export async function listWorkspaceTrades(
       direction: trades.direction,
       status: trades.status,
       systemStatus: trades.systemStatus,
+      plannedR: trades.plannedR,
       actualR: trades.actualR,
       systemR: trades.systemR,
       traderOutcome: trades.traderOutcome,
       systemOutcome: trades.systemOutcome,
+      actualResultMode: trades.actualResultMode,
+      actualEntry: trades.actualEntry,
+      actualInitialStop: trades.actualInitialStop,
+      actualInitialRiskMinor: trades.actualInitialRiskMinor,
       tradingAccountName: tradingAccounts.name,
       strategyVersionName: strategyVersions.name,
       strategyVersionNumber: strategyVersions.versionNumber,
@@ -230,23 +265,93 @@ export async function listWorkspaceTrades(
       ? encodeCursor(toDate(lastRow.occurredAt), lastRow.tradeId)
       : null;
 
+  const tradeIds = pageRows.map((row) => row.tradeId);
+
+  // One batched Exit read for the whole page (never per-row) — only ever
+  // used to derive partial-close realized R for a still-`open` Trade; a
+  // `closed` Trade's authoritative figure is `trades.actual_r` above.
+  const exitBatchRows =
+    tradeIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(tradeExits)
+          .where(inArray(tradeExits.tradeId, tradeIds))
+          .orderBy(asc(tradeExits.tradeId), asc(tradeExits.sequence));
+  const exitsByTradeId = new Map<string, typeof exitBatchRows>();
+  for (const exit of exitBatchRows) {
+    const list = exitsByTradeId.get(exit.tradeId) ?? [];
+    list.push(exit);
+    exitsByTradeId.set(exit.tradeId, list);
+  }
+
+  // One batched, grouped Setup Condition Check count for the whole page —
+  // §9/§22's sanctioned shape. `null` per Trade when no rows exist; the
+  // List does not attempt to distinguish "not recorded" from "zero
+  // configured Conditions" (Detail alone is authoritative for that).
+  const conditionCountRows =
+    tradeIds.length === 0
+      ? []
+      : await db
+          .select({
+            tradeId: tradeSetupConditionChecks.tradeId,
+            checkStatus: tradeSetupConditionChecks.checkStatus,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(tradeSetupConditionChecks)
+          .where(inArray(tradeSetupConditionChecks.tradeId, tradeIds))
+          .groupBy(tradeSetupConditionChecks.tradeId, tradeSetupConditionChecks.checkStatus);
+  const conditionCountsByTradeId = new Map<string, { met: number; total: number }>();
+  for (const row of conditionCountRows) {
+    const current = conditionCountsByTradeId.get(row.tradeId) ?? { met: 0, total: 0 };
+    current.total += row.count;
+    if (row.checkStatus === 'met') current.met += row.count;
+    conditionCountsByTradeId.set(row.tradeId, current);
+  }
+
   return {
-    items: pageRows.map((row) => ({
-      tradeId: row.tradeId,
-      occurredAt: toDate(row.occurredAt).toISOString(),
-      symbol: row.symbol,
-      direction: row.direction as TradeDirection,
-      tradingAccountName: row.tradingAccountName,
-      strategyName: row.strategyVersionName,
-      setupName: row.setupVersionName,
-      strategyVersionNumber: row.strategyVersionNumber,
-      status: row.status as TradeStatus,
-      systemStatus: row.systemStatus as SystemStatus,
-      actualR: row.actualR,
-      systemR: row.systemR,
-      traderOutcome: row.traderOutcome as OutcomeValue | null,
-      systemOutcome: row.systemOutcome as OutcomeValue | null,
-    })),
+    items: pageRows.map((row) => {
+      const exits = exitsByTradeId.get(row.tradeId) ?? [];
+      const closedBps = exits.reduce((total, exit) => total + exit.closedBps, 0);
+      const realizedRToDate =
+        row.status === 'open' && closedBps > 0
+          ? (() => {
+              const realized = composeRealizedActual({
+                actualResultMode: row.actualResultMode,
+                direction: row.direction,
+                actualEntry: row.actualEntry,
+                actualInitialStop: row.actualInitialStop,
+                actualInitialRiskMinor: row.actualInitialRiskMinor,
+                exits,
+              });
+              return realized.ok ? realized.value.realizedR : null;
+            })()
+          : null;
+      const conditionCounts = conditionCountsByTradeId.get(row.tradeId) ?? null;
+
+      return {
+        tradeId: row.tradeId,
+        occurredAt: toDate(row.occurredAt).toISOString(),
+        symbol: row.symbol,
+        direction: row.direction as TradeDirection,
+        tradingAccountName: row.tradingAccountName,
+        strategyName: row.strategyVersionName,
+        setupName: row.setupVersionName,
+        strategyVersionNumber: row.strategyVersionNumber,
+        status: row.status as TradeStatus,
+        systemStatus: row.systemStatus as SystemStatus,
+        plannedR: row.plannedR,
+        actualR: row.actualR,
+        systemR: row.systemR,
+        traderOutcome: row.traderOutcome as OutcomeValue | null,
+        systemOutcome: row.systemOutcome as OutcomeValue | null,
+        closedBps,
+        remainingBps: 10_000 - closedBps,
+        realizedRToDate,
+        setupConditionMetCount: conditionCounts?.met ?? null,
+        setupConditionTotalCount: conditionCounts?.total ?? null,
+      };
+    }),
     nextCursor,
   };
 }
@@ -282,19 +387,43 @@ export interface TradeMistakeOption {
   readonly label: string;
 }
 
+export interface TradeSetupConditionCheckDetail {
+  readonly conditionKey: string;
+  readonly label: string;
+  readonly sortOrder: number;
+  readonly checkStatus: SetupConditionCheckStatus;
+}
+
+/**
+ * The three-state Setup Condition disclosure (Phase 13G §5/§9) — derived
+ * read-only from two already-existing sources, never a new persisted flag:
+ * `recorded` when this Trade has its own immutable
+ * `trade_setup_condition_checks` snapshot rows; `not_configured` when the
+ * pinned Setup Version itself has zero `setup_conditions` rows (a genuinely
+ * empty checklist, never `0%`); `not_recorded` when the Setup Version DID
+ * have Conditions but this Trade predates/skipped capturing an answer for
+ * them (a historical/pre-13C Trade).
+ */
+export type TradeSetupConditionState = 'recorded' | 'not_recorded' | 'not_configured';
+
 export interface TradeDetail {
   readonly tradeId: string;
   readonly tradingAccountId: string;
   readonly tradingAccountName: string;
   /** Account currency code used to format the minor-unit execution amounts. */
   readonly tradingAccountBaseCurrency: string;
+  readonly tradingAccountIsArchived: boolean;
   readonly strategyId: string;
   /** The pinned Strategy Version's own name — see the module's historical-label rule. */
   readonly strategyName: string;
   readonly strategyVersionNumber: number;
+  /** Whether the LIVE Strategy (not this Trade's pinned Version) is archived today — a truthful disclosure, never a reason to hide the pinned historical label. */
+  readonly strategyIsArchived: boolean;
   readonly setupId: string;
   /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. */
   readonly setupName: string;
+  /** Whether the LIVE Setup is archived today — see `strategyIsArchived`. */
+  readonly setupIsArchived: boolean;
   readonly status: TradeStatus;
   readonly systemStatus: SystemStatus;
 
@@ -366,6 +495,10 @@ export interface TradeDetail {
   readonly systemOutcome: OutcomeValue | null;
   readonly systemResolvedAt: string | null;
 
+  readonly setupConditionState: TradeSetupConditionState;
+  /** Populated only when `setupConditionState === 'recorded'`; empty otherwise. */
+  readonly setupConditionChecks: readonly TradeSetupConditionCheckDetail[];
+
   readonly ruleChecks: readonly TradeRuleCheckDetail[];
   readonly mistakes: readonly TradeMistakeDetail[];
   /** The nine active, platform-owned mistake types available in the Phase 08 journal UI. */
@@ -397,14 +530,19 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       trade: trades,
       tradingAccountName: tradingAccounts.name,
       tradingAccountBaseCurrency: tradingAccounts.baseCurrency,
+      tradingAccountIsArchived: tradingAccounts.isArchived,
       strategyVersionName: strategyVersions.name,
       strategyVersionNumber: strategyVersions.versionNumber,
+      strategyIsArchived: strategies.isArchived,
       setupVersionName: strategySetupVersions.name,
+      setupIsArchived: setups.isArchived,
     })
     .from(trades)
     .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
     .innerJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
     .innerJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .innerJoin(strategies, eq(strategies.id, trades.strategyId))
+    .innerJoin(setups, eq(setups.id, trades.setupId))
     .where(
       and(eq(trades.id, tradeId), eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)),
     );
@@ -469,6 +607,29 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .from(tradeExits)
     .where(and(eq(tradeExits.tradeId, tradeId), eq(tradeExits.workspaceId, workspaceId)))
     .orderBy(asc(tradeExits.sequence), asc(tradeExits.id));
+
+  // Setup Condition three-state read (§9/§5): this Trade's own immutable
+  // snapshot rows (if it has any), plus — only needed to distinguish
+  // "not configured" from "not recorded" when there are none — a count of
+  // the pinned Setup Version's OWN authoritative Conditions.
+  const conditionCheckRows = await db
+    .select({
+      conditionKey: tradeSetupConditionChecks.conditionKey,
+      label: tradeSetupConditionChecks.label,
+      sortOrder: tradeSetupConditionChecks.sortOrder,
+      checkStatus: tradeSetupConditionChecks.checkStatus,
+    })
+    .from(tradeSetupConditionChecks)
+    .where(eq(tradeSetupConditionChecks.tradeId, tradeId))
+    .orderBy(asc(tradeSetupConditionChecks.sortOrder));
+  const setupConditionState: TradeSetupConditionState = await (async () => {
+    if (conditionCheckRows.length > 0) return 'recorded';
+    const [configuredCountRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(setupConditions)
+      .where(eq(setupConditions.setupVersionId, trade.setupVersionId));
+    return (configuredCountRow?.count ?? 0) === 0 ? 'not_configured' : 'not_recorded';
+  })();
   const realized =
     trade.actualResultMode === null
       ? null
@@ -489,11 +650,14 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       tradingAccountId: trade.tradingAccountId,
       tradingAccountName: row.tradingAccountName,
       tradingAccountBaseCurrency: row.tradingAccountBaseCurrency,
+      tradingAccountIsArchived: row.tradingAccountIsArchived,
       strategyId: trade.strategyId,
       strategyName: row.strategyVersionName,
       strategyVersionNumber: row.strategyVersionNumber,
+      strategyIsArchived: row.strategyIsArchived,
       setupId: trade.setupId,
       setupName: row.setupVersionName,
+      setupIsArchived: row.setupIsArchived,
       status: trade.status as TradeStatus,
       systemStatus: trade.systemStatus as SystemStatus,
 
@@ -555,6 +719,17 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       systemR: trade.systemR,
       systemOutcome: trade.systemOutcome as OutcomeValue | null,
       systemResolvedAt: dateToIso(trade.systemResolvedAt),
+
+      setupConditionState,
+      setupConditionChecks:
+        setupConditionState === 'recorded'
+          ? conditionCheckRows.map((c) => ({
+              conditionKey: c.conditionKey,
+              label: c.label,
+              sortOrder: c.sortOrder,
+              checkStatus: c.checkStatus as SetupConditionCheckStatus,
+            }))
+          : [],
 
       ruleChecks: ruleCheckRows.map((r) => ({
         ruleKey: r.ruleKey,

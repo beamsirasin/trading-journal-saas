@@ -28,10 +28,16 @@ const trades: TradeListView[] = statuses.map((status, index) => ({
   strategyVersionNumber: 2,
   status,
   systemStatus: index === 0 ? 'pending' : index === 3 ? 'no_trade' : 'resolved',
+  plannedR: '5.0000',
   actualR: index < 2 ? null : '2.1250',
   systemR: index === 1 || index === 2 ? '-1.0000' : null,
   traderOutcome: index < 2 ? null : 'win',
   systemOutcome: index === 1 || index === 2 ? 'loss' : null,
+  closedBps: 0,
+  remainingBps: 10_000,
+  realizedRToDate: null,
+  setupConditionMetCount: null,
+  setupConditionTotalCount: null,
 }));
 
 describe('TradeList', () => {
@@ -80,5 +86,70 @@ describe('TradeList', () => {
       '/app/trades?cursor=opaque',
     );
     expect(screen.getByRole('button', { name: /Previous/ })).toBeEnabled();
+  });
+
+  it('shows Planned R (not a fake 0R) for a planned Trade or an open Trade with no Exits yet', () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradeList
+          trades={trades.slice(0, 2)}
+          selectedTradeId={null}
+          nextCursor={null}
+          hasCursor={false}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getAllByText('+5.00R').length).toBeGreaterThan(0);
+    expect(screen.queryByText('+0.00R')).not.toBeInTheDocument();
+  });
+
+  it('shows remaining % and Realized R (never the final Actual R) for a partially-exited open Trade', () => {
+    const partial: TradeListView = {
+      ...trades[1]!,
+      closedBps: 5_000,
+      remainingBps: 5_000,
+      realizedRToDate: '1.0000',
+    };
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradeList trades={[partial]} selectedTradeId={null} nextCursor={null} hasCursor={false} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getAllByText('50% remaining').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('+1.00R').length).toBeGreaterThan(0);
+  });
+
+  it('shows the final Actual R for a closed Trade, not a Planned or Realized label', () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradeList
+          trades={[trades[2]!]}
+          selectedTradeId={null}
+          nextCursor={null}
+          hasCursor={false}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getAllByText('+2.13R').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Realized R')).not.toBeInTheDocument();
+  });
+
+  it('shows a batched Setup Condition adherence chip only when recorded, staying calm otherwise', () => {
+    const withAdherence: TradeListView = {
+      ...trades[0]!,
+      setupConditionMetCount: 3,
+      setupConditionTotalCount: 5,
+    };
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradeList
+          trades={[withAdherence, trades[1]!]}
+          selectedTradeId={null}
+          nextCursor={null}
+          hasCursor={false}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getAllByText('Setup 3/5').length).toBeGreaterThan(0);
   });
 });

@@ -24,6 +24,7 @@ import {
   updateStrategyContent,
 } from '@/server/services/strategy-management';
 import { attachTradeMistake } from '@/server/services/trade-discipline';
+import { addTradeExit } from '@/server/services/trade-execution';
 import {
   createTrade,
   openTrade,
@@ -787,6 +788,229 @@ describe('trades DAL (real database)', () => {
       expect(detail.trade.tradingAccountBaseCurrency).toBe('USD');
       expect(detail.trade.actualInitialRiskMinor).toBe('5000');
       expect(typeof detail.trade.enteredAt).toBe('string');
+    });
+  });
+
+  describe('getWorkspaceTradeDetail — archived Strategy/Setup/Account disclosure (Phase 13G)', () => {
+    it('discloses the LIVE Strategy/Setup/Account as archived without rewriting the pinned historical label', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+
+      const beforeArchive = await getWorkspaceTradeDetail(created.tradeId);
+      expect(beforeArchive.ok).toBe(true);
+      if (!beforeArchive.ok) return;
+      expect(beforeArchive.trade.strategyIsArchived).toBe(false);
+      expect(beforeArchive.trade.setupIsArchived).toBe(false);
+      expect(beforeArchive.trade.tradingAccountIsArchived).toBe(false);
+
+      await archiveSetup(workspaceId, userId, fw.strategyId, fw.setupId);
+      await archiveStrategy(workspaceId, userId, fw.strategyId);
+      await db
+        .update(tradingAccounts)
+        .set({ isArchived: true })
+        .where(eq(tradingAccounts.id, fw.tradingAccountId));
+
+      const afterArchive = await getWorkspaceTradeDetail(created.tradeId);
+      expect(afterArchive.ok).toBe(true);
+      if (!afterArchive.ok) return;
+      expect(afterArchive.trade.strategyIsArchived).toBe(true);
+      expect(afterArchive.trade.setupIsArchived).toBe(true);
+      expect(afterArchive.trade.tradingAccountIsArchived).toBe(true);
+      // The historical Trade still reads exactly the same pinned names as before archiving.
+      expect(afterArchive.trade.strategyName).toBe(beforeArchive.trade.strategyName);
+      expect(afterArchive.trade.setupName).toBe(beforeArchive.trade.setupName);
+    });
+  });
+
+  describe('getWorkspaceTradeDetail — Setup Condition three-state disclosure (Phase 13G)', () => {
+    it('is not_configured when the pinned Setup Version genuinely has zero Conditions', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.setupConditionState).toBe('not_configured');
+      expect(detail.trade.setupConditionChecks).toEqual([]);
+    });
+
+    it('is recorded, with met/not_met snapshots in sort order, when the Trade captured answers', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const first = await createSetupCondition(workspaceId, userId, fw.strategyId, fw.setupId, {
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      });
+      const second = await createSetupCondition(workspaceId, userId, fw.strategyId, fw.setupId, {
+        label: 'Volume confirms breakout',
+        sortOrder: 1,
+      });
+      if (!first.ok || !second.ok) throw new Error('condition creation failed');
+
+      const options = await getTradeCreateOptions();
+      const setupOption = options.strategies
+        .find((s) => s.strategyId === fw.strategyId)
+        ?.setups.find((s) => s.setupId === fw.setupId);
+      if (setupOption === undefined) throw new Error('setup option missing');
+
+      const created = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, {
+          conditionSetToken: setupOption.conditionSetToken,
+          conditionAnswers: [
+            { conditionKey: first.conditionKey, status: 'met' },
+            { conditionKey: second.conditionKey, status: 'not_met' },
+          ],
+        }),
+      );
+      if (!created.ok) throw new Error('create failed');
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.setupConditionState).toBe('recorded');
+      expect(
+        detail.trade.setupConditionChecks.map((c) => ({ label: c.label, status: c.checkStatus })),
+      ).toEqual([
+        { label: 'Above the 200 EMA', status: 'met' },
+        { label: 'Volume confirms breakout', status: 'not_met' },
+      ]);
+    });
+
+    it('is not_recorded (never not_configured) for a historical Trade whose Setup Version DID have Conditions', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const condition = await createSetupCondition(workspaceId, userId, fw.strategyId, fw.setupId, {
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      });
+      if (!condition.ok) throw new Error('condition creation failed');
+
+      const options = await getTradeCreateOptions();
+      const setupOption = options.strategies
+        .find((s) => s.strategyId === fw.strategyId)
+        ?.setups.find((s) => s.setupId === fw.setupId);
+      if (setupOption === undefined) throw new Error('setup option missing');
+
+      const created = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, {
+          conditionSetToken: setupOption.conditionSetToken,
+          conditionAnswers: [{ conditionKey: condition.conditionKey, status: 'met' }],
+        }),
+      );
+      if (!created.ok) throw new Error('create failed');
+
+      // Simulate a pre-13C historical Trade: the Setup Version genuinely had
+      // Conditions, but no per-Trade answer snapshot was ever captured. The
+      // snapshot table is DB-trigger-protected against mutation once written
+      // (`trade_setup_condition_checks_protect_snapshot`), so this clones the
+      // already-valid Trade row into a fresh Trade that never went through
+      // `snapshotTradeSetupConditionsInTx` at all, rather than deleting rows.
+      const [sourceRow] = await db.select().from(trades).where(eq(trades.id, created.tradeId));
+      if (sourceRow === undefined) throw new Error('source Trade row missing');
+      const {
+        id: _id,
+        mutationKey: _mutationKey,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        ...clonedFields
+      } = sourceRow;
+      const [historical] = await db
+        .insert(trades)
+        .values({ ...clonedFields, mutationKey: crypto.randomUUID() })
+        .returning({ id: trades.id });
+      if (historical === undefined) throw new Error('failed to insert cloned historical Trade');
+
+      const detail = await getWorkspaceTradeDetail(historical.id);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.setupConditionState).toBe('not_recorded');
+      expect(detail.trade.setupConditionChecks).toEqual([]);
+    });
+  });
+
+  describe('listWorkspaceTrades — batched partial-close Realized R and Setup Condition adherence (Phase 13G)', () => {
+    it('derives remaining bps and Realized R for a partially-exited open Trade via one batched Exit read', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+      await openTrade(workspaceId, userId, created.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      const exit = await addTradeExit(workspaceId, userId, created.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 5_000,
+        realizedPnlMinor: 2_500n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+      expect(exit.ok).toBe(true);
+
+      const list = await listWorkspaceTrades({});
+      const item = list.items.find((i) => i.tradeId === created.tradeId);
+      expect(item).toBeDefined();
+      expect(item?.closedBps).toBe(5_000);
+      expect(item?.remainingBps).toBe(5_000);
+      expect(item?.realizedRToDate).toBe('0.5000');
+      // Not yet closed — the final authoritative `actualR` stays absent, never a fake early value.
+      expect(item?.actualR).toBeNull();
+      expect(item?.plannedR).toBe('2.0000');
+    });
+
+    it('reports null Setup Condition adherence for an unrecorded Trade and correct counts for a recorded one', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      // A second, untouched Setup for the zero-Condition ("unrecorded" —
+      // never distinguished from "not configured" on the List) comparison,
+      // since adding a Condition to `fw`'s own Setup below copy-on-writes it
+      // to a new Version and invalidates `fw.setupVersionId`'s token.
+      const fw2 = await createFramework(db, workspaceId, userId);
+      const condition = await createSetupCondition(workspaceId, userId, fw.strategyId, fw.setupId, {
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      });
+      if (!condition.ok) throw new Error('condition creation failed');
+      const options = await getTradeCreateOptions();
+      const setupOption = options.strategies
+        .find((s) => s.strategyId === fw.strategyId)
+        ?.setups.find((s) => s.setupId === fw.setupId);
+      if (setupOption === undefined) throw new Error('setup option missing');
+
+      const recorded = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, {
+          mutationKey: crypto.randomUUID(),
+          symbol: 'RECORDEDONE',
+          conditionSetToken: setupOption.conditionSetToken,
+          conditionAnswers: [{ conditionKey: condition.conditionKey, status: 'met' }],
+        }),
+      );
+      const unrecorded = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw2, { mutationKey: crypto.randomUUID(), symbol: 'ZEROCOND' }),
+      );
+      if (!recorded.ok || !unrecorded.ok) throw new Error('create failed');
+
+      const list = await listWorkspaceTrades({});
+      const recordedItem = list.items.find((i) => i.tradeId === recorded.tradeId);
+      const unrecordedItem = list.items.find((i) => i.tradeId === unrecorded.tradeId);
+      expect(recordedItem?.setupConditionMetCount).toBe(1);
+      expect(recordedItem?.setupConditionTotalCount).toBe(1);
+      expect(unrecordedItem?.setupConditionMetCount).toBeNull();
+      expect(unrecordedItem?.setupConditionTotalCount).toBeNull();
     });
   });
 });

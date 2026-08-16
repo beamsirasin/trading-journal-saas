@@ -11,8 +11,12 @@ import { CorrectExitDialog } from '@/components/trades/trade-exit-actions';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeLifecycleActions } from '@/components/trades/trade-lifecycle-actions';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
-import { TradeReflectionEditor } from '@/components/trades/trade-reflection-editor';
+import {
+  TradeEmotionsEditor,
+  TradeReviewNotesEditor,
+} from '@/components/trades/trade-reflection-editor';
 import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
 
@@ -44,6 +48,57 @@ function Section({
   );
 }
 
+function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-3">
+      <h4 className="font-semibold">{title}</h4>
+      {children}
+    </div>
+  );
+}
+
+/** Truthful "archived" disclosure for the LIVE Strategy/Setup/Account — never hides a historical pinned label, only annotates it (Phase 13G §3/§14). */
+function ArchivedBadge({ show, label }: { show: boolean; label: string }) {
+  if (!show) return null;
+  return <Badge>{label}</Badge>;
+}
+
+function SetupConditionsSummary({ trade }: { trade: TradeDetailModel }) {
+  const t = useTranslations('trades');
+
+  if (trade.setupConditionState === 'not_recorded') {
+    return <p className="text-muted-foreground text-sm">{t('lifecycle.reflection.notRecorded')}</p>;
+  }
+  if (trade.setupConditionState === 'not_configured') {
+    return <p className="text-muted-foreground text-sm">{t('create.conditions.notConfigured')}</p>;
+  }
+
+  const met = trade.setupConditionChecks.filter((check) => check.checkStatus === 'met').length;
+  const total = trade.setupConditionChecks.length;
+  const percentage = total === 0 ? 0 : Math.round((met / total) * 100);
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-sm font-medium">
+        {t('create.conditions.adherence', { met, total, percentage })}
+      </p>
+      <ul className="grid gap-2">
+        {trade.setupConditionChecks.map((check) => (
+          <li
+            key={check.conditionKey}
+            className="border-border flex items-start justify-between gap-3 rounded-md border p-3 text-sm"
+          >
+            <span>{check.label}</span>
+            <Badge variant={check.checkStatus === 'met' ? 'positive' : 'negative'}>
+              {t(`detail.conditions.${check.checkStatus === 'met' ? 'met' : 'notMet'}`)}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function TradeDetail({
   trade,
   timezone,
@@ -59,6 +114,7 @@ export function TradeDetail({
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
   const money = (value: string | null) =>
     formatTradeMoney(value, trade.tradingAccountBaseCurrency) ?? '—';
+  const archivedLabel = t('common.archived');
 
   return (
     <article className="flex min-w-0 flex-col gap-5" aria-labelledby="trade-detail-heading">
@@ -88,10 +144,34 @@ export function TradeDetail({
 
       <Section id="trade-overview" title={t('detail.sections.overview')}>
         <dl className="divide-border divide-y">
-          <DetailRow label={t('field.account')} value={trade.tradingAccountName} />
-          <DetailRow label={t('field.strategy')} value={trade.strategyName} />
+          <DetailRow
+            label={t('field.account')}
+            value={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                {trade.tradingAccountName}
+                <ArchivedBadge show={trade.tradingAccountIsArchived} label={archivedLabel} />
+              </span>
+            }
+          />
+          <DetailRow
+            label={t('field.strategy')}
+            value={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                {trade.strategyName}
+                <ArchivedBadge show={trade.strategyIsArchived} label={archivedLabel} />
+              </span>
+            }
+          />
           <DetailRow label={t('field.version')} value={trade.strategyVersionNumber} />
-          <DetailRow label={t('field.setup')} value={trade.setupName} />
+          <DetailRow
+            label={t('field.setup')}
+            value={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                {trade.setupName}
+                <ArchivedBadge show={trade.setupIsArchived} label={archivedLabel} />
+              </span>
+            }
+          />
           <DetailRow
             label={t('field.executionStatus')}
             value={<TradeStatusBadge status={trade.status} />}
@@ -149,15 +229,6 @@ export function TradeDetail({
           {trade.session === null ? null : (
             <DetailRow label={t('field.session')} value={trade.session} />
           )}
-          {trade.confidence === null ? null : (
-            <DetailRow
-              label={t('field.confidence')}
-              value={`${trade.confidence}% · ${t(`create.confidence.level.${confidenceLevelKey(trade.confidence)}`)}`}
-            />
-          )}
-          {trade.confirmationNotes === null ? null : (
-            <DetailRow label={t('field.confirmationNotes')} value={trade.confirmationNotes} />
-          )}
           {trade.tradingviewUrl === null ? null : (
             <DetailRow
               label={t('field.tradingViewUrl')}
@@ -198,6 +269,43 @@ export function TradeDetail({
           )}
           {trade.notes === null ? null : <DetailRow label={t('field.notes')} value={trade.notes} />}
         </dl>
+      </Section>
+
+      <Section id="trade-entry-snapshot" title={t('detail.sections.entrySnapshot')}>
+        <div className="grid gap-6">
+          <SubSection title={t('detail.sections.conditions')}>
+            <SetupConditionsSummary trade={trade} />
+          </SubSection>
+
+          <SubSection title={t('field.confidence')}>
+            {trade.confidence === null ? (
+              <p className="text-muted-foreground text-sm">{t('common.notSet')}</p>
+            ) : (
+              <p className="text-sm font-medium">
+                {trade.confidence}% ·{' '}
+                {t(`create.confidence.level.${confidenceLevelKey(trade.confidence)}`)}
+              </p>
+            )}
+          </SubSection>
+
+          <SubSection title={t('lifecycle.reflection.emotions')}>
+            <TradeEmotionsEditor
+              tradeId={trade.tradeId}
+              emotions={trade.emotions}
+              emotionCatalog={trade.emotionCatalog}
+              emotionsRecorded={trade.emotionsRecordedAt !== null}
+              canWrite={canWrite}
+            />
+          </SubSection>
+
+          <SubSection title={t('field.entryReason')}>
+            {trade.confirmationNotes === null ? (
+              <p className="text-muted-foreground text-sm">{t('common.notSet')}</p>
+            ) : (
+              <p className="text-sm">{trade.confirmationNotes}</p>
+            )}
+          </SubSection>
+        </div>
       </Section>
 
       <Section id="trade-execution" title={t('detail.sections.execution')}>
@@ -344,32 +452,41 @@ export function TradeDetail({
               label={t('field.systemOutcome')}
               value={<TradeOutcomeBadge outcome={trade.systemOutcome} />}
             />
+            <DetailRow
+              label={t('field.systemResolvedAt')}
+              value={instant(trade.systemResolvedAt)}
+            />
           </dl>
         )}
       </Section>
 
-      <Section id="trade-rules" title={t('detail.sections.rules')}>
-        <TradeRulesEditor tradeId={trade.tradeId} rules={trade.ruleChecks} canWrite={canWrite} />
-      </Section>
+      <Section id="trade-discipline" title={t('detail.sections.discipline')}>
+        <div className="grid gap-6">
+          <SubSection title={t('detail.sections.rules')}>
+            <TradeRulesEditor
+              tradeId={trade.tradeId}
+              rules={trade.ruleChecks}
+              canWrite={canWrite}
+            />
+          </SubSection>
 
-      <Section id="trade-reflection" title={t('detail.sections.reflection')}>
-        <TradeReflectionEditor
-          tradeId={trade.tradeId}
-          emotions={trade.emotions}
-          emotionCatalog={trade.emotionCatalog}
-          emotionsRecorded={trade.emotionsRecordedAt !== null}
-          reviewNotes={trade.reviewNotes}
-          canWrite={canWrite}
-        />
-      </Section>
+          <SubSection title={t('detail.sections.mistakes')}>
+            <TradeMistakesEditor
+              tradeId={trade.tradeId}
+              mistakes={trade.mistakes}
+              catalog={trade.mistakeCatalog}
+              canWrite={canWrite}
+            />
+          </SubSection>
 
-      <Section id="trade-mistakes" title={t('detail.sections.mistakes')}>
-        <TradeMistakesEditor
-          tradeId={trade.tradeId}
-          mistakes={trade.mistakes}
-          catalog={trade.mistakeCatalog}
-          canWrite={canWrite}
-        />
+          <SubSection title={t('lifecycle.reflection.reviewNotes')}>
+            <TradeReviewNotesEditor
+              tradeId={trade.tradeId}
+              reviewNotes={trade.reviewNotes}
+              canWrite={canWrite}
+            />
+          </SubSection>
+        </div>
       </Section>
     </article>
   );

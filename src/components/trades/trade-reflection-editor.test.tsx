@@ -3,7 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import en from '../../../messages/en.json';
-import { TradeReflectionEditor } from './trade-reflection-editor';
+import { TradeEmotionsEditor, TradeReviewNotesEditor } from './trade-reflection-editor';
 
 const replaceMock = vi.fn();
 const reviewMock = vi.fn();
@@ -19,17 +19,32 @@ const catalog = [
   { key: 'fomo', label: 'FOMO' },
 ];
 
-function renderEditor(
+function renderEmotions(
   canWrite = true,
-  overrides: Partial<React.ComponentProps<typeof TradeReflectionEditor>> = {},
+  overrides: Partial<React.ComponentProps<typeof TradeEmotionsEditor>> = {},
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeReflectionEditor
+      <TradeEmotionsEditor
         tradeId={tradeId}
         emotions={[catalog[1]!]}
         emotionCatalog={catalog}
         emotionsRecorded
+        canWrite={canWrite}
+        {...overrides}
+      />
+    </NextIntlClientProvider>,
+  );
+}
+
+function renderReview(
+  canWrite = true,
+  overrides: Partial<React.ComponentProps<typeof TradeReviewNotesEditor>> = {},
+) {
+  return render(
+    <NextIntlClientProvider locale="en" messages={en}>
+      <TradeReviewNotesEditor
+        tradeId={tradeId}
         reviewNotes="Initial review"
         canWrite={canWrite}
         {...overrides}
@@ -45,9 +60,9 @@ beforeEach(() => {
   reviewMock.mockResolvedValue({ ok: true, data: { tradeId, reviewNotes: 'Updated review' } });
 });
 
-describe('TradeReflectionEditor', () => {
-  it('replaces the full accessible Emotion selection and saves Review separately', async () => {
-    renderEditor();
+describe('TradeEmotionsEditor', () => {
+  it('replaces the full accessible Emotion selection', async () => {
+    renderEmotions();
     const calm = screen.getByRole('button', { name: 'Calm' });
     const fomo = screen.getByRole('button', { name: 'FOMO' });
     expect(calm).toHaveAttribute('aria-pressed', 'false');
@@ -57,7 +72,30 @@ describe('TradeReflectionEditor', () => {
     await waitFor(() =>
       expect(replaceMock).toHaveBeenCalledWith({ tradeId, emotionKeys: ['fomo', 'calm'] }),
     );
+  });
 
+  it('renders a read-only localized selection without mutation controls', () => {
+    renderEmotions(false);
+    expect(screen.getByText('FOMO')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save emotions' })).not.toBeInTheDocument();
+  });
+
+  it('distinguishes historical not-recorded from a recorded zero selection', async () => {
+    const { unmount } = renderEmotions(true, { emotions: [], emotionsRecorded: false });
+    expect(screen.getByText('Not recorded')).toBeInTheDocument();
+    unmount();
+
+    renderEmotions(true, { emotions: [], emotionsRecorded: true });
+    expect(screen.getByText('No emotions selected')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save emotions' }));
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith({ tradeId, emotionKeys: [] }));
+  });
+});
+
+describe('TradeReviewNotesEditor', () => {
+  it('saves an edited Review note', async () => {
+    renderReview();
     fireEvent.change(screen.getByLabelText('Post-trade review'), {
       target: { value: 'Updated review' },
     });
@@ -67,23 +105,14 @@ describe('TradeReflectionEditor', () => {
     );
   });
 
-  it('renders a read-only localized reflection without mutation controls', () => {
-    renderEditor(false);
-    expect(screen.getByText('FOMO')).toBeInTheDocument();
+  it('renders a read-only Review note without a textbox', () => {
+    renderReview(false);
     expect(screen.getByText('Initial review')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save emotions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
-  it('distinguishes historical not-recorded from a recorded zero selection', async () => {
-    const { unmount } = renderEditor(true, { emotions: [], emotionsRecorded: false });
+  it('renders a calm not-recorded empty state when unset and read-only', () => {
+    renderReview(false, { reviewNotes: null });
     expect(screen.getByText('Not recorded')).toBeInTheDocument();
-    unmount();
-
-    renderEditor(true, { emotions: [], emotionsRecorded: true, reviewNotes: null });
-    expect(screen.getByText('No emotions selected')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save emotions' }));
-    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith({ tradeId, emotionKeys: [] }));
   });
 });

@@ -473,7 +473,8 @@
       "notAvailable": "Not available",
       "notSet": "Not set",
       "optional": "(optional)",
-      "version": "Version {number}"
+      "version": "Version {number}",
+      "archived": "Archived"
     },
     "direction": { "long": "Long", "short": "Short" },
     "status": {
@@ -493,7 +494,10 @@
       "account": "Trading Account",
       "execution": "Execution",
       "trader": "Trader",
-      "system": "System"
+      "system": "System",
+      "realized": "Realized R",
+      "remainingPercent": "{percent}% remaining",
+      "conditionsMet": "Setup {met}/{total}"
     },
     "pagination": { "label": "Trade pages", "previous": "Previous", "next": "Next" },
     "empty": {
@@ -521,6 +525,7 @@
       "session": "Session",
       "confidence": "Confidence",
       "confirmationNotes": "Confirmation notes",
+      "entryReason": "Entry Reason",
       "tradingViewUrl": "TradingView URL",
       "chartAttachment": "Chart image",
       "notes": "Notes",
@@ -549,7 +554,8 @@
       "systemResolutionKind": "Resolution basis",
       "systemCostR": "System Cost R",
       "systemR": "System R",
-      "systemOutcome": "System outcome"
+      "systemOutcome": "System outcome",
+      "systemResolvedAt": "System resolved"
     },
     "detail": {
       "back": "Back to trades",
@@ -567,13 +573,16 @@
       "sections": {
         "overview": "Overview",
         "plan": "Plan",
+        "entrySnapshot": "Entry Snapshot",
+        "conditions": "Setup Conditions",
         "execution": "Actual Execution",
         "system": "System Result",
-        "rules": "Rules",
-        "mistakes": "Mistakes",
-        "reflection": "Emotions & Post-Trade Review"
+        "discipline": "Discipline & Review",
+        "rules": "Execution Rules",
+        "mistakes": "Mistakes"
       },
-      "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" }
+      "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" },
+      "conditions": { "met": "Met", "notMet": "Not met" }
     },
     "lifecycle": {
       "title": "Trade actions",

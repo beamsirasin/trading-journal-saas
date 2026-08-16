@@ -93,6 +93,12 @@ const RECENT: DashboardRecentTrade = {
   systemR: '3.0000',
   traderOutcome: 'loss',
   systemOutcome: 'win',
+  plannedR: null,
+  closedBps: 10_000,
+  remainingBps: 0,
+  realizedRToDate: null,
+  setupConditionMetCount: null,
+  setupConditionTotalCount: null,
 };
 
 function renderDashboard(

@@ -12,8 +12,64 @@ import { Link, useRouter } from '@/i18n/navigation';
 
 export type TradeListView = TradeListItem & { readonly occurredAtDisplay: string };
 
-function RValue({ value }: { value: string | null }) {
-  return <span className="font-mono text-sm tabular-nums">{formatR(value) ?? '—'}</span>;
+function RValue({ value, label }: { value: string | null; label?: string }) {
+  return (
+    <span className="block">
+      {label === undefined ? null : (
+        <span className="text-muted-foreground block text-[11px] tracking-wide uppercase">
+          {label}
+        </span>
+      )}
+      <span className="font-mono text-sm tabular-nums">{formatR(value) ?? '—'}</span>
+    </span>
+  );
+}
+
+/**
+ * The Actual-side result summary for one list row (Phase 13G §20/§21). A
+ * `closed` Trade shows its authoritative final `actualR`; a partially-exited
+ * `open` Trade shows remaining % and realized-to-date R (never the closed
+ * figure, and never inventing a final number early); every other state
+ * (`planned`, an `open` Trade with no Exits yet, `canceled`) falls back to
+ * the Plan's own `plannedR` — never a fake `0R`.
+ */
+type Translation = ReturnType<typeof useTranslations>;
+
+function TraderResult({ trade, t }: { trade: TradeListView; t: Translation }) {
+  if (trade.status === 'closed') {
+    return (
+      <>
+        <RValue value={trade.actualR} />
+        <div>
+          <TradeOutcomeBadge outcome={trade.traderOutcome} />
+        </div>
+      </>
+    );
+  }
+  if (trade.status === 'open' && trade.closedBps > 0) {
+    return (
+      <>
+        <span className="text-muted-foreground block text-xs">
+          {t('list.remainingPercent', { percent: trade.remainingBps / 100 })}
+        </span>
+        <RValue value={trade.realizedRToDate} label={t('list.realized')} />
+      </>
+    );
+  }
+  return <RValue value={trade.plannedR} label={t('field.plannedR')} />;
+}
+
+function ConditionsAdherence({ trade }: { trade: TradeListView }) {
+  const t = useTranslations('trades');
+  if (trade.setupConditionMetCount === null || trade.setupConditionTotalCount === null) return null;
+  return (
+    <span className="text-muted-foreground block text-xs">
+      {t('list.conditionsMet', {
+        met: trade.setupConditionMetCount,
+        total: trade.setupConditionTotalCount,
+      })}
+    </span>
+  );
 }
 
 export function TradeList({
@@ -66,16 +122,14 @@ export function TradeList({
                     {trade.setupName} ·{' '}
                     {t('common.version', { number: trade.strategyVersionNumber })}
                   </span>
+                  <ConditionsAdherence trade={trade} />
                 </td>
                 <td className="px-3 py-3 break-words">{trade.tradingAccountName}</td>
                 <td className="px-3 py-3">
                   <TradeStatusBadge status={trade.status} />
                 </td>
                 <td className="space-y-2 px-3 py-3">
-                  <RValue value={trade.actualR} />
-                  <div>
-                    <TradeOutcomeBadge outcome={trade.traderOutcome} />
-                  </div>
+                  <TraderResult trade={trade} t={t} />
                 </td>
                 <td className="space-y-2 px-3 py-3">
                   <SystemStatusBadge status={trade.systemStatus} />
@@ -114,11 +168,12 @@ export function TradeList({
               <span className="text-muted-foreground block break-words">
                 {trade.setupName} · {t('common.version', { number: trade.strategyVersionNumber })}
               </span>
+              <ConditionsAdherence trade={trade} />
             </div>
             <div className="grid grid-cols-2 gap-3 border-t pt-3 text-sm">
               <div>
                 <span className="text-muted-foreground block text-xs">{t('list.trader')}</span>
-                <RValue value={trade.actualR} />
+                <TraderResult trade={trade} t={t} />
               </div>
               <div>
                 <span className="text-muted-foreground block text-xs">{t('list.system')}</span>

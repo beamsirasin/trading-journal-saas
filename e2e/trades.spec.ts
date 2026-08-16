@@ -238,15 +238,16 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('London Open Sweep')).toHaveCount(0);
     await createPlannedTrade(page);
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    const detail = page.getByRole('article', { name: 'XAUUSD' });
     await expect(page.getByText('Long').first()).toBeVisible();
     await expect(page.getByText('Golden Breakout').last()).toBeVisible();
     await expect(page.getByText('Clean Retest').last()).toBeVisible();
-    await expect(page.getByText('+3.00R')).toBeVisible();
+    await expect(detail.getByText('+3.00R')).toBeVisible();
     await expect(page.getByText('Planned').last()).toBeVisible();
     await expect(page.getByText('Pending').last()).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
-    await expect(page.getByText('+3.00R')).toBeVisible();
+    await expect(detail.getByText('+3.00R')).toBeVisible();
     await completeTradeLifecycle(page);
 
     await page.getByRole('button', { name: 'Delete Trade' }).click();
@@ -268,12 +269,13 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades');
     await createMoneyOnlyPlannedTrade(page);
     await expect(page.getByRole('heading', { name: 'EURUSD' })).toBeVisible();
+    const detail = page.getByRole('article', { name: 'EURUSD' });
     await expect(page.getByText('Short').first()).toBeVisible();
     // A Money-only Trade never fabricates Price fields — Entry is truthfully absent.
     await expect(page.getByText('Entry', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Planned risk')).toBeVisible();
     await expect(page.getByText('Planned reward')).toBeVisible();
-    await expect(page.getByText('+3.00R')).toBeVisible();
+    await expect(detail.getByText('+3.00R')).toBeVisible();
   });
 
   test('Price Partial Close weights every leg, closes the exact remainder, and corrects an earlier Exit', async ({
@@ -286,6 +288,7 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades');
     await createPlannedTrade(page);
+    const detail = page.getByRole('article', { name: 'XAUUSD' });
 
     await page.getByRole('button', { name: 'Open Trade' }).click();
     let dialog = page.getByRole('dialog');
@@ -303,9 +306,9 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(
-      page.getByText('Realized R to date').locator('..').getByText('+1.00R'),
+      detail.getByText('Realized R to date').locator('..').getByText('+1.00R'),
     ).toBeVisible();
-    await expect(page.getByText('Remaining').locator('..').getByText('50%')).toBeVisible();
+    await expect(detail.getByText('Remaining').locator('..').getByText('50%')).toBeVisible();
 
     await page.getByRole('button', { name: 'Partial Close' }).click();
     dialog = page.getByRole('dialog');
@@ -322,7 +325,6 @@ test.describe('real Trade Journal creation', () => {
     await dialog.getByRole('button', { name: 'Close Remaining' }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
-    const detail = page.getByRole('article', { name: 'XAUUSD' });
     await expect(detail.getByText('+3.50R').first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Correct Exit' }).first().click();
