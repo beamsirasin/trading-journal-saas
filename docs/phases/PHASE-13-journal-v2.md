@@ -2,7 +2,7 @@
 
 **Depends on:** 08, 09 · **Blocks:** 13B–13I
 
-**Status:** 13A–13D are **complete**. Migration `0011_setup_conditions_domain.sql` implements Setup Conditions; 13C replaced the retired wizard with the single-page Journal Entry; migration `0012_emotions_and_review.sql` implements canonical Emotions, atomic Entry capture/correction, and the distinct Post-Trade Review field. 13E–13I have not started.
+**Status:** 13A–13F are **complete**. Migration `0013_actual_execution_v2.sql` implements Actual Execution V2 and Partial Close. Migration `0014_system_money_resolution.sql` adds deterministic Money-only System resolution while preserving Price precedence and historical Price results. 13G–13I have not started.
 
 This document supersedes the exploratory _Journal V2 Gap Audit_ (2026-08-15, unpublished research artifact) wherever the two disagree. The audit is accepted as research; several of its recommendations are corrected below after Founder review. Every correction is called out explicitly, with the reason, so implementers don't silently reintroduce the audit's original (superseded) framing.
 
@@ -96,6 +96,14 @@ System R = gross System R − systemCostR   (unchanged formula, unchanged system
 ### Canonical path when both Price and Money plans exist
 
 **Price plan wins.** When both are present, resolution always uses the existing price-geometry path (`systemGrossRDecimal`), never `system_gross_r_input`. Reason: price geometry is a strictly more precise, direction-verified measurement (it already enforces `riskPerUnit > 0` and direction-consistent stop/target placement at the CHECK-constraint level); a coarse Money-plan R projection is a fallback for when no such precise measurement exists, not an alternative source of truth to choose between. This also means **zero behavior change for any existing or newly-created Price-plan trade** — the delta is additive, gated strictly to the Money-only case.
+
+### 13F implementation record
+
+- `system_resolution_kind` persists exactly `price_exit | money_target | money_stop | money_break_even | money_custom`; `system_gross_r_input` preserves the canonical gross Money result. Existing `system_exit_reason` remains the customer-facing counterfactual reason, not the authority discriminator.
+- Price geometry remains canonical whenever Entry+Stop exist. Money Target uses persisted Planned R, Stop is `-1R`, Break Even is `0R`, and Custom captures an explicit gross R. Every path applies `System R = Gross System R - system_cost_r` and classifies the final net value with the existing tolerance.
+- Money results require `system_exited_at` but never fabricate `system_exit_price`. Target is unavailable without Planned R. Corrections recompute from authoritative inputs and clear incompatible Price/Money fields; terminal-to-pending remains impossible.
+- Migration 0014 validates that every historical resolved result is truthfully Price-derived, tags it `price_exit`, and does not recompute any historical System value. Pending and no-trade rows remain unchanged.
+- Workspace Export schema v5 includes only the two new authoritative fields. Existing System analytics consume Money-derived finalized snapshots without a redesign. Actual Execution and `trade_exits` are not inputs to System resolution.
 
 ---
 
@@ -479,6 +487,7 @@ No dependency-driven reordering is recommended beyond this — 13B before 13C be
 - Phase 13C captures complete Setup Condition answers from the single-page Entry surface and preserves the stale-set guard and unmet-answer confirmation.
 - Phase 13D adds the ten canonical bilingual Emotion choices, `emotion_types`, `trade_emotions`, nullable `trades.review_notes`, and nullable `trades.emotions_recorded_at`. The marker distinguishes historical “not recorded” from a recorded zero selection. Create and correction accept keys only, resolve active system rows authoritatively, write atomically, and remain entitlement/audit guarded. Workspace export schema version 3 includes both Emotion datasets and both new Trade fields.
 - Phase 13E adds explicit Price/Money Actual execution, authoritative `trade_exits`, partial-close/close-remaining/correction UI and services, parent-lock plus database cross-row enforcement, values-preserving legacy backfill, read-derived partial progress, final-only Trade caches, and Workspace Export schema version 4. Price mode never fabricates Money; Money mode never double-weights already-net leg P&L. System resolution and Execution Gap runtime behavior remain unchanged.
+- Phase 13F adds Money-only System Target/Stop/Break-Even/Custom resolution, keeps Price canonical for Price and Both plans, makes `system_exit_price` conditional, and advances Workspace Export to schema version 5. System analytics remain snapshot-driven and Actual Execution remains independent.
 
 ---
 

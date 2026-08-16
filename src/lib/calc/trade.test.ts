@@ -10,10 +10,12 @@ import {
   composePlannedR,
   composeRealizedActual,
   composeSystemResolve,
+  composeSystemResolveV2,
   composeTraderClose,
   composeTraderCloseV2,
   moneyPlannedR,
   plannedR,
+  resolveSystemGrossR,
   resolveSystemR,
   systemGrossR,
   systemR,
@@ -396,6 +398,81 @@ describe('systemR', () => {
       ok: false,
       reason: 'missing_input',
     });
+  });
+});
+
+describe('Money-only System resolution', () => {
+  const moneyPlan = {
+    direction: 'long',
+    plannedEntry: null,
+    plannedStop: null,
+    plannedRiskMinor: 10n,
+    plannedRewardMinor: 50n,
+  } as const;
+
+  it.each([
+    ['money_target', undefined, '0', '5.0000'],
+    ['money_target', undefined, '0.10', '4.9000'],
+    ['money_stop', undefined, '0.10', '-1.1000'],
+    ['money_break_even', undefined, '0.10', '-0.1000'],
+    ['money_custom', '2.75', '0.25', '2.5000'],
+    ['money_custom', '-2.75', '0', '-2.7500'],
+    ['money_custom', '0', '0', '0.0000'],
+  ] as const)('%s with gross %s and cost %s produces %s', (kind, gross, cost, expected) => {
+    const result = composeSystemResolveV2({
+      ...moneyPlan,
+      resolutionKind: kind,
+      systemGrossRInput: gross,
+      systemCostR: cost,
+    });
+    expect(result).toMatchObject({ ok: true, value: { systemR: expected } });
+  });
+
+  it('classifies the final net result using the break-even tolerance', () => {
+    const result = composeSystemResolveV2({
+      ...moneyPlan,
+      resolutionKind: 'money_break_even',
+      systemCostR: '0.02',
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { systemR: '-0.0200', systemOutcome: 'break_even' },
+    });
+  });
+
+  it('retains the Price path when both representations exist', () => {
+    const result = composeSystemResolveV2({
+      resolutionKind: 'price_exit',
+      direction: 'long',
+      plannedEntry: '100',
+      plannedStop: '90',
+      plannedRiskMinor: 10n,
+      plannedRewardMinor: 50n,
+      systemExitPrice: '130',
+      systemCostR: '0',
+    });
+    expect(result).toMatchObject({ ok: true, value: { systemR: '3.0000' } });
+  });
+
+  it('rejects Target when Planned R is unavailable', () => {
+    expect(
+      resolveSystemGrossR({
+        ...moneyPlan,
+        plannedRewardMinor: null,
+        resolutionKind: 'money_target',
+      }),
+    ).toEqual({ ok: false, reason: 'missing_input' });
+  });
+
+  it('converts bigint money through exact strings beyond Number.MAX_SAFE_INTEGER', () => {
+    expect(
+      resolveSystemGrossR({
+        ...moneyPlan,
+        plannedRiskMinor: 9_007_199_254_740_993n,
+        plannedRewardMinor: 45_035_996_273_704_965n,
+        resolutionKind: 'money_target',
+      }),
+    ).toEqual({ ok: true, value: '5.0000' });
   });
 });
 
@@ -860,10 +937,12 @@ describe('no monetary price-derived P&L (regression protection)', () => {
         'composePlannedR',
         'composeRealizedActual',
         'composeSystemResolve',
+        'composeSystemResolveV2',
         'composeTraderClose',
         'composeTraderCloseV2',
         'moneyPlannedR',
         'plannedR',
+        'resolveSystemGrossR',
         'resolveSystemR',
         'systemGrossR',
         'systemR',

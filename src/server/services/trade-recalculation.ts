@@ -154,7 +154,9 @@ export function matchesCloseRetry(current: CloseRetryFields, requested: CloseRet
 }
 
 export interface SystemResolveRetryFields {
-  readonly systemExitPrice: string;
+  readonly systemResolutionKind: string;
+  readonly systemExitPrice: string | null;
+  readonly systemGrossRInput: string | null;
   readonly systemExitedAt: Date;
   readonly systemExitReason: string;
   readonly systemCostR: string;
@@ -166,7 +168,9 @@ export function matchesSystemResolveRetry(
   requested: SystemResolveRetryFields,
 ): boolean {
   return (
+    current.systemResolutionKind === requested.systemResolutionKind &&
     current.systemExitPrice === requested.systemExitPrice &&
+    current.systemGrossRInput === requested.systemGrossRInput &&
     current.systemExitedAt.getTime() === requested.systemExitedAt.getTime() &&
     current.systemExitReason === requested.systemExitReason &&
     current.systemCostR === requested.systemCostR

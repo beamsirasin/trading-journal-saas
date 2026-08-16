@@ -413,6 +413,7 @@ describe('Phase 07B trade domain (real database)', () => {
       const [row] = await insertTrade({
         ...basePlannedTrade(fw),
         systemStatus: 'resolved',
+        systemResolutionKind: 'price_exit',
         systemCostR: '0.2000',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-01-02T00:00:00Z'),
@@ -424,6 +425,64 @@ describe('Phase 07B trade domain (real database)', () => {
       expect(row?.systemStatus).toBe('resolved');
       expect(row?.systemR).toBe('1.8000');
       expect(row?.systemOutcome).toBe('win');
+    });
+
+    it('accepts a resolved Money Target with no fabricated exit price', async () => {
+      const fw = await createFramework();
+      const [row] = await insertTrade({
+        ...basePlannedTrade(fw),
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+        plannedRiskMinor: 10n,
+        plannedRewardMinor: 50n,
+        plannedR: '5.0000',
+        systemStatus: 'resolved',
+        systemResolutionKind: 'money_target',
+        systemGrossRInput: '5.0000',
+        systemExitedAt: new Date('2026-01-02T00:00:00Z'),
+        systemExitReason: 'target_hit',
+        systemCostR: '0.1000',
+        systemResolvedAt: new Date('2026-01-02T00:00:00Z'),
+        systemR: '4.9000',
+        systemOutcome: 'win',
+      });
+      expect(row).toMatchObject({
+        systemResolutionKind: 'money_target',
+        systemExitPrice: null,
+        systemGrossRInput: '5.0000',
+      });
+    });
+
+    it('rejects stale or incompatible Money resolution fields', async () => {
+      const fw = await createFramework();
+      const validMoneyStop = {
+        ...basePlannedTrade(fw),
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+        plannedRiskMinor: 10n,
+        plannedRewardMinor: null,
+        plannedR: null,
+        systemStatus: 'resolved' as const,
+        systemResolutionKind: 'money_stop',
+        systemGrossRInput: '-1.0000',
+        systemExitedAt: new Date('2026-01-02T00:00:00Z'),
+        systemExitReason: 'stop_hit',
+        systemCostR: '0.1000',
+        systemResolvedAt: new Date('2026-01-02T00:00:00Z'),
+        systemR: '-1.1000',
+        systemOutcome: 'loss',
+      };
+      await expect(
+        insertTrade({ ...validMoneyStop, systemExitPrice: '1.1000000000' }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      await expect(
+        insertTrade({ ...validMoneyStop, systemGrossRInput: '2.0000' }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      await expect(
+        insertTrade({ ...validMoneyStop, systemExitReason: 'target_hit' }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
     });
 
     it('accepts a no_trade System outcome with setup_invalidated, no exit price, and zero system_cost_r', async () => {
@@ -466,6 +525,7 @@ describe('Phase 07B trade domain (real database)', () => {
         insertTrade({
           ...basePlannedTrade(fw),
           systemStatus: 'resolved',
+          systemResolutionKind: 'price_exit',
           systemExitPrice: '1.1100000000',
           systemExitedAt: new Date(),
           systemExitReason: 'target_hit',
@@ -481,6 +541,7 @@ describe('Phase 07B trade domain (real database)', () => {
         insertTrade({
           ...basePlannedTrade(fw),
           systemStatus: 'resolved',
+          systemResolutionKind: 'price_exit',
           systemExitPrice: '1.1100000000',
           systemExitedAt: new Date(),
           systemExitReason: 'setup_invalidated',
@@ -535,6 +596,7 @@ describe('Phase 07B trade domain (real database)', () => {
         insertTrade({
           ...basePlannedTrade(fw),
           systemStatus: 'resolved',
+          systemResolutionKind: 'price_exit',
           systemExitPrice: '1.1100000000',
           systemExitedAt: new Date(),
           systemExitReason: 'bogus_reason',

@@ -218,6 +218,7 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
     systemStatus === 'resolved'
       ? {
           systemStatus,
+          systemResolutionKind: 'price_exit',
           systemExitPrice: '102.0000000000',
           systemExitedAt,
           systemExitReason: 'target_hit' as const,

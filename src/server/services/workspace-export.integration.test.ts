@@ -540,7 +540,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       workspaceId: seeded.workspace.id,
       source,
     });
-    expect(envelope.schemaVersion).toBe(4);
+    expect(envelope.schemaVersion).toBe(5);
     expect(envelope.data.emotion_types.find((row) => row.id === calm.id)).toMatchObject({
       key: 'calm',
       isSystem: true,
@@ -760,7 +760,7 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     const clock = createFixedClock(NOW);
     const json = await prepareCurrentWorkspaceExport('json', { clock });
     const csv = await prepareCurrentWorkspaceExport('csv', { clock });
-    expect(JSON.parse(json.body as string).schemaVersion).toBe(4);
+    expect(JSON.parse(json.body as string).schemaVersion).toBe(5);
     expect(csv.body).toBeInstanceOf(Uint8Array);
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
@@ -774,11 +774,11 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(events).toEqual([
       {
         action: 'data.exported',
-        metadata: { format: 'json', scope: 'workspace', schemaVersion: 4 },
+        metadata: { format: 'json', scope: 'workspace', schemaVersion: 5 },
       },
       {
         action: 'data.exported',
-        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 4 },
+        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 5 },
       },
     ]);
     expect(JSON.stringify(events)).not.toMatch(/พื้นที่ทำงาน|ทองคำ|@example/);

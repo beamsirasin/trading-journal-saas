@@ -50,6 +50,34 @@ export function isSystemStatus(value: unknown): value is SystemStatus {
 }
 
 /**
+ * Persisted authority for a resolved System result. Price geometry remains
+ * canonical whenever the Plan has Entry+Stop; the four Money kinds exist
+ * only for a Money-only Plan and preserve how its gross counterfactual R was
+ * determined without overloading a nullable number.
+ */
+export const SYSTEM_RESOLUTION_KINDS = [
+  'price_exit',
+  'money_target',
+  'money_stop',
+  'money_break_even',
+  'money_custom',
+] as const;
+export type SystemResolutionKind = (typeof SYSTEM_RESOLUTION_KINDS)[number];
+export function isSystemResolutionKind(value: unknown): value is SystemResolutionKind {
+  return (
+    typeof value === 'string' && (SYSTEM_RESOLUTION_KINDS as readonly string[]).includes(value)
+  );
+}
+
+export const MONEY_SYSTEM_RESOLUTION_KINDS = [
+  'money_target',
+  'money_stop',
+  'money_break_even',
+  'money_custom',
+] as const;
+export type MoneySystemResolutionKind = (typeof MONEY_SYSTEM_RESOLUTION_KINDS)[number];
+
+/**
  * `setup_invalidated` is valid only under `system_status = 'no_trade'`; every
  * other value belongs only to `system_status = 'resolved'`. Enforced by
  * `trades_system_status_consistency_check`, not merely by convention.

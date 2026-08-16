@@ -311,7 +311,23 @@ export function TradeDetail({
           <p className="text-muted-foreground text-sm">{t('detail.systemNoTrade')}</p>
         ) : (
           <dl className="divide-border divide-y">
-            <DetailRow label={t('field.exit')} value={trade.systemExitPrice ?? '—'} />
+            <DetailRow
+              label={t('field.systemResolutionKind')}
+              value={
+                trade.systemResolutionKind === null
+                  ? '—'
+                  : t(`systemResolutionKind.${trade.systemResolutionKind}`)
+              }
+            />
+            {trade.systemExitPrice === null ? null : (
+              <DetailRow label={t('field.exit')} value={trade.systemExitPrice} />
+            )}
+            {trade.systemGrossRInput === null ? null : (
+              <DetailRow
+                label={t('lifecycle.system.grossSystemR')}
+                value={formatR(trade.systemGrossRInput) ?? '—'}
+              />
+            )}
             <DetailRow label={t('field.systemExitedAt')} value={instant(trade.systemExitedAt)} />
             <DetailRow
               label={t('field.systemExitReason')}

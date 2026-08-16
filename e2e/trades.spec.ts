@@ -382,6 +382,78 @@ test.describe('real Trade Journal creation', () => {
     ).toBeVisible();
   });
 
+  test('Money-only System Target resolves independently while Actual remains partially open', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
+    const user = await provisionJournalUser('e2e-system-money-target');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await createMoneyOnlyPlannedTrade(page);
+
+    await page.getByRole('button', { name: 'Open Trade' }).click();
+    let dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Actual result mode').selectOption('money');
+    await dialog.getByLabel('Initial risk').fill('100.00');
+    await dialog.getByRole('button', { name: 'Open Trade' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+
+    await page.getByRole('button', { name: 'Partial Close' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Closed').fill('50');
+    await dialog.getByLabel('Realized net P&L').fill('100.00');
+    await dialog.getByRole('button', { name: 'Partial Close' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+
+    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('System exit price')).toHaveCount(0);
+    await expect(dialog.getByLabel('System result')).toHaveValue('money_target');
+    await dialog.getByLabel('System Cost R').fill('0.10');
+    await expect(dialog.getByText('2.9000R')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible();
+    await expect(page.getByRole('article', { name: 'EURUSD' }).getByText('+2.90R')).toBeVisible();
+  });
+
+  test('Money-only System Stop can be corrected to Custom gross R', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(240_000);
+    const user = await provisionJournalUser('e2e-system-money-custom');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades');
+    await createMoneyOnlyPlannedTrade(page);
+
+    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    let dialog = page.getByRole('dialog');
+    await dialog.getByLabel('System result').selectOption('money_stop');
+    await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(
+      page.getByRole('article', { name: 'EURUSD' }).getByText('-1.00R').last(),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Correct System result' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('System result').selectOption('money_custom');
+    await dialog.getByLabel('Gross System R').fill('2.75');
+    await dialog.getByLabel('System Cost R').fill('0.25');
+    await expect(dialog.getByText('2.5000R')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByRole('article', { name: 'EURUSD' }).getByText('+2.50R')).toBeVisible();
+  });
+
   test('confirms unmet Conditions and persists the exact mixed snapshots', async ({ page }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
     test.setTimeout(180_000);
@@ -628,8 +700,8 @@ test.describe('real Trade Journal creation', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades');
-    await createPlannedTrade(page);
-    await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    await createMoneyOnlyPlannedTrade(page);
+    await expect(page.getByRole('heading', { name: 'EURUSD' })).toBeVisible();
     await page.getByRole('button', { name: 'Open Trade' }).click();
     let dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
@@ -650,6 +722,16 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible();
+    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    dialog = page.getByRole('dialog');
+    const systemDialogBox = await dialog.boundingBox();
+    expect(systemDialogBox?.width ?? 999).toBeLessThanOrEqual(390);
+    await expect(dialog.getByLabel('System result')).toHaveValue('money_target');
+    await dialog.getByLabel('System Cost R').fill('0.10');
+    await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible();
     const dimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,

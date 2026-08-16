@@ -31,6 +31,8 @@ const base: TradeDetailModel = {
   setupName: 'Pinned Retest',
   status: 'planned',
   systemStatus: 'pending',
+  systemResolutionKind: null,
+  systemGrossRInput: null,
   symbol: 'XAUUSD',
   direction: 'long',
   timeframe: null,
@@ -194,6 +196,7 @@ describe('TradeDetail', () => {
       traderOutcome: 'win',
       enteredAt: '2026-08-08T00:00:00.000Z',
       exitedAt: '2026-08-08T01:00:00.000Z',
+      systemResolutionKind: 'price_exit',
       systemExitPrice: '130',
       systemExitedAt: '2026-08-08T02:00:00.000Z',
       systemExitReason: 'target_hit',
@@ -204,6 +207,25 @@ describe('TradeDetail', () => {
     expect(screen.getByText('1,000 JPY')).toBeInTheDocument();
     expect(screen.getByText('+3.00R')).toBeInTheDocument();
     expect(screen.getByText('Target hit')).toBeInTheDocument();
+  });
+
+  it('renders a Money-only System resolution without inventing an exit price', () => {
+    renderDetail({
+      ...base,
+      systemStatus: 'resolved',
+      systemResolutionKind: 'money_custom',
+      systemGrossRInput: '2.7500',
+      systemExitedAt: '2026-08-08T02:00:00.000Z',
+      systemExitReason: 'manual_system_valid_exit',
+      systemCostR: '0.2500',
+      systemR: '2.5000',
+      systemOutcome: 'win',
+      systemResolvedAt: '2026-08-08T02:00:00.000Z',
+    });
+    expect(screen.getByText('Custom gross R')).toBeInTheDocument();
+    expect(screen.getByText('+2.75R')).toBeInTheDocument();
+    expect(screen.getByText('+2.50R')).toBeInTheDocument();
+    expect(screen.queryByText('Exit price')).not.toBeInTheDocument();
   });
 
   it('renders no-trade, Rule groups, and mistakes without scores or controls', () => {

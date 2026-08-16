@@ -562,9 +562,10 @@ export type CorrectTradeExecutionActionData = z.output<typeof CorrectTradeExecut
 // 8. resolveSystemTrade
 // ---------------------------------------------------------------------------
 
-export const ResolveSystemTradeSchema = z
+const PriceResolveSystemTradeSchema = z
   .object({
     tradeId: uuidField(),
+    resolutionKind: z.literal('price_exit'),
     systemExitPrice: decimalField(),
     systemExitedAt: instantField(),
     /** `setup_invalidated` excluded at the schema layer — a closed-set membership check, not a formula (see `markSystemNoTradeAction` for that transition instead). */
@@ -572,6 +573,51 @@ export const ResolveSystemTradeSchema = z
     systemCostR: decimalField(),
   })
   .strict();
+
+const MoneyTargetResolveSystemTradeSchema = z
+  .object({
+    tradeId: uuidField(),
+    resolutionKind: z.literal('money_target'),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const MoneyStopResolveSystemTradeSchema = z
+  .object({
+    tradeId: uuidField(),
+    resolutionKind: z.literal('money_stop'),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const MoneyBreakEvenResolveSystemTradeSchema = z
+  .object({
+    tradeId: uuidField(),
+    resolutionKind: z.literal('money_break_even'),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const MoneyCustomResolveSystemTradeSchema = z
+  .object({
+    tradeId: uuidField(),
+    resolutionKind: z.literal('money_custom'),
+    systemGrossRInput: decimalField(),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+export const ResolveSystemTradeSchema = z.discriminatedUnion('resolutionKind', [
+  PriceResolveSystemTradeSchema,
+  MoneyTargetResolveSystemTradeSchema,
+  MoneyStopResolveSystemTradeSchema,
+  MoneyBreakEvenResolveSystemTradeSchema,
+  MoneyCustomResolveSystemTradeSchema,
+]);
 export type ResolveSystemTradeActionInput = z.input<typeof ResolveSystemTradeSchema>;
 export type ResolveSystemTradeActionData = z.output<typeof ResolveSystemTradeSchema>;
 
@@ -587,16 +633,66 @@ export type MarkSystemNoTradeActionData = z.output<typeof MarkSystemNoTradeSchem
 // 10. correctSystemResolution
 // ---------------------------------------------------------------------------
 
-const CorrectSystemResolutionToResolvedSchema = z
+const CorrectPriceSystemResolutionSchema = z
   .object({
     tradeId: uuidField(),
     target: z.literal('resolved'),
+    resolutionKind: z.literal('price_exit'),
     systemExitPrice: decimalField(),
     systemExitedAt: instantField(),
     systemExitReason: resolvableSystemExitReasonField(),
     systemCostR: decimalField(),
   })
   .strict();
+
+const CorrectMoneyTargetSystemResolutionSchema = z
+  .object({
+    tradeId: uuidField(),
+    target: z.literal('resolved'),
+    resolutionKind: z.literal('money_target'),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const CorrectMoneyStopSystemResolutionSchema = z
+  .object({
+    tradeId: uuidField(),
+    target: z.literal('resolved'),
+    resolutionKind: z.literal('money_stop'),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const CorrectMoneyBreakEvenSystemResolutionSchema = z
+  .object({
+    tradeId: uuidField(),
+    target: z.literal('resolved'),
+    resolutionKind: z.literal('money_break_even'),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const CorrectMoneyCustomSystemResolutionSchema = z
+  .object({
+    tradeId: uuidField(),
+    target: z.literal('resolved'),
+    resolutionKind: z.literal('money_custom'),
+    systemGrossRInput: decimalField(),
+    systemExitedAt: instantField(),
+    systemCostR: decimalField(),
+  })
+  .strict();
+
+const CorrectSystemResolutionToResolvedSchema = z.discriminatedUnion('resolutionKind', [
+  CorrectPriceSystemResolutionSchema,
+  CorrectMoneyTargetSystemResolutionSchema,
+  CorrectMoneyStopSystemResolutionSchema,
+  CorrectMoneyBreakEvenSystemResolutionSchema,
+  CorrectMoneyCustomSystemResolutionSchema,
+]);
 
 const CorrectSystemResolutionToNoTradeSchema = z
   .object({
@@ -611,7 +707,7 @@ const CorrectSystemResolutionToNoTradeSchema = z
  * rejected at the schema layer, not merely by the service's own runtime
  * check (`trade-management.ts`'s `correctSystemResolution` doc comment).
  */
-export const CorrectSystemResolutionSchema = z.discriminatedUnion('target', [
+export const CorrectSystemResolutionSchema = z.union([
   CorrectSystemResolutionToResolvedSchema,
   CorrectSystemResolutionToNoTradeSchema,
 ]);

@@ -11,6 +11,7 @@ import type {
   OutcomeValue,
   RuleCheckStatus,
   SystemExitReason,
+  SystemResolutionKind,
   SystemStatus,
   TradeDirection,
   TradeStatus,
@@ -356,6 +357,8 @@ export interface TradeDetail {
   readonly realizedRToDate: string | null;
 
   readonly systemExitPrice: string | null;
+  readonly systemResolutionKind: SystemResolutionKind | null;
+  readonly systemGrossRInput: string | null;
   readonly systemExitedAt: string | null;
   readonly systemExitReason: SystemExitReason | null;
   readonly systemCostR: string;
@@ -544,6 +547,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       realizedRToDate: realized?.ok ? realized.value.realizedR : null,
 
       systemExitPrice: trade.systemExitPrice,
+      systemResolutionKind: trade.systemResolutionKind as SystemResolutionKind | null,
+      systemGrossRInput: trade.systemGrossRInput,
       systemExitedAt: dateToIso(trade.systemExitedAt),
       systemExitReason: trade.systemExitReason as SystemExitReason | null,
       systemCostR: trade.systemCostR,

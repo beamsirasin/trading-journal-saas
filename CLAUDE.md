@@ -178,11 +178,11 @@ actualR   = netResult / actualInitialRiskAmount   [current runtime V1 Money path
 plannedR  = plannedRewardPerUnit / plannedRiskPerUnit
 ```
 
-**Phase 13A Journal V2 supersession (frozen design; runtime implementation pending 13E):** Actual Result has an explicit persisted mode. Price mode derives `Actual R = SUM((closed_bps / 10000) × direction-aware leg R)` from actual entry, actual initial stop, and Exit prices without requiring or fabricating monetary risk/P&L. Money mode derives `Actual R = SUM(realized_pnl_minor) / actual_initial_risk_minor`, without weighting each already-realized P&L leg by closed fraction again. When both complete representations exist, Money is authoritative for Trader Performance and Price remains diagnostic context; no strict equality invariant is permitted. See `docs/phases/PHASE-13-journal-v2.md` §§3–4. The runtime remains Money-only until 13E ships.
+**Phase 13E Journal V2 runtime:** Actual Result has an explicit persisted mode. Price mode derives `Actual R = SUM((closed_bps / 10000) × direction-aware leg R)` from actual entry, actual initial stop, and Exit prices without requiring or fabricating monetary risk/P&L. Money mode derives `Actual R = SUM(realized_pnl_minor) / actual_initial_risk_minor`, without weighting each already-realized P&L leg by closed fraction again. When both complete representations exist, Money is authoritative for Trader Performance and Price remains diagnostic context; no strict equality invariant is permitted. See `docs/phases/PHASE-13-journal-v2.md` §§3–4.
 
 ### System vs actual use different denominators — deliberately
 
-- **System R** is computed from `plannedEntry`, `plannedStop`, and the rule-defined exit. It answers "what did the strategy offer?"
+- **System R** uses direction-aware `plannedEntry`/`plannedStop` geometry whenever that complete Price plan exists. For a Money-only Plan, Phase 13F resolves the counterfactual gross R as Target (`plannedRewardMinor / plannedRiskMinor`), Stop (`-1R`), Break Even (`0R`), or explicit Custom gross R, then subtracts `systemCostR`. It never reads Actual execution or `trade_exits`. It answers "what did the strategy offer?"
 - **Actual R** is computed from the authoritative source selected by `actual_result_mode`: Price geometry or realized Money. It answers "what did the trader take?"
 
 Both are expressed in R, which is precisely what makes them comparable even when the trader sized the position differently from the plan. That normalization is the point.

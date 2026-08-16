@@ -47,7 +47,7 @@ async function rollbackIsolatedSchema() {
 describe('migration 0013 — Actual Execution V2', () => {
   afterAll(async () => raw.end());
 
-  it('is the only migration after 0012 and leaves 0010–0012 byte-identical', () => {
+  it('owns migration slot 0013 and leaves 0010–0013 byte-identical', () => {
     expect(hash('0010_trade_plan_price_money_confidence.sql')).toBe(
       '00880C0637A21571EB2F99FB8A204A521B51704393C4792D0B4AFAEDD66DED1D',
     );
@@ -57,7 +57,10 @@ describe('migration 0013 — Actual Execution V2', () => {
     expect(hash('0012_emotions_and_review.sql')).toBe(
       '63E3A8F9E52BF293F97E5B26C63663FD67C979C45F3034FC6C29D7C817BB6AF6',
     );
-    expect(migrationFiles.filter((name) => Number(name.slice(0, 4)) > 12)).toEqual([
+    expect(hash('0013_actual_execution_v2.sql')).toBe(
+      '6C82862C34586B6ADD329AE691AF91C9A684FC851E063A14D01F06CD4855B5AB',
+    );
+    expect(migrationFiles.filter((name) => Number(name.slice(0, 4)) === 13)).toEqual([
       '0013_actual_execution_v2.sql',
     ]);
   });

@@ -226,7 +226,9 @@ export const trades = pgTable(
     // real terminal state, never conflated with `pending`.
     // -------------------------------------------------------------------
     systemStatus: text('system_status').notNull().default('pending'),
+    systemResolutionKind: text('system_resolution_kind'),
     systemExitPrice: numeric('system_exit_price', { precision: 20, scale: 10 }),
+    systemGrossRInput: numeric('system_gross_r_input', { precision: 12, scale: 4 }),
     systemExitedAt: timestamp('system_exited_at', { withTimezone: true }),
     systemExitReason: text('system_exit_reason'),
     /**
@@ -335,6 +337,12 @@ export const trades = pgTable(
     check(
       'trades_system_status_check',
       sql`${table.systemStatus} IN ('pending', 'resolved', 'no_trade')`,
+    ),
+    check(
+      'trades_system_resolution_kind_check',
+      sql`${table.systemResolutionKind} IS NULL OR ${table.systemResolutionKind} IN (
+        'price_exit', 'money_target', 'money_stop', 'money_break_even', 'money_custom'
+      )`,
     ),
     check(
       'trades_system_exit_reason_check',
@@ -471,7 +479,9 @@ export const trades = pgTable(
       sql`(
         ${table.systemStatus} = 'pending'
         AND ${table.systemCostR} = 0
+        AND ${table.systemResolutionKind} IS NULL
         AND ${table.systemExitPrice} IS NULL
+        AND ${table.systemGrossRInput} IS NULL
         AND ${table.systemExitedAt} IS NULL
         AND ${table.systemExitReason} IS NULL
         AND ${table.systemResolvedAt} IS NULL
@@ -480,17 +490,61 @@ export const trades = pgTable(
       ) OR (
         ${table.systemStatus} = 'resolved'
         AND ${table.systemCostR} >= 0
-        AND ${table.systemExitPrice} IS NOT NULL
         AND ${table.systemExitedAt} IS NOT NULL
         AND ${table.systemExitReason} IS NOT NULL
         AND ${table.systemExitReason} <> 'setup_invalidated'
         AND ${table.systemResolvedAt} IS NOT NULL
         AND ${table.systemR} IS NOT NULL
         AND ${table.systemOutcome} IS NOT NULL
+        AND (
+          (
+            ${table.systemResolutionKind} = 'price_exit'
+            AND ${table.plannedEntry} IS NOT NULL
+            AND ${table.plannedStop} IS NOT NULL
+            AND ${table.systemExitPrice} IS NOT NULL
+            AND ${table.systemGrossRInput} IS NULL
+          ) OR (
+            ${table.systemResolutionKind} = 'money_target'
+            AND ${table.plannedEntry} IS NULL
+            AND ${table.plannedStop} IS NULL
+            AND ${table.plannedRiskMinor} IS NOT NULL
+            AND ${table.plannedRewardMinor} IS NOT NULL
+            AND ${table.plannedR} IS NOT NULL
+            AND ${table.systemExitPrice} IS NULL
+            AND ${table.systemGrossRInput} = ${table.plannedR}
+            AND ${table.systemExitReason} = 'target_hit'
+          ) OR (
+            ${table.systemResolutionKind} = 'money_stop'
+            AND ${table.plannedEntry} IS NULL
+            AND ${table.plannedStop} IS NULL
+            AND ${table.plannedRiskMinor} IS NOT NULL
+            AND ${table.systemExitPrice} IS NULL
+            AND ${table.systemGrossRInput} = -1
+            AND ${table.systemExitReason} = 'stop_hit'
+          ) OR (
+            ${table.systemResolutionKind} = 'money_break_even'
+            AND ${table.plannedEntry} IS NULL
+            AND ${table.plannedStop} IS NULL
+            AND ${table.plannedRiskMinor} IS NOT NULL
+            AND ${table.systemExitPrice} IS NULL
+            AND ${table.systemGrossRInput} = 0
+            AND ${table.systemExitReason} = 'break_even_rule'
+          ) OR (
+            ${table.systemResolutionKind} = 'money_custom'
+            AND ${table.plannedEntry} IS NULL
+            AND ${table.plannedStop} IS NULL
+            AND ${table.plannedRiskMinor} IS NOT NULL
+            AND ${table.systemExitPrice} IS NULL
+            AND ${table.systemGrossRInput} IS NOT NULL
+            AND ${table.systemExitReason} = 'manual_system_valid_exit'
+          )
+        )
       ) OR (
         ${table.systemStatus} = 'no_trade'
         AND ${table.systemCostR} = 0
+        AND ${table.systemResolutionKind} IS NULL
         AND ${table.systemExitPrice} IS NULL
+        AND ${table.systemGrossRInput} IS NULL
         AND ${table.systemExitedAt} IS NULL
         AND ${table.systemExitReason} = 'setup_invalidated'
         AND ${table.systemResolvedAt} IS NOT NULL

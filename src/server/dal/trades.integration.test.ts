@@ -772,6 +772,7 @@ describe('trades DAL (real database)', () => {
         enteredAt: new Date('2026-08-01T09:00:00Z'),
       });
       await resolveSystemTrade(workspaceId, userId, created.tradeId, {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',

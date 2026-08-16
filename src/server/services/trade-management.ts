@@ -8,6 +8,7 @@ import {
   composePlannedR,
   composeRealizedActual,
   composeSystemResolve,
+  composeSystemResolveV2,
   composeTraderCloseV2,
 } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
@@ -18,9 +19,11 @@ import { getChartAttachmentStorage } from '@/lib/storage/chart-attachment-storag
 import { systemClock, type Clock } from '@/lib/time';
 import {
   isSystemExitReason,
+  isSystemResolutionKind,
   isTradeDirection,
   type ActualResultMode,
   type OutcomeValue,
+  type SystemResolutionKind,
   type TradeStatus,
 } from '@/lib/trades/constants';
 import { normalizeOptionalText, normalizeRequiredText } from '@/lib/trades/validation';
@@ -836,6 +839,7 @@ export async function updateTradePlan(
     let plannedR = trade.plannedR;
     let systemR = trade.systemR;
     let systemOutcome = trade.systemOutcome;
+    let systemGrossRInput = trade.systemGrossRInput;
     let calcVersionBump = false;
 
     if (resolved.planFieldsTouched) {
@@ -859,26 +863,47 @@ export async function updateTradePlan(
       if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
       plannedR = composed.value.plannedR;
 
-      if (resolved.entryOrStopChanged && trade.systemStatus === 'resolved') {
-        // The System counterfactual is always Price-based (CLAUDE.md §1) —
-        // an edit that clears the Price plan can never leave System
-        // `resolved` pointing at a denominator that no longer exists.
-        if (resolved.plannedEntry === null || resolved.plannedStop === null) {
-          return { ok: false, code: 'system_requires_price_plan' };
+      if (trade.systemStatus === 'resolved') {
+        if (trade.systemResolutionKind === 'price_exit' && resolved.entryOrStopChanged) {
+          if (resolved.plannedEntry === null || resolved.plannedStop === null) {
+            return { ok: false, code: 'system_requires_price_plan' };
+          }
+          const composedSystem = composeSystemResolve(
+            trade.direction,
+            resolved.plannedEntry,
+            resolved.plannedStop,
+            trade.systemExitPrice,
+            trade.systemCostR,
+          );
+          if (!composedSystem.ok) {
+            return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
+          }
+          systemR = composedSystem.value.systemR;
+          systemOutcome = composedSystem.value.systemOutcome;
+          calcVersionBump = true;
+        } else if (trade.systemResolutionKind !== 'price_exit') {
+          // Price becomes canonical as soon as complete geometry exists; a
+          // Money result cannot be silently reinterpreted as Price-derived.
+          if (hasPricePlan) return { ok: false, code: 'invalid_plan' };
+          if (trade.systemResolutionKind === 'money_target') {
+            const composedSystem = composeSystemResolveV2({
+              resolutionKind: 'money_target',
+              direction: trade.direction,
+              plannedEntry: null,
+              plannedStop: null,
+              plannedRiskMinor: resolved.plannedRiskMinor,
+              plannedRewardMinor: resolved.plannedRewardMinor,
+              systemCostR: trade.systemCostR,
+            });
+            if (!composedSystem.ok) {
+              return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
+            }
+            systemGrossRInput = composedSystem.value.grossSystemR;
+            systemR = composedSystem.value.systemR;
+            systemOutcome = composedSystem.value.systemOutcome;
+            calcVersionBump = true;
+          }
         }
-        const composedSystem = composeSystemResolve(
-          trade.direction,
-          resolved.plannedEntry,
-          resolved.plannedStop,
-          trade.systemExitPrice,
-          trade.systemCostR,
-        );
-        if (!composedSystem.ok) {
-          return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
-        }
-        systemR = composedSystem.value.systemR;
-        systemOutcome = composedSystem.value.systemOutcome;
-        calcVersionBump = true;
       }
     }
 
@@ -917,6 +942,7 @@ export async function updateTradePlan(
     if (nextTradingviewUrl !== trade.tradingviewUrl) changedFields.push('tradingviewUrl');
     if (nextNotes !== trade.notes) changedFields.push('notes');
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
+    if (systemGrossRInput !== trade.systemGrossRInput) changedFields.push('systemGrossRInput');
     if (systemR !== trade.systemR) changedFields.push('systemR');
 
     if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
@@ -937,6 +963,7 @@ export async function updateTradePlan(
         tradingviewUrl: nextTradingviewUrl,
         notes: nextNotes,
         plannedR,
+        systemGrossRInput,
         systemR,
         systemOutcome,
         ...(calcVersionBump ? { calcVersion: CALC_VERSION } : {}),
@@ -1068,23 +1095,29 @@ export async function correctTradeIdentity(
       plannedR = composed.value.plannedR;
 
       if (trade.systemStatus === 'resolved') {
-        // The System counterfactual is always Price-based (CLAUDE.md §1).
-        if (nextEntry === null || nextStop === null) {
-          return { ok: false, code: 'system_requires_price_plan' };
+        if (trade.systemResolutionKind === 'price_exit') {
+          if (nextEntry === null || nextStop === null) {
+            return { ok: false, code: 'system_requires_price_plan' };
+          }
+          const composedSystem = composeSystemResolve(
+            nextDirection,
+            nextEntry,
+            nextStop,
+            trade.systemExitPrice,
+            trade.systemCostR,
+          );
+          if (!composedSystem.ok) {
+            return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
+          }
+          systemR = composedSystem.value.systemR;
+          systemOutcome = composedSystem.value.systemOutcome;
+          calcVersionBump = true;
+        } else if (nextEntry !== null || nextStop !== null) {
+          // Adding Price geometry changes the canonical System authority and
+          // therefore requires an explicit System correction, never an
+          // automatic reinterpretation of a Money result.
+          return { ok: false, code: 'invalid_plan' };
         }
-        const composedSystem = composeSystemResolve(
-          nextDirection,
-          nextEntry,
-          nextStop,
-          trade.systemExitPrice,
-          trade.systemCostR,
-        );
-        if (!composedSystem.ok) {
-          return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
-        }
-        systemR = composedSystem.value.systemR;
-        systemOutcome = composedSystem.value.systemOutcome;
-        calcVersionBump = true;
       }
     }
 
@@ -1726,11 +1759,114 @@ export async function correctTradeExecution(
 // 8. resolveSystemTrade
 // ---------------------------------------------------------------------------
 
-export interface ResolveSystemTradeInput {
-  readonly systemExitPrice: string;
+interface SystemResolveCommonInput {
+  readonly systemExitedAt: Date;
+  readonly systemCostR: string;
+}
+
+export type ResolveSystemTradeInput =
+  | (SystemResolveCommonInput & {
+      readonly resolutionKind: 'price_exit';
+      readonly systemExitPrice: string;
+      readonly systemExitReason: string;
+    })
+  | (SystemResolveCommonInput & {
+      readonly resolutionKind: 'money_target' | 'money_stop' | 'money_break_even';
+    })
+  | (SystemResolveCommonInput & {
+      readonly resolutionKind: 'money_custom';
+      readonly systemGrossRInput: string;
+    });
+
+type PreparedSystemResolution = {
+  readonly systemResolutionKind: SystemResolutionKind;
+  readonly systemExitPrice: string | null;
+  readonly systemGrossRInput: string | null;
   readonly systemExitedAt: Date;
   readonly systemExitReason: string;
   readonly systemCostR: string;
+  readonly systemR: string;
+  readonly systemOutcome: OutcomeValue;
+  readonly calcVersion: number;
+};
+
+type PrepareSystemResolutionResult =
+  | { readonly ok: true; readonly value: PreparedSystemResolution }
+  | {
+      readonly ok: false;
+      readonly code:
+        | 'system_requires_price_plan'
+        | 'invalid_system_status_transition'
+        | 'invalid_system_exit_reason';
+      readonly calcReason?: CalcFailureReason;
+    };
+
+const MONEY_SYSTEM_EXIT_REASON = {
+  money_target: 'target_hit',
+  money_stop: 'stop_hit',
+  money_break_even: 'break_even_rule',
+  money_custom: 'manual_system_valid_exit',
+} as const;
+
+function prepareSystemResolution(
+  trade: TradeRow,
+  input: ResolveSystemTradeInput,
+): PrepareSystemResolutionResult {
+  if (!isSystemResolutionKind(input.resolutionKind)) {
+    return { ok: false, code: 'invalid_system_status_transition' };
+  }
+
+  const hasPricePlan = trade.plannedEntry !== null && trade.plannedStop !== null;
+  if (input.resolutionKind === 'price_exit') {
+    if (!hasPricePlan) return { ok: false, code: 'system_requires_price_plan' };
+    if (
+      !isSystemExitReason(input.systemExitReason) ||
+      input.systemExitReason === 'setup_invalidated'
+    ) {
+      return { ok: false, code: 'invalid_system_exit_reason' };
+    }
+  } else if (hasPricePlan) {
+    // Price geometry is canonical whenever it exists; Money resolution is a
+    // fallback, never an alternate authority on a Both-plan Trade.
+    return { ok: false, code: 'invalid_system_status_transition' };
+  }
+
+  const composed = composeSystemResolveV2({
+    resolutionKind: input.resolutionKind,
+    direction: trade.direction,
+    plannedEntry: trade.plannedEntry,
+    plannedStop: trade.plannedStop,
+    plannedRiskMinor: trade.plannedRiskMinor,
+    plannedRewardMinor: trade.plannedRewardMinor,
+    systemExitPrice: input.resolutionKind === 'price_exit' ? input.systemExitPrice : null,
+    systemGrossRInput: input.resolutionKind === 'money_custom' ? input.systemGrossRInput : null,
+    systemCostR: input.systemCostR,
+  });
+  if (!composed.ok) {
+    return {
+      ok: false,
+      code: 'invalid_system_status_transition',
+      calcReason: composed.reason,
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      systemResolutionKind: input.resolutionKind,
+      systemExitPrice: input.resolutionKind === 'price_exit' ? input.systemExitPrice : null,
+      systemGrossRInput: input.resolutionKind === 'price_exit' ? null : composed.value.grossSystemR,
+      systemExitedAt: input.systemExitedAt,
+      systemExitReason:
+        input.resolutionKind === 'price_exit'
+          ? input.systemExitReason
+          : MONEY_SYSTEM_EXIT_REASON[input.resolutionKind],
+      systemCostR: composed.value.systemCostR,
+      systemR: composed.value.systemR,
+      systemOutcome: composed.value.systemOutcome,
+      calcVersion: composed.value.calcVersion,
+    },
+  };
 }
 
 export type ResolveSystemTradeResult =
@@ -1740,6 +1876,7 @@ export type ResolveSystemTradeResult =
       readonly code:
         | WorkspaceAccessDenial
         | 'trade_not_found'
+        | 'system_requires_price_plan'
         | 'invalid_system_status_transition'
         | 'invalid_system_exit_reason';
       readonly calcReason?: CalcFailureReason;
@@ -1768,21 +1905,29 @@ export async function resolveSystemTrade(
     if (!ctx.ok) return ctx;
     const { trade } = ctx;
 
+    if (trade.systemStatus !== 'pending' && trade.systemStatus !== 'resolved') {
+      return { ok: false, code: 'invalid_system_status_transition' };
+    }
+    const prepared = prepareSystemResolution(trade, input);
+    if (!prepared.ok) return prepared;
+
     if (trade.systemStatus === 'resolved') {
       if (
-        trade.systemExitPrice !== null &&
+        trade.systemResolutionKind !== null &&
         trade.systemExitedAt !== null &&
         trade.systemExitReason !== null &&
         trade.systemR !== null &&
         trade.systemOutcome !== null &&
         matchesSystemResolveRetry(
           {
+            systemResolutionKind: trade.systemResolutionKind,
             systemExitPrice: trade.systemExitPrice,
+            systemGrossRInput: trade.systemGrossRInput,
             systemExitedAt: trade.systemExitedAt,
             systemExitReason: trade.systemExitReason,
             systemCostR: trade.systemCostR,
           },
-          input,
+          prepared.value,
         )
       ) {
         return {
@@ -1793,39 +1938,21 @@ export async function resolveSystemTrade(
       }
       return { ok: false, code: 'invalid_system_status_transition' };
     }
-    if (trade.systemStatus !== 'pending') {
-      return { ok: false, code: 'invalid_system_status_transition' };
-    }
-    if (
-      !isSystemExitReason(input.systemExitReason) ||
-      input.systemExitReason === 'setup_invalidated'
-    ) {
-      return { ok: false, code: 'invalid_system_exit_reason' };
-    }
-
-    const composed = composeSystemResolve(
-      trade.direction,
-      trade.plannedEntry,
-      trade.plannedStop,
-      input.systemExitPrice,
-      input.systemCostR,
-    );
-    if (!composed.ok) {
-      return { ok: false, code: 'invalid_system_status_transition', calcReason: composed.reason };
-    }
 
     await tx
       .update(trades)
       .set({
         systemStatus: 'resolved',
-        systemExitPrice: input.systemExitPrice,
-        systemExitedAt: input.systemExitedAt,
-        systemExitReason: input.systemExitReason,
-        systemCostR: input.systemCostR,
+        systemResolutionKind: prepared.value.systemResolutionKind,
+        systemExitPrice: prepared.value.systemExitPrice,
+        systemGrossRInput: prepared.value.systemGrossRInput,
+        systemExitedAt: prepared.value.systemExitedAt,
+        systemExitReason: prepared.value.systemExitReason,
+        systemCostR: prepared.value.systemCostR,
         systemResolvedAt: clock.now(),
-        systemR: composed.value.systemR,
-        systemOutcome: composed.value.systemOutcome,
-        calcVersion: composed.value.calcVersion,
+        systemR: prepared.value.systemR,
+        systemOutcome: prepared.value.systemOutcome,
+        calcVersion: prepared.value.calcVersion,
         updatedAt: new Date(),
       })
       .where(eq(trades.id, tradeId));
@@ -1836,13 +1963,18 @@ export async function resolveSystemTrade(
       actorUserId: userId,
       entityType: 'trade',
       entityId: tradeId,
-      metadata: { tradeId, previousStatus: 'pending', newStatus: 'resolved' },
+      metadata: {
+        tradeId,
+        previousStatus: 'pending',
+        newStatus: 'resolved',
+        resolutionKind: prepared.value.systemResolutionKind,
+      },
     });
 
     return {
       ok: true,
-      systemR: composed.value.systemR,
-      systemOutcome: composed.value.systemOutcome,
+      systemR: prepared.value.systemR,
+      systemOutcome: prepared.value.systemOutcome,
     };
   });
 }
@@ -1881,7 +2013,9 @@ export async function markSystemNoTrade(
       .update(trades)
       .set({
         systemStatus: 'no_trade',
+        systemResolutionKind: null,
         systemExitPrice: null,
+        systemGrossRInput: null,
         systemExitedAt: null,
         systemExitReason: 'setup_invalidated',
         systemCostR: '0',
@@ -1910,14 +2044,7 @@ export async function markSystemNoTrade(
 // ---------------------------------------------------------------------------
 
 export type CorrectSystemResolutionInput =
-  | {
-      readonly target: 'resolved';
-      readonly systemExitPrice: string;
-      readonly systemExitedAt: Date;
-      readonly systemExitReason: string;
-      readonly systemCostR: string;
-    }
-  | { readonly target: 'no_trade' };
+  (ResolveSystemTradeInput & { readonly target: 'resolved' }) | { readonly target: 'no_trade' };
 
 export type CorrectSystemResolutionResult =
   | { readonly ok: true }
@@ -1926,6 +2053,7 @@ export type CorrectSystemResolutionResult =
       readonly code:
         | WorkspaceAccessDenial
         | 'trade_not_found'
+        | 'system_requires_price_plan'
         | 'invalid_system_status_transition'
         | 'invalid_system_exit_reason';
       readonly calcReason?: CalcFailureReason;
@@ -1966,7 +2094,9 @@ export async function correctSystemResolution(
         .update(trades)
         .set({
           systemStatus: 'no_trade',
+          systemResolutionKind: null,
           systemExitPrice: null,
+          systemGrossRInput: null,
           systemExitedAt: null,
           systemExitReason: 'setup_invalidated',
           systemCostR: '0',
@@ -1987,42 +2117,37 @@ export async function correctSystemResolution(
           tradeId,
           previousStatus,
           newStatus: 'no_trade',
-          changedFields: ['systemStatus', 'systemExitReason', 'systemR', 'systemOutcome'],
+          changedFields: [
+            'systemStatus',
+            'systemResolutionKind',
+            'systemExitPrice',
+            'systemGrossRInput',
+            'systemExitReason',
+            'systemR',
+            'systemOutcome',
+          ],
         },
       });
       return { ok: true };
     }
 
-    if (
-      !isSystemExitReason(input.systemExitReason) ||
-      input.systemExitReason === 'setup_invalidated'
-    ) {
-      return { ok: false, code: 'invalid_system_exit_reason' };
-    }
-
-    const composed = composeSystemResolve(
-      trade.direction,
-      trade.plannedEntry,
-      trade.plannedStop,
-      input.systemExitPrice,
-      input.systemCostR,
-    );
-    if (!composed.ok) {
-      return { ok: false, code: 'invalid_system_status_transition', calcReason: composed.reason };
-    }
+    const prepared = prepareSystemResolution(trade, input);
+    if (!prepared.ok) return prepared;
 
     await tx
       .update(trades)
       .set({
         systemStatus: 'resolved',
-        systemExitPrice: input.systemExitPrice,
-        systemExitedAt: input.systemExitedAt,
-        systemExitReason: input.systemExitReason,
-        systemCostR: input.systemCostR,
+        systemResolutionKind: prepared.value.systemResolutionKind,
+        systemExitPrice: prepared.value.systemExitPrice,
+        systemGrossRInput: prepared.value.systemGrossRInput,
+        systemExitedAt: prepared.value.systemExitedAt,
+        systemExitReason: prepared.value.systemExitReason,
+        systemCostR: prepared.value.systemCostR,
         systemResolvedAt: clock.now(),
-        systemR: composed.value.systemR,
-        systemOutcome: composed.value.systemOutcome,
-        calcVersion: composed.value.calcVersion,
+        systemR: prepared.value.systemR,
+        systemOutcome: prepared.value.systemOutcome,
+        calcVersion: prepared.value.calcVersion,
         updatedAt: new Date(),
       })
       .where(eq(trades.id, tradeId));
@@ -2039,13 +2164,16 @@ export async function correctSystemResolution(
         newStatus: 'resolved',
         changedFields: [
           'systemStatus',
+          'systemResolutionKind',
           'systemExitPrice',
+          'systemGrossRInput',
           'systemExitedAt',
           'systemExitReason',
           'systemCostR',
           'systemR',
           'systemOutcome',
         ],
+        resolutionKind: prepared.value.systemResolutionKind,
       },
     });
     return { ok: true };

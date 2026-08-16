@@ -153,12 +153,47 @@ describe('trades/schemas — valid input', () => {
   it('ResolveSystemTradeSchema accepts a valid resolve payload', () => {
     const result = ResolveSystemTradeSchema.safeParse({
       tradeId: uuid1,
+      resolutionKind: 'price_exit',
       systemExitPrice: '1.1100000000',
       systemExitedAt: '2026-08-01T12:00:00Z',
       systemExitReason: 'target_hit',
       systemCostR: '0.0500',
     });
     expect(result.success).toBe(true);
+  });
+
+  it.each(['money_target', 'money_stop', 'money_break_even'] as const)(
+    'ResolveSystemTradeSchema accepts %s without an exit price',
+    (resolutionKind) => {
+      expect(
+        ResolveSystemTradeSchema.safeParse({
+          tradeId: uuid1,
+          resolutionKind,
+          systemExitedAt: '2026-08-01T12:00:00Z',
+          systemCostR: '0.1000',
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it('requires gross R only for Money Custom and rejects stale incompatible fields', () => {
+    expect(
+      ResolveSystemTradeSchema.safeParse({
+        tradeId: uuid1,
+        resolutionKind: 'money_custom',
+        systemExitedAt: '2026-08-01T12:00:00Z',
+        systemCostR: '0',
+      }).success,
+    ).toBe(false);
+    expect(
+      ResolveSystemTradeSchema.safeParse({
+        tradeId: uuid1,
+        resolutionKind: 'money_stop',
+        systemExitPrice: '1.11',
+        systemExitedAt: '2026-08-01T12:00:00Z',
+        systemCostR: '0',
+      }).success,
+    ).toBe(false);
   });
 
   it('UpdateTradeRuleCheckSchema accepts every valid check status', () => {
@@ -259,6 +294,7 @@ describe('trades/schemas — injection rejection: trusted/derived fields can nev
     (field, value) => {
       const result = ResolveSystemTradeSchema.safeParse({
         tradeId: uuid1,
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.11',
         systemExitedAt: '2026-08-01T12:00:00Z',
         systemExitReason: 'target_hit',
@@ -583,6 +619,7 @@ describe('trades/schemas — decimal-string validation', () => {
   it('accepts a signed decimal for systemCostR (never coerced with Number)', () => {
     const result = ResolveSystemTradeSchema.safeParse({
       tradeId: uuid1,
+      resolutionKind: 'price_exit',
       systemExitPrice: '1.11',
       systemExitedAt: '2026-08-01T12:00:00Z',
       systemExitReason: 'target_hit',
@@ -754,6 +791,7 @@ describe('trades/schemas — no restore/pending target in System correction', ()
     const result = CorrectSystemResolutionSchema.safeParse({
       tradeId: uuid1,
       target: 'resolved',
+      resolutionKind: 'price_exit',
       systemExitPrice: '1.11',
       systemExitedAt: '2026-08-01T12:00:00Z',
       systemExitReason: 'setup_invalidated',

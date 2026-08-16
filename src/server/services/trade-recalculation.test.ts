@@ -184,7 +184,9 @@ describe('trade-recalculation (pure)', () => {
 
   describe('matchesSystemResolveRetry', () => {
     const stored = {
+      systemResolutionKind: 'price_exit',
       systemExitPrice: '1.1100000000',
+      systemGrossRInput: null,
       systemExitedAt: new Date('2026-08-01T12:00:00Z'),
       systemExitReason: 'target_hit',
       systemCostR: '0.0500',

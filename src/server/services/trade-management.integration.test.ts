@@ -37,6 +37,7 @@ import {
   softDeleteTrade,
   updateTradePlan,
   type CreateTradeInput,
+  type ResolveSystemTradeInput,
 } from './trade-management';
 
 type Db = ReturnType<typeof getTestDb>;
@@ -948,6 +949,7 @@ describe('trade-management (real database)', () => {
     it('recomputes a resolved System result when Entry/Stop change', async () => {
       const { tradeId } = await createPlanned();
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',
@@ -969,6 +971,7 @@ describe('trade-management (real database)', () => {
     it('does NOT recompute the resolved System result when only Target changes', async () => {
       const { tradeId } = await createPlanned();
       await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',
@@ -1046,6 +1049,7 @@ describe('trade-management (real database)', () => {
         plannedRewardMinor: 2000n, // agrees with basePlanInput's Price R (2.0000)
       });
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',
@@ -1117,6 +1121,7 @@ describe('trade-management (real database)', () => {
       );
       if (!created.ok) throw new Error('create failed');
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, created.tradeId, {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',
@@ -1690,8 +1695,11 @@ describe('trade-management (real database)', () => {
       return { fw, tradeId: created.tradeId };
     }
 
-    function resolveInput(overrides: Partial<Parameters<typeof resolveSystemTrade>[3]> = {}) {
+    function resolveInput(
+      overrides: Partial<Extract<ResolveSystemTradeInput, { resolutionKind: 'price_exit' }>> = {},
+    ): Extract<ResolveSystemTradeInput, { resolutionKind: 'price_exit' }> {
       return {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',
@@ -1699,6 +1707,184 @@ describe('trade-management (real database)', () => {
         ...overrides,
       };
     }
+
+    async function createMoneyOnly(plannedRewardMinor: bigint | null = 50n) {
+      const fw = await freshFramework();
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, {
+          plannedEntry: null,
+          plannedStop: null,
+          plannedTarget: null,
+          plannedRiskMinor: 10n,
+          plannedRewardMinor,
+        }),
+      );
+      if (!created.ok) throw new Error('create failed');
+      return { fw, tradeId: created.tradeId };
+    }
+
+    it('resolves a Money-only Target from Planned R and applies System Cost', async () => {
+      const { tradeId } = await createMoneyOnly();
+      const result = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'money_target',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0.1000',
+      });
+      expect(result).toMatchObject({ ok: true, systemR: '4.9000', systemOutcome: 'win' });
+      const row = await readTrade(tradeId);
+      expect(row).toMatchObject({
+        systemResolutionKind: 'money_target',
+        systemExitPrice: null,
+        systemGrossRInput: '5.0000',
+        systemExitReason: 'target_hit',
+        systemR: '4.9000',
+      });
+    });
+
+    it.each([
+      ['money_stop', undefined, '-1.1000', 'stop_hit'],
+      ['money_break_even', undefined, '-0.1000', 'break_even_rule'],
+      ['money_custom', '2.75', '2.6500', 'manual_system_valid_exit'],
+    ] as const)(
+      'resolves Money-only %s without fabricating an exit price',
+      async (kind, gross, expected, reason) => {
+        const { tradeId } = await createMoneyOnly();
+        const result = await resolveSystemTrade(
+          workspaceId,
+          actorUserId,
+          tradeId,
+          kind === 'money_custom'
+            ? {
+                resolutionKind: kind,
+                systemGrossRInput: gross,
+                systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+                systemCostR: '0.1000',
+              }
+            : {
+                resolutionKind: kind,
+                systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+                systemCostR: '0.1000',
+              },
+        );
+        expect(result).toMatchObject({ ok: true, systemR: expected });
+        const row = await readTrade(tradeId);
+        expect(row?.systemExitPrice).toBeNull();
+        expect(row?.systemExitReason).toBe(reason);
+      },
+    );
+
+    it('rejects Money Target without Planned R and rejects Money authority when Price exists', async () => {
+      const missingTarget = await createMoneyOnly(null);
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, missingTarget.tradeId, {
+          resolutionKind: 'money_target',
+          systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+          systemCostR: '0',
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        code: 'invalid_system_status_transition',
+        calcReason: 'missing_input',
+      });
+
+      const fw = await freshFramework();
+      const both = await createTrade(
+        workspaceId,
+        actorUserId,
+        basePlanInput(fw, { plannedRiskMinor: 10n, plannedRewardMinor: 20n }),
+      );
+      if (!both.ok) throw new Error('create failed');
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, both.tradeId, {
+          resolutionKind: 'money_target',
+          systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+          systemCostR: '0',
+        }),
+      ).resolves.toMatchObject({ ok: false, code: 'invalid_system_status_transition' });
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, both.tradeId, resolveInput()),
+      ).resolves.toMatchObject({ ok: true, systemR: '2.0000' });
+    });
+
+    it('corrects between Money kinds, clears stale Custom authority, and supports no_trade', async () => {
+      const { tradeId } = await createMoneyOnly();
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'money_custom',
+        systemGrossRInput: '2.75',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0.25',
+      });
+      await expect(
+        correctSystemResolution(workspaceId, actorUserId, tradeId, {
+          target: 'resolved',
+          resolutionKind: 'money_stop',
+          systemExitedAt: new Date('2026-08-01T13:00:00Z'),
+          systemCostR: '0.10',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(await readTrade(tradeId)).toMatchObject({
+        systemResolutionKind: 'money_stop',
+        systemGrossRInput: '-1.0000',
+        systemR: '-1.1000',
+      });
+      await correctSystemResolution(workspaceId, actorUserId, tradeId, { target: 'no_trade' });
+      expect(await readTrade(tradeId)).toMatchObject({
+        systemStatus: 'no_trade',
+        systemResolutionKind: null,
+        systemGrossRInput: null,
+      });
+    });
+
+    it('resolves independently while Actual execution is partially open', async () => {
+      const { tradeId } = await createMoneyOnly();
+      await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 100n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 5_000,
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'money_target',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0',
+      });
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'open',
+        actualR: null,
+        systemStatus: 'resolved',
+        systemR: '5.0000',
+      });
+    });
+
+    it('keeps Money retries idempotent and tenant-scoped', async () => {
+      const { tradeId } = await createMoneyOnly();
+      const input = {
+        resolutionKind: 'money_stop' as const,
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0',
+      };
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, input);
+      const before = await readTrade(tradeId);
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, tradeId, input),
+      ).resolves.toMatchObject({
+        ok: true,
+      });
+      expect((await readTrade(tradeId))?.updatedAt).toEqual(before?.updatedAt);
+      await expect(
+        correctSystemResolution(otherWorkspaceId, otherActorUserId, tradeId, {
+          target: 'resolved',
+          ...input,
+        }),
+      ).resolves.toMatchObject({ ok: false, code: 'trade_not_found' });
+    });
 
     it('pending -> resolved persists System R/outcome', async () => {
       const { tradeId } = await createPlanned();
@@ -1880,6 +2066,7 @@ describe('trade-management (real database)', () => {
       expect(closed.ok).toBe(true);
 
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, created.tradeId, {
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-08-01T12:00:00Z'),
         systemExitReason: 'target_hit',
@@ -2044,6 +2231,7 @@ describe('trade-management (real database)', () => {
       ).resolves.toMatchObject({ ok: false, code: 'read_only_workspace' });
       await expect(
         resolveSystemTrade(ws, user, created.tradeId, {
+          resolutionKind: 'price_exit',
           systemExitPrice: '1.1100000000',
           systemExitedAt: new Date('2026-08-01T12:00:00Z'),
           systemExitReason: 'target_hit',

@@ -652,6 +652,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
     function resolveInput(tradeId: string) {
       return {
         tradeId,
+        resolutionKind: 'price_exit' as const,
         systemExitPrice: '1.1100000000',
         systemExitedAt: '2026-08-01T12:00:00Z',
         systemExitReason: 'target_hit' as const,
@@ -683,6 +684,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       const backToResolved = await correctSystemResolutionAction({
         tradeId,
         target: 'resolved',
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
         systemExitedAt: '2026-08-01T12:00:00Z',
         systemExitReason: 'target_hit',
@@ -848,6 +850,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
 
       const resolveResult = await resolveSystemTradeAction({
         tradeId,
+        resolutionKind: 'price_exit',
         systemExitPrice: '1.11',
         systemExitedAt: '2026-08-01T12:00:00Z',
         systemExitReason: 'target_hit',

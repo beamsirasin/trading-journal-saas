@@ -546,6 +546,7 @@
       "traderOutcome": "Trader outcome",
       "systemExitedAt": "System exited",
       "systemExitReason": "Reason",
+      "systemResolutionKind": "Resolution basis",
       "systemCostR": "System Cost R",
       "systemR": "System R",
       "systemOutcome": "System outcome"
@@ -639,6 +640,17 @@
         "correctDescription": "A terminal System result can be corrected to Resolved or No trade. It cannot return to Pending.",
         "result": "Corrected result",
         "exitPrice": "System exit price",
+        "moneyResult": "System result",
+        "moneyTarget": "Target Hit",
+        "moneyStop": "Stop Hit",
+        "moneyBreakEven": "Break Even",
+        "moneyCustom": "Custom R",
+        "targetUnavailable": "Target Hit is unavailable because this Plan has no Planned R.",
+        "grossSystemR": "Gross System R",
+        "grossSystemRHint": "Enter the hypothetical System result before System Cost R. This is not Actual R.",
+        "previewGross": "Gross",
+        "previewCost": "Cost",
+        "previewSystem": "System",
         "costHint": "Enter System Cost R directly. System R is calculated by the server.",
         "correctionNoTradeWarning": "Saving will replace the resolved counterfactual with No trade. The actual execution remains unchanged."
       },
@@ -845,6 +857,13 @@
       "not_checked": "Not checked"
     },
     "severity": { "minor": "Minor", "moderate": "Moderate", "severe": "Severe" },
+    "systemResolutionKind": {
+      "price_exit": "Price exit",
+      "money_target": "Money-plan target",
+      "money_stop": "Money-plan stop",
+      "money_break_even": "Money-plan break even",
+      "money_custom": "Custom gross R"
+    },
     "systemReason": {
       "target_hit": "Target hit",
       "stop_hit": "Stop hit",

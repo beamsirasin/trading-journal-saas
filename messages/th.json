@@ -546,6 +546,7 @@
       "traderOutcome": "ผลของเทรดเดอร์",
       "systemExitedAt": "ระบบออกเมื่อ",
       "systemExitReason": "เหตุผล",
+      "systemResolutionKind": "เกณฑ์การสรุปผล",
       "systemCostR": "ต้นทุน R ของระบบ",
       "systemR": "R ของระบบ",
       "systemOutcome": "ผลของระบบ"
@@ -639,6 +640,17 @@
         "correctDescription": "ผลระบบที่สิ้นสุดแล้วแก้เป็นสรุปแล้วหรือไม่ควรเทรดได้ แต่กลับเป็นรอดำเนินการไม่ได้",
         "result": "ผลที่แก้ไข",
         "exitPrice": "ราคาออกตามระบบ",
+        "moneyResult": "ผลของระบบ",
+        "moneyTarget": "ถึงเป้าหมาย",
+        "moneyStop": "ถึงจุดตัดขาดทุน",
+        "moneyBreakEven": "เท่าทุน",
+        "moneyCustom": "กำหนด R เอง",
+        "targetUnavailable": "ไม่สามารถเลือกถึงเป้าหมายได้ เนื่องจากแผนนี้ไม่มี Planned R",
+        "grossSystemR": "System R ก่อนหักต้นทุน",
+        "grossSystemRHint": "กรอกผลลัพธ์สมมติตามระบบก่อนหักต้นทุน System R ค่านี้ไม่ใช่ Actual R",
+        "previewGross": "ก่อนหักต้นทุน",
+        "previewCost": "ต้นทุน",
+        "previewSystem": "ระบบ",
         "costHint": "กรอกต้นทุน System R โดยตรง เซิร์ฟเวอร์จะคำนวณ System R",
         "correctionNoTradeWarning": "การบันทึกจะแทนที่ผลจำลองเดิมด้วยไม่ควรเทรด โดยไม่เปลี่ยนการเทรดจริง"
       },
@@ -845,6 +857,13 @@
       "not_checked": "ยังไม่ได้ตรวจ"
     },
     "severity": { "minor": "เล็กน้อย", "moderate": "ปานกลาง", "severe": "รุนแรง" },
+    "systemResolutionKind": {
+      "price_exit": "ราคาออก",
+      "money_target": "เป้าหมายตามแผนเงิน",
+      "money_stop": "จุดตัดขาดทุนตามแผนเงิน",
+      "money_break_even": "เท่าทุนตามแผนเงิน",
+      "money_custom": "R ก่อนหักต้นทุนแบบกำหนดเอง"
+    },
     "systemReason": {
       "target_hit": "ถึงเป้าหมาย",
       "stop_hit": "ถึงจุดตัดขาดทุน",

@@ -67,6 +67,8 @@ export interface AuditLogMetadata {
   readonly mistakeTypeId?: string;
   readonly previousStatus?: string;
   readonly newStatus?: string;
+  /** Stable System-resolution discriminator only; never a price or R value. */
+  readonly resolutionKind?: string;
 }
 
 export interface AuditLogInput {

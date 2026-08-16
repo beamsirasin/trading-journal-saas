@@ -638,21 +638,8 @@ export async function correctSystemResolutionAction(
   if (!ctx.ok) return ctx;
 
   try {
-    const { tradeId } = parsed.data;
-    const result = await correctSystemResolution(
-      ctx.workspaceId,
-      ctx.userId,
-      tradeId,
-      parsed.data.target === 'resolved'
-        ? {
-            target: 'resolved',
-            systemExitPrice: parsed.data.systemExitPrice,
-            systemExitedAt: parsed.data.systemExitedAt,
-            systemExitReason: parsed.data.systemExitReason,
-            systemCostR: parsed.data.systemCostR,
-          }
-        : { target: 'no_trade' },
-    );
+    const { tradeId, ...request } = parsed.data;
+    const result = await correctSystemResolution(ctx.workspaceId, ctx.userId, tradeId, request);
     if (!result.ok) return systemFailure(result);
     revalidateTradeRoutes();
     return { ok: true, data: { tradeId, systemStatus: parsed.data.target } };

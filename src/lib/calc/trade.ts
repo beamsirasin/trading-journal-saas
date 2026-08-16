@@ -3,7 +3,7 @@ import {
   CALC_VERSION,
   PLANNED_R_AGREEMENT_TOLERANCE_R,
 } from '@/config/trade-calc';
-import { type OutcomeValue } from '@/lib/trades/constants';
+import { type OutcomeValue, type SystemResolutionKind } from '@/lib/trades/constants';
 
 import {
   bigintToCalcDecimal,
@@ -284,6 +284,68 @@ export function systemGrossR(
   return calcOk(toCanonicalR(result.value));
 }
 
+export interface ResolveSystemGrossRInput {
+  readonly resolutionKind: SystemResolutionKind;
+  readonly direction: string | null | undefined;
+  readonly plannedEntry?: string | null | undefined;
+  readonly plannedStop?: string | null | undefined;
+  readonly plannedRiskMinor?: bigint | null | undefined;
+  readonly plannedRewardMinor?: bigint | null | undefined;
+  readonly systemExitPrice?: string | null | undefined;
+  readonly systemGrossRInput?: string | null | undefined;
+}
+
+/**
+ * Resolves the authoritative gross counterfactual R without consulting Actual
+ * execution. Price geometry is retained verbatim; Money presets produce a
+ * canonical persisted gross input and Custom accepts that input directly.
+ */
+export function resolveSystemGrossR(params: ResolveSystemGrossRInput): CalcResult<string> {
+  if (params.resolutionKind === 'price_exit') {
+    return systemGrossR(
+      params.direction,
+      params.plannedEntry,
+      params.plannedStop,
+      params.systemExitPrice,
+    );
+  }
+
+  if (
+    params.plannedRiskMinor === null ||
+    params.plannedRiskMinor === undefined ||
+    params.plannedRiskMinor <= 0n
+  ) {
+    return calcErr('invalid_planned_risk');
+  }
+
+  if (params.resolutionKind === 'money_target') {
+    return moneyPlannedR(params.plannedRiskMinor, params.plannedRewardMinor);
+  }
+  if (params.resolutionKind === 'money_stop') return calcOk('-1.0000');
+  if (params.resolutionKind === 'money_break_even') return calcOk('0.0000');
+
+  if (params.systemGrossRInput === null || params.systemGrossRInput === undefined) {
+    return calcErr('missing_input');
+  }
+  const gross = parseCalcDecimal(params.systemGrossRInput);
+  if (gross === null || gross.absoluteValue().greaterThanOrEqualTo('100000000')) {
+    return calcErr('invalid_decimal');
+  }
+  return calcOk(toCanonicalR(gross));
+}
+
+function systemRFromCanonicalGross(
+  grossSystemR: string,
+  systemCostR: string | null | undefined,
+): CalcResult<string> {
+  if (systemCostR === null || systemCostR === undefined) return calcErr('missing_input');
+  const grossDecimal = parseCalcDecimal(grossSystemR);
+  const costDecimal = parseCalcDecimal(systemCostR);
+  if (grossDecimal === null || costDecimal === null) return calcErr('invalid_decimal');
+  if (costDecimal.isNegative()) return calcErr('invalid_system_cost');
+  return calcOk(toCanonicalR(grossDecimal.minus(costDecimal)));
+}
+
 /**
  * `systemR = systemGrossR − systemCostR` (locked formula, Phase 07B
  * correction). `systemCostR` is a user-supplied estimate of costs
@@ -329,10 +391,14 @@ export function systemR(
  */
 export function resolveSystemR(params: {
   readonly systemStatus: string | null | undefined;
+  readonly systemResolutionKind?: SystemResolutionKind | null;
   readonly direction: string | null | undefined;
   readonly plannedEntry: string | null | undefined;
   readonly plannedStop: string | null | undefined;
+  readonly plannedRiskMinor?: bigint | null;
+  readonly plannedRewardMinor?: bigint | null;
   readonly systemExitPrice?: string | null;
+  readonly systemGrossRInput?: string | null;
   readonly systemCostR?: string | null;
 }): CalcResult<string> {
   const { systemStatus } = params;
@@ -340,13 +406,37 @@ export function resolveSystemR(params: {
   if (systemStatus === 'no_trade') return calcErr('system_no_trade');
   if (systemStatus !== 'resolved') return calcErr('missing_input');
 
-  return systemR(
-    params.direction,
-    params.plannedEntry,
-    params.plannedStop,
-    params.systemExitPrice,
-    params.systemCostR,
-  );
+  if (params.systemResolutionKind === null || params.systemResolutionKind === undefined) {
+    return systemR(
+      params.direction,
+      params.plannedEntry,
+      params.plannedStop,
+      params.systemExitPrice,
+      params.systemCostR,
+    );
+  }
+
+  if (params.systemResolutionKind === 'price_exit') {
+    return systemR(
+      params.direction,
+      params.plannedEntry,
+      params.plannedStop,
+      params.systemExitPrice,
+      params.systemCostR,
+    );
+  }
+  const gross = resolveSystemGrossR({
+    resolutionKind: params.systemResolutionKind,
+    direction: params.direction,
+    plannedEntry: params.plannedEntry,
+    plannedStop: params.plannedStop,
+    plannedRiskMinor: params.plannedRiskMinor,
+    plannedRewardMinor: params.plannedRewardMinor,
+    systemExitPrice: params.systemExitPrice,
+    systemGrossRInput: params.systemGrossRInput,
+  });
+  if (!gross.ok) return gross;
+  return systemRFromCanonicalGross(gross.value, params.systemCostR);
 }
 
 // ---------------------------------------------------------------------------
@@ -427,6 +517,12 @@ export interface SystemResolveSnapshot {
   readonly calcVersion: number;
 }
 
+export interface SystemResolveV2Snapshot extends SystemResolveSnapshot {
+  /** Persisted only for Money-derived resolution; Price resolution stores null. */
+  readonly grossSystemR: string;
+  readonly systemCostR: string;
+}
+
 /** The complete, atomic System-resolve snapshot — only valid once `system_status` is genuinely `resolved` (see {@link resolveSystemR}). */
 export function composeSystemResolve(
   direction: string | null | undefined,
@@ -440,6 +536,43 @@ export function composeSystemResolve(
   const outcomeResult = classifyOutcome(rResult.value);
   if (!outcomeResult.ok) return outcomeResult;
   return calcOk({
+    systemR: rResult.value,
+    systemOutcome: outcomeResult.value,
+    calcVersion: CALC_VERSION,
+  });
+}
+
+/** Mode-aware Journal V2 System snapshot composition. */
+export function composeSystemResolveV2(
+  params: ResolveSystemGrossRInput & { readonly systemCostR: string | null | undefined },
+): CalcResult<SystemResolveV2Snapshot> {
+  const grossResult = resolveSystemGrossR(params);
+  if (!grossResult.ok) return grossResult;
+
+  if (params.systemCostR === null || params.systemCostR === undefined) {
+    return calcErr('missing_input');
+  }
+  const costDecimal = parseCalcDecimal(params.systemCostR);
+  if (costDecimal === null) return calcErr('invalid_decimal');
+  if (costDecimal.isNegative()) return calcErr('invalid_system_cost');
+  const canonicalSystemCostR = toCanonicalR(costDecimal);
+
+  const rResult =
+    params.resolutionKind === 'price_exit'
+      ? systemR(
+          params.direction,
+          params.plannedEntry,
+          params.plannedStop,
+          params.systemExitPrice,
+          canonicalSystemCostR,
+        )
+      : systemRFromCanonicalGross(grossResult.value, canonicalSystemCostR);
+  if (!rResult.ok) return rResult;
+  const outcomeResult = classifyOutcome(rResult.value);
+  if (!outcomeResult.ok) return outcomeResult;
+  return calcOk({
+    grossSystemR: grossResult.value,
+    systemCostR: canonicalSystemCostR,
     systemR: rResult.value,
     systemOutcome: outcomeResult.value,
     calcVersion: CALC_VERSION,

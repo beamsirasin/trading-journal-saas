@@ -234,6 +234,7 @@ interface TradeOverrides {
   exitedAt?: Date;
   system?: 'pending' | 'resolved' | 'no_trade';
   systemExitedAt?: Date;
+  moneyOnlySystem?: boolean;
   deleted?: boolean;
   framework?: Framework;
 }
@@ -253,6 +254,7 @@ async function createTradeRow(
       : new Date('2026-08-01T09:00:00Z');
   const systemExitedAt = overrides.systemExitedAt ?? new Date('2026-08-01T11:00:00Z');
   const fw = overrides.framework ?? framework;
+  const moneyOnlySystem = overrides.moneyOnlySystem === true;
   const actualFields =
     status === 'planned' || status === 'canceled'
       ? {}
@@ -276,7 +278,9 @@ async function createTradeRow(
     system === 'resolved'
       ? {
           systemStatus: 'resolved',
-          systemExitPrice: '102.0000000000',
+          systemResolutionKind: moneyOnlySystem ? 'money_target' : 'price_exit',
+          systemExitPrice: moneyOnlySystem ? null : '102.0000000000',
+          systemGrossRInput: moneyOnlySystem ? '2.0000' : null,
           systemExitedAt,
           systemExitReason: 'target_hit',
           systemResolvedAt: new Date('2026-08-02T00:00:00Z'),
@@ -303,9 +307,11 @@ async function createTradeRow(
         setupVersionId: fw.oldSetupVersionId,
         symbol: 'EURUSD',
         direction: 'long',
-        plannedEntry: '100.0000000000',
-        plannedStop: '99.0000000000',
-        plannedTarget: '102.0000000000',
+        plannedEntry: moneyOnlySystem ? null : '100.0000000000',
+        plannedStop: moneyOnlySystem ? null : '99.0000000000',
+        plannedTarget: moneyOnlySystem ? null : '102.0000000000',
+        plannedRiskMinor: moneyOnlySystem ? 100n : null,
+        plannedRewardMinor: moneyOnlySystem ? 200n : null,
         plannedR: '2.0000',
         status,
         deletedAt: overrides.deleted ? new Date('2026-08-03T00:00:00Z') : null,
@@ -573,6 +579,21 @@ describe('analytics DAL (real PostgreSQL)', () => {
     expect(ids).toContain(fixture.openSystemTradeId);
     expect(ids).not.toContain(fixture.pendingTradeId);
     expect(result.data.every((row) => row.systemStatus === 'resolved')).toBe(true);
+  });
+
+  it('includes Money-only resolved System snapshots in the existing System population', async () => {
+    const fixture = await createFixture();
+    const moneyTradeId = await createTradeRow(
+      fixture.workspaceId,
+      fixture.activeAccountId,
+      fixture.framework,
+      { status: 'open', system: 'resolved', moneyOnlySystem: true },
+    );
+    const result = await getSystemAnalyticsRecords({}, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    expect(result.data).toContainEqual(
+      expect.objectContaining({ tradeId: moneyTradeId, systemR: '2.0000', systemOutcome: 'win' }),
+    );
   });
 
   it('selects exact same-Trade pairs and requires both bounded timestamps', async () => {

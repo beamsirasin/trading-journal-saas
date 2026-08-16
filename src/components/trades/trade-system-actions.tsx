@@ -3,7 +3,12 @@
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
-import { RESOLVABLE_SYSTEM_EXIT_REASONS, type SystemStatus } from '@/lib/trades/constants';
+import { parseCalcDecimal, toCanonicalR } from '@/lib/calc/decimal';
+import {
+  RESOLVABLE_SYSTEM_EXIT_REASONS,
+  type MoneySystemResolutionKind,
+  type SystemStatus,
+} from '@/lib/trades/constants';
 import {
   correctSystemResolutionAction,
   markSystemNoTradeAction,
@@ -60,16 +65,103 @@ function ResolvedFields({
 }) {
   const t = useTranslations('trades');
   const terminal = trade.systemStatus === 'resolved';
+  const hasPricePlan = trade.plannedEntry !== null && trade.plannedStop !== null;
+  const initialMoneyKind: MoneySystemResolutionKind =
+    terminal && trade.systemResolutionKind?.startsWith('money_')
+      ? (trade.systemResolutionKind as MoneySystemResolutionKind)
+      : trade.plannedR === null
+        ? 'money_stop'
+        : 'money_target';
+  const [moneyKind, setMoneyKind] = useState<MoneySystemResolutionKind>(initialMoneyKind);
+  const [grossInput, setGrossInput] = useState(
+    terminal && trade.systemResolutionKind === 'money_custom'
+      ? (trade.systemGrossRInput ?? '')
+      : '',
+  );
+  const [costInput, setCostInput] = useState(terminal ? trade.systemCostR : '0');
+
+  const grossPreview = hasPricePlan
+    ? null
+    : moneyKind === 'money_target'
+      ? trade.plannedR
+      : moneyKind === 'money_stop'
+        ? '-1.0000'
+        : moneyKind === 'money_break_even'
+          ? '0.0000'
+          : grossInput;
+  const grossDecimal = parseCalcDecimal(grossPreview);
+  const costDecimal = parseCalcDecimal(costInput);
+  const finalPreview =
+    grossDecimal !== null && costDecimal !== null && !costDecimal.isNegative()
+      ? toCanonicalR(grossDecimal.minus(costDecimal))
+      : null;
+
   return (
     <>
-      <TradeField id={`${prefix}-exit`} label={t('lifecycle.system.exitPrice')}>
-        <FormInput
-          id={`${prefix}-exit`}
-          name="systemExitPrice"
-          defaultValue={terminal ? (trade.systemExitPrice ?? '') : ''}
-          required
-        />
-      </TradeField>
+      {hasPricePlan ? (
+        <>
+          <input type="hidden" name="resolutionKind" value="price_exit" />
+          <TradeField id={`${prefix}-exit`} label={t('lifecycle.system.exitPrice')}>
+            <FormInput
+              id={`${prefix}-exit`}
+              name="systemExitPrice"
+              defaultValue={terminal ? (trade.systemExitPrice ?? '') : ''}
+              required
+            />
+          </TradeField>
+          <TradeField id={`${prefix}-reason`} label={t('field.systemExitReason')}>
+            <NativeSelect
+              id={`${prefix}-reason`}
+              name="systemExitReason"
+              defaultValue={terminal ? (trade.systemExitReason ?? 'target_hit') : 'target_hit'}
+            >
+              {RESOLVABLE_SYSTEM_EXIT_REASONS.map((reason) => (
+                <option key={reason} value={reason}>
+                  {t(`systemReason.${reason}`)}
+                </option>
+              ))}
+            </NativeSelect>
+          </TradeField>
+        </>
+      ) : (
+        <>
+          <TradeField id={`${prefix}-kind`} label={t('lifecycle.system.moneyResult')}>
+            <NativeSelect
+              id={`${prefix}-kind`}
+              name="resolutionKind"
+              value={moneyKind}
+              onChange={(event) => setMoneyKind(event.target.value as MoneySystemResolutionKind)}
+            >
+              <option value="money_target" disabled={trade.plannedR === null}>
+                {t('lifecycle.system.moneyTarget')}
+              </option>
+              <option value="money_stop">{t('lifecycle.system.moneyStop')}</option>
+              <option value="money_break_even">{t('lifecycle.system.moneyBreakEven')}</option>
+              <option value="money_custom">{t('lifecycle.system.moneyCustom')}</option>
+            </NativeSelect>
+          </TradeField>
+          {trade.plannedR === null ? (
+            <p className="text-muted-foreground text-xs">
+              {t('lifecycle.system.targetUnavailable')}
+            </p>
+          ) : null}
+          {moneyKind === 'money_custom' ? (
+            <TradeField
+              id={`${prefix}-gross`}
+              label={t('lifecycle.system.grossSystemR')}
+              hint={t('lifecycle.system.grossSystemRHint')}
+            >
+              <FormInput
+                id={`${prefix}-gross`}
+                name="systemGrossRInput"
+                value={grossInput}
+                onChange={(event) => setGrossInput(event.target.value)}
+                required
+              />
+            </TradeField>
+          ) : null}
+        </>
+      )}
       <TradeField
         id={`${prefix}-time`}
         label={t('field.systemExitedAt')}
@@ -83,19 +175,6 @@ function ResolvedFields({
           required
         />
       </TradeField>
-      <TradeField id={`${prefix}-reason`} label={t('field.systemExitReason')}>
-        <NativeSelect
-          id={`${prefix}-reason`}
-          name="systemExitReason"
-          defaultValue={terminal ? (trade.systemExitReason ?? 'target_hit') : 'target_hit'}
-        >
-          {RESOLVABLE_SYSTEM_EXIT_REASONS.map((reason) => (
-            <option key={reason} value={reason}>
-              {t(`systemReason.${reason}`)}
-            </option>
-          ))}
-        </NativeSelect>
-      </TradeField>
       <TradeField
         id={`${prefix}-cost`}
         label={t('field.systemCostR')}
@@ -104,10 +183,27 @@ function ResolvedFields({
         <FormInput
           id={`${prefix}-cost`}
           name="systemCostR"
-          defaultValue={terminal ? trade.systemCostR : '0'}
+          value={costInput}
+          onChange={(event) => setCostInput(event.target.value)}
           required
         />
       </TradeField>
+      {!hasPricePlan ? (
+        <div className="bg-muted/40 grid gap-1 rounded-md border p-3 text-sm" aria-live="polite">
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">{t('lifecycle.system.previewGross')}</span>
+            <span>{grossDecimal === null ? '—' : `${toCanonicalR(grossDecimal)}R`}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">{t('lifecycle.system.previewCost')}</span>
+            <span>{costDecimal === null ? '—' : `-${toCanonicalR(costDecimal)}R`}</span>
+          </div>
+          <div className="flex justify-between gap-4 font-medium">
+            <span>{t('lifecycle.system.previewSystem')}</span>
+            <span>{finalPreview === null ? '—' : `${finalPreview}R`}</span>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -125,14 +221,21 @@ export function ResolveSystemDialog({ trade, timezone }: { trade: TradeDetail; t
     const data = new FormData(event.currentTarget);
     const time = datetimeLocalToIso(String(data.get('systemExitedAt') ?? ''), timezone);
     if (!time.ok) return setFeedback(t('lifecycle.validation.time'));
+    const resolutionKind = String(data.get('resolutionKind') ?? '');
     startTransition(async () => {
-      const result = await resolveSystemTradeAction({
+      const payload: Record<string, unknown> = {
         tradeId: trade.tradeId,
-        systemExitPrice: String(data.get('systemExitPrice') ?? ''),
+        resolutionKind,
         systemExitedAt: time.value,
-        systemExitReason: String(data.get('systemExitReason') ?? ''),
         systemCostR: String(data.get('systemCostR') ?? ''),
-      });
+      };
+      if (resolutionKind === 'price_exit') {
+        payload.systemExitPrice = String(data.get('systemExitPrice') ?? '');
+        payload.systemExitReason = String(data.get('systemExitReason') ?? '');
+      } else if (resolutionKind === 'money_custom') {
+        payload.systemGrossRInput = String(data.get('systemGrossRInput') ?? '');
+      }
+      const result = await resolveSystemTradeAction(payload);
       const message = actionFeedback(t, result);
       if (message !== null) return setFeedback(message);
       setOpen(false);
@@ -229,11 +332,16 @@ export function CorrectSystemDialog({ trade, timezone }: { trade: TradeDetail; t
       if (!time.ok) return setFeedback(t('lifecycle.validation.time'));
       payload = {
         ...payload,
-        systemExitPrice: String(data.get('systemExitPrice') ?? ''),
+        resolutionKind: String(data.get('resolutionKind') ?? ''),
         systemExitedAt: time.value,
-        systemExitReason: String(data.get('systemExitReason') ?? ''),
         systemCostR: String(data.get('systemCostR') ?? ''),
       };
+      if (payload.resolutionKind === 'price_exit') {
+        payload.systemExitPrice = String(data.get('systemExitPrice') ?? '');
+        payload.systemExitReason = String(data.get('systemExitReason') ?? '');
+      } else if (payload.resolutionKind === 'money_custom') {
+        payload.systemGrossRInput = String(data.get('systemGrossRInput') ?? '');
+      }
     }
     startTransition(async () => {
       const result = await correctSystemResolutionAction(payload);

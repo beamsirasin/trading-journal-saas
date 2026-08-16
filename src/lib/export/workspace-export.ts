@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 4 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 5 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -240,7 +240,9 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('enteredAt', 'entered_at', 'timestamp'),
       column('exitedAt', 'exited_at', 'timestamp'),
       column('systemStatus', 'system_status', 'text'),
+      column('systemResolutionKind', 'system_resolution_kind', 'text'),
       column('systemExitPrice', 'system_exit_price', 'decimal'),
+      column('systemGrossRInput', 'system_gross_r_input', 'decimal'),
       column('systemExitedAt', 'system_exited_at', 'timestamp'),
       column('systemExitReason', 'system_exit_reason', 'text'),
       column('systemCostR', 'system_cost_r', 'decimal'),
