@@ -48,6 +48,9 @@ describe('AuditLogMetadata is a closed, safe shape', () => {
       readonly ruleScope?: string;
       readonly isNoop?: boolean;
       readonly tradeId?: string;
+      readonly exitId?: string;
+      readonly sequence?: number;
+      readonly closedBps?: number;
       readonly tradingAccountId?: string;
       readonly mistakeTypeId?: string;
       readonly previousStatus?: string;

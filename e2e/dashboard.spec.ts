@@ -9,6 +9,7 @@ import {
   strategies,
   strategySetupVersions,
   strategyVersions,
+  tradeExits,
   trades,
   tradingAccounts,
   workspaces,
@@ -45,6 +46,7 @@ async function seedDashboardData(userId: string): Promise<void> {
       strategyVersions,
       setups,
       strategySetupVersions,
+      tradeExits,
       trades,
     },
   });
@@ -54,6 +56,7 @@ async function seedDashboardData(userId: string): Promise<void> {
       .from(workspaces)
       .where(eq(workspaces.personalOwnerUserId, userId));
     if (workspace === undefined) throw new Error('Dashboard E2E workspace missing');
+    const workspaceId = workspace.id;
     const [account] = await db
       .select({ id: tradingAccounts.id })
       .from(tradingAccounts)
@@ -111,6 +114,7 @@ async function seedDashboardData(userId: string): Promise<void> {
     };
     const traderFields = (exitedAt: Date, actualR: string, traderOutcome: 'win' | 'loss') => ({
       status: 'closed' as const,
+      actualResultMode: 'money' as const,
       actualEntry: '100.0000000000',
       actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
@@ -135,15 +139,35 @@ async function seedDashboardData(userId: string): Promise<void> {
       systemOutcome,
     });
 
+    async function insertTrade(values: typeof trades.$inferInsert): Promise<string> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.insert(trades).values(values).returning({ id: trades.id });
+        if (row === undefined) throw new Error('Dashboard E2E Trade missing');
+        if (values.status === 'closed') {
+          await tx.insert(tradeExits).values({
+            workspaceId,
+            tradeId: row.id,
+            mutationKey: crypto.randomUUID(),
+            sequence: 1,
+            closedBps: 10_000,
+            exitPrice: values.actualExit ?? null,
+            realizedPnlMinor: values.netPnlMinor ?? null,
+            exitedAt: values.exitedAt as Date,
+          });
+        }
+        return row.id;
+      });
+    }
+
     const divergentExit = daysAgo(5, 10);
-    await db.insert(trades).values({
+    await insertTrade({
       ...framework,
       symbol: 'XAUUSD',
       ...traderFields(divergentExit, '-1.0000', 'loss'),
       ...systemFields(new Date(divergentExit.getTime() + 30 * 60 * 1000), '3.0000', 'win'),
     });
     const pendingExit = daysAgo(8, 10);
-    await db.insert(trades).values({
+    await insertTrade({
       ...framework,
       symbol: 'EURUSD',
       ...traderFields(pendingExit, '2.0000', 'win'),
@@ -153,6 +177,7 @@ async function seedDashboardData(userId: string): Promise<void> {
       ...framework,
       symbol: 'NAS100',
       status: 'open',
+      actualResultMode: 'money',
       actualEntry: '100.0000000000',
       actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
@@ -160,7 +185,7 @@ async function seedDashboardData(userId: string): Promise<void> {
       ...systemFields(new Date(openTime.getTime() + 30 * 60 * 1000), '-1.0000', 'loss'),
     });
     const olderExit = daysAgo(45, 10);
-    await db.insert(trades).values({
+    await insertTrade({
       ...framework,
       symbol: 'GBPUSD',
       ...traderFields(olderExit, '1.0000', 'win'),

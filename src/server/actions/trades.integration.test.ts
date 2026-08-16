@@ -582,6 +582,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       const { tradeId } = await createdTrade();
       const result = await openTradeAction({
         tradeId,
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: '5000',
@@ -594,6 +595,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       const { tradeId } = await createdTrade();
       await openTradeAction({
         tradeId,
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: '5000',
@@ -616,6 +618,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       const { tradeId } = await createdTrade();
       await openTradeAction({
         tradeId,
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: '5000',
@@ -813,6 +816,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       if (!created.ok) throw new Error('fixture create failed');
       await openTradeAction({
         tradeId: created.data.tradeId,
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: '5000',
@@ -880,6 +884,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       const { tradeId } = await createdTrade();
       const result = await openTradeAction({
         tradeId,
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: '5000',

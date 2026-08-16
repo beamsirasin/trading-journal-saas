@@ -1,10 +1,15 @@
 import 'server-only';
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
 import { CALC_VERSION } from '@/config/trade-calc';
-import { composePlannedR, composeSystemResolve, composeTraderClose } from '@/lib/calc/trade';
+import {
+  composePlannedR,
+  composeRealizedActual,
+  composeSystemResolve,
+  composeTraderCloseV2,
+} from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { authorizeWorkspaceMutation, type MutationDenialReason } from '@/lib/entitlements/resolve';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
@@ -14,6 +19,7 @@ import { systemClock, type Clock } from '@/lib/time';
 import {
   isSystemExitReason,
   isTradeDirection,
+  type ActualResultMode,
   type OutcomeValue,
   type TradeStatus,
 } from '@/lib/trades/constants';
@@ -27,6 +33,7 @@ import {
   strategySetupVersions,
   strategyVersions,
   tradeEmotions,
+  tradeExits,
   tradeRuleChecks,
   trades,
   tradingAccounts,
@@ -1124,9 +1131,10 @@ export async function correctTradeIdentity(
 // ---------------------------------------------------------------------------
 
 export interface OpenTradeInput {
-  readonly actualEntry: string;
-  readonly actualInitialStop: string;
-  readonly actualInitialRiskMinor: bigint;
+  readonly actualResultMode: ActualResultMode;
+  readonly actualEntry?: string | null;
+  readonly actualInitialStop?: string | null;
+  readonly actualInitialRiskMinor?: bigint | null;
   readonly actualPositionSize?: string | null;
   readonly enteredAt: Date;
 }
@@ -1140,6 +1148,7 @@ export type OpenTradeResult =
         | 'trade_not_found'
         | 'invalid_status_transition'
         | 'invalid_initial_risk'
+        | 'invalid_execution_context'
         | 'trading_account_not_found'
         | 'trading_account_archived'
         | 'strategy_not_found'
@@ -1174,7 +1183,38 @@ export async function openTrade(
     if (!canOpenFromStatus(trade.status as TradeStatus)) {
       return { ok: false, code: 'invalid_status_transition' };
     }
-    if (input.actualInitialRiskMinor <= 0n) return { ok: false, code: 'invalid_initial_risk' };
+    const actualResultMode = input.actualResultMode;
+    const actualEntry = input.actualEntry ?? null;
+    const actualInitialStop = input.actualInitialStop ?? null;
+    const actualInitialRiskMinor = input.actualInitialRiskMinor ?? null;
+    if (actualResultMode === 'price') {
+      if (actualInitialRiskMinor !== null) return { ok: false, code: 'invalid_execution_context' };
+      const context = composeRealizedActual({
+        actualResultMode: 'price',
+        direction: trade.direction,
+        actualEntry,
+        actualInitialStop,
+        exits: [],
+      });
+      if (!context.ok) return { ok: false, code: 'invalid_execution_context' };
+    } else {
+      if (actualInitialRiskMinor === null || actualInitialRiskMinor <= 0n) {
+        return { ok: false, code: 'invalid_initial_risk' };
+      }
+      if ((actualEntry === null) !== (actualInitialStop === null)) {
+        return { ok: false, code: 'invalid_execution_context' };
+      }
+      if (actualEntry !== null) {
+        const context = composeRealizedActual({
+          actualResultMode: 'price',
+          direction: trade.direction,
+          actualEntry,
+          actualInitialStop,
+          exits: [],
+        });
+        if (!context.ok) return { ok: false, code: 'invalid_execution_context' };
+      }
+    }
 
     const account = await tx.query.tradingAccounts.findFirst({
       where: and(
@@ -1200,9 +1240,10 @@ export async function openTrade(
     await tx
       .update(trades)
       .set({
-        actualEntry: input.actualEntry,
-        actualInitialStop: input.actualInitialStop,
-        actualInitialRiskMinor: input.actualInitialRiskMinor,
+        actualResultMode,
+        actualEntry,
+        actualInitialStop,
+        actualInitialRiskMinor,
         actualPositionSize: input.actualPositionSize ?? null,
         enteredAt: input.enteredAt,
         status: 'open',
@@ -1255,7 +1296,7 @@ export type CloseTradeResult =
  * already-`closed` Trade returns success as a no-op; ANY other request
  * against an already-`closed` Trade — including a differing but otherwise
  * legitimate correction — returns `invalid_status_transition`, directing the
- * caller toward `correctTradeExecution` (locked Phase 08B decision:
+ * caller toward `correctTradeExit` (locked Phase 08B decision:
  * `closeTrade` itself never performs a correction).
  */
 export async function closeTrade(
@@ -1303,16 +1344,55 @@ export async function closeTrade(
       return { ok: false, code: 'invalid_exit_time' };
     }
 
-    const composed = composeTraderClose(input.netPnlMinor, trade.actualInitialRiskMinor);
+    if (trade.actualResultMode !== 'money') {
+      return { ok: false, code: 'invalid_status_transition' };
+    }
+    const existingExits = await tx
+      .select()
+      .from(tradeExits)
+      .where(eq(tradeExits.tradeId, tradeId))
+      .orderBy(asc(tradeExits.sequence), asc(tradeExits.id));
+    const alreadyClosedBps = existingExits.reduce((sum, exit) => sum + exit.closedBps, 0);
+    const remainingBps = 10_000 - alreadyClosedBps;
+    if (remainingBps <= 0) return { ok: false, code: 'invalid_status_transition' };
+    const [newExit] = await tx
+      .insert(tradeExits)
+      .values({
+        workspaceId,
+        tradeId,
+        sequence: existingExits.reduce((max, exit) => Math.max(max, exit.sequence), 0) + 1,
+        closedBps: remainingBps,
+        exitPrice: input.actualExit,
+        realizedPnlMinor: input.netPnlMinor,
+        exitedAt: input.exitedAt,
+      })
+      .returning();
+    if (newExit === undefined) throw new Error('closeTrade: Exit insert returned no row');
+    const allExits = [...existingExits, newExit];
+    const composed = composeTraderCloseV2({
+      actualResultMode: 'money',
+      direction: trade.direction,
+      actualEntry: trade.actualEntry,
+      actualInitialStop: trade.actualInitialStop,
+      actualInitialRiskMinor: trade.actualInitialRiskMinor,
+      exits: allExits,
+    });
     if (!composed.ok)
       return { ok: false, code: 'invalid_status_transition', calcReason: composed.reason };
+    const netPnlMinor = allExits.reduce((sum, exit) => sum + (exit.realizedPnlMinor ?? 0n), 0n);
+    const chronologicalFinal = [...allExits].sort(
+      (a, b) =>
+        b.exitedAt.getTime() - a.exitedAt.getTime() ||
+        b.sequence - a.sequence ||
+        b.id.localeCompare(a.id),
+    )[0]!;
 
     await tx
       .update(trades)
       .set({
-        actualExit: input.actualExit,
-        netPnlMinor: input.netPnlMinor,
-        exitedAt: input.exitedAt,
+        actualExit: chronologicalFinal.exitPrice,
+        netPnlMinor,
+        exitedAt: chronologicalFinal.exitedAt,
         grossPnlMinor: input.grossPnlMinor ?? trade.grossPnlMinor,
         commissionMinor: input.commissionMinor ?? trade.commissionMinor,
         feesMinor: input.feesMinor ?? trade.feesMinor,
@@ -1324,6 +1404,20 @@ export async function closeTrade(
         updatedAt: new Date(),
       })
       .where(eq(trades.id, tradeId));
+
+    await insertAuditLog(tx, {
+      action: 'trade.exit_added',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'trade_exit',
+      entityId: newExit.id,
+      metadata: {
+        tradeId,
+        exitId: newExit.id,
+        sequence: newExit.sequence,
+        closedBps: remainingBps,
+      },
+    });
 
     await insertAuditLog(tx, {
       action: 'trade.closed',
@@ -1401,14 +1495,12 @@ export async function cancelTrade(
 // ---------------------------------------------------------------------------
 
 export interface CorrectTradeExecutionInput {
-  readonly actualEntry?: string;
-  readonly actualInitialStop?: string;
-  readonly actualInitialRiskMinor?: bigint;
+  readonly actualResultMode?: ActualResultMode;
+  readonly actualEntry?: string | null;
+  readonly actualInitialStop?: string | null;
+  readonly actualInitialRiskMinor?: bigint | null;
   readonly actualPositionSize?: string | null;
   readonly enteredAt?: Date;
-  readonly actualExit?: string;
-  readonly netPnlMinor?: bigint;
-  readonly exitedAt?: Date;
   readonly grossPnlMinor?: bigint | null;
   readonly commissionMinor?: bigint;
   readonly feesMinor?: bigint;
@@ -1425,19 +1517,10 @@ export type CorrectTradeExecutionResult =
         | 'no_actual_execution'
         | 'invalid_status_transition'
         | 'invalid_initial_risk'
+        | 'invalid_execution_context'
         | 'invalid_exit_time';
       readonly calcReason?: CalcFailureReason;
     };
-
-const CLOSE_SET_KEYS = [
-  'actualExit',
-  'netPnlMinor',
-  'exitedAt',
-  'grossPnlMinor',
-  'commissionMinor',
-  'feesMinor',
-  'swapMinor',
-] as const;
 
 /**
  * The legitimate typo-correction path for the Actual-execution side, while
@@ -1467,67 +1550,124 @@ export async function correctTradeExecution(
     const status = trade.status as TradeStatus;
     if (!hasActualExecution(status)) return { ok: false, code: 'no_actual_execution' };
 
-    const closeSetProvided = CLOSE_SET_KEYS.some((key) => input[key] !== undefined);
-    if (status === 'open' && closeSetProvided) {
+    const exits = await tx
+      .select()
+      .from(tradeExits)
+      .where(and(eq(tradeExits.workspaceId, workspaceId), eq(tradeExits.tradeId, tradeId)))
+      .orderBy(asc(tradeExits.sequence), asc(tradeExits.id));
+    const nextActualResultMode = input.actualResultMode ?? trade.actualResultMode;
+    if (
+      exits.length > 0 &&
+      input.actualResultMode !== undefined &&
+      input.actualResultMode !== trade.actualResultMode
+    ) {
       return { ok: false, code: 'invalid_status_transition' };
     }
-
-    const nextActualEntry = input.actualEntry ?? trade.actualEntry;
-    const nextActualInitialStop = input.actualInitialStop ?? trade.actualInitialStop;
-    const nextActualInitialRiskMinor = input.actualInitialRiskMinor ?? trade.actualInitialRiskMinor;
+    const nextActualEntry =
+      'actualEntry' in input ? (input.actualEntry ?? null) : trade.actualEntry;
+    const nextActualInitialStop =
+      'actualInitialStop' in input ? (input.actualInitialStop ?? null) : trade.actualInitialStop;
+    const nextActualInitialRiskMinor =
+      'actualInitialRiskMinor' in input
+        ? (input.actualInitialRiskMinor ?? null)
+        : trade.actualInitialRiskMinor;
     const nextActualPositionSize =
       'actualPositionSize' in input ? (input.actualPositionSize ?? null) : trade.actualPositionSize;
     const nextEnteredAt = input.enteredAt ?? trade.enteredAt;
 
-    if (input.actualInitialRiskMinor !== undefined && input.actualInitialRiskMinor <= 0n) {
+    if (nextActualResultMode === null) {
+      return { ok: false, code: 'invalid_execution_context' };
+    }
+    if (nextActualInitialRiskMinor !== null && nextActualInitialRiskMinor <= 0n) {
       return { ok: false, code: 'invalid_initial_risk' };
     }
+    const hasPriceContext = nextActualEntry !== null && nextActualInitialStop !== null;
+    if ((nextActualEntry === null) !== (nextActualInitialStop === null)) {
+      return { ok: false, code: 'invalid_execution_context' };
+    }
+    if (nextActualResultMode === 'price') {
+      if (!hasPriceContext || nextActualInitialRiskMinor !== null) {
+        return { ok: false, code: 'invalid_execution_context' };
+      }
+    } else if (nextActualInitialRiskMinor === null) {
+      return { ok: false, code: 'invalid_initial_risk' };
+    }
+    if (hasPriceContext) {
+      const context = composeRealizedActual({
+        actualResultMode: 'price',
+        direction: trade.direction,
+        actualEntry: nextActualEntry,
+        actualInitialStop: nextActualInitialStop,
+        exits: [],
+      });
+      if (!context.ok) return { ok: false, code: 'invalid_execution_context' };
+    }
+    if (
+      nextEnteredAt === null ||
+      exits.some((exit) => exit.exitedAt.getTime() < nextEnteredAt.getTime())
+    ) {
+      return { ok: false, code: 'invalid_exit_time' };
+    }
 
+    const nextGrossPnlMinor =
+      'grossPnlMinor' in input ? (input.grossPnlMinor ?? null) : trade.grossPnlMinor;
+    const nextCommissionMinor = input.commissionMinor ?? trade.commissionMinor;
+    const nextFeesMinor = input.feesMinor ?? trade.feesMinor;
+    const nextSwapMinor = input.swapMinor ?? trade.swapMinor;
     let nextActualExit = trade.actualExit;
     let nextNetPnlMinor = trade.netPnlMinor;
     let nextExitedAt = trade.exitedAt;
-    let nextGrossPnlMinor = trade.grossPnlMinor;
-    let nextCommissionMinor = trade.commissionMinor;
-    let nextFeesMinor = trade.feesMinor;
-    let nextSwapMinor = trade.swapMinor;
     let actualR = trade.actualR;
     let traderOutcome = trade.traderOutcome;
     let calcVersion = trade.calcVersion;
 
-    if (status === 'closed') {
-      nextActualExit = input.actualExit ?? trade.actualExit;
-      nextNetPnlMinor = input.netPnlMinor ?? trade.netPnlMinor;
-      nextExitedAt = input.exitedAt ?? trade.exitedAt;
-      nextGrossPnlMinor =
-        'grossPnlMinor' in input ? (input.grossPnlMinor ?? null) : trade.grossPnlMinor;
-      nextCommissionMinor = input.commissionMinor ?? trade.commissionMinor;
-      nextFeesMinor = input.feesMinor ?? trade.feesMinor;
-      nextSwapMinor = input.swapMinor ?? trade.swapMinor;
-
-      if (
-        nextEnteredAt !== null &&
-        nextExitedAt !== null &&
-        nextExitedAt.getTime() < nextEnteredAt.getTime()
-      ) {
-        return { ok: false, code: 'invalid_exit_time' };
+    if (exits.length > 0) {
+      const calculation = {
+        actualResultMode: nextActualResultMode,
+        direction: trade.direction,
+        actualEntry: nextActualEntry,
+        actualInitialStop: nextActualInitialStop,
+        actualInitialRiskMinor: nextActualInitialRiskMinor,
+        exits: exits.map((exit) => ({
+          closedBps: exit.closedBps,
+          exitPrice: exit.exitPrice,
+          realizedPnlMinor: exit.realizedPnlMinor,
+        })),
+      };
+      const realized = composeRealizedActual(calculation);
+      if (!realized.ok) {
+        return { ok: false, code: 'invalid_execution_context', calcReason: realized.reason };
       }
-
-      const riskChanged =
-        input.actualInitialRiskMinor !== undefined &&
-        input.actualInitialRiskMinor !== trade.actualInitialRiskMinor;
-      const pnlChanged = input.netPnlMinor !== undefined && input.netPnlMinor !== trade.netPnlMinor;
-      if (riskChanged || pnlChanged) {
-        const composed = composeTraderClose(nextNetPnlMinor, nextActualInitialRiskMinor);
-        if (!composed.ok) {
-          return { ok: false, code: 'invalid_initial_risk', calcReason: composed.reason };
+      if (status === 'closed') {
+        const final = composeTraderCloseV2(calculation);
+        if (!final.ok) {
+          return { ok: false, code: 'invalid_execution_context', calcReason: final.reason };
         }
-        actualR = composed.value.actualR;
-        traderOutcome = composed.value.traderOutcome;
-        calcVersion = composed.value.calcVersion;
+        const chronologicalFinal = [...exits].sort(
+          (a, b) =>
+            b.exitedAt.getTime() - a.exitedAt.getTime() ||
+            b.sequence - a.sequence ||
+            b.id.localeCompare(a.id),
+        )[0]!;
+        nextActualExit = chronologicalFinal.exitPrice;
+        nextNetPnlMinor = realized.value.realizedPnlMinor;
+        nextExitedAt = chronologicalFinal.exitedAt;
+        actualR = final.value.actualR;
+        traderOutcome = final.value.traderOutcome;
+        calcVersion = final.value.calcVersion;
+      } else {
+        nextActualExit = null;
+        nextNetPnlMinor = null;
+        nextExitedAt = null;
+        actualR = null;
+        traderOutcome = null;
       }
+    } else if (status === 'closed') {
+      return { ok: false, code: 'invalid_execution_context' };
     }
 
     const changedFields: string[] = [];
+    if (nextActualResultMode !== trade.actualResultMode) changedFields.push('actualResultMode');
     if (nextActualEntry !== trade.actualEntry) changedFields.push('actualEntry');
     if (nextActualInitialStop !== trade.actualInitialStop) changedFields.push('actualInitialStop');
     if (nextActualInitialRiskMinor !== trade.actualInitialRiskMinor)
@@ -1549,6 +1689,7 @@ export async function correctTradeExecution(
     await tx
       .update(trades)
       .set({
+        actualResultMode: nextActualResultMode,
         actualEntry: nextActualEntry,
         actualInitialStop: nextActualInitialStop,
         actualInitialRiskMinor: nextActualInitialRiskMinor,

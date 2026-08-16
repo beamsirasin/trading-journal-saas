@@ -1,6 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
 
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 3 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 4 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -18,6 +18,7 @@ export type WorkspaceExportDatasetName =
   | 'mistake_types'
   | 'emotion_types'
   | 'trades'
+  | 'trade_exits'
   | 'trade_rule_checks'
   | 'trade_setup_condition_checks'
   | 'trade_mistakes'
@@ -226,6 +227,7 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('plannedRiskMinor', 'planned_risk_minor', 'bigint'),
       column('plannedRewardMinor', 'planned_reward_minor', 'bigint'),
       column('actualEntry', 'actual_entry', 'decimal'),
+      column('actualResultMode', 'actual_result_mode', 'text'),
       column('actualInitialStop', 'actual_initial_stop', 'decimal'),
       column('actualExit', 'actual_exit', 'decimal'),
       column('actualPositionSize', 'actual_position_size', 'decimal'),
@@ -252,6 +254,23 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('status', 'status', 'text'),
       column('followedPlan', 'followed_plan', 'boolean'),
       column('deletedAt', 'deleted_at', 'timestamp'),
+      column('createdAt', 'created_at', 'timestamp'),
+      column('updatedAt', 'updated_at', 'timestamp'),
+    ],
+  },
+  {
+    name: 'trade_exits',
+    csvFilename: 'trade_exits.csv',
+    columns: [
+      column('id', 'id', 'id'),
+      column('workspaceId', 'workspace_id', 'id'),
+      column('tradeId', 'trade_id', 'id'),
+      column('sequence', 'sequence', 'integer'),
+      column('closedBps', 'closed_bps', 'integer'),
+      column('exitPrice', 'exit_price', 'decimal'),
+      column('realizedPnlMinor', 'realized_pnl_minor', 'bigint'),
+      column('exitReason', 'exit_reason', 'user_text'),
+      column('exitedAt', 'exited_at', 'timestamp'),
       column('createdAt', 'created_at', 'timestamp'),
       column('updatedAt', 'updated_at', 'timestamp'),
     ],

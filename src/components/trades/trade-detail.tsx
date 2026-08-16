@@ -7,6 +7,7 @@ import {
   TradeMistakesEditor,
   TradeRulesEditor,
 } from '@/components/trades/trade-discipline-editors';
+import { CorrectExitDialog } from '@/components/trades/trade-exit-actions';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeLifecycleActions } from '@/components/trades/trade-lifecycle-actions';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
@@ -203,38 +204,103 @@ export function TradeDetail({
         {trade.status === 'planned' || trade.status === 'canceled' ? (
           <p className="text-muted-foreground text-sm">{t('detail.notOpened')}</p>
         ) : (
-          <dl className="divide-border divide-y">
-            <DetailRow label={t('field.actualEntry')} value={trade.actualEntry ?? '—'} />
-            <DetailRow label={t('field.initialStop')} value={trade.actualInitialStop ?? '—'} />
-            {trade.actualPositionSize === null ? null : (
-              <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
-            )}
-            <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
-            {trade.actualExit === null ? null : (
-              <DetailRow label={t('field.exit')} value={trade.actualExit} />
-            )}
-            {trade.grossPnlMinor === null ? null : (
-              <DetailRow label={t('field.grossPnl')} value={money(trade.grossPnlMinor)} />
-            )}
-            <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
-            <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
-            <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
-            {trade.netPnlMinor === null ? null : (
-              <DetailRow label={t('field.netPnl')} value={money(trade.netPnlMinor)} />
-            )}
-            <DetailRow
-              label={t('field.actualR')}
-              value={formatR(trade.actualR) ?? t('common.notAvailable')}
-            />
-            <DetailRow
-              label={t('field.traderOutcome')}
-              value={<TradeOutcomeBadge outcome={trade.traderOutcome} />}
-            />
-            <DetailRow label={t('field.enteredAt')} value={instant(trade.enteredAt)} />
-            {trade.exitedAt === null ? null : (
-              <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
-            )}
-          </dl>
+          <div className="grid gap-5">
+            <dl className="divide-border divide-y">
+              <DetailRow
+                label={t('field.actualResultMode')}
+                value={
+                  trade.actualResultMode === null
+                    ? '—'
+                    : t(`lifecycle.execution.${trade.actualResultMode}Mode`)
+                }
+              />
+              <DetailRow label={t('field.actualEntry')} value={trade.actualEntry ?? '—'} />
+              <DetailRow label={t('field.initialStop')} value={trade.actualInitialStop ?? '—'} />
+              {trade.actualPositionSize === null ? null : (
+                <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
+              )}
+              <DetailRow
+                label={t('field.initialRisk')}
+                value={money(trade.actualInitialRiskMinor)}
+              />
+              {trade.actualExit === null ? null : (
+                <DetailRow label={t('field.exit')} value={trade.actualExit} />
+              )}
+              {trade.grossPnlMinor === null ? null : (
+                <DetailRow label={t('field.grossPnl')} value={money(trade.grossPnlMinor)} />
+              )}
+              <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
+              <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
+              <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
+              {trade.netPnlMinor === null ? null : (
+                <DetailRow label={t('field.netPnl')} value={money(trade.netPnlMinor)} />
+              )}
+              <DetailRow
+                label={t('field.actualR')}
+                value={formatR(trade.actualR) ?? t('common.notAvailable')}
+              />
+              <DetailRow
+                label={t('field.traderOutcome')}
+                value={<TradeOutcomeBadge outcome={trade.traderOutcome} />}
+              />
+              <DetailRow label={t('field.enteredAt')} value={instant(trade.enteredAt)} />
+              {trade.exitedAt === null ? null : (
+                <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
+              )}
+            </dl>
+            <div className="grid gap-3">
+              {trade.exits.map((exit) => (
+                <article
+                  key={exit.exitId}
+                  className="border-border grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
+                >
+                  <div className="grid gap-1 text-sm">
+                    <h4 className="font-semibold">
+                      {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
+                    </h4>
+                    <p>
+                      {t('field.closedPercent')}:{' '}
+                      {(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%
+                    </p>
+                    {exit.exitPrice === null ? null : (
+                      <p>
+                        {t('field.exit')}: {exit.exitPrice}
+                      </p>
+                    )}
+                    {exit.realizedPnlMinor === null ? null : (
+                      <p>
+                        {t('field.realizedPnl')}: {money(exit.realizedPnlMinor)}
+                      </p>
+                    )}
+                    <p>
+                      {t('field.exitedAt')}: {instant(exit.exitedAt)}
+                    </p>
+                    {exit.exitReason === null ? null : (
+                      <p>
+                        {t('field.exitReason')}: {exit.exitReason}
+                      </p>
+                    )}
+                  </div>
+                  {canWrite ? (
+                    <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} />
+                  ) : null}
+                </article>
+              ))}
+            </div>
+            <dl className="divide-border divide-y">
+              <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
+              <DetailRow
+                label={t('field.remainingPercent')}
+                value={`${trade.remainingBps / 100}%`}
+              />
+              <DetailRow
+                label={trade.status === 'closed' ? t('field.actualR') : t('field.realizedRToDate')}
+                value={
+                  formatR(trade.status === 'closed' ? trade.actualR : trade.realizedRToDate) ?? '—'
+                }
+              />
+            </dl>
+          </div>
         )}
       </Section>
 

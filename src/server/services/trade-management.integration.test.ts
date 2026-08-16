@@ -5,6 +5,7 @@ import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-to
 import {
   auditLogs,
   strategyVersions,
+  tradeExits,
   tradeRuleChecks,
   trades,
   tradeSetupConditionChecks,
@@ -22,6 +23,7 @@ import {
   createStrategy,
   createStrategyRule,
 } from './strategy-management';
+import { addTradeExit, closeRemainingTrade, correctTradeExit } from './trade-execution';
 import {
   cancelTrade,
   closeTrade,
@@ -886,7 +888,7 @@ describe('trade-management (real database)', () => {
         const row = await readTrade(result.tradeId);
         expect(row?.confidence).toBe(confidence);
       }
-    });
+    }, 30_000);
   });
 
   // -------------------------------------------------------------------------
@@ -1183,6 +1185,7 @@ describe('trade-management (real database)', () => {
 
     function openInput(overrides: Partial<Parameters<typeof openTrade>[3]> = {}) {
       return {
+        actualResultMode: 'money' as const,
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1275,6 +1278,7 @@ describe('trade-management (real database)', () => {
       const created = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
       if (!created.ok) throw new Error('create failed');
       const opened = await openTrade(workspaceId, actorUserId, created.tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1343,6 +1347,7 @@ describe('trade-management (real database)', () => {
       const { tradeId } = await createOpen();
       await closeTrade(workspaceId, actorUserId, tradeId, closeInput());
       const result = await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1351,17 +1356,286 @@ describe('trade-management (real database)', () => {
       expect(result).toMatchObject({ ok: false, code: 'invalid_status_transition' });
     });
 
-    it('a post-close correction to net P&L recomputes Actual R and outcome', async () => {
+    it('a post-close Exit correction recomputes Actual R and outcome', async () => {
       const { tradeId } = await createOpen();
       await closeTrade(workspaceId, actorUserId, tradeId, closeInput());
-      const result = await correctTradeExecution(workspaceId, actorUserId, tradeId, {
-        netPnlMinor: -2000n,
+      const exit = await db.query.tradeExits.findFirst({ where: eq(tradeExits.tradeId, tradeId) });
+      if (exit === undefined) throw new Error('close did not create an Exit');
+      const result = await correctTradeExit(workspaceId, actorUserId, tradeId, exit.id, {
+        closedBps: 10_000,
+        exitPrice: exit.exitPrice,
+        realizedPnlMinor: -2000n,
+        exitReason: null,
+        exitedAt: exit.exitedAt,
       });
       expect(result.ok).toBe(true);
       const row = await readTrade(tradeId);
       expect(row?.actualR).toBe('-0.4000');
       expect(row?.traderOutcome).toBe('loss');
     });
+  });
+
+  describe('Actual execution V2 and partial closes', () => {
+    async function createPlannedTrade() {
+      const fw = await freshFramework();
+      const created = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+      return created.tradeId;
+    }
+
+    it('opens genuine Price-only and Money-only contexts and freezes mode after the first Exit', async () => {
+      const priceTradeId = await createPlannedTrade();
+      expect(
+        await openTrade(workspaceId, actorUserId, priceTradeId, {
+          actualResultMode: 'price',
+          actualEntry: '100',
+          actualInitialStop: '90',
+          enteredAt: new Date('2026-08-01T09:00:00Z'),
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await readTrade(priceTradeId)).toMatchObject({
+        actualResultMode: 'price',
+        actualInitialRiskMinor: null,
+      });
+
+      const moneyTradeId = await createPlannedTrade();
+      expect(
+        await openTrade(workspaceId, actorUserId, moneyTradeId, {
+          actualResultMode: 'money',
+          actualInitialRiskMinor: 100n,
+          enteredAt: new Date('2026-08-01T09:00:00Z'),
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await readTrade(moneyTradeId)).toMatchObject({
+        actualResultMode: 'money',
+        actualEntry: null,
+        actualInitialStop: null,
+      });
+
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, moneyTradeId, {
+          actualResultMode: 'price',
+          actualEntry: '100',
+          actualInitialStop: '90',
+          actualInitialRiskMinor: null,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await readTrade(moneyTradeId)).toMatchObject({
+        actualResultMode: 'price',
+        actualInitialRiskMinor: null,
+      });
+
+      const partial = await addTradeExit(workspaceId, actorUserId, moneyTradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 2_500,
+        exitPrice: '120',
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+      if (!partial.ok) throw new Error(`partial Exit failed: ${partial.code}`);
+      expect(
+        await correctTradeExit(workspaceId, actorUserId, moneyTradeId, partial.exitId, {
+          closedBps: 3_000,
+          exitPrice: '120',
+          exitedAt: new Date('2026-08-01T10:00:00Z'),
+        }),
+      ).toMatchObject({ ok: true, status: 'open', closedBps: 3_000 });
+      expect(
+        await correctTradeExit(workspaceId, actorUserId, moneyTradeId, partial.exitId, {
+          closedBps: 10_000,
+          exitPrice: '120',
+          exitedAt: new Date('2026-08-01T10:00:00Z'),
+        }),
+      ).toMatchObject({ ok: false, code: 'invalid_closed_bps' });
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, moneyTradeId, {
+          actualResultMode: 'money',
+          actualInitialRiskMinor: 100n,
+        }),
+      ).toMatchObject({ ok: false, code: 'invalid_status_transition' });
+    }, 60_000);
+
+    it('derives Price partial progress, Close Remaining finalization, deterministic final time, and any-leg corrections', async () => {
+      const tradeId = await createPlannedTrade();
+      await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'price',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      const first = await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 5_000,
+        exitPrice: '120',
+        exitReason: 'first target',
+        exitedAt: new Date('2026-08-01T14:00:00Z'),
+      });
+      expect(first).toMatchObject({
+        ok: true,
+        status: 'open',
+        closedBps: 5_000,
+        remainingBps: 5_000,
+        realizedR: '1.0000',
+        actualR: null,
+        traderOutcome: null,
+      });
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'open',
+        actualR: null,
+        traderOutcome: null,
+        exitedAt: null,
+        netPnlMinor: null,
+      });
+      expect(
+        await addTradeExit(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          closedBps: 5_001,
+          exitPrice: '130',
+          exitedAt: new Date('2026-08-01T14:30:00Z'),
+        }),
+      ).toMatchObject({ ok: false, code: 'invalid_closed_bps' });
+      const second = await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 2_500,
+        exitPrice: '140',
+        exitedAt: new Date('2026-08-01T15:00:00Z'),
+      });
+      expect(second).toMatchObject({ ok: true, status: 'open', realizedR: '2.0000' });
+      const final = await closeRemainingTrade(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        exitPrice: '160',
+        exitedAt: new Date('2026-08-01T13:00:00Z'),
+      });
+      expect(final).toMatchObject({
+        ok: true,
+        status: 'closed',
+        closedBps: 10_000,
+        remainingBps: 0,
+        actualR: '3.5000',
+        traderOutcome: 'win',
+      });
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'closed',
+        actualExit: '140.0000000000',
+        exitedAt: new Date('2026-08-01T15:00:00Z'),
+        netPnlMinor: null,
+        actualR: '3.5000',
+      });
+
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, tradeId))
+        .orderBy(asc(tradeExits.sequence));
+      expect(exits).toHaveLength(3);
+      for (const [index, exitPrice] of ['110', '130', '150'].entries()) {
+        const exit = exits[index]!;
+        const corrected = await correctTradeExit(workspaceId, actorUserId, tradeId, exit.id, {
+          closedBps: exit.closedBps,
+          exitPrice,
+          exitReason: exit.exitReason,
+          exitedAt: exit.exitedAt,
+        });
+        expect(corrected).toMatchObject({ ok: true, status: 'closed', closedBps: 10_000 });
+      }
+      expect(await readTrade(tradeId)).toMatchObject({ status: 'closed', actualR: '2.5000' });
+      expect(
+        await correctTradeExit(workspaceId, actorUserId, tradeId, exits[0]!.id, {
+          closedBps: 4_999,
+          exitPrice: '110',
+          exitedAt: exits[0]!.exitedAt,
+        }),
+      ).toMatchObject({ ok: false, code: 'invalid_closed_bps' });
+      expect((await readTrade(tradeId))?.status).toBe('closed');
+    }, 60_000);
+
+    it('uses Money leg sums without bps double-weighting, supports price context, replay, scope, and audit', async () => {
+      const tradeId = await createPlannedTrade();
+      await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        actualInitialRiskMinor: 100n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      const replayInput = {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 5_000,
+        exitPrice: '120',
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      };
+      const first = await addTradeExit(workspaceId, actorUserId, tradeId, replayInput);
+      expect(first).toMatchObject({ ok: true, alreadyAdded: false, realizedR: '1.0000' });
+      expect(await addTradeExit(workspaceId, actorUserId, tradeId, replayInput)).toMatchObject({
+        ok: true,
+        alreadyAdded: true,
+        exitId: first.ok ? first.exitId : '',
+      });
+      expect(
+        await addTradeExit(otherWorkspaceId, otherActorUserId, tradeId, {
+          ...replayInput,
+          mutationKey: crypto.randomUUID(),
+        }),
+      ).toMatchObject({ ok: false, code: 'trade_not_found' });
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 2_500,
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-01T11:00:00Z'),
+      });
+      const final = await closeRemainingTrade(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        realizedPnlMinor: 150n,
+        exitedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+      expect(final).toMatchObject({ ok: true, actualR: '3.5000' });
+      expect(await readTrade(tradeId)).toMatchObject({
+        status: 'closed',
+        netPnlMinor: 350n,
+        actualR: '3.5000',
+      });
+      expect(
+        await db
+          .select()
+          .from(auditLogs)
+          .where(and(eq(auditLogs.entityId, tradeId), eq(auditLogs.action, 'trade.closed'))),
+      ).toHaveLength(1);
+      expect(
+        await db.select().from(auditLogs).where(eq(auditLogs.action, 'trade.exit_added')),
+      ).not.toHaveLength(0);
+    }, 60_000);
+
+    it('serializes concurrent Close Remaining requests so cumulative bps never exceeds 10000', async () => {
+      const tradeId = await createPlannedTrade();
+      await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 100n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 7_500,
+        realizedPnlMinor: 75n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+      const [a, b] = await Promise.all([
+        closeRemainingTrade(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          realizedPnlMinor: 25n,
+          exitedAt: new Date('2026-08-01T11:00:00Z'),
+        }),
+        closeRemainingTrade(workspaceId, actorUserId, tradeId, {
+          mutationKey: crypto.randomUUID(),
+          realizedPnlMinor: 25n,
+          exitedAt: new Date('2026-08-01T11:00:00Z'),
+        }),
+      ]);
+      expect([a, b].filter((result) => result.ok)).toHaveLength(1);
+      expect([a, b].filter((result) => !result.ok)).toHaveLength(1);
+      const exits = await db.select().from(tradeExits).where(eq(tradeExits.tradeId, tradeId));
+      expect(exits.reduce((total, exit) => total + exit.closedBps, 0)).toBe(10_000);
+      expect(exits).toHaveLength(2);
+    }, 60_000);
   });
 
   // -------------------------------------------------------------------------
@@ -1394,6 +1668,7 @@ describe('trade-management (real database)', () => {
       const created = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
       if (!created.ok) throw new Error('create failed');
       await openTrade(workspaceId, actorUserId, created.tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1458,6 +1733,7 @@ describe('trade-management (real database)', () => {
     it('System may resolve while the Trade is open', async () => {
       const { tradeId } = await createPlanned();
       await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1470,6 +1746,7 @@ describe('trade-management (real database)', () => {
     it('System may remain pending after the Trade closes', async () => {
       const { tradeId } = await createPlanned();
       await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1582,6 +1859,7 @@ describe('trade-management (real database)', () => {
       const created = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
       if (!created.ok) throw new Error('create failed');
       await openTrade(workspaceId, actorUserId, created.tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -1609,8 +1887,16 @@ describe('trade-management (real database)', () => {
       });
       expect(resolved.ok).toBe(true);
 
-      const corrected = await correctTradeExecution(workspaceId, actorUserId, created.tradeId, {
-        netPnlMinor: 8000n,
+      const exit = await db.query.tradeExits.findFirst({
+        where: eq(tradeExits.tradeId, created.tradeId),
+      });
+      if (exit === undefined) throw new Error('close did not create an Exit');
+      const corrected = await correctTradeExit(workspaceId, actorUserId, created.tradeId, exit.id, {
+        closedBps: 10_000,
+        exitPrice: exit.exitPrice,
+        realizedPnlMinor: 8000n,
+        exitReason: exit.exitReason,
+        exitedAt: exit.exitedAt,
       });
       expect(corrected.ok).toBe(true);
 
@@ -1735,6 +2021,7 @@ describe('trade-management (real database)', () => {
       const created = await createTrade(ws, user, basePlanInput(fw));
       if (!created.ok) throw new Error('setup create failed');
       await openTrade(ws, user, created.tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,

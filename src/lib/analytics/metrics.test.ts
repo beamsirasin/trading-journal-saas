@@ -325,7 +325,7 @@ describe('failure mapping and full projections', () => {
       'system_has_no_edge',
       'no_rule_checks',
     ]);
-    expect(CALC_FAILURE_REASONS).toHaveLength(19);
+    expect(CALC_FAILURE_REASONS).toHaveLength(22);
     for (const reason of CALC_FAILURE_REASONS) {
       const mapped = toAnalyticsMetric(calcErr(reason));
       if (expectedUnavailable.has(reason)) {

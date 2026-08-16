@@ -186,6 +186,7 @@ export const trades = pgTable(
     // a mistake, not a re-baselined denominator (CLAUDE.md §6,
     // `docs/data-dictionary.md`).
     // -------------------------------------------------------------------
+    actualResultMode: text('actual_result_mode'),
     actualEntry: numeric('actual_entry', { precision: 20, scale: 10 }),
     actualInitialStop: numeric('actual_initial_stop', { precision: 20, scale: 10 }),
     actualExit: numeric('actual_exit', { precision: 20, scale: 10 }),
@@ -326,6 +327,10 @@ export const trades = pgTable(
     }),
 
     check('trades_direction_check', sql`${table.direction} IN ('long', 'short')`),
+    check(
+      'trades_actual_result_mode_check',
+      sql`${table.actualResultMode} IS NULL OR ${table.actualResultMode} IN ('price', 'money')`,
+    ),
     check('trades_status_check', sql`${table.status} IN ('planned', 'open', 'closed', 'canceled')`),
     check(
       'trades_system_status_check',
@@ -362,6 +367,18 @@ export const trades = pgTable(
     check(
       'trades_exited_after_entered_check',
       sql`${table.exitedAt} IS NULL OR ${table.enteredAt} IS NULL OR ${table.exitedAt} >= ${table.enteredAt}`,
+    ),
+    check(
+      'trades_actual_price_shape_check',
+      sql`(
+        ${table.actualEntry} IS NULL AND ${table.actualInitialStop} IS NULL
+      ) OR (
+        ${table.actualEntry} IS NOT NULL AND ${table.actualInitialStop} IS NOT NULL
+        AND (
+          (${table.direction} = 'long' AND ${table.actualInitialStop} < ${table.actualEntry})
+          OR (${table.direction} = 'short' AND ${table.actualInitialStop} > ${table.actualEntry})
+        )
+      )`,
     ),
 
     // Direction-aware planned-price integrity — prevents zero/negative
@@ -492,6 +509,7 @@ export const trades = pgTable(
       'trades_status_consistency_check',
       sql`(
         ${table.status} = 'planned'
+        AND ${table.actualResultMode} IS NULL
         AND ${table.actualEntry} IS NULL
         AND ${table.actualInitialStop} IS NULL
         AND ${table.actualInitialRiskMinor} IS NULL
@@ -503,26 +521,45 @@ export const trades = pgTable(
         AND ${table.traderOutcome} IS NULL
       ) OR (
         ${table.status} = 'open'
-        AND ${table.actualEntry} IS NOT NULL
-        AND ${table.actualInitialStop} IS NOT NULL
-        AND ${table.actualInitialRiskMinor} IS NOT NULL
+        AND ${table.actualResultMode} IS NOT NULL
         AND ${table.enteredAt} IS NOT NULL
         AND ${table.actualExit} IS NULL
         AND ${table.netPnlMinor} IS NULL
         AND ${table.exitedAt} IS NULL
         AND ${table.actualR} IS NULL
         AND ${table.traderOutcome} IS NULL
+        AND (
+          (
+            ${table.actualResultMode} = 'price'
+            AND ${table.actualEntry} IS NOT NULL
+            AND ${table.actualInitialStop} IS NOT NULL
+            AND ${table.actualInitialRiskMinor} IS NULL
+          ) OR (
+            ${table.actualResultMode} = 'money'
+            AND ${table.actualInitialRiskMinor} IS NOT NULL
+          )
+        )
       ) OR (
         ${table.status} = 'closed'
-        AND ${table.actualEntry} IS NOT NULL
-        AND ${table.actualInitialStop} IS NOT NULL
-        AND ${table.actualInitialRiskMinor} IS NOT NULL
+        AND ${table.actualResultMode} IS NOT NULL
         AND ${table.enteredAt} IS NOT NULL
-        AND ${table.actualExit} IS NOT NULL
-        AND ${table.netPnlMinor} IS NOT NULL
         AND ${table.exitedAt} IS NOT NULL
         AND ${table.actualR} IS NOT NULL
         AND ${table.traderOutcome} IS NOT NULL
+        AND (
+          (
+            ${table.actualResultMode} = 'price'
+            AND ${table.actualEntry} IS NOT NULL
+            AND ${table.actualInitialStop} IS NOT NULL
+            AND ${table.actualInitialRiskMinor} IS NULL
+            AND ${table.netPnlMinor} IS NULL
+            AND ${table.actualExit} IS NOT NULL
+          ) OR (
+            ${table.actualResultMode} = 'money'
+            AND ${table.actualInitialRiskMinor} IS NOT NULL
+            AND ${table.netPnlMinor} IS NOT NULL
+          )
+        )
       ) OR (
         ${table.status} = 'canceled'
       )`,

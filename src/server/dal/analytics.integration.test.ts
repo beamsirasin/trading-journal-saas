@@ -8,6 +8,7 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -256,6 +257,7 @@ async function createTradeRow(
     status === 'planned' || status === 'canceled'
       ? {}
       : {
+          actualResultMode: 'money' as const,
           actualEntry: '100.0000000000',
           actualInitialStop: '99.0000000000',
           actualInitialRiskMinor: 100n,
@@ -289,29 +291,43 @@ async function createTradeRow(
           }
         : {};
 
-  const [row] = await db
-    .insert(trades)
-    .values({
-      workspaceId,
-      tradingAccountId: overrides.accountId ?? accountId,
-      strategyId: fw.strategyId,
-      strategyVersionId: fw.oldVersionId,
-      setupId: fw.setupId,
-      setupVersionId: fw.oldSetupVersionId,
-      symbol: 'EURUSD',
-      direction: 'long',
-      plannedEntry: '100.0000000000',
-      plannedStop: '99.0000000000',
-      plannedTarget: '102.0000000000',
-      plannedR: '2.0000',
-      status,
-      deletedAt: overrides.deleted ? new Date('2026-08-03T00:00:00Z') : null,
-      ...actualFields,
-      ...systemFields,
-    })
-    .returning({ id: trades.id });
-  if (row === undefined) throw new Error('trade failed');
-  return row.id;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(trades)
+      .values({
+        workspaceId,
+        tradingAccountId: overrides.accountId ?? accountId,
+        strategyId: fw.strategyId,
+        strategyVersionId: fw.oldVersionId,
+        setupId: fw.setupId,
+        setupVersionId: fw.oldSetupVersionId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedEntry: '100.0000000000',
+        plannedStop: '99.0000000000',
+        plannedTarget: '102.0000000000',
+        plannedR: '2.0000',
+        status,
+        deletedAt: overrides.deleted ? new Date('2026-08-03T00:00:00Z') : null,
+        ...actualFields,
+        ...systemFields,
+      })
+      .returning({ id: trades.id });
+    if (row === undefined) throw new Error('trade failed');
+    if (status === 'closed') {
+      await tx.insert(tradeExits).values({
+        workspaceId,
+        tradeId: row.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 10_000,
+        exitPrice: '101.0000000000',
+        realizedPnlMinor: 100n,
+        exitedAt,
+      });
+    }
+    return row.id;
+  });
 }
 
 interface Fixture {

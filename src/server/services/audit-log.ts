@@ -60,6 +60,9 @@ export interface AuditLogMetadata {
    * never says which axis without the surrounding `action` making it obvious.
    */
   readonly tradeId?: string;
+  readonly exitId?: string;
+  readonly sequence?: number;
+  readonly closedBps?: number;
   readonly tradingAccountId?: string;
   readonly mistakeTypeId?: string;
   readonly previousStatus?: string;

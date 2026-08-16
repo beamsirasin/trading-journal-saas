@@ -24,6 +24,7 @@ import {
   strategySetupVersions,
   strategyVersions,
   tradeEmotions,
+  tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -539,7 +540,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       workspaceId: seeded.workspace.id,
       source,
     });
-    expect(envelope.schemaVersion).toBe(3);
+    expect(envelope.schemaVersion).toBe(4);
     expect(envelope.data.emotion_types.find((row) => row.id === calm.id)).toMatchObject({
       key: 'calm',
       isSystem: true,
@@ -551,6 +552,63 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       reviewNotes: 'A post-trade lesson, distinct from Entry Reason.',
       emotionsRecordedAt: '2026-08-05T01:00:00.000Z',
     });
+  });
+
+  it('exports Actual result mode and raw Exit legs without internal replay keys or derived per-leg R', async () => {
+    const db = getTestDb();
+    const seeded = await seedHistoricalWorkspace(db);
+    await db.transaction(async (tx) => {
+      await tx
+        .update(trades)
+        .set({
+          status: 'open',
+          actualResultMode: 'money',
+          actualInitialRiskMinor: 10_000n,
+          enteredAt: new Date('2026-08-02T00:00:00Z'),
+        })
+        .where(eq(trades.id, seeded.trade.id));
+      await tx.insert(tradeExits).values({
+        workspaceId: seeded.workspace.id,
+        tradeId: seeded.trade.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 10_000,
+        realizedPnlMinor: 15_000n,
+        exitReason: 'Exported final leg',
+        exitedAt: new Date('2026-08-02T01:00:00Z'),
+      });
+      await tx
+        .update(trades)
+        .set({
+          status: 'closed',
+          netPnlMinor: 15_000n,
+          actualR: '1.5000',
+          traderOutcome: 'win',
+          exitedAt: new Date('2026-08-02T01:00:00Z'),
+        })
+        .where(eq(trades.id, seeded.trade.id));
+    });
+
+    const source = await readWorkspaceExportSource(seeded.workspace.id, seeded.owner.id);
+    const envelope = createWorkspaceExportEnvelope({
+      exportedAt: NOW,
+      productVersion: '0.1.0',
+      workspaceId: seeded.workspace.id,
+      source,
+    });
+    expect(envelope.data.trades[0]?.actualResultMode).toBe('money');
+    expect(envelope.data.trade_exits).toEqual([
+      expect.objectContaining({
+        tradeId: seeded.trade.id,
+        sequence: 1,
+        closedBps: 10_000,
+        realizedPnlMinor: '15000',
+        exitReason: 'Exported final leg',
+      }),
+    ]);
+    expect(Object.keys(envelope.data.trade_exits[0] ?? {})).not.toEqual(
+      expect.arrayContaining(['mutationKey', 'legR']),
+    );
   });
 
   it('excludes exact auth, provider, billing-internal and audit sentinels from JSON and ZIP', async () => {
@@ -702,7 +760,7 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     const clock = createFixedClock(NOW);
     const json = await prepareCurrentWorkspaceExport('json', { clock });
     const csv = await prepareCurrentWorkspaceExport('csv', { clock });
-    expect(JSON.parse(json.body as string).schemaVersion).toBe(3);
+    expect(JSON.parse(json.body as string).schemaVersion).toBe(4);
     expect(csv.body).toBeInstanceOf(Uint8Array);
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
@@ -716,11 +774,11 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(events).toEqual([
       {
         action: 'data.exported',
-        metadata: { format: 'json', scope: 'workspace', schemaVersion: 3 },
+        metadata: { format: 'json', scope: 'workspace', schemaVersion: 4 },
       },
       {
         action: 'data.exported',
-        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 3 },
+        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 4 },
       },
     ]);
     expect(JSON.stringify(events)).not.toMatch(/พื้นที่ทำงาน|ทองคำ|@example/);

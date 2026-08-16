@@ -11,6 +11,7 @@ import { parseInstant } from '@/lib/time/parse';
 import { hasNoControlOrHtmlCharacters } from '../trading-accounts/validation';
 import {
   CONFIRMATION_NOTES_MAX_LENGTH,
+  EXIT_REASON_MAX_LENGTH,
   isConfidenceStep,
   MISTAKE_NOTE_MAX_LENGTH,
   NOTES_MAX_LENGTH,
@@ -430,14 +431,28 @@ export type CorrectTradeIdentityActionData = z.output<typeof CorrectTradeIdentit
 export const OpenTradeSchema = z
   .object({
     tradeId: uuidField(),
-    actualEntry: decimalField(),
-    actualInitialStop: decimalField(),
+    actualResultMode: z.enum(['price', 'money']),
+    actualEntry: decimalField().nullable().optional(),
+    actualInitialStop: decimalField().nullable().optional(),
     /** Authoritative, never price-derived (CLAUDE.md §6) — a positive account-currency minor-unit integer string. */
-    actualInitialRiskMinor: positiveMinorField(),
+    actualInitialRiskMinor: positiveMinorField().nullable().optional(),
     actualPositionSize: decimalField().nullable().optional(),
     enteredAt: instantField(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, context) => {
+    const hasPrice = data.actualEntry != null && data.actualInitialStop != null;
+    const hasPartialPrice = (data.actualEntry == null) !== (data.actualInitialStop == null);
+    if (hasPartialPrice || (data.actualResultMode === 'price' && !hasPrice)) {
+      context.addIssue({ code: 'custom', message: 'incomplete_actual_price_context' });
+    }
+    if (data.actualResultMode === 'price' && data.actualInitialRiskMinor != null) {
+      context.addIssue({ code: 'custom', message: 'price_mode_forbids_money_risk' });
+    }
+    if (data.actualResultMode === 'money' && data.actualInitialRiskMinor == null) {
+      context.addIssue({ code: 'custom', message: 'money_mode_requires_risk' });
+    }
+  });
 export type OpenTradeActionInput = z.input<typeof OpenTradeSchema>;
 export type OpenTradeActionData = z.output<typeof OpenTradeSchema>;
 
@@ -461,6 +476,58 @@ export const CloseTradeSchema = z
 export type CloseTradeActionInput = z.input<typeof CloseTradeSchema>;
 export type CloseTradeActionData = z.output<typeof CloseTradeSchema>;
 
+const sharedExitPayload = {
+  tradeId: uuidField(),
+  actualResultMode: z.enum(['price', 'money']),
+  exitPrice: decimalField().nullable().optional(),
+  realizedPnlMinor: signedMinorField().nullable().optional(),
+  exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
+  exitedAt: instantField(),
+};
+
+function validateModeSpecificExit(
+  data: {
+    actualResultMode: 'price' | 'money';
+    exitPrice?: string | null | undefined;
+    realizedPnlMinor?: bigint | null | undefined;
+  },
+  context: z.RefinementCtx,
+) {
+  if (
+    data.actualResultMode === 'price' &&
+    (data.exitPrice == null || data.realizedPnlMinor != null)
+  ) {
+    context.addIssue({ code: 'custom', message: 'invalid_price_exit' });
+  }
+  if (data.actualResultMode === 'money' && data.realizedPnlMinor == null) {
+    context.addIssue({ code: 'custom', message: 'invalid_money_exit' });
+  }
+}
+
+const addExitPayload = {
+  ...sharedExitPayload,
+  mutationKey: uuidField(),
+  closedBps: z.number().int().min(1).max(10_000),
+};
+
+export const AddTradeExitSchema = z
+  .object(addExitPayload)
+  .strict()
+  .superRefine(validateModeSpecificExit);
+
+export const CloseRemainingTradeSchema = z
+  .object({ ...sharedExitPayload, mutationKey: uuidField() })
+  .strict()
+  .superRefine(validateModeSpecificExit);
+export const CorrectTradeExitSchema = z
+  .object({
+    ...sharedExitPayload,
+    exitId: uuidField(),
+    closedBps: z.number().int().min(1).max(10_000),
+  })
+  .strict()
+  .superRefine(validateModeSpecificExit);
+
 // ---------------------------------------------------------------------------
 // 6. cancelTrade
 // ---------------------------------------------------------------------------
@@ -476,14 +543,12 @@ export type CancelTradeActionData = z.output<typeof CancelTradeSchema>;
 export const CorrectTradeExecutionSchema = z
   .object({
     tradeId: uuidField(),
-    actualEntry: decimalField().optional(),
-    actualInitialStop: decimalField().optional(),
-    actualInitialRiskMinor: positiveMinorField().optional(),
+    actualResultMode: z.enum(['price', 'money']).optional(),
+    actualEntry: decimalField().nullable().optional(),
+    actualInitialStop: decimalField().nullable().optional(),
+    actualInitialRiskMinor: positiveMinorField().nullable().optional(),
     actualPositionSize: patchableDecimalField(),
     enteredAt: instantField().optional(),
-    actualExit: decimalField().optional(),
-    netPnlMinor: signedMinorField().optional(),
-    exitedAt: instantField().optional(),
     grossPnlMinor: patchableSignedMinorField(),
     commissionMinor: unsignedMinorField().optional(),
     feesMinor: unsignedMinorField().optional(),

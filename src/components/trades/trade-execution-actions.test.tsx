@@ -23,6 +23,7 @@ const base = {
   plannedEntry: '100',
   plannedStop: '90',
   plannedPositionSize: '2',
+  actualResultMode: 'money',
   actualEntry: '101',
   actualInitialStop: '91',
   actualPositionSize: '2',
@@ -35,7 +36,11 @@ const base = {
   swapMinor: '0',
   enteredAt: '2026-08-08T01:00:00.000Z',
   exitedAt: null,
-} as TradeDetail;
+  exits: [],
+  closedBps: 0,
+  remainingBps: 10_000,
+  realizedRToDate: null,
+} as unknown as TradeDetail;
 
 function renderWithMessages(node: React.ReactNode) {
   return render(
@@ -64,12 +69,14 @@ describe('Trade execution lifecycle dialogs', () => {
       <OpenTradeDialog trade={{ ...base, status: 'planned' }} timezone="Asia/Bangkok" />,
     );
     await user.click(screen.getByRole('button', { name: 'Open Trade' }));
+    await user.selectOptions(screen.getByLabelText('Actual result mode'), 'money');
     await user.type(screen.getByLabelText('Initial risk'), '500');
     await user.click(screen.getByRole('button', { name: 'Open Trade' }));
 
     await waitFor(() => expect(openTradeAction).toHaveBeenCalledOnce());
     expect(openTradeAction).toHaveBeenCalledWith({
       tradeId: base.tradeId,
+      actualResultMode: 'money',
       actualEntry: '100',
       actualInitialStop: '90',
       actualInitialRiskMinor: '500',
@@ -112,6 +119,7 @@ describe('Trade execution lifecycle dialogs', () => {
       <OpenTradeDialog trade={{ ...base, status: 'planned' }} timezone="Asia/Bangkok" />,
     );
     await user.click(screen.getByRole('button', { name: 'Open Trade' }));
+    await user.selectOptions(screen.getByLabelText('Actual result mode'), 'money');
     await user.type(screen.getByLabelText('Initial risk'), '500.5');
     await user.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/supported precision/);

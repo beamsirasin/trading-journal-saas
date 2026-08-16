@@ -7,6 +7,7 @@ import { type OutcomeValue } from '@/lib/trades/constants';
 
 import {
   bigintToCalcDecimal,
+  CalcDecimal,
   parseCalcDecimal,
   toCanonicalR,
   type CalcDecimalValue,
@@ -134,6 +135,103 @@ export function actualR(
   const net = bigintToCalcDecimal(netPnlMinor);
   const risk = bigintToCalcDecimal(actualInitialRiskMinor);
   return calcOk(toCanonicalR(net.dividedBy(risk)));
+}
+
+export interface ActualExitLegInput {
+  readonly closedBps: number;
+  readonly exitPrice?: string | null;
+  readonly realizedPnlMinor?: bigint | null;
+}
+
+export interface RealizedActualSnapshot {
+  readonly closedBps: number;
+  readonly realizedR: string;
+  readonly realizedPnlMinor: bigint | null;
+}
+
+/** Derives partial or final Actual execution from authoritative Exit legs. */
+export function composeRealizedActual(params: {
+  readonly actualResultMode: string | null | undefined;
+  readonly direction: string | null | undefined;
+  readonly actualEntry?: string | null;
+  readonly actualInitialStop?: string | null;
+  readonly actualInitialRiskMinor?: bigint | null;
+  readonly exits: readonly ActualExitLegInput[];
+}): CalcResult<RealizedActualSnapshot> {
+  if (params.actualResultMode !== 'price' && params.actualResultMode !== 'money') {
+    return calcErr('invalid_actual_mode');
+  }
+
+  let closedBps = 0;
+  for (const exit of params.exits) {
+    if (!Number.isSafeInteger(exit.closedBps) || exit.closedBps <= 0 || exit.closedBps > 10_000) {
+      return calcErr('invalid_closed_bps');
+    }
+    closedBps += exit.closedBps;
+    if (closedBps > 10_000) return calcErr('invalid_closed_bps');
+  }
+
+  if (params.actualResultMode === 'money') {
+    if (
+      params.actualInitialRiskMinor === null ||
+      params.actualInitialRiskMinor === undefined ||
+      params.actualInitialRiskMinor <= 0n
+    ) {
+      return calcErr('invalid_initial_risk');
+    }
+    let realizedPnlMinor = 0n;
+    for (const exit of params.exits) {
+      if (exit.realizedPnlMinor === null || exit.realizedPnlMinor === undefined) {
+        return calcErr('invalid_exit_shape');
+      }
+      realizedPnlMinor += exit.realizedPnlMinor;
+    }
+    const r = actualR(realizedPnlMinor, params.actualInitialRiskMinor);
+    if (!r.ok) return r;
+    return calcOk({ closedBps, realizedR: r.value, realizedPnlMinor });
+  }
+
+  const context = resolvePlannedRiskContext(
+    params.direction,
+    params.actualEntry,
+    params.actualInitialStop,
+  );
+  if (!context.ok) return context;
+  const { direction, entry, riskPerUnit } = context.value;
+  let weighted = new CalcDecimal(0);
+  for (const exit of params.exits) {
+    if (
+      exit.exitPrice === null ||
+      exit.exitPrice === undefined ||
+      (exit.realizedPnlMinor !== null && exit.realizedPnlMinor !== undefined)
+    ) {
+      return calcErr('invalid_exit_shape');
+    }
+    const exitPrice = parseCalcDecimal(exit.exitPrice);
+    if (exitPrice === null) return calcErr('invalid_decimal');
+    const legR =
+      direction === 'long'
+        ? exitPrice.minus(entry).dividedBy(riskPerUnit)
+        : entry.minus(exitPrice).dividedBy(riskPerUnit);
+    weighted = weighted.plus(legR.times(new CalcDecimal(exit.closedBps).dividedBy(10_000)));
+  }
+  return calcOk({ closedBps, realizedR: toCanonicalR(weighted), realizedPnlMinor: null });
+}
+
+/** Finalizes only an exactly 100%-closed Exit set. */
+export function composeTraderCloseV2(
+  params: Parameters<typeof composeRealizedActual>[0],
+): CalcResult<TraderCloseSnapshot> {
+  const realized = composeRealizedActual(params);
+  if (!realized.ok) return realized;
+  if (realized.value.closedBps !== 10_000) return calcErr('invalid_closed_bps');
+  const outcome = classifyOutcome(realized.value.realizedR);
+  if (!outcome.ok) return outcome;
+  return calcOk({
+    actualR: realized.value.realizedR,
+    traderOutcome: outcome.value,
+    calcVersion: CALC_VERSION,
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -27,6 +27,15 @@ export function isTradeStatus(value: unknown): value is TradeStatus {
   return typeof value === 'string' && (TRADE_STATUSES as readonly string[]).includes(value);
 }
 
+export const ACTUAL_RESULT_MODES = ['price', 'money'] as const;
+export type ActualResultMode = (typeof ACTUAL_RESULT_MODES)[number];
+export function isActualResultMode(value: unknown): value is ActualResultMode {
+  return typeof value === 'string' && (ACTUAL_RESULT_MODES as readonly string[]).includes(value);
+}
+
+export const CLOSED_BPS_TOTAL = 10_000;
+export const EXIT_REASON_MAX_LENGTH = 500;
+
 /**
  * The System axis's own lifecycle, independent of `TRADE_STATUSES`. `pending`
  * (no System R/outcome yet) is distinct from `no_trade` (the approved

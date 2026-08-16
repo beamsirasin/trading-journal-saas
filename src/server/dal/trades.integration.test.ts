@@ -765,6 +765,7 @@ describe('trades DAL (real database)', () => {
       const created = await createTrade(workspaceId, userId, basePlanInput(fw));
       if (!created.ok) throw new Error('create failed');
       await openTrade(workspaceId, userId, created.tradeId, {
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,

@@ -69,6 +69,8 @@ export const AUDIT_ACTIONS = [
   'trade.plan_updated',
   'trade.opened',
   'trade.closed',
+  'trade.exit_added',
+  'trade.exit_corrected',
   'trade.canceled',
   'trade.corrected',
   'trade.system_resolved',

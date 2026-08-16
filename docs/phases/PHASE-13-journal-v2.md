@@ -174,7 +174,7 @@ Add a Trade-level `actual_result_mode = 'price' | 'money'` in migration slice 13
 
 Use a positive `sequence` with a unique `(trade_id, sequence)` constraint. Keep the same-workspace parent integrity used by existing child tables. Every row must carry at least one result representation: `exit_price` or `realized_pnl_minor`; the Trade's persisted mode decides which one is required. No stored per-leg R column is justified — the Price-mode weighted sum or Money-mode aggregate is derived with Decimal under §3.
 
-**Invariant enforcement:** `SUM(closed_bps)` per trade `≤ 10000`, enforced at the **service layer** under the same row-lock idiom already proven twice in this codebase (`lockTradeRow`, `trade-management.ts:219-234`; `lockAndResolveEntitlement`) — not a novel aggregate DB trigger. Remaining position = `10000 − SUM(closed_bps)`.
+**Invariant enforcement (implemented in 13E):** `SUM(closed_bps)` per Trade is `≤ 10000`. Every service mutation serializes through the parent Trade row and validates the complete Exit set. PostgreSQL additionally locks the parent in a row guard, rejects a cumulative over-close, validates mode/scope/immutable identity, and uses deferred constraint triggers to require `<10000` for Open and exactly `10000` for Closed. Remaining position = `10000 − SUM(closed_bps)`.
 
 **Trade status:** a partially-exited Trade **remains `status = 'open'`** — no new persisted enum value (see §14 for the full state machine). Display surfaces realized R to date, closed %, remaining %, computed live from `trade_exits`.
 
@@ -182,20 +182,20 @@ Use a positive `sequence` with a unique `(trade_id, sequence)` constraint. Keep 
 
 ### Trade-level aggregate-field semantics after V2
 
-| Existing field              | Journal V2 semantics                                                                                                                                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `actual_entry`              | authoritative Price input in Price mode; optional truthful execution context in Money mode. When present, it must be paired with `actual_initial_stop`.                                                                                    |
-| `actual_initial_stop`       | authoritative Price denominator input in Price mode; optional truthful execution context in Money mode. It remains the stop **as first placed**, never a moved-stop value.                                                                 |
-| `actual_initial_risk_minor` | authoritative input in Money mode and strictly positive; null/not required in Price mode. Never price-derived.                                                                                                                             |
-| `actual_exit`               | compatibility/final-close cache, not an R input: on a newly finalized Trade it mirrors the Exit leg that brings cumulative `closed_bps` to 10000 when that leg has `exit_price`; otherwise null. Historical values are preserved verbatim. |
-| `net_pnl_minor`             | derived final cache of `SUM(trade_exits.realized_pnl_minor)` in Money mode; null in Price mode. Never synthesized from price geometry.                                                                                                     |
-| `actual_r`                  | mode-derived, persisted final snapshot rounded to four decimals; never client-supplied. Null until full close.                                                                                                                             |
-| `trader_outcome`            | derived final snapshot classified from `actual_r` with the existing break-even tolerance; null until full close.                                                                                                                           |
-| `exited_at`                 | final-close lifecycle snapshot: the timestamp of the Exit that brings cumulative `closed_bps` to 10000; null while partially open. Historical values are preserved verbatim.                                                               |
+| Existing field              | Journal V2 semantics                                                                                                                                                                                                                                           |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `actual_entry`              | authoritative Price input in Price mode; optional truthful execution context in Money mode. When present, it must be paired with `actual_initial_stop`.                                                                                                        |
+| `actual_initial_stop`       | authoritative Price denominator input in Price mode; optional truthful execution context in Money mode. It remains the stop **as first placed**, never a moved-stop value.                                                                                     |
+| `actual_initial_risk_minor` | authoritative input in Money mode and strictly positive; null/not required in Price mode. Never price-derived.                                                                                                                                                 |
+| `actual_exit`               | compatibility/final-close cache, not an R input: on a newly finalized Trade it mirrors the chronologically final Exit (`MAX(exited_at)`, then sequence/id tie-break) when that leg has `exit_price`; otherwise null. Historical values are preserved verbatim. |
+| `net_pnl_minor`             | derived final cache of `SUM(trade_exits.realized_pnl_minor)` in Money mode; null in Price mode. Never synthesized from price geometry.                                                                                                                         |
+| `actual_r`                  | mode-derived, persisted final snapshot rounded to four decimals; never client-supplied. Null until full close.                                                                                                                                                 |
+| `trader_outcome`            | derived final snapshot classified from `actual_r` with the existing break-even tolerance; null until full close.                                                                                                                                               |
+| `exited_at`                 | final-close lifecycle snapshot: `MAX(trade_exits.exited_at)`; null while partially open. Historical values are preserved verbatim.                                                                                                                             |
 
 Partial-progress R, closed percentage, remaining percentage, and (for Money mode) realized P&L to date are derived from `trade_exits` on read while the Trade remains open; the terminal trade-level caches are not populated early.
 
-### Conceptual status and DB invariants (SQL deferred to 13E)
+### Status and DB invariants (implemented by migration 0013)
 
 The current `trades_status_consistency_check` cannot survive unchanged because its `open` and `closed` branches require Price and Money execution simultaneously. Journal V2 needs this conceptual shape:
 
@@ -206,7 +206,7 @@ The current `trades_status_consistency_check` cannot survive unchanged because i
   - **Money shape:** mode is `money`; `actual_initial_risk_minor > 0`; every Exit has `realized_pnl_minor`; `net_pnl_minor` equals their exact sum; Price context is optional, but `actual_entry`/`actual_initial_stop` must be both absent or a complete direction-valid pair. `actual_exit` is nullable when the final closing leg has no price.
 - **Canceled:** keep the existing compatibility posture; the service still permits only `planned → canceled`, and the DB branch is not tightened in this freeze.
 
-The mode enum, row-local nullability/pairing, positivity, and direction checks belong in DB CHECKs. Cross-row facts (`SUM(closed_bps)`, mode-consistent Exit completeness, cache equality, and uniqueness/order) must be validated under the Trade row lock in the same transaction; 13E must decide the exact DB backstop without weakening the service invariant. No SQL is authored in 13A.
+Migration 0013 implements the mode enum and row-local nullability/pairing, positivity, and direction CHECKs. Exit uniqueness, scope, mode shape, immutable identity, cumulative bps, mode immutability after the first Exit, and status/Exit-total consistency are database-backed; services still recompute all read/final aggregates under the parent lock.
 
 ---
 
@@ -478,6 +478,7 @@ No dependency-driven reordering is recommended beyond this — 13B before 13C be
 - Workspace export schema version 2 includes both Setup Condition datasets. No adherence aggregate or analytics surface was added.
 - Phase 13C captures complete Setup Condition answers from the single-page Entry surface and preserves the stale-set guard and unmet-answer confirmation.
 - Phase 13D adds the ten canonical bilingual Emotion choices, `emotion_types`, `trade_emotions`, nullable `trades.review_notes`, and nullable `trades.emotions_recorded_at`. The marker distinguishes historical “not recorded” from a recorded zero selection. Create and correction accept keys only, resolve active system rows authoritatively, write atomically, and remain entitlement/audit guarded. Workspace export schema version 3 includes both Emotion datasets and both new Trade fields.
+- Phase 13E adds explicit Price/Money Actual execution, authoritative `trade_exits`, partial-close/close-remaining/correction UI and services, parent-lock plus database cross-row enforcement, values-preserving legacy backfill, read-derived partial progress, final-only Trade caches, and Workspace Export schema version 4. Price mode never fabricates Money; Money mode never double-weights already-net leg P&L. System resolution and Execution Gap runtime behavior remain unchanged.
 
 ---
 
@@ -495,9 +496,10 @@ Broker sync, automatic market-price tracking, partial **entry**/scale-in, multip
 
 ## Open Founder decisions (genuinely unresolved by this freeze)
 
-1. Exact `exit_reason` values on `trade_exits` — free text or a small closed enum (mirroring `system_exit_reason`'s pattern)?
-2. Whether the single-page Entry flow needs a distinct fast-path for logging an already-closed historical Trade in one submission, given `CreateTradeSchema` can currently only ever produce `status='planned'`.
-3. Final Thai copy review for the 10 canonical Emotion `messages/th.json` entries (the `messages/*.json` keys/English strings are specified by this document; native Thai review is still required, matching `docs/localization-glossary.md`'s stated per-term review process).
+1. Whether the single-page Entry flow needs a distinct fast-path for logging an already-closed historical Trade in one submission, given `CreateTradeSchema` can currently only ever produce `status='planned'`.
+2. Final Thai copy review for the 10 canonical Emotion `messages/th.json` entries (the `messages/*.json` keys/English strings are specified by this document; native Thai review is still required, matching `docs/localization-glossary.md`'s stated per-term review process).
+
+Phase 13E resolves the former Exit-reason question as optional free text (500-character application limit), avoiding an invented taxonomy.
 
 ## Documentation impact map
 

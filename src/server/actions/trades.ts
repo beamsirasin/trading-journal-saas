@@ -12,11 +12,14 @@ import {
   type TradePublicErrorCode,
 } from '@/lib/trades/errors';
 import {
+  AddTradeExitSchema,
   AttachTradeMistakeSchema,
   CancelTradeSchema,
+  CloseRemainingTradeSchema,
   CloseTradeSchema,
   CorrectSystemResolutionSchema,
   CorrectTradeExecutionSchema,
+  CorrectTradeExitSchema,
   CorrectTradeIdentitySchema,
   CreateTradeSchema,
   MarkSystemNoTradeSchema,
@@ -41,6 +44,11 @@ import {
   updateTradeReviewNotes,
   updateTradeRuleCheck,
 } from '@/server/services/trade-discipline';
+import {
+  addTradeExit,
+  closeRemainingTrade,
+  correctTradeExit,
+} from '@/server/services/trade-execution';
 import {
   cancelTrade,
   closeTrade,
@@ -398,6 +406,76 @@ export async function closeTradeAction(input: unknown): Promise<CloseTradeAction
         traderOutcome: result.traderOutcome,
       },
     };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export type TradeExitActionResult = TradeActionResult<{
+  readonly tradeId: string;
+  readonly exitId: string;
+  readonly status: 'open' | 'closed';
+  readonly closedBps: number;
+  readonly remainingBps: number;
+  readonly realizedR: string;
+  readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+}>;
+
+export async function addTradeExitAction(input: unknown): Promise<TradeExitActionResult> {
+  const parsed = AddTradeExitSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const { tradeId, actualResultMode: _mode, ...exit } = parsed.data;
+    const result = await addTradeExit(ctx.workspaceId, ctx.userId, tradeId, asServiceInput(exit));
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return { ok: true, data: { tradeId, ...result } };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export async function closeRemainingTradeAction(input: unknown): Promise<TradeExitActionResult> {
+  const parsed = CloseRemainingTradeSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const { tradeId, actualResultMode: _mode, ...exit } = parsed.data;
+    const result = await closeRemainingTrade(
+      ctx.workspaceId,
+      ctx.userId,
+      tradeId,
+      asServiceInput(exit),
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return { ok: true, data: { tradeId, ...result } };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export async function correctTradeExitAction(input: unknown): Promise<TradeExitActionResult> {
+  const parsed = CorrectTradeExitSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const { tradeId, exitId, actualResultMode: _mode, ...exit } = parsed.data;
+    const result = await correctTradeExit(
+      ctx.workspaceId,
+      ctx.userId,
+      tradeId,
+      exitId,
+      asServiceInput(exit),
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return { ok: true, data: { tradeId, ...result } };
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
   }

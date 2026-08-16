@@ -10,10 +10,10 @@ import {
   DeleteTradeControl,
 } from '@/components/trades/trade-destructive-actions';
 import {
-  CloseTradeDialog,
   ExecutionCorrectionDialog,
   OpenTradeDialog,
 } from '@/components/trades/trade-execution-actions';
+import { AddExitDialog } from '@/components/trades/trade-exit-actions';
 import {
   CorrectSystemDialog,
   MarkSystemNoTradeDialog,
@@ -51,7 +51,8 @@ export function TradeLifecycleActions({
             ) : null}
             {trade.status === 'open' ? (
               <>
-                <CloseTradeDialog trade={trade} timezone={timezone} />
+                <AddExitDialog trade={trade} timezone={timezone} />
+                <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
                 <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
               </>
             ) : null}

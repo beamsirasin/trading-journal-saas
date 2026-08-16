@@ -15,6 +15,7 @@ import {
   strategySetupVersions,
   strategyVersions,
   tradeEmotions,
+  tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -238,6 +239,7 @@ export async function readWorkspaceExportSource(
           plannedPositionSize: trades.plannedPositionSize,
           plannedRiskMinor: trades.plannedRiskMinor,
           plannedRewardMinor: trades.plannedRewardMinor,
+          actualResultMode: trades.actualResultMode,
           actualEntry: trades.actualEntry,
           actualInitialStop: trades.actualInitialStop,
           actualExit: trades.actualExit,
@@ -297,6 +299,24 @@ export async function readWorkspaceExportSource(
           asc(tradeRuleChecks.ruleKey),
           asc(tradeRuleChecks.id),
         );
+
+      const exitRows = await tx
+        .select({
+          id: tradeExits.id,
+          workspaceId: tradeExits.workspaceId,
+          tradeId: tradeExits.tradeId,
+          sequence: tradeExits.sequence,
+          closedBps: tradeExits.closedBps,
+          exitPrice: tradeExits.exitPrice,
+          realizedPnlMinor: tradeExits.realizedPnlMinor,
+          exitReason: tradeExits.exitReason,
+          exitedAt: tradeExits.exitedAt,
+          createdAt: tradeExits.createdAt,
+          updatedAt: tradeExits.updatedAt,
+        })
+        .from(tradeExits)
+        .where(eq(tradeExits.workspaceId, workspaceId))
+        .orderBy(asc(tradeExits.tradeId), asc(tradeExits.sequence), asc(tradeExits.id));
 
       const mistakeRows = await tx
         .select({
@@ -426,6 +446,7 @@ export async function readWorkspaceExportSource(
           ...rest,
           hasChartAttachment: chartAttachmentStorageKey !== null,
         })),
+        trade_exits: exitRows,
         trade_rule_checks: checkRows,
         trade_setup_condition_checks: setupConditionCheckRows,
         trade_mistakes: mistakeRows,

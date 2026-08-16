@@ -8,6 +8,7 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -202,6 +203,7 @@ describe('Phase 07B trade domain (real database)', () => {
       const [row] = await insertTrade({
         ...basePlannedTrade(fw),
         status: 'open',
+        actualResultMode: 'money',
         actualEntry: '1.1005000000',
         actualInitialStop: '1.0950000000',
         actualInitialRiskMinor: 5000n,
@@ -212,18 +214,43 @@ describe('Phase 07B trade domain (real database)', () => {
 
     it('accepts a valid closed trade', async () => {
       const fw = await createFramework();
-      const [row] = await insertTrade({
-        ...basePlannedTrade(fw),
-        status: 'closed',
-        actualEntry: '1.1005000000',
-        actualInitialStop: '1.0950000000',
-        actualInitialRiskMinor: 5000n,
-        enteredAt: new Date('2026-01-01T00:00:00Z'),
-        actualExit: '1.1050000000',
-        netPnlMinor: 4500n,
-        exitedAt: new Date('2026-01-01T01:00:00Z'),
-        actualR: '0.9000',
-        traderOutcome: 'win',
+      const row = await db.transaction(async (tx) => {
+        const [open] = await tx
+          .insert(trades)
+          .values({
+            ...basePlannedTrade(fw),
+            status: 'open',
+            actualResultMode: 'money',
+            actualEntry: '1.1005000000',
+            actualInitialStop: '1.0950000000',
+            actualInitialRiskMinor: 5000n,
+            enteredAt: new Date('2026-01-01T00:00:00Z'),
+          })
+          .returning({ id: trades.id });
+        if (open === undefined) throw new Error('failed to insert open trade');
+        await tx.insert(tradeExits).values({
+          workspaceId,
+          tradeId: open.id,
+          mutationKey: crypto.randomUUID(),
+          sequence: 1,
+          closedBps: 10_000,
+          exitPrice: '1.1050000000',
+          realizedPnlMinor: 4500n,
+          exitedAt: new Date('2026-01-01T01:00:00Z'),
+        });
+        const [closed] = await tx
+          .update(trades)
+          .set({
+            status: 'closed',
+            actualExit: '1.1050000000',
+            netPnlMinor: 4500n,
+            exitedAt: new Date('2026-01-01T01:00:00Z'),
+            actualR: '0.9000',
+            traderOutcome: 'win',
+          })
+          .where(eq(trades.id, open.id))
+          .returning();
+        return closed;
       });
       expect(row?.status).toBe('closed');
       expect(row?.netPnlMinor).toBe(4500n);
@@ -285,6 +312,90 @@ describe('Phase 07B trade domain (real database)', () => {
       const fw = await createFramework();
       await expect(
         insertTrade({ ...basePlannedTrade(fw), status: 'closed' }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+  });
+
+  describe('Actual Execution V2 Exit integrity', () => {
+    async function createOpenMoneyTrade() {
+      const fw = await createFramework();
+      const [trade] = await insertTrade({
+        ...basePlannedTrade(fw),
+        status: 'open',
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5_000n,
+        enteredAt: new Date('2026-01-01T00:00:00Z'),
+      });
+      if (trade === undefined) throw new Error('failed to insert open Trade');
+      return trade;
+    }
+
+    it('rejects invalid mode payloads and cumulative closure above 10000 bps', async () => {
+      const trade = await createOpenMoneyTrade();
+      await expect(
+        db.insert(tradeExits).values({
+          workspaceId,
+          tradeId: trade.id,
+          mutationKey: crypto.randomUUID(),
+          sequence: 1,
+          closedBps: 1_000,
+          exitPrice: '1.1050000000',
+          exitedAt: new Date('2026-01-01T01:00:00Z'),
+        }),
+      ).rejects.toThrow(/realized_pnl_minor/i);
+      await db.insert(tradeExits).values({
+        workspaceId,
+        tradeId: trade.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 6_000,
+        realizedPnlMinor: 1_000n,
+        exitedAt: new Date('2026-01-01T01:00:00Z'),
+      });
+      await expect(
+        db.insert(tradeExits).values({
+          workspaceId,
+          tradeId: trade.id,
+          mutationKey: crypto.randomUUID(),
+          sequence: 2,
+          closedBps: 5_000,
+          realizedPnlMinor: 1_000n,
+          exitedAt: new Date('2026-01-01T02:00:00Z'),
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+    });
+
+    it('rejects cross-workspace references and immutable Exit identity changes', async () => {
+      const trade = await createOpenMoneyTrade();
+      await expect(
+        db.insert(tradeExits).values({
+          workspaceId: otherWorkspaceId,
+          tradeId: trade.id,
+          mutationKey: crypto.randomUUID(),
+          sequence: 1,
+          closedBps: 1_000,
+          realizedPnlMinor: 100n,
+          exitedAt: new Date('2026-01-01T01:00:00Z'),
+        }),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      const [exit] = await db
+        .insert(tradeExits)
+        .values({
+          workspaceId,
+          tradeId: trade.id,
+          mutationKey: crypto.randomUUID(),
+          sequence: 1,
+          closedBps: 1_000,
+          realizedPnlMinor: 100n,
+          exitedAt: new Date('2026-01-01T01:00:00Z'),
+        })
+        .returning({ id: tradeExits.id });
+      if (exit === undefined) throw new Error('failed to insert Exit');
+      await expect(
+        db
+          .update(tradeExits)
+          .set({ workspaceId: otherWorkspaceId })
+          .where(eq(tradeExits.id, exit.id)),
       ).rejects.toMatchObject({ cause: { code: '23514' } });
     });
   });
@@ -926,7 +1037,13 @@ describe('Phase 07B trade domain (real database)', () => {
     it('deleting the owning workspace cascades away its Trade-domain rows', async () => {
       const ws = await createWorkspace();
       const fw = await createFramework(ws);
-      const [trade] = await insertTrade(basePlannedTrade(fw, ws));
+      const [trade] = await insertTrade({
+        ...basePlannedTrade(fw, ws),
+        status: 'open',
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5_000n,
+        enteredAt: new Date('2026-01-01T00:00:00Z'),
+      });
       if (trade === undefined) throw new Error('failed to insert trade');
       const rule = await createRule(fw.strategyVersionId, ws);
       await db.insert(tradeRuleChecks).values({
@@ -952,6 +1069,15 @@ describe('Phase 07B trade domain (real database)', () => {
         severityAtTime: systemMistake.severity,
         weightAtTime: systemMistake.defaultWeight,
       });
+      await db.insert(tradeExits).values({
+        workspaceId: ws,
+        tradeId: trade.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 2_500,
+        realizedPnlMinor: 1_000n,
+        exitedAt: new Date('2026-01-01T01:00:00Z'),
+      });
 
       await db.delete(workspaces).where(eq(workspaces.id, ws));
 
@@ -964,9 +1090,11 @@ describe('Phase 07B trade domain (real database)', () => {
         .select()
         .from(tradeMistakes)
         .where(eq(tradeMistakes.tradeId, trade.id));
+      const [exitRow] = await db.select().from(tradeExits).where(eq(tradeExits.tradeId, trade.id));
       expect(tradeRow).toBeUndefined();
       expect(checkRow).toBeUndefined();
       expect(mistakeRow).toBeUndefined();
+      expect(exitRow).toBeUndefined();
     });
   });
 });

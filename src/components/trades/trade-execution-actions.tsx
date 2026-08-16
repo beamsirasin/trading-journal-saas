@@ -56,12 +56,16 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [mode, setMode] = useState<'price' | 'money'>('price');
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
     const data = new FormData(event.currentTarget);
-    const risk = moneyValue(data, 'actualInitialRisk', trade.tradingAccountBaseCurrency);
+    const risk =
+      mode === 'money'
+        ? moneyValue(data, 'actualInitialRisk', trade.tradingAccountBaseCurrency)
+        : { ok: true as const, value: null };
     const enteredAt = datetimeLocalToIso(String(data.get('enteredAt') ?? ''), timezone);
     if (!risk.ok) return setFeedback(t('lifecycle.validation.money'));
     if (!enteredAt.ok) return setFeedback(t('lifecycle.validation.time'));
@@ -69,8 +73,9 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
     startTransition(async () => {
       const result = await openTradeAction({
         tradeId: trade.tradeId,
-        actualEntry: String(data.get('actualEntry') ?? ''),
-        actualInitialStop: String(data.get('actualInitialStop') ?? ''),
+        actualResultMode: mode,
+        actualEntry: String(data.get('actualEntry') ?? '').trim() || null,
+        actualInitialStop: String(data.get('actualInitialStop') ?? '').trim() || null,
         actualInitialRiskMinor: risk.value,
         actualPositionSize: positionSize || null,
         enteredAt: enteredAt.value,
@@ -93,13 +98,25 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
           <DialogDescription>{t('lifecycle.execution.openDescription')}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
+          <TradeField id="open-mode" label={t('field.actualResultMode')}>
+            <select
+              id="open-mode"
+              name="actualResultMode"
+              value={mode}
+              onChange={(event) => setMode(event.target.value as 'price' | 'money')}
+              className="border-input bg-background min-h-11 rounded-md border px-3"
+            >
+              <option value="price">{t('lifecycle.execution.priceMode')}</option>
+              <option value="money">{t('lifecycle.execution.moneyMode')}</option>
+            </select>
+          </TradeField>
           <div className="grid gap-4 sm:grid-cols-2">
             <TradeField id="open-entry" label={t('field.actualEntry')}>
               <FormInput
                 id="open-entry"
                 name="actualEntry"
                 defaultValue={trade.plannedEntry ?? ''}
-                required
+                required={mode === 'price'}
               />
             </TradeField>
             <TradeField id="open-stop" label={t('field.initialStop')}>
@@ -107,18 +124,20 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
                 id="open-stop"
                 name="actualInitialStop"
                 defaultValue={trade.plannedStop ?? ''}
-                required
+                required={mode === 'price'}
               />
             </TradeField>
-            <TradeField
-              id="open-risk"
-              label={t('field.initialRisk')}
-              hint={t('lifecycle.execution.moneyHint', {
-                currency: trade.tradingAccountBaseCurrency,
-              })}
-            >
-              <FormInput id="open-risk" name="actualInitialRisk" inputMode="decimal" required />
-            </TradeField>
+            {mode === 'money' ? (
+              <TradeField
+                id="open-risk"
+                label={t('field.initialRisk')}
+                hint={t('lifecycle.execution.moneyHint', {
+                  currency: trade.tradingAccountBaseCurrency,
+                })}
+              >
+                <FormInput id="open-risk" name="actualInitialRisk" inputMode="decimal" required />
+              </TradeField>
+            ) : null}
             <TradeField id="open-size" label={t('field.actualPositionSize')}>
               <FormInput
                 id="open-size"
@@ -295,28 +314,31 @@ export function ExecutionCorrectionDialog({
   const [feedback, setFeedback] = useState<string | null>(null);
   const currency = trade.tradingAccountBaseCurrency;
   const isClosed = trade.status === 'closed';
+  const [mode, setMode] = useState<'price' | 'money'>(trade.actualResultMode ?? 'price');
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
     const data = new FormData(event.currentTarget);
-    const risk = moneyValue(data, 'actualInitialRisk', currency);
+    const risk =
+      mode === 'money'
+        ? moneyValue(data, 'actualInitialRisk', currency)
+        : { ok: true as const, value: null };
     const enteredAt = datetimeLocalToIso(String(data.get('enteredAt') ?? ''), timezone);
     if (!risk.ok) return setFeedback(t('lifecycle.validation.money'));
     if (!enteredAt.ok) return setFeedback(t('lifecycle.validation.time'));
-    const base = {
+    const payload: Record<string, unknown> = {
       tradeId: trade.tradeId,
-      actualEntry: String(data.get('actualEntry') ?? ''),
-      actualInitialStop: String(data.get('actualInitialStop') ?? ''),
+      actualResultMode: mode,
+      actualEntry: String(data.get('actualEntry') ?? '').trim() || null,
+      actualInitialStop: String(data.get('actualInitialStop') ?? '').trim() || null,
       actualInitialRiskMinor: risk.value,
       actualPositionSize: String(data.get('actualPositionSize') ?? '').trim() || null,
       enteredAt: enteredAt.value,
     };
-    let payload: Record<string, unknown> = base;
     if (isClosed) {
       const signed = { allowNegative: true, allowZero: true };
       const unsigned = { allowZero: true };
-      const net = moneyValue(data, 'netPnl', currency, signed);
       const grossInput = String(data.get('grossPnl') ?? '').trim();
       const gross =
         grossInput === ''
@@ -325,20 +347,12 @@ export function ExecutionCorrectionDialog({
       const commission = moneyValue(data, 'commission', currency, unsigned);
       const fees = moneyValue(data, 'fees', currency, unsigned);
       const swap = moneyValue(data, 'swap', currency, unsigned);
-      const exitedAt = datetimeLocalToIso(String(data.get('exitedAt') ?? ''), timezone);
-      if (!net.ok || !gross.ok || !commission.ok || !fees.ok || !swap.ok)
+      if (!gross.ok || !commission.ok || !fees.ok || !swap.ok)
         return setFeedback(t('lifecycle.validation.money'));
-      if (!exitedAt.ok) return setFeedback(t('lifecycle.validation.time'));
-      payload = {
-        ...base,
-        actualExit: String(data.get('actualExit') ?? ''),
-        netPnlMinor: net.value,
-        grossPnlMinor: gross.value,
-        commissionMinor: commission.value,
-        feesMinor: fees.value,
-        swapMinor: swap.value,
-        exitedAt: exitedAt.value,
-      };
+      payload.grossPnlMinor = gross.value;
+      payload.commissionMinor = commission.value;
+      payload.feesMinor = fees.value;
+      payload.swapMinor = swap.value;
     }
     startTransition(async () => {
       const result = await correctTradeExecutionAction(payload);
@@ -360,13 +374,26 @@ export function ExecutionCorrectionDialog({
           <DialogDescription>{t('lifecycle.execution.correctDescription')}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
+          <TradeField id="correct-mode" label={t('field.actualResultMode')}>
+            <select
+              id="correct-mode"
+              name="actualResultMode"
+              value={mode}
+              disabled={trade.exits.length > 0}
+              onChange={(event) => setMode(event.target.value as 'price' | 'money')}
+              className="border-input bg-background min-h-11 rounded-md border px-3 disabled:opacity-60"
+            >
+              <option value="price">{t('lifecycle.execution.priceMode')}</option>
+              <option value="money">{t('lifecycle.execution.moneyMode')}</option>
+            </select>
+          </TradeField>
           <div className="grid gap-4 sm:grid-cols-2">
             <TradeField id="correct-entry" label={t('field.actualEntry')}>
               <FormInput
                 id="correct-entry"
                 name="actualEntry"
                 defaultValue={trade.actualEntry ?? ''}
-                required
+                required={mode === 'price'}
               />
             </TradeField>
             <TradeField id="correct-stop" label={t('field.initialStop')}>
@@ -374,21 +401,23 @@ export function ExecutionCorrectionDialog({
                 id="correct-stop"
                 name="actualInitialStop"
                 defaultValue={trade.actualInitialStop ?? ''}
-                required
+                required={mode === 'price'}
               />
             </TradeField>
-            <TradeField
-              id="correct-risk"
-              label={t('field.initialRisk')}
-              hint={t('lifecycle.execution.moneyHint', { currency })}
-            >
-              <FormInput
+            {mode === 'money' ? (
+              <TradeField
                 id="correct-risk"
-                name="actualInitialRisk"
-                defaultValue={tradeMoneyInputValue(trade.actualInitialRiskMinor, currency)}
-                required
-              />
-            </TradeField>
+                label={t('field.initialRisk')}
+                hint={t('lifecycle.execution.moneyHint', { currency })}
+              >
+                <FormInput
+                  id="correct-risk"
+                  name="actualInitialRisk"
+                  defaultValue={tradeMoneyInputValue(trade.actualInitialRiskMinor, currency)}
+                  required
+                />
+              </TradeField>
+            ) : null}
             <TradeField id="correct-size" label={t('field.actualPositionSize')}>
               <FormInput
                 id="correct-size"
@@ -413,22 +442,6 @@ export function ExecutionCorrectionDialog({
           {isClosed ? (
             <>
               <div className="grid gap-4 sm:grid-cols-2">
-                <TradeField id="correct-exit" label={t('field.exit')}>
-                  <FormInput
-                    id="correct-exit"
-                    name="actualExit"
-                    defaultValue={trade.actualExit ?? ''}
-                    required
-                  />
-                </TradeField>
-                <TradeField id="correct-net" label={t('field.netPnl')}>
-                  <FormInput
-                    id="correct-net"
-                    name="netPnl"
-                    defaultValue={tradeMoneyInputValue(trade.netPnlMinor, currency)}
-                    required
-                  />
-                </TradeField>
                 <TradeField id="correct-gross" label={t('field.grossPnl')}>
                   <FormInput
                     id="correct-gross"
@@ -461,15 +474,6 @@ export function ExecutionCorrectionDialog({
                   />
                 </TradeField>
               </div>
-              <TradeField id="correct-exited" label={t('field.exitedAt')}>
-                <FormInput
-                  id="correct-exited"
-                  name="exitedAt"
-                  type="datetime-local"
-                  defaultValue={instantToDatetimeLocal(trade.exitedAt, timezone)}
-                  required
-                />
-              </TradeField>
             </>
           ) : null}
           <ActionFeedback message={feedback} />

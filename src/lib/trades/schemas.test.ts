@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AddTradeExitSchema,
   AttachTradeMistakeSchema,
   CancelTradeSchema,
+  CloseRemainingTradeSchema,
   CloseTradeSchema,
   CorrectSystemResolutionSchema,
   CorrectTradeExecutionSchema,
+  CorrectTradeExitSchema,
   CorrectTradeIdentitySchema,
   CreateTradeSchema,
   MarkSystemNoTradeSchema,
@@ -123,6 +126,7 @@ describe('trades/schemas — valid input', () => {
   it('OpenTradeSchema accepts valid primitive open data', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1005000000',
       actualInitialStop: '1.0950000000',
       actualInitialRiskMinor: '5000',
@@ -178,6 +182,7 @@ describe('trades/schemas — unknown field rejection (.strict())', () => {
   it('OpenTradeSchema rejects an extra unknown field', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '5000',
@@ -238,6 +243,7 @@ describe('trades/schemas — injection rejection: trusted/derived fields can nev
     (field, value) => {
       const result = OpenTradeSchema.safeParse({
         tradeId: uuid1,
+        actualResultMode: 'money',
         actualEntry: '1.1',
         actualInitialStop: '1.09',
         actualInitialRiskMinor: '5000',
@@ -300,6 +306,7 @@ describe('trades/schemas — money (bigint integer-string) parsing', () => {
   it('rejects a decimal string where an integer minor-unit string is required', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '5000.50',
@@ -311,6 +318,7 @@ describe('trades/schemas — money (bigint integer-string) parsing', () => {
   it('rejects a non-positive actualInitialRiskMinor', () => {
     const zero = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '0',
@@ -322,6 +330,7 @@ describe('trades/schemas — money (bigint integer-string) parsing', () => {
   it('rejects a signed actualInitialRiskMinor (unsigned-only field)', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '-5000',
@@ -648,6 +657,7 @@ describe('trades/schemas — timestamp validation', () => {
   it('rejects an offset-less timestamp', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '5000',
@@ -659,6 +669,7 @@ describe('trades/schemas — timestamp validation', () => {
   it('rejects browser-locale-style date strings', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '5000',
@@ -670,6 +681,7 @@ describe('trades/schemas — timestamp validation', () => {
   it('accepts a numeric-offset ISO instant', () => {
     const result = OpenTradeSchema.safeParse({
       tradeId: uuid1,
+      actualResultMode: 'money',
       actualEntry: '1.1',
       actualInitialStop: '1.09',
       actualInitialRiskMinor: '5000',
@@ -776,13 +788,92 @@ describe('trades/schemas — correctTradeExecution', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts a closed-side correction with tri-state grossPnlMinor cleared to null', () => {
+  it('accepts context/mode correction with tri-state fields cleared to null', () => {
     const result = CorrectTradeExecutionSchema.safeParse({
       tradeId: uuid1,
-      netPnlMinor: '-1000',
+      actualResultMode: 'price',
+      actualInitialRiskMinor: null,
       grossPnlMinor: null,
     });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.grossPnlMinor).toBeNull();
+  });
+
+  it('rejects direct correction of authoritative Exit/final cache fields', () => {
+    expect(
+      CorrectTradeExecutionSchema.safeParse({ tradeId: uuid1, netPnlMinor: '-1000' }).success,
+    ).toBe(false);
+    expect(
+      CorrectTradeExecutionSchema.safeParse({ tradeId: uuid1, actualExit: '1.2' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('trades/schemas — Actual execution V2 Exit payloads', () => {
+  const baseExit = {
+    tradeId: uuid1,
+    mutationKey: uuid2,
+    closedBps: 2_500,
+    exitReason: 'Scaled at first target',
+    exitedAt: '2026-08-01T12:00:00Z',
+  };
+
+  it('accepts a Price Exit without Money and a Money Exit without Price', () => {
+    expect(
+      AddTradeExitSchema.safeParse({
+        ...baseExit,
+        actualResultMode: 'price',
+        exitPrice: '120',
+      }).success,
+    ).toBe(true);
+    const money = AddTradeExitSchema.safeParse({
+      ...baseExit,
+      actualResultMode: 'money',
+      realizedPnlMinor: '-2500',
+    });
+    expect(money.success).toBe(true);
+    if (money.success) expect(money.data.realizedPnlMinor).toBe(-2500n);
+  });
+
+  it('enforces exact integer basis points and mode-specific result shapes', () => {
+    expect(
+      AddTradeExitSchema.safeParse({
+        ...baseExit,
+        actualResultMode: 'price',
+        closedBps: 2500.5,
+        exitPrice: '120',
+      }).success,
+    ).toBe(false);
+    expect(
+      AddTradeExitSchema.safeParse({
+        ...baseExit,
+        actualResultMode: 'price',
+        realizedPnlMinor: '100',
+      }).success,
+    ).toBe(false);
+    expect(AddTradeExitSchema.safeParse({ ...baseExit, actualResultMode: 'money' }).success).toBe(
+      false,
+    );
+  });
+
+  it('derives Close Remaining shape without client closed_bps and correction without mutation key', () => {
+    const { closedBps: _closedBps, mutationKey: _mutationKey, ...common } = baseExit;
+    expect(
+      CloseRemainingTradeSchema.safeParse({
+        ...common,
+        mutationKey: uuid2,
+        actualResultMode: 'price',
+        exitPrice: '120',
+      }).success,
+    ).toBe(true);
+    expect(
+      CorrectTradeExitSchema.safeParse({
+        ...common,
+        exitId: uuid3,
+        closedBps: 2_500,
+        actualResultMode: 'money',
+        realizedPnlMinor: '100',
+      }).success,
+    ).toBe(true);
   });
 });

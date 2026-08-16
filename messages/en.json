@@ -508,6 +508,7 @@
       "symbol": "Symbol",
       "direction": "Direction",
       "executionStatus": "Execution status",
+      "actualResultMode": "Actual result mode",
       "systemStatus": "System status",
       "entry": "Entry",
       "stop": "Stop",
@@ -531,6 +532,11 @@
       "actualPositionSize": "Actual position size",
       "initialRisk": "Initial risk",
       "exit": "Exit",
+      "closedPercent": "Closed",
+      "remainingPercent": "Remaining",
+      "realizedPnl": "Realized net P&L",
+      "exitReason": "Exit reason",
+      "realizedRToDate": "Realized R to date",
       "grossPnl": "Gross P&L",
       "commission": "Commission",
       "fees": "Fees",
@@ -598,7 +604,17 @@
       "execution": {
         "open": "Open Trade",
         "openTitle": "Record Trade entry",
-        "openDescription": "Record the actual entry primitives. Initial risk is an authoritative account-currency amount; Rule status never blocks this transition.",
+        "openDescription": "Choose Price or Money as the authoritative Actual result mode, then record the required execution context. Rule status never blocks this transition.",
+        "priceMode": "Price",
+        "moneyMode": "Money",
+        "partialClose": "Partial Close",
+        "fullClose": "Full Close",
+        "closeRemaining": "Close Remaining",
+        "exitDescription": "Record the portion closed and its authoritative result for this execution mode.",
+        "closingRemaining": "Closing the exact remaining {percent}%.",
+        "correctExit": "Correct Exit",
+        "correctExitDescription": "Correct this Exit leg. The server validates the complete Exit set and recalculates the aggregate.",
+        "exitNumber": "Exit {sequence}",
         "closeTrade": "Close Trade",
         "closeTitle": "Record Trade exit",
         "closeDescription": "Net P&L is authoritative. Commission, fees, and swap are informational and are not subtracted again.",
@@ -661,7 +677,8 @@
       },
       "validation": {
         "money": "Enter a valid amount with the currency's supported precision.",
-        "time": "Enter a valid date and time in your saved timezone."
+        "time": "Enter a valid date and time in your saved timezone.",
+        "percentage": "Enter a percentage from 0.01 to 100 with no more than two decimal places."
       }
     },
     "mistake": {
@@ -862,6 +879,9 @@
       "system_requires_price_plan": "The System result needs a Price plan (Entry/Stop) — this Trade currently has none.",
       "invalid_status_transition": "This Trade cannot make that change from its current status.",
       "invalid_initial_risk": "Initial risk must be a positive amount.",
+      "invalid_execution_context": "The execution context is not valid for the selected Actual result mode.",
+      "invalid_closed_bps": "The closed percentage is invalid or exceeds the remaining position.",
+      "invalid_exit_shape": "This Exit needs the result value required by the Trade's Actual result mode.",
       "invalid_exit_time": "The exit time cannot be before the entry time.",
       "no_actual_execution": "This Trade has no actual execution to correct yet.",
       "invalid_system_status_transition": "The System result cannot make that change from its current status.",

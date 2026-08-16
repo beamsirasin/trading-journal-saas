@@ -2,9 +2,11 @@ import 'server-only';
 
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
+import { composeRealizedActual } from '@/lib/calc/trade';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
 import type {
+  ActualResultMode,
   MistakeSeverity,
   OutcomeValue,
   RuleCheckStatus,
@@ -25,6 +27,7 @@ import {
   strategySetupVersions,
   strategyVersions,
   tradeEmotions,
+  tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -324,6 +327,7 @@ export interface TradeDetail {
   readonly plannedRewardMinor: string | null;
   readonly plannedR: string | null;
 
+  readonly actualResultMode: ActualResultMode | null;
   readonly actualEntry: string | null;
   readonly actualInitialStop: string | null;
   readonly actualPositionSize: string | null;
@@ -338,6 +342,18 @@ export interface TradeDetail {
   readonly traderOutcome: OutcomeValue | null;
   readonly enteredAt: string | null;
   readonly exitedAt: string | null;
+  readonly exits: readonly {
+    readonly exitId: string;
+    readonly sequence: number;
+    readonly closedBps: number;
+    readonly exitPrice: string | null;
+    readonly realizedPnlMinor: string | null;
+    readonly exitReason: string | null;
+    readonly exitedAt: string;
+  }[];
+  readonly closedBps: number;
+  readonly remainingBps: number;
+  readonly realizedRToDate: string | null;
 
   readonly systemExitPrice: string | null;
   readonly systemExitedAt: string | null;
@@ -445,6 +461,24 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .where(and(eq(emotionTypes.isSystem, true), eq(emotionTypes.isArchived, false)))
     .orderBy(asc(emotionTypes.sortOrder), asc(emotionTypes.key));
 
+  const exitRows = await db
+    .select()
+    .from(tradeExits)
+    .where(and(eq(tradeExits.tradeId, tradeId), eq(tradeExits.workspaceId, workspaceId)))
+    .orderBy(asc(tradeExits.sequence), asc(tradeExits.id));
+  const realized =
+    trade.actualResultMode === null
+      ? null
+      : composeRealizedActual({
+          actualResultMode: trade.actualResultMode,
+          direction: trade.direction,
+          actualEntry: trade.actualEntry,
+          actualInitialStop: trade.actualInitialStop,
+          actualInitialRiskMinor: trade.actualInitialRiskMinor,
+          exits: exitRows,
+        });
+  const closedBps = exitRows.reduce((total, exit) => total + exit.closedBps, 0);
+
   return {
     ok: true,
     trade: {
@@ -481,6 +515,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       plannedRewardMinor: minorToString(trade.plannedRewardMinor),
       plannedR: trade.plannedR,
 
+      actualResultMode: trade.actualResultMode as ActualResultMode | null,
       actualEntry: trade.actualEntry,
       actualInitialStop: trade.actualInitialStop,
       actualPositionSize: trade.actualPositionSize,
@@ -495,6 +530,18 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       traderOutcome: trade.traderOutcome as OutcomeValue | null,
       enteredAt: dateToIso(trade.enteredAt),
       exitedAt: dateToIso(trade.exitedAt),
+      exits: exitRows.map((exit) => ({
+        exitId: exit.id,
+        sequence: exit.sequence,
+        closedBps: exit.closedBps,
+        exitPrice: exit.exitPrice,
+        realizedPnlMinor: minorToString(exit.realizedPnlMinor),
+        exitReason: exit.exitReason,
+        exitedAt: exit.exitedAt.toISOString(),
+      })),
+      closedBps,
+      remainingBps: 10_000 - closedBps,
+      realizedRToDate: realized?.ok ? realized.value.realizedR : null,
 
       systemExitPrice: trade.systemExitPrice,
       systemExitedAt: dateToIso(trade.systemExitedAt),

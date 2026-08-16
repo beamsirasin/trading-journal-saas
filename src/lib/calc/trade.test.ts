@@ -8,8 +8,10 @@ import {
   classifyOutcome,
   composePlanned,
   composePlannedR,
+  composeRealizedActual,
   composeSystemResolve,
   composeTraderClose,
+  composeTraderCloseV2,
   moneyPlannedR,
   plannedR,
   resolveSystemR,
@@ -179,6 +181,155 @@ describe('actualR', () => {
   it('rejects missing input', () => {
     expect(actualR(null, 1000n)).toEqual({ ok: false, reason: 'missing_input' });
     expect(actualR(1000n, undefined)).toEqual({ ok: false, reason: 'missing_input' });
+  });
+});
+
+describe('Actual execution V2 Exit composition', () => {
+  const priceExits = [
+    { closedBps: 5_000, exitPrice: '120' },
+    { closedBps: 2_500, exitPrice: '140' },
+    { closedBps: 2_500, exitPrice: '160' },
+  ] as const;
+
+  it('weights Price-mode long Exit legs exactly once: 50%@+2R, 25%@+4R, 25%@+6R', () => {
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'price',
+        direction: 'long',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        exits: priceExits,
+      }),
+    ).toEqual({
+      ok: true,
+      value: { closedBps: 10_000, realizedR: '3.5000', realizedPnlMinor: null },
+    });
+  });
+
+  it('uses the direction-aware equivalent for a short Trade', () => {
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'price',
+        direction: 'short',
+        actualEntry: '100',
+        actualInitialStop: '110',
+        exits: [
+          { closedBps: 5_000, exitPrice: '80' },
+          { closedBps: 2_500, exitPrice: '60' },
+          { closedBps: 2_500, exitPrice: '40' },
+        ],
+      }),
+    ).toMatchObject({ ok: true, value: { realizedR: '3.5000' } });
+  });
+
+  it('does not clamp a Price Exit beyond the initial Stop', () => {
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'price',
+        direction: 'long',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        exits: [{ closedBps: 10_000, exitPrice: '80' }],
+      }),
+    ).toMatchObject({ ok: true, value: { realizedR: '-2.0000' } });
+  });
+
+  it('represents a Price break-even Exit exactly', () => {
+    expect(
+      composeTraderCloseV2({
+        actualResultMode: 'price',
+        direction: 'long',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        exits: [{ closedBps: 10_000, exitPrice: '100' }],
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { actualR: '0.0000', traderOutcome: 'break_even' },
+    });
+  });
+
+  it('sums Money-mode leg P&L without multiplying by closed_bps again', () => {
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'money',
+        direction: 'long',
+        actualInitialRiskMinor: 100n,
+        exits: [
+          { closedBps: 5_000, realizedPnlMinor: 100n },
+          { closedBps: 2_500, realizedPnlMinor: 100n },
+          { closedBps: 2_500, realizedPnlMinor: 150n },
+        ],
+      }),
+    ).toEqual({
+      ok: true,
+      value: { closedBps: 10_000, realizedR: '3.5000', realizedPnlMinor: 350n },
+    });
+  });
+
+  it('handles mixed negative and positive Money legs', () => {
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'money',
+        direction: 'long',
+        actualInitialRiskMinor: 100n,
+        exits: [
+          { closedBps: 3_333, realizedPnlMinor: -25n },
+          { closedBps: 3_333, realizedPnlMinor: 50n },
+          { closedBps: 3_334, realizedPnlMinor: 75n },
+        ],
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { closedBps: 10_000, realizedR: '1.0000', realizedPnlMinor: 100n },
+    });
+  });
+
+  it('keeps exact integer closed_bps and rejects totals above 10000', () => {
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'money',
+        direction: 'long',
+        actualInitialRiskMinor: 100n,
+        exits: [
+          { closedBps: 3_333, realizedPnlMinor: 1n },
+          { closedBps: 3_333, realizedPnlMinor: 1n },
+          { closedBps: 3_334, realizedPnlMinor: 1n },
+        ],
+      }),
+    ).toMatchObject({ ok: true, value: { closedBps: 10_000 } });
+    expect(
+      composeRealizedActual({
+        actualResultMode: 'money',
+        direction: 'long',
+        actualInitialRiskMinor: 100n,
+        exits: [
+          { closedBps: 5_001, realizedPnlMinor: 1n },
+          { closedBps: 5_000, realizedPnlMinor: 1n },
+        ],
+      }),
+    ).toEqual({ ok: false, reason: 'invalid_closed_bps' });
+  });
+
+  it('applies the canonical final outcome tolerance', () => {
+    const context = {
+      actualResultMode: 'price',
+      direction: 'long',
+      actualEntry: '100',
+      actualInitialStop: '90',
+    } as const;
+    expect(
+      composeTraderCloseV2({
+        ...context,
+        exits: [{ closedBps: 10_000, exitPrice: '100.5' }],
+      }),
+    ).toMatchObject({ ok: true, value: { actualR: '0.0500', traderOutcome: 'break_even' } });
+    expect(
+      composeTraderCloseV2({
+        ...context,
+        exits: [{ closedBps: 10_000, exitPrice: '100.501' }],
+      }),
+    ).toMatchObject({ ok: true, value: { actualR: '0.0501', traderOutcome: 'win' } });
   });
 });
 
@@ -707,8 +858,10 @@ describe('no monetary price-derived P&L (regression protection)', () => {
         'classifyOutcome',
         'composePlanned',
         'composePlannedR',
+        'composeRealizedActual',
         'composeSystemResolve',
         'composeTraderClose',
+        'composeTraderCloseV2',
         'moneyPlannedR',
         'plannedR',
         'resolveSystemR',

@@ -11,6 +11,7 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
@@ -190,6 +191,7 @@ async function seedAnalyticsData(userId: string): Promise<void> {
     });
     const trader = (exitedAt: Date, actualR: string, outcome: 'win' | 'loss') => ({
       status: 'closed' as const,
+      actualResultMode: 'money' as const,
       actualEntry: '100.0000000000',
       actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
@@ -210,6 +212,26 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       systemOutcome: outcome,
     });
 
+    async function insertTrade(values: typeof trades.$inferInsert): Promise<string> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.insert(trades).values(values).returning({ id: trades.id });
+        if (row === undefined) throw new Error('Analytics E2E Trade missing');
+        if (values.status === 'closed') {
+          await tx.insert(tradeExits).values({
+            workspaceId,
+            tradeId: row.id,
+            mutationKey: crypto.randomUUID(),
+            sequence: 1,
+            closedBps: 10_000,
+            exitPrice: values.actualExit ?? null,
+            realizedPnlMinor: values.netPnlMinor ?? null,
+            exitedAt: values.exitedAt as Date,
+          });
+        }
+        return row.id;
+      });
+    }
+
     async function paired(
       accountId: string,
       framework: Framework,
@@ -221,16 +243,11 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       systemOutcome: 'win' | 'loss',
     ) {
       const exitedAt = daysAgo(days, 10);
-      const [row] = await db
-        .insert(trades)
-        .values({
-          ...base(accountId, framework, symbol),
-          ...trader(exitedAt, actualR, traderOutcome),
-          ...system(new Date(exitedAt.getTime() + 1_800_000), systemR, systemOutcome),
-        })
-        .returning({ id: trades.id });
-      if (row === undefined) throw new Error('Analytics E2E paired Trade missing');
-      return row.id;
+      return insertTrade({
+        ...base(accountId, framework, symbol),
+        ...trader(exitedAt, actualR, traderOutcome),
+        ...system(new Date(exitedAt.getTime() + 1_800_000), systemR, systemOutcome),
+      });
     }
 
     const divergentId = await paired(
@@ -257,7 +274,7 @@ async function seedAnalyticsData(userId: string): Promise<void> {
     await paired(activeAccount.id, primary2, 'AUDUSD', 15, '1.0000', 'win', '1.0000', 'win');
 
     const traderOnlyExit = daysAgo(10, 10);
-    await db.insert(trades).values({
+    await insertTrade({
       ...base(activeAccount.id, primary, 'USDJPY'),
       ...trader(traderOnlyExit, '3.0000', 'win'),
     });
@@ -266,6 +283,7 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       await db.insert(trades).values({
         ...base(activeAccount.id, primary, `NAS10${index}`),
         status: 'open',
+        actualResultMode: 'money',
         actualEntry: '100.0000000000',
         actualInitialStop: '99.0000000000',
         actualInitialRiskMinor: 100n,
