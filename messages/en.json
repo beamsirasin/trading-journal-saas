@@ -92,7 +92,7 @@
     "system": "System",
     "actual": "Actual",
     "summary": "The strategy earned {systemTotalR}R. You kept {actualTotalR}R.",
-    "chartAriaLabel": "Cumulative R over time. The system reaches {systemTotalR}R while actual execution reaches {actualTotalR}R, a gap of {edgeLeakageR}R."
+    "chartAriaLabel": "Cumulative R over time. The system reaches {systemTotalR}R while actual execution reaches {actualTotalR}R, an Execution Gap of {executionGapR}R."
   },
   "problem": {
     "eyebrow": "The problem",
@@ -128,8 +128,8 @@
     "title": "One comparison, the whole product",
     "description": "Every metric is computed twice: once from the strategy's plan, once from what you actually did. Both in R, so they stay comparable even when position size differed from the plan.",
     "demoCaption": "Fictional account · {closedTrades} closed trades · not a performance claim",
-    "edgeLeakage": "Edge leakage",
-    "edgeLeakageHint": "System total R minus actual total R — the edge that existed and was not captured.",
+    "executionGap": "Execution Gap",
+    "executionGapHint": "Actual total R minus system total R — negative means the edge that existed was not fully captured.",
     "disciplineScore": "Discipline score",
     "winRate": "Win rate",
     "averageR": "Average R per trade",
@@ -358,10 +358,10 @@
       "comparison": {
         "title": "Execution Comparison",
         "description": "A same-Trade comparison of resolved System and actual results.",
-        "help": "Edge Leakage is System R minus Actual R on comparable Trades. Positive means less System R was captured; negative means execution exceeded the System result. It is a measurement, not a verdict."
+        "help": "Execution Gap is Actual R minus System R on comparable Trades. Negative means the Trader captured less than the System; positive means the Trader outperformed the System. It is a measurement, not a verdict."
       },
       "comparableTrades": "Comparable Trades",
-      "edgeLeakage": "Edge Leakage",
+      "executionGap": "Execution Gap",
       "executionEfficiency": "Execution Efficiency",
       "unavailable": {
         "no_trades": "No eligible Trades",
@@ -371,6 +371,8 @@
         "no_comparable_trades": "No comparable Trades",
         "system_has_no_edge": "No positive paired System edge",
         "no_rule_checks": "No evaluated Rule checks",
+        "no_conditions_applicable": "No Trades with applicable Setup Conditions",
+        "no_confidence_recorded": "No Trades with recorded Confidence",
         "data_integrity_error": "Metric temporarily unavailable"
       },
       "recent": {
@@ -418,7 +420,7 @@
       "winRate": "Win rate",
       "averageR": "Average R",
       "expectancy": "Expectancy",
-      "edgeLeakageInsight": "Edge leakage: {value}R not captured by execution.",
+      "executionGapInsight": "Execution Gap: {value}R versus the System.",
       "viewDetailedAnalytics": "View detailed analytics"
     },
     "chart": {
@@ -1114,6 +1116,13 @@
         "empty": "No eligible closed Trader Trades in this scope."
       },
       "sampleCount": "{count, plural, one {# Trade} other {# Trades}}",
+      "axis": {
+        "trader": "Trader",
+        "system": "System",
+        "tradeCount": "{count, plural, one {# Trade} other {# Trades}}",
+        "avgR": "Avg R",
+        "winRate": "Win Rate"
+      },
       "metrics": {
         "totalR": "Total R",
         "expectancy": "Expectancy (Average R)",
@@ -1130,9 +1139,10 @@
         "comparableTrades": "Comparable Trades",
         "pairedSystemTotal": "Paired System Total R",
         "pairedActualTotal": "Paired Actual Total R",
-        "edgeLeakage": "Edge Leakage R",
+        "averageExecutionGap": "Average Execution Gap",
+        "executionGap": "Execution Gap (Total)",
         "executionEfficiency": "Execution Efficiency",
-        "help": "Edge Leakage is paired System R minus paired Actual R. Positive means less was captured; negative means actual execution exceeded the System result. It is a measurement, not a cause or verdict."
+        "help": "Execution Gap is Actual R minus System R on comparable Trades. Negative means the Trader captured less than the System; positive means the Trader outperformed the System. It is a measurement, not a cause or verdict."
       },
       "unavailable": {
         "no_trades": "No eligible Trades",
@@ -1142,6 +1152,8 @@
         "no_comparable_trades": "No comparable Trades",
         "system_has_no_edge": "Paired System total is not positive",
         "no_rule_checks": "No evaluated Rule checks",
+        "no_conditions_applicable": "No Trades with applicable Setup Conditions",
+        "no_confidence_recorded": "No Trades with recorded Confidence",
         "data_integrity_error": "Metric temporarily unavailable"
       },
       "equity": {
@@ -1174,6 +1186,60 @@
         "notApplicable": "Not Applicable",
         "evaluated": "Evaluated Checks",
         "help": "Adherence uses Followed and Violated checks only. Not Checked means unreviewed, not violated; Not Applicable is excluded."
+      },
+      "setupQuality": {
+        "title": "Setup Quality",
+        "description": "Whether the Setup was present at entry, and how Trader performance varies with it."
+      },
+      "psychology": {
+        "title": "Psychology",
+        "description": "Confidence and Emotions captured at entry, against Trader performance."
+      },
+      "setupAdherence": {
+        "average": "Average Setup Adherence",
+        "conditionsMetRate": "Conditions Met Rate",
+        "sampleCount": "{count, plural, one {# Trade with recorded, applicable Setup Conditions} other {# Trades with recorded, applicable Setup Conditions}}",
+        "bucketsLabel": "Trader performance by Setup Adherence",
+        "bucketTradeCount": "{count, plural, one {# Trade} other {# Trades}}",
+        "bucketAvgR": "Actual Avg R",
+        "bucketWinRate": "Actual Win Rate",
+        "bucket": {
+          "0-24": "0–24%",
+          "25-49": "25–49%",
+          "50-74": "50–74%",
+          "75-99": "75–99%",
+          "100": "100%"
+        },
+        "help": "Average Setup Adherence weighs every Trade equally. Conditions Met Rate weighs every Condition equally — the two are deliberately distinct metrics, never interchangeable. Trades with no recorded or no configured Setup Conditions are excluded, never counted as 0%. Descriptive only — this does not imply that higher adherence causes better performance."
+      },
+      "conditions": {
+        "listLabel": "Condition performance, Met versus Not Met",
+        "met": "Met",
+        "notMet": "Not Met",
+        "avgR": "Actual Avg R",
+        "winRate": "Actual Win Rate",
+        "emptyTitle": "No Setup Condition snapshots in this scope",
+        "emptyDescription": "No closed Trades in this scope have a recorded, applicable Setup Condition snapshot.",
+        "help": "Grouped by Condition identity, which survives a Setup Version being edited — the same logical Condition stays comparable across versions. Descriptive only, not a causal claim."
+      },
+      "confidence": {
+        "average": "Average Confidence",
+        "sampleCount": "{count, plural, one {# Trade with recorded Confidence} other {# Trades with recorded Confidence}}",
+        "levelsLabel": "Trader performance by Confidence level",
+        "levelLabel": "{level}%",
+        "levelTradeCount": "{count, plural, one {# Trade} other {# Trades}}",
+        "avgR": "Actual Avg R",
+        "winRate": "Actual Win Rate",
+        "help": "Confidence is a self-assessment recorded at entry, not a probability estimate. A 75% Confidence Trade is not claimed to have a 75% chance of winning. Trades where Confidence was never recorded are excluded, never treated as 0%."
+      },
+      "emotions": {
+        "listLabel": "Trader performance by Emotion",
+        "tradeCount": "{count, plural, one {# Trade} other {# Trades}}",
+        "avgR": "Actual Avg R",
+        "winRate": "Actual Win Rate",
+        "emptyTitle": "No Emotions recorded",
+        "emptyDescription": "No closed Trades in this scope have a recorded Emotion selection.",
+        "help": "A Trade with multiple Emotions belongs to every one of its Emotion groups, so the totals across groups may exceed the unique Trade count — this is expected, not a duplicate count. Descriptive only, not a causal claim."
       },
       "mistakes": {
         "title": "Most Frequent Mistakes",
@@ -1235,7 +1301,7 @@
   "mistakes": {
     "title": "What your mistakes cost",
     "description": "Ranked by cost in R, not by how often they happen.",
-    "caption": "Demo data. These costs account for the full {edgeLeakage}R of edge leakage over the period.",
+    "caption": "Demo data. These costs account for the full {executionGap}R Execution Gap over the period.",
     "occurrences": "{count, plural, one {# time} other {# times}}",
     "severity": {
       "minor": "Minor",

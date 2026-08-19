@@ -13,8 +13,8 @@
  *
  * Internal consistency is maintained by hand, and the two relationships worth
  * checking are asserted in `fixtures.test.ts`:
- *   - edgeLeakageR === systemTotalR − actualTotalR
- *   - the mistake costs sum to the edge leakage
+ *   - executionGapR === actualTotalR − systemTotalR (Phase 13H sign)
+ *   - the mistake costs sum to the magnitude of the Execution Gap
  */
 
 import type { Money } from '@/lib/money';
@@ -224,7 +224,7 @@ const BUNDLE_ALL: DemoBundle = {
     actualTotalR: '9.9',
     systemMaxDrawdownR: '4.2',
     actualMaxDrawdownR: '4.9',
-    edgeLeakageR: '27.9',
+    executionGapR: '-27.9',
     executionEfficiencyPct: '26.2',
     disciplineScore: '68',
   },
@@ -287,7 +287,7 @@ const BUNDLE_90D: DemoBundle = {
     actualTotalR: '7.1',
     systemMaxDrawdownR: '3.6',
     actualMaxDrawdownR: '3.8',
-    edgeLeakageR: '19.3',
+    executionGapR: '-19.3',
     executionEfficiencyPct: '26.9',
     disciplineScore: '71',
   },
@@ -339,7 +339,7 @@ const BUNDLE_30D: DemoBundle = {
     actualTotalR: '2.8',
     systemMaxDrawdownR: '2.4',
     actualMaxDrawdownR: '2.6',
-    edgeLeakageR: '8.4',
+    executionGapR: '-8.4',
     executionEfficiencyPct: '25.0',
     disciplineScore: '74',
   },

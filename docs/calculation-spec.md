@@ -184,10 +184,15 @@ maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magni
 ## 5. Attribution metrics
 
 ```
-edgeLeakageR         = systemR − actualR                          (per Trade)
-                                                    [attribution.ts: edgeLeakageR]
-pairedEdgeLeakageR   = Σ (systemR − actualR) over the SAME paired-Trade population
-                                                    [attribution.ts: pairedEdgeLeakageR]
+executionGapR         = actualR − systemR                          (per Trade)
+                                                    [attribution.ts: executionGapR]
+pairedExecutionGapR   = Σ (actualR − systemR) over the SAME paired-Trade population
+                                                    [attribution.ts: pairedExecutionGapR]
+averageExecutionGapR  = AVG(actualR − systemR) over the SAME paired-Trade population
+                         (the PRIMARY period aggregate, Phase 13H — each comparable
+                         Trade weighted equally; pairedExecutionGapR remains available
+                         as the secondary summed/total figure)
+                                                    [attribution.ts: averageExecutionGapR]
 executionEfficiency  = pairedActualTotalR / pairedSystemTotalR   (only when
                         pairedSystemTotalR > 0, same paired population both sides)
                                                     [attribution.ts: executionEfficiency]
@@ -195,11 +200,11 @@ ruleAdherenceRate    = followed / (followed + violated)   (not_applicable/not_ch
                                                     [attribution.ts: ruleAdherenceRate]
 ```
 
-**Implemented as of Phase 07D** — `src/lib/calc/attribution.ts`.
+**Implemented as of Phase 07D** — `src/lib/calc/attribution.ts`. **Sign corrected and renamed in Phase 13H:** this table supersedes the Phase 07D `edgeLeakageR = systemR − actualR` naming/sign (positive meant "less captured"). The retired `edgeLeakageR`/`pairedEdgeLeakageR` no longer exist in the codebase; every call site — analytics/dashboard UI, marketing pages, demo fixtures — was updated to the new sign/name together, and `averageExecutionGapR` was added as the new primary aggregate.
 
 **Comparison is paired by Trade, always.** A Trade contributes to System-vs-Trader comparison only when BOTH `actualR` and `systemR` exist for that same Trade (`isComparisonEligible`/`selectComparisonEligible`) — a third, distinct eligibility rule from the Trader/System rules above: a closed Trader Trade with a still-`pending` System side is Trader-eligible but not comparison-eligible. `PairedRTrade` couples one `tradeId` to both its own R values in a single record, so a caller cannot construct `systemTotal` over one population minus `actualTotal` over a different one — pairing is enforced by the type shape itself, not by a runtime cross-check.
 
-**Edge leakage** positive means the trader captured less R than the System; zero means they matched; **negative means the trader captured MORE R than the counterfactual System** — never described as an error, never clamped to zero. Both are real, meaningful findings.
+**Execution Gap** negative means the trader captured less R than the System; zero means they matched; **positive means the trader captured MORE R than the counterfactual System** — never described as an error, never clamped to zero. Both are real, meaningful findings.
 
 **Execution efficiency** is undefined when `pairedSystemTotalR ≤ 0` (a non-positive System edge makes the ratio not merely undefined but actively misleading — capturing 50% of a losing system is not a 50% score) — returns `{ ok: false, reason: 'system_has_no_edge' }`, never `Infinity`, never a clamp. Values above `1.0000` (captured more than the System's own counterfactual) and below `0` (a net loss against a positive System edge) are both legitimate, literal results, never clamped to `[0, 1]`. This metric describes execution against available System edge; it is not an independent Strategy-quality metric.
 

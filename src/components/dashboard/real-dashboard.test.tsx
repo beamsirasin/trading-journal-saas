@@ -62,7 +62,8 @@ function overview(overrides: Partial<DashboardOverview> = {}): DashboardOverview
       comparableCount: 2,
       pairedSystemTotalR: available('3.0000'),
       pairedActualTotalR: available('1.0000'),
-      edgeLeakageR: available('2.0000'),
+      executionGapR: available('-2.0000'),
+      averageExecutionGapR: available('-1.0000'),
       executionEfficiency: available('0.3333'),
     },
     ...overrides,
@@ -163,9 +164,9 @@ describe('RealDashboard', () => {
   it.each([
     ['2.0000', '+2.00R'],
     ['-1.0000', '-1.00R'],
-  ] as const)('renders Edge Leakage %s neutrally as %s', (value, display) => {
+  ] as const)('renders Execution Gap %s neutrally as %s', (value, display) => {
     const model = overview({
-      comparison: { ...overview().comparison, edgeLeakageR: available(value) },
+      comparison: { ...overview().comparison, averageExecutionGapR: available(value) },
     });
     const { container } = renderDashboard(model);
     const comparison = container.querySelector(
@@ -192,7 +193,8 @@ describe('RealDashboard', () => {
           comparableCount: 0,
           pairedSystemTotalR: unavailable('no_comparable_trades'),
           pairedActualTotalR: unavailable('no_comparable_trades'),
-          edgeLeakageR: unavailable('no_comparable_trades'),
+          executionGapR: unavailable('no_comparable_trades'),
+          averageExecutionGapR: unavailable('no_comparable_trades'),
           executionEfficiency: unavailable('no_comparable_trades'),
         },
       }),

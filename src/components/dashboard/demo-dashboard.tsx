@@ -46,8 +46,8 @@ import { TradesTable } from './trades-table';
  * System Expectancy, Actual Expectancy, Profit Factor, Max Drawdown and
  * Execution Efficiency are analytics-depth figures and live there instead.
  * The system-vs-trader module below shows only Win Rate / Average R /
- * Expectancy, with Edge Leakage folded into one insight sentence rather than
- * its own card, and a link out to the full breakdown.
+ * Expectancy, with the Execution Gap folded into one insight sentence rather
+ * than its own card, and a link out to the full breakdown.
  *
  * `barPercent` (imported) is bar geometry, not a metric — see its own doc
  * comment.
@@ -156,7 +156,7 @@ export function DemoDashboard() {
             </div>
 
             <p className="text-warning text-sm leading-relaxed">
-              {t('systemVsTrader.edgeLeakageInsight', { value: attribution.edgeLeakageR })}
+              {t('systemVsTrader.executionGapInsight', { value: attribution.executionGapR })}
             </p>
 
             <Button asChild variant="outline" className="min-h-11 self-start">

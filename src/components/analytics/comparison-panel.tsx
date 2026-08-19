@@ -29,8 +29,8 @@ export function AnalyticsComparisonPanel({ comparison }: { comparison: Compariso
             forceNeutral
           />
           <AnalyticsMetricDisplay
-            label={t('comparison.edgeLeakage')}
-            metric={comparison.edgeLeakageR}
+            label={t('comparison.averageExecutionGap')}
+            metric={comparison.averageExecutionGapR}
             style="r"
             forceNeutral
           />
@@ -41,6 +41,13 @@ export function AnalyticsComparisonPanel({ comparison }: { comparison: Compariso
             forceNeutral
           />
         </dl>
+        <AnalyticsMetricDisplay
+          className="mt-5 border-t pt-5"
+          label={t('comparison.executionGap')}
+          metric={comparison.executionGapR}
+          style="r"
+          forceNeutral
+        />
         <p className="text-muted-foreground mt-5 text-xs leading-relaxed">{t('comparison.help')}</p>
       </CardContent>
     </Card>

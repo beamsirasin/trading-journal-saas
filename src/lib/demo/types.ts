@@ -83,8 +83,8 @@ export interface DemoAttribution {
   readonly actualTotalR: string;
   readonly systemMaxDrawdownR: string;
   readonly actualMaxDrawdownR: string;
-  /** systemTotalR − actualTotalR. Positive means edge was destroyed. */
-  readonly edgeLeakageR: string;
+  /** actualTotalR − systemTotalR (Phase 13H sign). Negative means the Trader captured less than the System; positive means the Trader outperformed the System. */
+  readonly executionGapR: string;
   readonly executionEfficiencyPct: string;
   readonly disciplineScore: string;
 }

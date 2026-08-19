@@ -22,11 +22,11 @@ import { Section, SectionIntro } from './section';
  * Phase 07 and this page will read their output instead of these fixtures.
  * `barPercent` (imported) is bar geometry only — see its own doc comment.
  *
- * PHASE 1.1 SIMPLIFICATION — this used to show four mini KPI cards (edge
- * leakage, execution efficiency, discipline score, closed trades) and four
+ * PHASE 1.1 SIMPLIFICATION — this used to show four mini KPI cards (Execution
+ * Gap, execution efficiency, discipline score, closed trades) and four
  * comparison rows (win rate, average R, expectancy, total R) beside the
  * chart. That is analytics-page density on a marketing page. Trimmed to the
- * two figures that best make the pitch (edge leakage, discipline score) and
+ * two figures that best make the pitch (Execution Gap, discipline score) and
  * the three comparison rows the Phase 1.1 brief names explicitly for this
  * exact module. Execution efficiency, total R and the closed-trade count
  * still exist — on `/app/analytics` and the real dashboard, not here.
@@ -54,12 +54,12 @@ export function AttributionSection() {
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <KpiCard
-                label={t('edgeLeakage')}
-                value={attribution.edgeLeakageR}
+                label={t('executionGap')}
+                value={attribution.executionGapR}
                 suffix="R"
                 tone="warning"
                 animate={false}
-                hint={t('edgeLeakageHint')}
+                hint={t('executionGapHint')}
               />
               <KpiCard
                 label={t('disciplineScore')}

@@ -48,7 +48,7 @@ describe('DemoDashboard simplification', () => {
     for (const forbidden of [
       en.analytics.systemVsActual.profitFactor,
       en.analytics.systemVsActual.maxDrawdown,
-      en.attribution.edgeLeakage,
+      en.attribution.executionGap,
     ]) {
       expect(kpiLabels).not.toContain(forbidden);
     }
@@ -60,7 +60,7 @@ describe('DemoDashboard simplification', () => {
     expect(document.querySelector('figure')).toHaveClass('border-0', 'bg-transparent');
   });
 
-  it('includes a system-vs-trader module with win rate, average R and expectancy, plus an edge-leakage insight and an analytics link', () => {
+  it('includes a system-vs-trader module with win rate, average R and expectancy, plus an Execution Gap insight and an analytics link', () => {
     renderDashboard();
 
     expect(screen.getByText(en.dashboard.systemVsTrader.winRate)).toBeInTheDocument();
@@ -70,9 +70,9 @@ describe('DemoDashboard simplification', () => {
     const bundle = demoBundle(DEMO_DEFAULT_RANGE);
     expect(
       screen.getByText(
-        en.dashboard.systemVsTrader.edgeLeakageInsight.replace(
+        en.dashboard.systemVsTrader.executionGapInsight.replace(
           '{value}',
-          bundle.attribution.edgeLeakageR,
+          bundle.attribution.executionGapR,
         ),
       ),
     ).toBeInTheDocument();

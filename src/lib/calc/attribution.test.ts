@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  edgeLeakageR,
+  averageExecutionGapR,
   executionEfficiency,
+  executionGapR,
   isComparisonEligible,
-  pairedEdgeLeakageR,
+  pairedExecutionGapR,
   ruleAdherenceRate,
   selectComparisonEligible,
   type PairedRTrade,
@@ -15,56 +16,56 @@ function pair(tradeId: string, systemR: string, actualR: string): PairedRTrade {
   return { tradeId, systemR, actualR };
 }
 
-describe('edgeLeakageR (per-trade)', () => {
-  it('+3 system / +2 actual => +1R leakage (Trader captured less)', () => {
-    expect(edgeLeakageR('3', '2')).toEqual({ ok: true, value: '1.0000' });
+describe('executionGapR (per-trade)', () => {
+  it('+2 actual / +5 system => -3R (Trader captured less)', () => {
+    expect(executionGapR('2', '5')).toEqual({ ok: true, value: '-3.0000' });
   });
 
-  it('+3 system / -1 actual => +4R leakage', () => {
-    expect(edgeLeakageR('3', '-1')).toEqual({ ok: true, value: '4.0000' });
+  it('-1 actual / +3 system => -4R', () => {
+    expect(executionGapR('-1', '3')).toEqual({ ok: true, value: '-4.0000' });
   });
 
-  it('+2 system / +3 actual => -1R leakage (Trader captured MORE than System, not an error)', () => {
-    expect(edgeLeakageR('2', '3')).toEqual({ ok: true, value: '-1.0000' });
+  it('+3 actual / +2 system => +1R (Trader outperformed System, not an error)', () => {
+    expect(executionGapR('3', '2')).toEqual({ ok: true, value: '1.0000' });
   });
 
-  it('zero leakage when Trader exactly matches System', () => {
-    expect(edgeLeakageR('2', '2')).toEqual({ ok: true, value: '0.0000' });
+  it('zero gap when Trader exactly matches System', () => {
+    expect(executionGapR('2', '2')).toEqual({ ok: true, value: '0.0000' });
   });
 
   it('rejects missing input', () => {
-    expect(edgeLeakageR(null, '2')).toEqual({ ok: false, reason: 'missing_input' });
-    expect(edgeLeakageR('2', undefined)).toEqual({ ok: false, reason: 'missing_input' });
+    expect(executionGapR(null, '2')).toEqual({ ok: false, reason: 'missing_input' });
+    expect(executionGapR('2', undefined)).toEqual({ ok: false, reason: 'missing_input' });
   });
 
   it('rejects a malformed decimal', () => {
-    expect(edgeLeakageR('abc', '2')).toEqual({ ok: false, reason: 'invalid_decimal' });
+    expect(executionGapR('abc', '2')).toEqual({ ok: false, reason: 'invalid_decimal' });
   });
 });
 
-describe('pairedEdgeLeakageR', () => {
-  it('sums per-Trade leakage over multiple paired Trades', () => {
+describe('pairedExecutionGapR', () => {
+  it('sums per-Trade gap over multiple paired Trades', () => {
     const pairs = [pair('t1', '6', '5'), pair('t2', '4', '3')];
-    // leakage: (6-5) + (4-3) = 1 + 1 = 2
-    expect(pairedEdgeLeakageR(pairs)).toEqual({ ok: true, value: '2.0000' });
+    // gap: (5-6) + (3-4) = -1 + -1 = -2
+    expect(pairedExecutionGapR(pairs)).toEqual({ ok: true, value: '-2.0000' });
   });
 
   it('empty comparable set', () => {
-    expect(pairedEdgeLeakageR([])).toEqual({ ok: false, reason: 'no_comparable_trades' });
+    expect(pairedExecutionGapR([])).toEqual({ ok: false, reason: 'no_comparable_trades' });
   });
 
   it('is not restricted by System total sign — only executionEfficiency is', () => {
     const pairs = [pair('t1', '5', '2'), pair('t2', '-5', '1')];
-    // System total = 0, but paired leakage is still a normal, successful
-    // result: (5-2) + (-5-1) = 3 + (-6) = -3
-    expect(pairedEdgeLeakageR(pairs)).toEqual({ ok: true, value: '-3.0000' });
+    // System total = 0, but paired gap is still a normal, successful
+    // result: (2-5) + (1-(-5)) = -3 + 6 = 3
+    expect(pairedExecutionGapR(pairs)).toEqual({ ok: true, value: '3.0000' });
   });
 
-  it('equals the sum of per-Trade leakage, computed independently', () => {
+  it('equals the sum of per-Trade gap, computed independently', () => {
     const pairs = [pair('t1', '3', '1'), pair('t2', '-2', '0.5'), pair('t3', '10', '9')];
-    const aggregate = pairedEdgeLeakageR(pairs);
+    const aggregate = pairedExecutionGapR(pairs);
     const perTradeSum = pairs.reduce((sum, p) => {
-      const result = edgeLeakageR(p.systemR, p.actualR);
+      const result = executionGapR(p.actualR, p.systemR);
       if (!result.ok) throw new Error('expected an ok result');
       return sum + Number.parseFloat(result.value);
     }, 0);
@@ -72,6 +73,31 @@ describe('pairedEdgeLeakageR', () => {
     if (aggregate.ok) {
       expect(Number.parseFloat(aggregate.value)).toBeCloseTo(perTradeSum, 4);
     }
+  });
+});
+
+describe('averageExecutionGapR (primary aggregate)', () => {
+  it('averages per-Trade gap, each Trade weighted equally', () => {
+    const pairs = [pair('t1', '6', '5'), pair('t2', '4', '3')];
+    // gap: (5-6) + (3-4) = -2, averaged over 2 Trades = -1
+    expect(averageExecutionGapR(pairs)).toEqual({ ok: true, value: '-1.0000' });
+  });
+
+  it('matches the frozen example: System +5R, Actual -0.5R => -5.5R', () => {
+    expect(averageExecutionGapR([pair('t1', '5', '-0.5')])).toEqual({
+      ok: true,
+      value: '-5.5000',
+    });
+  });
+
+  it('empty comparable set', () => {
+    expect(averageExecutionGapR([])).toEqual({ ok: false, reason: 'no_comparable_trades' });
+  });
+
+  it('is not the same as dividing the total by a differently-sized population', () => {
+    const pairs = [pair('t1', '10', '0'), pair('t2', '0', '10'), pair('t3', '0', '10')];
+    // per-trade gaps: -10, +10, +10 -> average = 10/3 = 3.3333
+    expect(averageExecutionGapR(pairs)).toEqual({ ok: true, value: '3.3333' });
   });
 });
 
@@ -218,16 +244,17 @@ describe('invariants', () => {
     expect(executionEfficiency(pairs)).toEqual(executionEfficiency(permuted));
   });
 
-  it('pairedEdgeLeakageR is unchanged by input array permutation', () => {
+  it('pairedExecutionGapR is unchanged by input array permutation', () => {
     const pairs = [pair('t1', '3', '2'), pair('t2', '4', '5'), pair('t3', '3', '1')];
     const permuted = [pairs[2], pairs[0], pairs[1]] as PairedRTrade[];
-    expect(pairedEdgeLeakageR(pairs)).toEqual(pairedEdgeLeakageR(permuted));
+    expect(pairedExecutionGapR(pairs)).toEqual(pairedExecutionGapR(permuted));
   });
 
   it('no successful attribution result is NaN or Infinity', () => {
     const results = [
-      edgeLeakageR('3', '2'),
-      pairedEdgeLeakageR([pair('t1', '3', '2')]),
+      executionGapR('3', '2'),
+      pairedExecutionGapR([pair('t1', '3', '2')]),
+      averageExecutionGapR([pair('t1', '3', '2')]),
       executionEfficiency([pair('t1', '3', '2')]),
       ruleAdherenceRate([ruleCheck('followed'), ruleCheck('violated')]),
     ];

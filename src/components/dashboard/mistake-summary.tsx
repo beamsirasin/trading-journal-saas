@@ -23,11 +23,11 @@ const SEVERITY_CLASS: Record<DemoSeverity, string> = {
  */
 export function MistakeSummary({
   mistakes,
-  edgeLeakageR,
+  executionGapR,
   className,
 }: {
   mistakes: readonly DemoMistake[];
-  edgeLeakageR: string;
+  executionGapR: string;
   className?: string;
 }) {
   const t = useTranslations('mistakes');
@@ -37,7 +37,7 @@ export function MistakeSummary({
     <ChartContainer
       title={t('title')}
       description={t('description')}
-      caption={t('caption', { edgeLeakage: edgeLeakageR })}
+      caption={t('caption', { executionGap: executionGapR })}
       tableFallback={<MistakeCostTable mistakes={mistakes} />}
       className={className}
     >

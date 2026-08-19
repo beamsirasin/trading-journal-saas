@@ -47,19 +47,25 @@ export interface PairedRTrade {
 }
 
 // ---------------------------------------------------------------------------
-// System-vs-Trader edge leakage
+// System-vs-Trader Execution Gap
 // ---------------------------------------------------------------------------
 
 /**
- * `edgeLeakageR = systemR - actualR` for one comparable Trade. Positive
- * means the Trader captured less R than the System; zero means they
- * matched; NEGATIVE means the Trader captured MORE R than the counterfactual
- * System — never described as an error, never clamped to zero. Both are
- * real, meaningful findings (CLAUDE.md §6).
+ * `executionGapR = actualR - systemR` for one comparable Trade (Phase 13H,
+ * the frozen customer contract — CLAUDE.md §6, `docs/phases/PHASE-13-journal-v2.md`
+ * §1). NEGATIVE means the Trader captured LESS R than the System; zero means
+ * they matched; POSITIVE means the Trader captured MORE R than the
+ * counterfactual System — never described as an error, never clamped.
+ *
+ * This is the sign-corrected, renamed successor to the pre-13H
+ * `edgeLeakageR = systemR - actualR` (opposite sign, "positive means less
+ * captured"). The rename is deliberate, not cosmetic: keeping the old name
+ * with an inverted meaning would let a stale caller compile and silently
+ * produce inverted numbers.
  */
-export function edgeLeakageR(
-  systemR: string | null | undefined,
+export function executionGapR(
   actualR: string | null | undefined,
+  systemR: string | null | undefined,
 ): CalcResult<string> {
   if (systemR === null || systemR === undefined || actualR === null || actualR === undefined) {
     return calcErr('missing_input');
@@ -67,7 +73,7 @@ export function edgeLeakageR(
   const systemDecimal = parseCalcDecimal(systemR);
   const actualDecimal = parseCalcDecimal(actualR);
   if (systemDecimal === null || actualDecimal === null) return calcErr('invalid_decimal');
-  return calcOk(toCanonicalR(systemDecimal.minus(actualDecimal)));
+  return calcOk(toCanonicalR(actualDecimal.minus(systemDecimal)));
 }
 
 function parsePairedDecimals(
@@ -84,23 +90,45 @@ function parsePairedDecimals(
 }
 
 /**
- * Aggregate paired leakage over the SAME comparable-Trade population —
- * summed from each pair's raw, unrounded `(systemR - actualR)` difference
+ * Aggregate paired Execution Gap over the SAME comparable-Trade population —
+ * summed from each pair's raw, unrounded `(actualR - systemR)` difference
  * and rounded exactly once at the end (never by summing already-rounded
- * per-Trade {@link edgeLeakageR} outputs, which would round twice). Equal,
- * at full precision, to the sum of every pair's individual leakage. Empty
+ * per-Trade {@link executionGapR} outputs, which would round twice). Equal,
+ * at full precision, to the sum of every pair's individual gap. Empty
  * input -> `no_comparable_trades`.
  */
-export function pairedEdgeLeakageR(pairs: readonly PairedRTrade[]): CalcResult<string> {
+export function pairedExecutionGapR(pairs: readonly PairedRTrade[]): CalcResult<string> {
   if (pairs.length === 0) return calcErr('no_comparable_trades');
   const parsedResult = parsePairedDecimals(pairs);
   if (!parsedResult.ok) return parsedResult;
 
   let sum = new CalcDecimal(0);
   for (const { system, actual } of parsedResult.value) {
-    sum = sum.plus(system.minus(actual));
+    sum = sum.plus(actual.minus(system));
   }
   return calcOk(toCanonicalR(sum));
+}
+
+/**
+ * `Average Execution Gap = AVG(actualR - systemR)` over the paired
+ * population — Phase 13H's PRIMARY Execution Gap aggregate (§6), each
+ * comparable Trade weighted equally. Computed from the same raw,
+ * unrounded per-pair differences {@link pairedExecutionGapR} sums (summed
+ * once, divided by count, rounded exactly once at the end) — never derived
+ * by subtracting two already-rounded axis averages, which would silently
+ * change the population weighting when the Trader- and System-eligible
+ * populations differ in size.
+ */
+export function averageExecutionGapR(pairs: readonly PairedRTrade[]): CalcResult<string> {
+  if (pairs.length === 0) return calcErr('no_comparable_trades');
+  const parsedResult = parsePairedDecimals(pairs);
+  if (!parsedResult.ok) return parsedResult;
+
+  let sum = new CalcDecimal(0);
+  for (const { system, actual } of parsedResult.value) {
+    sum = sum.plus(actual.minus(system));
+  }
+  return calcOk(toCanonicalR(sum.dividedBy(pairs.length)));
 }
 
 // ---------------------------------------------------------------------------

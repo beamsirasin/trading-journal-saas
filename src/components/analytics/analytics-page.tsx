@@ -6,10 +6,14 @@ import type { AnalyticsUrlSelection } from '@/lib/analytics/url-filters';
 import type { AnalyticsFilterOptions } from '@/server/dal/analytics';
 import { AnalyticsFilters } from '@/components/analytics/analytics-filters';
 import { AnalyticsComparisonPanel } from '@/components/analytics/comparison-panel';
+import { ConditionPerformance } from '@/components/analytics/condition-performance';
+import { ConfidencePerformance } from '@/components/analytics/confidence-performance';
+import { EmotionPerformance } from '@/components/analytics/emotion-performance';
 import { EquityChart, type AnalyticsEquityDisplayPoint } from '@/components/analytics/equity-chart';
 import { MistakeFrequency } from '@/components/analytics/mistake-frequency';
 import { PerformancePanel } from '@/components/analytics/performance-panel';
 import { RuleSummary } from '@/components/analytics/rule-summary';
+import { SetupAdherencePanel } from '@/components/analytics/setup-adherence-panel';
 import { SectionHeader } from '@/components/product/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
@@ -79,6 +83,30 @@ export function RealAnalyticsPage({
             metric={snapshot.system.equityCurve}
             points={equity.system}
           />
+        </div>
+      </section>
+
+      <section aria-labelledby="analytics-setup-quality-heading" className="flex flex-col gap-4">
+        <SectionHeader
+          id="analytics-setup-quality-heading"
+          title={t('setupQuality.title')}
+          description={t('setupQuality.description')}
+        />
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+          <SetupAdherencePanel adherence={snapshot.setupAdherence} />
+          <ConditionPerformance conditions={snapshot.conditions} />
+        </div>
+      </section>
+
+      <section aria-labelledby="analytics-psychology-heading" className="flex flex-col gap-4">
+        <SectionHeader
+          id="analytics-psychology-heading"
+          title={t('psychology.title')}
+          description={t('psychology.description')}
+        />
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+          <ConfidencePerformance confidence={snapshot.confidence} />
+          <EmotionPerformance emotions={snapshot.emotions} />
         </div>
       </section>
 

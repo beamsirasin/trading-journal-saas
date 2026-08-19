@@ -115,29 +115,31 @@ test.describe('demo dashboard', () => {
   }
 
   /**
-   * PHASE 1.1 REWRITE. Edge Leakage is no longer a standalone KPI card on the
-   * dashboard — it survives as the reactive number inside the system-vs-
-   * trader insight sentence (`dashboard.systemVsTrader.edgeLeakageInsight`),
-   * which is what actually responds to the date-range control now. The
-   * underlying fixture values are unchanged (`src/lib/demo/fixtures.ts`), so
-   * this keeps the original numbers (27.9 / 8.4 / 19.3) — the test just
-   * targets where they now render.
+   * PHASE 1.1 REWRITE, sign corrected in Phase 13H. Execution Gap (formerly
+   * "Edge Leakage") is not a standalone KPI card on the dashboard — it
+   * survives as the reactive number inside the system-vs-trader insight
+   * sentence (`dashboard.systemVsTrader.executionGapInsight`), which is what
+   * actually responds to the date-range control. Phase 13H flipped the sign
+   * (`executionGapR = actualTotalR − systemTotalR`), so the fixture values
+   * that were positive (27.9 / 8.4 / 19.3) are now negative
+   * (`src/lib/demo/fixtures.ts`) — the test targets both where they render
+   * and the corrected sign.
    */
   test('date range control changes the figures', async ({ page }) => {
     await page.goto('/en/demo');
 
-    const insight = page.getByText(/Edge leakage: [\d.]+R not captured by execution\./);
+    const insight = page.getByText(/Execution Gap: -[\d.]+R versus the System\./);
     await expect(insight).toBeVisible();
 
     // All-time is the default bundle.
-    await expect(insight).toContainText('27.9');
+    await expect(insight).toContainText('-27.9');
 
     await selectRange(page, '30 days');
-    await expect(insight).toContainText('8.4');
-    await expect(insight).not.toContainText(/21\.1|16\.7|9\.6|27\.9/);
+    await expect(insight).toContainText('-8.4');
+    await expect(insight).not.toContainText(/-21\.1|-16\.7|-9\.6|-27\.9/);
 
     await selectRange(page, '90 days');
-    await expect(insight).toContainText('19.3');
+    await expect(insight).toContainText('-19.3');
   });
 
   test('account selector filters the trade list', async ({ page }) => {

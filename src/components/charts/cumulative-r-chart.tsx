@@ -21,8 +21,9 @@ import { ChartTooltip } from './chart-tooltip';
  * Cumulative R — what the strategy offered against what the trader captured.
  *
  * The single most important picture in the product: two lines starting
- * together and diverging, where the growing gap IS the edge leakage. A trader
- * looking at a rising actual line alone would conclude things are going well.
+ * together and diverging, where the growing gap IS the Execution Gap. A
+ * trader looking at a rising actual line alone would conclude things are
+ * going well.
  *
  * Form choice: a line chart because the job is trend over time with two
  * series that must be told apart — the categorical case. One shared y-axis in

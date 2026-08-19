@@ -18,7 +18,7 @@ import { MetricLabel } from '@/components/product/metric';
  * moment the design system changes and cannot follow the reader's theme.
  *
  * PHASE 1.1 SIMPLIFICATION — this used to open with a three-card stat grid
- * (system total R / actual total R / edge leakage) above the chart. That put
+ * (system total R / actual total R / Execution Gap) above the chart. That put
  * four competing numeric surfaces in the first thing a visitor sees: the
  * three cards, then the chart repeating two of the same figures. The cards
  * are gone; the one chart plus the one summary sentence below it carry the
@@ -97,7 +97,7 @@ export function ProductPreview({ className }: { className?: string }) {
             aria-label={t('chartAriaLabel', {
               systemTotalR: attribution.systemTotalR,
               actualTotalR: attribution.actualTotalR,
-              edgeLeakageR: attribution.edgeLeakageR,
+              executionGapR: attribution.executionGapR,
             })}
           >
             {/* Dashed for the system line because it is hypothetical, solid

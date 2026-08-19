@@ -36,14 +36,17 @@ describe('demo bundles', () => {
     expect(new Set(BUNDLES.map((b) => b.range))).toEqual(new Set(DEMO_RANGES.map((r) => r.id)));
   });
 
-  it.each(BUNDLES)('$range — edge leakage equals system total R minus actual total R', (bundle) => {
-    const { systemTotalR, actualTotalR, edgeLeakageR } = bundle.attribution;
-    expect(tenths(systemTotalR) - tenths(actualTotalR)).toBe(tenths(edgeLeakageR));
-  });
+  it.each(BUNDLES)(
+    '$range — Execution Gap equals actual total R minus system total R',
+    (bundle) => {
+      const { systemTotalR, actualTotalR, executionGapR } = bundle.attribution;
+      expect(tenths(actualTotalR) - tenths(systemTotalR)).toBe(tenths(executionGapR));
+    },
+  );
 
-  it.each(BUNDLES)('$range — mistake costs account for the whole edge leakage', (bundle) => {
+  it.each(BUNDLES)('$range — mistake costs account for the whole Execution Gap', (bundle) => {
     const totalCost = bundle.mistakes.reduce((sum, m) => sum + tenths(m.costR), 0);
-    expect(totalCost).toBe(tenths(bundle.attribution.edgeLeakageR));
+    expect(totalCost).toBe(-tenths(bundle.attribution.executionGapR));
   });
 
   it.each(BUNDLES)('$range — the equity curve ends at the reported totals', (bundle) => {
@@ -86,7 +89,7 @@ describe('demo bundles', () => {
     expect(tenths(bundle.attribution.actualTotalR)).toBeLessThan(
       tenths(bundle.attribution.systemTotalR),
     );
-    expect(tenths(bundle.attribution.edgeLeakageR)).toBeGreaterThan(0);
+    expect(tenths(bundle.attribution.executionGapR)).toBeLessThan(0);
   });
 });
 

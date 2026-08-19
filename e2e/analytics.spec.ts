@@ -1,20 +1,24 @@
 import { expect, test } from '@playwright/test';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
 import {
+  emotionTypes,
   mistakeTypes,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
   workspaces,
 } from '../src/server/db/schema';
@@ -270,7 +274,16 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       '-1.0000',
       'loss',
     );
-    await paired(activeAccount.id, primary, 'GBPUSD', 45, '1.0000', 'win', '2.0000', 'win');
+    const gbpusdId = await paired(
+      activeAccount.id,
+      primary,
+      'GBPUSD',
+      45,
+      '1.0000',
+      'win',
+      '2.0000',
+      'win',
+    );
     await paired(activeAccount.id, primary2, 'AUDUSD', 15, '1.0000', 'win', '1.0000', 'win');
 
     const traderOnlyExit = daysAgo(10, 10);
@@ -278,25 +291,76 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       ...base(activeAccount.id, primary, 'USDJPY'),
       ...trader(traderOnlyExit, '3.0000', 'win'),
     });
+    let nas101Id = '';
     for (const [index, value] of ['-1.0000', '1.0000'].entries()) {
       const exitedAt = daysAgo(12 + index, 10);
-      await db.insert(trades).values({
-        ...base(activeAccount.id, primary, `NAS10${index}`),
-        status: 'open',
-        actualResultMode: 'money',
-        actualEntry: '100.0000000000',
-        actualInitialStop: '99.0000000000',
-        actualInitialRiskMinor: 100n,
-        enteredAt: exitedAt,
-        ...system(
-          new Date(exitedAt.getTime() + 1_800_000),
-          value,
-          value.startsWith('-') ? 'loss' : 'win',
-        ),
-      });
+      const [nasRow] = await db
+        .insert(trades)
+        .values({
+          ...base(activeAccount.id, primary, `NAS10${index}`),
+          status: 'open',
+          actualResultMode: 'money',
+          actualEntry: '100.0000000000',
+          actualInitialStop: '99.0000000000',
+          actualInitialRiskMinor: 100n,
+          enteredAt: exitedAt,
+          ...system(
+            new Date(exitedAt.getTime() + 1_800_000),
+            value,
+            value.startsWith('-') ? 'loss' : 'win',
+          ),
+        })
+        .returning({ id: trades.id });
+      if (index === 1 && nasRow !== undefined) nas101Id = nasRow.id;
     }
     await paired(secondaryAccount.id, primary, 'BTCUSD', 6, '5.0000', 'win', '5.0000', 'win');
     await paired(archivedAccount.id, historical, 'ETHUSD', 7, '-2.0000', 'loss', '2.0000', 'win');
+
+    // Behavioral analytics (Setup Adherence / Condition / Confidence / Emotion) proof:
+    // GBPUSD is fully closed (Trader- and System-eligible); NAS101 is System-only
+    // (still open, never Trader-eligible). Both carry identical Confidence/Emotion/
+    // Condition data so the analytics page must show Trader=1, System=2 everywhere.
+    const [momentumCondition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: primary.setupId,
+        setupVersionId: primary.setupVersionId,
+        label: 'Confirms Momentum',
+        sortOrder: 0,
+      })
+      .returning({
+        id: setupConditions.id,
+        conditionKey: setupConditions.conditionKey,
+      });
+    if (momentumCondition === undefined) throw new Error('Analytics E2E condition missing');
+    const [fearful] = await db
+      .select({ id: emotionTypes.id, key: emotionTypes.key })
+      .from(emotionTypes)
+      .where(and(eq(emotionTypes.isSystem, true), eq(emotionTypes.key, 'fearful')));
+    if (fearful === undefined) throw new Error('Analytics E2E fearful emotion seed missing');
+
+    for (const behavioralTradeId of [gbpusdId, nas101Id]) {
+      await db
+        .update(trades)
+        .set({ confidence: 75, emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+        .where(eq(trades.id, behavioralTradeId));
+      await db.insert(tradeEmotions).values({
+        workspaceId,
+        tradeId: behavioralTradeId,
+        emotionTypeId: fearful.id,
+      });
+      await db.insert(tradeSetupConditionChecks).values({
+        workspaceId,
+        tradeId: behavioralTradeId,
+        setupConditionId: momentumCondition.id,
+        setupVersionId: primary.setupVersionId,
+        conditionKey: momentumCondition.conditionKey,
+        label: 'Confirms Momentum',
+        sortOrder: 0,
+        checkStatus: 'met',
+      });
+    }
 
     const statuses = ['followed', 'followed', 'violated', 'not_checked', 'not_applicable'] as const;
     const ruleRows = await db
@@ -390,7 +454,10 @@ test.describe('real deep Analytics', () => {
     await expect(systemPanel.getByText('6 Trades')).toBeVisible();
     await expect(traderPanel.getByText('5 Trades')).toBeVisible();
     await expect(
-      page.locator('[data-analytics-panel="comparison"]').getByText('+2.00R'),
+      page.locator('[data-analytics-panel="comparison"]').getByText('-0.50R'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-analytics-panel="comparison"]').getByText('-2.00R'),
     ).toBeVisible();
     await expect(
       page.locator('[data-analytics-panel="comparison"]').getByText('60.00%'),
@@ -409,6 +476,44 @@ test.describe('real deep Analytics', () => {
       page.getByRole('option', { name: 'Archived History Account · Archived' }),
     ).toBeAttached();
 
+    // Behavioral analytics (Phase 13H completion): NAS101 is System-only (still
+    // open — never Trader-eligible) while GBPUSD is fully closed and eligible on
+    // both axes. Every dimension must independently show Trader=1, System=2.
+    const setupAdherencePanel = page.locator('[data-analytics-panel="setup-adherence"]');
+    const adherenceBucket100 = setupAdherencePanel.locator('li', { hasText: '100%' });
+    await expect(adherenceBucket100.locator('[data-analytics-axis="trader"]')).toContainText(
+      '1 Trade',
+    );
+    await expect(adherenceBucket100.locator('[data-analytics-axis="system"]')).toContainText(
+      '2 Trades',
+    );
+
+    const conditionsPanel = page.locator('[data-analytics-panel="conditions"]');
+    const conditionMet = conditionsPanel.locator('[data-analytics-condition-status="met"]');
+    const conditionNotMet = conditionsPanel.locator('[data-analytics-condition-status="notMet"]');
+    await expect(conditionMet.locator('[data-analytics-axis="trader"]')).toContainText('1 Trade');
+    await expect(conditionMet.locator('[data-analytics-axis="system"]')).toContainText('2 Trades');
+    await expect(conditionNotMet.locator('[data-analytics-axis="trader"]')).toContainText(
+      '0 Trades',
+    );
+    await expect(conditionNotMet.locator('[data-analytics-axis="system"]')).toContainText(
+      '0 Trades',
+    );
+
+    const confidencePanel = page.locator('[data-analytics-panel="confidence"]');
+    const confidenceLevel75 = confidencePanel.locator('li', { hasText: '75%' });
+    await expect(confidenceLevel75.locator('[data-analytics-axis="trader"]')).toContainText(
+      '1 Trade',
+    );
+    await expect(confidenceLevel75.locator('[data-analytics-axis="system"]')).toContainText(
+      '2 Trades',
+    );
+
+    const emotionsPanel = page.locator('[data-analytics-panel="emotions"]');
+    const fearfulGroup = emotionsPanel.locator('li', { hasText: 'Fearful' });
+    await expect(fearfulGroup.locator('[data-analytics-axis="trader"]')).toContainText('1 Trade');
+    await expect(fearfulGroup.locator('[data-analytics-axis="system"]')).toContainText('2 Trades');
+
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: '30D' }).click();
     await expect(page).toHaveURL(/range=30d/);
@@ -425,7 +530,7 @@ test.describe('real deep Analytics', () => {
       .selectOption({ label: 'Breakout Momentum v2' });
     await expect(page).toHaveURL(/strategy=[0-9a-f-]+/);
     await expect(page).not.toHaveURL(/setup=|version=/);
-    await page.getByLabel('Setup').selectOption({ label: 'Opening Retest v2' });
+    await page.getByLabel('Setup', { exact: true }).selectOption({ label: 'Opening Retest v2' });
     await expect(page).toHaveURL(/setup=[0-9a-f-]+/);
     await page.getByLabel('Strategy Version').selectOption({ label: 'Breakout Momentum · v1' });
     await expect(page).toHaveURL(/version=[0-9a-f-]+/);
@@ -434,7 +539,7 @@ test.describe('real deep Analytics', () => {
     await page.reload();
     await expect(page).toHaveURL(persistedUrl);
     await expect(page.getByLabel('Strategy', { exact: true })).not.toHaveValue('');
-    await expect(page.getByLabel('Setup')).not.toHaveValue('');
+    await expect(page.getByLabel('Setup', { exact: true })).not.toHaveValue('');
     await expect(page.getByLabel('Strategy Version')).not.toHaveValue('');
 
     await page.getByRole('link', { name: /Reset filters/ }).click();

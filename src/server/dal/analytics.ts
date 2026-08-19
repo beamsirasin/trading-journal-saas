@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, desc, eq, gte, isNotNull, isNull, lt, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import {
@@ -10,6 +10,7 @@ import {
   type AnalyticsFilterInput,
   type AnalyticsFilters,
 } from '@/lib/analytics/filters';
+import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots';
 import { systemClock } from '@/lib/time';
 import type {
   OutcomeValue,
@@ -24,15 +25,18 @@ import {
 } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
+  emotionTypes,
   mistakeTypes,
   setups,
   strategies,
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
 } from '@/server/db/schema';
 
@@ -645,6 +649,486 @@ export async function getMistakeAnalyticsRecords(
   return { ok: true, data: await selectMistakeAnalyticsRecords(context.data) };
 }
 
+// ---------------------------------------------------------------------------
+// Phase 13H — Journal V2 analytics (Setup Adherence, Condition, Confidence,
+// Emotion). Each dimension is fetched TWICE — once against Trader eligibility
+// (closed, nondeleted, `actual_r`/`trader_outcome`/`exited_at` all present,
+// dated by `exited_at`) and once against System eligibility (`system_status
+// = 'resolved'`, nondeleted, `system_r`/`system_outcome`/`system_exited_at`
+// all present, dated by `system_exited_at`) — mirroring exactly how
+// `selectTraderAnalyticsRecords`/`selectSystemAnalyticsRecords` are two
+// independent queries, never one shared predicate. A Trade can appear in
+// neither, either, or both result sets: a still-open Trade with a resolved
+// System side appears only in the System-side rows; a closed Trade with a
+// still-pending System side appears only in the Trader-side rows. Nothing
+// here ever intersects the two populations — that intersection exists only
+// for the paired Execution Gap (`selectPairedAnalyticsRecords`, unrelated to
+// this section).
+// ---------------------------------------------------------------------------
+
+export interface SetupAdherenceAnalyticsRecord {
+  readonly tradeId: string;
+  readonly metCount: number;
+  readonly totalCount: number;
+  readonly actualR: string;
+  readonly traderOutcome: OutcomeValue;
+}
+
+/**
+ * One row per Trade that has its own recorded, applicable Setup Condition
+ * snapshot (inner join — a Trade with zero `trade_setup_condition_checks`
+ * rows, "not recorded" or "not configured", is structurally excluded, never
+ * coerced to `totalCount: 0`).
+ */
+async function selectSetupAdherenceAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly SetupAdherenceAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      actualR: trades.actualR,
+      traderOutcome: trades.traderOutcome,
+      metCount: sql<number>`count(*) filter (where ${tradeSetupConditionChecks.checkStatus} = 'met')::int`,
+      totalCount: sql<number>`count(*)::int`,
+    })
+    .from(trades)
+    .innerJoin(tradeSetupConditionChecks, eq(tradeSetupConditionChecks.tradeId, trades.id))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.status, 'closed'),
+        isNotNull(trades.actualR),
+        isNotNull(trades.traderOutcome),
+        isNotNull(trades.exitedAt),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
+      ),
+    )
+    .groupBy(trades.id)
+    .orderBy(asc(trades.exitedAt), asc(trades.id));
+
+  return rows.map((row) => ({
+    ...row,
+    actualR: row.actualR as string,
+    traderOutcome: row.traderOutcome as OutcomeValue,
+  }));
+}
+
+export async function getSetupAdherenceAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly SetupAdherenceAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectSetupAdherenceAnalyticsRecords(context.data) };
+}
+
+export interface SetupAdherenceSystemAnalyticsRecord {
+  readonly tradeId: string;
+  readonly metCount: number;
+  readonly totalCount: number;
+  readonly systemR: string;
+  readonly systemOutcome: OutcomeValue;
+}
+
+/** System-eligible mirror of {@link selectSetupAdherenceAnalyticsRecords} — independent population, independent `system_exited_at` date axis. */
+async function selectSetupAdherenceSystemAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly SetupAdherenceSystemAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      systemR: trades.systemR,
+      systemOutcome: trades.systemOutcome,
+      metCount: sql<number>`count(*) filter (where ${tradeSetupConditionChecks.checkStatus} = 'met')::int`,
+      totalCount: sql<number>`count(*)::int`,
+    })
+    .from(trades)
+    .innerJoin(tradeSetupConditionChecks, eq(tradeSetupConditionChecks.tradeId, trades.id))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.systemStatus, 'resolved'),
+        isNotNull(trades.systemR),
+        isNotNull(trades.systemOutcome),
+        isNotNull(trades.systemExitedAt),
+        ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
+      ),
+    )
+    .groupBy(trades.id)
+    .orderBy(asc(trades.systemExitedAt), asc(trades.id));
+
+  return rows.map((row) => ({
+    ...row,
+    systemR: row.systemR as string,
+    systemOutcome: row.systemOutcome as OutcomeValue,
+  }));
+}
+
+export async function getSetupAdherenceSystemAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly SetupAdherenceSystemAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectSetupAdherenceSystemAnalyticsRecords(context.data) };
+}
+
+export interface ConditionAnalyticsRecord {
+  readonly tradeId: string;
+  readonly setupId: string;
+  readonly conditionKey: string;
+  readonly label: string;
+  readonly checkStatus: SetupConditionCheckStatus;
+  readonly actualR: string;
+  readonly traderOutcome: OutcomeValue;
+  readonly exitedAt: string;
+}
+
+/**
+ * One row per (Trade, Condition) snapshot — a multi-Condition Trade
+ * naturally produces multiple rows, exactly like `getRuleAnalyticsRecords`.
+ * Grouping identity is `setupId + conditionKey` (§11) — `setupId` is the
+ * stable `setups.id` FK on the Trade, never a Setup Version id, so the same
+ * logical Condition groups correctly across Setup Version copy-on-write.
+ */
+async function selectConditionAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly ConditionAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: tradeSetupConditionChecks.tradeId,
+      setupId: trades.setupId,
+      conditionKey: tradeSetupConditionChecks.conditionKey,
+      label: tradeSetupConditionChecks.label,
+      checkStatus: tradeSetupConditionChecks.checkStatus,
+      actualR: trades.actualR,
+      traderOutcome: trades.traderOutcome,
+      exitedAt: trades.exitedAt,
+    })
+    .from(tradeSetupConditionChecks)
+    .innerJoin(trades, eq(trades.id, tradeSetupConditionChecks.tradeId))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.status, 'closed'),
+        isNotNull(trades.actualR),
+        isNotNull(trades.traderOutcome),
+        isNotNull(trades.exitedAt),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.exitedAt), asc(trades.id));
+
+  return rows.map((row) => ({
+    ...row,
+    checkStatus: row.checkStatus as SetupConditionCheckStatus,
+    actualR: row.actualR as string,
+    traderOutcome: row.traderOutcome as OutcomeValue,
+    exitedAt: (row.exitedAt as Date).toISOString(),
+  }));
+}
+
+export async function getConditionAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly ConditionAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectConditionAnalyticsRecords(context.data) };
+}
+
+export interface ConditionSystemAnalyticsRecord {
+  readonly tradeId: string;
+  readonly setupId: string;
+  readonly conditionKey: string;
+  readonly label: string;
+  readonly checkStatus: SetupConditionCheckStatus;
+  readonly systemR: string;
+  readonly systemOutcome: OutcomeValue;
+  readonly systemExitedAt: string;
+}
+
+/**
+ * System-eligible mirror of {@link selectConditionAnalyticsRecords}. Does
+ * NOT require the same Trade to also have an Actual result — a still-open
+ * Trade with a resolved System side contributes here even though it is
+ * absent from the Trader-side rows.
+ */
+async function selectConditionSystemAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly ConditionSystemAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: tradeSetupConditionChecks.tradeId,
+      setupId: trades.setupId,
+      conditionKey: tradeSetupConditionChecks.conditionKey,
+      label: tradeSetupConditionChecks.label,
+      checkStatus: tradeSetupConditionChecks.checkStatus,
+      systemR: trades.systemR,
+      systemOutcome: trades.systemOutcome,
+      systemExitedAt: trades.systemExitedAt,
+    })
+    .from(tradeSetupConditionChecks)
+    .innerJoin(trades, eq(trades.id, tradeSetupConditionChecks.tradeId))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.systemStatus, 'resolved'),
+        isNotNull(trades.systemR),
+        isNotNull(trades.systemOutcome),
+        isNotNull(trades.systemExitedAt),
+        ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.systemExitedAt), asc(trades.id));
+
+  return rows.map((row) => ({
+    ...row,
+    checkStatus: row.checkStatus as SetupConditionCheckStatus,
+    systemR: row.systemR as string,
+    systemOutcome: row.systemOutcome as OutcomeValue,
+    systemExitedAt: (row.systemExitedAt as Date).toISOString(),
+  }));
+}
+
+export async function getConditionSystemAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly ConditionSystemAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectConditionSystemAnalyticsRecords(context.data) };
+}
+
+export interface ConfidenceAnalyticsRecord {
+  readonly tradeId: string;
+  readonly confidence: number;
+  readonly actualR: string;
+  readonly traderOutcome: OutcomeValue;
+}
+
+/** Only Trades where Confidence was explicitly recorded (`IS NOT NULL`) — `0` is a real recorded value, never conflated with "not recorded". */
+async function selectConfidenceAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly ConfidenceAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      confidence: trades.confidence,
+      actualR: trades.actualR,
+      traderOutcome: trades.traderOutcome,
+    })
+    .from(trades)
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.status, 'closed'),
+        isNotNull(trades.actualR),
+        isNotNull(trades.traderOutcome),
+        isNotNull(trades.exitedAt),
+        isNotNull(trades.confidence),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.exitedAt), asc(trades.id));
+
+  return rows.map((row) => ({
+    ...row,
+    confidence: row.confidence as number,
+    actualR: row.actualR as string,
+    traderOutcome: row.traderOutcome as OutcomeValue,
+  }));
+}
+
+export async function getConfidenceAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly ConfidenceAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectConfidenceAnalyticsRecords(context.data) };
+}
+
+export interface ConfidenceSystemAnalyticsRecord {
+  readonly tradeId: string;
+  readonly confidence: number;
+  readonly systemR: string;
+  readonly systemOutcome: OutcomeValue;
+}
+
+/** System-eligible mirror of {@link selectConfidenceAnalyticsRecords} — independent population, independent `system_exited_at` date axis. */
+async function selectConfidenceSystemAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly ConfidenceSystemAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      confidence: trades.confidence,
+      systemR: trades.systemR,
+      systemOutcome: trades.systemOutcome,
+    })
+    .from(trades)
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.systemStatus, 'resolved'),
+        isNotNull(trades.systemR),
+        isNotNull(trades.systemOutcome),
+        isNotNull(trades.systemExitedAt),
+        isNotNull(trades.confidence),
+        ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.systemExitedAt), asc(trades.id));
+
+  return rows.map((row) => ({
+    ...row,
+    confidence: row.confidence as number,
+    systemR: row.systemR as string,
+    systemOutcome: row.systemOutcome as OutcomeValue,
+  }));
+}
+
+export async function getConfidenceSystemAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly ConfidenceSystemAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectConfidenceSystemAnalyticsRecords(context.data) };
+}
+
+export interface EmotionAnalyticsRecord {
+  readonly tradeId: string;
+  readonly key: string;
+  readonly label: string;
+  readonly actualR: string;
+  readonly traderOutcome: OutcomeValue;
+}
+
+/**
+ * One row per (Trade, Emotion) link — a multi-Emotion Trade naturally
+ * produces multiple rows, so it belongs to every one of its Emotion groups
+ * (§16). A Trade with `emotions_recorded_at IS NULL` (never recorded) or a
+ * recorded-zero selection (zero links) is structurally absent from this
+ * result — the inner join on `trade_emotions` excludes both, never
+ * fabricating a "None" group.
+ */
+async function selectEmotionAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly EmotionAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: tradeEmotions.tradeId,
+      key: emotionTypes.key,
+      label: emotionTypes.label,
+      actualR: trades.actualR,
+      traderOutcome: trades.traderOutcome,
+    })
+    .from(tradeEmotions)
+    .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
+    .innerJoin(trades, eq(trades.id, tradeEmotions.tradeId))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.status, 'closed'),
+        isNotNull(trades.actualR),
+        isNotNull(trades.traderOutcome),
+        isNotNull(trades.exitedAt),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.exitedAt), asc(trades.id), asc(emotionTypes.sortOrder));
+
+  return rows.map((row) => ({
+    ...row,
+    actualR: row.actualR as string,
+    traderOutcome: row.traderOutcome as OutcomeValue,
+  }));
+}
+
+export async function getEmotionAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly EmotionAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectEmotionAnalyticsRecords(context.data) };
+}
+
+export interface EmotionSystemAnalyticsRecord {
+  readonly tradeId: string;
+  readonly key: string;
+  readonly label: string;
+  readonly systemR: string;
+  readonly systemOutcome: OutcomeValue;
+}
+
+/**
+ * System-eligible mirror of {@link selectEmotionAnalyticsRecords}. Emotions
+ * are captured at entry, independent of how either axis later resolves — a
+ * still-open Trade whose System side is resolved still carries its recorded
+ * Emotion links, so it contributes here even though it is absent from the
+ * Trader-side rows.
+ */
+async function selectEmotionSystemAnalyticsRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly EmotionSystemAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: tradeEmotions.tradeId,
+      key: emotionTypes.key,
+      label: emotionTypes.label,
+      systemR: trades.systemR,
+      systemOutcome: trades.systemOutcome,
+    })
+    .from(tradeEmotions)
+    .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
+    .innerJoin(trades, eq(trades.id, tradeEmotions.tradeId))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.systemStatus, 'resolved'),
+        isNotNull(trades.systemR),
+        isNotNull(trades.systemOutcome),
+        isNotNull(trades.systemExitedAt),
+        ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.systemExitedAt), asc(trades.id), asc(emotionTypes.sortOrder));
+
+  return rows.map((row) => ({
+    ...row,
+    systemR: row.systemR as string,
+    systemOutcome: row.systemOutcome as OutcomeValue,
+  }));
+}
+
+export async function getEmotionSystemAnalyticsRecords(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly EmotionSystemAnalyticsRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectEmotionSystemAnalyticsRecords(context.data) };
+}
+
 export interface AnalyticsRawPopulations {
   readonly filters: ResolvedAnalyticsFilters;
   readonly trader: readonly TraderAnalyticsRecord[];
@@ -652,11 +1136,19 @@ export interface AnalyticsRawPopulations {
   readonly paired: readonly PairedAnalyticsRecord[];
   readonly rules: readonly RuleAnalyticsRecord[];
   readonly mistakes: readonly MistakeAnalyticsRecord[];
+  readonly setupAdherence: readonly SetupAdherenceAnalyticsRecord[];
+  readonly setupAdherenceSystem: readonly SetupAdherenceSystemAnalyticsRecord[];
+  readonly conditions: readonly ConditionAnalyticsRecord[];
+  readonly conditionsSystem: readonly ConditionSystemAnalyticsRecord[];
+  readonly confidence: readonly ConfidenceAnalyticsRecord[];
+  readonly confidenceSystem: readonly ConfidenceSystemAnalyticsRecord[];
+  readonly emotions: readonly EmotionAnalyticsRecord[];
+  readonly emotionsSystem: readonly EmotionSystemAnalyticsRecord[];
 }
 
 /**
- * Resolves authenticated scope once, then runs the five independent fixed-
- * shape projections in parallel. Existing individual reads remain available
+ * Resolves authenticated scope once, then runs every independent fixed-
+ * shape projection in parallel. Existing individual reads remain available
  * for focused callers and retain identical SQL semantics.
  */
 export async function getAnalyticsRawPopulations(
@@ -665,15 +1157,52 @@ export async function getAnalyticsRawPopulations(
 ): Promise<AnalyticsReadResult<AnalyticsRawPopulations>> {
   const context = await resolveAnalyticsQueryContext(input, options);
   if (!context.ok) return context;
-  const [trader, system, paired, rules, mistakes] = await Promise.all([
+  const [
+    trader,
+    system,
+    paired,
+    rules,
+    mistakes,
+    setupAdherence,
+    setupAdherenceSystem,
+    conditions,
+    conditionsSystem,
+    confidence,
+    confidenceSystem,
+    emotions,
+    emotionsSystem,
+  ] = await Promise.all([
     selectTraderAnalyticsRecords(context.data),
     selectSystemAnalyticsRecords(context.data),
     selectPairedAnalyticsRecords(context.data),
     selectRuleAnalyticsRecords(context.data),
     selectMistakeAnalyticsRecords(context.data),
+    selectSetupAdherenceAnalyticsRecords(context.data),
+    selectSetupAdherenceSystemAnalyticsRecords(context.data),
+    selectConditionAnalyticsRecords(context.data),
+    selectConditionSystemAnalyticsRecords(context.data),
+    selectConfidenceAnalyticsRecords(context.data),
+    selectConfidenceSystemAnalyticsRecords(context.data),
+    selectEmotionAnalyticsRecords(context.data),
+    selectEmotionSystemAnalyticsRecords(context.data),
   ]);
   return {
     ok: true,
-    data: { filters: context.data.filters, trader, system, paired, rules, mistakes },
+    data: {
+      filters: context.data.filters,
+      trader,
+      system,
+      paired,
+      rules,
+      mistakes,
+      setupAdherence,
+      setupAdherenceSystem,
+      conditions,
+      conditionsSystem,
+      confidence,
+      confidenceSystem,
+      emotions,
+      emotionsSystem,
+    },
   };
 }

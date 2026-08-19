@@ -35,7 +35,7 @@ Metrics: System Win Rate · System Avg R · System Expectancy · System Profit F
 
 The realised result of actual entries, management, exits, and costs.
 
-Metrics: Actual Win Rate · Actual Avg R/Expectancy · Actual Profit Factor · Actual Total R · Actual Max Drawdown. Execution Efficiency and Edge Leakage are paired comparison metrics over Trades eligible on both axes; they are not Trader-population aggregates. Discipline Score remains deferred.
+Metrics: Actual Win Rate · Actual Avg R/Expectancy · Actual Profit Factor · Actual Total R · Actual Max Drawdown. Execution Efficiency and Execution Gap (formerly "Edge Leakage" — renamed and sign-corrected in Phase 13H: `actualR − systemR`, negative means the Trader captured less than the System) are paired comparison metrics over Trades eligible on both axes; they are not Trader-population aggregates. Discipline Score remains deferred.
 
 ### R-multiples
 

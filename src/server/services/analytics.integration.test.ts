@@ -2,16 +2,20 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  emotionTypes,
   mistakeTypes,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
   userPreferences,
   users,
@@ -499,7 +503,8 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(result.data.comparison).toMatchObject({
       pairedSystemTotalR: { status: 'available', value: '2.0000' },
       pairedActualTotalR: { status: 'available', value: '1.0000' },
-      edgeLeakageR: { status: 'available', value: '1.0000' },
+      executionGapR: { status: 'available', value: '-1.0000' },
+      averageExecutionGapR: { status: 'available', value: '-0.2000' },
       executionEfficiency: { status: 'available', value: '0.5000' },
     });
     expect(result.data.rules).toEqual({
@@ -839,5 +844,93 @@ describe('analytics service (real PostgreSQL)', () => {
       .set({ status: 'expired' })
       .where(eq(workspaceEntitlements.workspaceId, fixture.workspaceId));
     expect((await getDashboardOverview(undefined, READ_OPTIONS)).ok).toBe(true);
+  });
+
+  it('Phase 13H: composes Setup Adherence, Condition, Confidence, and Emotion analytics end-to-end from real reads', async () => {
+    const userId = await createUser('analytics-13h-service');
+    const workspaceId = await createWorkspace(userId, 'analytics-13h-service');
+    const accountId = await createAccount(workspaceId, 'Active Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+    const framework = await createFramework(workspaceId, 'Phase 13H Strategy');
+    currentSession = sessionFor(userId);
+
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.setupVersionId,
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+
+    const tradeId = await createTrade(workspaceId, {
+      accountId,
+      framework,
+      actualR: '2.0000',
+    });
+    await db.insert(tradeSetupConditionChecks).values({
+      workspaceId,
+      tradeId,
+      setupConditionId: condition.id,
+      setupVersionId: framework.setupVersionId,
+      conditionKey: condition.conditionKey,
+      label: 'Above the 200 EMA',
+      sortOrder: 0,
+      checkStatus: 'met',
+    });
+    await db
+      .update(trades)
+      .set({ confidence: 75, emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+      .where(eq(trades.id, tradeId));
+    const emotion = await db.query.emotionTypes.findFirst({
+      where: eq(emotionTypes.isSystem, true),
+    });
+    if (emotion === undefined) throw new Error('canonical emotion seed missing');
+    await db.insert(tradeEmotions).values({ workspaceId, tradeId, emotionTypeId: emotion.id });
+
+    const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+
+    expect(result.data.setupAdherence).toMatchObject({
+      sampleCount: 1,
+      averageAdherence: { status: 'available', value: '1.0000' },
+      conditionsMetRate: { status: 'available', value: '1.0000' },
+    });
+    expect(result.data.setupAdherence.buckets.find((b) => b.bucket === '100')).toMatchObject({
+      trader: { tradeCount: 1, averageR: { status: 'available', value: '2.0000' } },
+      system: { tradeCount: 1, averageR: { status: 'available', value: '2.0000' } },
+    });
+
+    expect(result.data.conditions).toHaveLength(1);
+    expect(result.data.conditions[0]).toMatchObject({
+      conditionKey: condition.conditionKey,
+      label: 'Above the 200 EMA',
+      trader: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
+      system: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
+    });
+
+    expect(result.data.confidence).toMatchObject({
+      sampleCount: 1,
+      averageConfidence: { status: 'available', value: '0.7500' },
+    });
+    expect(result.data.confidence.levels.find((l) => l.level === 75)).toMatchObject({
+      trader: { tradeCount: 1 },
+      system: { tradeCount: 1 },
+    });
+
+    expect(result.data.emotions).toHaveLength(1);
+    expect(result.data.emotions[0]).toMatchObject({
+      key: emotion.key,
+      trader: { tradeCount: 1 },
+      system: { tradeCount: 1 },
+    });
+
+    expect(() => JSON.stringify(result.data)).not.toThrow();
   });
 });

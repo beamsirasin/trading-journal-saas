@@ -221,7 +221,7 @@ executionEfficiency = actualTotalR / systemTotalR
                       (a ratio against a negative or zero system edge is meaningless, not merely undefined)
 ```
 
-**Phase 13A authority/runtime note:** `executionGapR` above is the frozen product contract and supersedes the older `edgeLeakageR` sign. The current runtime still computes and names the legacy `systemTotalR − actualTotalR` value; Phase 13H must flip and rename the implementation, tests, fixtures, analytics fields, and copy together. Until 13H ships, the legacy runtime behavior is compatibility state, not product authority.
+**Phase 13H runtime note (locked):** the runtime now implements `executionGapR` exactly as specified above — `src/lib/calc/attribution.ts`'s `executionGapR`/`pairedExecutionGapR`/`averageExecutionGapR` (renamed and sign-flipped from the retired `edgeLeakageR`/`pairedEdgeLeakageR`), `ComparisonAnalyticsModel.executionGapR`/`averageExecutionGapR`, every analytics/dashboard/marketing UI surface, demo fixtures, and EN/TH copy. `Average Execution Gap = AVG(actualR − systemR)` over the paired population is the primary aggregate (`docs/phases/PHASE-13-journal-v2.md` §6); the summed total remains available as a secondary figure where the UI already had a slot for it. No legacy-signed call site remains.
 
 **Discipline Score and mistake-cost attribution have no approved formula and remain unimplemented.** `config/mistakes.ts` contains a general severity-weight configuration and Phase 08 snapshots severity/weight historically, but neither fact authorizes a 0–100 penalty formula or allocation of one Trade's leakage across multiple Mistakes. Do not implement either without an explicit evidence-backed decision and non-double-counting policy.
 

@@ -211,8 +211,8 @@ function ComparisonPanel({ comparison }: { comparison: DashboardOverview['compar
               <span className="numeric text-2xl font-semibold">{comparison.comparableCount}</span>
             </div>
             <DashboardMetric
-              label={t('edgeLeakage')}
-              metric={comparison.edgeLeakageR}
+              label={t('executionGap')}
+              metric={comparison.averageExecutionGapR}
               style="r"
               forceNeutral
             />

@@ -34,6 +34,14 @@ export type CalcResult<T> =
  * empty paired population cannot be compared (`no_comparable_trades`), and
  * a Rule with only `not_applicable`/`not_checked` checks has no objectively
  * evaluated adherence to report (`no_rule_checks`).
+ *
+ * Phase 13H adds two more, for the same "empty eligible population" reason
+ * as `no_trades`/`no_comparable_trades`, scoped to their own dimension so
+ * the UI can say what specifically is missing: a Setup Adherence/Conditions
+ * Met Rate population with zero Trades carrying applicable (recorded,
+ * configured) Setup Condition snapshots (`no_conditions_applicable`), and a
+ * Confidence population with zero Trades where Confidence was recorded
+ * (`no_confidence_recorded`).
  */
 export const CALC_FAILURE_REASONS = [
   'missing_input',
@@ -58,6 +66,8 @@ export const CALC_FAILURE_REASONS = [
   'system_has_no_edge',
   'no_comparable_trades',
   'no_rule_checks',
+  'no_conditions_applicable',
+  'no_confidence_recorded',
 ] as const;
 
 export type CalcFailureReason = (typeof CALC_FAILURE_REASONS)[number];

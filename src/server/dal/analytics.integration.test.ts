@@ -2,16 +2,20 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  emotionTypes,
   mistakeTypes,
+  setupConditions,
   setups,
   strategies,
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeExits,
   tradeMistakes,
   tradeRuleChecks,
   trades,
+  tradeSetupConditionChecks,
   tradingAccounts,
   userPreferences,
   users,
@@ -41,9 +45,17 @@ vi.mock('@/lib/auth/server', () => ({
 
 const {
   getAnalyticsFilterOptions,
+  getConditionAnalyticsRecords,
+  getConditionSystemAnalyticsRecords,
+  getConfidenceAnalyticsRecords,
+  getConfidenceSystemAnalyticsRecords,
+  getEmotionAnalyticsRecords,
+  getEmotionSystemAnalyticsRecords,
   getMistakeAnalyticsRecords,
   getPairedAnalyticsRecords,
   getRuleAnalyticsRecords,
+  getSetupAdherenceAnalyticsRecords,
+  getSetupAdherenceSystemAnalyticsRecords,
   getSystemAnalyticsRecords,
   getTraderAnalyticsRecords,
   normalizeAnalyticsFilters,
@@ -726,5 +738,642 @@ describe('analytics DAL (real PostgreSQL)', () => {
         ),
       ).toBe(true);
     }
+  });
+});
+
+describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analytics DAL (real PostgreSQL)', () => {
+  async function setupWorkspace() {
+    const userId = await createUser('analytics-13h');
+    const workspaceId = await createWorkspace(userId, 'analytics-13h');
+    const accountId = await createAccount(workspaceId, 'Active Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+    const framework = await createFramework(workspaceId, false);
+    currentSession = sessionFor(userId);
+    return { userId, workspaceId, accountId, framework };
+  }
+
+  async function addConditionCheck(
+    workspaceId: string,
+    tradeId: string,
+    setupConditionId: string,
+    setupVersionId: string,
+    conditionKey: string,
+    label: string,
+    sortOrder: number,
+    checkStatus: 'met' | 'not_met',
+  ) {
+    await db.insert(tradeSetupConditionChecks).values({
+      workspaceId,
+      tradeId,
+      setupConditionId,
+      setupVersionId,
+      conditionKey,
+      label,
+      sortOrder,
+      checkStatus,
+    });
+  }
+
+  it('derives correct per-Trade met/total counts, and condition_key grouping survives Setup Version copy-on-write', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+
+    // Two Conditions on the OLD (pinned) Setup Version.
+    const [conditionOld1] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    const [conditionOld2] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Volume confirms breakout',
+        sortOrder: 1,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (conditionOld1 === undefined || conditionOld2 === undefined) {
+      throw new Error('condition insert failed');
+    }
+
+    // The SAME logical Condition (same condition_key), carried forward onto
+    // the CURRENT Setup Version under a renamed label — simulating a COW
+    // edit, per `PHASE-13-journal-v2.md`'s documented copy-forward behavior.
+    const [conditionRenamed] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.currentSetupVersionId,
+        conditionKey: conditionOld1.conditionKey,
+        label: 'Above the 200 EMA (renamed)',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id });
+    if (conditionRenamed === undefined) throw new Error('condition insert failed');
+
+    // Trade A: 1/2 met, pinned to the OLD Setup Version.
+    const tradeA = await createTradeRow(workspaceId, accountId, framework);
+    await addConditionCheck(
+      workspaceId,
+      tradeA,
+      conditionOld1.id,
+      framework.oldSetupVersionId,
+      conditionOld1.conditionKey,
+      'Above the 200 EMA',
+      0,
+      'met',
+    );
+    await addConditionCheck(
+      workspaceId,
+      tradeA,
+      conditionOld2.id,
+      framework.oldSetupVersionId,
+      conditionOld2.conditionKey,
+      'Volume confirms breakout',
+      1,
+      'not_met',
+    );
+
+    // Trade B: 2/2 met, also pinned to the OLD Setup Version.
+    const tradeB = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-02T10:00:00Z'),
+    });
+    await addConditionCheck(
+      workspaceId,
+      tradeB,
+      conditionOld1.id,
+      framework.oldSetupVersionId,
+      conditionOld1.conditionKey,
+      'Above the 200 EMA',
+      0,
+      'met',
+    );
+    await addConditionCheck(
+      workspaceId,
+      tradeB,
+      conditionOld2.id,
+      framework.oldSetupVersionId,
+      conditionOld2.conditionKey,
+      'Volume confirms breakout',
+      1,
+      'met',
+    );
+
+    // Trade C: pinned to the CURRENT (renamed) Setup Version, same condition_key as conditionOld1.
+    const tradeC = await createTradeRow(
+      workspaceId,
+      accountId,
+      {
+        ...framework,
+        oldVersionId: framework.currentVersionId,
+        oldSetupVersionId: framework.currentSetupVersionId,
+      },
+      { exitedAt: new Date('2026-08-03T10:00:00Z') },
+    );
+    await addConditionCheck(
+      workspaceId,
+      tradeC,
+      conditionRenamed.id,
+      framework.currentSetupVersionId,
+      conditionOld1.conditionKey,
+      'Above the 200 EMA (renamed)',
+      0,
+      'not_met',
+    );
+
+    const adherence = await getSetupAdherenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS);
+    if (!adherence.ok) throw new Error(adherence.code);
+    const byTrade = new Map(adherence.data.map((r) => [r.tradeId, r]));
+    expect(byTrade.get(tradeA)).toMatchObject({ metCount: 1, totalCount: 2 });
+    expect(byTrade.get(tradeB)).toMatchObject({ metCount: 2, totalCount: 2 });
+    expect(byTrade.get(tradeC)).toMatchObject({ metCount: 0, totalCount: 1 });
+
+    const conditions = await getConditionAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS);
+    if (!conditions.ok) throw new Error(conditions.code);
+    // The same condition_key across two Setup Versions groups into one
+    // logical Condition (3 rows: A-met, B-met, C-not_met), never split by
+    // setup_version_id, and never merged with the unrelated second Condition.
+    const sharedKeyRows = conditions.data.filter(
+      (r) => r.conditionKey === conditionOld1.conditionKey,
+    );
+    expect(sharedKeyRows).toHaveLength(3);
+    expect(sharedKeyRows.filter((r) => r.checkStatus === 'met')).toHaveLength(2);
+    expect(sharedKeyRows.filter((r) => r.checkStatus === 'not_met')).toHaveLength(1);
+    expect(new Set(sharedKeyRows.map((r) => r.setupId))).toEqual(new Set([framework.setupId]));
+    // The most recent snapshot (Trade C, latest exitedAt) carries the renamed label truthfully.
+    const mostRecent = [...sharedKeyRows]
+      .sort((a, b) => a.exitedAt.localeCompare(b.exitedAt))
+      .at(-1);
+    expect(mostRecent?.label).toBe('Above the 200 EMA (renamed)');
+
+    const otherKeyRows = conditions.data.filter(
+      (r) => r.conditionKey === conditionOld2.conditionKey,
+    );
+    expect(otherKeyRows).toHaveLength(2);
+  });
+
+  it('excludes a still-open Trade from Setup Adherence, Confidence, and Emotion analytics even when it has recorded data', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+
+    const openTradeId = await createTradeRow(workspaceId, accountId, framework, { status: 'open' });
+    await addConditionCheck(
+      workspaceId,
+      openTradeId,
+      condition.id,
+      framework.oldSetupVersionId,
+      condition.conditionKey,
+      'Above the 200 EMA',
+      0,
+      'met',
+    );
+    await db.update(trades).set({ confidence: 75 }).where(eq(trades.id, openTradeId));
+    const emotion = await db.query.emotionTypes.findFirst({
+      where: eq(emotionTypes.isSystem, true),
+    });
+    if (emotion === undefined) throw new Error('canonical emotion seed missing');
+    await db
+      .insert(tradeEmotions)
+      .values({ workspaceId, tradeId: openTradeId, emotionTypeId: emotion.id });
+
+    const [adherence, confidence, emotions] = await Promise.all([
+      getSetupAdherenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getConfidenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getEmotionAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+    ]);
+    if (!adherence.ok || !confidence.ok || !emotions.ok) throw new Error('read failed');
+    expect(adherence.data.some((r) => r.tradeId === openTradeId)).toBe(false);
+    expect(confidence.data.some((r) => r.tradeId === openTradeId)).toBe(false);
+    expect(emotions.data.some((r) => r.tradeId === openTradeId)).toBe(false);
+  });
+
+  it('Confidence: excludes NULL, includes 0 as a real recorded value', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const zeroConfidenceTrade = await createTradeRow(workspaceId, accountId, framework);
+    await db.update(trades).set({ confidence: 0 }).where(eq(trades.id, zeroConfidenceTrade));
+    const unrecordedTrade = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-02T10:00:00Z'),
+    });
+
+    const result = await getConfidenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    expect(result.data.some((r) => r.tradeId === zeroConfidenceTrade && r.confidence === 0)).toBe(
+      true,
+    );
+    expect(result.data.some((r) => r.tradeId === unrecordedTrade)).toBe(false);
+  });
+
+  it('Emotion: a multi-Emotion Trade produces one row per link, and a recorded-zero Trade contributes no rows', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const catalog = await db.query.emotionTypes.findMany({
+      where: eq(emotionTypes.isSystem, true),
+      limit: 2,
+    });
+    expect(catalog.length).toBeGreaterThanOrEqual(2);
+    const [first, second] = catalog;
+    if (first === undefined || second === undefined) throw new Error('emotion catalog too small');
+
+    const multiEmotionTrade = await createTradeRow(workspaceId, accountId, framework);
+    await db
+      .update(trades)
+      .set({ emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+      .where(eq(trades.id, multiEmotionTrade));
+    await db.insert(tradeEmotions).values([
+      { workspaceId, tradeId: multiEmotionTrade, emotionTypeId: first.id },
+      { workspaceId, tradeId: multiEmotionTrade, emotionTypeId: second.id },
+    ]);
+
+    // Recorded, explicitly zero Emotions selected — must contribute nothing.
+    const recordedZeroTrade = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-02T10:00:00Z'),
+    });
+    await db
+      .update(trades)
+      .set({ emotionsRecordedAt: new Date('2026-08-02T09:00:00Z') })
+      .where(eq(trades.id, recordedZeroTrade));
+
+    const result = await getEmotionAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    const forMultiEmotionTrade = result.data.filter((r) => r.tradeId === multiEmotionTrade);
+    expect(forMultiEmotionTrade).toHaveLength(2);
+    expect(new Set(forMultiEmotionTrade.map((r) => r.key))).toEqual(
+      new Set([first.key, second.key]),
+    );
+    expect(result.data.some((r) => r.tradeId === recordedZeroTrade)).toBe(false);
+  });
+
+  it('Setup Adherence: independent Trader/System populations — both / System-only (partial-open Actual) / Trader-only (System pending)', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+    const authoritative = condition;
+    async function withCondition(tradeId: string, status: 'met' | 'not_met' = 'met') {
+      await addConditionCheck(
+        workspaceId,
+        tradeId,
+        authoritative.id,
+        framework.oldSetupVersionId,
+        authoritative.conditionKey,
+        'Above the 200 EMA',
+        0,
+        status,
+      );
+    }
+
+    // A: fully closed Actual + resolved System — contributes to BOTH.
+    const bothTradeId = await createTradeRow(workspaceId, accountId, framework);
+    await withCondition(bothTradeId);
+    // B: Actual still open/partial, System independently resolved — System only.
+    const systemOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      status: 'open',
+      system: 'resolved',
+      systemExitedAt: new Date('2026-08-02T11:00:00Z'),
+    });
+    await withCondition(systemOnlyTradeId);
+    // C: Actual closed, System still pending — Trader only.
+    const traderOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-03T10:00:00Z'),
+      system: 'pending',
+    });
+    await withCondition(traderOnlyTradeId);
+
+    const [traderResult, systemResult] = await Promise.all([
+      getSetupAdherenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getSetupAdherenceSystemAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+    ]);
+    if (!traderResult.ok || !systemResult.ok) throw new Error('read failed');
+    const traderIds = new Set(traderResult.data.map((r) => r.tradeId));
+    const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
+
+    expect(traderIds.has(bothTradeId)).toBe(true);
+    expect(systemIds.has(bothTradeId)).toBe(true);
+    expect(traderIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
+    expect(traderIds.has(traderOnlyTradeId)).toBe(true);
+    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+  });
+
+  it('Condition: independent Trader/System populations — both / System-only / Trader-only, and Money-only System resolutions are included', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Volume confirms breakout',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+    const authoritative = condition;
+    async function withCondition(tradeId: string) {
+      await addConditionCheck(
+        workspaceId,
+        tradeId,
+        authoritative.id,
+        framework.oldSetupVersionId,
+        authoritative.conditionKey,
+        'Volume confirms breakout',
+        0,
+        'met',
+      );
+    }
+
+    const bothTradeId = await createTradeRow(workspaceId, accountId, framework);
+    await withCondition(bothTradeId);
+    const systemOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      status: 'open',
+      system: 'resolved',
+      systemExitedAt: new Date('2026-08-02T11:00:00Z'),
+    });
+    await withCondition(systemOnlyTradeId);
+    const traderOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-03T10:00:00Z'),
+      system: 'pending',
+    });
+    await withCondition(traderOnlyTradeId);
+    // Money-only System resolution (no `system_exit_price`) must be included
+    // in the System-side Condition read exactly like a Price resolution.
+    const moneyOnlySystemTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      status: 'open',
+      system: 'resolved',
+      moneyOnlySystem: true,
+      systemExitedAt: new Date('2026-08-04T11:00:00Z'),
+    });
+    await withCondition(moneyOnlySystemTradeId);
+
+    const [traderResult, systemResult] = await Promise.all([
+      getConditionAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getConditionSystemAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+    ]);
+    if (!traderResult.ok || !systemResult.ok) throw new Error('read failed');
+    const traderIds = new Set(traderResult.data.map((r) => r.tradeId));
+    const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
+
+    expect(traderIds.has(bothTradeId)).toBe(true);
+    expect(systemIds.has(bothTradeId)).toBe(true);
+    expect(traderIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
+    expect(traderIds.has(traderOnlyTradeId)).toBe(true);
+    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+    expect(systemIds.has(moneyOnlySystemTradeId)).toBe(true);
+  });
+
+  it('Confidence: independent Trader/System populations — both / System-only (partial-open Actual) / Trader-only (System pending)', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const bothTradeId = await createTradeRow(workspaceId, accountId, framework);
+    await db.update(trades).set({ confidence: 50 }).where(eq(trades.id, bothTradeId));
+    const systemOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      status: 'open',
+      system: 'resolved',
+      systemExitedAt: new Date('2026-08-02T11:00:00Z'),
+    });
+    await db.update(trades).set({ confidence: 75 }).where(eq(trades.id, systemOnlyTradeId));
+    const traderOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-03T10:00:00Z'),
+      system: 'pending',
+    });
+    await db.update(trades).set({ confidence: 25 }).where(eq(trades.id, traderOnlyTradeId));
+
+    const [traderResult, systemResult] = await Promise.all([
+      getConfidenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getConfidenceSystemAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+    ]);
+    if (!traderResult.ok || !systemResult.ok) throw new Error('read failed');
+    const traderIds = new Set(traderResult.data.map((r) => r.tradeId));
+    const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
+
+    expect(traderIds.has(bothTradeId)).toBe(true);
+    expect(systemIds.has(bothTradeId)).toBe(true);
+    expect(traderIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
+    expect(traderIds.has(traderOnlyTradeId)).toBe(true);
+    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+  });
+
+  it('Emotion: independent Trader/System populations — both / System-only (partial-open Actual) / Trader-only (System pending)', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const emotion = await db.query.emotionTypes.findFirst({
+      where: eq(emotionTypes.isSystem, true),
+    });
+    if (emotion === undefined) throw new Error('canonical emotion seed missing');
+    const authoritative = emotion;
+    async function withEmotion(tradeId: string) {
+      await db
+        .update(trades)
+        .set({ emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+        .where(eq(trades.id, tradeId));
+      await db
+        .insert(tradeEmotions)
+        .values({ workspaceId, tradeId, emotionTypeId: authoritative.id });
+    }
+
+    const bothTradeId = await createTradeRow(workspaceId, accountId, framework);
+    await withEmotion(bothTradeId);
+    const systemOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      status: 'open',
+      system: 'resolved',
+      systemExitedAt: new Date('2026-08-02T11:00:00Z'),
+    });
+    await withEmotion(systemOnlyTradeId);
+    const traderOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-03T10:00:00Z'),
+      system: 'pending',
+    });
+    await withEmotion(traderOnlyTradeId);
+
+    const [traderResult, systemResult] = await Promise.all([
+      getEmotionAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getEmotionSystemAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+    ]);
+    if (!traderResult.ok || !systemResult.ok) throw new Error('read failed');
+    const traderIds = new Set(traderResult.data.map((r) => r.tradeId));
+    const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
+
+    expect(traderIds.has(bothTradeId)).toBe(true);
+    expect(systemIds.has(bothTradeId)).toBe(true);
+    expect(traderIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
+    expect(traderIds.has(traderOnlyTradeId)).toBe(true);
+    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+  });
+
+  it('date axes are never shared between Trader and System reads — exited_at outside range + system_exited_at inside => System only, and the reverse => Trader only', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+    const authoritative = condition;
+    async function withCondition(tradeId: string) {
+      await addConditionCheck(
+        workspaceId,
+        tradeId,
+        authoritative.id,
+        framework.oldSetupVersionId,
+        authoritative.conditionKey,
+        'Above the 200 EMA',
+        0,
+        'met',
+      );
+    }
+
+    // Trader exited_at OUTSIDE the selected range (July), system_exited_at INSIDE (August).
+    const systemOnlyByDateTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-07-01T10:00:00Z'),
+      systemExitedAt: new Date('2026-08-15T11:00:00Z'),
+    });
+    await withCondition(systemOnlyByDateTradeId);
+    // The reverse: exited_at INSIDE the range (August), system_exited_at OUTSIDE (July).
+    const traderOnlyByDateTradeId = await createTradeRow(workspaceId, accountId, framework, {
+      exitedAt: new Date('2026-08-16T10:00:00Z'),
+      systemExitedAt: new Date('2026-07-02T11:00:00Z'),
+    });
+    await withCondition(traderOnlyByDateTradeId);
+
+    // `datePreset` alone cannot express an arbitrary custom range in this
+    // filter contract, so this proof uses a 30D window via a fixed
+    // `referenceInstant` — the window's own Trader read must never "borrow"
+    // a row whose System-eligible date falls inside it but whose own
+    // `exited_at` does not, and vice versa.
+    const augustWindow = { referenceInstant: new Date('2026-08-20T00:00:00.000Z') } as const;
+    const [traderAugust, systemAugust] = await Promise.all([
+      getSetupAdherenceAnalyticsRecords({ datePreset: '30d' }, augustWindow),
+      getSetupAdherenceSystemAnalyticsRecords({ datePreset: '30d' }, augustWindow),
+    ]);
+    if (!traderAugust.ok || !systemAugust.ok) throw new Error('read failed');
+    const traderAugustIds = new Set(traderAugust.data.map((r) => r.tradeId));
+    const systemAugustIds = new Set(systemAugust.data.map((r) => r.tradeId));
+
+    // Within the August 30D window: the System-side row (system_exited_at
+    // in August) appears in System, NOT Trader (its own exited_at is July,
+    // outside this window). The Trader-side row (exited_at in August)
+    // appears in Trader, NOT System (its own system_exited_at is July).
+    expect(systemAugustIds.has(systemOnlyByDateTradeId)).toBe(true);
+    expect(traderAugustIds.has(systemOnlyByDateTradeId)).toBe(false);
+    expect(traderAugustIds.has(traderOnlyByDateTradeId)).toBe(true);
+    expect(systemAugustIds.has(traderOnlyByDateTradeId)).toBe(false);
+  });
+
+  it('applies account, Strategy, Setup, and Version filters independently to every Trader/System behavioral projection', async () => {
+    const { workspaceId, accountId, framework } = await setupWorkspace();
+    const otherAccountId = await createAccount(workspaceId, 'Other account');
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.oldSetupVersionId,
+        label: 'Above the 200 EMA',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+
+    const inScopeTradeId = await createTradeRow(workspaceId, accountId, framework);
+    await addConditionCheck(
+      workspaceId,
+      inScopeTradeId,
+      condition.id,
+      framework.oldSetupVersionId,
+      condition.conditionKey,
+      'Above the 200 EMA',
+      0,
+      'met',
+    );
+    await db.update(trades).set({ confidence: 50 }).where(eq(trades.id, inScopeTradeId));
+    const outOfScopeTradeId = await createTradeRow(workspaceId, otherAccountId, framework, {
+      exitedAt: new Date('2026-08-02T10:00:00Z'),
+      systemExitedAt: new Date('2026-08-02T11:00:00Z'),
+    });
+    await db.update(trades).set({ confidence: 50 }).where(eq(trades.id, outOfScopeTradeId));
+
+    const input = { datePreset: 'all' as const, tradingAccountId: accountId };
+    const [traderConfidence, systemConfidence] = await Promise.all([
+      getConfidenceAnalyticsRecords(input, READ_OPTIONS),
+      getConfidenceSystemAnalyticsRecords(input, READ_OPTIONS),
+    ]);
+    if (!traderConfidence.ok || !systemConfidence.ok) throw new Error('read failed');
+    expect(traderConfidence.data.some((r) => r.tradeId === outOfScopeTradeId)).toBe(false);
+    expect(systemConfidence.data.some((r) => r.tradeId === outOfScopeTradeId)).toBe(false);
+    expect(traderConfidence.data.some((r) => r.tradeId === inScopeTradeId)).toBe(true);
+    expect(systemConfidence.data.some((r) => r.tradeId === inScopeTradeId)).toBe(true);
+  });
+
+  it('never aggregates Setup Adherence, Condition, Confidence, or Emotion analytics across workspaces', async () => {
+    const first = await setupWorkspace();
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId: first.workspaceId,
+        setupId: first.framework.setupId,
+        setupVersionId: first.framework.oldSetupVersionId,
+        label: 'Workspace-one Condition',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+    const firstTradeId = await createTradeRow(first.workspaceId, first.accountId, first.framework);
+    await addConditionCheck(
+      first.workspaceId,
+      firstTradeId,
+      condition.id,
+      first.framework.oldSetupVersionId,
+      condition.conditionKey,
+      'Workspace-one Condition',
+      0,
+      'met',
+    );
+    await db.update(trades).set({ confidence: 50 }).where(eq(trades.id, firstTradeId));
+
+    // Switching to a second, unrelated Workspace — the DAL scopes strictly
+    // to whichever Workspace `currentSession` now resolves to.
+    const second = await setupWorkspace();
+
+    const [adherence, confidence] = await Promise.all([
+      getSetupAdherenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+      getConfidenceAnalyticsRecords({ datePreset: 'all' }, READ_OPTIONS),
+    ]);
+    if (!adherence.ok || !confidence.ok) throw new Error('read failed');
+    expect(adherence.data.some((r) => r.tradeId === firstTradeId)).toBe(false);
+    expect(confidence.data.some((r) => r.tradeId === firstTradeId)).toBe(false);
+    expect(second.workspaceId).not.toBe(first.workspaceId);
   });
 });
