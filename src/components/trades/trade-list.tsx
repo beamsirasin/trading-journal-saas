@@ -7,8 +7,19 @@ import type { TradeListItem } from '@/server/dal/trades';
 import { formatR } from '@/components/trades/trade-format';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link, useRouter } from '@/i18n/navigation';
+
+/** Truthful "archived" disclosure for the LIVE Strategy/Setup/Account — never hides the pinned historical label, only annotates it (mirrors Trade Detail, Phase 13G §3/§14/§21). */
+function ArchivedNote({ show, label }: { show: boolean; label: string }) {
+  if (!show) return null;
+  return (
+    <Badge variant="neutral" className="ml-1.5 px-1.5 py-0 text-[10px]">
+      {label}
+    </Badge>
+  );
+}
 
 export type TradeListView = TradeListItem & { readonly occurredAtDisplay: string };
 
@@ -85,6 +96,7 @@ export function TradeList({
 }) {
   const t = useTranslations('trades');
   const router = useRouter();
+  const archivedLabel = t('common.archived');
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -117,14 +129,21 @@ export function TradeList({
                   </Link>
                 </td>
                 <td className="px-3 py-3">
-                  <span className="block font-medium break-words">{trade.strategyName}</span>
+                  <span className="block font-medium break-words">
+                    {trade.strategyName}
+                    <ArchivedNote show={trade.strategyIsArchived} label={archivedLabel} />
+                  </span>
                   <span className="text-muted-foreground block text-xs break-words">
                     {trade.setupName} ·{' '}
                     {t('common.version', { number: trade.strategyVersionNumber })}
+                    <ArchivedNote show={trade.setupIsArchived} label={archivedLabel} />
                   </span>
                   <ConditionsAdherence trade={trade} />
                 </td>
-                <td className="px-3 py-3 break-words">{trade.tradingAccountName}</td>
+                <td className="px-3 py-3 break-words">
+                  {trade.tradingAccountName}
+                  <ArchivedNote show={trade.tradingAccountIsArchived} label={archivedLabel} />
+                </td>
                 <td className="px-3 py-3">
                   <TradeStatusBadge status={trade.status} />
                 </td>
@@ -164,9 +183,17 @@ export function TradeList({
               <TradeStatusBadge status={trade.status} />
             </div>
             <div className="text-sm">
-              <span className="font-medium">{trade.strategyName}</span>
+              <span className="font-medium">
+                {trade.strategyName}
+                <ArchivedNote show={trade.strategyIsArchived} label={archivedLabel} />
+              </span>
               <span className="text-muted-foreground block break-words">
                 {trade.setupName} · {t('common.version', { number: trade.strategyVersionNumber })}
+                <ArchivedNote show={trade.setupIsArchived} label={archivedLabel} />
+              </span>
+              <span className="text-muted-foreground block break-words">
+                {trade.tradingAccountName}
+                <ArchivedNote show={trade.tradingAccountIsArchived} label={archivedLabel} />
               </span>
               <ConditionsAdherence trade={trade} />
             </div>

@@ -742,6 +742,249 @@ test.describe('real Trade Journal creation', () => {
     const back = await page.getByRole('link', { name: 'Back to trades' }).first().boundingBox();
     expect(back?.height ?? 0).toBeGreaterThanOrEqual(44);
   });
+
+  /**
+   * Founder-UAT Phase 13I readiness proof. Every scenario above is a focused
+   * slice of one part of the Journal V2 feature set in isolation; this is the
+   * one continuous session that walks the whole customer journey end to end —
+   * Create -> Open -> Partial Close -> independent System resolve -> Final
+   * Close -> Review -> Detail -> List -> Analytics — proving they compose
+   * correctly together, not merely that each works alone.
+   */
+  test('walks one Trade through create, open, partial close, independent System resolve, final close, review, and confirms Detail, List, and Analytics all agree', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(420_000);
+    const user = await provisionJournalUser('e2e-trades-full-journey');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+
+    // 1. Create — Account -> Strategy -> a Setup with >= 2 Conditions -> Symbol/
+    // Direction -> a Money-only Plan (simplest to assert R math on) -> some-but-
+    // not-all Conditions (exercises the "N of M met" disclosure) -> Confidence ->
+    // an Emotion -> an Entry Reason.
+    await page.goto('/en/app/trades');
+    await page.getByRole('link', { name: 'Log a trade' }).first().click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
+    await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByRole('button', { name: 'Add a Money plan' }).click();
+    await page.getByLabel('Planned risk').fill('100.00');
+    await page.getByLabel(/Planned reward/).fill('300.00');
+    await page.getByLabel('Breakout candle closed').check();
+    await page.getByLabel('Retest held').check();
+    await page.getByLabel('Volume expanded').check();
+    await expect(page.getByText('3/5 met · 60%')).toBeVisible();
+    await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
+    await page.getByRole('button', { name: 'Focused' }).click();
+    await page
+      .getByLabel('Entry Reason')
+      .fill('Clean breakout confirmed on the retest with expanding volume.');
+    await page.getByRole('button', { name: 'Save Trade' }).click();
+    const confirmDialog = page.getByRole('alertdialog');
+    await expect(confirmDialog.getByText(/3 of 5 Conditions are met \(60%\)/)).toBeVisible();
+    await confirmDialog.getByRole('button', { name: 'Save Trade' }).click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+
+    const detail = page.getByRole('article', { name: 'NZDUSD' });
+    await expect(page.getByText('Long').first()).toBeVisible();
+    await expect(detail.getByText('+3.00R')).toBeVisible(); // Planned R = 300.00 / 100.00
+    await expect(page.getByText('Planned').last()).toBeVisible();
+    await expect(page.getByText('Pending').last()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // 2. Open — status becomes Open; no premature final Actual R/outcome.
+    await page.getByRole('button', { name: 'Open Trade' }).click();
+    let dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Actual result mode').selectOption('money');
+    await dialog.getByLabel('Initial risk').fill('100.00');
+    await dialog.getByRole('button', { name: 'Open Trade' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await expect(
+      detail.getByText('Actual R', { exact: true }).locator('..').getByText('Not available'),
+    ).toBeVisible();
+    await expect(
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+    ).toHaveCount(0);
+
+    // 3. Partial Close roughly half the position with a realized P&L — Realized R
+    // to date and remaining % appear; the Trade still reads Open, with no final
+    // Actual R/outcome yet.
+    await page.getByRole('button', { name: 'Partial Close' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Closed').fill('50');
+    await dialog.getByLabel('Realized net P&L').fill('150.00');
+    await dialog.getByRole('button', { name: 'Partial Close' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await expect(
+      detail.getByText('Realized R to date').locator('..').getByText('+1.50R'),
+    ).toBeVisible();
+    await expect(detail.getByText('Remaining').locator('..').getByText('50%')).toBeVisible();
+    await expect(
+      detail.getByText('Actual R', { exact: true }).locator('..').getByText('Not available'),
+    ).toBeVisible();
+    await expect(
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+    ).toHaveCount(0);
+
+    // 4. System resolve — resolved completely independently of the Actual side's
+    // partial-open state; the System Result is visible while Actual is untouched.
+    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('System exit price')).toHaveCount(0);
+    await expect(dialog.getByLabel('System result')).toHaveValue('money_target');
+    await dialog.getByLabel('System Cost R').fill('0.10');
+    await expect(dialog.getByText('2.9000R')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible();
+    await expect(
+      detail.getByLabel('System Result').getByText('Win', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+    ).toHaveCount(0);
+
+    // 5. Final Close — close the remaining half; the Trade now reads Closed with
+    // the correct final Actual R: SUM(realized_pnl) / initial_risk =
+    // (150.00 + 250.00) / 100.00 = +4.00R — no double-weighting of already-
+    // realized legs.
+    await page.getByRole('button', { name: 'Close Remaining' }).click();
+    dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Closing the exact remaining 50%.')).toBeVisible();
+    await dialog.getByLabel('Realized net P&L').fill('250.00');
+    await dialog.getByRole('button', { name: 'Close Remaining' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await expect(detail.getByLabel('Actual Execution').getByText('+4.00R').first()).toBeVisible();
+    await expect(
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      detail.getByLabel('System Result').getByText('Win', { exact: true }),
+    ).toBeVisible();
+
+    // 6. Review — tag a Mistake, mark the Execution Rule status, and write a
+    // Post-Trade Review note.
+    const ruleStatus = page.getByRole('combobox', {
+      name: 'Rule status for Wait for confirmation',
+    });
+    await ruleStatus.selectOption('followed');
+    await expect(ruleStatus).toBeEnabled({ timeout: 30_000 });
+    await expect(ruleStatus).toHaveValue('followed');
+
+    await page.getByLabel('Mistake type').selectOption({ label: 'Moved stop' });
+    await page.getByLabel(/Note/).fill('Trimmed the first leg early, ahead of plan.');
+    await page.getByRole('button', { name: 'Attach mistake' }).click();
+    await expect(page.getByText('Trimmed the first leg early, ahead of plan.')).toBeVisible({
+      timeout: 120_000,
+    });
+
+    const reviewNotes = page.getByRole('textbox', { name: 'Post-trade review', exact: true });
+    await reviewNotes.fill('Followed the Setup but exited the first leg too early.');
+    await page.getByRole('button', { name: 'Save review' }).click();
+    await expect(page.getByText('Saved')).toBeVisible();
+
+    // 7. Detail — reload and confirm every recorded fact reads back correctly,
+    // with Actual and System kept in clearly independent sections, never blended.
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'NZDUSD' })).toBeVisible();
+    await expect(detail.getByText('3/5 met · 60%')).toBeVisible();
+    await expect(detail.getByText('75% · High')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(
+      detail.getByText('Clean breakout confirmed on the retest with expanding volume.'),
+    ).toBeVisible();
+    const actualSection = detail.getByLabel('Actual Execution');
+    await expect(actualSection.getByText('Money', { exact: true })).toBeVisible();
+    await expect(actualSection.getByText('+4.00R').first()).toBeVisible();
+    await expect(actualSection.getByText('Win', { exact: true })).toBeVisible();
+    await expect(actualSection.getByText('Exit 1', { exact: true })).toBeVisible();
+    await expect(actualSection.getByText('Exit 2', { exact: true })).toBeVisible();
+    const systemSection = detail.getByLabel('System Result');
+    await expect(systemSection.getByText('+2.90R')).toBeVisible();
+    await expect(systemSection.getByText('Win', { exact: true })).toBeVisible();
+    await expect(ruleStatus).toHaveValue('followed');
+    await expect(page.getByText('Trimmed the first leg early, ahead of plan.')).toBeVisible();
+    await expect(reviewNotes).toHaveValue('Followed the Setup but exited the first leg too early.');
+
+    // 8. List — the Trade List reflects the correct CLOSED-state figures, never a
+    // stale partial figure.
+    await page.goto('/en/app/trades');
+    const listRow = page.getByRole('row', { name: /NZDUSD/ });
+    await expect(listRow.getByText('+4.00R')).toBeVisible();
+    await expect(listRow.getByText('Win', { exact: true }).first()).toBeVisible();
+    await expect(listRow.getByText('Realized R to date')).toHaveCount(0);
+
+    // 9. Analytics — this Trade contributes to both Trader and System
+    // performance, and its Setup Adherence / Confidence / Emotion appear in the
+    // behavioral sections.
+    await page.goto('/en/app/analytics');
+    await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'All' }).click();
+    await expect(page).toHaveURL(/range=all/);
+
+    const systemPanel = page.locator('[data-analytics-panel="system"]');
+    const traderPanel = page.locator('[data-analytics-panel="trader"]');
+    await expect(systemPanel.getByText('1 Trade')).toBeVisible();
+    await expect(traderPanel.getByText('1 Trade')).toBeVisible();
+
+    const setupAdherencePanel = page.locator('[data-analytics-panel="setup-adherence"]');
+    const adherenceBucket = setupAdherencePanel.locator('li', { hasText: /50.{1,2}74%/ });
+    await expect(adherenceBucket.locator('[data-analytics-axis="trader"]')).toContainText(
+      '1 Trade',
+    );
+    await expect(adherenceBucket.locator('[data-analytics-axis="system"]')).toContainText(
+      '1 Trade',
+    );
+
+    const conditionsPanel = page.locator('[data-analytics-panel="conditions"]');
+    const metCondition = conditionsPanel.locator('li', { hasText: 'Breakout candle closed' });
+    await expect(
+      metCondition.locator(
+        '[data-analytics-condition-status="met"] [data-analytics-axis="trader"]',
+      ),
+    ).toContainText('1 Trade');
+    const notMetCondition = conditionsPanel.locator('li', { hasText: 'Invalidation is clear' });
+    await expect(
+      notMetCondition.locator(
+        '[data-analytics-condition-status="notMet"] [data-analytics-axis="system"]',
+      ),
+    ).toContainText('1 Trade');
+
+    const confidencePanel = page.locator('[data-analytics-panel="confidence"]');
+    const confidenceLevel75 = confidencePanel.locator('li', { hasText: '75%' });
+    await expect(confidenceLevel75.locator('[data-analytics-axis="trader"]')).toContainText(
+      '1 Trade',
+    );
+
+    const emotionsPanel = page.locator('[data-analytics-panel="emotions"]');
+    const focusedGroup = emotionsPanel.locator('li', { hasText: 'Focused' });
+    await expect(focusedGroup.locator('[data-analytics-axis="system"]')).toContainText('1 Trade');
+
+    await expect(
+      page.locator('[data-analytics-panel="mistakes"]').getByText('1 Trade'),
+    ).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="rules"]').getByText('100.00%')).toBeVisible();
+  });
 });
 
 /**
@@ -770,8 +1013,25 @@ test.describe('Confidence pill drag interaction', () => {
     await page.locator(`[data-slot="confidence-option"][data-step="${step}"]`).click();
   }
 
+  /**
+   * Waits for the pill's Motion spring transition (triggered by a preceding
+   * click or drag) to finish animating before any test reads its geometry —
+   * without this, a drag begun immediately after a click can read a
+   * mid-flight `boundingBox()` and compute the wrong relative start point.
+   * Polls until two consecutive reads agree, rather than a fixed sleep.
+   */
+  async function waitForPillSettled(page: Page) {
+    const pill = page.locator('[data-slot="confidence-pill"]');
+    await expect(async () => {
+      const first = await pill.boundingBox();
+      const second = await pill.boundingBox();
+      if (!first || !second || first.x !== second.x) throw new Error('pill still animating');
+    }).toPass({ timeout: 5_000, intervals: [50] });
+  }
+
   /** Moves a held pill to an absolute viewport X via enough intermediate events for Motion to recognize a pan. */
   async function beginPillDragTo(page: Page, toX: number) {
+    await waitForPillSettled(page);
     const pill = page.locator('[data-slot="confidence-pill"]');
     const pillBox = await pill.boundingBox();
     if (!pillBox) throw new Error('Confidence pill has no geometry');

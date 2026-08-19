@@ -1199,7 +1199,7 @@
         "average": "Average Setup Adherence",
         "conditionsMetRate": "Conditions Met Rate",
         "sampleCount": "{count, plural, one {# Trade with recorded, applicable Setup Conditions} other {# Trades with recorded, applicable Setup Conditions}}",
-        "bucketsLabel": "Trader performance by Setup Adherence",
+        "bucketsLabel": "Performance by Setup Adherence",
         "bucketTradeCount": "{count, plural, one {# Trade} other {# Trades}}",
         "bucketAvgR": "Actual Avg R",
         "bucketWinRate": "Actual Win Rate",
@@ -1225,7 +1225,7 @@
       "confidence": {
         "average": "Average Confidence",
         "sampleCount": "{count, plural, one {# Trade with recorded Confidence} other {# Trades with recorded Confidence}}",
-        "levelsLabel": "Trader performance by Confidence level",
+        "levelsLabel": "Performance by Confidence level",
         "levelLabel": "{level}%",
         "levelTradeCount": "{count, plural, one {# Trade} other {# Trades}}",
         "avgR": "Actual Avg R",
@@ -1233,7 +1233,7 @@
         "help": "Confidence is a self-assessment recorded at entry, not a probability estimate. A 75% Confidence Trade is not claimed to have a 75% chance of winning. Trades where Confidence was never recorded are excluded, never treated as 0%."
       },
       "emotions": {
-        "listLabel": "Trader performance by Emotion",
+        "listLabel": "Performance by Emotion",
         "tradeCount": "{count, plural, one {# Trade} other {# Trades}}",
         "avgR": "Actual Avg R",
         "winRate": "Actual Win Rate",
@@ -1291,8 +1291,7 @@
     "cumulativeR": {
       "title": "Cumulative R",
       "chartTitle": "Cumulative R over time",
-      "chartDescription": "One axis in R. Both series start at zero.",
-      "caption": "Demo data. The gap between the lines is {edgeLeakage}R of edge leakage. Weekly samples, so intra-week drawdowns are not visible here."
+      "chartDescription": "One axis in R. Both series start at zero."
     },
     "mistakeCost": {
       "title": "Mistake cost"

@@ -571,6 +571,13 @@ test.describe('real deep Analytics', () => {
     await expect(page.getByText('System Equity Curve')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="rules"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="mistakes"]')).toBeVisible();
+    // Phase 13H behavioral-dimension panels (Setup Adherence / Condition /
+    // Confidence / Emotion) must also render without overflow at 320px —
+    // the desktop test already covers these; mobile previously did not.
+    await expect(page.locator('[data-analytics-panel="setup-adherence"]')).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="conditions"]')).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="confidence"]')).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="emotions"]')).toBeVisible();
     const rangeBox = await page.getByRole('button', { name: '30D' }).boundingBox();
     expect(rangeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
     const dimensions = await page.evaluate(() => ({

@@ -180,7 +180,7 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
             value={confidence}
             onChange={setConfidence}
           />
-          <TradeField id="plan-confirmation" label={t('field.confirmationNotes')}>
+          <TradeField id="plan-confirmation" label={t('field.entryReason')}>
             <FormTextarea
               id="plan-confirmation"
               name="confirmationNotes"

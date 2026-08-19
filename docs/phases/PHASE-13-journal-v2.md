@@ -501,6 +501,199 @@ The Actual/System dual-input changes (§2, §3) are explicit additive branches, 
 
 ---
 
+## 18. Phase 13I — Founder UAT Readiness &amp; Journal V2 closeout
+
+**Goal:** not more features. Prepare Journal V2 for Founder manual UAT, find and fix real end-to-end defects, and close Phase 13 on a trustworthy regression baseline.
+
+### 18.1 Readiness audit — method and result
+
+Five parallel read-only source audits covered the complete product journey — Setup authoring → Trade creation → Opening → Actual execution → Partial Close → System outcome → Discipline/Mistakes → Review → Trade Detail → Trade List → Analytics → Mobile → EN/TH → error/retry handling — each grounded against this document and CLAUDE.md, citing file:line for every finding, never assumed.
+
+**Result: zero P0, zero P1.** No data corruption, no wrong financial result, no tenant-isolation leak, and no workflow a trader cannot complete was found anywhere in the audited surface. The core financial formulas (Price-mode weighted Actual R, Money-mode Actual R with no double-weighting, all four System Money-only presets, Execution Gap sign) were independently hand-verified against this document's own worked examples and found exact. The Execution Gap sign correction from 13H has no remaining legacy-signed copy anywhere in either locale.
+
+**Five P2 findings, all fixed in 13I** (see 18.2 for verification):
+
+1. Trade List did not disclose an archived live Strategy/Setup/Trading Account, though this document's 13G record claimed it did (`docs/phases/PHASE-13-journal-v2.md` §16). Fixed: `listWorkspaceTrades` (`src/server/dal/trades.ts`) now joins and returns the same three `isArchived` flags Trade Detail already exposed, rendered as a small "Archived" annotation next to the affected name in both the desktop table and mobile card — the pinned historical label itself is never rewritten, only annotated, matching Detail's existing rule.
+2. Three analytics section labels ("Trader performance by Setup Adherence" / "...by Confidence level" / "...by Emotion") were stale — written before the completion patch that added independent System-axis breakdowns to every bucket/level/group, so the labels claimed Trader-only scope for a region that now shows both axes. Fixed: generalized to "Performance by ..." in both locales, matching how the Condition panel's equivalent label was already correctly generalized.
+3. An orphaned, unreferenced `demo.cumulativeR.caption` i18n key in both locale files still described "edge leakage" with the pre-13H sign — dead code (confirmed zero callers), but directly contradicted `docs/localization-glossary.md`'s explicit claim that the retired term "no longer appears anywhere in product copy." Fixed: removed the key from both locales.
+4. The plan-correction dialog labeled `confirmation_notes` "Confirmation notes" while Create Trade and Trade Detail both correctly call the same field "Entry Reason" (§8's locked term) — a trader editing the field via correction saw a different name than everywhere else it appears. Fixed: the correction dialog now uses the same `field.entryReason` label.
+5. The mobile (320px) analytics E2E test asserted visibility/no-overflow for the original five panels but never the four Phase 13H behavioral panels (Setup Adherence, Condition, Confidence, Emotion), even though the desktop test already covered all nine. Fixed: extended the mobile test to assert visibility of all four.
+
+**Deferred P3 polish (not fixed in 13I, per this document's own scope discipline — reported for later, non-blocking):**
+
+- Entry-flow section order (Timeframe/Session rendered after, not before, the Price/Money plan) — a literal deviation from §13's locked order, functionally harmless.
+- Dead pre-13C wizard code (`trade-plan-validation.ts`'s `furthestReachableStage`/`canNavigateToStage`) and dead wizard-era i18n keys (`create.steps.*`, `create.stepper.*`, `create.review.*`) — no runtime effect, cleanup only.
+- Setup Condition reorder is a manual "Sort order" number field, not drag-and-drop — functionally correct, more friction than ideal.
+- Execution Rule status remains editable before any Actual execution exists — not incorrect, worth a product decision on whether to gate it.
+- No dedicated unit test for `confidence: 0` rendering in Trade Detail (source logic independently confirmed correct: an explicit `=== null` check, not a falsy check).
+- `comparison-panel.tsx`/`attribution-section.tsx` still use `forceNeutral`/`tone="warning"` styling that 13A flagged as an optional (not required) opportunity now that positive Execution Gap is the good/normal case under the corrected sign.
+- `src/components/dashboard/mistake-summary.tsx` is dead code (no importer anywhere) and still interpolates a raw signed Execution Gap value in its caption — harmless while unmounted.
+- Setup Adherence ships 5 performance buckets (`0-24/25-49/50-74/75-99/100`) where §7 above locks 4 (`<50/50-74/75-99/100`); this document's own 13H implementation record additionally cites the wrong section number (§10 instead of §7) for this decision. The finer-grained buckets are defensible but the deviation was never explicitly called out the way every other correction in this document is — a documentation-only gap, not a behavior defect.
+- A handful of dead i18n keys from the pre-completion-patch panel layout (`setupAdherence.bucketAvgR`/`bucketWinRate`/`bucketTradeCount`, equivalent `conditions.*`/`confidence.*`/`emotions.*` keys) superseded by the shared `axis.*` keys.
+- The per-bucket/per-level lists in the Setup Adherence and Confidence panels render nothing (not even an empty-state message) when every bucket/level is empty, unlike the Condition and Emotion panels' explicit empty-state copy — a minor inconsistency with CLAUDE.md §8's four-states requirement.
+- No single mobile E2E exercises Confidence **drag** together with Emotions + Setup Conditions + a Money plan in one continuous session at a narrow viewport (coverage is split across two tests); a click-based full-flow mobile test and a drag-only Confidence test each independently pass.
+- `translateServerFieldError`'s client-side lookup table only covers a subset of possible Zod field-error keys; anything outside it falls back to a generic (still translated, still non-leaking) message.
+
+### 18.2 UAT dataset — Founder scenario guide
+
+Deterministic, disposable scenarios to create manually in a throwaway DEV/UAT workspace (never the Founder's real workspace). Each maps to one or more items in the checklist below. Use one Trading Account, one Strategy with a Setup that has 5 Setup Conditions configured, and a second Setup with zero Conditions configured.
+
+| #   | Scenario                         | How to create it                                                                                      |
+| --- | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| A   | Price-only plan                  | New Trade → open only the Price section → Entry/Stop/Target → save                                    |
+| B   | Money-only plan                  | New Trade → open only the Money section → Risk/Reward amounts → save                                  |
+| C   | Price + Money plan (agreeing)    | Open both sections with matching R → confirm the green agreement note → save                          |
+| D   | Setup with 5 Conditions, 3 met   | Select the 5-Condition Setup → check exactly 3 boxes → save through the "3 of 5" confirmation         |
+| E   | Setup with zero Conditions       | Select the zero-Condition Setup → confirm the section reads "Not configured," not "0 of 0"            |
+| F   | Confidence 75%                   | Drag or click the Confidence control to 75% before saving                                             |
+| G   | Multiple Emotions                | Open Emotions, select 2–3 (e.g. Focused + Fearful)                                                    |
+| H   | Price Full Close                 | Open a Price-mode Trade → Close → 100% at one exit price                                              |
+| I   | Price Partial Close              | Open a Price-mode Trade → Close 50% → later Close Remaining at a different price                      |
+| J   | Money Partial Close              | Open a Money-mode Trade → Close 50% with a P&amp;L amount → Close Remaining with another              |
+| K   | System Price result              | On a Trade with a Price plan → System Result → enter the System exit price                            |
+| L   | System Money Target              | On a Money-only-plan Trade → System Result → Target Hit                                               |
+| M   | System Stop                      | Money-only-plan Trade → System Result → Stop Hit                                                      |
+| N   | System Custom                    | Money-only-plan Trade → System Result → Custom → enter a gross R                                      |
+| O   | System No Trade                  | Any Trade → System Result → No Trade                                                                  |
+| P   | Actual partial + System resolved | Partially close a Trade (I/J), then resolve its System side                                           |
+| Q   | Closed Actual + System pending   | Fully close a Trade, leave System untouched                                                           |
+| R   | Mistake + Rule + Review Note     | On any closed Trade → tag a Mistake, mark one Execution Rule violated, write a Post-Trade Review note |
+
+### 18.3 Manual UAT checklist
+
+For every scenario: **what to do → what should appear → what would be a defect.** No database inspection required anywhere in this checklist.
+
+**Create Trade**
+
+- Do: pick Account → Strategy → Setup → Symbol/Direction, fill only a Price plan, save.
+  Expect: Trade saves; Detail shows a Price-mode Trade with no monetary risk fields.
+  Defect: save is blocked, or a monetary field is silently required.
+- Do: same, but Money-only.
+  Expect: saves with no Price fields required.
+  Defect: Price fields are silently required, or the R preview is wrong.
+- Do: fill both Price and Money with numbers that imply different R.
+  Expect: a visible red mismatch warning; Save is blocked until resolved.
+  Defect: save silently succeeds with disagreeing plans, or the warning never appears.
+- Do: check 3 of 5 Setup Conditions, then Save.
+  Expect: a "3 of 5 conditions met" confirmation naming the 2 unchecked ones will be saved Not Met; Save still succeeds on confirm.
+  Defect: Save is blocked outright, or the unmet conditions are silently dropped without disclosure.
+- Do: pick the zero-Condition Setup.
+  Expect: the Conditions section reads "Not configured."
+  Defect: it shows "0 of 0" or any implied 0%.
+- Do: set Confidence, select 2+ Emotions, write an Entry Reason, attach a chart (URL or upload), Save.
+  Expect: all five persist and read back identically on Detail.
+  Defect: any one silently drops.
+
+**Setup Conditions authoring**
+
+- Do: add/rename/reorder/remove a Condition on an unlocked Setup Version.
+  Expect: all four work; a Trade already created against the old wording keeps its own snapshot untouched.
+  Defect: an old Trade's Detail retroactively shows the new wording.
+- Do: edit a Condition on a Setup Version that already has Trades against it (locked).
+  Expect: a new Version is created automatically (copy-forward); old Trades stay pinned to the old Version's wording.
+  Defect: the edit silently rewrites history, or is blocked with no explanation.
+
+**Actual Execution — Price mode**
+
+- Do: open a Price-mode Trade, no monetary risk entered.
+  Expect: opens fine.
+- Do: close 50% at +2R, 25% at +4R, 25% at +6R (three separate closes).
+  Expect: final Actual R reads **+3.50R** exactly.
+  Defect: any other number, or a crash on the third leg.
+- Do: correct an earlier (not the latest) leg's exit price.
+  Expect: Actual R recomputes correctly from the full corrected leg set.
+  Defect: only the latest leg is editable, or the correction doesn't recompute.
+
+**Actual Execution — Money mode**
+
+- Do: risk 100; close 50% at +100, 25% at +100, 25% at +150.
+  Expect: final Actual R reads **+3.50R** exactly (350/100 — not the P&amp;L multiplied by the closed % a second time).
+  Defect: any other number.
+
+**Partial-open**
+
+- Do: after the first partial close, look at Trade List/Detail before fully closing.
+  Expect: Trade still shows as Open; a "Realized R to date" and remaining % are shown — never a final Actual R or Win/Loss badge.
+  Defect: a final R or outcome appears before the Trade is 100% closed; Dashboard/Analytics count it as a finalized win or loss.
+
+**System Result**
+
+- Do: on a Price-plan Trade, enter a System exit price.
+  Expect: System R computes from price geometry, independent of whatever the Actual side shows.
+- Do: on a Money-only-plan Trade, try Target Hit / Stop Hit / Break Even / Custom.
+  Expect: all four are selectable; System Cost (if any) reduces the result as expected (a planned +5R Target with 0.10R cost reads +4.90R; Stop reads -1.10R; Break Even reads -0.10R).
+  Defect: any preset is missing, or the cost isn't subtracted.
+- Do: resolve System weeks before or after Actual execution.
+  Expect: no error, no forced pairing — the two timelines are fully independent.
+
+**Actual/System independence**
+
+- Do: check all four combinations — Actual partial + System resolved; Actual closed + System pending; Actual closed + System no-trade; Actual closed + System resolved.
+  Expect: Detail always shows the two sides as two clearly separate blocks, never blended into one verdict.
+  Defect: any combination shows a single merged result or a confusing/contradictory summary.
+
+**Execution Gap**
+
+- Do: with a Trade at Actual −0.5R and System +5R, check the Execution Gap figure anywhere it appears (Detail, Dashboard, Analytics).
+  Expect: **−5.5R** everywhere, with copy meaning "you captured less than the System offered."
+  Defect: a positive number for this case, or wording implying the opposite.
+
+**Entry Snapshot (Trade Detail)**
+
+- Do: open Detail for Trades with recorded Conditions, no Conditions recorded, and a zero-Condition Setup.
+  Expect: three visibly different states — never a fake 0%.
+- Do: open Detail for a Trade with Emotions explicitly saved as none, and one where Emotions were simply never touched.
+  Expect: "No emotions selected" reads differently from "Not recorded."
+- Do: open Detail for a Trade with Confidence set to exactly 0%.
+  Expect: shows "0%," not "Not set."
+
+**Discipline / Review**
+
+- Do: tag a Mistake, mark an Execution Rule violated, write a Post-Trade Review note, on the same Trade whose Entry Reason was written at creation.
+  Expect: all four are visible and independently editable; Entry Reason never changes; there is no single combined "Discipline Score."
+  Defect: any field overwrites another, or a numeric discipline score appears anywhere.
+
+**Trade List / Detail**
+
+- Do: scan the list with Planned, Open, Partially-closed, and Closed Trades together.
+  Expect: each row shows the right figure for its state (Planned R for not-yet-executed, Realized R + remaining % for partial, Actual R for closed) — never a misleading blank or 0.00R.
+- Do: archive the Strategy, Setup, or Trading Account behind an existing Trade.
+  Expect: both List and Detail show an "Archived" annotation next to the affected name; the Trade's own historical label is unchanged.
+
+**Analytics**
+
+- Do: open `/app/analytics` with a mix of the above Trades.
+  Expect: Trader and System metrics (Win Rate, Avg R, Expectancy, Profit Factor, Max Drawdown, Total R) both populate independently; Setup Adherence, Conditions Met Rate, Confidence, Emotion, and Execution Gap sections all show real numbers with a visible sample size.
+- Do: create a Trade that's Actual-partial + System-resolved with Confidence/Emotion/Setup Conditions recorded, then fully close it.
+  Expect: before closing, it counts only in the System-side behavioral breakdown; after closing, it also counts on the Trader side.
+- Do: switch the Date range (30D/90D/All), Account, Strategy, Setup, and Strategy Version filters.
+  Expect: every section reacts consistently; nothing is left stuck on stale data.
+
+**Mobile**
+
+- Do: repeat New Trade, Conditions, Confidence, Emotions, Partial Close, System Result, and Detail at a narrow phone width.
+  Expect: no sideways scrolling anywhere; every button is comfortably tappable; every dialog fits the screen.
+
+**EN/TH**
+
+- Do: switch language mid-flow.
+  Expect: Planned R / Actual R / Realized R / System R / Execution Gap / Setup Conditions / Confidence / Emotions / Entry Reason / Full Close / Partial Close / Close Remaining / Execution Rules / Mistakes / Post-Trade Review all read naturally in both languages, consistently across every screen they appear on.
+
+**Error handling**
+
+- Do: try to close more than the remaining % of a Trade, or submit a Price/Money mismatch, or trigger a validation error.
+  Expect: a clear, human message; your typed-in values stay in the form; nothing that looks like a database error or stack trace.
+
+### 18.4 Integrated Journal V2 journey E2E
+
+Extended `e2e/trades.spec.ts` with one continuous production-build journey test proving the complete Create → Conditions → Confidence → Emotion → Entry Reason → Open → Partial Close → System resolve → Final Close → Review → Detail → List → Analytics path end to end in one session (§25) — see the Phase 13I closeout report for the exact test name, assertions, and pass/fail result. This complements, and does not replace, every existing focused Journal V2 test.
+
+### 18.5 Status
+
+Journal V2 is **AUTOMATED-UAT READY**: the complete source-level audit found zero P0/P1 defects, all five P2 findings are fixed and regression-tested, the full unit/integration/E2E/production-build suites pass, and one integrated journey E2E now proves the whole product story end to end in a single automated run. **Founder acceptance has not yet occurred** — nothing in this document should be read as claiming the Founder has performed or approved manual UAT. §18.2/§18.3 above are the handoff artifact for that still-outstanding step.
+
+---
+
 ## Out of scope for Phase 13 (unchanged)
 
 Broker sync, automatic market-price tracking, partial **entry**/scale-in, multiple entry fills, live position sizing, automatic System outcome from a market feed, custom Emotions, custom Mistakes, trading automation. Partial **exit** (Partial Close) is in scope; partial **entry** is not — `actual_entry`/`actual_initial_stop` remain single-fill, unaffected by anything in this document.

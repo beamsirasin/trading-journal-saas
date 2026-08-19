@@ -100,6 +100,9 @@ const RECENT: DashboardRecentTrade = {
   realizedRToDate: null,
   setupConditionMetCount: null,
   setupConditionTotalCount: null,
+  tradingAccountIsArchived: false,
+  strategyIsArchived: false,
+  setupIsArchived: false,
 };
 
 function renderDashboard(

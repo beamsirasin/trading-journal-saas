@@ -145,6 +145,10 @@ export interface TradeListItem {
    */
   readonly setupConditionMetCount: number | null;
   readonly setupConditionTotalCount: number | null;
+  /** Whether the LIVE Strategy/Setup/Trading Account (not this Trade's pinned Version) is archived today — mirrors Trade Detail's disclosure, never a reason to hide the pinned historical label. */
+  readonly tradingAccountIsArchived: boolean;
+  readonly strategyIsArchived: boolean;
+  readonly setupIsArchived: boolean;
 }
 
 export interface TradeListPage {
@@ -245,14 +249,19 @@ export async function listWorkspaceTrades(
       actualInitialStop: trades.actualInitialStop,
       actualInitialRiskMinor: trades.actualInitialRiskMinor,
       tradingAccountName: tradingAccounts.name,
+      tradingAccountIsArchived: tradingAccounts.isArchived,
       strategyVersionName: strategyVersions.name,
       strategyVersionNumber: strategyVersions.versionNumber,
+      strategyIsArchived: strategies.isArchived,
       setupVersionName: strategySetupVersions.name,
+      setupIsArchived: setups.isArchived,
     })
     .from(trades)
     .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
     .innerJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
     .innerJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .innerJoin(strategies, eq(strategies.id, trades.strategyId))
+    .innerJoin(setups, eq(setups.id, trades.setupId))
     .where(and(...conditions))
     .orderBy(desc(occurredAtExpr), desc(trades.id))
     .limit(limit + 1);
@@ -350,6 +359,9 @@ export async function listWorkspaceTrades(
         realizedRToDate,
         setupConditionMetCount: conditionCounts?.met ?? null,
         setupConditionTotalCount: conditionCounts?.total ?? null,
+        tradingAccountIsArchived: row.tradingAccountIsArchived,
+        strategyIsArchived: row.strategyIsArchived,
+        setupIsArchived: row.setupIsArchived,
       };
     }),
     nextCursor,

@@ -824,6 +824,39 @@ describe('trades DAL (real database)', () => {
     });
   });
 
+  describe('listWorkspaceTrades — archived Strategy/Setup/Account disclosure (Phase 13I)', () => {
+    it('discloses the LIVE Strategy/Setup/Account as archived without rewriting the pinned historical label', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+
+      const beforeArchive = await listWorkspaceTrades({});
+      const beforeRow = beforeArchive.items.find((item) => item.tradeId === created.tradeId);
+      if (beforeRow === undefined) throw new Error('Trade missing from list before archive');
+      expect(beforeRow.strategyIsArchived).toBe(false);
+      expect(beforeRow.setupIsArchived).toBe(false);
+      expect(beforeRow.tradingAccountIsArchived).toBe(false);
+
+      await archiveSetup(workspaceId, userId, fw.strategyId, fw.setupId);
+      await archiveStrategy(workspaceId, userId, fw.strategyId);
+      await db
+        .update(tradingAccounts)
+        .set({ isArchived: true })
+        .where(eq(tradingAccounts.id, fw.tradingAccountId));
+
+      const afterArchive = await listWorkspaceTrades({});
+      const afterRow = afterArchive.items.find((item) => item.tradeId === created.tradeId);
+      if (afterRow === undefined) throw new Error('Trade missing from list after archive');
+      expect(afterRow.strategyIsArchived).toBe(true);
+      expect(afterRow.setupIsArchived).toBe(true);
+      expect(afterRow.tradingAccountIsArchived).toBe(true);
+      // The historical Trade still reads exactly the same pinned names as before archiving.
+      expect(afterRow.strategyName).toBe(beforeRow.strategyName);
+      expect(afterRow.setupName).toBe(beforeRow.setupName);
+    });
+  });
+
   describe('getWorkspaceTradeDetail — Setup Condition three-state disclosure (Phase 13G)', () => {
     it('is not_configured when the pinned Setup Version genuinely has zero Conditions', async () => {
       const { userId, workspaceId } = await freshWorkspace();

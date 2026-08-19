@@ -38,6 +38,9 @@ const trades: TradeListView[] = statuses.map((status, index) => ({
   realizedRToDate: null,
   setupConditionMetCount: null,
   setupConditionTotalCount: null,
+  tradingAccountIsArchived: false,
+  strategyIsArchived: false,
+  setupIsArchived: false,
 }));
 
 describe('TradeList', () => {
@@ -151,5 +154,37 @@ describe('TradeList', () => {
       </NextIntlClientProvider>,
     );
     expect(screen.getAllByText('Setup 3/5').length).toBeGreaterThan(0);
+  });
+
+  it('truthfully discloses an archived live Strategy, Setup, and Trading Account without hiding the pinned historical label', () => {
+    const withArchived: TradeListView = {
+      ...trades[0]!,
+      strategyIsArchived: true,
+      setupIsArchived: true,
+      tradingAccountIsArchived: true,
+    };
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradeList
+          trades={[withArchived, trades[1]!]}
+          selectedTradeId={null}
+          nextCursor={null}
+          hasCursor={false}
+        />
+      </NextIntlClientProvider>,
+    );
+    // Pinned historical labels remain visible and unchanged.
+    expect(screen.getAllByText('Pinned Strategy 0').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Pinned Setup 0/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Main account').length).toBeGreaterThan(0);
+    // Archived annotation appears once per surface (desktop table + mobile card).
+    expect(screen.getAllByText('Archived').length).toBeGreaterThan(0);
+    // A non-archived Trade's row shows no archived annotation.
+    expect(
+      screen.queryAllByText('Pinned Strategy 1').every((node) => {
+        const row = node.closest('tr') ?? node.closest('a');
+        return row === null || row.textContent?.includes('Archived') === false;
+      }),
+    ).toBe(true);
   });
 });
