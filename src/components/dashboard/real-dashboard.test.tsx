@@ -66,6 +66,7 @@ function overview(overrides: Partial<DashboardOverview> = {}): DashboardOverview
       averageExecutionGapR: available('-1.0000'),
       executionEfficiency: available('0.3333'),
     },
+    systemPendingCount: 0,
     ...overrides,
   };
 }
@@ -105,13 +106,26 @@ const RECENT: DashboardRecentTrade = {
   setupIsArchived: false,
 };
 
+const ATTENTION = {
+  openTrades: 0,
+  pendingSystemOutcomes: 0,
+  unclassifiedTrades: 0,
+  reviewsPending: 0,
+};
+
 function renderDashboard(
   model = overview(),
   recentTrades: readonly DashboardRecentTrade[] = [RECENT],
+  attention = ATTENTION,
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <RealDashboard account={ACCOUNT} overview={model} recentTrades={recentTrades} />
+      <RealDashboard
+        account={ACCOUNT}
+        overview={model}
+        recentTrades={recentTrades}
+        attention={attention}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -243,6 +257,37 @@ describe('RealDashboard', () => {
       /demo data|strong edge|weak edge|execution grade|discipline score|mistake cost/i,
     );
     expect(container.querySelector('.recharts-wrapper')).not.toBeInTheDocument();
+  });
+
+  it('hides the Needs Attention panel entirely when every count is zero', () => {
+    const { container } = renderDashboard(overview(), [RECENT], ATTENTION);
+    expect(
+      container.querySelector('[data-dashboard-panel="needs-attention"]'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Needs attention')).not.toBeInTheDocument();
+  });
+
+  it('shows only the non-zero Needs Attention counts, each linking to the Journal', () => {
+    const { container } = renderDashboard(overview(), [RECENT], {
+      openTrades: 2,
+      pendingSystemOutcomes: 0,
+      unclassifiedTrades: 5,
+      reviewsPending: 0,
+    });
+    const panel = container.querySelector(
+      '[data-dashboard-panel="needs-attention"]',
+    ) as HTMLElement;
+    expect(panel).not.toBeNull();
+    expect(within(panel).getByText('Open Trades')).toBeVisible();
+    expect(within(panel).getByText('2')).toBeVisible();
+    expect(within(panel).getByText('Unclassified Trades')).toBeVisible();
+    expect(within(panel).getByText('5')).toBeVisible();
+    expect(within(panel).queryByText('Pending System Outcomes')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('Reviews Pending')).not.toBeInTheDocument();
+    expect(within(panel).getByRole('link', { name: /Review/ })).toHaveAttribute(
+      'href',
+      '/app/trades',
+    );
   });
 
   it('renders an instructional recent-Trades state without replacing populated metrics', () => {

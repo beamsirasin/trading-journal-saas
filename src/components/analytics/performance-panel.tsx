@@ -5,13 +5,17 @@ import type { PerformanceAnalyticsModel } from '@/lib/analytics/metrics';
 import { cn } from '@/lib/utils';
 import { AnalyticsMetricDisplay } from '@/components/analytics/analytics-metric';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Link } from '@/i18n/navigation';
 
 export function PerformancePanel({
   series,
   metrics,
+  pendingCount,
 }: {
   series: 'system' | 'trader';
   metrics: PerformanceAnalyticsModel;
+  /** Phase 14C §19 — System-axis only; `undefined`/omitted on the Trader panel. */
+  pendingCount?: number;
 }) {
   const t = useTranslations('analytics.real');
   const Icon = series === 'system' ? MonitorCog : UserRound;
@@ -46,6 +50,21 @@ export function PerformancePanel({
         </div>
       </CardHeader>
       <CardContent>
+        {series === 'system' && pendingCount !== undefined && pendingCount > 0 ? (
+          <div className="border-border bg-muted/40 mb-5 flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+            <span>
+              {t('resolvedCount', { count: metrics.sampleCount })}
+              {' · '}
+              {t('pendingCount', { count: pendingCount })}
+            </span>
+            <Link
+              href="/app/trades"
+              className="text-primary min-h-11 shrink-0 content-center font-medium underline-offset-4 hover:underline"
+            >
+              {t('reviewPending')}
+            </Link>
+          </div>
+        ) : null}
         {metrics.sampleCount === 0 ? (
           <p className="border-border bg-muted/40 text-muted-foreground mb-5 rounded-md border p-3 text-sm">
             {t(`${series}.empty`)}

@@ -743,6 +743,63 @@ test.describe('real Trade Journal creation', () => {
     expect(back?.height ?? 0).toBeGreaterThanOrEqual(44);
   });
 
+  test('Phase 14C mobile — Quick Capture, late classification dialog, and Needs Attention stay usable at 390px', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-14c-mobile');
+    await seedFramework(user.id);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, 'en', user);
+
+    await page.goto('/en/app/trades');
+    await page.getByRole('link', { name: 'Log a trade' }).first().click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDCAD');
+    await page.getByRole('button', { name: 'Long' }).click();
+    // Genuinely no Plan at all (Phase 14C.1) — Account/Symbol/Direction alone.
+    await page.getByRole('button', { name: 'Save Trade' }).click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+
+    const detail = page.getByRole('article', { name: 'NZDCAD' });
+    const classification = detail.getByLabel('Strategy & Setup');
+    await expect(classification.getByText('Not assigned')).toBeVisible();
+    const addStrategyButton = classification.getByRole('button', { name: 'Add Strategy' });
+    await expect(addStrategyButton).toBeVisible();
+    await addStrategyButton.click();
+    const classifyDialog = page.getByRole('dialog');
+    await expect(classifyDialog).toBeVisible();
+    const classifyDialogBox = await classifyDialog.boundingBox();
+    expect(classifyDialogBox?.width ?? 999).toBeLessThanOrEqual(390);
+    await classifyDialog
+      .getByLabel('Strategy')
+      .selectOption({ label: 'Golden Breakout · Version 1' });
+    await classifyDialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(classifyDialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(classification.getByText('Golden Breakout')).toBeVisible({ timeout: 60_000 });
+    let dimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+
+    // Needs Attention on the Dashboard — this workspace now has one Planned
+    // (open-ineligible), unresolved-System Trade, so the widget renders.
+    await page.goto('/en/app');
+    const attention = page.getByRole('region', { name: 'Needs attention' });
+    await expect(attention).toBeVisible();
+    const attentionBox = await attention.boundingBox();
+    expect(attentionBox?.width ?? 999).toBeLessThanOrEqual(390);
+    await expect(attention.getByRole('link', { name: /Review/ })).toBeVisible();
+    dimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+  });
+
   /**
    * Founder-UAT Phase 13I readiness proof. Every scenario above is a focused
    * slice of one part of the Journal V2 feature set in isolation; this is the
@@ -984,6 +1041,130 @@ test.describe('real Trade Journal creation', () => {
       page.locator('[data-analytics-panel="mistakes"]').getByText('1 Trade'),
     ).toBeVisible();
     await expect(page.locator('[data-analytics-panel="rules"]').getByText('100.00%')).toBeVisible();
+  });
+
+  test('Phase 14C — Quick Capture with no Strategy/Setup, Actual closes while System stays Pending, then classifies the Trade later', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
+    const user = await provisionJournalUser('e2e-trades-independent-ux');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+
+    // Journey A — Quick Capture: ONLY Account (auto-selected), Symbol, and
+    // Direction — the frozen Phase 14C.1 contract, with genuinely NO Plan at
+    // all (migration 0016 dropped the database's last obstacle to this).
+    // Strategy and Setup are left untouched at their blank default too.
+    await page.goto('/en/app/trades');
+    await page.getByRole('link', { name: 'Log a trade' }).first().click();
+    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
+    await expect(page.getByLabel('Strategy')).toHaveValue('');
+    await expect(page.getByLabel('Entry', { exact: true })).toHaveValue('');
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByRole('button', { name: 'Save Trade' }).click();
+    // No Setup was chosen, so the unmet-Conditions confirmation never appears
+    // — the Trade saves directly.
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+    const tradeUrl = page.url();
+
+    const detail = page.getByRole('article', { name: 'GBPUSD' });
+    await expect(page.getByText('Planned').last()).toBeVisible();
+    const planSection = detail.getByLabel('Plan');
+    await expect(planSection.getByText('Not set').first()).toBeVisible();
+    await expect(planSection.getByText('Not available')).toBeVisible();
+    const classification = detail.getByLabel('Strategy & Setup');
+    await expect(classification.getByText('Not assigned')).toBeVisible();
+    await expect(classification.getByText('You can classify this Trade later.')).toBeVisible();
+    const addStrategyButton = classification.getByRole('button', { name: 'Add Strategy' });
+    await expect(addStrategyButton).toBeVisible();
+
+    // The Trade List already reflects this unclassified, no-Plan Trade
+    // truthfully — it appears normally, nothing hidden or blocked.
+    await page.goto('/en/app/trades');
+    await expect(page.getByRole('row', { name: /GBPUSD/ })).toBeVisible();
+    await page.goto(tradeUrl);
+
+    // Journey B — Actual First: the Open dialog needs its OWN Actual basis —
+    // Phase 14C.1 explicitly forbids Open silently reintroducing a Plan
+    // requirement, and there is no Plan here to fall back to regardless.
+    // Open then fully close the Actual side; System remains explicitly
+    // Pending throughout — never inferred, never blocked.
+    await page.getByRole('button', { name: 'Open Trade' }).click();
+    let dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Actual result mode').selectOption('price');
+    await dialog.getByLabel('Actual entry').fill('1.2500');
+    await dialog.getByLabel('Initial Stop').fill('1.2400');
+    await dialog.getByRole('button', { name: 'Open Trade' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+
+    await page.getByRole('button', { name: 'Full Close' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Exit', { exact: true }).fill('1.2700');
+    await dialog.getByRole('button', { name: 'Full Close' }).click();
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await expect(
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+    ).toBeVisible();
+    // System is still Pending — Actual closing never advances it.
+    await expect(page.getByText('Pending', { exact: true }).last()).toBeVisible();
+    await expect(
+      detail
+        .getByLabel('System Result')
+        .getByText('The System result is Pending. System R and outcome are not available yet.'),
+    ).toBeVisible();
+    // No fake Execution Gap while one side has no final result yet.
+    await expect(detail.getByText('Execution Gap')).toHaveCount(0);
+
+    // The closed-but-System-pending Trade is immediately eligible for Trader
+    // Analytics, and the Analytics page truthfully discloses the pending
+    // System outcome rather than silently omitting or miscounting it.
+    await page.goto('/en/app/analytics');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'All' }).click();
+    await expect(page).toHaveURL(/range=all/);
+    const traderPanel = page.locator('[data-analytics-panel="trader"]');
+    const systemPanel = page.locator('[data-analytics-panel="system"]');
+    await expect(traderPanel.getByText('1 Trade')).toBeVisible();
+    await expect(systemPanel.getByText('0 resolved')).toBeVisible();
+    await expect(systemPanel.getByText('1 pending System outcome')).toBeVisible();
+
+    // Journey D — Classify Later: assign Strategy AND Setup together in the
+    // same submission (the sanctioned none -> Strategy+Setup transition).
+    await page.goto(tradeUrl);
+    await expect(page.getByRole('heading', { name: 'GBPUSD' })).toBeVisible();
+    await addStrategyButton.click();
+    const classifyDialog = page.getByRole('dialog');
+    await expect(classifyDialog.getByText('Classify this Trade')).toBeVisible();
+    await classifyDialog
+      .getByLabel('Strategy')
+      .selectOption({ label: 'Golden Breakout · Version 1' });
+    await classifyDialog.getByLabel('Setup').selectOption({ label: 'Clean Retest' });
+    await classifyDialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(classifyDialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+
+    await expect(classification.getByText('Golden Breakout')).toBeVisible({ timeout: 60_000 });
+    await expect(classification.getByText('Clean Retest')).toBeVisible();
+    // Assigned well after the Trade was entered and closed, so it reads as
+    // added after entry, never falsely as captured at entry.
+    await expect(classification.getByText('Added after entry').first()).toBeVisible();
+
+    // Late Setup assignment never fabricates a retrospective Condition
+    // snapshot — the Setup has Conditions configured, but this Trade recorded
+    // none of them, so it reads "Not recorded", never 0/5 or all-unmet.
+    const conditionsHeading = detail.getByRole('heading', {
+      name: 'Setup Conditions',
+      level: 4,
+    });
+    await expect(conditionsHeading.locator('..').getByText('Not recorded')).toBeVisible();
   });
 });
 

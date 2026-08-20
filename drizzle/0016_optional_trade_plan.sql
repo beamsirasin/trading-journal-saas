@@ -1,0 +1,17 @@
+-- Phase 14C.1 — Quick Capture Persistence Completion. Drops the sole
+-- database-level obstacle to the frozen Quick Capture contract (Trading
+-- Account + Symbol + Direction alone, no Plan required): the migration-0010
+-- "at least one Plan representation" floor. Every other Plan-related
+-- constraint is untouched and keeps doing its own, separate job:
+-- `trades_planned_price_shape_check` (all-Price-fields-null OR a complete,
+-- direction-valid pair) and `trades_planned_money_check` (Risk/Reward
+-- coherence) already tolerate an absent representation and still reject a
+-- malformed partial one; `trades_system_status_consistency_check` already
+-- requires each System resolution kind's own truthful Plan inputs
+-- independently (e.g. `price_exit` still requires `planned_entry`/
+-- `planned_stop`, `money_target` still requires `planned_risk_minor`/
+-- `planned_reward_minor`/`planned_r`) and needs no change to keep rejecting
+-- a resolution attempted without its own required inputs. No historical
+-- recomputation: every existing row already satisfied this constraint, so
+-- dropping it changes no existing data.
+ALTER TABLE "trades" DROP CONSTRAINT "trades_plan_minimum_check";

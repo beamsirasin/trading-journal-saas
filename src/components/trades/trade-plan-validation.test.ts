@@ -34,20 +34,34 @@ describe('stageErrors', () => {
     expect(stageErrors(0, values({ tradingAccountId: 'acct-1' }))).toEqual({});
   });
 
-  it('accumulates Strategy/Setup requirements at stage 1', () => {
-    expect(stageErrors(1, values({ tradingAccountId: 'acct-1' }))).toEqual({
-      strategyId: 'required_strategy',
-      setupId: 'required_setup',
-    });
+  it('never requires Strategy/Setup at stage 1 — both are optional', () => {
+    expect(stageErrors(1, values({ tradingAccountId: 'acct-1' }))).toEqual({});
+    expect(stageErrors(1, values({ tradingAccountId: 'acct-1', strategyId: 's' }))).toEqual({});
   });
 
-  it('requires Symbol/Direction at stage 2, and flags no_plan_representation when neither Price nor Money is present', () => {
+  it('rejects a Setup chosen without a Strategy at stage 1', () => {
+    expect(stageErrors(1, values({ tradingAccountId: 'acct-1', setupId: 'u' }))).toEqual({
+      setupId: 'setup_requires_strategy',
+    });
+    expect(
+      stageErrors(1, values({ tradingAccountId: 'acct-1', strategyId: 's', setupId: 'u' })),
+    ).toEqual({});
+  });
+
+  it('requires Symbol/Direction at stage 2', () => {
     const errors = stageErrors(2, values(IDENTITY_BASE));
     expect(errors).toEqual({
       symbol: 'required_symbol',
       direction: 'required_direction',
-      plannedEntry: 'no_plan_representation',
     });
+  });
+
+  it('never requires a Plan at stage 2 — Symbol/Direction alone is complete (Phase 14C.1 Quick Capture)', () => {
+    const errors = stageErrors(
+      2,
+      values({ ...IDENTITY_BASE, symbol: 'XAUUSD', direction: 'long' }),
+    );
+    expect(errors).toEqual({});
   });
 
   it('accepts a Price-only Plan (Entry+Stop, no Money)', () => {
@@ -217,12 +231,18 @@ describe('isStageComplete / furthestReachableStage / canNavigateToStage', () => 
     expect(canNavigateToStage(3, v)).toBe(false);
   });
 
-  it('unlocks stage 1 once the Account is chosen, but not stage 2 yet', () => {
+  it('reaches stage 2 directly once the Account is chosen — Strategy/Setup never block it', () => {
+    // Stage 1 (Strategy/Setup) has no required fields of its own since both
+    // are optional (Phase 14C) — an Account alone already satisfies stages
+    // 0 AND 1, so the furthest reachable stage is 2 (Symbol/Direction/Plan),
+    // not 1.
     const v = values({ tradingAccountId: 'acct-1' });
     expect(isStageComplete(0, v)).toBe(true);
-    expect(furthestReachableStage(v)).toBe(1);
+    expect(isStageComplete(1, v)).toBe(true);
+    expect(furthestReachableStage(v)).toBe(2);
     expect(canNavigateToStage(1, v)).toBe(true);
-    expect(canNavigateToStage(2, v)).toBe(false);
+    expect(canNavigateToStage(2, v)).toBe(true);
+    expect(canNavigateToStage(3, v)).toBe(false);
   });
 
   it('unlocks stage 3 (Review) once a complete Price Plan exists', () => {
@@ -242,6 +262,14 @@ describe('isStageComplete / furthestReachableStage / canNavigateToStage', () => 
     expect(canNavigateToStage(2, incomplete)).toBe(true);
   });
 
+  it('unlocks stage 3 (Review) with NO Plan at all — Phase 14C.1 Quick Capture needs only Account/Symbol/Direction', () => {
+    const noPlan = values({ ...IDENTITY_BASE, symbol: 'XAUUSD', direction: 'long' });
+    expect(furthestReachableStage(noPlan)).toBe(3);
+    expect(canNavigateToStage(3, noPlan)).toBe(true);
+    expect(noPlan.plannedEntry).toBe('');
+    expect(noPlan.plannedRiskMinor).toBe('');
+  });
+
   it('unlocks stage 3 (Review) via a Money-only Plan just as readily as a Price-only one', () => {
     const moneyOnly = values({
       ...IDENTITY_BASE,
@@ -254,8 +282,8 @@ describe('isStageComplete / furthestReachableStage / canNavigateToStage', () => 
   });
 
   it('never disagrees between a stage being reachable and it being the furthest complete boundary', () => {
-    const v = values({ tradingAccountId: 'a', strategyId: 's' });
-    // setupId still missing -> stage 1 incomplete -> stage 2 unreachable
+    const v = values({ tradingAccountId: 'a', setupId: 'u' });
+    // setupId without strategyId -> stage 1 incomplete -> stage 2 unreachable
     expect(isStageComplete(1, v)).toBe(false);
     expect(canNavigateToStage(2, v)).toBe(false);
   });

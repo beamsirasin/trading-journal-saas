@@ -377,34 +377,26 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(result);
     });
 
-    it('rejects neither Price nor Money present — caught by the Zod shape refine before the service ever runs', async () => {
+    it('accepts neither Price nor Money present — the frozen Quick Capture contract (Phase 14C.1)', async () => {
       const { fw } = await freshFixture();
+      // Deliberately omits Strategy/Setup too, matching the exact frozen
+      // Quick Capture contract: Trading Account + Symbol + Direction alone
+      // is a sufficient, persistable Trade. Migration 0016 dropped the
+      // database's `trades_plan_minimum_check`, `CreateTradeSchema` no
+      // longer refines for "at least one representation," and `createTrade`
+      // no longer pre-checks it either — see the `trade-management` and
+      // `trade-domain` integration suites for the equivalent service- and
+      // DB-level proofs.
       const result = await createTradeAction({
         mutationKey: crypto.randomUUID(),
         tradingAccountId: fw.tradingAccountId,
-        strategyId: fw.strategyId,
-        setupId: fw.setupId,
-        conditionSetToken: createConditionSetToken(fw.setupVersionId),
-        conditionAnswers: [],
         emotionKeys: [],
         symbol: 'EURUSD',
         direction: 'long',
       });
-      // `CreateTradeSchema`'s own `no_plan_representation` refine (an
-      // earlier, cheaper defense-in-depth layer — CLAUDE.md §4's "never let
-      // the client be the only enforcement layer" cuts both ways: Zod is
-      // ALSO not the only layer, see the equivalent database-level
-      // `trades_plan_minimum_check` and this same rejection reachable
-      // straight from the service in the `trade-management` suite) fires
-      // before `createTrade` — surfaced as `validation_error`, not the
-      // service's own `no_plan_representation` code.
-      expect(result).toEqual({
-        ok: false,
-        error: {
-          code: 'validation_error',
-          fieldErrors: { plannedEntry: ['no_plan_representation'] },
-        },
-      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(typeof result.data.tradeId).toBe('string');
       assertJsonSerializable(result);
     });
 

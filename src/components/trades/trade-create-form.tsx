@@ -93,8 +93,7 @@ type UploadState =
 
 const PLAN_ERROR_MESSAGE_KEY: Record<PlanErrorCode, string> = {
   required_account: 'validation.requiredAccount',
-  required_strategy: 'validation.requiredStrategy',
-  required_setup: 'validation.requiredSetup',
+  setup_requires_strategy: 'validation.setupRequiresStrategy',
   required_symbol: 'validation.requiredSymbol',
   required_direction: 'validation.requiredDirection',
   required_entry: 'validation.requiredEntry',
@@ -102,7 +101,6 @@ const PLAN_ERROR_MESSAGE_KEY: Record<PlanErrorCode, string> = {
   invalid_decimal: 'validation.invalidDecimal',
   incomplete_price_plan: 'validation.incompletePricePlan',
   incomplete_money_plan: 'validation.incompleteMoneyPlan',
-  no_plan_representation: 'validation.noPlanRepresentation',
   invalid_tradingview_url: 'validation.invalidTradingViewUrl',
 };
 
@@ -395,10 +393,15 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
     const result = await createTradeAction({
       mutationKey,
       tradingAccountId: values.tradingAccountId,
-      strategyId: values.strategyId,
-      setupId: values.setupId,
-      conditionSetToken: selectedSetup?.conditionSetToken ?? '',
-      conditionAnswers,
+      // Strategy/Setup are optional (Phase 14C) — omitted entirely, never
+      // sent as an empty string, exactly when nothing was chosen.
+      // `CreateTradeSchema`'s `strategyId`/`setupId` are `uuidField().optional()`,
+      // which accepts an ABSENT key but rejects `''` as an invalid UUID.
+      ...(values.strategyId === '' ? {} : { strategyId: values.strategyId }),
+      ...(values.setupId === '' ? {} : { setupId: values.setupId }),
+      ...(selectedSetup === undefined
+        ? {}
+        : { conditionSetToken: selectedSetup.conditionSetToken, conditionAnswers }),
       symbol: values.symbol,
       direction: values.direction,
       plannedEntry: values.plannedEntry.trim() === '' ? null : values.plannedEntry.trim(),

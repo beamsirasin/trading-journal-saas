@@ -680,20 +680,37 @@ describe('Phase 07B trade domain (real database)', () => {
       ).rejects.toMatchObject({ cause: { code: '23514' } });
     });
 
-    it('rejects neither Price nor Money present (trades_plan_minimum_check)', async () => {
+    it('accepts neither Price nor Money present — Quick Capture with no Plan (Phase 14C.1, migration 0016 dropped trades_plan_minimum_check)', async () => {
       const fw = await createFramework();
-      await expect(
-        insertTrade({
-          workspaceId,
-          tradingAccountId: fw.tradingAccountId,
-          strategyId: fw.strategyId,
-          strategyVersionId: fw.strategyVersionId,
-          setupId: fw.setupId,
-          setupVersionId: fw.setupVersionId,
-          symbol: 'EURUSD',
-          direction: 'long',
-        }),
-      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      const [row] = await insertTrade({
+        workspaceId,
+        tradingAccountId: fw.tradingAccountId,
+        strategyId: fw.strategyId,
+        strategyVersionId: fw.strategyVersionId,
+        setupId: fw.setupId,
+        setupVersionId: fw.setupVersionId,
+        symbol: 'EURUSD',
+        direction: 'long',
+      });
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedStop).toBeNull();
+      expect(row?.plannedTarget).toBeNull();
+      expect(row?.plannedRiskMinor).toBeNull();
+      expect(row?.plannedRewardMinor).toBeNull();
+    });
+
+    it('accepts neither Price nor Money present with no Strategy/Setup either — Trading Account + Symbol + Direction alone', async () => {
+      const fw = await createFramework();
+      const [row] = await insertTrade({
+        workspaceId,
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+      });
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedRiskMinor).toBeNull();
+      expect(row?.strategyId).toBeNull();
+      expect(row?.setupId).toBeNull();
     });
 
     it('rejects a non-positive planned_risk_minor (trades_planned_money_check)', async () => {

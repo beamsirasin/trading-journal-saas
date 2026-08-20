@@ -50,8 +50,7 @@ export type PlanFieldKey =
 
 export type PlanErrorCode =
   | 'required_account'
-  | 'required_strategy'
-  | 'required_setup'
+  | 'setup_requires_strategy'
   | 'required_symbol'
   | 'required_direction'
   | 'required_entry'
@@ -59,7 +58,6 @@ export type PlanErrorCode =
   | 'invalid_decimal'
   | 'incomplete_price_plan'
   | 'incomplete_money_plan'
-  | 'no_plan_representation'
   | 'invalid_tradingview_url';
 
 export type PlanErrorMap = Partial<Record<PlanFieldKey, PlanErrorCode>>;
@@ -74,14 +72,21 @@ const DECIMAL_PATTERN = /^\d+(?:\.\d+)?$/;
  *
  * Price and Money are independent, both-optional Plan representations
  * (Founder-UAT correction slice, migration 0010) — neither Entry/Stop nor
- * Risk is unconditionally required. What IS enforced:
+ * Risk is required, and neither being present at all is valid (Phase 14C.1
+ * — Quick Capture Persistence Completion: Trading Account + Symbol +
+ * Direction alone is a sufficient, persistable Trade). What IS enforced:
  *   - Entry/Stop arrive as a complete pair or not at all;
  *   - a Target requires that pair;
- *   - a Reward requires a Risk;
- *   - at least ONE complete representation (Price pair or Risk) exists.
- * This mirrors `applyPlanShapeRefinements`/the `no_plan_representation`
- * refine in `src/lib/trades/schemas.ts` exactly, so client and server
- * validation can never quietly diverge on what "a valid Plan" means.
+ *   - a Reward requires a Risk.
+ * This mirrors `applyPlanShapeRefinements` in `src/lib/trades/schemas.ts`
+ * exactly, so client and server validation can never quietly diverge on
+ * what "a valid Plan" means.
+ *
+ * Strategy/Setup are optional (Phase 14C, following Phase 14B's persistence
+ * change) — never `required_*`. The one shape rule kept is Setup requiring
+ * Strategy, mirroring `trades_setup_requires_strategy_check` and
+ * `CreateTradeSchema`'s `setup_requires_strategy` refine exactly, so client
+ * and server can never quietly diverge on that either.
  */
 export function stageErrors(stage: PlanStage, values: PlanValidationValues): PlanErrorMap {
   const errors: PlanErrorMap = {};
@@ -89,8 +94,9 @@ export function stageErrors(stage: PlanStage, values: PlanValidationValues): Pla
   if (stage >= 0 && values.tradingAccountId === '') errors.tradingAccountId = 'required_account';
 
   if (stage >= 1) {
-    if (values.strategyId === '') errors.strategyId = 'required_strategy';
-    if (values.setupId === '') errors.setupId = 'required_setup';
+    if (values.setupId !== '' && values.strategyId === '') {
+      errors.setupId = 'setup_requires_strategy';
+    }
   }
 
   if (stage >= 2) {
@@ -131,17 +137,6 @@ export function stageErrors(stage: PlanStage, values: PlanValidationValues): Pla
       if (!riskProvided) errors.plannedRewardMinor = 'incomplete_money_plan';
       else if (!DECIMAL_PATTERN.test(values.plannedRewardMinor.trim()))
         errors.plannedRewardMinor = 'invalid_decimal';
-    }
-
-    const hasCompletePricePlan = entryProvided && stopProvided;
-    const hasMoneyPlan = riskProvided;
-    if (
-      !hasCompletePricePlan &&
-      !hasMoneyPlan &&
-      errors.plannedEntry === undefined &&
-      errors.plannedStop === undefined
-    ) {
-      errors.plannedEntry = 'no_plan_representation';
     }
 
     if (

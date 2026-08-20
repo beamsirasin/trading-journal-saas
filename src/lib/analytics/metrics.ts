@@ -715,6 +715,8 @@ export interface AnalyticsSnapshotInput {
   readonly scope: AnalyticsScopeModel;
   readonly trader: readonly TraderMetricRecord[];
   readonly system: readonly SystemMetricRecord[];
+  /** Phase 14C §19 — a pure passthrough count, never a formula input. See `AnalyticsSnapshot.systemPendingCount`. */
+  readonly systemPendingCount: number;
   readonly comparison: readonly ComparisonMetricRecord[];
   readonly rules: readonly RuleMetricRecord[];
   readonly mistakes: readonly MistakeMetricRecord[];
@@ -732,6 +734,14 @@ export interface AnalyticsSnapshot {
   readonly scope: AnalyticsScopeModel;
   readonly trader: PerformanceAnalyticsModel;
   readonly system: PerformanceAnalyticsModel;
+  /**
+   * Count of `system_status = 'pending'` Trades in the current
+   * Account/Strategy/Setup scope (Phase 14C §19) — NEVER date-bounded (a
+   * pending Trade has no `system_exited_at`), and NEVER a member of
+   * `system`'s own eligible population or any formula. Purely a truthful
+   * "how many are waiting" disclosure alongside System Performance.
+   */
+  readonly systemPendingCount: number;
   readonly comparison: ComparisonAnalyticsModel;
   readonly rules: RuleAnalyticsModel;
   readonly mistakes: readonly MistakeCountModel[];
@@ -746,6 +756,7 @@ export function composeAnalyticsSnapshot(input: AnalyticsSnapshotInput): Analyti
     scope: input.scope,
     trader: composeTraderAnalytics(input.trader),
     system: composeSystemAnalytics(input.system),
+    systemPendingCount: input.systemPendingCount,
     comparison: composeComparisonAnalytics(input.comparison),
     rules: composeRuleAnalytics(input.rules),
     mistakes: composeMistakeAnalytics(input.mistakes),
@@ -770,6 +781,7 @@ export interface DashboardOverview {
     'sampleCount' | 'totalR' | 'expectancyR' | 'winRate' | 'profitFactor'
   >;
   readonly comparison: ComparisonAnalyticsModel;
+  readonly systemPendingCount: number;
 }
 
 /** Selects the Phase 09D headline subset without recalculating any metric. */
@@ -786,5 +798,6 @@ export function composeDashboardOverview(snapshot: AnalyticsSnapshot): Dashboard
     trader: selectAxis(snapshot.trader),
     system: selectAxis(snapshot.system),
     comparison: snapshot.comparison,
+    systemPendingCount: snapshot.systemPendingCount,
   };
 }

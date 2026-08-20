@@ -172,7 +172,7 @@ describe('migration 0010 — Trade Plan Price/Money/Confidence integrity (real d
       expect(byName['planned_reward_minor']).toBe('bigint');
     });
 
-    it('the old direction-only price constraint is gone and the new shape/money/minimum/attachment constraints exist', async () => {
+    it('the old direction-only price constraint is gone and the new shape/money/attachment constraints exist', async () => {
       const rows = await db.execute<{ conname: string }>(
         sql`select conname from pg_constraint
             where conrelid = 'trades'::regclass and contype = 'c'`,
@@ -181,7 +181,14 @@ describe('migration 0010 — Trade Plan Price/Money/Confidence integrity (real d
       expect(names.has('trades_planned_price_direction_check')).toBe(false);
       expect(names.has('trades_planned_price_shape_check')).toBe(true);
       expect(names.has('trades_planned_money_check')).toBe(true);
-      expect(names.has('trades_plan_minimum_check')).toBe(true);
+      // `trades_plan_minimum_check` was migration 0010's own addition and
+      // this migration's own static SQL text still adds it (asserted above,
+      // "adds exactly the three new Money/minimum/attachment CHECK
+      // constraints") — but migration 0016 (Phase 14C.1) later DROPPED it
+      // from the LIVE schema to satisfy the frozen Quick Capture contract.
+      // This assertion is against the current live database, not against
+      // 0010's own historical text, so it correctly reflects that removal.
+      expect(names.has('trades_plan_minimum_check')).toBe(false);
       expect(names.has('trades_chart_attachment_check')).toBe(true);
       expect(names.has('trades_confidence_check')).toBe(true);
     });

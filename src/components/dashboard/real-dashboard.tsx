@@ -1,4 +1,4 @@
-import { ArrowRight, GitCompareArrows, MonitorCog, UserRound } from 'lucide-react';
+import { ArrowRight, GitCompareArrows, ListChecks, MonitorCog, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
@@ -15,7 +15,7 @@ import {
 } from '@/lib/analytics/presentation';
 import { cn } from '@/lib/utils';
 import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
-import type { TradeListItem } from '@/server/dal/trades';
+import type { TradeAttentionCounts, TradeListItem } from '@/server/dal/trades';
 import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-trading-dashboard';
 import { MetricLabel, MetricValue } from '@/components/product/metric';
 import { TradeStatusBadge } from '@/components/trades/trade-status-badge';
@@ -37,16 +37,19 @@ export function RealDashboard({
   account,
   overview,
   recentTrades,
+  attention,
 }: {
   account: ActiveTradingAccountSummary;
   overview: DashboardOverview;
   recentTrades: readonly DashboardRecentTrade[];
+  attention: TradeAttentionCounts;
 }) {
   const t = useTranslations('dashboard.real');
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
       <ActiveTradingAccountSummaryCard account={account} />
+      <NeedsAttentionPanel attention={attention} />
 
       <section aria-labelledby="performance-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -183,6 +186,74 @@ function PerformancePanel({
         </dl>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Four independent, informational counts (Phase 14C §18) — never a combined
+ * "completeness score" (CLAUDE.md's Discipline Score precedent applies
+ * equally here). Each count links to the Journal, where a trader can
+ * actually act on it; the panel itself never blocks or nags. Definitions:
+ * `openTrades` = `status = 'open'`; `pendingSystemOutcomes` =
+ * `system_status = 'pending'`; `unclassifiedTrades` = `strategy_id IS NULL`
+ * (Phase 14B); `reviewsPending` = `status = 'closed' AND review_notes IS
+ * NULL` — see `getWorkspaceTradeAttentionCounts` (`src/server/dal/trades.ts`)
+ * for the exact query.
+ */
+function NeedsAttentionPanel({ attention }: { attention: TradeAttentionCounts }) {
+  const t = useTranslations('dashboard.real');
+  const total =
+    attention.openTrades +
+    attention.pendingSystemOutcomes +
+    attention.unclassifiedTrades +
+    attention.reviewsPending;
+  if (total === 0) return null;
+
+  const items: readonly { readonly key: string; readonly count: number }[] = [
+    { key: 'openTrades', count: attention.openTrades },
+    { key: 'pendingSystemOutcomes', count: attention.pendingSystemOutcomes },
+    { key: 'unclassifiedTrades', count: attention.unclassifiedTrades },
+    { key: 'reviewsPending', count: attention.reviewsPending },
+  ];
+
+  return (
+    <section aria-labelledby="needs-attention-heading">
+      <Card data-dashboard-panel="needs-attention" className="overflow-hidden">
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
+              <ListChecks className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <CardTitle id="needs-attention-heading">{t('needsAttention.title')}</CardTitle>
+              <CardDescription className="mt-1 leading-relaxed">
+                {t('needsAttention.description')}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {items
+              .filter((item) => item.count > 0)
+              .map((item) => (
+                <div key={item.key} className="flex min-w-0 flex-col gap-1.5">
+                  <MetricLabel>{t(`needsAttention.${item.key}`)}</MetricLabel>
+                  <span className="numeric text-2xl font-semibold">{item.count}</span>
+                </div>
+              ))}
+          </dl>
+          <div className="mt-5">
+            <Link
+              href="/app/trades"
+              className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+            >
+              {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 
@@ -329,8 +400,18 @@ function RecentTrades({ trades }: { trades: readonly DashboardRecentTrade[] }) {
                   </p>
                 </div>
                 <div className="min-w-0 text-sm">
-                  <p className="font-medium break-words">{trade.strategyName}</p>
-                  <p className="text-muted-foreground break-words">{trade.setupName}</p>
+                  {trade.strategyName === null ? (
+                    <p className="text-muted-foreground break-words">
+                      {tTrades('common.notAssigned')}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="font-medium break-words">{trade.strategyName}</p>
+                      {trade.setupName === null ? null : (
+                        <p className="text-muted-foreground break-words">{trade.setupName}</p>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:justify-end">
                   <TradeStatusBadge status={trade.status} />

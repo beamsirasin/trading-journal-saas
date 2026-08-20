@@ -419,29 +419,65 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
   });
 
-  it('presents and clears accessible Strategy and Setup errors on the single page', () => {
+  it('never requires Strategy or Setup — Quick Capture submits with neither chosen (Phase 14C)', async () => {
+    createTradeActionMock.mockResolvedValue({
+      ok: true,
+      data: { tradeId: '018f0000-0000-7000-8000-0000000000aa', alreadyCreated: false },
+    });
     renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
-
     const strategy = screen.getByLabelText('Strategy');
     const setup = screen.getByLabelText('Setup');
-    expect(strategy).toHaveAttribute('aria-invalid', 'true');
-    expect(strategy).toHaveAttribute('aria-describedby', 'trade-strategy-error');
-    expect(document.getElementById('trade-strategy-error')).toHaveTextContent('Choose a Strategy.');
-    expect(setup).toHaveAttribute('aria-invalid', 'true');
-    expect(setup).toHaveAttribute('aria-describedby', 'trade-setup-error');
-    expect(document.getElementById('trade-setup-error')).toHaveTextContent('Choose a Setup.');
-    expect(createTradeActionMock).not.toHaveBeenCalled();
+    // Setup is disabled until a Strategy is chosen — it belongs to one by
+    // definition — but neither is ever REQUIRED to submit.
+    expect(setup).toBeDisabled();
+
+    fillPricePlan();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+
+    expect(strategy).toHaveAttribute('aria-invalid', 'false');
+    expect(setup).toHaveAttribute('aria-invalid', 'false');
+    // Omitted entirely (never an empty string) — `CreateTradeSchema` rejects
+    // `''` as an invalid UUID; only an absent key means "unclassified".
+    const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('strategyId');
+    expect(payload).not.toHaveProperty('setupId');
+    expect(payload).not.toHaveProperty('conditionSetToken');
+    expect(payload).not.toHaveProperty('conditionAnswers');
+  });
+
+  it('never requires a Plan — Quick Capture submits with only Account/Symbol/Direction and no Strategy/Setup (Phase 14C.1)', async () => {
+    createTradeActionMock.mockResolvedValue({
+      ok: true,
+      data: { tradeId: '018f0000-0000-7000-8000-0000000000bb', alreadyCreated: false },
+    });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+
+    const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('strategyId');
+    expect(payload).not.toHaveProperty('setupId');
+    expect(payload.plannedEntry).toBeNull();
+    expect(payload.plannedStop).toBeNull();
+    expect(payload.plannedTarget).toBeNull();
+    expect(payload.plannedRiskMinor).toBeNull();
+    expect(payload.plannedRewardMinor).toBeNull();
+    expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=018f0000-0000-7000-8000-0000000000bb');
+  });
+
+  it('still requires a Strategy before a Setup can be chosen, without blocking the rest of the form', () => {
+    renderForm();
+    const strategy = screen.getByLabelText('Strategy');
+    const setup = screen.getByLabelText('Setup');
 
     fireEvent.change(strategy, { target: { value: options.strategies[0].strategyId } });
     expect(strategy).toHaveAttribute('aria-invalid', 'false');
+    expect(setup).not.toBeDisabled();
     expect(screen.getByRole('option', { name: 'Retest' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Momentum' })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
-    expect(setup).toHaveAttribute('aria-invalid', 'true');
-    expect(setup).toHaveAttribute('aria-describedby', 'trade-setup-error');
-    expect(document.getElementById('trade-setup-error')).toHaveTextContent('Choose a Setup.');
 
     fireEvent.change(setup, { target: { value: options.strategies[0].setups[0].setupId } });
     expect(setup).toHaveAttribute('aria-invalid', 'false');

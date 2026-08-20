@@ -23,7 +23,7 @@ import {
   updateSetupContent,
   updateStrategyContent,
 } from '@/server/services/strategy-management';
-import { attachTradeMistake } from '@/server/services/trade-discipline';
+import { attachTradeMistake, updateTradeReviewNotes } from '@/server/services/trade-discipline';
 import { addTradeExit } from '@/server/services/trade-execution';
 import {
   createTrade,
@@ -65,6 +65,7 @@ vi.mock('@/lib/auth/server', () => ({
 
 const {
   getTradeCreateOptions,
+  getWorkspaceTradeAttentionCounts,
   getWorkspaceTradeChartAttachmentKey,
   getWorkspaceTradeDetail,
   listWorkspaceTrades,
@@ -1044,6 +1045,142 @@ describe('trades DAL (real database)', () => {
       expect(recordedItem?.setupConditionTotalCount).toBe(1);
       expect(unrecordedItem?.setupConditionMetCount).toBeNull();
       expect(unrecordedItem?.setupConditionTotalCount).toBeNull();
+    });
+  });
+
+  describe('getWorkspaceTradeAttentionCounts (Phase 14C)', () => {
+    it('counts open Trades, pending System Outcomes, unclassified Trades, and closed-but-unreviewed Trades independently', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+
+      // A: planned only — classified, not opened, System pending by default.
+      // Contributes to nothing except (trivially) the unclassified/open counts
+      // staying at zero for this Trade.
+      const planned = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'PLANNEDONE' }),
+      );
+      if (!planned.ok) throw new Error('create failed');
+
+      // B: unclassified (no Strategy/Setup) and left planned — counts toward
+      // unclassifiedTrades only.
+      const unclassified = await createTrade(workspaceId, userId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'UNCLASSIFIEDONE',
+        direction: 'long',
+        plannedEntry: '1.1000000000',
+        plannedStop: '1.0950000000',
+        plannedTarget: '1.1100000000',
+      });
+      if (!unclassified.ok) throw new Error('create failed');
+
+      // C: opened, System still pending — counts toward openTrades AND
+      // pendingSystemOutcomes.
+      const openPending = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'OPENPENDING' }),
+      );
+      if (!openPending.ok) throw new Error('create failed');
+      await openTrade(workspaceId, userId, openPending.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+
+      // D: opened, fully closed, System resolved, and reviewed — counts
+      // toward NONE of the four (closed excludes it from openTrades, System
+      // resolved excludes it from pendingSystemOutcomes, review notes
+      // present excludes it from reviewsPending).
+      const reviewed = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'REVIEWEDDONE' }),
+      );
+      if (!reviewed.ok) throw new Error('create failed');
+      await openTrade(workspaceId, userId, reviewed.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      await addTradeExit(workspaceId, userId, reviewed.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 10_000,
+        realizedPnlMinor: 5_000n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+      await resolveSystemTrade(workspaceId, userId, reviewed.tradeId, {
+        resolutionKind: 'price_exit',
+        systemExitPrice: '1.1100000000',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemExitReason: 'target_hit',
+        systemCostR: '0.0000',
+      });
+      await updateTradeReviewNotes(workspaceId, userId, reviewed.tradeId, 'Followed the plan.');
+
+      // E: closed but never reviewed — counts toward reviewsPending only.
+      const unreviewed = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'UNREVIEWEDONE' }),
+      );
+      if (!unreviewed.ok) throw new Error('create failed');
+      await openTrade(workspaceId, userId, unreviewed.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      await addTradeExit(workspaceId, userId, unreviewed.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 10_000,
+        realizedPnlMinor: 5_000n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+
+      const counts = await getWorkspaceTradeAttentionCounts();
+      expect(counts).toEqual({
+        openTrades: 1, // openPending only — reviewed/unreviewed are closed
+        pendingSystemOutcomes: 4, // every Trade except `reviewed`
+        unclassifiedTrades: 1, // `unclassified` only
+        reviewsPending: 1, // `unreviewed` only — closed with no review notes
+      });
+    });
+
+    it('is scoped per workspace — a second workspace never contributes to the first workspace’s counts', async () => {
+      const first = await freshWorkspace();
+      const fw1 = await createFramework(db, first.workspaceId, first.userId);
+      const created1 = await createTrade(
+        first.workspaceId,
+        first.userId,
+        basePlanInput(fw1, { symbol: 'FIRSTWORKSPACE' }),
+      );
+      if (!created1.ok) throw new Error('create failed');
+      await openTrade(first.workspaceId, first.userId, created1.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      const firstCounts = await getWorkspaceTradeAttentionCounts();
+      expect(firstCounts.openTrades).toBe(1);
+
+      await freshWorkspace();
+      const secondCounts = await getWorkspaceTradeAttentionCounts();
+      expect(secondCounts).toEqual({
+        openTrades: 0,
+        pendingSystemOutcomes: 0,
+        unclassifiedTrades: 0,
+        reviewsPending: 0,
+      });
     });
   });
 });

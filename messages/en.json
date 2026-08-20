@@ -363,6 +363,15 @@
       "comparableTrades": "Comparable Trades",
       "executionGap": "Execution Gap",
       "executionEfficiency": "Execution Efficiency",
+      "needsAttention": {
+        "title": "Needs attention",
+        "description": "A few things worth a look — not a task list.",
+        "openTrades": "Open Trades",
+        "pendingSystemOutcomes": "Pending System Outcomes",
+        "unclassifiedTrades": "Unclassified Trades",
+        "reviewsPending": "Reviews Pending",
+        "review": "Review"
+      },
       "unavailable": {
         "no_trades": "No eligible Trades",
         "no_wins": "No winning Trades",
@@ -558,7 +567,8 @@
       "systemCostR": "System Cost R",
       "systemR": "System R",
       "systemOutcome": "System outcome",
-      "systemResolvedAt": "System resolved"
+      "systemResolvedAt": "System resolved",
+      "executionGap": "Execution Gap"
     },
     "detail": {
       "back": "Back to trades",
@@ -575,6 +585,7 @@
       "preTrade": "Pre-trade check",
       "sections": {
         "overview": "Overview",
+        "classification": "Strategy & Setup",
         "plan": "Plan",
         "entrySnapshot": "Entry Snapshot",
         "conditions": "Setup Conditions",
@@ -613,6 +624,16 @@
         "title": "Correct Trade identity",
         "description": "Correct the symbol or direction. Entry and Stop are submitted together with direction so the risk geometry stays coherent.",
         "directionHint": "Changing direction also validates the Entry and Stop shown below."
+      },
+      "classification": {
+        "addStrategy": "Add Strategy",
+        "addSetup": "Add Setup",
+        "addStrategyTitle": "Classify this Trade",
+        "addSetupTitle": "Add a Setup",
+        "description": "Optional. You can classify a Trade any time — before, during, or after it's finished.",
+        "laterHint": "You can classify this Trade later.",
+        "capturedAtEntry": "Captured at entry",
+        "addedAfterEntry": "Added after entry"
       },
       "execution": {
         "open": "Open Trade",
@@ -748,8 +769,8 @@
       "accountTitle": "Choose a Trading Account",
       "accountDescription": "Only active Trading Accounts are available.",
       "chooseAccount": "Choose an account",
-      "strategyTitle": "Choose a Strategy and Setup",
-      "strategyDescription": "The server pins the current Version when the Trade is created.",
+      "strategyTitle": "Strategy & Setup",
+      "strategyDescription": "Optional — classify now, or add it later from the Trade. The server pins the current Version whenever it's assigned.",
       "chooseStrategy": "Choose a Strategy",
       "chooseSetup": "Choose a Setup",
       "planTitle": "Record the Plan",
@@ -843,8 +864,7 @@
     },
     "validation": {
       "requiredAccount": "Choose a Trading Account.",
-      "requiredStrategy": "Choose a Strategy.",
-      "requiredSetup": "Choose a Setup.",
+      "setupRequiresStrategy": "Choose a Strategy first, or clear this Setup.",
       "requiredSymbol": "Enter a symbol.",
       "requiredDirection": "Choose Long or Short.",
       "requiredEntry": "Enter the planned Entry.",
@@ -857,7 +877,6 @@
       "invalidTargetDirection": "The Target is on the wrong side of Entry for this direction.",
       "incompletePricePlan": "Entry and Stop are both required together.",
       "incompleteMoneyPlan": "Planned risk is required before a planned reward.",
-      "noPlanRepresentation": "Enter a Price plan (Entry/Stop) or a Money plan (planned risk).",
       "invalidPlannedRisk": "Enter a valid planned risk amount greater than zero.",
       "invalidPlannedReward": "Enter a valid planned reward amount.",
       "invalidChartAttachment": "This chart image could not be attached. Try uploading it again."
@@ -901,11 +920,12 @@
       "setup_not_found": "This Setup could not be found.",
       "setup_archived": "This Setup is archived. Restore it first, then you can make changes.",
       "setup_snapshot_missing": "We couldn't load this Setup's current details. Please contact support.",
+      "invalid_classification_request": "This Trade's classification can't be changed that way. Reload the page and try again.",
       "stale_setup_conditions": "This Setup changed while you were entering the Trade. Reload the current Conditions and review them again.",
       "invalid_setup_condition_answers": "The Setup Condition answers are no longer valid. Reload the page and review the current Conditions.",
       "invalid_emotion_selection": "The emotion selection is no longer valid. Reload the page and try again.",
       "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
-      "no_plan_representation": "Enter a Price plan (Entry/Stop) or a Money plan (planned risk) before creating this Trade.",
+      "no_plan_representation": "This change would leave the Trade with no Plan at all. Enter a Price plan (Entry/Stop) or a Money plan (planned risk), or cancel this edit.",
       "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",
       "system_requires_price_plan": "The System result needs a Price plan (Entry/Stop) — this Trade currently has none.",
       "invalid_status_transition": "This Trade cannot make that change from its current status.",
@@ -1117,6 +1137,9 @@
         "empty": "No eligible closed Trader Trades in this scope."
       },
       "sampleCount": "{count, plural, one {# Trade} other {# Trades}}",
+      "resolvedCount": "{count, plural, one {# resolved} other {# resolved}}",
+      "pendingCount": "{count, plural, one {# pending System outcome} other {# pending System outcomes}}",
+      "reviewPending": "Review pending",
       "axis": {
         "trader": "Trader",
         "system": "System",

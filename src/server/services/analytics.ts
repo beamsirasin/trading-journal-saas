@@ -42,6 +42,7 @@ export async function getAnalyticsSnapshot(
       },
       trader: raw.data.trader,
       system: raw.data.system,
+      systemPendingCount: raw.data.systemPendingCount,
       comparison: raw.data.paired,
       rules: raw.data.rules,
       mistakes: raw.data.mistakes,

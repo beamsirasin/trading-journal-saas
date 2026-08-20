@@ -5,7 +5,11 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
 import { TradeIdSchema } from '@/lib/trades/schemas';
 import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
-import { getWorkspaceTradeDetail, listWorkspaceTrades } from '@/server/dal/trades';
+import {
+  getTradeCreateOptions,
+  getWorkspaceTradeDetail,
+  listWorkspaceTrades,
+} from '@/server/dal/trades';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { formatTradeInstant } from '@/components/trades/trade-format';
@@ -53,10 +57,11 @@ export default async function TradesPage({
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
 
-  const [page, entitlement, preferences] = await Promise.all([
+  const [page, entitlement, preferences, createOptions] = await Promise.all([
     listWorkspaceTrades({ cursor: cursor ?? null }),
     getWorkspaceEntitlement(),
     getCurrentUserPreferences(),
+    getTradeCreateOptions(),
   ]);
   const parsedTradeId = tradeParam === undefined ? null : TradeIdSchema.safeParse(tradeParam);
   const requestedTradeId =
@@ -98,6 +103,7 @@ export default async function TradesPage({
         writeBlockReason={writeAuthorization.allowed ? null : writeAuthorization.code}
         timezone={preferences.timezone}
         locale={dateLocale}
+        classificationOptions={createOptions.strategies}
       />
     </Container>
   );

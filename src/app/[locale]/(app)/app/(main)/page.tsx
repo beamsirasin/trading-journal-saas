@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Suspense } from 'react';
 
 import { getActiveTradingAccount } from '@/server/auth/dal';
+import { getWorkspaceTradeAttentionCounts } from '@/server/dal/trades';
 import { getDashboardOverview } from '@/server/services/analytics';
 import {
   ActiveTradingAccountSummaryCard,
@@ -67,9 +68,10 @@ export default async function AppOverviewPage({
 }
 
 async function DashboardContent({ locale, range }: { locale: string; range: unknown }) {
-  const [account, dashboard] = await Promise.all([
+  const [account, dashboard, attention] = await Promise.all([
     getActiveTradingAccount(),
     getDashboardOverview(range),
+    getWorkspaceTradeAttentionCounts(),
   ]);
   if (account === null || (!dashboard.ok && dashboard.code === 'no_active_trading_account')) {
     return <NoActiveTradingAccountRecovery />;
@@ -95,6 +97,7 @@ async function DashboardContent({ locale, range }: { locale: string; range: unkn
       account={account}
       overview={dashboard.data.overview}
       recentTrades={recentTrades}
+      attention={attention}
     />
   );
 }

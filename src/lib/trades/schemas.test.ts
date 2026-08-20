@@ -441,9 +441,9 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
     expect(result.success).toBe(true);
   });
 
-  it('rejects neither Price nor Money present (no_plan_representation)', () => {
+  it('accepts neither Price nor Money present (Phase 14C.1 Quick Capture — no Plan required)', () => {
     const result = CreateTradeSchema.safeParse(baseIdentity());
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('rejects Entry without Stop', () => {

@@ -52,7 +52,11 @@ export function RealAnalyticsPage({
           description={t('performance.description')}
         />
         <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-          <PerformancePanel series="system" metrics={snapshot.system} />
+          <PerformancePanel
+            series="system"
+            metrics={snapshot.system}
+            pendingCount={snapshot.systemPendingCount}
+          />
           <PerformancePanel series="trader" metrics={snapshot.trader} />
         </div>
       </section>

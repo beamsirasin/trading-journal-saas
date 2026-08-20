@@ -2,6 +2,7 @@ import 'server-only';
 
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
+import { executionGapR } from '@/lib/calc/attribution';
 import { composeRealizedActual } from '@/lib/calc/trade';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots';
@@ -449,6 +450,10 @@ export interface TradeDetail {
   readonly setupName: string | null;
   /** Whether the LIVE Setup is archived today — see `strategyIsArchived`. */
   readonly setupIsArchived: boolean;
+  /** First-assignment timing (Phase 14B/14C) — `null` exactly when `strategyId` is `null`. Never "last changed at". */
+  readonly strategyAssignedAt: string | null;
+  /** First-assignment timing — `null` exactly when `setupId` is `null`. */
+  readonly setupAssignedAt: string | null;
   readonly status: TradeStatus;
   readonly systemStatus: SystemStatus;
 
@@ -519,6 +524,14 @@ export interface TradeDetail {
   readonly systemR: string | null;
   readonly systemOutcome: OutcomeValue | null;
   readonly systemResolvedAt: string | null;
+  /**
+   * `Actual R − System R` (CLAUDE.md §6/§12, Phase 13H's locked sign) —
+   * derived on read via the same pure `executionGapR` the calc engine's
+   * paired analytics uses, never a second formula. `null` whenever either
+   * side isn't final yet (Phase 14C: never a fake 0.00R Gap for an
+   * in-progress Trade).
+   */
+  readonly executionGapR: string | null;
 
   readonly setupConditionState: TradeSetupConditionState;
   /** Populated only when `setupConditionState === 'recorded'`; empty otherwise. */
@@ -672,6 +685,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
           exits: exitRows,
         });
   const closedBps = exitRows.reduce((total, exit) => total + exit.closedBps, 0);
+  const gap = executionGapR(trade.actualR, trade.systemR);
 
   return {
     ok: true,
@@ -688,6 +702,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       setupId: trade.setupId,
       setupName: row.setupVersionName,
       setupIsArchived: row.setupIsArchived ?? false,
+      strategyAssignedAt: dateToIso(trade.strategyAssignedAt),
+      setupAssignedAt: dateToIso(trade.setupAssignedAt),
       status: trade.status as TradeStatus,
       systemStatus: trade.systemStatus as SystemStatus,
 
@@ -749,6 +765,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       systemR: trade.systemR,
       systemOutcome: trade.systemOutcome as OutcomeValue | null,
       systemResolvedAt: dateToIso(trade.systemResolvedAt),
+      executionGapR: gap.ok ? gap.value : null,
 
       setupConditionState,
       setupConditionChecks:
@@ -1031,4 +1048,58 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     workspaceId,
     chartUploadConfigured: isChartAttachmentStorageConfigured(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Needs Attention (Phase 14C)
+// ---------------------------------------------------------------------------
+
+export interface TradeAttentionCounts {
+  /** `status = 'open'` — includes a partially-exited Trade (derived, never persisted, per Phase 13). */
+  readonly openTrades: number;
+  /** `system_status = 'pending'` — independent of Actual execution status. */
+  readonly pendingSystemOutcomes: number;
+  /** `strategy_id IS NULL` (Phase 14B) — never fully-classified Trades with only a missing Setup. */
+  readonly unclassifiedTrades: number;
+  /**
+   * `status = 'closed' AND review_notes IS NULL` — the one explicit,
+   * testable definition of "not yet reviewed" this phase adopts. Execution
+   * Rules/Mistakes are multi-row and have no single "reviewed" bit; the
+   * Post-Trade Review note is the one field a trader deliberately writes
+   * once they consider a Trade reviewed, so its absence on an otherwise-
+   * finished Trade is the truthful signal. Never gates Trader/System
+   * analytics eligibility (CLAUDE.md §1/§6) — purely informational.
+   */
+  readonly reviewsPending: number;
+}
+
+/**
+ * Four independent, informational counts — never combined into a single
+ * "completeness score" (Phase 14C §18/CLAUDE.md's Discipline Score
+ * precedent). Each count is its own explicit, testable predicate over the
+ * caller's active workspace; none of them implies a Trade is invalid or
+ * incomplete.
+ */
+export async function getWorkspaceTradeAttentionCounts(): Promise<TradeAttentionCounts> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+
+  const [row] = await db
+    .select({
+      openTrades: sql<number>`count(*) filter (where ${trades.status} = 'open')::int`,
+      pendingSystemOutcomes: sql<number>`count(*) filter (where ${trades.systemStatus} = 'pending')::int`,
+      unclassifiedTrades: sql<number>`count(*) filter (where ${trades.strategyId} is null)::int`,
+      reviewsPending: sql<number>`count(*) filter (where ${trades.status} = 'closed' and ${trades.reviewNotes} is null)::int`,
+    })
+    .from(trades)
+    .where(and(eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)));
+
+  return (
+    row ?? {
+      openTrades: 0,
+      pendingSystemOutcomes: 0,
+      unclassifiedTrades: 0,
+      reviewsPending: 0,
+    }
+  );
 }

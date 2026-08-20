@@ -350,6 +350,7 @@ describe('failure mapping and full projections', () => {
       scope: SCOPE,
       trader: [trader('divergent', '-1.0000', 'loss')],
       system: [system('divergent', '3.0000', 'win')],
+      systemPendingCount: 0,
       comparison: [{ tradeId: 'divergent', actualR: '-1.0000', systemR: '3.0000' }],
       rules: [],
       mistakes: [],
@@ -373,6 +374,7 @@ describe('failure mapping and full projections', () => {
       scope: SCOPE,
       trader: [trader('t', '1.0000', 'win')],
       system: [system('t', '2.0000', 'win')],
+      systemPendingCount: 3,
       comparison: [{ tradeId: 't', actualR: '1.0000', systemR: '2.0000' }],
       rules: [],
       mistakes: [],
@@ -389,6 +391,7 @@ describe('failure mapping and full projections', () => {
     expect(overview.trader.totalR).toBe(snapshot.trader.totalR);
     expect(overview.system.expectancyR).toBe(snapshot.system.expectancyR);
     expect(overview.comparison).toBe(snapshot.comparison);
+    expect(overview.systemPendingCount).toBe(3);
     expect(overview.trader).not.toHaveProperty('averageWinR');
     expect(overview.system).not.toHaveProperty('equityCurve');
     expect(overview).not.toHaveProperty('rules');

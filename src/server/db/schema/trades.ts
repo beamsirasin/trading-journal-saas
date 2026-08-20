@@ -166,17 +166,19 @@ export const trades = pgTable(
     chartAttachmentUploadedAt: timestamp('chart_attachment_uploaded_at', { withTimezone: true }),
 
     // -------------------------------------------------------------------
-    // Plan — the system's proposal. A Trade always starts with a plan, even
-    // in `status = 'planned'`, but since migration 0010 (Founder-UAT Trade
+    // Plan — the system's proposal. Since migration 0010 (Founder-UAT Trade
     // Plan UX correction slice) that plan may be expressed as Price
     // (`planned_entry`/`planned_stop`/`planned_target`), Money
     // (`planned_risk_minor`/`planned_reward_minor`, below), or both at once
     // — `planned_entry`/`planned_stop` are nullable so a Money-only plan
     // never has to fabricate placeholder prices. `trades_planned_price_shape_check`
     // still requires entry+stop to be a complete, direction-valid pair
-    // whenever EITHER is present; `trades_plan_minimum_check` still requires
-    // at least one representation (Price or Money) on every row — see both
-    // checks below.
+    // whenever EITHER is present. Since migration 0016 (Phase 14C.1 — Quick
+    // Capture Persistence Completion) a Trade may also carry NEITHER
+    // representation at all: `trades_plan_minimum_check`, which used to
+    // require at least one, was dropped. A no-Plan Trade is a genuinely
+    // valid captured record, not an invalid one — see
+    // `docs/phases/PHASE-14-independent-classification.md` §14C.1.
     // -------------------------------------------------------------------
     plannedEntry: numeric('planned_entry', { precision: 20, scale: 10 }),
     plannedStop: numeric('planned_stop', { precision: 20, scale: 10 }),
@@ -480,18 +482,19 @@ export const trades = pgTable(
         AND (${table.plannedRewardMinor} IS NULL OR ${table.plannedRiskMinor} IS NOT NULL)`,
     ),
 
-    // The Founder-UAT "minimum plan validity" floor (migration 0010): every
-    // Trade must carry at least one complete, meaningful Plan representation
-    // — a full Price pair (Entry+Stop) or a Money Risk. Never enforced only
-    // client-side; this is the database-authoritative backstop behind the
-    // same rule `trade-management.ts`'s `createTrade`/`updateTradePlan`/
-    // `correctTradeIdentity` already enforce before ever reaching this
-    // constraint.
-    check(
-      'trades_plan_minimum_check',
-      sql`(${table.plannedEntry} IS NOT NULL AND ${table.plannedStop} IS NOT NULL)
-        OR ${table.plannedRiskMinor} IS NOT NULL`,
-    ),
+    // The Founder-UAT "minimum plan validity" floor (migration 0010,
+    // `trades_plan_minimum_check`) required at least one complete Plan
+    // representation on every row. Migration 0016 (Phase 14C.1) DROPPED that
+    // constraint: the frozen Quick Capture contract (`docs/phases/
+    // PHASE-14-independent-classification.md` §14C.1) requires a Trade be
+    // persistable with Trading Account + Symbol + Direction alone. Removing
+    // this constraint changes nothing else — `trades_planned_price_shape_check`
+    // and `trades_planned_money_check` above already independently tolerate
+    // an absent representation and still reject a malformed partial one;
+    // `updateTradePlan`'s own service-level floor (a distinct, narrower
+    // business rule — a Trade already under active Plan correction must not
+    // be edited down to zero representations) is untouched and enforced only
+    // in application code, not here.
 
     // Chart-attachment terminal fields (migration 0010) — populated together
     // or not at all, the same all-or-nothing posture

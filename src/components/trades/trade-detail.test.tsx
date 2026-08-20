@@ -32,6 +32,9 @@ const base: TradeDetailModel = {
   setupId: 'x',
   setupName: 'Pinned Retest',
   setupIsArchived: false,
+  strategyAssignedAt: '2026-08-08T00:00:00.000Z',
+  setupAssignedAt: '2026-08-08T00:00:00.000Z',
+  executionGapR: null,
   status: 'planned',
   systemStatus: 'pending',
   systemResolutionKind: null,
@@ -115,7 +118,13 @@ const base: TradeDetailModel = {
 function renderDetail(trade: TradeDetailModel) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeDetail trade={trade} timezone="Asia/Bangkok" locale="en-GB" canWrite={false} />
+      <TradeDetail
+        trade={trade}
+        timezone="Asia/Bangkok"
+        locale="en-GB"
+        canWrite={false}
+        classificationOptions={[]}
+      />
     </NextIntlClientProvider>,
   );
 }

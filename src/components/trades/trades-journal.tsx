@@ -3,7 +3,10 @@ import { useTranslations } from 'next-intl';
 
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
 import { cn } from '@/lib/utils';
-import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
+import type {
+  TradeCreateStrategyOption,
+  TradeDetail as TradeDetailModel,
+} from '@/server/dal/trades';
 import { EmptyState } from '@/components/product/empty-state';
 import { TradeDetail } from '@/components/trades/trade-detail';
 import { TradeList, type TradeListView } from '@/components/trades/trade-list';
@@ -20,6 +23,7 @@ export function TradesJournal({
   writeBlockReason,
   timezone,
   locale,
+  classificationOptions,
 }: {
   trades: readonly TradeListView[];
   nextCursor: string | null;
@@ -30,6 +34,7 @@ export function TradesJournal({
   writeBlockReason: MutationDenialReason | null;
   timezone: string;
   locale: string;
+  classificationOptions: readonly TradeCreateStrategyOption[];
 }) {
   const t = useTranslations('trades');
   const hasSelection = selectedTrade !== null;
@@ -94,6 +99,7 @@ export function TradesJournal({
             timezone={timezone}
             locale={locale}
             canWrite={canWrite}
+            classificationOptions={classificationOptions}
           />
         ) : null}
       </div>

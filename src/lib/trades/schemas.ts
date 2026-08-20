@@ -254,15 +254,16 @@ const chartAttachmentStorageKeyField = () =>
  * slice, migration 0010) — applied identically to `createTrade` and
  * `updateTradePlan`'s SHAPE only (never the risk-direction/Money-ratio
  * MATH, which stays exclusively `src/lib/calc/trade.ts`'s job): Entry/Stop
- * must arrive as a complete pair or not at all, a Target requires that
- * pair, a Reward requires a Risk, and — createTrade only — at least one
- * representation must be present at all (`updateTradePlan`'s patch may
- * legitimately touch neither Price nor Money field while still leaving an
- * EXISTING representation on the Trade untouched, so that floor cannot be
- * expressed as a pure Zod shape rule there; the service layer enforces it
- * instead). Client-side enforcement only ever narrows what an honest client
- * can send — `trade-management.ts`/`trades_plan_minimum_check` remain the
- * real, non-bypassable authority (CLAUDE.md §4).
+ * must arrive as a complete pair or not at all, and a Target requires that
+ * pair, and a Reward requires a Risk. Since migration 0016 (Phase 14C.1)
+ * NEITHER representation being present is also valid shape — the former
+ * "at least one representation" floor (`no_plan_representation`) was
+ * `createTrade`-only, was never a pure Zod shape rule for `updateTradePlan`
+ * (whose own service-level floor is a separate, narrower business rule —
+ * see `trade-management.ts`), and is now removed from `createTrade` too, to
+ * match the frozen Quick Capture contract. Client-side enforcement only
+ * ever narrows what an honest client can send — `trade-management.ts`
+ * remains the real, non-bypassable authority (CLAUDE.md §4).
  */
 function applyPlanShapeRefinements<
   T extends z.ZodType<{
@@ -315,9 +316,10 @@ const CreateTradeObjectSchema = z
     /**
      * Price and Money are independent, both-optional Plan representations
      * (Founder-UAT correction slice) — a Trade may supply Price only, Money
-     * only, or both. `applyPlanShapeRefinements` enforces pairing/ordering
-     * shape; `no_plan_representation` below enforces the "at least one"
-     * floor.
+     * only, both, or neither (Phase 14C.1 — Quick Capture Persistence
+     * Completion). `applyPlanShapeRefinements` enforces pairing/ordering
+     * shape only; there is no "at least one representation" floor here
+     * anymore.
      */
     plannedEntry: decimalField().nullable().optional(),
     plannedStop: decimalField().nullable().optional(),
@@ -340,12 +342,6 @@ const CreateTradeObjectSchema = z
   .strict();
 
 export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSchema)
-  .refine(
-    (data) =>
-      ((data.plannedEntry ?? null) !== null && (data.plannedStop ?? null) !== null) ||
-      (data.plannedRiskMinor ?? null) !== null,
-    { message: 'no_plan_representation', path: ['plannedEntry'] },
-  )
   // Phase 14B: a Setup never exists without a Strategy — the same pairing
   // `trades_setup_requires_strategy_check` enforces at the database layer.
   .refine((data) => data.setupId === undefined || data.strategyId !== undefined, {

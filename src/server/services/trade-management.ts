@@ -396,11 +396,11 @@ export interface CreateTradeInput {
   readonly direction: string;
   /**
    * Price and Money are independent, both-optional representations of the
-   * same Plan (Founder-UAT Trade Plan UX correction slice, migration 0010)
-   * — a Trade may supply Price only, Money only, or both. Neither is
-   * "required" at this interface's level; `createTrade` itself enforces the
-   * "at least one representation" floor (`no_plan_representation`), the
-   * same floor `trades_plan_minimum_check` enforces at the database layer.
+   * same Plan (Founder-UAT Trade Plan UX correction slice, migration 0010).
+   * Since migration 0016 (Phase 14C.1) a Trade may supply Price only, Money
+   * only, both, or NEITHER — the frozen Quick Capture contract requires
+   * Trading Account/Symbol/Direction alone to be sufficient. There is no
+   * "at least one representation" floor here anymore.
    */
   readonly plannedEntry?: string | null;
   readonly plannedStop?: string | null;
@@ -433,7 +433,6 @@ export type CreateTradeErrorCode =
   | 'blank_symbol'
   | 'invalid_direction'
   | 'invalid_plan'
-  | 'no_plan_representation'
   | 'planned_r_mismatch'
   | 'trading_account_not_found'
   | 'trading_account_archived'
@@ -548,20 +547,13 @@ export async function createTrade(
       if (!symbol.ok) return { ok: false, code: 'blank_symbol' };
       if (!isTradeDirection(input.direction)) return { ok: false, code: 'invalid_direction' };
 
-      // The Founder-UAT "minimum plan validity" floor (migration 0010) — the
-      // same invariant `trades_plan_minimum_check` enforces at the database
-      // layer, checked here first so its dedicated error code is never masked
-      // by a generic `invalid_plan`/`missing_input`.
-      const hasPricePlan =
-        input.plannedEntry !== null &&
-        input.plannedEntry !== undefined &&
-        input.plannedStop !== null &&
-        input.plannedStop !== undefined;
-      const hasMoneyPlan = input.plannedRiskMinor !== null && input.plannedRiskMinor !== undefined;
-      if (!hasPricePlan && !hasMoneyPlan) {
-        return { ok: false, code: 'no_plan_representation' };
-      }
-
+      // Since migration 0016 (Phase 14C.1) there is no "at least one
+      // representation" floor here — `composePlannedR` (below) already
+      // handles an entirely-absent Plan gracefully, returning `plannedR:
+      // null`/`source: 'none'` rather than an error, exactly matching the
+      // frozen Quick Capture contract (Trading Account + Symbol + Direction
+      // alone is a valid, persistable Trade).
+      //
       // `composePlannedR` validates whichever representation(s) are present
       // (never hand-duplicating the risk-per-unit/Money-ratio formulas) and
       // detects a Price/Money disagreement rather than silently picking one —

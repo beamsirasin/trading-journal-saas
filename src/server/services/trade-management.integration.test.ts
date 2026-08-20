@@ -844,19 +844,25 @@ describe('trade-management (real database)', () => {
       expect(result).toMatchObject({ ok: false, code: 'planned_r_mismatch' });
     });
 
-    it('rejects neither Price nor Money present (no_plan_representation)', async () => {
+    it('accepts neither Price nor Money present, and no Strategy/Setup — the frozen Quick Capture contract (Phase 14C.1)', async () => {
       const fw = await freshFramework();
       const result = await createTrade(workspaceId, actorUserId, {
         mutationKey: crypto.randomUUID(),
         tradingAccountId: fw.tradingAccountId,
-        strategyId: fw.strategyId,
-        setupId: fw.setupId,
-        conditionSetToken: createConditionSetToken(fw.setupVersionId),
-        conditionAnswers: [],
         symbol: 'EURUSD',
         direction: 'long',
       });
-      expect(result).toMatchObject({ ok: false, code: 'no_plan_representation' });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedStop).toBeNull();
+      expect(row?.plannedTarget).toBeNull();
+      expect(row?.plannedRiskMinor).toBeNull();
+      expect(row?.plannedRewardMinor).toBeNull();
+      expect(row?.plannedR).toBeNull();
+      expect(row?.strategyId).toBeNull();
+      expect(row?.setupId).toBeNull();
     });
 
     it('rejects a non-positive plannedRiskMinor at the database layer even if it slipped past the service (defense in depth)', async () => {
@@ -1274,6 +1280,79 @@ describe('trade-management (real database)', () => {
       await cancelTrade(workspaceId, actorUserId, tradeId);
       const result = await openTrade(workspaceId, actorUserId, tradeId, openInput());
       expect(result).toMatchObject({ ok: false, code: 'invalid_status_transition' });
+    });
+
+    it('opens and fully closes a genuinely no-Plan, unclassified Trade on Actual basis alone — Money mode (Phase 14C.1 §9)', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+      });
+      if (!created.ok) throw new Error('create failed');
+      const opened = await openTrade(workspaceId, actorUserId, created.tradeId, openInput());
+      expect(opened.ok).toBe(true);
+
+      const closed = await closeTrade(workspaceId, actorUserId, created.tradeId, {
+        actualExit: '1.1080000000',
+        netPnlMinor: 7500n,
+        exitedAt: new Date('2026-08-01T14:00:00Z'),
+      });
+      expect(closed.ok).toBe(true);
+
+      const row = await readTrade(created.tradeId);
+      // Actual side is fully finalized — Trader-eligible (`status = 'closed'`)
+      // exactly like any other closed Trade.
+      expect(row?.status).toBe('closed');
+      expect(row?.actualR).toBe('1.5000');
+      expect(row?.traderOutcome).toBe('win');
+      // Plan and classification remain genuinely absent throughout — Open
+      // and Close never fabricated either, and never required them.
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedRiskMinor).toBeNull();
+      expect(row?.plannedR).toBeNull();
+      expect(row?.strategyId).toBeNull();
+      expect(row?.setupId).toBeNull();
+      // System stays independently Pending — Actual finalizing never
+      // advances it.
+      expect(row?.systemStatus).toBe('pending');
+    });
+
+    it('opens and fully closes a genuinely no-Plan Trade on Actual basis alone — Price mode (Phase 14C.1 §9)', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'GBPUSD',
+        direction: 'long',
+      });
+      if (!created.ok) throw new Error('create failed');
+      const opened = await openTrade(workspaceId, actorUserId, created.tradeId, {
+        actualResultMode: 'price',
+        actualEntry: '1.2500000000',
+        actualInitialStop: '1.2400000000',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      expect(opened.ok).toBe(true);
+
+      // Price-mode full close goes through `addTradeExit` (Phase 13E), not
+      // `closeTrade` — that legacy helper is Money-mode only.
+      const closed = await addTradeExit(workspaceId, actorUserId, created.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 10_000,
+        exitPrice: '1.2700000000',
+        exitedAt: new Date('2026-08-01T14:00:00Z'),
+      });
+      expect(closed.ok).toBe(true);
+
+      const row = await readTrade(created.tradeId);
+      expect(row?.status).toBe('closed');
+      // actualR = (1.2700 - 1.2500) / (1.2500 - 1.2400) = 0.0200 / 0.0100 = 2.0000
+      expect(row?.actualR).toBe('2.0000');
+      expect(row?.traderOutcome).toBe('win');
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.systemStatus).toBe('pending');
     });
   });
 
@@ -1809,6 +1888,58 @@ describe('trade-management (real database)', () => {
       await expect(
         resolveSystemTrade(workspaceId, actorUserId, both.tradeId, resolveInput()),
       ).resolves.toMatchObject({ ok: true, systemR: '2.0000' });
+    });
+
+    it('rejects every System resolution kind on a genuinely no-Plan Trade with its own truthful-input code, never a fabricated result (Phase 14C.1)', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+      });
+      if (!created.ok) throw new Error('create failed');
+      const tradeId = created.tradeId;
+
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, tradeId, resolveInput()),
+      ).resolves.toMatchObject({ ok: false, code: 'system_requires_price_plan' });
+
+      // A genuinely absent Risk (never entered at all, unlike an entered-
+      // but-missing-Reward Money Target) fails the shared Risk-presence
+      // guard every money_* kind checks first — `invalid_planned_risk`, not
+      // `missing_input` (see `resolveSystemGrossR`, `src/lib/calc/trade.ts`).
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+          resolutionKind: 'money_target',
+          systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+          systemCostR: '0',
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        code: 'invalid_system_status_transition',
+        calcReason: 'invalid_planned_risk',
+      });
+
+      await expect(
+        resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+          resolutionKind: 'money_stop',
+          systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+          systemCostR: '0',
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        code: 'invalid_system_status_transition',
+        calcReason: 'invalid_planned_risk',
+      });
+
+      // System `no_trade` needs no Plan geometry at all and remains fully
+      // available — the System Outcome axis stays truthful and unblocked
+      // even while the Trade has no Plan.
+      const noTrade = await markSystemNoTrade(workspaceId, actorUserId, tradeId);
+      expect(noTrade).toMatchObject({ ok: true });
+      const row = await readTrade(tradeId);
+      expect(row?.systemStatus).toBe('no_trade');
     });
 
     it('corrects between Money kinds, clears stale Custom authority, and supports no_trade', async () => {

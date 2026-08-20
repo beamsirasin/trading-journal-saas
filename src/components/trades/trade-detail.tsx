@@ -2,7 +2,11 @@ import { ArrowLeft, ExternalLink, ImageIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { confidenceLevelKey } from '@/lib/trades/constants';
-import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
+import type {
+  TradeCreateStrategyOption,
+  TradeDetail as TradeDetailModel,
+} from '@/server/dal/trades';
+import { AssignClassificationDialog } from '@/components/trades/trade-classification-actions';
 import {
   TradeMistakesEditor,
   TradeRulesEditor,
@@ -99,16 +103,122 @@ function SetupConditionsSummary({ trade }: { trade: TradeDetailModel }) {
   );
 }
 
+/**
+ * "Captured at entry" vs "Added after entry" (Phase 14C §6) — truthfully
+ * derived from `strategy_assigned_at`/`setup_assigned_at` relative to
+ * `entered_at`, never a raw timestamp. Shown only once the Trade has
+ * actually been Opened — before that, "entry" hasn't happened yet, so
+ * neither label would mean anything.
+ */
+function ClassificationTiming({
+  assignedAt,
+  enteredAt,
+  t,
+}: {
+  assignedAt: string | null;
+  enteredAt: string | null;
+  t: ReturnType<typeof useTranslations<'trades'>>;
+}) {
+  if (enteredAt === null || assignedAt === null) return null;
+  const capturedAtEntry = new Date(assignedAt).getTime() <= new Date(enteredAt).getTime();
+  return (
+    <span className="text-muted-foreground block text-xs">
+      {capturedAtEntry
+        ? t('lifecycle.classification.capturedAtEntry')
+        : t('lifecycle.classification.addedAfterEntry')}
+    </span>
+  );
+}
+
+function ClassificationCard({
+  trade,
+  canWrite,
+  classificationOptions,
+  t,
+}: {
+  trade: TradeDetailModel;
+  canWrite: boolean;
+  classificationOptions: readonly TradeCreateStrategyOption[];
+  t: ReturnType<typeof useTranslations<'trades'>>;
+}) {
+  const archivedLabel = t('common.archived');
+
+  if (trade.strategyName === null) {
+    return (
+      <div className="grid gap-3">
+        <p className="text-muted-foreground text-sm">{t('common.notAssigned')}</p>
+        <p className="text-muted-foreground text-sm">{t('lifecycle.classification.laterHint')}</p>
+        {canWrite ? (
+          <div>
+            <AssignClassificationDialog trade={trade} strategies={classificationOptions} />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <dl className="divide-border divide-y">
+      <DetailRow
+        label={t('field.strategy')}
+        value={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {trade.strategyName}
+            <ArchivedBadge show={trade.strategyIsArchived} label={archivedLabel} />
+          </span>
+        }
+      />
+      {trade.strategyVersionNumber === null ? null : (
+        <DetailRow label={t('field.version')} value={trade.strategyVersionNumber} />
+      )}
+      <DetailRow
+        label={t('field.setup')}
+        value={
+          trade.setupName === null ? (
+            <div className="grid gap-2">
+              <span>{t('common.notAssigned')}</span>
+              {canWrite ? (
+                <div>
+                  <AssignClassificationDialog trade={trade} strategies={classificationOptions} />
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              {trade.setupName}
+              <ArchivedBadge show={trade.setupIsArchived} label={archivedLabel} />
+            </span>
+          )
+        }
+      />
+      <ClassificationTiming
+        assignedAt={trade.strategyAssignedAt}
+        enteredAt={trade.enteredAt}
+        t={t}
+      />
+      {trade.setupName === null ? null : (
+        <ClassificationTiming
+          assignedAt={trade.setupAssignedAt}
+          enteredAt={trade.enteredAt}
+          t={t}
+        />
+      )}
+    </dl>
+  );
+}
+
 export function TradeDetail({
   trade,
   timezone,
   locale,
   canWrite,
+  classificationOptions,
 }: {
   trade: TradeDetailModel;
   timezone: string;
   locale: string;
   canWrite: boolean;
+  classificationOptions: readonly TradeCreateStrategyOption[];
 }) {
   const t = useTranslations('trades');
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
@@ -158,37 +268,6 @@ export function TradeDetail({
             }
           />
           <DetailRow
-            label={t('field.strategy')}
-            value={
-              trade.strategyName === null ? (
-                t('common.notAssigned')
-              ) : (
-                <span className="inline-flex flex-wrap items-center gap-2">
-                  {trade.strategyName}
-                  <ArchivedBadge show={trade.strategyIsArchived} label={archivedLabel} />
-                </span>
-              )
-            }
-          />
-          {trade.strategyVersionNumber === null ? null : (
-            <DetailRow label={t('field.version')} value={trade.strategyVersionNumber} />
-          )}
-          {trade.strategyName === null ? null : (
-            <DetailRow
-              label={t('field.setup')}
-              value={
-                trade.setupName === null ? (
-                  t('common.notAssigned')
-                ) : (
-                  <span className="inline-flex flex-wrap items-center gap-2">
-                    {trade.setupName}
-                    <ArchivedBadge show={trade.setupIsArchived} label={archivedLabel} />
-                  </span>
-                )
-              }
-            />
-          )}
-          <DetailRow
             label={t('field.executionStatus')}
             value={<TradeStatusBadge status={trade.status} />}
           />
@@ -204,6 +283,15 @@ export function TradeDetail({
             <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
           )}
         </dl>
+      </Section>
+
+      <Section id="trade-classification" title={t('detail.sections.classification')}>
+        <ClassificationCard
+          trade={trade}
+          canWrite={canWrite}
+          classificationOptions={classificationOptions}
+          t={t}
+        />
       </Section>
 
       <Section id="trade-plan" title={t('detail.sections.plan')}>
@@ -472,6 +560,14 @@ export function TradeDetail({
               label={t('field.systemResolvedAt')}
               value={instant(trade.systemResolvedAt)}
             />
+            {trade.executionGapR === null ? null : (
+              <DetailRow
+                label={t('field.executionGap')}
+                value={
+                  <span className="font-mono tabular-nums">{formatR(trade.executionGapR)}</span>
+                }
+              />
+            )}
           </dl>
         )}
       </Section>

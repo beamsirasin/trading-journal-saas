@@ -84,6 +84,7 @@ function snapshot(overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnapshot
       timezone: 'Asia/Bangkok',
     },
     system: axis(2, '4.0000'),
+    systemPendingCount: 0,
     trader: axis(3, '-1.0000'),
     comparison: {
       comparableCount: 2,

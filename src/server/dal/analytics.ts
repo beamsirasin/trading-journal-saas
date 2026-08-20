@@ -462,6 +462,41 @@ export async function getSystemAnalyticsRecords(
   return { ok: true, data: await selectSystemAnalyticsRecords(context.data) };
 }
 
+/**
+ * A compact "how many System outcomes are still pending" disclosure (Phase
+ * 14C §19) — never a member of `SystemAnalyticsRecord`/the eligible
+ * population itself (pending Trades stay structurally excluded from every
+ * System formula, unchanged). Deliberately account/framework-scoped like
+ * every other analytics query, but NEVER date-bounded: a pending Trade has
+ * no `system_exited_at` to bucket by (CLAUDE.md §7, Phase 13 §15's "no
+ * generic date axis"), so this count answers "how many, right now, within
+ * this Account/Strategy/Setup scope" — not "how many within this date
+ * range," and must never be presented as if it were.
+ */
+async function selectSystemPendingCount(context: AnalyticsQueryContext): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(trades)
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.systemStatus, 'pending'),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+export async function getSystemPendingCount(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<number>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  return { ok: true, data: await selectSystemPendingCount(context.data) };
+}
+
 export interface PairedAnalyticsRecord {
   readonly tradeId: string;
   readonly actualR: string;
@@ -1153,6 +1188,8 @@ export interface AnalyticsRawPopulations {
   readonly filters: ResolvedAnalyticsFilters;
   readonly trader: readonly TraderAnalyticsRecord[];
   readonly system: readonly SystemAnalyticsRecord[];
+  /** Phase 14C §19 — account/framework-scoped, deliberately NOT date-bounded. See `selectSystemPendingCount`. */
+  readonly systemPendingCount: number;
   readonly paired: readonly PairedAnalyticsRecord[];
   readonly rules: readonly RuleAnalyticsRecord[];
   readonly mistakes: readonly MistakeAnalyticsRecord[];
@@ -1180,6 +1217,7 @@ export async function getAnalyticsRawPopulations(
   const [
     trader,
     system,
+    systemPendingCount,
     paired,
     rules,
     mistakes,
@@ -1194,6 +1232,7 @@ export async function getAnalyticsRawPopulations(
   ] = await Promise.all([
     selectTraderAnalyticsRecords(context.data),
     selectSystemAnalyticsRecords(context.data),
+    selectSystemPendingCount(context.data),
     selectPairedAnalyticsRecords(context.data),
     selectRuleAnalyticsRecords(context.data),
     selectMistakeAnalyticsRecords(context.data),
@@ -1212,6 +1251,7 @@ export async function getAnalyticsRawPopulations(
       filters: context.data.filters,
       trader,
       system,
+      systemPendingCount,
       paired,
       rules,
       mistakes,

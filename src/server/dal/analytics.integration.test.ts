@@ -57,6 +57,7 @@ const {
   getSetupAdherenceAnalyticsRecords,
   getSetupAdherenceSystemAnalyticsRecords,
   getSystemAnalyticsRecords,
+  getSystemPendingCount,
   getTraderAnalyticsRecords,
   normalizeAnalyticsFilters,
 } = await import('./analytics');
@@ -738,6 +739,48 @@ describe('analytics DAL (real PostgreSQL)', () => {
         ),
       ).toBe(true);
     }
+  });
+
+  describe('getSystemPendingCount (Phase 14C §19)', () => {
+    it('counts only System-pending Trades in the resolved account/Strategy/Setup scope', async () => {
+      await createFixture();
+      const result = await getSystemPendingCount({}, READ_OPTIONS);
+      if (!result.ok) throw new Error(result.code);
+      expect(result.data).toBe(1);
+    });
+
+    it('respects the account scope filter — an archived-only scope excludes the active account’s pending Trade', async () => {
+      const fixture = await createFixture();
+      const archivedScoped = await getSystemPendingCount(
+        { tradingAccountId: fixture.archivedAccountId },
+        READ_OPTIONS,
+      );
+      if (!archivedScoped.ok) throw new Error(archivedScoped.code);
+      expect(archivedScoped.data).toBe(0);
+    });
+
+    it('respects Strategy/Setup filters the same way every other framework-scoped projection does', async () => {
+      const fixture = await createFixture();
+      const scoped = await getSystemPendingCount(
+        { strategyId: fixture.framework.strategyId, setupId: fixture.framework.setupId },
+        READ_OPTIONS,
+      );
+      if (!scoped.ok) throw new Error(scoped.code);
+      expect(scoped.data).toBe(1);
+    });
+
+    it('is deliberately NOT bounded by the Date filter — a pending Trade has no System-eligible date to bound it by', async () => {
+      await createFixture();
+      // A 30-day window nearly a year after the pending Trade's own
+      // `exited_at` (2026-08-02), so the window excludes that date entirely.
+      // Per Phase 14C §19, this count reflects "how many pending in this
+      // scope," not "how many within this date range" — so it must be
+      // unaffected by the window.
+      const farFutureWindow = { referenceInstant: new Date('2027-06-01T00:00:00.000Z') } as const;
+      const result = await getSystemPendingCount({ datePreset: '30d' }, farFutureWindow);
+      if (!result.ok) throw new Error(result.code);
+      expect(result.data).toBe(1);
+    });
   });
 });
 
