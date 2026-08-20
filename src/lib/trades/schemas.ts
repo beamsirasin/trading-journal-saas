@@ -297,12 +297,19 @@ const CreateTradeObjectSchema = z
   .object({
     mutationKey: uuidField(),
     tradingAccountId: uuidField(),
-    strategyId: uuidField(),
-    setupId: uuidField(),
-    /** Opaque optimistic-concurrency guard, never an authoritative Version ID. */
-    conditionSetToken: conditionSetTokenField(),
-    /** Labels/order/Version ownership are resolved exclusively on the server. */
-    conditionAnswers: z.array(setupConditionAnswerField()),
+    /**
+     * Optional since Phase 14B (Independent Trade Lifecycle) — a Trade may
+     * be captured with no Strategy classification at all. `setupId` may
+     * only be present alongside `strategyId` (a Setup never exists without
+     * a Strategy — enforced below and by `trades_setup_requires_strategy_check`
+     * at the database layer).
+     */
+    strategyId: uuidField().optional(),
+    setupId: uuidField().optional(),
+    /** Opaque optimistic-concurrency guard, never an authoritative Version ID. Required exactly when `setupId` is present — see the refine below. */
+    conditionSetToken: conditionSetTokenField().optional(),
+    /** Labels/order/Version ownership are resolved exclusively on the server. Meaningless (and must be empty/omitted) without a `setupId`. */
+    conditionAnswers: z.array(setupConditionAnswerField()).optional(),
     symbol: requiredTextField(SYMBOL_MAX_LENGTH),
     direction: directionField(),
     /**
@@ -332,12 +339,30 @@ const CreateTradeObjectSchema = z
   })
   .strict();
 
-export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSchema).refine(
-  (data) =>
-    ((data.plannedEntry ?? null) !== null && (data.plannedStop ?? null) !== null) ||
-    (data.plannedRiskMinor ?? null) !== null,
-  { message: 'no_plan_representation', path: ['plannedEntry'] },
-);
+export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSchema)
+  .refine(
+    (data) =>
+      ((data.plannedEntry ?? null) !== null && (data.plannedStop ?? null) !== null) ||
+      (data.plannedRiskMinor ?? null) !== null,
+    { message: 'no_plan_representation', path: ['plannedEntry'] },
+  )
+  // Phase 14B: a Setup never exists without a Strategy — the same pairing
+  // `trades_setup_requires_strategy_check` enforces at the database layer.
+  .refine((data) => data.setupId === undefined || data.strategyId !== undefined, {
+    message: 'setup_requires_strategy',
+    path: ['setupId'],
+  })
+  // `conditionSetToken`/`conditionAnswers` are meaningful, and required,
+  // exactly when a Setup is selected — never sent for a Setup-less Trade,
+  // never omitted for one that has a Setup.
+  .refine((data) => (data.setupId === undefined) === (data.conditionSetToken === undefined), {
+    message: 'setup_requires_condition_token',
+    path: ['conditionSetToken'],
+  })
+  .refine((data) => data.setupId !== undefined || (data.conditionAnswers ?? []).length === 0, {
+    message: 'condition_answers_require_setup',
+    path: ['conditionAnswers'],
+  });
 export type CreateTradeActionInput = z.input<typeof CreateTradeSchema>;
 export type CreateTradeActionData = z.output<typeof CreateTradeSchema>;
 
@@ -791,5 +816,32 @@ export const UpdateTradeReviewNotesSchema = z
   .strict();
 export type UpdateTradeReviewNotesActionInput = z.input<typeof UpdateTradeReviewNotesSchema>;
 export type UpdateTradeReviewNotesActionData = z.output<typeof UpdateTradeReviewNotesSchema>;
+
+// ---------------------------------------------------------------------------
+// 17. assignTradeClassification (Phase 14B)
+// ---------------------------------------------------------------------------
+
+/**
+ * Late Strategy/Setup classification — supports only the three sanctioned
+ * progressive transitions (`no framework -> Strategy`,
+ * `no framework -> Strategy + Setup`, `Strategy only -> + Setup`); the
+ * service independently re-verifies which transition is actually legal for
+ * the Trade's CURRENT stored classification (unknowable from this isolated
+ * schema, exactly {@link UpdateTradePlanSchema}'s own reasoning). At least
+ * one of `strategyId`/`setupId` must be present.
+ */
+export const AssignTradeClassificationSchema = z
+  .object({
+    tradeId: uuidField(),
+    strategyId: uuidField().optional(),
+    setupId: uuidField().optional(),
+  })
+  .strict()
+  .refine((data) => data.strategyId !== undefined || data.setupId !== undefined, {
+    message: 'no_classification_provided',
+    path: ['strategyId'],
+  });
+export type AssignTradeClassificationActionInput = z.input<typeof AssignTradeClassificationSchema>;
+export type AssignTradeClassificationActionData = z.output<typeof AssignTradeClassificationSchema>;
 
 export const TradeIdSchema = uuidField();

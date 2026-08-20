@@ -476,7 +476,8 @@
       "notSet": "ยังไม่ได้ระบุ",
       "optional": "(ไม่บังคับ)",
       "version": "เวอร์ชัน {number}",
-      "archived": "เก็บเข้าคลังแล้ว"
+      "archived": "เก็บเข้าคลังแล้ว",
+      "notAssigned": "ยังไม่ได้กำหนด"
     },
     "direction": { "long": "Long", "short": "Short" },
     "status": {

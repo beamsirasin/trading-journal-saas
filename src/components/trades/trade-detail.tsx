@@ -131,7 +131,11 @@ export function TradeDetail({
             {trade.symbol}
           </h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            {trade.strategyName} · {trade.setupName}
+            {trade.strategyName === null
+              ? t('common.notAssigned')
+              : trade.setupName === null
+                ? trade.strategyName
+                : `${trade.strategyName} · ${trade.setupName}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -156,22 +160,34 @@ export function TradeDetail({
           <DetailRow
             label={t('field.strategy')}
             value={
-              <span className="inline-flex flex-wrap items-center gap-2">
-                {trade.strategyName}
-                <ArchivedBadge show={trade.strategyIsArchived} label={archivedLabel} />
-              </span>
+              trade.strategyName === null ? (
+                t('common.notAssigned')
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {trade.strategyName}
+                  <ArchivedBadge show={trade.strategyIsArchived} label={archivedLabel} />
+                </span>
+              )
             }
           />
-          <DetailRow label={t('field.version')} value={trade.strategyVersionNumber} />
-          <DetailRow
-            label={t('field.setup')}
-            value={
-              <span className="inline-flex flex-wrap items-center gap-2">
-                {trade.setupName}
-                <ArchivedBadge show={trade.setupIsArchived} label={archivedLabel} />
-              </span>
-            }
-          />
+          {trade.strategyVersionNumber === null ? null : (
+            <DetailRow label={t('field.version')} value={trade.strategyVersionNumber} />
+          )}
+          {trade.strategyName === null ? null : (
+            <DetailRow
+              label={t('field.setup')}
+              value={
+                trade.setupName === null ? (
+                  t('common.notAssigned')
+                ) : (
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    {trade.setupName}
+                    <ArchivedBadge show={trade.setupIsArchived} label={archivedLabel} />
+                  </span>
+                )
+              }
+            />
+          )}
           <DetailRow
             label={t('field.executionStatus')}
             value={<TradeStatusBadge status={trade.status} />}

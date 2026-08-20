@@ -476,7 +476,8 @@
       "notSet": "Not set",
       "optional": "(optional)",
       "version": "Version {number}",
-      "archived": "Archived"
+      "archived": "Archived",
+      "notAssigned": "Not assigned"
     },
     "direction": { "long": "Long", "short": "Short" },
     "status": {

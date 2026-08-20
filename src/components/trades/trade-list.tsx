@@ -70,6 +70,42 @@ function TraderResult({ trade, t }: { trade: TradeListView; t: Translation }) {
   return <RValue value={trade.plannedR} label={t('field.plannedR')} />;
 }
 
+/**
+ * Strategy/Setup classification is optional since Phase 14B — an
+ * unclassified Trade renders "Not assigned" (never a fake label like
+ * "Unknown Strategy", never a blank cell). `strategyVersionNumber` is only
+ * ever meaningful alongside a Strategy Version, so the "· Version N" segment
+ * is skipped entirely rather than rendering "Version null".
+ */
+function ClassificationCell({ trade, t }: { trade: TradeListView; t: Translation }) {
+  if (trade.strategyName === null) {
+    return (
+      <span className="text-muted-foreground block break-words">{t('common.notAssigned')}</span>
+    );
+  }
+  return (
+    <>
+      <span className="block font-medium break-words">
+        {trade.strategyName}
+        <ArchivedNote show={trade.strategyIsArchived} label={t('common.archived')} />
+      </span>
+      <span className="text-muted-foreground block text-xs break-words">
+        {trade.setupName === null ? (
+          t('common.notAssigned')
+        ) : (
+          <>
+            {trade.setupName}
+            {trade.strategyVersionNumber === null
+              ? null
+              : ` · ${t('common.version', { number: trade.strategyVersionNumber })}`}
+            <ArchivedNote show={trade.setupIsArchived} label={t('common.archived')} />
+          </>
+        )}
+      </span>
+    </>
+  );
+}
+
 function ConditionsAdherence({ trade }: { trade: TradeListView }) {
   const t = useTranslations('trades');
   if (trade.setupConditionMetCount === null || trade.setupConditionTotalCount === null) return null;
@@ -129,15 +165,7 @@ export function TradeList({
                   </Link>
                 </td>
                 <td className="px-3 py-3">
-                  <span className="block font-medium break-words">
-                    {trade.strategyName}
-                    <ArchivedNote show={trade.strategyIsArchived} label={archivedLabel} />
-                  </span>
-                  <span className="text-muted-foreground block text-xs break-words">
-                    {trade.setupName} ·{' '}
-                    {t('common.version', { number: trade.strategyVersionNumber })}
-                    <ArchivedNote show={trade.setupIsArchived} label={archivedLabel} />
-                  </span>
+                  <ClassificationCell trade={trade} t={t} />
                   <ConditionsAdherence trade={trade} />
                 </td>
                 <td className="px-3 py-3 break-words">
@@ -183,14 +211,7 @@ export function TradeList({
               <TradeStatusBadge status={trade.status} />
             </div>
             <div className="text-sm">
-              <span className="font-medium">
-                {trade.strategyName}
-                <ArchivedNote show={trade.strategyIsArchived} label={archivedLabel} />
-              </span>
-              <span className="text-muted-foreground block break-words">
-                {trade.setupName} · {t('common.version', { number: trade.strategyVersionNumber })}
-                <ArchivedNote show={trade.setupIsArchived} label={archivedLabel} />
-              </span>
+              <ClassificationCell trade={trade} t={t} />
               <span className="text-muted-foreground block break-words">
                 {trade.tradingAccountName}
                 <ArchivedNote show={trade.tradingAccountIsArchived} label={archivedLabel} />

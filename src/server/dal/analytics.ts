@@ -344,9 +344,10 @@ export interface TraderAnalyticsRecord {
   readonly traderOutcome: OutcomeValue;
   readonly exitedAt: string;
   readonly tradingAccountId: string;
-  readonly strategyId: string;
-  readonly strategyVersionId: string;
-  readonly setupId: string;
+  /** Phase 14B: `null` for an unclassified Trade — Trader eligibility never depends on classification (CLAUDE.md §1/§6). */
+  readonly strategyId: string | null;
+  readonly strategyVersionId: string | null;
+  readonly setupId: string | null;
 }
 
 async function selectTraderAnalyticsRecords(
@@ -406,9 +407,10 @@ export interface SystemAnalyticsRecord {
   readonly systemOutcome: OutcomeValue;
   readonly systemExitedAt: string;
   readonly tradingAccountId: string;
-  readonly strategyId: string;
-  readonly strategyVersionId: string;
-  readonly setupId: string;
+  /** Phase 14B: `null` for an unclassified Trade — System eligibility never depends on classification. */
+  readonly strategyId: string | null;
+  readonly strategyVersionId: string | null;
+  readonly setupId: string | null;
 }
 
 async function selectSystemAnalyticsRecords(
@@ -467,9 +469,10 @@ export interface PairedAnalyticsRecord {
   readonly actualExitedAt: string;
   readonly systemExitedAt: string;
   readonly tradingAccountId: string;
-  readonly strategyId: string;
-  readonly strategyVersionId: string;
-  readonly setupId: string;
+  /** Phase 14B: `null` for an unclassified Trade — pairing/Execution Gap never depends on classification. */
+  readonly strategyId: string | null;
+  readonly strategyVersionId: string | null;
+  readonly setupId: string | null;
 }
 
 async function selectPairedAnalyticsRecords(
@@ -538,9 +541,17 @@ export interface RuleAnalyticsRecord {
   readonly isPreTradeCheck: boolean;
   readonly scope: 'strategy' | 'setup';
   readonly tradingAccountId: string;
-  readonly strategyId: string;
-  readonly strategyVersionId: string;
-  readonly setupId: string;
+  /**
+   * `strategyId`/`strategyVersionId` are structurally guaranteed non-null in
+   * practice — `trade_rule_checks` can only exist via the composite FK into
+   * `trades(id, strategy_version_id)` — but typed nullable here for
+   * consistency with every other analytics record and because nothing
+   * downstream in `src/lib/analytics/` reads these fields. `setupId` CAN be
+   * genuinely null (a Strategy-level Rule check on a Trade with no Setup).
+   */
+  readonly strategyId: string | null;
+  readonly strategyVersionId: string | null;
+  readonly setupId: string | null;
   readonly exitedAt: string;
 }
 
@@ -600,9 +611,10 @@ export interface MistakeAnalyticsRecord {
   readonly key: string;
   readonly label: string;
   readonly tradingAccountId: string;
-  readonly strategyId: string;
-  readonly strategyVersionId: string;
-  readonly setupId: string;
+  /** Phase 14B: `null` for an unclassified Trade — `trade_mistakes` has no dependency on Strategy/Setup classification at all. */
+  readonly strategyId: string | null;
+  readonly strategyVersionId: string | null;
+  readonly setupId: string | null;
   readonly exitedAt: string;
 }
 
@@ -802,7 +814,14 @@ async function selectConditionAnalyticsRecords(
   const rows = await db
     .select({
       tradeId: tradeSetupConditionChecks.tradeId,
-      setupId: trades.setupId,
+      // Structurally guaranteed non-null: a `trade_setup_condition_checks`
+      // row can only exist via the composite FK into `trades(id,
+      // setup_version_id)`, which requires a non-null `setup_id` (Phase 14B
+      // pairing check). `sql<string>` preserves that guarantee's TYPE here
+      // even though the underlying `trades.setup_id` column is nullable
+      // since Phase 14B — never a runtime cast, purely a type narrowing this
+      // join already proves.
+      setupId: sql<string>`${trades.setupId}`,
       conditionKey: tradeSetupConditionChecks.conditionKey,
       label: tradeSetupConditionChecks.label,
       checkStatus: tradeSetupConditionChecks.checkStatus,
@@ -867,7 +886,8 @@ async function selectConditionSystemAnalyticsRecords(
   const rows = await db
     .select({
       tradeId: tradeSetupConditionChecks.tradeId,
-      setupId: trades.setupId,
+      // See the identical comment in `selectConditionAnalyticsRecords`.
+      setupId: sql<string>`${trades.setupId}`,
       conditionKey: tradeSetupConditionChecks.conditionKey,
       label: tradeSetupConditionChecks.label,
       checkStatus: tradeSetupConditionChecks.checkStatus,

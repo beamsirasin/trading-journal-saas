@@ -221,6 +221,8 @@ export async function readWorkspaceExportSource(
           strategyVersionId: trades.strategyVersionId,
           setupId: trades.setupId,
           setupVersionId: trades.setupVersionId,
+          strategyAssignedAt: trades.strategyAssignedAt,
+          setupAssignedAt: trades.setupAssignedAt,
           symbol: trades.symbol,
           direction: trades.direction,
           timeframe: trades.timeframe,

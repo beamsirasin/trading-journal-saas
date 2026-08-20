@@ -379,12 +379,19 @@ async function insertRuleSnapshotsInTx(
 export interface CreateTradeInput {
   readonly mutationKey: string;
   readonly tradingAccountId: string;
-  readonly strategyId: string;
-  readonly setupId: string;
-  /** Opaque optimistic-concurrency token for the Condition set rendered by the client. */
-  readonly conditionSetToken: string;
-  /** Stable logical keys plus binary answers only; all snapshot content remains server-owned. */
-  readonly conditionAnswers: readonly SetupConditionAnswer[];
+  /**
+   * Optional since Phase 14B — a Trade may be captured with no Strategy
+   * classification. `setupId` may be present only alongside `strategyId`
+   * (validated below, and by `trades_setup_requires_strategy_check` at the
+   * database layer); `conditionSetToken`/`conditionAnswers` are meaningful,
+   * and required, exactly when `setupId` is present.
+   */
+  readonly strategyId?: string | undefined;
+  readonly setupId?: string | undefined;
+  /** Opaque optimistic-concurrency token for the Condition set rendered by the client. Required exactly when `setupId` is present. */
+  readonly conditionSetToken?: string | undefined;
+  /** Stable logical keys plus binary answers only; all snapshot content remains server-owned. Empty/omitted whenever `setupId` is absent. */
+  readonly conditionAnswers?: readonly SetupConditionAnswer[] | undefined;
   readonly symbol: string;
   readonly direction: string;
   /**
@@ -430,6 +437,7 @@ export type CreateTradeErrorCode =
   | 'planned_r_mismatch'
   | 'trading_account_not_found'
   | 'trading_account_archived'
+  | 'setup_requires_strategy'
   | 'strategy_not_found'
   | 'strategy_archived'
   | 'strategy_current_version_missing'
@@ -580,48 +588,83 @@ export async function createTrade(
       if (account === undefined) return { ok: false, code: 'trading_account_not_found' };
       if (account.isArchived) return { ok: false, code: 'trading_account_archived' };
 
-      // Step 6.
-      const strategyLock = await lockStrategyRowForTrade(tx, workspaceId, input.strategyId);
-      if (!strategyLock.ok) return strategyLock;
-      if (strategyLock.strategy.isArchived) return { ok: false, code: 'strategy_archived' };
-
-      // Steps 7–8.
-      const versionLock = await lockCurrentVersionRowForTrade(tx, strategyLock.strategy);
-      if (!versionLock.ok) return versionLock;
-      const version = versionLock.version;
-
-      // Step 9 — plain scoped read, not FOR UPDATE (see module comment).
-      const setup = await tx.query.setups.findFirst({
-        where: and(
-          eq(setups.id, input.setupId),
-          eq(setups.workspaceId, workspaceId),
-          eq(setups.strategyId, input.strategyId),
-        ),
-      });
-      if (setup === undefined) return { ok: false, code: 'setup_not_found' };
-      if (setup.isArchived) return { ok: false, code: 'setup_archived' };
-
-      // Step 10.
-      const setupVersion = await tx.query.strategySetupVersions.findFirst({
-        where: and(
-          eq(strategySetupVersions.strategyVersionId, version.id),
-          eq(strategySetupVersions.setupId, setup.id),
-        ),
-      });
-      if (setupVersion === undefined) return { ok: false, code: 'setup_snapshot_missing' };
-
-      // Step 11.
-      if (input.conditionSetToken !== createConditionSetToken(setupVersion.id)) {
-        return { ok: false, code: 'stale_setup_conditions' };
+      // Phase 14B: Strategy/Setup classification is optional at creation —
+      // a Setup never exists without a Strategy, the same rule the Zod
+      // schema and `trades_setup_requires_strategy_check` both enforce
+      // (defense-in-depth, matching this module's usual posture).
+      if (input.setupId !== undefined && input.strategyId === undefined) {
+        return { ok: false, code: 'setup_requires_strategy' };
       }
 
-      // Step 12.
-      const lockResult = await lockStrategyVersionForReferenceInTx(
-        tx,
-        { workspaceId, strategyId: input.strategyId, versionId: version.id, actorUserId: userId },
-        clock,
-      );
-      if (!lockResult.ok) return lockResult;
+      // Steps 6–12 — entirely skipped when no Strategy is selected (Phase
+      // 14B; see the module doc comment on optional classification).
+      // `strategyVersionId`/`setupId`/`setupVersionId` stay null in that
+      // case, and no Version is ever locked/referenced.
+      let strategyVersionId: string | null = null;
+      let setupId: string | null = null;
+      let setupVersionId: string | null = null;
+      let classificationAssignedAt: Date | null = null;
+
+      if (input.strategyId !== undefined) {
+        const targetStrategyId = input.strategyId;
+        classificationAssignedAt = clock.now();
+
+        // Step 6.
+        const strategyLock = await lockStrategyRowForTrade(tx, workspaceId, targetStrategyId);
+        if (!strategyLock.ok) return strategyLock;
+        if (strategyLock.strategy.isArchived) return { ok: false, code: 'strategy_archived' };
+
+        // Steps 7–8.
+        const versionLock = await lockCurrentVersionRowForTrade(tx, strategyLock.strategy);
+        if (!versionLock.ok) return versionLock;
+        const version = versionLock.version;
+        strategyVersionId = version.id;
+
+        if (input.setupId !== undefined) {
+          const targetSetupId = input.setupId;
+
+          // Step 9 — plain scoped read, not FOR UPDATE (see module comment).
+          const setup = await tx.query.setups.findFirst({
+            where: and(
+              eq(setups.id, targetSetupId),
+              eq(setups.workspaceId, workspaceId),
+              eq(setups.strategyId, targetStrategyId),
+            ),
+          });
+          if (setup === undefined) return { ok: false, code: 'setup_not_found' };
+          if (setup.isArchived) return { ok: false, code: 'setup_archived' };
+
+          // Step 10.
+          const setupVersion = await tx.query.strategySetupVersions.findFirst({
+            where: and(
+              eq(strategySetupVersions.strategyVersionId, version.id),
+              eq(strategySetupVersions.setupId, setup.id),
+            ),
+          });
+          if (setupVersion === undefined) return { ok: false, code: 'setup_snapshot_missing' };
+
+          // Step 11.
+          if (input.conditionSetToken !== createConditionSetToken(setupVersion.id)) {
+            return { ok: false, code: 'stale_setup_conditions' };
+          }
+
+          setupId = setup.id;
+          setupVersionId = setupVersion.id;
+        }
+
+        // Step 12.
+        const lockResult = await lockStrategyVersionForReferenceInTx(
+          tx,
+          {
+            workspaceId,
+            strategyId: targetStrategyId,
+            versionId: version.id,
+            actorUserId: userId,
+          },
+          clock,
+        );
+        if (!lockResult.ok) return lockResult;
+      }
 
       // Step 13.
       const inserted = await tx
@@ -630,10 +673,12 @@ export async function createTrade(
           workspaceId,
           mutationKey: input.mutationKey,
           tradingAccountId: input.tradingAccountId,
-          strategyId: input.strategyId,
-          strategyVersionId: version.id,
-          setupId: setup.id,
-          setupVersionId: setupVersion.id,
+          strategyId: input.strategyId ?? null,
+          strategyVersionId,
+          strategyAssignedAt: input.strategyId !== undefined ? classificationAssignedAt : null,
+          setupId,
+          setupVersionId,
+          setupAssignedAt: setupId !== null ? classificationAssignedAt : null,
           symbol: symbol.value,
           direction: input.direction,
           timeframe: normalizeOptionalText(input.timeframe),
@@ -675,34 +720,43 @@ export async function createTrade(
         return { ok: true, tradeId: raced.id, alreadyCreated: true };
       }
 
-      // Step 14.
-      const conditionSnapshots = await snapshotTradeSetupConditionsInTx(tx, {
-        workspaceId,
-        tradeId: created.id,
-        setupVersionId: setupVersion.id,
-        answers: input.conditionAnswers,
-      });
-      if (!conditionSnapshots.ok) {
-        switch (conditionSnapshots.code) {
-          case 'duplicate_condition_answer':
-          case 'unknown_condition_answer':
-          case 'incomplete_condition_answers':
-          case 'invalid_condition_status':
-            throw new SetupConditionSnapshotFailure(conditionSnapshots.code);
-          default:
-            throw new Error(
-              `createTrade condition snapshot invariant failed: ${conditionSnapshots.code}`,
-            );
+      // Step 14 — skipped entirely without a Setup (Phase 14B): a Trade with
+      // no Setup has no Conditions to answer, and none are ever fabricated.
+      if (setupVersionId !== null) {
+        const conditionSnapshots = await snapshotTradeSetupConditionsInTx(tx, {
+          workspaceId,
+          tradeId: created.id,
+          setupVersionId,
+          answers: input.conditionAnswers ?? [],
+        });
+        if (!conditionSnapshots.ok) {
+          switch (conditionSnapshots.code) {
+            case 'duplicate_condition_answer':
+            case 'unknown_condition_answer':
+            case 'incomplete_condition_answers':
+            case 'invalid_condition_status':
+              throw new SetupConditionSnapshotFailure(conditionSnapshots.code);
+            default:
+              throw new Error(
+                `createTrade condition snapshot invariant failed: ${conditionSnapshots.code}`,
+              );
+          }
         }
       }
 
-      // Step 15.
-      await insertRuleSnapshotsInTx(tx, {
-        workspaceId,
-        tradeId: created.id,
-        strategyVersionId: version.id,
-        setupVersionId: setupVersion.id,
-      });
+      // Step 15 — same gate as Step 14: Rule checks are only ever snapshotted
+      // against a fully-resolved Strategy Version + Setup Version pair,
+      // unchanged from pre-14B behavior. A Strategy-only (no Setup) Trade
+      // gets zero Rule check rows at creation, rather than inventing new
+      // partial-snapshot semantics this phase's contract does not specify.
+      if (strategyVersionId !== null && setupVersionId !== null) {
+        await insertRuleSnapshotsInTx(tx, {
+          workspaceId,
+          tradeId: created.id,
+          strategyVersionId,
+          setupVersionId,
+        });
+      }
 
       if (selectedEmotionTypes.length > 0) {
         await tx.insert(tradeEmotions).values(
@@ -724,10 +778,13 @@ export async function createTrade(
         metadata: {
           tradeId: created.id,
           tradingAccountId: input.tradingAccountId,
-          strategyId: input.strategyId,
-          strategyVersionId: version.id,
-          setupId: setup.id,
-          setupVersionId: setupVersion.id,
+          // Phase 14B: omitted entirely (never `null`) when unclassified —
+          // `AuditLogMetadata`'s fields are `string | undefined`, never
+          // `string | null`, under `exactOptionalPropertyTypes`.
+          ...(input.strategyId !== undefined ? { strategyId: input.strategyId } : {}),
+          ...(strategyVersionId !== null ? { strategyVersionId } : {}),
+          ...(setupId !== null ? { setupId } : {}),
+          ...(setupVersionId !== null ? { setupVersionId } : {}),
         },
       });
 
@@ -1258,17 +1315,25 @@ export async function openTrade(
     if (account === undefined) return { ok: false, code: 'trading_account_not_found' };
     if (account.isArchived) return { ok: false, code: 'trading_account_archived' };
 
-    const strategy = await tx.query.strategies.findFirst({
-      where: and(eq(strategies.id, trade.strategyId), eq(strategies.workspaceId, workspaceId)),
-    });
-    if (strategy === undefined) return { ok: false, code: 'strategy_not_found' };
-    if (strategy.isArchived) return { ok: false, code: 'strategy_archived' };
+    // Phase 14B: Opening must not require classification — only re-check
+    // archival for whichever of Strategy/Setup this Trade actually has
+    // pinned (frozen contract §11: "Opening must NOT require: Strategy,
+    // Setup...").
+    if (trade.strategyId !== null) {
+      const strategy = await tx.query.strategies.findFirst({
+        where: and(eq(strategies.id, trade.strategyId), eq(strategies.workspaceId, workspaceId)),
+      });
+      if (strategy === undefined) return { ok: false, code: 'strategy_not_found' };
+      if (strategy.isArchived) return { ok: false, code: 'strategy_archived' };
+    }
 
-    const setup = await tx.query.setups.findFirst({
-      where: and(eq(setups.id, trade.setupId), eq(setups.workspaceId, workspaceId)),
-    });
-    if (setup === undefined) return { ok: false, code: 'setup_not_found' };
-    if (setup.isArchived) return { ok: false, code: 'setup_archived' };
+    if (trade.setupId !== null) {
+      const setup = await tx.query.setups.findFirst({
+        where: and(eq(setups.id, trade.setupId), eq(setups.workspaceId, workspaceId)),
+      });
+      if (setup === undefined) return { ok: false, code: 'setup_not_found' };
+      if (setup.isArchived) return { ok: false, code: 'setup_archived' };
+    }
 
     await tx
       .update(trades)
@@ -2230,5 +2295,234 @@ export async function softDeleteTrade(
     });
 
     return { ok: true };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 13. assignTradeClassification — late Strategy/Setup classification (Phase 14B)
+// ---------------------------------------------------------------------------
+
+export interface AssignTradeClassificationInput {
+  /** Present exactly when assigning a first Strategy — omit to add a Setup under an already-pinned Strategy. */
+  readonly strategyId?: string;
+  /** Present alongside `strategyId` (assign Strategy+Setup together) or alone (add a Setup under an already-pinned Strategy). */
+  readonly setupId?: string;
+}
+
+export type AssignTradeClassificationResult =
+  | {
+      readonly ok: true;
+      readonly strategyId: string;
+      readonly strategyVersionId: string;
+      readonly setupId: string | null;
+      readonly setupVersionId: string | null;
+    }
+  | {
+      readonly ok: false;
+      readonly code:
+        | WorkspaceAccessDenial
+        | 'trade_not_found'
+        | 'invalid_classification_request'
+        | 'strategy_not_found'
+        | 'strategy_archived'
+        | 'strategy_current_version_missing'
+        | 'setup_not_found'
+        | 'setup_archived'
+        | 'setup_snapshot_missing';
+    };
+
+/**
+ * Late Strategy/Setup classification (Phase 14B) — the ONLY mutation that
+ * writes `trades.strategy_id`/`strategy_version_id`/`setup_id`/
+ * `setup_version_id`/`strategy_assigned_at`/`setup_assigned_at` after
+ * `createTrade`'s own insert. Deliberately supports only the three
+ * sanctioned progressive transitions (Phase 14B contract §3/§7/§12):
+ *
+ *   A. no framework -> Strategy only
+ *   B. no framework -> Strategy + Setup
+ *   C. Strategy only -> Strategy + Setup
+ *
+ * Arbitrary reclassification — changing an already-pinned Strategy, or
+ * changing/clearing an already-pinned Setup — is deliberately UNSUPPORTED in
+ * this phase and rejected with `invalid_classification_request` (Phase 14B
+ * contract §7: "Do NOT expose unrestricted arbitrary reclassification yet").
+ * A future phase may add a dedicated, narrower `reclassify` operation once
+ * the product has decided how it should interact with existing immutable
+ * Setup Condition/Rule snapshots.
+ *
+ * Never creates `trade_setup_condition_checks` or `trade_rule_checks` rows —
+ * a late-assigned Setup/Strategy has, by definition, no Conditions/Rules
+ * genuinely captured at entry, and fabricating a snapshot now would misreport
+ * history (Phase 14B contract §8: "Absolutely DO NOT create retrospective
+ * condition snapshots"). `getWorkspaceTradeDetail`'s existing three-state
+ * Setup Condition disclosure already renders this truthfully — a Trade with
+ * zero `trade_setup_condition_checks` rows against a Setup Version that DOES
+ * have configured Conditions reads as `not_recorded`, never `0%`.
+ *
+ * Version pinning reuses exactly `createTrade`'s own lock order and helpers
+ * (`lockStrategyRowForTrade` -> `lockCurrentVersionRowForTrade` ->
+ * `lockStrategyVersionForReferenceInTx`) — a late-assigned Strategy pins
+ * whatever its CURRENT Version is at the moment of assignment, never a
+ * version contemporaneous with the Trade's original entry (there wasn't
+ * one). A Setup assigned alongside or after Strategy must resolve to the
+ * `strategy_setup_versions` snapshot belonging to that SAME pinned Strategy
+ * Version — never a mismatched/newer one — identical to `createTrade` step
+ * 10.
+ */
+export async function assignTradeClassification(
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  input: AssignTradeClassificationInput,
+  clock: Clock = systemClock,
+): Promise<AssignTradeClassificationResult> {
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+    const { trade } = ctx;
+
+    const assigningStrategy = input.strategyId !== undefined;
+    const assigningSetup = input.setupId !== undefined;
+
+    if (!assigningStrategy && !assigningSetup) {
+      return { ok: false, code: 'invalid_classification_request' };
+    }
+    // Cases A/B: assigning a first Strategy — only valid while unclassified.
+    if (assigningStrategy && trade.strategyId !== null) {
+      return { ok: false, code: 'invalid_classification_request' };
+    }
+    // A bare `setupId` while unclassified is a Setup-without-Strategy
+    // request — rejected here exactly as `trades_setup_requires_strategy_check`
+    // would reject it at the database layer.
+    if (assigningSetup && !assigningStrategy && trade.strategyId === null) {
+      return { ok: false, code: 'invalid_classification_request' };
+    }
+    // Case C: adding a Setup alone — only valid with no Setup yet.
+    if (assigningSetup && trade.setupId !== null) {
+      return { ok: false, code: 'invalid_classification_request' };
+    }
+
+    const assignedAt = clock.now();
+
+    let resolvedStrategyId: string;
+    let resolvedStrategyVersionId: string;
+    let resolvedStrategyAssignedAt: Date;
+
+    if (assigningStrategy) {
+      const targetStrategyId = input.strategyId;
+      if (targetStrategyId === undefined) {
+        throw new Error(
+          'assignTradeClassification: unreachable — strategyId narrowed to undefined',
+        );
+      }
+      const strategyLock = await lockStrategyRowForTrade(tx, workspaceId, targetStrategyId);
+      if (!strategyLock.ok) return strategyLock;
+      if (strategyLock.strategy.isArchived) return { ok: false, code: 'strategy_archived' };
+
+      const versionLock = await lockCurrentVersionRowForTrade(tx, strategyLock.strategy);
+      if (!versionLock.ok) return versionLock;
+
+      const lockResult = await lockStrategyVersionForReferenceInTx(
+        tx,
+        {
+          workspaceId,
+          strategyId: targetStrategyId,
+          versionId: versionLock.version.id,
+          actorUserId: userId,
+        },
+        clock,
+      );
+      if (!lockResult.ok) return lockResult;
+
+      resolvedStrategyId = targetStrategyId;
+      resolvedStrategyVersionId = versionLock.version.id;
+      resolvedStrategyAssignedAt = assignedAt;
+    } else {
+      // Guarded above: reaching here with `assigningSetup` true means
+      // `trade.strategyId` is already pinned (Case C).
+      if (
+        trade.strategyId === null ||
+        trade.strategyVersionId === null ||
+        trade.strategyAssignedAt === null
+      ) {
+        throw new Error('assignTradeClassification: unreachable — Strategy already pinned');
+      }
+      resolvedStrategyId = trade.strategyId;
+      resolvedStrategyVersionId = trade.strategyVersionId;
+      resolvedStrategyAssignedAt = trade.strategyAssignedAt;
+    }
+
+    let resolvedSetupId: string | null = trade.setupId;
+    let resolvedSetupVersionId: string | null = trade.setupVersionId;
+    let resolvedSetupAssignedAt: Date | null = trade.setupAssignedAt;
+
+    if (assigningSetup) {
+      const targetSetupId = input.setupId;
+      if (targetSetupId === undefined) {
+        throw new Error('assignTradeClassification: unreachable — setupId narrowed to undefined');
+      }
+      const setup = await tx.query.setups.findFirst({
+        where: and(
+          eq(setups.id, targetSetupId),
+          eq(setups.workspaceId, workspaceId),
+          eq(setups.strategyId, resolvedStrategyId),
+        ),
+      });
+      if (setup === undefined) return { ok: false, code: 'setup_not_found' };
+      if (setup.isArchived) return { ok: false, code: 'setup_archived' };
+
+      const setupVersion = await tx.query.strategySetupVersions.findFirst({
+        where: and(
+          eq(strategySetupVersions.strategyVersionId, resolvedStrategyVersionId),
+          eq(strategySetupVersions.setupId, setup.id),
+        ),
+      });
+      if (setupVersion === undefined) return { ok: false, code: 'setup_snapshot_missing' };
+
+      resolvedSetupId = setup.id;
+      resolvedSetupVersionId = setupVersion.id;
+      resolvedSetupAssignedAt = assignedAt;
+    }
+
+    await tx
+      .update(trades)
+      .set({
+        strategyId: resolvedStrategyId,
+        strategyVersionId: resolvedStrategyVersionId,
+        strategyAssignedAt: resolvedStrategyAssignedAt,
+        setupId: resolvedSetupId,
+        setupVersionId: resolvedSetupVersionId,
+        setupAssignedAt: resolvedSetupAssignedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(trades.id, tradeId));
+
+    // Never a symbol, note, or any other free-text field — identifiers only.
+    await insertAuditLog(tx, {
+      action: 'trade.classified',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'trade',
+      entityId: tradeId,
+      metadata: {
+        tradeId,
+        strategyId: resolvedStrategyId,
+        strategyVersionId: resolvedStrategyVersionId,
+        // Omitted (never `null`) when Setup was not part of this
+        // assignment — see the identical pattern/reasoning in `createTrade`.
+        ...(resolvedSetupId !== null ? { setupId: resolvedSetupId } : {}),
+        ...(resolvedSetupVersionId !== null ? { setupVersionId: resolvedSetupVersionId } : {}),
+      },
+    });
+
+    return {
+      ok: true,
+      strategyId: resolvedStrategyId,
+      strategyVersionId: resolvedStrategyVersionId,
+      setupId: resolvedSetupId,
+      setupVersionId: resolvedSetupVersionId,
+    };
   });
 }

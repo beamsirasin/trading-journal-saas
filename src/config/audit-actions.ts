@@ -80,6 +80,7 @@ export const AUDIT_ACTIONS = [
   'trade.mistake_removed',
   'trade.emotions_corrected',
   'trade.deleted',
+  'trade.classified',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

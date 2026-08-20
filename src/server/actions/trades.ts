@@ -13,6 +13,7 @@ import {
 } from '@/lib/trades/errors';
 import {
   AddTradeExitSchema,
+  AssignTradeClassificationSchema,
   AttachTradeMistakeSchema,
   CancelTradeSchema,
   CloseRemainingTradeSchema,
@@ -50,6 +51,7 @@ import {
   correctTradeExit,
 } from '@/server/services/trade-execution';
 import {
+  assignTradeClassification,
   cancelTrade,
   closeTrade,
   correctSystemResolution,
@@ -839,6 +841,47 @@ export async function updateTradeReviewNotesAction(input: unknown): Promise<
     );
     if (!result.ok) return serviceFailure(result.code);
     return { ok: true, data: { tradeId: parsed.data.tradeId, reviewNotes: result.reviewNotes } };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 17. assignTradeClassificationAction (Phase 14B)
+// ---------------------------------------------------------------------------
+
+export interface AssignTradeClassificationData {
+  readonly tradeId: string;
+  readonly strategyId: string;
+  readonly setupId: string | null;
+}
+
+export type AssignTradeClassificationActionResult =
+  TradeActionResult<AssignTradeClassificationData>;
+
+export async function assignTradeClassificationAction(
+  input: unknown,
+): Promise<AssignTradeClassificationActionResult> {
+  const parsed = AssignTradeClassificationSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+
+  try {
+    const { tradeId, ...rest } = parsed.data;
+    const result = await assignTradeClassification(
+      ctx.workspaceId,
+      ctx.userId,
+      tradeId,
+      asServiceInput(rest),
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return {
+      ok: true,
+      data: { tradeId, strategyId: result.strategyId, setupId: result.setupId },
+    };
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
   }

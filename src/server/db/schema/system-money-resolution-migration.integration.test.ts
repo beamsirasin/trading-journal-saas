@@ -58,9 +58,15 @@ describe('migration 0014 — Money-only System resolution', () => {
     expect(hash('0013_actual_execution_v2.sql')).toBe(
       '6C82862C34586B6ADD329AE691AF91C9A684FC851E063A14D01F06CD4855B5AB',
     );
-    expect(migrationFiles.filter((name) => Number(name.slice(0, 4)) > 13)).toEqual([
-      '0014_system_money_resolution.sql',
-    ]);
+    // "Exactly one migration after 0013" means nothing was inserted BETWEEN
+    // 0013 and 0014 — not that 0014 is the last migration ever (Phase 14B's
+    // 0015 legitimately exists now). Scoped to (13, 14] so a later, unrelated
+    // migration never breaks this test's actual invariant.
+    expect(
+      migrationFiles.filter(
+        (name) => Number(name.slice(0, 4)) > 13 && Number(name.slice(0, 4)) <= 14,
+      ),
+    ).toEqual(['0014_system_money_resolution.sql']);
     expect(migrationSql).toMatch(/ADD COLUMN "system_resolution_kind" text/);
     expect(migrationSql).toMatch(/ADD COLUMN "system_gross_r_input" numeric\(12, 4\)/);
     expect(migrationSql).not.toMatch(/trade_exits|actual_result_mode|emotion|condition/i);

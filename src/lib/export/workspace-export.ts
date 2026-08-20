@@ -1,6 +1,15 @@
 import { strToU8, zipSync } from 'fflate';
 
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 5 as const;
+/**
+ * v6 (Phase 14B): adds `strategyAssignedAt`/`setupAssignedAt` to the `trades`
+ * dataset and makes `strategyId`/`strategyVersionId`/`setupId`/
+ * `setupVersionId` genuinely nullable — an unclassified Trade now exports
+ * with `null` in those four fields rather than being impossible to
+ * represent. No column was removed or reinterpreted; `serializeValue`
+ * already treated every `id`/`timestamp` kind as null-safe before this
+ * version (null-checked first), so this bump is purely additive.
+ */
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 6 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -202,6 +211,11 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('strategyVersionId', 'strategy_version_id', 'id'),
       column('setupId', 'setup_id', 'id'),
       column('setupVersionId', 'setup_version_id', 'id'),
+      // Phase 14B — first-assignment timing only, `null` for an
+      // unclassified Trade (or the classification dimension not yet
+      // assigned). See `src/server/db/schema/trades.ts`'s module doc comment.
+      column('strategyAssignedAt', 'strategy_assigned_at', 'timestamp'),
+      column('setupAssignedAt', 'setup_assigned_at', 'timestamp'),
       column('symbol', 'symbol', 'user_text'),
       column('direction', 'direction', 'text'),
       column('timeframe', 'timeframe', 'user_text'),

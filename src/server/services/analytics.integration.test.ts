@@ -178,7 +178,8 @@ async function createFramework(workspaceId: string, name: string): Promise<Frame
 
 interface TradeInput {
   accountId: string;
-  framework: Framework;
+  /** `null` — Phase 14B — creates an unclassified Trade (no Strategy/Setup). */
+  framework: Framework | null;
   status?: 'planned' | 'open' | 'closed' | 'canceled';
   actualR?: string;
   traderOutcome?: 'win' | 'loss' | 'break_even';
@@ -244,10 +245,14 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
       .values({
         workspaceId,
         tradingAccountId: input.accountId,
-        strategyId: input.framework.strategyId,
-        strategyVersionId: input.framework.strategyVersionId,
-        setupId: input.framework.setupId,
-        setupVersionId: input.framework.setupVersionId,
+        strategyId: input.framework?.strategyId ?? null,
+        strategyVersionId: input.framework?.strategyVersionId ?? null,
+        setupId: input.framework?.setupId ?? null,
+        setupVersionId: input.framework?.setupVersionId ?? null,
+        // Phase 14B pairing CHECKs require these non-null exactly when the
+        // corresponding identity reference is non-null.
+        strategyAssignedAt: input.framework === null ? null : new Date('2026-08-01T00:00:00Z'),
+        setupAssignedAt: input.framework === null ? null : new Date('2026-08-01T00:00:00Z'),
         symbol: 'EURUSD',
         direction: 'long',
         plannedEntry: '100.0000000000',
@@ -932,5 +937,85 @@ describe('analytics service (real PostgreSQL)', () => {
     });
 
     expect(() => JSON.stringify(result.data)).not.toThrow();
+  });
+
+  it('Phase 14B: unclassified Trades participate in global Trader/System/paired analytics but never in a Strategy/Setup breakdown', async () => {
+    const userId = await createUser('phase14b-unclassified');
+    const workspaceId = await createWorkspace(userId, 'phase14b-unclassified');
+    const accountId = await createAccount(workspaceId, 'Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+    const framework = await createFramework(workspaceId, 'Classified');
+
+    // F: Actual closed (Trader-eligible) + System pending + unclassified.
+    await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      systemStatus: 'pending',
+      actualR: '1.5000',
+      traderOutcome: 'win',
+      exitedAt: new Date('2026-08-01T10:00:00Z'),
+    });
+
+    // G: Actual still open (NOT Trader-eligible) + System resolved (System-eligible) + unclassified.
+    await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      status: 'open',
+      systemR: '3.0000',
+      systemOutcome: 'win',
+      systemExitedAt: new Date('2026-08-01T11:00:00Z'),
+    });
+
+    // H: both Actual and System final + unclassified — comparison-eligible for Execution Gap.
+    await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      actualR: '1.0000',
+      traderOutcome: 'win',
+      systemR: '3.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-08-02T10:00:00Z'),
+      systemExitedAt: new Date('2026-08-02T11:00:00Z'),
+    });
+
+    // A classified control Trade, so the Strategy-filtered breakdown has
+    // exactly one Trade to find — none of the three unclassified ones above.
+    await createTrade(workspaceId, {
+      accountId,
+      framework,
+      actualR: '2.0000',
+      traderOutcome: 'win',
+      systemR: '2.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-08-03T10:00:00Z'),
+      systemExitedAt: new Date('2026-08-03T11:00:00Z'),
+    });
+
+    currentSession = sessionFor(userId);
+
+    const global = await getAnalyticsSnapshot(
+      { datePreset: 'all', tradingAccountId: accountId },
+      READ_OPTIONS,
+    );
+    if (!global.ok) throw new Error(global.code);
+    // Trader-eligible: the F Trade, the H Trade, and the classified control — 3.
+    expect(global.data.trader.sampleCount).toBe(3);
+    // System-eligible: the G Trade, the H Trade, and the classified control — 3.
+    expect(global.data.system.sampleCount).toBe(3);
+    // Comparison-eligible (both sides final): the H Trade and the classified control — 2.
+    expect(global.data.comparison.comparableCount).toBe(2);
+
+    // I: filtering by the classified Strategy excludes all three unclassified Trades.
+    const filtered = await getAnalyticsSnapshot(
+      { datePreset: 'all', tradingAccountId: accountId, strategyId: framework.strategyId },
+      READ_OPTIONS,
+    );
+    if (!filtered.ok) throw new Error(filtered.code);
+    expect(filtered.data.trader.sampleCount).toBe(1);
+    expect(filtered.data.system.sampleCount).toBe(1);
+    expect(filtered.data.comparison.comparableCount).toBe(1);
   });
 });

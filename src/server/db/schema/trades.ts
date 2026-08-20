@@ -33,23 +33,41 @@ import { workspaces } from './workspaces';
  * weighted-average snapshots over execution rows without changing any
  * existing column's meaning), but no such table exists now.
  *
- * Every normal Trade pins its full decision framework at creation — Trading
- * Account, Strategy, the exact Strategy Version, Setup, and the exact Setup
- * Version — all four non-nullable (locked product decision). A
- * general-purpose Strategy uses an explicit "General Setup"-style Setup
- * rather than a nullable Setup reference; this is what lets every Trade
- * preserve one exact, unambiguous historical snapshot rather than two shapes
- * (with-Setup and without) that Phase 08/09 queries would otherwise need to
- * handle separately forever.
+ * Trading Account is required at creation; Strategy/Setup classification is
+ * NOT (Phase 14B — Independent Trade Lifecycle, superseding Phase 07B's
+ * original "all four non-nullable" decision recorded in
+ * `docs/phases/PHASE-07-calc-engine.md`). A Trade may be captured with no
+ * Strategy, with a Strategy but no Setup, or with both — never a Setup
+ * without a Strategy (`trades_setup_requires_strategy_check` below). This
+ * exists because Actual Execution and System Outcome are independent
+ * measurement axes that genuinely do not require Strategy/Setup to compute
+ * (CLAUDE.md §1/§6; `docs/phases/PHASE-13-journal-v2.md` §14–15) — requiring
+ * classification up front was a historical implementation assumption, not a
+ * financial necessity (Phase 14A audit).
+ *
+ * `strategy_id`/`strategy_version_id` and `setup_id`/`setup_version_id` are
+ * each all-or-nothing PAIRS — a Trade never has an identity reference without
+ * its exact pinned Version, or vice versa
+ * (`trades_strategy_identity_version_pairing_check`/
+ * `trades_setup_identity_version_pairing_check`). `strategy_assigned_at`/
+ * `setup_assigned_at` record the FIRST moment each pair became non-null
+ * (never "last changed at" — a later reclassification does not move this
+ * timestamp), letting the UI truthfully distinguish "captured at/before
+ * entry" from "added after entry" by comparing against `entered_at`. Every
+ * historical Trade through Phase 13 was classified at creation under the old
+ * mandatory path — migration 0015 backfills both timestamps to `created_at`
+ * for those rows, never inventing a "late classification."
  *
  * `strategy_version_id`/`setup_version_id` are immutable from a future
  * service's perspective once a Trade references them — Phase 08's
  * `lockStrategyVersionForReferenceInTx` (already built in
  * `src/server/services/strategy-versioning.ts`) is what performs that lock,
- * in the same transaction as a Trade's first insert. Phase 07B installs no
- * trigger that locks a Strategy Version automatically; the schema only makes
- * the reference itself impossible to point at a mismatched Strategy/Setup
- * pairing (see the composite foreign keys below).
+ * in the same transaction as a Trade's first reference to a Version, whether
+ * that happens at creation or via a later classification-assignment mutation
+ * (`assignTradeClassification`, Phase 14B). The schema only makes the
+ * reference itself impossible to point at a mismatched Strategy/Setup
+ * pairing (see the composite foreign keys below) — it does not itself lock
+ * anything.
  *
  * Trades use `deleted_at` soft-deletion, not `is_archived` — the one
  * deliberate exception to this codebase's usual archive-only convention
@@ -86,18 +104,19 @@ export const trades = pgTable(
     tradingAccountId: uuid('trading_account_id')
       .notNull()
       .references(() => tradingAccounts.id, { onDelete: 'cascade' }),
-    strategyId: uuid('strategy_id')
-      .notNull()
-      .references(() => strategies.id, { onDelete: 'cascade' }),
-    strategyVersionId: uuid('strategy_version_id')
-      .notNull()
-      .references(() => strategyVersions.id, { onDelete: 'cascade' }),
-    setupId: uuid('setup_id')
-      .notNull()
-      .references(() => setups.id, { onDelete: 'cascade' }),
-    setupVersionId: uuid('setup_version_id')
-      .notNull()
-      .references(() => strategySetupVersions.id, { onDelete: 'cascade' }),
+    /** Nullable since Phase 14B — see the module doc comment. */
+    strategyId: uuid('strategy_id').references(() => strategies.id, { onDelete: 'cascade' }),
+    strategyVersionId: uuid('strategy_version_id').references(() => strategyVersions.id, {
+      onDelete: 'cascade',
+    }),
+    /** Nullable since Phase 14B; never non-null while `strategy_id` is null (`trades_setup_requires_strategy_check`). */
+    setupId: uuid('setup_id').references(() => setups.id, { onDelete: 'cascade' }),
+    setupVersionId: uuid('setup_version_id').references(() => strategySetupVersions.id, {
+      onDelete: 'cascade',
+    }),
+    /** First-assignment timing only — see the module doc comment. Phase 14B. */
+    strategyAssignedAt: timestamp('strategy_assigned_at', { withTimezone: true }),
+    setupAssignedAt: timestamp('setup_assigned_at', { withTimezone: true }),
 
     // -------------------------------------------------------------------
     // Trade context
@@ -327,6 +346,36 @@ export const trades = pgTable(
       columns: [table.setupVersionId, table.setupId],
       foreignColumns: [strategySetupVersions.id, strategySetupVersions.setupId],
     }),
+
+    // Optional-classification pairing/dependency (Phase 14B). An identity
+    // reference and its exact pinned Version are all-or-nothing pairs, and a
+    // Setup can never exist without a Strategy — see the module doc comment.
+    // The Version-level composite FKs above already prevent a MISMATCHED
+    // pairing (a real but wrong Version); these three CHECKs are what
+    // prevent an INCOMPLETE one (an identity with no Version, or vice versa).
+    check(
+      'trades_strategy_identity_version_pairing_check',
+      sql`(${table.strategyId} IS NULL) = (${table.strategyVersionId} IS NULL)`,
+    ),
+    check(
+      'trades_setup_identity_version_pairing_check',
+      sql`(${table.setupId} IS NULL) = (${table.setupVersionId} IS NULL)`,
+    ),
+    check(
+      'trades_setup_requires_strategy_check',
+      sql`${table.setupId} IS NULL OR ${table.strategyId} IS NOT NULL`,
+    ),
+    // `strategy_assigned_at`/`setup_assigned_at` are first-assignment-timing
+    // metadata maintained by application code (`createTrade`,
+    // `assignTradeClassification`) whenever the corresponding identity
+    // reference is set — deliberately NOT a database CHECK pairing them
+    // together. A hard pairing check here would also bind every existing
+    // and future raw fixture/backfill insert of a classified `trades` row
+    // (this codebase's integration tests construct many directly) to always
+    // supply a timing value with no product meaning for that fixture,
+    // for a field whose only real consumer is the "captured at/before entry
+    // vs. added after entry" UI disclosure — not a financial or tenancy
+    // invariant CLAUDE.md requires the database to enforce.
 
     check('trades_direction_check', sql`${table.direction} IN ('long', 'short')`),
     check(

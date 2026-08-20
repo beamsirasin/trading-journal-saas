@@ -4,6 +4,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   auditLogs,
+  strategies,
+  strategySetupVersions,
   strategyVersions,
   tradeExits,
   tradeRuleChecks,
@@ -25,6 +27,7 @@ import {
 } from './strategy-management';
 import { addTradeExit, closeRemainingTrade, correctTradeExit } from './trade-execution';
 import {
+  assignTradeClassification,
   cancelTrade,
   closeTrade,
   correctSystemResolution,
@@ -2325,6 +2328,408 @@ describe('trade-management (real database)', () => {
           and(eq(auditLogs.action, 'trade.plan_updated'), eq(auditLogs.entityId, created.tradeId)),
         );
       expect(events).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 14B — Independent Trade Lifecycle: optional classification
+  // -------------------------------------------------------------------------
+  describe('Phase 14B — optional Strategy/Setup classification', () => {
+    function unclassifiedInput(
+      tradingAccountId: string,
+      overrides: Partial<CreateTradeInput> = {},
+    ): CreateTradeInput {
+      return {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        plannedEntry: '1.1000000000',
+        plannedStop: '1.0950000000',
+        plannedTarget: '1.1100000000',
+        ...overrides,
+      };
+    }
+
+    // A.
+    it('A: creates a planned Trade with no Strategy/Setup classification', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row).toMatchObject({
+        strategyId: null,
+        strategyVersionId: null,
+        setupId: null,
+        setupVersionId: null,
+        strategyAssignedAt: null,
+        setupAssignedAt: null,
+        status: 'planned',
+      });
+    });
+
+    // B, D, E.
+    it('B/D/E: opens (Price), fully closes, and resolves System on an unclassified Trade', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+      const tradeId = created.tradeId;
+
+      const opened = await openTrade(workspaceId, actorUserId, tradeId, {
+        actualResultMode: 'price',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      expect(opened.ok).toBe(true);
+
+      const closed = await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 10_000,
+        exitPrice: '1.1100000000',
+        exitedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+      expect(closed).toMatchObject({ ok: true, status: 'closed' });
+      const closedRow = await readTrade(tradeId);
+      expect(closedRow?.status).toBe('closed');
+      expect(closedRow?.actualR).not.toBeNull();
+      expect(closedRow?.traderOutcome).not.toBeNull();
+
+      const systemResult = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'price_exit',
+        systemExitPrice: '1.1100000000',
+        systemExitedAt: new Date('2026-08-01T13:00:00Z'),
+        systemExitReason: 'target_hit',
+        systemCostR: '0.0000',
+      });
+      expect(systemResult.ok).toBe(true);
+      const finalRow = await readTrade(tradeId);
+      expect(finalRow).toMatchObject({
+        systemStatus: 'resolved',
+        strategyId: null,
+        strategyVersionId: null,
+        setupId: null,
+        setupVersionId: null,
+      });
+    });
+
+    // C.
+    it('C: opens an unclassified Money-mode Trade', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId, {
+          plannedEntry: null,
+          plannedStop: null,
+          plannedTarget: null,
+          plannedRiskMinor: 100n,
+        }),
+      );
+      if (!created.ok) throw new Error('create failed');
+      const opened = await openTrade(workspaceId, actorUserId, created.tradeId, {
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      expect(opened.ok).toBe(true);
+      expect(await readTrade(created.tradeId)).toMatchObject({
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5000n,
+      });
+    });
+
+    // J, K.
+    it('J/K: assigns Strategy then Setup progressively, recording first-assignment timing only', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+      const tradeId = created.tradeId;
+
+      const beforeStrategy = await readTrade(tradeId);
+      expect(beforeStrategy?.strategyAssignedAt).toBeNull();
+
+      const strategyOnly = await assignTradeClassification(workspaceId, actorUserId, tradeId, {
+        strategyId: fw.strategyId,
+      });
+      expect(strategyOnly).toMatchObject({
+        ok: true,
+        strategyId: fw.strategyId,
+        strategyVersionId: fw.strategyVersionId,
+        setupId: null,
+      });
+      const afterStrategy = await readTrade(tradeId);
+      expect(afterStrategy?.strategyId).toBe(fw.strategyId);
+      expect(afterStrategy?.strategyAssignedAt).not.toBeNull();
+      expect(afterStrategy?.setupId).toBeNull();
+      expect(afterStrategy?.setupAssignedAt).toBeNull();
+
+      // Re-assigning a Strategy once already pinned is unsupported in this
+      // phase — arbitrary reclassification is deliberately rejected.
+      expect(
+        await assignTradeClassification(workspaceId, actorUserId, tradeId, {
+          strategyId: fw.strategyId,
+        }),
+      ).toMatchObject({ ok: false, code: 'invalid_classification_request' });
+
+      const firstAssignedAt = afterStrategy?.strategyAssignedAt;
+      const withSetup = await assignTradeClassification(workspaceId, actorUserId, tradeId, {
+        setupId: fw.setupId,
+      });
+      expect(withSetup).toMatchObject({
+        ok: true,
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+        setupVersionId: fw.setupVersionId,
+      });
+      const afterSetup = await readTrade(tradeId);
+      expect(afterSetup?.setupId).toBe(fw.setupId);
+      expect(afterSetup?.setupAssignedAt).not.toBeNull();
+      // Assigning a Setup must never move the already-recorded Strategy
+      // timing — it is FIRST-assignment timing, not "last changed at".
+      expect(afterSetup?.strategyAssignedAt?.getTime()).toBe(firstAssignedAt?.getTime());
+    });
+
+    // L.
+    it('L: assigning a Setup with configured Conditions late creates ZERO retrospective Condition checks', async () => {
+      const fw = await freshFramework();
+      const condition = await createSetupCondition(
+        workspaceId,
+        actorUserId,
+        fw.strategyId,
+        fw.setupId,
+        { label: 'Above the 200 EMA', sortOrder: 0 },
+      );
+      if (!condition.ok) throw new Error(`condition creation failed: ${condition.code}`);
+
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+
+      const result = await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+      });
+      expect(result.ok).toBe(true);
+
+      const checks = await db
+        .select()
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.tradeId, created.tradeId));
+      expect(checks).toHaveLength(0);
+    });
+
+    // M.
+    it('M: late Strategy assignment pins whatever Version is CURRENT at assignment time, never a stale one', async () => {
+      const fw = await freshFramework();
+      // Reference (and thereby lock) version 1 via an unrelated control
+      // Trade, then edit the Strategy — this Version being locked forces
+      // the edit through copy-on-write to a brand-new version 2.
+      const control = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
+      if (!control.ok) throw new Error('control create failed');
+      const cow = await createStrategyRule(workspaceId, actorUserId, fw.strategyId, {
+        ruleKey: crypto.randomUUID(),
+        category: 'entry',
+        title: 'Trigger COW for Phase 14B test M',
+        changeNote: 'Phase 14B test M — force copy-on-write',
+      });
+      expect(cow).toMatchObject({ ok: true, copied: true });
+      const strategyRow = await db.query.strategies.findFirst({
+        where: eq(strategies.id, fw.strategyId),
+      });
+      const currentVersionId = strategyRow?.currentVersionId ?? null;
+      expect(currentVersionId).not.toBeNull();
+      expect(currentVersionId).not.toBe(fw.strategyVersionId);
+
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+
+      const result = await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+        strategyId: fw.strategyId,
+      });
+      expect(result).toMatchObject({ ok: true, strategyVersionId: currentVersionId });
+      expect(result.ok && result.strategyVersionId).not.toBe(fw.strategyVersionId);
+
+      const lockedVersion = await db.query.strategyVersions.findFirst({
+        where: eq(strategyVersions.id, currentVersionId as string),
+      });
+      expect(lockedVersion?.lockedAt).not.toBeNull();
+    });
+
+    // N.
+    it("N: archiving the Strategy after late classification never rewrites the Trade's pinned reference", async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+      await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+        strategyId: fw.strategyId,
+        setupId: fw.setupId,
+      });
+
+      const { archiveStrategy } = await import('./strategy-management');
+      await archiveStrategy(workspaceId, actorUserId, fw.strategyId);
+
+      const row = await readTrade(created.tradeId);
+      expect(row).toMatchObject({
+        strategyId: fw.strategyId,
+        strategyVersionId: fw.strategyVersionId,
+        setupId: fw.setupId,
+        setupVersionId: fw.setupVersionId,
+      });
+    });
+
+    // O.
+    it('O: rejects a cross-workspace Strategy/Setup on assignment', async () => {
+      const fw = await freshFramework();
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+      const foreignFw = await freshFramework(otherWorkspaceId, otherActorUserId);
+
+      expect(
+        await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+          strategyId: foreignFw.strategyId,
+        }),
+      ).toMatchObject({ ok: false, code: 'strategy_not_found' });
+
+      const withOwnStrategy = await assignTradeClassification(
+        workspaceId,
+        actorUserId,
+        created.tradeId,
+        { strategyId: fw.strategyId },
+      );
+      expect(withOwnStrategy.ok).toBe(true);
+      expect(
+        await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+          setupId: foreignFw.setupId,
+        }),
+      ).toMatchObject({ ok: false, code: 'setup_not_found' });
+    });
+
+    // P.
+    it('P: denies assignTradeClassification under read_only and over_limit workspaces', async () => {
+      const roUser = await createUser(db, 'p14b-ro');
+      const roWs = await createWorkspace(db, roUser, {
+        entitlement: {
+          status: 'trialing',
+          planKey: null,
+          trialStartedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+          trialEndsAt: new Date(Date.now() + 60 * 60 * 1000),
+          currentPeriodStartedAt: null,
+          currentPeriodEndsAt: null,
+        },
+      });
+      allWorkspaceIds.push(roWs);
+      const roFw = await createFramework(db, roWs, roUser);
+      const roTrade = await createTrade(roWs, roUser, unclassifiedInput(roFw.tradingAccountId));
+      if (!roTrade.ok) throw new Error('read-only fixture create failed');
+      await db
+        .update(workspaceEntitlements)
+        .set({ trialEndsAt: new Date(Date.now() - 60 * 60 * 1000) })
+        .where(eq(workspaceEntitlements.workspaceId, roWs));
+      expect(
+        await assignTradeClassification(roWs, roUser, roTrade.tradeId, {
+          strategyId: roFw.strategyId,
+        }),
+      ).toMatchObject({ ok: false, code: 'read_only_workspace' });
+
+      const olUser = await createUser(db, 'p14b-ol');
+      const olWs = await createWorkspace(db, olUser, {
+        entitlement: { status: 'active', planKey: 'starter' },
+      });
+      allWorkspaceIds.push(olWs);
+      const olFw = await createFramework(db, olWs, olUser);
+      const olTrade = await createTrade(olWs, olUser, unclassifiedInput(olFw.tradingAccountId));
+      if (!olTrade.ok) throw new Error('over-limit fixture create failed');
+      await createAccount(db, olWs);
+      expect(
+        await assignTradeClassification(olWs, olUser, olTrade.tradeId, {
+          strategyId: olFw.strategyId,
+        }),
+      ).toMatchObject({ ok: false, code: 'over_limit_workspace' });
+    });
+
+    // Q.
+    it('Q: rejects Setup-without-Strategy at the database CHECK level', async () => {
+      const fw = await freshFramework();
+      await expect(
+        db.insert(trades).values({
+          workspaceId,
+          tradingAccountId: fw.tradingAccountId,
+          setupId: fw.setupId,
+          setupVersionId: fw.setupVersionId,
+          setupAssignedAt: new Date(),
+          symbol: 'EURUSD',
+          direction: 'long',
+          plannedRiskMinor: 100n,
+        }),
+      ).rejects.toThrow();
+    });
+
+    // R.
+    it('R: rejects a Setup with no snapshot in the Strategy Version being pinned', async () => {
+      const fw = await freshFramework();
+      const setupResult = await createSetup(workspaceId, actorUserId, fw.strategyId, {
+        mutationKey: crypto.randomUUID(),
+        name: 'Ghost Setup',
+        sortOrder: 1,
+      });
+      if (!setupResult.ok) throw new Error('setup creation failed');
+      // Simulate a malformed state by deleting the snapshot directly — never
+      // done by a real service, and only possible here because this Setup
+      // Version is still unlocked (nothing has referenced it yet); the exact
+      // precedent `strategy-management.integration.test.ts`'s "rejects a
+      // Setup with no snapshot in the current Version as malformed" already
+      // establishes for `updateSetupContent`.
+      await db
+        .delete(strategySetupVersions)
+        .where(
+          and(
+            eq(strategySetupVersions.strategyVersionId, setupResult.versionId),
+            eq(strategySetupVersions.setupId, setupResult.setupId),
+          ),
+        );
+
+      const created = await createTrade(
+        workspaceId,
+        actorUserId,
+        unclassifiedInput(fw.tradingAccountId),
+      );
+      if (!created.ok) throw new Error('create failed');
+
+      expect(
+        await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+          strategyId: fw.strategyId,
+          setupId: setupResult.setupId,
+        }),
+      ).toMatchObject({ ok: false, code: 'setup_snapshot_missing' });
     });
   });
 });

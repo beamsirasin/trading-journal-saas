@@ -27,6 +27,8 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'system_requires_price_plan',
   'trading_account_not_found',
   'trading_account_archived',
+  'setup_requires_strategy',
+  'invalid_classification_request',
   'strategy_not_found',
   'strategy_archived',
   'strategy_current_version_missing',
@@ -88,6 +90,8 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'trade_not_found',
   'trading_account_not_found',
   'trading_account_archived',
+  'setup_requires_strategy',
+  'invalid_classification_request',
   'strategy_not_found',
   'strategy_archived',
   'strategy_current_version_missing',
@@ -145,6 +149,8 @@ export function mapServiceErrorToPublicCode(
     case 'trade_not_found':
     case 'trading_account_not_found':
     case 'trading_account_archived':
+    case 'setup_requires_strategy':
+    case 'invalid_classification_request':
     case 'strategy_not_found':
     case 'strategy_archived':
     case 'strategy_current_version_missing':

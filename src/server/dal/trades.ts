@@ -106,11 +106,11 @@ export interface TradeListItem {
   readonly symbol: string;
   readonly direction: TradeDirection;
   readonly tradingAccountName: string;
-  /** The pinned Strategy Version's own name — see the module's historical-label rule. */
-  readonly strategyName: string;
-  /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. */
-  readonly setupName: string;
-  readonly strategyVersionNumber: number;
+  /** The pinned Strategy Version's own name — see the module's historical-label rule. `null` for an unclassified Trade (Phase 14B), never a fake "Unknown Strategy" label. */
+  readonly strategyName: string | null;
+  /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. `null` when this Trade has no Setup (Phase 14B). */
+  readonly setupName: string | null;
+  readonly strategyVersionNumber: number | null;
   readonly status: TradeStatus;
   readonly systemStatus: SystemStatus;
   readonly plannedR: string | null;
@@ -258,10 +258,13 @@ export async function listWorkspaceTrades(
     })
     .from(trades)
     .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
-    .innerJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
-    .innerJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
-    .innerJoin(strategies, eq(strategies.id, trades.strategyId))
-    .innerJoin(setups, eq(setups.id, trades.setupId))
+    // Phase 14B: LEFT — Strategy/Setup classification is now optional, and an
+    // unclassified Trade must still appear in the List (never silently
+    // dropped by an INNER JOIN with no matching row on the other side).
+    .leftJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
+    .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .leftJoin(strategies, eq(strategies.id, trades.strategyId))
+    .leftJoin(setups, eq(setups.id, trades.setupId))
     .where(and(...conditions))
     .orderBy(desc(occurredAtExpr), desc(trades.id))
     .limit(limit + 1);
@@ -360,8 +363,12 @@ export async function listWorkspaceTrades(
         setupConditionMetCount: conditionCounts?.met ?? null,
         setupConditionTotalCount: conditionCounts?.total ?? null,
         tradingAccountIsArchived: row.tradingAccountIsArchived,
-        strategyIsArchived: row.strategyIsArchived,
-        setupIsArchived: row.setupIsArchived,
+        // The LEFT JOINs above return `null`, never `false`, for an
+        // unclassified Trade's missing Strategy/Setup row — "archived" is
+        // simply not applicable there, which coalesces to `false` (nothing
+        // to disclose as archived), never treated as an archived Strategy.
+        strategyIsArchived: row.strategyIsArchived ?? false,
+        setupIsArchived: row.setupIsArchived ?? false,
       };
     }),
     nextCursor,
@@ -414,7 +421,11 @@ export interface TradeSetupConditionCheckDetail {
  * pinned Setup Version itself has zero `setup_conditions` rows (a genuinely
  * empty checklist, never `0%`); `not_recorded` when the Setup Version DID
  * have Conditions but this Trade predates/skipped capturing an answer for
- * them (a historical/pre-13C Trade).
+ * them (a historical/pre-13C Trade) — also `not_recorded` for a Trade with
+ * no Setup at all (Phase 14B: never assigned, or assigned after entry),
+ * since there is nothing to distinguish that from "skipped capturing an
+ * answer" and neither is ever fabricated as a retroactive snapshot
+ * (`assignTradeClassification`'s own doc comment).
  */
 export type TradeSetupConditionState = 'recorded' | 'not_recorded' | 'not_configured';
 
@@ -425,15 +436,17 @@ export interface TradeDetail {
   /** Account currency code used to format the minor-unit execution amounts. */
   readonly tradingAccountBaseCurrency: string;
   readonly tradingAccountIsArchived: boolean;
-  readonly strategyId: string;
-  /** The pinned Strategy Version's own name — see the module's historical-label rule. */
-  readonly strategyName: string;
-  readonly strategyVersionNumber: number;
-  /** Whether the LIVE Strategy (not this Trade's pinned Version) is archived today — a truthful disclosure, never a reason to hide the pinned historical label. */
+  /** `null` when this Trade has no Strategy classification (Phase 14B) — never a fake "Unknown Strategy" identity. */
+  readonly strategyId: string | null;
+  /** The pinned Strategy Version's own name — see the module's historical-label rule. `null` when unclassified. */
+  readonly strategyName: string | null;
+  readonly strategyVersionNumber: number | null;
+  /** Whether the LIVE Strategy (not this Trade's pinned Version) is archived today — a truthful disclosure, never a reason to hide the pinned historical label. `false` when unclassified (nothing to disclose). */
   readonly strategyIsArchived: boolean;
-  readonly setupId: string;
-  /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. */
-  readonly setupName: string;
+  /** `null` when this Trade has no Setup (Phase 14B). */
+  readonly setupId: string | null;
+  /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. `null` when unclassified. */
+  readonly setupName: string | null;
   /** Whether the LIVE Setup is archived today — see `strategyIsArchived`. */
   readonly setupIsArchived: boolean;
   readonly status: TradeStatus;
@@ -551,10 +564,11 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     })
     .from(trades)
     .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
-    .innerJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
-    .innerJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
-    .innerJoin(strategies, eq(strategies.id, trades.strategyId))
-    .innerJoin(setups, eq(setups.id, trades.setupId))
+    // Phase 14B: LEFT — see the identical comment in `listWorkspaceTrades`.
+    .leftJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
+    .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .leftJoin(strategies, eq(strategies.id, trades.strategyId))
+    .leftJoin(setups, eq(setups.id, trades.setupId))
     .where(
       and(eq(trades.id, tradeId), eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)),
     );
@@ -636,6 +650,10 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .orderBy(asc(tradeSetupConditionChecks.sortOrder));
   const setupConditionState: TradeSetupConditionState = await (async () => {
     if (conditionCheckRows.length > 0) return 'recorded';
+    // Phase 14B: no Setup pinned at all — nothing configured to count
+    // against, so this is `not_recorded`, never a fabricated `not_configured`
+    // (which specifically means "a real Setup Version with zero Conditions").
+    if (trade.setupVersionId === null) return 'not_recorded';
     const [configuredCountRow] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(setupConditions)
@@ -666,10 +684,10 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       strategyId: trade.strategyId,
       strategyName: row.strategyVersionName,
       strategyVersionNumber: row.strategyVersionNumber,
-      strategyIsArchived: row.strategyIsArchived,
+      strategyIsArchived: row.strategyIsArchived ?? false,
       setupId: trade.setupId,
       setupName: row.setupVersionName,
-      setupIsArchived: row.setupIsArchived,
+      setupIsArchived: row.setupIsArchived ?? false,
       status: trade.status as TradeStatus,
       systemStatus: trade.systemStatus as SystemStatus,
 
