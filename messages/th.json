@@ -499,6 +499,50 @@
       "system": { "pending": "รอดำเนินการ", "resolved": "สรุปแล้ว", "no_trade": "ไม่ควรเทรด" },
       "outcome": { "win": "ชนะ", "loss": "แพ้", "break_even": "เท่าทุน" }
     },
+    "calendar": {
+      "title": "ปฏิทินการเทรด",
+      "axisLegend": "มุมมองปฏิทิน",
+      "axisTrader": "เทรดเดอร์",
+      "axisSystem": "ระบบ",
+      "monthNavLabel": "เปลี่ยนเดือน",
+      "previousMonth": "เดือนก่อนหน้า",
+      "nextMonth": "เดือนถัดไป",
+      "today": "วันนี้",
+      "clearDate": "ล้างวันที่",
+      "noResults": "ยังไม่มีผลลัพธ์",
+      "monthSummary": {
+        "trader": "R ของเทรดเดอร์เดือนนี้",
+        "system": "R ของระบบเดือนนี้",
+        "tradingDays": "วันที่มีการเทรด"
+      },
+      "daySummary": {
+        "actualR": "R จริง",
+        "systemR": "R ของระบบ",
+        "trades": "ออเดอร์",
+        "open": "เปิดอยู่",
+        "pendingSystem": "ระบบรอดำเนินการ",
+        "unclassified": "ยังไม่จัดหมวดหมู่"
+      },
+      "weekday": {
+        "sun": "อา",
+        "mon": "จ",
+        "tue": "อ",
+        "wed": "พ",
+        "thu": "พฤ",
+        "fri": "ศ",
+        "sat": "ส"
+      },
+      "a11yResultTrader": "ผลของเทรดเดอร์",
+      "a11yResultSystem": "ผลของระบบ",
+      "a11yCountTrader": "{count, plural, other {# ออเดอร์}}",
+      "a11yCountSystem": "{count, plural, other {# ผลลัพธ์}}",
+      "a11yNoResults": "{date} ยังไม่มีผลลัพธ์",
+      "a11yDaySummary": "{date} {resultWord} {r} {countWord}",
+      "empty": {
+        "title": "ไม่มีออเดอร์ในวันนี้",
+        "description": "ยังไม่มีการบันทึกออเดอร์สำหรับวันที่เลือก ล้างวันที่เพื่อดูสมุดบันทึกทั้งหมด"
+      }
+    },
     "list": {
       "caption": "สมุดบันทึกการเทรด",
       "trade": "ออเดอร์",

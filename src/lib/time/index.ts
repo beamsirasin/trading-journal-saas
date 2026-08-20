@@ -28,9 +28,11 @@ export { createFixedClock, systemClock, type Clock } from './clock';
 
 export {
   calendarDateIn,
+  daysInMonth,
   dayRangeIn,
   endOfDayExclusiveIn,
   formatCalendarParts,
+  monthRangeIn,
   parseCalendarParts,
   startOfDayIn,
   wallClockIn,

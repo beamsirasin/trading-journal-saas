@@ -163,6 +163,19 @@ export interface ListWorkspaceTradesParams {
   readonly cursor?: string | null;
   /** Optional trusted/read-scoped Account identity; workspace scope still applies independently. */
   readonly tradingAccountId?: string;
+  /**
+   * Optional half-open `[start, end)` UTC bound on the SAME `occurredAt`
+   * expression (`coalesce(exited_at, entered_at, created_at)`) this list
+   * already sorts and paginates by — the Trading Calendar's (Phase 14D)
+   * "select a day" filter. Pre-resolved UTC instants, not a raw date: this
+   * DAL never performs timezone conversion itself (`src/lib/time`'s
+   * `dayRangeIn` is the caller's job, matching `analytics.ts`'s
+   * `dateConditions` precedent). Deliberately the SAME journal-chronology
+   * date the list already uses for everything else — never the
+   * Trader/System axis a Calendar view happens to have selected, so toggling
+   * that axis never changes which Trades a selected day's log contains.
+   */
+  readonly journalDateRange?: { readonly start: Date; readonly end: Date };
 }
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -204,7 +217,12 @@ function decodeCursor(cursor: string): DecodedCursor | null {
   }
 }
 
-const occurredAtExpr = sql<Date>`coalesce(${trades.exitedAt}, ${trades.enteredAt}, ${trades.createdAt})`;
+/**
+ * The one journal-chronology date every Trade Log view, cursor, and the
+ * Trading Calendar's (Phase 14D) selected-day Log filter all agree on —
+ * exported so `trade-calendar.ts` never hand-duplicates it and risks drift.
+ */
+export const occurredAtExpr = sql<Date>`coalesce(${trades.exitedAt}, ${trades.enteredAt}, ${trades.createdAt})`;
 
 /**
  * Every non-deleted Trade in the caller's active workspace, newest
@@ -225,6 +243,12 @@ export async function listWorkspaceTrades(
   const conditions = [eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)];
   if (params.tradingAccountId !== undefined) {
     conditions.push(eq(trades.tradingAccountId, params.tradingAccountId));
+  }
+  if (params.journalDateRange !== undefined) {
+    conditions.push(
+      sql`${occurredAtExpr} >= ${params.journalDateRange.start.toISOString()}::timestamptz`,
+      sql`${occurredAtExpr} < ${params.journalDateRange.end.toISOString()}::timestamptz`,
+    );
   }
   if (cursor !== null) {
     conditions.push(

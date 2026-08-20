@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
 import { cn } from '@/lib/utils';
+import type { WorkspaceTradeDaySummary } from '@/server/dal/trade-calendar';
 import type {
   TradeCreateStrategyOption,
   TradeDetail as TradeDetailModel,
@@ -10,8 +11,30 @@ import type {
 import { EmptyState } from '@/components/product/empty-state';
 import { TradeDetail } from '@/components/trades/trade-detail';
 import { TradeList, type TradeListView } from '@/components/trades/trade-list';
+import { TradingCalendar } from '@/components/trades/trading-calendar';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
+
+export interface TradesJournalCalendarProps {
+  readonly year: number;
+  readonly month: number;
+  readonly todayDate: string;
+  readonly selectedDate: string | null;
+  readonly trader: readonly {
+    readonly date: string;
+    readonly totalR: string;
+    readonly count: number;
+  }[];
+  readonly system: readonly {
+    readonly date: string;
+    readonly totalR: string;
+    readonly count: number;
+  }[];
+  readonly traderTotalR: string | null;
+  readonly systemTotalR: string | null;
+  readonly tradingDays: number;
+  readonly daySummary: WorkspaceTradeDaySummary | null;
+}
 
 export function TradesJournal({
   trades,
@@ -24,6 +47,7 @@ export function TradesJournal({
   timezone,
   locale,
   classificationOptions,
+  calendar,
 }: {
   trades: readonly TradeListView[];
   nextCursor: string | null;
@@ -35,13 +59,32 @@ export function TradesJournal({
   timezone: string;
   locale: string;
   classificationOptions: readonly TradeCreateStrategyOption[];
+  calendar: TradesJournalCalendarProps;
 }) {
   const t = useTranslations('trades');
   const hasSelection = selectedTrade !== null;
+  const isDayFiltered = calendar.selectedDate !== null;
+
+  const calendarElement = (
+    <TradingCalendar
+      year={calendar.year}
+      month={calendar.month}
+      locale={locale}
+      todayDate={calendar.todayDate}
+      selectedDate={calendar.selectedDate}
+      trader={calendar.trader}
+      system={calendar.system}
+      traderTotalR={calendar.traderTotalR}
+      systemTotalR={calendar.systemTotalR}
+      tradingDays={calendar.tradingDays}
+      daySummary={calendar.daySummary}
+    />
+  );
 
   if (trades.length === 0 && !hasCursor) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
+        {calendarElement}
         {!canWrite && writeBlockReason !== null ? (
           <div
             role="status"
@@ -50,27 +93,45 @@ export function TradesJournal({
             {t(`errors.${writeBlockReason}`)}
           </div>
         ) : null}
-        <EmptyState
-          icon={BookOpen}
-          title={t('empty.title')}
-          description={t('empty.description')}
-          action={
-            canWrite ? (
-              <Button asChild>
-                <Link href="/app/trades/new">
-                  <Plus aria-hidden="true" />
-                  {t('logTrade')}
+        {isDayFiltered ? (
+          <EmptyState
+            icon={BookOpen}
+            title={t('calendar.empty.title')}
+            description={t('calendar.empty.description')}
+            action={
+              <Button asChild variant="outline">
+                <Link
+                  href={`/app/trades?month=${calendar.year}-${String(calendar.month).padStart(2, '0')}`}
+                >
+                  {t('calendar.clearDate')}
                 </Link>
               </Button>
-            ) : null
-          }
-        />
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={BookOpen}
+            title={t('empty.title')}
+            description={t('empty.description')}
+            action={
+              canWrite ? (
+                <Button asChild>
+                  <Link href="/app/trades/new">
+                    <Plus aria-hidden="true" />
+                    {t('logTrade')}
+                  </Link>
+                </Button>
+              ) : null
+            }
+          />
+        )}
       </div>
     );
   }
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
+      {calendarElement}
       {!canWrite && writeBlockReason !== null ? (
         <div
           role="status"

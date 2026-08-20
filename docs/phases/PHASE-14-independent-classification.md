@@ -2,7 +2,7 @@
 
 **Depends on:** 08, 09, 13 · **Blocks:** —
 
-**Status:** 14A (read-only audit), 14B (persistence/domain foundation), and 14C (customer-facing Independent Journal UX) are **complete**. 14C.1 (Quick Capture Persistence Completion) is also **complete**: migration `0016_optional_trade_plan.sql` resolved the one persistence blocker 14C identified — a Trade may now be captured with genuinely no Plan at all, as the frozen contract required. Founder acceptance is **not yet obtained**.
+**Status:** 14A (read-only audit), 14B (persistence/domain foundation), 14C (customer-facing Independent Journal UX), 14C.1 (Quick Capture Persistence Completion), and 14D (Trading Calendar + Trade Log) are all **complete**. Founder acceptance is **not yet obtained**.
 
 ---
 
@@ -113,8 +113,24 @@ An unclassified Trade remains fully eligible for global Trader/System/paired Exe
 
 ### 13. Out of scope (unchanged from the working brief)
 
-Trading Calendar. Arbitrary/unrestricted reclassification. Discipline Score or any combined completeness/discipline metric. Analytics architecture redesign.
+Arbitrary/unrestricted reclassification. Discipline Score or any combined completeness/discipline metric. Analytics architecture redesign.
 
-### 14. Founder acceptance
+## 14D — Trading Calendar + Trade Log (complete)
+
+`/app/trades` is now **Trading Calendar + Trade Log**, in that order, on the one existing route — no separate `/trades/calendar` page. The Calendar is a **Journal navigation surface**, not another Analytics page: it deliberately omits Expectancy, Profit Factor, Max Drawdown, and every other Analytics KPI (`src/components/trades/trading-calendar.tsx`'s own doc comment states this explicitly).
+
+**Independent Trader/System date axes (the load-bearing rule):** the Calendar's `[Trader] [System]` toggle changes which axis's day buckets the grid displays — Trader sums finalized `actual_r` grouped by the LOCAL calendar day of `exited_at`; System sums resolved `system_r` grouped by the local day of `system_exited_at` — mirroring `src/server/dal/analytics.ts`'s `dateConditions` precedent exactly (never the same column for both, never forced intersection). A Trade whose Actual finalizes one day and whose System resolves a different day appears on BOTH days independently, never collapsed onto one (`getWorkspaceTradeCalendarMonth`, `src/server/dal/trade-calendar.ts`, integration-tested directly for this). A day with no finalized result on the selected axis shows no R at all — never a fabricated `0R`.
+
+**Trade Log filtering is deliberately axis-independent:** selecting a Calendar day filters the Log by the SAME journal-chronology date every other Trade List view already uses — `coalesce(exited_at, entered_at, created_at)` (`occurredAtExpr`, exported from `src/server/dal/trades.ts`, reused by `trade-calendar.ts` rather than duplicated). Toggling Trader/System never changes which Trades the Log shows for a selected day — only which R value the Calendar cell above displays.
+
+**Selected-day summary** (`getWorkspaceTradeDaySummary`) shows Actual R and System R independently (each computed from its own axis's date, so a System result resolved on a different day never counts toward the selected day's System R line) plus `trades`/`open`/`pendingSystem`/`unclassified` counts, all computed over the SAME journal-chronology population the Log itself shows — one consistent story, not four different populations. Daily Execution Gap was **deliberately omitted**: the brief's own instruction ("if semantics become ambiguous, OMIT daily Gap rather than lying") applied directly once Trade C's cross-date case is possible — a single day's paired population is frequently empty or ill-defined when Actual/System dates differ.
+
+**Month bounds** use a new `monthRangeIn` primitive (`src/lib/time/convert.ts`) composed from the existing `startOfDayIn` exactly the way `dayRangeIn` already does — Analytics had no month primitive of its own (only relative day-count presets), so this was net-new, not a repurposed existing helper. Verified against real DST transitions and the Asia/Bangkok midnight boundary specifically (23:59 vs 00:01 local bucket into different days despite an identical UTC calendar date).
+
+**URL state:** `?month=YYYY-MM&date=YYYY-MM-DD` on the existing `/app/trades` route, composing with the pre-existing `?trade=`/`?cursor=` params. An invalid or out-of-range `month`/`date` value falls back to the current local month / no selection, never a crash.
+
+**No migration was needed** — every field the Calendar reads (`exited_at`, `system_exited_at`, `actual_r`, `system_r`, `status`, `system_status`, `strategy_id`) already existed from Phase 07/13/14B. Migrations remain exactly `0000`–`0016`.
+
+### 15. Founder acceptance
 
 Not obtained. This document records engineering completion of the scoped work, not product sign-off.

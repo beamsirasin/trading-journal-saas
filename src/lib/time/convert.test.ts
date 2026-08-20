@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   calendarDateIn,
   dayRangeIn,
+  daysInMonth,
   endOfDayExclusiveIn,
+  monthRangeIn,
   parseCalendarParts,
   startOfDayIn,
   wallClockToInstant,
@@ -271,6 +273,50 @@ describe('startOfDayIn and endOfDayExclusiveIn', () => {
   it('rejects a malformed calendar date', () => {
     expect(expectErrCode(startOfDayIn('31-07-2026', 'UTC'))).toBe('invalid_calendar_date');
     expect(expectErrCode(startOfDayIn('2026-7-31', 'UTC'))).toBe('invalid_calendar_date');
+  });
+});
+
+describe('monthRangeIn — Trading Calendar (Phase 14D)', () => {
+  it('agrees with dayRangeIn at both ends: start of day 1 through start of next month day 1', () => {
+    const month = expectOk(monthRangeIn(2026, 8, 'Asia/Bangkok'));
+    const firstDay = expectOk(dayRangeIn('2026-08-01', 'Asia/Bangkok'));
+    const nextMonthFirstDay = expectOk(dayRangeIn('2026-09-01', 'Asia/Bangkok'));
+    expect(month.start.getTime()).toBe(firstDay.start.getTime());
+    expect(month.end.getTime()).toBe(nextMonthFirstDay.start.getTime());
+  });
+
+  it('rolls over the year at December', () => {
+    const december = expectOk(monthRangeIn(2026, 12, 'UTC'));
+    expect(december.start.toISOString()).toBe('2026-12-01T00:00:00.000Z');
+    expect(december.end.toISOString()).toBe('2027-01-01T00:00:00.000Z');
+  });
+
+  it('is a half-open range spanning the exact number of days in the month, offset by the zone', () => {
+    const bangkokFeb = expectOk(monthRangeIn(2026, 2, 'Asia/Bangkok'));
+    const hours = (bangkokFeb.end.getTime() - bangkokFeb.start.getTime()) / 3_600_000;
+    expect(hours).toBe(28 * 24); // 2026 is not a leap year
+  });
+
+  it('every boundary instant round-trips to the correct calendar day, in a DST zone spanning a spring-forward', () => {
+    // March 2026 in America/New_York contains the spring-forward transition
+    // (2026-03-08) — the month range itself must still start/end exactly on
+    // day 1 of March/April despite that 23-hour day inside it.
+    const march = expectOk(monthRangeIn(2026, 3, 'America/New_York'));
+    expect(expectOk(calendarDateIn(march.start, 'America/New_York'))).toBe('2026-03-01');
+    expect(expectOk(calendarDateIn(new Date(march.end.getTime() - 1), 'America/New_York'))).toBe(
+      '2026-03-31',
+    );
+    expect(expectOk(calendarDateIn(march.end, 'America/New_York'))).toBe('2026-04-01');
+  });
+});
+
+describe('daysInMonth', () => {
+  it('returns the correct Gregorian day count for every month, including leap February', () => {
+    expect(daysInMonth(2026, 1)).toBe(31);
+    expect(daysInMonth(2026, 2)).toBe(28);
+    expect(daysInMonth(2028, 2)).toBe(29);
+    expect(daysInMonth(2026, 4)).toBe(30);
+    expect(daysInMonth(2026, 12)).toBe(31);
   });
 });
 

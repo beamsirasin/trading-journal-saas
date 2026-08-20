@@ -233,12 +233,33 @@ export function parseCalendarParts(
   return ok({ year, month, day });
 }
 
-function daysInMonth(year: number, month: number): number {
+/** Gregorian calendar-length arithmetic (leap years etc.) — never timezone-dependent, unlike everything else in this module. */
+export function daysInMonth(year: number, month: number): number {
   if (month === 2) {
     const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
     return isLeapYear ? 29 : 28;
   }
   return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
+}
+
+/**
+ * Half-open `[start, end)` UTC range covering one calendar MONTH in a zone —
+ * the same "start of day 1 through start of next month's day 1" composition
+ * every caller would otherwise hand-roll (`dayRangeIn` is day-only). Used by
+ * the Trading Calendar (Phase 14D) — Analytics deliberately has no month
+ * primitive of its own, only relative day-count presets.
+ */
+export function monthRangeIn(
+  year: number,
+  month: number,
+  timeZone: TimeZoneId,
+): TimeResult<{ start: Date; end: Date }> {
+  const start = startOfDayIn(formatCalendarParts(year, month, 1), timeZone);
+  if (!start.ok) return start;
+  const nextMonth = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+  const end = startOfDayIn(formatCalendarParts(nextMonth.year, nextMonth.month, 1), timeZone);
+  if (!end.ok) return end;
+  return ok({ start: start.value, end: end.value });
 }
 
 export function formatCalendarParts(year: number, month: number, day: number): CalendarDate {

@@ -499,6 +499,50 @@
       "system": { "pending": "Pending", "resolved": "Resolved", "no_trade": "No trade" },
       "outcome": { "win": "Win", "loss": "Loss", "break_even": "Break even" }
     },
+    "calendar": {
+      "title": "Trading Calendar",
+      "axisLegend": "Calendar axis",
+      "axisTrader": "Trader",
+      "axisSystem": "System",
+      "monthNavLabel": "Month navigation",
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "today": "Today",
+      "clearDate": "Clear date",
+      "noResults": "No results",
+      "monthSummary": {
+        "trader": "Trader R this month",
+        "system": "System R this month",
+        "tradingDays": "Trading days"
+      },
+      "daySummary": {
+        "actualR": "Actual R",
+        "systemR": "System R",
+        "trades": "Trades",
+        "open": "Open",
+        "pendingSystem": "Pending System",
+        "unclassified": "Unclassified"
+      },
+      "weekday": {
+        "sun": "Sun",
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat"
+      },
+      "a11yResultTrader": "Trader result",
+      "a11yResultSystem": "System result",
+      "a11yCountTrader": "{count, plural, one {# trade} other {# trades}}",
+      "a11yCountSystem": "{count, plural, one {# result} other {# results}}",
+      "a11yNoResults": "{date}, no results",
+      "a11yDaySummary": "{date}, {resultWord} {r}, {countWord}",
+      "empty": {
+        "title": "No Trades on this day",
+        "description": "Nothing was logged for the selected day. Clear the date to see the full Journal."
+      }
+    },
     "list": {
       "caption": "Trade journal",
       "trade": "Trade",

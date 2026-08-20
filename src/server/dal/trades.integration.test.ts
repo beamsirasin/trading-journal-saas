@@ -1183,4 +1183,88 @@ describe('trades DAL (real database)', () => {
       });
     });
   });
+
+  describe('listWorkspaceTrades — journalDateRange (Trading Calendar selected-day filter, Phase 14D)', () => {
+    it('filters to Trades whose journal-chronology date (coalesce(exited_at, entered_at, created_at)) falls in range — never a different axis', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const inRange = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'INRANGE' }),
+      );
+      const outOfRange = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'OUTOFRANGE' }),
+      );
+      if (!inRange.ok || !outOfRange.ok) throw new Error('create failed');
+      await openTrade(workspaceId, userId, inRange.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      await resolveSystemTrade(workspaceId, userId, inRange.tradeId, {
+        resolutionKind: 'price_exit',
+        systemExitPrice: '1.1100000000',
+        // System resolves a day OUTSIDE the selected range — must NOT pull
+        // this Trade in via its System date; it belongs via `created_at`
+        // instead (journal chronology), unaffected by System's own date.
+        systemExitedAt: new Date('2026-09-15T00:00:00Z'),
+        systemExitReason: 'target_hit',
+        systemCostR: '0.0000',
+      });
+
+      const page = await listWorkspaceTrades({
+        journalDateRange: {
+          start: new Date('2026-01-01T00:00:00Z'),
+          end: new Date('2026-01-02T00:00:00Z'),
+        },
+      });
+      // Both Trades were created "now" (real time), not Jan 2026 — so an
+      // arbitrary past range correctly excludes both, proving the filter is
+      // genuinely applied rather than a no-op.
+      expect(page.items.some((item) => item.symbol === 'INRANGE')).toBe(false);
+      expect(page.items.some((item) => item.symbol === 'OUTOFRANGE')).toBe(false);
+
+      const wideOpen = await listWorkspaceTrades({
+        journalDateRange: {
+          start: new Date('2020-01-01T00:00:00Z'),
+          end: new Date('2030-01-01T00:00:00Z'),
+        },
+      });
+      expect(wideOpen.items.some((item) => item.symbol === 'INRANGE')).toBe(true);
+      expect(wideOpen.items.some((item) => item.symbol === 'OUTOFRANGE')).toBe(true);
+    });
+
+    it('composes with the existing tradingAccountId filter', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(
+        workspaceId,
+        userId,
+        basePlanInput(fw, { symbol: 'ACCOUNTSCOPED' }),
+      );
+      if (!created.ok) throw new Error('create failed');
+
+      const wideRange = {
+        start: new Date('2020-01-01T00:00:00Z'),
+        end: new Date('2030-01-01T00:00:00Z'),
+      };
+      const matchingAccount = await listWorkspaceTrades({
+        tradingAccountId: fw.tradingAccountId,
+        journalDateRange: wideRange,
+      });
+      expect(matchingAccount.items.some((item) => item.symbol === 'ACCOUNTSCOPED')).toBe(true);
+
+      const foreignAccountId = '018f0000-0000-7000-8000-000000000fff';
+      const nonMatchingAccount = await listWorkspaceTrades({
+        tradingAccountId: foreignAccountId,
+        journalDateRange: wideRange,
+      });
+      expect(nonMatchingAccount.items.some((item) => item.symbol === 'ACCOUNTSCOPED')).toBe(false);
+    });
+  });
 });

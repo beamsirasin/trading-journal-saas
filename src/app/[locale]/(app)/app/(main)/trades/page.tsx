@@ -3,8 +3,13 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
+import { calendarDateIn, dayRangeIn, monthRangeIn } from '@/lib/time';
 import { TradeIdSchema } from '@/lib/trades/schemas';
 import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
+import {
+  getWorkspaceTradeCalendarMonth,
+  getWorkspaceTradeDaySummary,
+} from '@/server/dal/trade-calendar';
 import {
   getTradeCreateOptions,
   getWorkspaceTradeDetail,
@@ -20,9 +25,11 @@ import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
-type PageSearchParams = { trade?: string; cursor?: string };
+type PageSearchParams = { trade?: string; cursor?: string; month?: string; date?: string };
 
 const DATE_LOCALE: Record<string, string> = { en: 'en-GB', th: 'th' };
+const MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function generateMetadata({
   params,
@@ -53,15 +60,58 @@ export default async function TradesPage({
   searchParams: Promise<PageSearchParams>;
 }) {
   const { locale } = await params;
-  const { trade: tradeParam, cursor } = await searchParams;
+  const { trade: tradeParam, cursor, month: monthParam, date: dateParam } = await searchParams;
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
 
-  const [page, entitlement, preferences, createOptions] = await Promise.all([
-    listWorkspaceTrades({ cursor: cursor ?? null }),
+  // Timezone must be known before any Calendar/Log date-range resolution —
+  // fetched first, on its own, rather than inside the batched Promise.all
+  // below (CLAUDE.md §7: never bucket by a naive UTC day).
+  const preferences = await getCurrentUserPreferences();
+  const timezone = preferences.timezone;
+
+  const todayResult = calendarDateIn(new Date(), timezone);
+  const todayDate = todayResult.ok ? todayResult.value : '1970-01-01';
+  const [todayYear, todayMonthNum] = todayDate.split('-').map(Number) as [number, number];
+
+  const monthMatch = monthParam === undefined ? null : MONTH_PATTERN.exec(monthParam);
+  const year = monthMatch ? Number(monthMatch[1]) : todayYear;
+  const month = monthMatch ? Number(monthMatch[2]) : todayMonthNum;
+  const monthRangeResult =
+    month >= 1 && month <= 12 ? monthRangeIn(year, month, timezone) : { ok: false as const };
+  // An invalid month (out-of-range, or a resolution failure) falls back to
+  // the current local month rather than ever crashing the page.
+  const resolvedYear = monthRangeResult.ok ? year : todayYear;
+  const resolvedMonth = monthRangeResult.ok ? month : todayMonthNum;
+  const resolvedMonthRange = monthRangeResult.ok
+    ? monthRangeResult.value
+    : (() => {
+        const fallback = monthRangeIn(todayYear, todayMonthNum, timezone);
+        if (!fallback.ok) throw new Error('trades page: month bounds resolution failed for today');
+        return fallback.value;
+      })();
+
+  const selectedDate = dateParam !== undefined && DATE_PATTERN.test(dateParam) ? dateParam : null;
+  const selectedDayRange = selectedDate === null ? null : dayRangeIn(selectedDate, timezone);
+  const journalDateRange =
+    selectedDayRange !== null && selectedDayRange.ok ? selectedDayRange.value : undefined;
+
+  const [page, entitlement, createOptions, calendarMonth, daySummary] = await Promise.all([
+    listWorkspaceTrades({
+      cursor: cursor ?? null,
+      ...(journalDateRange === undefined ? {} : { journalDateRange }),
+    }),
     getWorkspaceEntitlement(),
-    getCurrentUserPreferences(),
     getTradeCreateOptions(),
+    getWorkspaceTradeCalendarMonth({
+      year: resolvedYear,
+      month: resolvedMonth,
+      timezone,
+      monthRange: resolvedMonthRange,
+    }),
+    journalDateRange === undefined
+      ? Promise.resolve(null)
+      : getWorkspaceTradeDaySummary({ dayRange: journalDateRange }),
   ]);
   const parsedTradeId = tradeParam === undefined ? null : TradeIdSchema.safeParse(tradeParam);
   const requestedTradeId =
@@ -83,7 +133,7 @@ export default async function TradesPage({
         title={t('title')}
         description={t('description')}
         actions={
-          writeAuthorization.allowed && page.items.length > 0 ? (
+          writeAuthorization.allowed && (page.items.length > 0 || selectedDate !== null) ? (
             <Button asChild>
               <Link href="/app/trades/new">
                 <Plus aria-hidden="true" />
@@ -104,6 +154,18 @@ export default async function TradesPage({
         timezone={preferences.timezone}
         locale={dateLocale}
         classificationOptions={createOptions.strategies}
+        calendar={{
+          year: resolvedYear,
+          month: resolvedMonth,
+          todayDate,
+          selectedDate,
+          trader: calendarMonth.trader,
+          system: calendarMonth.system,
+          traderTotalR: calendarMonth.traderTotalR,
+          systemTotalR: calendarMonth.systemTotalR,
+          tradingDays: calendarMonth.tradingDays,
+          daySummary,
+        }}
       />
     </Container>
   );

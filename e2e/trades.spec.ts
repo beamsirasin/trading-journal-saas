@@ -11,7 +11,10 @@ import {
   strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeExits,
+  trades,
   tradeSetupConditionChecks,
+  tradingAccounts,
   workspaces,
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
@@ -109,6 +112,125 @@ async function seedFramework(userId: string, withConditions = true): Promise<voi
         })),
       );
     }
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Trading Calendar (Phase 14D) fixture — direct inserts, exactly the load-
+ * bearing date scenarios the phase brief names: Trade B (Actual-first, System
+ * still Pending), Trade C (Actual Aug 20, System resolves the NEXT day, Aug
+ * 21 — proving the two axes never collapse to one date), and an unclassified
+ * open Trade (proving "Add Strategy"/late-classification remains reachable
+ * from a Calendar-filtered day). All Money-only Plan (never Price) — this
+ * fixture exercises the Calendar's READ side against known dates; the
+ * Open/Close/System-resolve WRITE flows are already proven end-to-end by the
+ * Phase 13/14C journeys elsewhere in this file.
+ */
+async function seedCalendarTrades(userId: string): Promise<void> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, { schema: { workspaces, tradingAccounts, trades, tradeExits } });
+  try {
+    const [workspace] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    if (workspace === undefined) throw new Error('Trade E2E Calendar workspace missing');
+    const [account] = await db
+      .select({ id: tradingAccounts.id })
+      .from(tradingAccounts)
+      .where(eq(tradingAccounts.workspaceId, workspace.id));
+    if (account === undefined) throw new Error('Trade E2E Calendar account missing');
+
+    const basePlan = {
+      workspaceId: workspace.id,
+      tradingAccountId: account.id,
+      direction: 'long' as const,
+      plannedRiskMinor: 100n,
+      plannedRewardMinor: 200n,
+      plannedR: '2.0000',
+    };
+
+    // Trade B — Actual-first: closed Aug 20, System left Pending.
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(trades)
+        .values({
+          ...basePlan,
+          symbol: 'ACTUALFIRST',
+          status: 'closed',
+          systemStatus: 'pending',
+          actualResultMode: 'money',
+          actualInitialRiskMinor: 100n,
+          enteredAt: new Date('2026-08-20T08:00:00Z'),
+          exitedAt: new Date('2026-08-20T10:00:00Z'),
+          netPnlMinor: -50n,
+          actualR: '-0.5000',
+          traderOutcome: 'loss',
+        })
+        .returning({ id: trades.id });
+      if (row === undefined) throw new Error('Trade B insert failed');
+      await tx.insert(tradeExits).values({
+        workspaceId: workspace.id,
+        tradeId: row.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 10_000,
+        realizedPnlMinor: -50n,
+        exitedAt: new Date('2026-08-20T10:00:00Z'),
+      });
+    });
+
+    // Trade C — Actual finalizes Aug 20; System resolves the NEXT day, Aug 21.
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(trades)
+        .values({
+          ...basePlan,
+          symbol: 'CROSSDATE',
+          status: 'closed',
+          systemStatus: 'resolved',
+          actualResultMode: 'money',
+          actualInitialRiskMinor: 100n,
+          enteredAt: new Date('2026-08-20T09:00:00Z'),
+          exitedAt: new Date('2026-08-20T11:00:00Z'),
+          netPnlMinor: 100n,
+          actualR: '1.0000',
+          traderOutcome: 'win',
+          systemResolutionKind: 'money_target',
+          systemGrossRInput: '2.0000',
+          systemExitedAt: new Date('2026-08-21T09:00:00Z'),
+          systemExitReason: 'target_hit',
+          systemResolvedAt: new Date('2026-08-21T09:00:00Z'),
+          systemR: '5.0000',
+          systemOutcome: 'win',
+        })
+        .returning({ id: trades.id });
+      if (row === undefined) throw new Error('Trade C insert failed');
+      await tx.insert(tradeExits).values({
+        workspaceId: workspace.id,
+        tradeId: row.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 10_000,
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-20T11:00:00Z'),
+      });
+    });
+
+    // Unclassified, still-Open Trade entered Aug 20 — proves the day's Log
+    // and its "Add Strategy" action remain reachable from the Calendar.
+    await db.insert(trades).values({
+      ...basePlan,
+      symbol: 'UNCLASSIFIEDOPEN',
+      status: 'open',
+      systemStatus: 'pending',
+      actualResultMode: 'money',
+      actualInitialRiskMinor: 100n,
+      enteredAt: new Date('2026-08-20T12:00:00Z'),
+    });
   } finally {
     await client.end();
   }
@@ -1165,6 +1287,116 @@ test.describe('real Trade Journal creation', () => {
       level: 4,
     });
     await expect(conditionsHeading.locator('..').getByText('Not recorded')).toBeVisible();
+  });
+
+  test('Phase 14D — Trading Calendar loads above the Trade Log, independent Trader/System dates never collapse, and day selection filters the Log truthfully', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-calendar');
+    await seedCalendarTrades(user.id);
+    await loginAs(page, 'en', user);
+
+    // A — Calendar loads above the Trade Log, on the current month by default.
+    await page.goto('/en/app/trades');
+    const calendar = page.getByTestId('trading-calendar');
+    await expect(calendar.getByText('Trading Calendar')).toBeVisible();
+    await expect(page.getByRole('table', { name: 'Trade journal' })).toBeVisible();
+
+    // Navigate to August 2026, where the fixture's dates live.
+    await page.goto('/en/app/trades?month=2026-08');
+
+    // B/D — Trader axis: Aug 20 sums both Trades' Actual R (-0.5 + 1.0 = 0.5),
+    // never including Trade C's System R.
+    await expect(
+      calendar.getByRole('button', { name: /^20 August 2026.*Trader result.*\+0\.50R.*2 trades/ }),
+    ).toBeVisible();
+
+    // C/D — System axis: Aug 21 shows ONLY Trade C's System R — the two
+    // events never collapse onto the same date.
+    // `SegmentedControl`'s radio input is visually hidden in favor of its
+    // styled label (same architecture as the Confidence control below) — the
+    // established E2E pattern is focus + keyboard Space, matching
+    // `demo-dashboard.spec.ts`'s own filter-radio test, rather than a direct
+    // `.click()` on a zero-size hidden input.
+    const systemAxis = calendar.getByRole('radio', { name: 'System' });
+    await systemAxis.focus();
+    await page.keyboard.press('Space');
+    await expect(systemAxis).toBeChecked();
+    await expect(
+      calendar.getByRole('button', { name: /^21 August 2026.*System result.*\+5\.00R.*1 result/ }),
+    ).toBeVisible();
+    await expect(
+      calendar.getByRole('button', { name: /^20 August 2026.*System result/ }),
+    ).toHaveCount(0);
+
+    // E — Selecting Aug 20 filters the Trade Log to that day's journal
+    // chronology, independent of the (System) axis currently selected.
+    await calendar.getByRole('button', { name: /^20 August 2026/ }).click();
+    await expect(page).toHaveURL(/month=2026-08&date=2026-08-20/);
+    await expect(page.getByText('20 August 2026')).toBeVisible();
+    await expect(page.getByRole('row', { name: /ACTUALFIRST/ })).toBeVisible();
+    await expect(page.getByRole('row', { name: /CROSSDATE/ })).toBeVisible();
+    await expect(page.getByRole('row', { name: /UNCLASSIFIEDOPEN/ })).toBeVisible();
+
+    // F — Clear date restores the normal, unfiltered Log.
+    await page.getByRole('button', { name: 'Clear date' }).click();
+    await expect(page).not.toHaveURL(/date=/);
+
+    // G — the unclassified, still-Open Trade remains fully accessible from
+    // the Calendar-filtered day, with its late-classification action intact.
+    await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
+    await page.getByRole('link', { name: /UNCLASSIFIEDOPEN/ }).click();
+    const unclassifiedDetail = page.getByRole('article', { name: 'UNCLASSIFIEDOPEN' });
+    await expect(
+      unclassifiedDetail.getByLabel('Strategy & Setup').getByText('Not assigned'),
+    ).toBeVisible();
+    await expect(
+      unclassifiedDetail
+        .getByLabel('Strategy & Setup')
+        .getByRole('button', { name: 'Add Strategy' }),
+    ).toBeVisible();
+
+    // H — Trade B's System-Pending action remains reachable from the
+    // Calendar-filtered day too — Actual closing never blocks it.
+    await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
+    await page.getByRole('link', { name: /ACTUALFIRST/ }).click();
+    const actualFirstDetail = page.getByRole('article', { name: 'ACTUALFIRST' });
+    await expect(
+      actualFirstDetail.getByRole('button', { name: 'Resolve System result' }),
+    ).toBeVisible();
+  });
+
+  test('Phase 14D mobile — Trading Calendar stays usable at 390px above the Trade Log', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    test.setTimeout(120_000);
+    const user = await provisionJournalUser('e2e-trades-calendar-mobile');
+    await seedCalendarTrades(user.id);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await loginAs(page, 'en', user);
+
+    await page.goto('/en/app/trades?month=2026-08');
+    const calendar = page.getByTestId('trading-calendar');
+    await expect(calendar.getByText('Trading Calendar')).toBeVisible();
+    const calendarBox = await calendar.boundingBox();
+    expect(calendarBox?.width ?? 999).toBeLessThanOrEqual(390);
+
+    await calendar.getByRole('button', { name: /^20 August 2026/ }).click();
+    await expect(page.getByText('20 August 2026')).toBeVisible();
+    // Desktop table (`hidden md:block`, first in DOM) and mobile card list
+    // (`md:hidden`, second) both exist in the DOM, CSS-toggled per
+    // breakpoint — at this 390px viewport the table copy is hidden, so the
+    // LAST matching link is the one actually visible.
+    await expect(page.getByRole('link', { name: /ACTUALFIRST/ }).last()).toBeVisible();
+
+    const dimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
   });
 });
 
