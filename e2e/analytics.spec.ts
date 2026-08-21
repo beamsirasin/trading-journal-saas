@@ -449,6 +449,56 @@ test.describe('real deep Analytics', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible();
     await expect(page.getByRole('button', { name: '90D' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByLabel('Account', { exact: true })).toHaveValue('');
+
+    // Phase 15C — Analytics Overview: RESULTS, EDGE, BEHAVIOR render, in that
+    // order, before the pre-existing detailed sections they summarize (the
+    // page's core "answer first" contract).
+    const overviewHeadings = await page.getByRole('heading', { level: 2 }).allTextContents();
+    const resultsIndex = overviewHeadings.indexOf('Results');
+    const edgeIndex = overviewHeadings.indexOf('Edge');
+    const behaviorIndex = overviewHeadings.indexOf('Behavior');
+    const performanceIndex = overviewHeadings.indexOf('System and Trader Performance');
+    expect(resultsIndex).toBeGreaterThanOrEqual(0);
+    expect(edgeIndex).toBeGreaterThan(resultsIndex);
+    expect(behaviorIndex).toBeGreaterThan(edgeIndex);
+    expect(performanceIndex).toBeGreaterThan(behaviorIndex);
+
+    const resultsZone = page.locator('section[aria-labelledby="analytics-overview-results"]');
+    const edgeZone = page.locator('section[aria-labelledby="analytics-overview-edge"]');
+    const behaviorZone = page.locator('section[aria-labelledby="analytics-overview-behavior"]');
+
+    // RESULTS: the System readiness action is truthfully non-date-scoped (the
+    // seeded USDJPY Trade has no System resolution at all, so it is pending
+    // regardless of the active 90D/30D/All range) and deep-links to the
+    // existing reviewable Trades surface — never a fabricated gap.
+    await expect(resultsZone.getByText('1 pending System outcome')).toBeVisible();
+    await expect(resultsZone.getByRole('link', { name: 'Review pending' })).toHaveAttribute(
+      'href',
+      '/app/trades',
+    );
+    await expect(resultsZone.getByText(/captured less than the System/)).toBeVisible();
+    await expect(resultsZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
+      'href',
+      '#analytics-performance-heading',
+    );
+
+    // EDGE: Setup Adherence only — no Strategy/Setup ranking placeholder yet.
+    await expect(edgeZone.getByText('Average Setup Adherence')).toBeVisible();
+    await expect(edgeZone.getByText(/Best Strategy|Best Setup|Coming soon/i)).toHaveCount(0);
+    await expect(edgeZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
+      'href',
+      '#analytics-setup-quality-heading',
+    );
+
+    // BEHAVIOR: strongest observed Confidence/Emotion, not the full table.
+    await expect(behaviorZone.getByText('Strongest observed confidence')).toBeVisible();
+    await expect(behaviorZone.getByText('75%')).toBeVisible();
+    await expect(behaviorZone.getByText('Strongest observed state')).toBeVisible();
+    await expect(behaviorZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
+      'href',
+      '#analytics-psychology-heading',
+    );
+
     const systemPanel = page.locator('[data-analytics-panel="system"]');
     const traderPanel = page.locator('[data-analytics-panel="trader"]');
     await expect(systemPanel.getByText('6 Trades')).toBeVisible();
@@ -564,6 +614,12 @@ test.describe('real deep Analytics', () => {
 
     await expect(page.getByLabel('Account', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Strategy', { exact: true })).toBeVisible();
+    // Phase 15C — Analytics Overview zones must stack cleanly at 320px, above
+    // the pre-existing detailed sections, without contributing to overflow
+    // (checked below via the page's scroll/client width comparison).
+    await expect(page.getByRole('heading', { level: 2, name: 'Results' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Behavior' })).toBeVisible();
     await expect(page.locator('[data-analytics-panel="system"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="trader"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="comparison"]')).toBeVisible();

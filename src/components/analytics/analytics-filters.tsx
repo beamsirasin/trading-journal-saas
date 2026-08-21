@@ -70,10 +70,7 @@ export function AnalyticsFilters({
   }
 
   return (
-    <section
-      aria-label={t('filters.label')}
-      className="border-border bg-card rounded-lg border p-4 sm:p-5"
-    >
+    <section aria-label={t('filters.label')} className="border-border border-b pb-5">
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <span className="text-label text-muted-foreground uppercase">

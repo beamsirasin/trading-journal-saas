@@ -1188,6 +1188,39 @@
         "reset": "Reset filters"
       },
       "scope": { "label": "Current analytics scope" },
+      "overview": {
+        "explore": "Explore",
+        "results": {
+          "title": "Results",
+          "description": "What happened?",
+          "traderHero": "Trader Total R",
+          "systemHero": "System Total R",
+          "traderEmptyTitle": "No completed Trades yet",
+          "systemEmptyTitle": "No System Outcomes resolved yet",
+          "insight": {
+            "behind": "Your actual execution has captured less than the System on paired Trades.",
+            "ahead": "Your actual execution has outperformed the System on paired Trades.",
+            "even": "Your actual execution has matched the System on paired Trades.",
+            "sample": "{count, plural, one {# comparable Trade} other {# comparable Trades}}",
+            "independent": "Trader and System results are tracked independently."
+          }
+        },
+        "edge": {
+          "title": "Edge",
+          "description": "What seems to produce an edge?",
+          "empty": "No Setup Checklist data recorded at entry"
+        },
+        "behavior": {
+          "title": "Behavior",
+          "description": "How does your state at entry relate to performance?",
+          "confidenceEmpty": "No Confidence data recorded for this analysis",
+          "emotionEmpty": "No Emotion data recorded for this analysis",
+          "strongestConfidence": "Strongest observed confidence",
+          "strongestEmotion": "Strongest observed state",
+          "emotionConcern": "Potential concern",
+          "avgSuffix": "Avg"
+        }
+      },
       "performance": {
         "title": "System and Trader Performance",
         "description": "Each side uses its own eligible Trade population, so sample counts may differ."

@@ -193,6 +193,34 @@ function renderPage(model = snapshot()) {
 }
 
 describe('RealAnalyticsPage', () => {
+  it('leads with the RESULTS, EDGE, and BEHAVIOR Overview zones, in that order, before the detailed sections', () => {
+    const { container } = renderPage();
+    const headingOrder = [...container.querySelectorAll('h2')].map((node) => node.textContent);
+    const resultsIndex = headingOrder.indexOf('Results');
+    const edgeIndex = headingOrder.indexOf('Edge');
+    const behaviorIndex = headingOrder.indexOf('Behavior');
+    const performanceIndex = headingOrder.indexOf('System and Trader Performance');
+    expect(resultsIndex).toBeGreaterThanOrEqual(0);
+    expect(edgeIndex).toBeGreaterThan(resultsIndex);
+    expect(behaviorIndex).toBeGreaterThan(edgeIndex);
+    expect(performanceIndex).toBeGreaterThan(behaviorIndex);
+  });
+
+  it('Overview does not delete any existing detailed section — every one remains reachable below it', () => {
+    renderPage();
+    for (const title of [
+      'System and Trader Performance',
+      'System vs Trader Comparison',
+      'Independent Equity Curves',
+      'Setup Quality',
+      'Psychology',
+      'Rule Analytics',
+      'Most Frequent Mistakes',
+    ]) {
+      expect(screen.getByText(title)).toBeVisible();
+    }
+  });
+
   it('renders complete independent System and Trader metric families without Average R duplication', () => {
     const { container } = renderPage();
     const system = container.querySelector('[data-analytics-panel="system"]') as HTMLElement;

@@ -5,6 +5,9 @@ import type { AnalyticsSnapshot } from '@/lib/analytics/metrics';
 import type { AnalyticsUrlSelection } from '@/lib/analytics/url-filters';
 import type { AnalyticsFilterOptions } from '@/server/dal/analytics';
 import { AnalyticsFilters } from '@/components/analytics/analytics-filters';
+import { BehaviorZone } from '@/components/analytics/analytics-overview-behavior';
+import { EdgeZone } from '@/components/analytics/analytics-overview-edge';
+import { ResultsZone } from '@/components/analytics/analytics-overview-results';
 import { AnalyticsComparisonPanel } from '@/components/analytics/comparison-panel';
 import { ConditionPerformance } from '@/components/analytics/condition-performance';
 import { ConfidencePerformance } from '@/components/analytics/confidence-performance';
@@ -44,6 +47,15 @@ export function RealAnalyticsPage({
       <p className="text-muted-foreground text-sm" aria-label={t('scope.label')}>
         {scopeLabels.join(' · ')}
       </p>
+
+      <ResultsZone
+        trader={snapshot.trader}
+        system={snapshot.system}
+        systemPendingCount={snapshot.systemPendingCount}
+        comparison={snapshot.comparison}
+      />
+      <EdgeZone setupAdherence={snapshot.setupAdherence} />
+      <BehaviorZone confidence={snapshot.confidence} emotions={snapshot.emotions} />
 
       <section aria-labelledby="analytics-performance-heading" className="flex flex-col gap-4">
         <SectionHeader

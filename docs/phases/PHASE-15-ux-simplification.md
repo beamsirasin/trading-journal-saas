@@ -1,14 +1,15 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
-> **Status:** 15A (audit + contract) is complete and committed. 15B (UX design primitives,
-> status semantics, and the deep-action navigation foundation) is implemented — see §46 below
-> for the as-built decisions. Analytics Overview/Explore, the full Trade Detail step redesign,
-> and Trade Log simplification are **not** implemented — 15C–15G remain proposed, not started.
+> **Status:** 15A (audit + contract) and 15B (UX design primitives, status semantics, deep-action
+> navigation foundation) are complete and committed — see §54 for 15B's as-built decisions. 15C
+> (Analytics Overview simplification) is implemented — see §55 below. Analytics Explore, the
+> Strategy/Setup ranking composition, Symbol/Session/Direction/Timeframe breakdowns, the full
+> Trade Detail step redesign, and Trade Log simplification are **not** implemented — 15D–15G
+> remain proposed, not started.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-21 (Phase 15B — design primitives, status semantics, deep-action
-> navigation foundation).
+> **Last updated:** 2026-08-21 (Phase 15C — Analytics Overview simplification).
 
 ---
 
@@ -892,3 +893,105 @@ Trade Log is untouched. No `?systemStatus=`/`?strategy=unassigned` filter exists
 `/app/trades` — `ActionableNotice`/`EntryTimeNotice` are tested in isolation only, not wired to
 a real pending-System or unclassified-Trades workflow. No migration was created; migrations
 remain exactly `0000`–`0016`, confirmed by `drizzle-kit check`.
+
+---
+
+## 55. Phase 15C — Analytics Overview (as built)
+
+The Analytics landing experience now leads with three Overview zones — RESULTS, EDGE, BEHAVIOR
+— built entirely from the 15B primitives, consuming ONLY data `composeAnalyticsSnapshot` already
+returns. No `lib/calc/`, DAL, or schema file changed. Every pre-existing detailed section
+(Performance, Comparison, Equity, Setup Quality, Psychology, Rule Analytics, Most Frequent
+Mistakes) remains on the same page, unchanged, directly below the new zones — nothing was
+deleted or moved behind a new route; "Explore" is a same-page anchor jump to the existing
+section, which is the "temporary existing-detail target" the brief explicitly allows pending
+15D's real Explore architecture.
+
+**RESULTS** (`src/components/analytics/analytics-overview-results.tsx`) — two hero cards:
+Trader Total R + Win Rate + finalized-Trade count; System Total R + Win Rate + a truthful
+"N resolved" count. Every other Performance metric (Expectancy, Profit Factor, Drawdown, Avg
+Win/Loss R, Payoff Ratio, both equity curves) intentionally stays off Overview, reachable one
+Explore click below — the deliberate "restrained secondary set" the brief asked for, not an
+oversight. The System pending count reuses the **already non-date-scoped** existing copy
+("N pending System outcome(s)") verbatim — it was already compliant with the brief's §9 warning
+before this phase touched it, so no new copy was needed; it appears via `ActionableNotice` only
+when `systemPendingCount > 0`, linking to the existing `/app/trades` (no new filter param — 15D/
+15F's job per Phase 15A's own slice ordering). The comparison insight
+(`selectExecutionGapObservation` in `lib/analytics/overview-selectors.ts`) reads exclusively
+`snapshot.comparison` — the already-paired-eligible population — and is `null` (rendering the
+truthful "Trader and System results are tracked independently." fallback) whenever
+`comparableCount === 0` or the metric is unavailable; it is never derived from the two
+independent global totals, so it can never become "System Total R − Actual Total R" mislabeled
+as Execution Gap (the exact failure mode the brief prohibits in §6).
+
+**EDGE** (`analytics-overview-edge.tsx`) — Setup Adherence only. Strategy/Setup ranking ("Best
+Strategy"/"Best Setup") is explicitly out of scope: no component in the codebase compares Trades
+across multiple Strategies/Setups today, so summarizing one would require new DAL/composition
+work reserved for Phase 15D. The card relocates exactly the two headline figures
+`composeSetupAdherenceAnalytics` already computes (`averageAdherence`, `sampleCount`) with zero
+new formula; the existing `setupAdherence.sampleCount` translation string ("N Trade(s) with
+recorded, applicable Setup Conditions") is reused verbatim as the factual support line rather
+than inventing a second, looser phrasing of the same fact.
+
+**BEHAVIOR** (`analytics-overview-behavior.tsx`) — one Confidence card (strongest observed
+level) and one Emotion card (strongest observed state, plus a "Potential concern" card only when
+a second, genuinely negative-averaging group exists). Both use Trader-side data only — **Option
+C** of the brief's §19 choice: the full independent Trader/System comparison for every
+Confidence level and every Emotion group remains completely intact in the existing Psychology
+section below, reachable via the same Explore anchor; Overview surfaces only the single
+Trader-side headline both dimensions already treat as primary (matching Phase 13H's own
+established convention that Confidence's/Setup Adherence's own headline KPI is Trader-only).
+Level `0` can legitimately be "strongest observed" and is never confused with "no data" (tested
+explicitly). No causal sentence is generated for either card — the numbers alone (percentage/
+label → R → sample count) carry no causal claim, so the brief's non-causal-language guidance
+applies to the RESULTS insight sentence, where a sentence is actually written.
+
+**Selectors** (`src/lib/analytics/overview-selectors.ts`) — `selectStrongestConfidenceLevel`,
+`selectStrongestEmotion`, `selectEmotionConcern`, `selectExecutionGapObservation`: pure functions
+over already-composed snapshot arrays, using `decimal.js` for the R comparisons (never a raw
+`Number()` parse of a financial value, consistent with CLAUDE.md §5's general discipline even
+though this is presentation-layer selection, not the calc engine itself). `selectEmotionConcern`
+never manufactures a concern from "the worse of two positives" — it returns `null` unless the
+second-best group's average R is genuinely negative, and unless a second, distinct group with
+data exists at all.
+
+**Filter dominance** (§23) — `analytics-filters.tsx`'s outer wrapper changed from a heavy
+bordered card (`border-border bg-card rounded-lg border p-4 sm:p-5`) to a plain bottom-border
+band (`border-border border-b pb-5`) — filter semantics, URL contract, and behavior are
+completely unchanged; only its visual weight relative to the new Overview zones was reduced.
+
+**Calibrating** (§25) — deliberately **not used** in 15C. The brief simultaneously requires (a)
+never inventing an arbitrary numerical readiness threshold and (b) never hiding the actual
+sample count behind the word "Calibrating." With no non-arbitrary trigger condition available
+(no validated statistical methodology exists anywhere in `lib/calc/`), any use of the word this
+phase would necessarily either be decorative (always shown, adding noise) or threshold-gated
+(violating (a)). Deferred until the product defines a genuine, non-arbitrary basis for it.
+
+**Empty states** — new dedicated Overview copy, distinct from the existing detailed-panel empty
+strings (which stay unchanged and still appear in the panels below): "No completed Trades yet",
+"No System Outcomes resolved yet", "No Setup Checklist data recorded at entry", "No Confidence
+data recorded for this analysis", "No Emotion data recorded for this analysis" — all calm,
+factual, never framed as an error.
+
+**Terminology added** — new `analytics.real.overview.*` EN/TH strings (zone descriptions, hero
+labels, empty states, insight sentences) plus reuse of the Phase 15B `zones.*` namespace
+(Results/Edge/Behavior labels) for the zone headings themselves — no duplicate zone-label keys
+were created.
+
+**Responsive** — Overview zones use the same `sm:grid-cols-2` two-card pattern already
+established by the existing detailed panels; at 320–390px they stack to one column per the
+brief's density target, verified by the existing mobile e2e's page-width overflow assertion
+(unchanged assertion, now also covering the three new zones' rendered height).
+
+**Server/DAL/schema impact:** none. Every changed or new file is a component, a presentation-layer
+selector module, an i18n string file, or a test. `git diff --stat` touches exactly: `analytics-page.tsx`,
+`analytics-filters.tsx`, `analytics-page.test.tsx`, `messages/{en,th}.json`, `e2e/analytics.spec.ts`,
+plus the seven new `analytics-overview-*`/`overview-selectors*` files. Migrations remain
+`0000`–`0016`, confirmed by `drizzle-kit check`.
+
+**Founder-UAT questions carried forward:** (1) whether the RESULTS zone's single-stat restraint
+(Win Rate only, omitting Expectancy/Profit Factor from Overview) reads as "enough" or as
+under-informative before the Founder has used it manually; (2) whether the Emotion "Potential
+concern" framing reads as intended or as unintentionally alarming; (3) whether omitting
+"Calibrating" entirely (§25 above) undersells the product's health-app-like framing the Founder
+liked in the original brief, versus the conservative choice made here.
