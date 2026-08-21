@@ -472,9 +472,13 @@ test.describe('real deep Analytics', () => {
     // regardless of the active 90D/30D/All range) and deep-links to the
     // existing reviewable Trades surface — never a fabricated gap.
     await expect(resultsZone.getByText('1 pending System outcome')).toBeVisible();
+    // The Overview's "Review pending" link uses the i18n `Link` component,
+    // which prefixes every internal href with the active locale segment —
+    // unlike the same-page `#anchor` "Explore" links below, which are plain
+    // `<a>` tags and need no such prefix.
     await expect(resultsZone.getByRole('link', { name: 'Review pending' })).toHaveAttribute(
       'href',
-      '/app/trades',
+      '/en/app/trades',
     );
     await expect(resultsZone.getByText(/captured less than the System/)).toBeVisible();
     await expect(resultsZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
@@ -593,10 +597,18 @@ test.describe('real deep Analytics', () => {
     await expect(directionPanel.getByText('5 Trades')).toBeVisible();
 
     // Phase 15D — Explore navigation: jumping to the Edge view lands on Edge
-    // Explore, preserving the active filter scope.
+    // Explore, preserving the active filter scope. The click triggers a real
+    // RSC navigation (new `searchParams` re-run every parallel Analytics
+    // query server-side against the remote test database) behind this
+    // page's `<Suspense>` boundary, so the heading mounts only once that
+    // round-trip resolves — a longer timeout than the suite's other,
+    // already-loaded-page assertions, not a flaky wait.
     await page.getByRole('link', { name: 'Edge', exact: true }).click();
     await expect(page).toHaveURL(/view=edge/);
-    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeInViewport();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeInViewport({
+      timeout: 15_000,
+    });
 
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: '30D' }).click();
@@ -651,9 +663,16 @@ test.describe('real deep Analytics', () => {
     // Phase 15C — Analytics Overview zones must stack cleanly at 320px, above
     // the pre-existing detailed sections, without contributing to overflow
     // (checked below via the page's scroll/client width comparison).
-    await expect(page.getByRole('heading', { level: 2, name: 'Results' })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 2, name: 'Edge' })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 2, name: 'Behavior' })).toBeVisible();
+    // `exact: true` disambiguates from Phase 15D's "Results Explore"/"Edge
+    // Explore"/"Behavior Explore" headings, whose accessible names otherwise
+    // match these as a substring.
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Results', exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Behavior', exact: true }),
+    ).toBeVisible();
     await expect(page.locator('[data-analytics-panel="system"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="trader"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="comparison"]')).toBeVisible();

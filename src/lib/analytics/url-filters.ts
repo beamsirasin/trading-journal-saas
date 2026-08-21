@@ -27,13 +27,22 @@ export type ParseAnalyticsUrlFiltersResult =
  * Maps the public Analytics URL vocabulary onto the closed 09B filter input.
  * Unknown keys and array values are rejected so a malformed link never
  * broadens into a valid but unintended population.
+ *
+ * `view` is the one deliberate exception (Phase 15D's `AnalyticsExploreNav`,
+ * `?view=overview|results|edge|behavior`) — client-only UI state read
+ * exclusively via `useSearchParams` on the page it scrolls within, never a
+ * filter and never passed to any DAL/service call. It is stripped BEFORE the
+ * unknown-key check below rather than added to `URL_FILTER_KEY_SET`, so this
+ * function's own filter vocabulary stays exactly as closed as before; only
+ * one specific, understood, harmless key is tolerated, not an open door for
+ * arbitrary unrecognized params.
  */
 export function parseAnalyticsUrlFilters(value: unknown): ParseAnalyticsUrlFiltersResult {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return { ok: false, code: 'invalid_filters' };
   }
 
-  const raw = value as Record<string, unknown>;
+  const { view: _view, ...raw } = value as Record<string, unknown>;
   if (Object.keys(raw).some((key) => !URL_FILTER_KEY_SET.has(key))) {
     return { ok: false, code: 'invalid_filters' };
   }

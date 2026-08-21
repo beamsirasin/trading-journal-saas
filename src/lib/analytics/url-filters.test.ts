@@ -52,4 +52,27 @@ describe('Analytics URL filters', () => {
   ])('rejects malformed or unsupported public filters: %j', (value) => {
     expect(parseAnalyticsUrlFilters(value)).toEqual({ ok: false, code: 'invalid_filters' });
   });
+
+  it('Phase 15D: tolerates the Explore nav\'s "view" key alongside valid filters — it is UI state, never a filter', () => {
+    expect(parseAnalyticsUrlFilters({ range: '30d', view: 'edge' })).toEqual({
+      ok: true,
+      input: { datePreset: '30d' },
+      selection: { range: '30d', account: null, strategy: null, setup: null, version: null },
+    });
+  });
+
+  it('Phase 15D: "view" alone (no other params) still resolves to the default scope', () => {
+    expect(parseAnalyticsUrlFilters({ view: 'behavior' })).toEqual({
+      ok: true,
+      input: {},
+      selection: { range: '90d', account: null, strategy: null, setup: null, version: null },
+    });
+  });
+
+  it('Phase 15D: stripping "view" is a named exception, not a broadened allowlist — a genuine unknown key beside it still rejects', () => {
+    expect(parseAnalyticsUrlFilters({ view: 'edge', symbol: 'XAUUSD' })).toEqual({
+      ok: false,
+      code: 'invalid_filters',
+    });
+  });
 });
