@@ -634,7 +634,7 @@
         "classification": "Strategy & Setup",
         "plan": "Plan",
         "entrySnapshot": "Entry Snapshot",
-        "conditions": "Setup Conditions",
+        "conditions": "Setup Checklist",
         "execution": "Actual Execution",
         "system": "System Result",
         "discipline": "Discipline & Review",
@@ -642,7 +642,20 @@
         "mistakes": "Mistakes"
       },
       "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" },
-      "conditions": { "met": "Met", "notMet": "Not met" }
+      "conditions": { "met": "Met", "notMet": "Not met" },
+      "nav": {
+        "label": "Trade sections",
+        "actual": "Actual",
+        "system": "System",
+        "strategy": "Strategy & Setup",
+        "entry": "Entry Snapshot",
+        "review": "Review"
+      }
+    },
+    "tradeManagement": {
+      "title": "Trade Management",
+      "rulesFollowed": "Rules followed",
+      "commonMistakes": "Common mistakes"
     },
     "lifecycle": {
       "title": "Trade actions",
@@ -828,7 +841,7 @@
         "actualExecution": "Actual Execution",
         "tradePlan": "Trade Plan (optional)",
         "context": "Context",
-        "conditions": "Setup Conditions",
+        "conditions": "Setup Checklist",
         "confidence": "Confidence",
         "emotions": "How are you feeling?",
         "entryReason": "Entry Reason",
@@ -2082,5 +2095,20 @@
       "cost": "Cost in R"
     },
     "cost": "Cost"
+  },
+  "status": {
+    "complete": "Complete",
+    "active": "Active",
+    "needsAttention": "Needs attention",
+    "partial": "Partially recorded",
+    "notRecorded": "Not recorded",
+    "notRecordedAtEntry": "Not recorded at entry",
+    "notConfigured": "Not configured",
+    "error": "Error"
+  },
+  "zones": {
+    "results": "Results",
+    "edge": "Edge",
+    "behavior": "Behavior"
   }
 }

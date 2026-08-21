@@ -15,6 +15,11 @@ vi.mock('@/i18n/navigation', () => ({
     </a>
   ),
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => '/app/trades',
+}));
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock('@/server/actions/trades', () => ({}));

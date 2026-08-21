@@ -1,25 +1,27 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
-> **Status:** 15A (this document) is **contract + audit only**. No UI, schema, calculation, or
-> component changes were made. Nothing in this document has been implemented, and nothing was
-> committed. Phases 15B–15G below are proposed, not started.
+> **Status:** 15A (audit + contract) is complete and committed. 15B (UX design primitives,
+> status semantics, and the deep-action navigation foundation) is implemented — see §46 below
+> for the as-built decisions. Analytics Overview/Explore, the full Trade Detail step redesign,
+> and Trade Log simplification are **not** implemented — 15C–15G remain proposed, not started.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
-> is recorded as not yet obtained but does not block this audit.
-> **Last updated:** 2026-08-21.
+> is recorded as not yet obtained but does not block this work.
+> **Last updated:** 2026-08-21 (Phase 15B — design primitives, status semantics, deep-action
+> navigation foundation).
 
 ---
 
 ## 1. Preflight
 
-| Check | Result |
-|---|---|
-| Branch | `feature/trade-plan-ux-uat` |
-| HEAD | `65e6ef0` — "feat(journal): simplify trade flow to open and close" (2026-08-21) |
-| Working tree | Clean, up to date with `origin/feature/trade-plan-ux-uat` |
-| Migration range | `0000_init_auth_tenancy.sql` → `0016_optional_trade_plan.sql` (17 migrations, forward-only, none pending) |
-| Phase 14 status | `docs/phases/PHASE-14-independent-classification.md`: 14A, 14B, 14C, 14C.1, 14D, 14E all recorded **complete**. Founder acceptance **not yet obtained** (not a blocker per this phase's brief — only an unfinished/uncommitted 14E would have been). |
-| Phase 14E specifically | Confirmed complete and committed (§"14E — Open/Close-Only Trade Flow (complete)", `PHASE-14-independent-classification.md` line 138+). HEAD commit is exactly this work. |
+| Check                  | Result                                                                                                                                                                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch                 | `feature/trade-plan-ux-uat`                                                                                                                                                                                                                          |
+| HEAD                   | `65e6ef0` — "feat(journal): simplify trade flow to open and close" (2026-08-21)                                                                                                                                                                      |
+| Working tree           | Clean, up to date with `origin/feature/trade-plan-ux-uat`                                                                                                                                                                                            |
+| Migration range        | `0000_init_auth_tenancy.sql` → `0016_optional_trade_plan.sql` (17 migrations, forward-only, none pending)                                                                                                                                            |
+| Phase 14 status        | `docs/phases/PHASE-14-independent-classification.md`: 14A, 14B, 14C, 14C.1, 14D, 14E all recorded **complete**. Founder acceptance **not yet obtained** (not a blocker per this phase's brief — only an unfinished/uncommitted 14E would have been). |
+| Phase 14E specifically | Confirmed complete and committed (§"14E — Open/Close-Only Trade Flow (complete)", `PHASE-14-independent-classification.md` line 138+). HEAD commit is exactly this work.                                                                             |
 
 **Conclusion: clean baseline confirmed. Proceeding with Phase 15A.**
 
@@ -37,6 +39,7 @@ not a locked constraint. That is good news: 15B onward can restructure presentat
 touching `lib/calc/`, the DAL, or the schema.
 
 Concretely:
+
 - Analytics (`/app/analytics`) is one page, 7 stacked full-width sections, no tabs, no
   collapse, no sticky nav, one generic non-actionable link in the entire page.
 - Trade Detail (embedded in `/app/trades?trade=`) is one continuous scroll of 9 stacked
@@ -79,7 +82,8 @@ implemented as literal UI copy — raw counts are shown instead, with no low-sam
 `Header → Lifecycle Actions card → Overview → Classification → Plan → Entry Snapshot (4 sub-sections) → Execution → System → Discipline (3 sub-sections)`
 
 **Density findings:**
-- **Actions are separated from their subject.** Nearly every mutation (Open/Partial Close/Close/Correct, Resolve System/Mark No Trade/Correct, Edit Plan, Edit Identity, Delete) lives in one "Lifecycle Actions" card positioned right after the header — before the user has even seen the Execution or System sections those actions modify. A user must scroll back up to act. The only actions that *are* positioned inline (Assign Strategy/Setup, Correct exit, Save emotions/review) are the exceptions, not the rule.
+
+- **Actions are separated from their subject.** Nearly every mutation (Open/Partial Close/Close/Correct, Resolve System/Mark No Trade/Correct, Edit Plan, Edit Identity, Delete) lives in one "Lifecycle Actions" card positioned right after the header — before the user has even seen the Execution or System sections those actions modify. A user must scroll back up to act. The only actions that _are_ positioned inline (Assign Strategy/Setup, Correct exit, Save emotions/review) are the exceptions, not the rule.
 - **No section boundary is visually strong** — `Section` is a bordered card, but `SubSection` (used inside Entry Snapshot and Discipline) is just an `h4`, so those two areas internally read as one long block each (Entry Snapshot: Conditions/Confidence/Emotions/Entry Reason all run together; Discipline: Rules/Mistakes/Review all run together).
 - **Execution Gap has no dedicated comparison view** — it is a single row buried inside the System section, easy to miss, despite being (per CLAUDE.md §6) one of the two most important attribution numbers in the product.
 - **7 distinct concerns compete for the same scroll**: identity, plan, entry-time psychology, actual execution, system counterfactual, rule/mistake discipline, and free-text review — exactly the "too many conceptual sections in one scroll" problem named in this phase's brief.
@@ -92,6 +96,7 @@ implemented as literal UI copy — raw counts are shown instead, with no low-sam
 `src/components/trades/trade-list.tsx`, 6-column table (Trade / Strategy / Account / Execution / Trader / System), every column always visible for every row.
 
 **Density findings:**
+
 - Every row shows: symbol, direction, date/time, strategy name + archived badge, setup name + version + archived badge, conditions-met fraction, account name + archived badge, execution status badge, trader R/outcome or realized-to-date or planned R, system status badge + R + outcome — **10+ discrete facts per row**, all at equal weight, with no summarized "first layer."
 - No filters, sort, or search exist on the page itself (only the Calendar's day-select narrows the list). No grouping by date or status.
 - No per-row deep action exists in the list (e.g., no inline "Update System Outcome" or "Add Strategy" button) — every action requires opening the row into Detail first, which then requires locating the right Lifecycle Actions button (see §4).
@@ -119,11 +124,11 @@ Adopting the ten frozen principles from this phase's brief verbatim as the stand
 
 ## 7. Three-level information hierarchy
 
-| Level | Definition | Current state | Target |
-|---|---|---|---|
-| 1 — Summary | Answer in 5–10s | Does not exist on any surface — Analytics/Detail/Log all start at Level 3 density immediately | New Overview state per surface |
-| 2 — Insight/Explore | Why/where the result came from | Partially exists (e.g., per-condition/per-emotion breakdowns) but mixed in with Level 3 on the same page | Becomes the "Explore" destination |
-| 3 — Detail | Full metrics/breakdowns/records/filters/history | This is what all three surfaces currently show, unconditionally, to everyone, immediately | Remains available, one click deeper |
+| Level               | Definition                                      | Current state                                                                                            | Target                              |
+| ------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| 1 — Summary         | Answer in 5–10s                                 | Does not exist on any surface — Analytics/Detail/Log all start at Level 3 density immediately            | New Overview state per surface      |
+| 2 — Insight/Explore | Why/where the result came from                  | Partially exists (e.g., per-condition/per-emotion breakdowns) but mixed in with Level 3 on the same page | Becomes the "Explore" destination   |
+| 3 — Detail          | Full metrics/breakdowns/records/filters/history | This is what all three surfaces currently show, unconditionally, to everyone, immediately                | Remains available, one click deeper |
 
 ---
 
@@ -155,7 +160,7 @@ Timeframe — each nests under the appropriate zone's Explore per §9–19, §29
 **Overview role:** the two hero totals (Actual Total R, System Total R) plus one comparison
 sentence ("System appears ahead of your execution") plus the one actionable pending-System
 count. This directly replaces current Analytics sections 3–5 (Performance ×2, Comparison,
-Equity ×2) as the *first* thing shown — those sections' full metric sets move to Explore, not
+Equity ×2) as the _first_ thing shown — those sections' full metric sets move to Explore, not
 away.
 
 ---
@@ -165,7 +170,7 @@ away.
 **Question:** What seems to produce better trading opportunities?
 **Contains:** Strategy Performance, Setup Performance (incl. Setup Adherence).
 **Important audit finding:** **no current component answers "which Strategy/Setup performs
-best" today.** The existing Strategy/Setup *filters* narrow the whole page to one Strategy or
+best" today.** The existing Strategy/Setup _filters_ narrow the whole page to one Strategy or
 Setup at a time; there is no cross-Strategy or cross-Setup comparison/ranking view anywhere in
 the codebase. "Best observed Strategy" / "Best observed Setup" as specified in §5/§10 of the
 brief is **net-new composition**, not a relocation of an existing component. It needs no new
@@ -278,21 +283,21 @@ counters (no new queries needed, all these counts are either already computed or
 derivable from existing eligibility filters already used by `composeTraderAnalytics`/
 `composeSystemAnalytics`):
 
-| Domain | Readiness fact | Source |
-|---|---|---|
-| Trader | "N finalized trades" | existing `selectTraderEligible` count |
-| System | "N resolved · M pending" | existing `pendingCount`/`resolvedCount` (already computed, currently only shown on System panel) |
-| Strategy/Setup | "N classified · M unclassified" | existing `strategyId === null` filter, currently unused for this purpose |
-| Setup Checklist | "N recorded at entry · M not recorded" | existing `setupConditionState` enum, currently only shown per-Trade in Detail, not aggregated |
-| Confidence | "N recorded · M not recorded" | existing `confidence === null` filter |
-| Emotion | "N recorded · M not recorded" | existing `emotionsRecordedAt === null` filter |
+| Domain          | Readiness fact                         | Source                                                                                           |
+| --------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Trader          | "N finalized trades"                   | existing `selectTraderEligible` count                                                            |
+| System          | "N resolved · M pending"               | existing `pendingCount`/`resolvedCount` (already computed, currently only shown on System panel) |
+| Strategy/Setup  | "N classified · M unclassified"        | existing `strategyId === null` filter, currently unused for this purpose                         |
+| Setup Checklist | "N recorded at entry · M not recorded" | existing `setupConditionState` enum, currently only shown per-Trade in Detail, not aggregated    |
+| Confidence      | "N recorded · M not recorded"          | existing `confidence === null` filter                                                            |
+| Emotion         | "N recorded · M not recorded"          | existing `emotionsRecordedAt === null` filter                                                    |
 
 ---
 
 ## 21. Calibrating terminology
 
 Adopt the brief's health-app metaphor exactly: "Calibrating your System insights" / "Your
-Confidence insight is still calibrating" as product-feel copy layered *on top of* the factual
+Confidence insight is still calibrating" as product-feel copy layered _on top of_ the factual
 counts in §20, never replacing them. Must not imply AI training, statistical certainty, or
 medical validation (brief §14) — copy review checklist for 15C/15D: no occurrence of "confidence
 interval," "statistically significant," "validated," or "trained" anywhere in new copy.
@@ -331,8 +336,8 @@ a "[Complete missing data]" action once the Trade has passed the entry moment �
 already gets this right for Setup Conditions and Emotions (`not_recorded` vs `not_configured`
 distinct copy, §4 finding) and this contract simply preserves and extends that same discipline to
 Confidence, Entry Reason, and chart attachment, which currently show plain "Not set" without an
-explicit "excluded from this analysis" framing. Recommended copy: *"Not recorded at entry.
-Excluded from this analysis. [View trades]"* — the `[View trades]` action is allowed (navigates
+explicit "excluded from this analysis" framing. Recommended copy: _"Not recorded at entry.
+Excluded from this analysis. [View trades]"_ — the `[View trades]` action is allowed (navigates
 to a filtered list) but never implies the value can be truthfully backfilled.
 
 ---
@@ -422,13 +427,13 @@ recorded / ○ Optional or not recorded, not forced as literal glyphs if clearer
 Color: green = complete, blue = active/open, amber = actionable attention, neutral = optional/
 missing, red = genuine error only. Applying this to the audited current states:
 
-| Step | ✓ Complete | ! Needs attention | ◐ Partial | ○ Optional/not recorded |
-|---|---|---|---|---|
-| Actual | `status='closed'` | — | `status='open'` w/ partial exits | `status='canceled'`/`'planned'` (legacy) |
-| System | `systemStatus='resolved'` | `systemStatus='pending'` (amber, actionable) | — | `systemStatus='no_trade'` (neutral, not an error) |
-| Strategy & Setup | Strategy+Setup both assigned | — | Strategy only | neither assigned |
-| Entry Snapshot | all 4 recorded | — | some recorded | none recorded (never amber/red — entry-time data, §24) |
-| Review | rules+review present | — | some rules checked | none present |
+| Step             | ✓ Complete                   | ! Needs attention                            | ◐ Partial                        | ○ Optional/not recorded                                |
+| ---------------- | ---------------------------- | -------------------------------------------- | -------------------------------- | ------------------------------------------------------ |
+| Actual           | `status='closed'`            | —                                            | `status='open'` w/ partial exits | `status='canceled'`/`'planned'` (legacy)               |
+| System           | `systemStatus='resolved'`    | `systemStatus='pending'` (amber, actionable) | —                                | `systemStatus='no_trade'` (neutral, not an error)      |
+| Strategy & Setup | Strategy+Setup both assigned | —                                            | Strategy only                    | neither assigned                                       |
+| Entry Snapshot   | all 4 recorded               | —                                            | some recorded                    | none recorded (never amber/red — entry-time data, §24) |
+| Review           | rules+review present         | —                                            | some rules checked               | none present                                           |
 
 No cell here is ever red — the current codebase has no scenario that constitutes a genuine
 error at this level (confirmed: no data-integrity/error state surfaces at the Trade level today
@@ -456,7 +461,7 @@ Contains exactly today's **System** section content: System Resolution Kind, Sys
 Price/Gross R input, System Exited At/Reason, System Cost R, **System R**, System Outcome badge,
 System Resolved At. `ResolveSystemDialog`/`MarkSystemNoTradeDialog`/`CorrectSystemDialog` move
 here from Lifecycle Actions. **Execution Gap** gets promoted from a single buried row (§4
-finding) to a visible comparison callout on this step *when both Actual and System are final* —
+finding) to a visible comparison callout on this step _when both Actual and System are final_ —
 same underlying `executionGapR` value and same non-null-only display rule, just given the visual
 prominence CLAUDE.md §6 implies it deserves. A Trade with System pending is never described as
 "the whole Trade is pending" (brief §25) — the Overview step-status row (§30) already makes this
@@ -537,11 +542,11 @@ Trade Log = scan records, Trade Detail = work one Trade, Analytics = understand 
 Three zone identities, used only for zone headers/subtle background tint/accent border/icon/
 selected state/chart accent — never full-card saturated fills:
 
-| Zone | Family | Where applied |
-|---|---|---|
-| RESULTS | Blue | Section header accent, Trader/System icons (existing `text-trader`/`text-system` CSS vars are reused, not replaced) |
-| EDGE | Teal | Strategy/Setup Explore header accents |
-| BEHAVIOR | Violet/Plum | Confidence/Emotion header accents |
+| Zone     | Family      | Where applied                                                                                                       |
+| -------- | ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| RESULTS  | Blue        | Section header accent, Trader/System icons (existing `text-trader`/`text-system` CSS vars are reused, not replaced) |
+| EDGE     | Teal        | Strategy/Setup Explore header accents                                                                               |
+| BEHAVIOR | Violet/Plum | Confidence/Emotion header accents                                                                                   |
 
 Status colors (§31) are a separate, orthogonal system from zone colors and must not collide —
 e.g., an amber "needs attention" badge inside a Blue-zone card stays amber, not blue.
@@ -552,7 +557,7 @@ e.g., an amber "needs attention" badge inside a Blue-zone card stays amber, not 
 
 Audit finding: current Analytics/Detail copy is already fairly terse at the field level (no long
 paragraphs found in `messages/en.json`'s analytics namespace) — the density problem is
-*structural* (too many fields shown at once), not *verbal* (no field's individual label/value is
+_structural_ (too many fields shown at once), not _verbal_ (no field's individual label/value is
 overly wordy). Recommendation is therefore mostly about hiding fields behind Explore (§9–19,
 §30) rather than rewriting copy. The one exception: methodology/definition text (e.g., what
 "Execution Gap" means, what a "buckets" grouping represents) should move into a tooltip/info
@@ -602,24 +607,24 @@ are added in this phase.
 
 ## 45. Complete existing-Analytics component/metric mapping
 
-| Current component/metric | New home |
-|---|---|
-| `AnalyticsFilters` | Compact persistent filter bar (§44), same params |
-| `PerformancePanel series="trader"` (8 metrics) | Trader Performance: Total R + Win Rate → Overview hero/secondary (§12); remaining 6 → Explore |
+| Current component/metric                                        | New home                                                                                                                                                |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AnalyticsFilters`                                              | Compact persistent filter bar (§44), same params                                                                                                        |
+| `PerformancePanel series="trader"` (8 metrics)                  | Trader Performance: Total R + Win Rate → Overview hero/secondary (§12); remaining 6 → Explore                                                           |
 | `PerformancePanel series="system"` (8 metrics + pending banner) | System Performance: Total R + Win Rate → Overview (§14); remaining 6 → Explore; pending banner → Overview actionable line with specific deep link (§25) |
-| `AnalyticsComparisonPanel` (6 metrics) | Results zone Overview comparison sentence (top figure) + full panel in Trader Performance Explore (or a shared Results Explore) |
-| `EquityChart` ×2 | Trader/System Performance Explore, one chart each |
-| `SetupAdherencePanel` | Headline % → Setup Performance Overview (§17); full buckets → Setup Adherence Explore |
-| `ConditionPerformance` | Setup Adherence Explore, alongside `SetupAdherencePanel` |
-| `ConfidencePerformance` | Best-level hero → Behavior Overview (§18); full table → Confidence Explore |
-| `EmotionPerformance` | Best/worst hero → Behavior Overview (§19); full list → Emotion Explore |
-| `RuleSummary` | Trade Management, under Trader Performance Explore (§13) |
-| `MistakeFrequency` | Trade Management, under Trader Performance Explore (§13) |
-| Scope summary line | Retained as the compact filter bar's collapsed-state label |
-| — (no current equivalent) | Strategy Performance, Setup Performance "best observed" — **net-new** (§10, §15, §16) |
-| — (no current equivalent) | Symbol/Session/Direction/Timeframe breakdowns — **net-new** (§29) |
-| — (no current equivalent) | Insight sentences — **net-new** (§27) |
-| — (no current equivalent) | Trend vs. previous period (limited scope) — **net-new** (§28) |
+| `AnalyticsComparisonPanel` (6 metrics)                          | Results zone Overview comparison sentence (top figure) + full panel in Trader Performance Explore (or a shared Results Explore)                         |
+| `EquityChart` ×2                                                | Trader/System Performance Explore, one chart each                                                                                                       |
+| `SetupAdherencePanel`                                           | Headline % → Setup Performance Overview (§17); full buckets → Setup Adherence Explore                                                                   |
+| `ConditionPerformance`                                          | Setup Adherence Explore, alongside `SetupAdherencePanel`                                                                                                |
+| `ConfidencePerformance`                                         | Best-level hero → Behavior Overview (§18); full table → Confidence Explore                                                                              |
+| `EmotionPerformance`                                            | Best/worst hero → Behavior Overview (§19); full list → Emotion Explore                                                                                  |
+| `RuleSummary`                                                   | Trade Management, under Trader Performance Explore (§13)                                                                                                |
+| `MistakeFrequency`                                              | Trade Management, under Trader Performance Explore (§13)                                                                                                |
+| Scope summary line                                              | Retained as the compact filter bar's collapsed-state label                                                                                              |
+| — (no current equivalent)                                       | Strategy Performance, Setup Performance "best observed" — **net-new** (§10, §15, §16)                                                                   |
+| — (no current equivalent)                                       | Symbol/Session/Direction/Timeframe breakdowns — **net-new** (§29)                                                                                       |
+| — (no current equivalent)                                       | Insight sentences — **net-new** (§27)                                                                                                                   |
+| — (no current equivalent)                                       | Trend vs. previous period (limited scope) — **net-new** (§28)                                                                                           |
 
 No metric is deleted. Every current component has an explicit destination.
 
@@ -627,28 +632,28 @@ No metric is deleted. Every current component has an explicit destination.
 
 ## 46. Complete existing-Trade-Detail mapping
 
-| Current section/field | New home |
-|---|---|
-| Header (symbol/direction/status badges) | Trade Overview hero (§30) |
-| Lifecycle Actions — Execution group | Actual step (§32) |
-| Lifecycle Actions — System group | System step (§33) |
-| Lifecycle Actions — Corrections (Edit Plan) | Split: Plan-related fields → Strategy & Setup / Entry Snapshot steps as appropriate (Edit Plan currently edits both Plan and Entry Snapshot fields in one dialog — recommend splitting the dialog along step boundaries in 15E, or keeping one dialog reachable from both steps; flagged as an implementation decision, not resolved here) |
-| Lifecycle Actions — Corrections (Edit Identity) | Trade Overview hero (identity is cross-cutting, not step-specific) |
-| Lifecycle Actions — Delete | Trade Overview hero, kept clearly separated (destructive) |
-| Overview section (account, statuses, timestamps) | Merges into Trade Overview hero + relevant step headers |
-| Classification section | Strategy & Setup step (§34), verbatim |
-| Plan section (entry/stop/target, risk/reward, size, timeframe, session, TradingView URL, chart, notes) | Split: pricing/size/risk fields stay visible where relevant to Actual/System comparison context; timeframe/session/TradingView URL/chart/notes → Entry Snapshot step (§35) |
-| Entry Snapshot — Conditions | Entry Snapshot step, renamed Setup Checklist (§51) |
-| Entry Snapshot — Confidence | Entry Snapshot step |
-| Entry Snapshot — Emotions | Entry Snapshot step |
-| Entry Snapshot — Entry Reason | Entry Snapshot step |
-| Execution section | Actual step (§32), verbatim |
-| System section incl. Execution Gap row | System step (§33); Execution Gap promoted to a visible callout |
-| Discipline — Rules | Review step, Trade Management sub-area (§36) |
-| Discipline — Mistakes | Review step, Trade Management sub-area (§36) |
-| Discipline — Post-trade Review | Review step, kept visually distinct from Trade Management (§36) |
-| Mobile Back button | Preserved (§42) |
-| `CloseTradeDialog` (dead code, unused) | Not part of this redesign's scope; flagged for a future cleanup PR, not deleted here (out of scope for an audit-only phase) |
+| Current section/field                                                                                  | New home                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Header (symbol/direction/status badges)                                                                | Trade Overview hero (§30)                                                                                                                                                                                                                                                                                                                  |
+| Lifecycle Actions — Execution group                                                                    | Actual step (§32)                                                                                                                                                                                                                                                                                                                          |
+| Lifecycle Actions — System group                                                                       | System step (§33)                                                                                                                                                                                                                                                                                                                          |
+| Lifecycle Actions — Corrections (Edit Plan)                                                            | Split: Plan-related fields → Strategy & Setup / Entry Snapshot steps as appropriate (Edit Plan currently edits both Plan and Entry Snapshot fields in one dialog — recommend splitting the dialog along step boundaries in 15E, or keeping one dialog reachable from both steps; flagged as an implementation decision, not resolved here) |
+| Lifecycle Actions — Corrections (Edit Identity)                                                        | Trade Overview hero (identity is cross-cutting, not step-specific)                                                                                                                                                                                                                                                                         |
+| Lifecycle Actions — Delete                                                                             | Trade Overview hero, kept clearly separated (destructive)                                                                                                                                                                                                                                                                                  |
+| Overview section (account, statuses, timestamps)                                                       | Merges into Trade Overview hero + relevant step headers                                                                                                                                                                                                                                                                                    |
+| Classification section                                                                                 | Strategy & Setup step (§34), verbatim                                                                                                                                                                                                                                                                                                      |
+| Plan section (entry/stop/target, risk/reward, size, timeframe, session, TradingView URL, chart, notes) | Split: pricing/size/risk fields stay visible where relevant to Actual/System comparison context; timeframe/session/TradingView URL/chart/notes → Entry Snapshot step (§35)                                                                                                                                                                 |
+| Entry Snapshot — Conditions                                                                            | Entry Snapshot step, renamed Setup Checklist (§51)                                                                                                                                                                                                                                                                                         |
+| Entry Snapshot — Confidence                                                                            | Entry Snapshot step                                                                                                                                                                                                                                                                                                                        |
+| Entry Snapshot — Emotions                                                                              | Entry Snapshot step                                                                                                                                                                                                                                                                                                                        |
+| Entry Snapshot — Entry Reason                                                                          | Entry Snapshot step                                                                                                                                                                                                                                                                                                                        |
+| Execution section                                                                                      | Actual step (§32), verbatim                                                                                                                                                                                                                                                                                                                |
+| System section incl. Execution Gap row                                                                 | System step (§33); Execution Gap promoted to a visible callout                                                                                                                                                                                                                                                                             |
+| Discipline — Rules                                                                                     | Review step, Trade Management sub-area (§36)                                                                                                                                                                                                                                                                                               |
+| Discipline — Mistakes                                                                                  | Review step, Trade Management sub-area (§36)                                                                                                                                                                                                                                                                                               |
+| Discipline — Post-trade Review                                                                         | Review step, kept visually distinct from Trade Management (§36)                                                                                                                                                                                                                                                                            |
+| Mobile Back button                                                                                     | Preserved (§42)                                                                                                                                                                                                                                                                                                                            |
+| `CloseTradeDialog` (dead code, unused)                                                                 | Not part of this redesign's scope; flagged for a future cleanup PR, not deleted here (out of scope for an audit-only phase)                                                                                                                                                                                                                |
 
 No field disappears. Every current section has an explicit step destination.
 
@@ -656,18 +661,18 @@ No field disappears. Every current section has an explicit step destination.
 
 ## 47. Complete existing-Trade-Log mapping
 
-| Current row field/badge | New home |
-|---|---|
-| Symbol + direction + date/time | First-layer row (§37), unchanged |
-| Strategy name + archived badge | First-layer row when assigned; "[Add Strategy]" direct action when not (§26, §38) |
-| Setup name + version + archived badge | Detail-only (Strategy & Setup step) — first layer keeps Strategy only, per brief's "one thing at a time" for rows |
-| Conditions-met fraction | Detail-only (Entry Snapshot step) |
-| Account name + archived badge | Secondary row state (small, muted) — retained but visually receded |
-| Execution status badge | First-layer row, folded into the compact Actual-state line (§37) |
-| Trader R/outcome/realized-to-date/planned-R | First-layer row, compact Actual-state line |
-| System status badge + R + outcome | First-layer row, compact System-state line |
-| Row-as-link click target | Preserved, unchanged |
-| Pagination (cursor Prev/Next) | Preserved, unchanged (existing `router.back()` Prev inconsistency noted but out of scope) |
+| Current row field/badge                     | New home                                                                                                          |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Symbol + direction + date/time              | First-layer row (§37), unchanged                                                                                  |
+| Strategy name + archived badge              | First-layer row when assigned; "[Add Strategy]" direct action when not (§26, §38)                                 |
+| Setup name + version + archived badge       | Detail-only (Strategy & Setup step) — first layer keeps Strategy only, per brief's "one thing at a time" for rows |
+| Conditions-met fraction                     | Detail-only (Entry Snapshot step)                                                                                 |
+| Account name + archived badge               | Secondary row state (small, muted) — retained but visually receded                                                |
+| Execution status badge                      | First-layer row, folded into the compact Actual-state line (§37)                                                  |
+| Trader R/outcome/realized-to-date/planned-R | First-layer row, compact Actual-state line                                                                        |
+| System status badge + R + outcome           | First-layer row, compact System-state line                                                                        |
+| Row-as-link click target                    | Preserved, unchanged                                                                                              |
+| Pagination (cursor Prev/Next)               | Preserved, unchanged (existing `router.back()` Prev inconsistency noted but out of scope)                         |
 
 No field is deleted; archived badges and setup detail recede to row-expand/Detail rather than
 disappearing.
@@ -683,7 +688,7 @@ not recorded), Emotion semantics (empty array vs. never-recorded), Trader/System
 rules (Phase 13 §15), Strategy/Setup versioning, independent Actual/System date axes (Phase 14D),
 partial-close semantics (`closedBps`/`remainingBps`). No calculation-engine file
 (`src/lib/calc/**`) needs to change to implement any recommendation in this document — every
-recommendation is either a relocation of an existing computed value or a new *composition*
+recommendation is either a relocation of an existing computed value or a new _composition_
 (grouping/aggregation using existing primitives), never a new formula.
 
 ---
@@ -713,14 +718,14 @@ convenience.
 
 ## 51. Explicit deprecated/renamed customer terminology
 
-| Old customer-facing label | New customer-facing label | Scope |
-|---|---|---|
-| "Execution Rules" (section concept) | **Trade Management** | Analytics (§13) + Trade Detail Review step (§36) |
-| "Setup Conditions" | **Setup Checklist** | Trade Detail Entry Snapshot (§35) + Strategy & Setup (§34); "Setup Condition" as an individual item may become "Setup Checklist item" where natural |
-| "Setup Quality" (Analytics section label) | **Setup Performance** (with Setup Adherence nested inside) | Analytics IA (§8, §16, §17) |
-| "Psychology" (Analytics section label) | **Behavior** | Analytics IA (§8, §11) |
-| "Rule Analytics" / "Most Frequent Mistakes" (two separate labels) | **Trade Management** (one label) | Analytics (§13) |
-| "Discipline" (Trade Detail section label) | **Review** (containing Trade Management + Post-Trade Review) | Trade Detail (§36) |
+| Old customer-facing label                                         | New customer-facing label                                    | Scope                                                                                                                                               |
+| ----------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Execution Rules" (section concept)                               | **Trade Management**                                         | Analytics (§13) + Trade Detail Review step (§36)                                                                                                    |
+| "Setup Conditions"                                                | **Setup Checklist**                                          | Trade Detail Entry Snapshot (§35) + Strategy & Setup (§34); "Setup Condition" as an individual item may become "Setup Checklist item" where natural |
+| "Setup Quality" (Analytics section label)                         | **Setup Performance** (with Setup Adherence nested inside)   | Analytics IA (§8, §16, §17)                                                                                                                         |
+| "Psychology" (Analytics section label)                            | **Behavior**                                                 | Analytics IA (§8, §11)                                                                                                                              |
+| "Rule Analytics" / "Most Frequent Mistakes" (two separate labels) | **Trade Management** (one label)                             | Analytics (§13)                                                                                                                                     |
+| "Discipline" (Trade Detail section label)                         | **Review** (containing Trade Management + Post-Trade Review) | Trade Detail (§36)                                                                                                                                  |
 
 Internal/domain names (`setupConditions`, `strategy_rules`, `mistake_catalog`, DB columns,
 DAL/service function names) are **not** renamed by this audit, per this phase's explicit
@@ -770,3 +775,120 @@ convention; starting anywhere else risks each subsequent slice inventing its own
 of these shared primitives and having to be reconciled later. 15B is also the lowest-risk slice
 — it is pure design-system scaffolding with no new server logic and no domain surface area,
 making it safe to build and review quickly before committing to the larger 15C/15D/15E work.
+
+---
+
+## 54. Phase 15B — Implemented foundation (as built)
+
+Everything below is committed-ready code, not a proposal — 15C onward consumes these primitives
+rather than re-deciding them. Analytics Overview/Explore, the full Trade Detail step redesign,
+and Trade Log simplification remain unimplemented; only the shared foundation exists.
+
+**Zone tokens** (`src/app/globals.css`, inside the existing `@theme inline` block) — three new
+chrome-only aliases, deliberately reusing already-validated tokens rather than inventing new
+hex values or a new chart-series slot:
+
+| Zone     | Token                   | Aliases          | Rationale                                                                                                              |
+| -------- | ----------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Results  | `--color-zone-results`  | `var(--primary)` | Existing generic action blue; Results already contains the Trader/System dual-axis panels                              |
+| Edge     | `--color-zone-edge`     | `var(--brand)`   | Existing cyan identity accent, already used to mark a selected Strategy card                                           |
+| Behavior | `--color-zone-behavior` | `var(--chart-4)` | The one categorical chart slot never assigned to a live series — reused for chrome only, never for encoding chart data |
+
+Used only as a header accent/left rule/icon tint (`ZoneSection`, §5 below) — never a saturated
+card fill, per the brief's restraint.
+
+**Status vocabulary** (`src/lib/status/status-kind.ts`) — the eight-state `StatusKind` union
+(`complete` / `active` / `needs_attention` / `partial` / `not_recorded` /
+`not_recorded_at_entry` / `not_configured` / `error`), each mapped to exactly one `Badge`
+variant and one distinct icon so status is never colour-only:
+
+| Kind                    | Colour                          | Icon            |
+| ----------------------- | ------------------------------- | --------------- |
+| `complete`              | green (`positive`)              | `CheckCircle2`  |
+| `active`                | blue (new `info` Badge variant) | `CircleDot`     |
+| `needs_attention`       | amber (`warning`)               | `AlertCircle`   |
+| `partial`               | neutral                         | `CircleDashed`  |
+| `not_recorded`          | neutral                         | `Circle`        |
+| `not_recorded_at_entry` | neutral                         | `History`       |
+| `not_configured`        | neutral                         | `MinusCircle`   |
+| `error`                 | red (`negative`)                | `AlertTriangle` |
+
+`Badge` (`src/components/ui/badge.tsx`) gained exactly one new variant, `info` (blue, the
+existing `--info` token — previously declared but unused in the app), for the `active` state;
+no other Badge variant changed. `StatusBadge` (`src/components/status/status-badge.tsx`) is the
+one render surface for this vocabulary, with an optional `label` override for a more specific
+reading (e.g. "Open" instead of the generic "Active") that never changes the underlying colour.
+
+**Deep-link contract** (`src/lib/trades/section.ts`) — `TRADE_DETAIL_SECTIONS = ['actual',
+'system', 'strategy', 'entry', 'review']`, a `TradeDetailSectionSchema` Zod enum,
+`parseTradeDetailSection` (invalid/absent → `null`, never throws), and `TRADE_SECTION_DOM_ID`
+mapping each section onto trade-detail.tsx's **existing** `Section` ids (`trade-execution`,
+`trade-system`, `trade-classification`, `trade-entry-snapshot`, `trade-discipline`) — proving the
+contract against today's flat layout without restructuring it. The URL shape is
+`/app/trades?trade=<id>&section=<key>`, purely additive to the existing `?trade=`/`?month=`/
+`?date=`/`?cursor=` params. `section` is read **only** client-side (`useSearchParams` inside
+`TradeSectionNav`) — it never reaches the server, so it carries zero authorization surface;
+`trade` continues to go through the existing `TradeIdSchema` + `getWorkspaceTradeDetail`
+authorization path, completely unchanged.
+
+**Section-status derivation** (`deriveTradeSectionStatuses` in the same file) — a pure
+presence/count function over fields the DAL already returns (no new calculation, no new
+persisted field, no numeric completeness score): Actual derives from `status`, System from
+`systemStatus`, Strategy & Setup from `strategyId`/`setupId` presence, Entry Snapshot from a
+4-signal count (Setup Checklist/Confidence/Emotions/Entry Reason — `not_configured` counts as
+addressed, not missing, matching the Entry Snapshot's existing truthful-state convention), and
+Review from Rules-addressed + Review-notes-present (an empty Rule snapshot is excluded from the
+denominator entirely rather than vacuously "passing", so a Trade with no Rules and no Review
+notes correctly reads `not_recorded`, never a misleading `partial`).
+
+**Trade section navigation** (`src/components/trades/trade-section-nav.tsx`) — `TradeSectionNav`,
+wired into `trade-detail.tsx` directly below the header (above the Lifecycle Actions card). One
+component, CSS-responsive (stacked list on mobile, row of pills on desktop — the same
+responsive-split pattern already used by `trade-list.tsx`'s table/card views), not two. On
+mount/URL change it resolves `?section=`, and for a valid value scrolls the matching existing
+Section heading into view (`prefers-reduced-motion`-aware: `smooth` vs `auto`) and moves
+assistive-tech focus there (`tabindex="-1"` + `.focus()`), never just the sighted viewport. An
+unrecognized section value is a no-op — no scroll, no crash. No section is ever disabled; this
+is deliberately not a wizard.
+
+**Summary/Insight/Readiness primitives** (`src/components/product/summary-primitives.tsx`) —
+`HeroMetric` (one hero value + receding supporting line + sample + at most one action),
+`InsightNote` (an observation with mandatory sample disclosure; `sample: null` renders "No
+strong pattern yet." instead of a fabricated pattern), `DataReadinessLine` (a factual coverage
+sentence + optional action — no percentage, no threshold). None are wired into a real page yet
+(Analytics Overview is 15C's job) — they exist as tested, reusable shapes.
+
+**Actionable vs. entry-time missing data** (`src/components/product/actionable-notice.tsx`) —
+`ActionableNotice` (fact + a specific filtered deep link, never a bare list link, coloured
+`needs_attention`/amber, never `error`) and `EntryTimeNotice` (truthful "not recorded at entry"
+copy with only an optional `View` link — structurally has no "complete now"-style CTA slot at
+all, so this distinction can't be violated by a future call site passing the wrong props).
+
+**Zone section heading** (`src/components/product/zone-section.tsx`) — `ZoneSection`, a thin
+reuse of the existing `SectionHeader` (`components/product/page-header.tsx`) adding a zone
+accent (coloured left rule, icon, optional light tint) — not a parallel heading component.
+
+**Terminology** — customer-facing only, no domain/DB identifier renamed:
+
+| Surface                             | Old                                                        | New                                                                                                                                                               |
+| ----------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trade Detail Entry Snapshot heading | "Setup Conditions"                                         | "Setup Checklist"                                                                                                                                                 |
+| New Trade form section heading      | "Setup Conditions"                                         | "Setup Checklist"                                                                                                                                                 |
+| Trade Detail Discipline sub-heading | "Execution Rules" (own heading) + "Mistakes" (own heading) | One "Trade Management" heading containing "Rules followed" and "Common mistakes" as inline labels; Post-Trade Review stays its own sibling sub-section, untouched |
+
+New EN/TH namespaces added: top-level `status` (the 8-state vocabulary) and `zones` (Results/
+Edge/Behavior labels — prepared for 15C, not yet rendered anywhere) plus `trades.detail.nav`
+(the 5 short section-nav labels) and `trades.tradeManagement` (the new grouping's strings). Thai
+wording was chosen for natural reading over literal translation — e.g. "Setup Checklist" as the
+idiomatic transliteration "เช็กลิสต์เซ็ตอัพ" rather than a literal "list of conditions", and "Edge"
+as "ความได้เปรียบ" (advantage) rather than a literal "edge".
+
+**Explicitly not done in 15B** (reserved for later slices): Analytics is untouched — no zone is
+rendered anywhere yet, `ZoneSection`/`HeroMetric`/`InsightNote`/`DataReadinessLine`/
+`ActionableNotice` have zero production call sites outside their own tests. Trade Detail's
+layout is unchanged beyond the new nav strip and the Rules/Mistakes heading consolidation — no
+section is hidden, no wizard exists, Execution Gap has not been promoted to its own callout.
+Trade Log is untouched. No `?systemStatus=`/`?strategy=unassigned` filter exists yet on
+`/app/trades` — `ActionableNotice`/`EntryTimeNotice` are tested in isolation only, not wired to
+a real pending-System or unclassified-Trades workflow. No migration was created; migrations
+remain exactly `0000`–`0016`, confirmed by `drizzle-kit check`.

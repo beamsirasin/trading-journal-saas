@@ -73,6 +73,30 @@
   --color-system: var(--chart-1);
   --color-trader: var(--chart-2);
 
+  /*
+   * Zone identity — Phase 15B. Results / Edge / Behavior are the three
+   * top-level Analytics groupings (docs/phases/PHASE-15-ux-simplification.md
+   * §8-11); each needs a restrained accent for a section header, an icon, a
+   * subtle border/tint, and a selected state — never a saturated card fill.
+   *
+   * These are chrome aliases onto ALREADY-VALIDATED tokens, deliberately not
+   * new hex values and deliberately not new chart-series slots: `results`
+   * reuses `primary` (the existing generic action blue), `edge` reuses
+   * `brand` (the existing cyan identity accent — Edge includes Strategy
+   * Performance, where `brand` already marks a selected Strategy card), and
+   * `behavior` reuses `chart-4` (violet), the one categorical chart slot the
+   * product has never assigned to a live series (§9's "a fifth series folds
+   * into Other" reservation). Reusing chart-4's hue here is for structural
+   * UI chrome only — it must never be repurposed to encode actual chart data
+   * (see the Charts section rule that series colours are computed/validated,
+   * never chosen elsewhere in the app); should a genuine fourth data series
+   * ever be needed, revisit this alias rather than silently double-booking
+   * the hue's meaning.
+   */
+  --color-zone-results: var(--primary);
+  --color-zone-edge: var(--brand);
+  --color-zone-behavior: var(--chart-4);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

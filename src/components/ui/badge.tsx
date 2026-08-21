@@ -9,6 +9,8 @@ const variantClasses = {
   positive: 'bg-positive/10 text-positive border-positive/25',
   negative: 'bg-negative/10 text-negative border-negative/25',
   warning: 'bg-warning/10 text-warning border-warning/25',
+  /** Blue — "active/in-progress" (Phase 15B status vocabulary), distinct from `brand`'s cyan identity accent. */
+  info: 'bg-info/10 text-info border-info/25',
 } as const;
 
 export type BadgeVariant = keyof typeof variantClasses;

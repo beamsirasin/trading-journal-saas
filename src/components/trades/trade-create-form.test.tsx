@@ -158,7 +158,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByLabelText('Trading Account')).toBeVisible();
     expect(screen.getByLabelText('Strategy')).toBeVisible();
     expect(screen.getByLabelText('Symbol')).toBeVisible();
-    expect(screen.getByText('Setup Conditions')).toBeVisible();
+    expect(screen.getByText('Setup Checklist')).toBeVisible();
     expect(screen.getAllByText('Confidence').length).toBeGreaterThan(0);
     expect(screen.getByText('How are you feeling?')).toBeVisible();
     expect(screen.getAllByText('Entry Reason').length).toBeGreaterThan(0);

@@ -2,6 +2,7 @@ import { ArrowLeft, ExternalLink, ImageIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { confidenceLevelKey } from '@/lib/trades/constants';
+import { deriveTradeSectionStatuses } from '@/lib/trades/section';
 import type {
   TradeCreateStrategyOption,
   TradeDetail as TradeDetailModel,
@@ -19,6 +20,7 @@ import {
   TradeEmotionsEditor,
   TradeReviewNotesEditor,
 } from '@/components/trades/trade-reflection-editor';
+import { TradeSectionNav } from '@/components/trades/trade-section-nav';
 import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -253,6 +255,8 @@ export function TradeDetail({
           <SystemStatusBadge status={trade.systemStatus} />
         </div>
       </header>
+
+      <TradeSectionNav tradeId={trade.tradeId} statuses={deriveTradeSectionStatuses(trade)} />
 
       {canWrite ? <TradeLifecycleActions trade={trade} timezone={timezone} /> : null}
 
@@ -582,21 +586,36 @@ export function TradeDetail({
 
       <Section id="trade-discipline" title={t('detail.sections.discipline')}>
         <div className="grid gap-6">
-          <SubSection title={t('detail.sections.rules')}>
-            <TradeRulesEditor
-              tradeId={trade.tradeId}
-              rules={trade.ruleChecks}
-              canWrite={canWrite}
-            />
-          </SubSection>
-
-          <SubSection title={t('detail.sections.mistakes')}>
-            <TradeMistakesEditor
-              tradeId={trade.tradeId}
-              mistakes={trade.mistakes}
-              catalog={trade.mistakeCatalog}
-              canWrite={canWrite}
-            />
+          {/* Phase 15B — the customer-facing "Trade Management" grouping
+              (Phase 15A §13/§36): Rules-followed and Mistakes are one
+              concept (post-entry execution quality), so they share one
+              heading now instead of two. Setup Checklist stays out of this
+              group entirely (§16 — the two remain analytically distinct);
+              Review Notes stays its own sibling SubSection, unchanged. */}
+          <SubSection title={t('tradeManagement.title')}>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <h5 className="text-muted-foreground text-sm font-semibold">
+                  {t('tradeManagement.rulesFollowed')}
+                </h5>
+                <TradeRulesEditor
+                  tradeId={trade.tradeId}
+                  rules={trade.ruleChecks}
+                  canWrite={canWrite}
+                />
+              </div>
+              <div className="grid gap-2">
+                <h5 className="text-muted-foreground text-sm font-semibold">
+                  {t('tradeManagement.commonMistakes')}
+                </h5>
+                <TradeMistakesEditor
+                  tradeId={trade.tradeId}
+                  mistakes={trade.mistakes}
+                  catalog={trade.mistakeCatalog}
+                  canWrite={canWrite}
+                />
+              </div>
+            </div>
           </SubSection>
 
           <SubSection title={t('lifecycle.reflection.reviewNotes')}>
