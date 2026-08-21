@@ -65,7 +65,7 @@ export function BehaviorZone({
             <HeroMetric
               label={t('overview.behavior.strongestConfidence')}
               value={t('confidence.levelLabel', { level: strongestConfidence.level })}
-              supporting={`${formatAvgR(strongestConfidence.averageR)} ${t('overview.behavior.avgSuffix')}`}
+              supporting={`${formatAvgR(strongestConfidence.averageR)} ${t('overview.avgSuffix')}`}
               sample={t('axis.tradeCount', { count: strongestConfidence.tradeCount })}
             />
           )}
@@ -79,7 +79,7 @@ export function BehaviorZone({
               <HeroMetric
                 label={t('overview.behavior.strongestEmotion')}
                 value={emotionLabel(strongestEmotion.key, strongestEmotion.label)}
-                supporting={`${formatAvgR(strongestEmotion.averageR)} ${t('overview.behavior.avgSuffix')}`}
+                supporting={`${formatAvgR(strongestEmotion.averageR)} ${t('overview.avgSuffix')}`}
                 sample={t('axis.tradeCount', { count: strongestEmotion.tradeCount })}
               />
               {emotionConcern === null ? null : (
@@ -87,7 +87,7 @@ export function BehaviorZone({
                   className="border-border border-t pt-4"
                   label={t('overview.behavior.emotionConcern')}
                   value={emotionLabel(emotionConcern.key, emotionConcern.label)}
-                  supporting={`${formatAvgR(emotionConcern.averageR)} ${t('overview.behavior.avgSuffix')}`}
+                  supporting={`${formatAvgR(emotionConcern.averageR)} ${t('overview.avgSuffix')}`}
                   sample={t('axis.tradeCount', { count: emotionConcern.tradeCount })}
                 />
               )}

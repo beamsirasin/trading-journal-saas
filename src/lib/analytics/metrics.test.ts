@@ -7,11 +7,14 @@ import {
   composeComparisonAnalytics,
   composeConditionAnalytics,
   composeConfidenceAnalytics,
+  composeContextBreakdown,
   composeDashboardOverview,
   composeEmotionAnalytics,
   composeMistakeAnalytics,
   composeRuleAnalytics,
   composeSetupAdherenceAnalytics,
+  composeSetupPerformance,
+  composeStrategyPerformance,
   composeSystemAnalytics,
   composeTraderAnalytics,
   toAnalyticsMetric,
@@ -19,7 +22,9 @@ import {
   type ComparisonMetricRecord,
   type ConditionMetricRecord,
   type ConfidenceMetricRecord,
+  type ContextMetricRecord,
   type EmotionMetricRecord,
+  type FrameworkMetricRecord,
   type MistakeMetricRecord,
   type SetupAdherenceMetricRecord,
   type SystemMetricRecord,
@@ -362,6 +367,12 @@ describe('failure mapping and full projections', () => {
       confidenceSystem: [],
       emotions: [],
       emotionsSystem: [],
+      frameworkTrader: [],
+      frameworkSystem: [],
+      contextSymbol: [],
+      contextDirection: [],
+      contextSession: [],
+      contextTimeframe: [],
     });
     expect(snapshot.trader.winRate).toEqual({ status: 'available', value: '0.0000' });
     expect(snapshot.system.winRate).toEqual({ status: 'available', value: '1.0000' });
@@ -386,6 +397,12 @@ describe('failure mapping and full projections', () => {
       confidenceSystem: [],
       emotions: [],
       emotionsSystem: [],
+      frameworkTrader: [],
+      frameworkSystem: [],
+      contextSymbol: [],
+      contextDirection: [],
+      contextSession: [],
+      contextTimeframe: [],
     });
     const overview = composeDashboardOverview(snapshot);
     expect(overview.trader.totalR).toBe(snapshot.trader.totalR);
@@ -736,5 +753,192 @@ describe('Phase 13H — Emotion composition (independent Trader/System)', () => 
       [emotion('t3', 'fomo', 'FOMO', '-2.0000', 'loss')],
     );
     expect(result.map((g) => g.key)).toEqual(['fomo', 'calm']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 15D — Strategy / Setup Performance, Context breakdowns
+// ---------------------------------------------------------------------------
+
+function framework(
+  tradeId: string,
+  strategyId: string | null,
+  setupId: string | null,
+  r: string,
+  outcome: 'win' | 'loss' | 'break_even',
+): FrameworkMetricRecord {
+  return { tradeId, strategyId, setupId, r, outcome };
+}
+
+describe('composeStrategyPerformance', () => {
+  it('excludes unclassified Trades from grouping but discloses them as coverage, never an "Unknown Strategy" bucket', () => {
+    const result = composeStrategyPerformance(
+      [
+        framework('t1', 'strategy-a', 'setup-a', '1.0000', 'win'),
+        framework('t2', null, null, '2.0000', 'win'),
+      ],
+      [],
+    );
+    expect(result.strategies).toHaveLength(1);
+    expect(result.strategies[0]?.strategyId).toBe('strategy-a');
+    expect(result.classifiedTraderCount).toBe(1);
+    expect(result.unclassifiedTraderCount).toBe(1);
+    expect(result.strategies.some((s) => s.strategyId === 'unknown')).toBe(false);
+  });
+
+  it('preserves independent Trader and System populations — a Strategy present only on one axis is not fabricated on the other', () => {
+    const result = composeStrategyPerformance(
+      [framework('t1', 'strategy-a', null, '1.0000', 'win')],
+      [framework('t2', 'strategy-b', null, '3.0000', 'win')],
+    );
+    const a = result.strategies.find((s) => s.strategyId === 'strategy-a');
+    const b = result.strategies.find((s) => s.strategyId === 'strategy-b');
+    expect(a?.trader.tradeCount).toBe(1);
+    expect(a?.system.tradeCount).toBe(0);
+    expect(b?.trader.tradeCount).toBe(0);
+    expect(b?.system.tradeCount).toBe(1);
+  });
+
+  it('ranks by Trader average R descending — the "Best observed" measure, not raw Total R', () => {
+    const result = composeStrategyPerformance(
+      [
+        // strategy-many: 3 Trades averaging +1.0R (lower avg, higher total)
+        framework('t1', 'strategy-many', null, '2.0000', 'win'),
+        framework('t2', 'strategy-many', null, '2.0000', 'win'),
+        framework('t3', 'strategy-many', null, '-1.0000', 'loss'),
+        // strategy-few: 1 Trade at +1.5R (higher avg, lower total)
+        framework('t4', 'strategy-few', null, '1.5000', 'win'),
+      ],
+      [],
+    );
+    expect(result.strategies.map((s) => s.strategyId)).toEqual(['strategy-few', 'strategy-many']);
+  });
+
+  it('breaks a tied average R by higher Trader Trade count', () => {
+    const result = composeStrategyPerformance(
+      [
+        framework('t1', 'strategy-a', null, '1.0000', 'win'),
+        framework('t2', 'strategy-b', null, '1.0000', 'win'),
+        framework('t3', 'strategy-b', null, '1.0000', 'win'),
+      ],
+      [],
+    );
+    expect(result.strategies.map((s) => s.strategyId)).toEqual(['strategy-b', 'strategy-a']);
+  });
+
+  it('breaks a fully tied average R and Trade count deterministically by id, never DB row order', () => {
+    const result = composeStrategyPerformance(
+      [
+        framework('t1', 'strategy-z', null, '1.0000', 'win'),
+        framework('t2', 'strategy-a', null, '1.0000', 'win'),
+      ],
+      [],
+    );
+    expect(result.strategies.map((s) => s.strategyId)).toEqual(['strategy-a', 'strategy-z']);
+  });
+
+  it('returns an empty ranking with zero coverage for no data', () => {
+    const result = composeStrategyPerformance([], []);
+    expect(result).toEqual({
+      strategies: [],
+      classifiedTraderCount: 0,
+      unclassifiedTraderCount: 0,
+      classifiedSystemCount: 0,
+      unclassifiedSystemCount: 0,
+    });
+  });
+
+  it('handles a single classified Strategy without error', () => {
+    const result = composeStrategyPerformance(
+      [framework('t1', 'strategy-a', null, '1.0000', 'win')],
+      [],
+    );
+    expect(result.strategies).toHaveLength(1);
+  });
+});
+
+describe('composeSetupPerformance', () => {
+  it('resolves the owning Strategy id for each Setup from whichever axis first supplies it', () => {
+    const result = composeSetupPerformance(
+      [framework('t1', 'strategy-a', 'setup-a', '1.0000', 'win')],
+      [],
+    );
+    expect(result.setups[0]).toMatchObject({ setupId: 'setup-a', strategyId: 'strategy-a' });
+  });
+
+  it('excludes Trades without a Setup from grouping but discloses coverage', () => {
+    const result = composeSetupPerformance(
+      [
+        framework('t1', 'strategy-a', 'setup-a', '1.0000', 'win'),
+        framework('t2', 'strategy-a', null, '2.0000', 'win'),
+      ],
+      [],
+    );
+    expect(result.setups).toHaveLength(1);
+    expect(result.classifiedTraderCount).toBe(1);
+    expect(result.unclassifiedTraderCount).toBe(1);
+  });
+
+  it('ranks by Trader average R descending, same discipline as Strategy ranking', () => {
+    const result = composeSetupPerformance(
+      [
+        framework('t1', 'strategy-a', 'setup-low', '0.5000', 'win'),
+        framework('t2', 'strategy-a', 'setup-high', '2.0000', 'win'),
+      ],
+      [],
+    );
+    expect(result.setups.map((s) => s.setupId)).toEqual(['setup-high', 'setup-low']);
+  });
+});
+
+describe('composeContextBreakdown', () => {
+  function contextRecord(
+    tradeId: string,
+    value: string | null,
+    r: string,
+    outcome: 'win' | 'loss' | 'break_even',
+  ): ContextMetricRecord {
+    return { tradeId, value, r, outcome };
+  }
+
+  it('groups by value and separately discloses recorded vs missing coverage', () => {
+    const result = composeContextBreakdown([
+      contextRecord('t1', 'XAUUSD', '1.0000', 'win'),
+      contextRecord('t2', 'XAUUSD', '1.0000', 'win'),
+      contextRecord('t3', null, '0.0000', 'break_even'),
+    ]);
+    expect(result.recordedCount).toBe(2);
+    expect(result.missingCount).toBe(1);
+    expect(result.groups).toEqual([
+      {
+        value: 'XAUUSD',
+        trader: {
+          tradeCount: 2,
+          averageR: { status: 'available', value: '1.0000' },
+          winRate: { status: 'available', value: '1.0000' },
+        },
+      },
+    ]);
+  });
+
+  it('never creates a group for a missing value', () => {
+    const result = composeContextBreakdown([contextRecord('t1', null, '1.0000', 'win')]);
+    expect(result.groups).toEqual([]);
+    expect(result.missingCount).toBe(1);
+  });
+
+  it('sorts groups by Trade count descending, then value ascending — coverage-first, not a performance ranking', () => {
+    const result = composeContextBreakdown([
+      contextRecord('t1', 'BTCUSD', '1.0000', 'win'),
+      contextRecord('t2', 'XAUUSD', '5.0000', 'win'),
+      contextRecord('t3', 'XAUUSD', '5.0000', 'win'),
+      contextRecord('t4', 'EURUSD', '1.0000', 'win'),
+      contextRecord('t5', 'EURUSD', '1.0000', 'win'),
+    ]);
+    expect(result.groups.map((g) => g.value)).toEqual(['EURUSD', 'XAUUSD', 'BTCUSD']);
+  });
+
+  it('returns no groups and zero coverage for an empty population', () => {
+    expect(composeContextBreakdown([])).toEqual({ groups: [], recordedCount: 0, missingCount: 0 });
   });
 });

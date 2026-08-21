@@ -1017,5 +1017,61 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(filtered.data.trader.sampleCount).toBe(1);
     expect(filtered.data.system.sampleCount).toBe(1);
     expect(filtered.data.comparison.comparableCount).toBe(1);
+
+    // Phase 15D: the same three unclassified Trades are excluded from the
+    // Strategy/Setup breakdown itself (never an "Unknown Strategy" bucket)
+    // while still counted in its coverage disclosure — global Trader
+    // eligibility (asserted above) is completely unaffected.
+    expect(global.data.strategyPerformance.strategies).toHaveLength(1);
+    expect(global.data.strategyPerformance.strategies[0]?.strategyId).toBe(framework.strategyId);
+    expect(global.data.strategyPerformance.strategies[0]?.trader.tradeCount).toBe(1);
+    expect(global.data.strategyPerformance.classifiedTraderCount).toBe(1);
+    expect(global.data.strategyPerformance.unclassifiedTraderCount).toBe(2);
+    expect(global.data.strategyPerformance.classifiedSystemCount).toBe(1);
+    expect(global.data.strategyPerformance.unclassifiedSystemCount).toBe(2);
+    expect(global.data.setupPerformance.setups).toHaveLength(1);
+    expect(global.data.setupPerformance.setups[0]?.setupId).toBe(framework.setupId);
+    expect(global.data.setupPerformance.setups[0]?.strategyId).toBe(framework.strategyId);
+  });
+
+  it('Phase 15D: Trader context breakdowns (Symbol/Direction/Session/Timeframe) group only the Trader-eligible population', async () => {
+    const userId = await createUser('phase15d-context');
+    const workspaceId = await createWorkspace(userId, 'phase15d-context');
+    const accountId = await createAccount(workspaceId, 'Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+
+    await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      actualR: '1.0000',
+      traderOutcome: 'win',
+      exitedAt: new Date('2026-08-01T10:00:00Z'),
+    });
+    // A still-open (NOT Trader-eligible) Trade must never contribute to a
+    // Trader-side Context breakdown, even though it shares the same Symbol.
+    await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      status: 'open',
+      systemR: '2.0000',
+      systemOutcome: 'win',
+      systemExitedAt: new Date('2026-08-01T11:00:00Z'),
+    });
+
+    currentSession = sessionFor(userId);
+    const result = await getAnalyticsSnapshot(
+      { datePreset: 'all', tradingAccountId: accountId },
+      READ_OPTIONS,
+    );
+    if (!result.ok) throw new Error(result.code);
+    expect(result.data.contextSymbol.recordedCount).toBe(1);
+    expect(result.data.contextSymbol.groups[0]?.value).toBe('EURUSD');
+    expect(result.data.contextDirection.groups[0]?.value).toBe('long');
+    // Session/Timeframe were never set on this fixture Trade.
+    expect(result.data.contextSession.missingCount).toBe(1);
+    expect(result.data.contextTimeframe.missingCount).toBe(1);
   });
 });

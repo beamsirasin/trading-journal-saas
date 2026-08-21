@@ -5,6 +5,10 @@ import type {
   ConfidenceAnalyticsModel,
   ConfidenceLevelModel,
   EmotionGroupModel,
+  FrameworkPerformanceAnalyticsModel,
+  SetupPerformanceAnalyticsModel,
+  SetupPerformanceModel,
+  StrategyPerformanceModel,
 } from './metrics';
 
 /**
@@ -114,6 +118,27 @@ export function selectEmotionConcern(
         : '0',
     tradeCount: worst.emotion.trader.tradeCount,
   };
+}
+
+/**
+ * "Best observed" — never "Best" alone (brief §8/§12): `composeStrategyPerformance`/
+ * `composeSetupPerformance` already sort by Trader average R descending, so
+ * the first entry IS the best-observed one; this only guards the "no Trader
+ * data at all" case (a System-only top entry, or an entirely empty list),
+ * where there is nothing truthful to call "best observed".
+ */
+export function selectBestObservedStrategy(
+  performance: FrameworkPerformanceAnalyticsModel,
+): StrategyPerformanceModel | null {
+  const top = performance.strategies[0];
+  return top !== undefined && top.trader.tradeCount > 0 ? top : null;
+}
+
+export function selectBestObservedSetup(
+  performance: SetupPerformanceAnalyticsModel,
+): SetupPerformanceModel | null {
+  const top = performance.setups[0];
+  return top !== undefined && top.trader.tradeCount > 0 ? top : null;
 }
 
 export type ExecutionGapTone = 'behind' | 'ahead' | 'even';

@@ -16,11 +16,16 @@ import { RealAnalyticsPage } from './analytics-page';
 
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ replace: vi.fn() }),
+  usePathname: () => '/app/analytics',
   Link: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
       {children}
     </a>
   ),
+}));
+
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const available = (value: string): AnalyticsMetric => ({ status: 'available', value });
@@ -151,6 +156,59 @@ function snapshot(overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnapshot
         system: dimAxis(3, '4.0000', '1.0000'),
       },
     ],
+    strategyPerformance: {
+      strategies: [
+        {
+          strategyId: 'strategy-a',
+          trader: dimAxis(24, '1.4800', '0.6250'),
+          system: dimAxis(20, '2.1000', '0.7000'),
+        },
+      ],
+      classifiedTraderCount: 24,
+      unclassifiedTraderCount: 3,
+      classifiedSystemCount: 20,
+      unclassifiedSystemCount: 2,
+    },
+    setupPerformance: {
+      setups: [
+        {
+          setupId: 'setup-a',
+          strategyId: 'strategy-a',
+          trader: dimAxis(18, '1.9200', '0.6700'),
+          system: dimAxis(15, '2.4000', '0.7300'),
+        },
+      ],
+      classifiedTraderCount: 18,
+      unclassifiedTraderCount: 9,
+      classifiedSystemCount: 15,
+      unclassifiedSystemCount: 7,
+    },
+    contextSymbol: {
+      groups: [
+        { value: 'XAUUSD', trader: dimAxis(58, '1.2000', '0.6000') },
+        { value: 'BTCUSD', trader: dimAxis(21, '0.4000', '0.5000') },
+      ],
+      recordedCount: 79,
+      missingCount: 0,
+    },
+    contextDirection: {
+      groups: [
+        { value: 'long', trader: dimAxis(50, '1.1000', '0.6000') },
+        { value: 'short', trader: dimAxis(29, '0.3000', '0.4500') },
+      ],
+      recordedCount: 79,
+      missingCount: 0,
+    },
+    contextSession: {
+      groups: [{ value: 'London', trader: dimAxis(40, '1.0000', '0.6000') }],
+      recordedCount: 40,
+      missingCount: 39,
+    },
+    contextTimeframe: {
+      groups: [{ value: 'H1', trader: dimAxis(60, '0.9000', '0.5800') }],
+      recordedCount: 60,
+      missingCount: 19,
+    },
     ...overrides,
   };
 }
@@ -199,23 +257,23 @@ describe('RealAnalyticsPage', () => {
     const resultsIndex = headingOrder.indexOf('Results');
     const edgeIndex = headingOrder.indexOf('Edge');
     const behaviorIndex = headingOrder.indexOf('Behavior');
-    const performanceIndex = headingOrder.indexOf('System and Trader Performance');
+    const resultsExploreIndex = headingOrder.indexOf('Results Explore');
     expect(resultsIndex).toBeGreaterThanOrEqual(0);
     expect(edgeIndex).toBeGreaterThan(resultsIndex);
     expect(behaviorIndex).toBeGreaterThan(edgeIndex);
-    expect(performanceIndex).toBeGreaterThan(behaviorIndex);
+    expect(resultsExploreIndex).toBeGreaterThan(behaviorIndex);
   });
 
-  it('Overview does not delete any existing detailed section — every one remains reachable below it', () => {
+  it('Overview does not delete any existing detailed section — every one remains reachable below it, reorganized into Explore per Phase 15D', () => {
     renderPage();
     for (const title of [
-      'System and Trader Performance',
+      'Results Explore',
+      'Trader Performance',
+      'System Performance',
       'System vs Trader Comparison',
-      'Independent Equity Curves',
-      'Setup Quality',
-      'Psychology',
-      'Rule Analytics',
-      'Most Frequent Mistakes',
+      'Edge Explore',
+      'Behavior Explore',
+      'Trade Management',
     ]) {
       expect(screen.getByText(title)).toBeVisible();
     }
@@ -269,16 +327,15 @@ describe('RealAnalyticsPage', () => {
     expect(screen.queryByText(/Edge Leakage.*curve|line gap/i)).not.toBeInTheDocument();
   });
 
-  it('shows Rule statuses distinctly and count-only canonical Mistake ranking', () => {
+  it('shows Rule statuses distinctly and count-only canonical Mistake ranking, both consolidated under Trade Management', () => {
     renderPage();
-    const rules = screen.getByText('Rule Analytics').closest('section') as HTMLElement;
-    expect(within(rules).getByText('75.00%')).toBeVisible();
-    expect(within(rules).getByText('Not Checked')).toBeVisible();
-    expect(within(rules).getByText('Not Applicable')).toBeVisible();
-    const mistakes = screen.getByText('Most Frequent Mistakes').closest('section') as HTMLElement;
-    expect(within(mistakes).getByText('Chased entry')).toBeVisible();
-    expect(within(mistakes).getByText('3 Trades')).toBeVisible();
-    expect(within(mistakes).getByText('Moved stop')).toBeVisible();
+    const tradeManagement = screen.getByText('Trade Management').closest('section') as HTMLElement;
+    expect(within(tradeManagement).getByText('75.00%')).toBeVisible();
+    expect(within(tradeManagement).getByText('Not Checked')).toBeVisible();
+    expect(within(tradeManagement).getByText('Not Applicable')).toBeVisible();
+    expect(within(tradeManagement).getByText('Chased entry')).toBeVisible();
+    expect(within(tradeManagement).getByText('3 Trades')).toBeVisible();
+    expect(within(tradeManagement).getByText('Moved stop')).toBeVisible();
     expect(
       screen.queryByText(/Discipline Score|Costliest|Lost R|Mistake Cost/i),
     ).not.toBeInTheDocument();

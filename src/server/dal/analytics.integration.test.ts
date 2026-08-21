@@ -583,6 +583,17 @@ describe('analytics DAL (real PostgreSQL)', () => {
     );
   });
 
+  it('Phase 15D: Trader rows also carry Symbol/Direction/Session/Timeframe from the same already-eligible query, Session/Timeframe null when never set', async () => {
+    const fixture = await createFixture();
+    const result = await getTraderAnalyticsRecords({}, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    const paired = result.data.find((row) => row.tradeId === fixture.pairedTradeId);
+    expect(paired?.symbol).toBe('EURUSD');
+    expect(paired?.direction).toBe('long');
+    expect(paired?.session).toBeNull();
+    expect(paired?.timeframe).toBeNull();
+  });
+
   it('selects resolved System rows independently of execution status and applies System time', async () => {
     const fixture = await createFixture();
     const result = await getSystemAnalyticsRecords({}, READ_OPTIONS);

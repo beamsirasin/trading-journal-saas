@@ -1,15 +1,16 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
-> **Status:** 15A (audit + contract) and 15B (UX design primitives, status semantics, deep-action
-> navigation foundation) are complete and committed — see §54 for 15B's as-built decisions. 15C
-> (Analytics Overview simplification) is implemented — see §55 below. Analytics Explore, the
-> Strategy/Setup ranking composition, Symbol/Session/Direction/Timeframe breakdowns, the full
-> Trade Detail step redesign, and Trade Log simplification are **not** implemented — 15D–15G
-> remain proposed, not started.
+> **Status:** 15A (audit + contract), 15B (UX design primitives, status semantics, deep-action
+> navigation foundation), and 15C (Analytics Overview simplification) are complete and
+> committed — see §54/§55 for their as-built decisions. 15D (Analytics Explore, Strategy/Setup
+> Edge composition, Context breakdowns) is implemented — see §56 below. The full Trade Detail
+> step redesign and Trade Log simplification are **not** implemented — 15E–15G remain proposed,
+> not started.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-21 (Phase 15C — Analytics Overview simplification).
+> **Last updated:** 2026-08-21 (Phase 15D — Analytics Explore, Strategy/Setup Edge & Context
+> breakdowns).
 
 ---
 
@@ -995,3 +996,108 @@ under-informative before the Founder has used it manually; (2) whether the Emoti
 concern" framing reads as intended or as unintentionally alarming; (3) whether omitting
 "Calibrating" entirely (§25 above) undersells the product's health-app-like framing the Founder
 liked in the original brief, versus the conservative choice made here.
+
+---
+
+## 56. Phase 15D — Analytics Explore, Strategy/Setup Edge & Context breakdowns (as built)
+
+**Explore IA and routing.** One page, everything server-rendered — no conditional hiding. Three
+new `ZoneSection`s (`results`/`edge`/`behavior`) sit below the existing Overview zones and a new
+`AnalyticsExploreNav`, reusing the exact `?view=` deep-link mechanism 15B proved for
+`TradeSectionNav`: read client-side only via `useSearchParams` (never reaches the server, zero
+authorization surface), scrolls to the matching zone's existing anchor id, degrades to a no-op
+for an invalid/absent value, and is reload-/back-forward-safe because it's plain URL state over a
+fully-rendered page. The three Explore zones keep the **exact same DOM ids** 15C's Overview
+"Explore" links already point at (`analytics-performance-heading`/`analytics-setup-quality-heading`/
+`analytics-psychology-heading`) — every 15C CTA lands correctly with zero changes.
+
+**Strategy/Setup Performance — net-new composition, zero new queries.** `selectTraderAnalyticsRecords`/
+`selectSystemAnalyticsRecords` (`server/dal/analytics.ts`) already selected `strategyId`/`setupId`
+on every Trader-/System-eligible row (Phase 14B never gated eligibility on classification) — Phase
+15D adds no new DAL query for this, only two new pure composers in `lib/analytics/metrics.ts`
+(`composeStrategyPerformance`/`composeSetupPerformance`) that group the SAME already-fetched
+arrays by identity. Grouping is by **Strategy/Setup identity across Versions**, not exact Version
+— not an invented rule: it mirrors `getAnalyticsFilterOptions`'s own existing Strategy/Setup
+filter-dropdown query, which already resolves one label per `strategyId`/`setupId` regardless of
+Version (`currentLabel ?? pinnedLabel`), confirmed against real seeded multi-Version e2e data
+(Breakout Momentum v1 + v2 collapse into one group). Unclassified Trades are excluded from
+grouping but counted in `classifiedTraderCount`/`unclassifiedTraderCount` (and the System-axis
+equivalents) — never an "Unknown Strategy" bucket. Ranking metric: **Trader average R
+descending**, tie-broken by Trader Trade count descending, then id ascending — deterministic,
+documented, never DB row order. "Best observed" (never "Best Strategy"/"Best Setup") is simply
+the first (already-sorted) entry, guarded to `null` when it has zero Trader Trades (a System-only
+top entry never gets falsely labeled "best observed").
+
+**Context breakdowns — Trader-only (documented decision).** `TraderAnalyticsRecord` was widened
+with `symbol`/`direction`/`session`/`timeframe` (the DAL's existing Trader-eligible query, same
+WHERE clause, four more `SELECT` columns — not a new query). One generic
+`composeContextBreakdown` composer serves all four dimensions; System-side context was evaluated
+and deliberately deferred (the brief frames it as optional: "if System-side context is added"),
+not silently dropped. Sort order is Trade count descending, then value ascending — a
+coverage-first order that never itself implies a performance ranking (avoiding the brief's
+"XAUUSD is your best market" trap). `session`/`timeframe` being `null` counts into
+`missingCount`, never a fabricated group.
+
+**Setup Adherence vs. Setup Performance.** Kept explicitly distinct per the brief's frozen
+distinction — Setup Performance (new) answers "how did this Setup perform"; Setup Adherence
+(unchanged since Phase 13H, `SetupAdherencePanel`/`ConditionPerformance`) answers "how closely
+did entries match the configured checklist." Both now live in Edge Explore as sibling
+sub-sections, never merged. The existing adherence bucket boundaries (`SETUP_ADHERENCE_BUCKETS`,
+0–24/25–49/50–74/75–99/100) were already product-defined in Phase 13H — no new "Performance by
+Adherence" bucket set was invented for 15D; the existing bucket panel already answers this.
+
+**Trade Management relocation.** `RuleSummary` + `MistakeFrequency` moved from two separately
+top-level-titled sections ("Rule Analytics" / "Most Frequent Mistakes") into one "Trade
+Management" sub-section under Trader Performance in Results Explore — identical underlying data,
+one consolidated heading, matching the exact precedent Phase 15B already set in Trade Detail.
+
+**Results Explore hierarchy.** Trader Performance (core `PerformancePanel`, equity chart, the
+"timelines are not synchronized" disclaimer preserved verbatim, Trade Management, Context) →
+System Performance (core, equity) → Comparison (paired-only `AnalyticsComparisonPanel`,
+unchanged). Removed one redundant heading layer: `PerformancePanel` already renders its own
+"Trader/System Performance" `CardTitle`, so the wrapping wasn't given a second, duplicate
+`SectionHeader` — sections use `aria-label` instead, avoiding two identical heading nodes.
+
+**Execution Gap.** Untouched — `AnalyticsComparisonPanel` still reads only
+`snapshot.comparison` (the already-paired-eligible population); no call site anywhere sums the
+two independent global totals.
+
+**Behavior Explore.** `ConfidencePerformance`/`EmotionPerformance` relocated verbatim (full
+independent Trader/System detail, unchanged since Phase 13H) — no simplification to Trader-only
+occurred here; that stayed correctly scoped to the Overview cards only (15C).
+
+**Domain invariants preserved.** No file under `lib/calc/` changed. No existing formula,
+eligibility rule, or date-axis semantics changed — confirmed by `git diff --stat` (§ below): every
+touched file is a DAL query widening (additive columns only), a new pure composer, a component, an
+i18n string, or a test.
+
+**Query/composition architecture and performance.** Zero new queries were added for Strategy/Setup
+grouping (reuses the existing Trader/System eligible reads); Context breakdowns add four columns
+to one existing query. No N+1 pattern exists — every composer operates in-memory over one
+already-fetched array per population, same shape as the Phase 13H Confidence/Emotion/Condition
+composers this phase's additions directly mirror. No index need was identified; none is expected
+given no new WHERE/JOIN predicate was introduced (the widened `SELECT` reads existing indexed
+columns already covered by `selectTraderAnalyticsRecords`' existing query plan).
+
+**Schema/migration impact:** none. Migrations remain `0000`–`0016`, confirmed by `drizzle-kit
+check`. No table, column, or index was added — only additional `SELECT`-list columns on an
+existing query.
+
+**Testing.** Pure composer unit tests (`metrics.test.ts`): Strategy/Setup grouping, exclusion vs.
+coverage disclosure, ranking/tie-break determinism, empty/single-group states, independent
+Trader/System populations, Context breakdown grouping/coverage/sort. Presentation-selector tests
+(`overview-selectors.test.ts`): `selectBestObservedStrategy`/`selectBestObservedSetup`, including
+the System-only-top-entry guard. Component tests for `StrategyPerformancePanel`/
+`SetupPerformancePanel`/`ContextBreakdownPanel`/`AnalyticsExploreNav`/updated `EdgeZone`/updated
+`RealAnalyticsPage`. Integration tests added to `analytics.integration.test.ts` (DAL: widened
+Trader record carries Symbol/Direction/Session/Timeframe, Session/Timeframe correctly `null`) and
+`analytics.integration.test.ts` (service: Strategy/Setup coverage end-to-end reusing the existing
+Phase 14B unclassified-Trades fixture, plus a new Context-breakdown fixture) — **could not be
+executed in this environment** (`TEST_DATABASE_URL` unset; the safety script hard-fails rather
+than skipping, same as every other integration test in this repo) — confirmed to compile cleanly
+via `tsc --noEmit` and must run for real in CI, per this repo's own established pattern for every
+prior phase's integration suite. E2E (`e2e/analytics.spec.ts`) extended in-place (same seeded
+fixture, no new provisioning cost): Edge Explore Strategy/Setup Performance assertions
+(proving Version-collapse against real seeded multi-Version data), Context breakdown assertions,
+and an Explore-nav navigation assertion, for both the desktop and the existing 320px mobile
+journey — also currently un-executable here (no test DB) and confirmed to compile/skip cleanly.

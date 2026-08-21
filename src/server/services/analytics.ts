@@ -106,6 +106,51 @@ export async function getAnalyticsSnapshot(
         r: record.systemR,
         outcome: record.systemOutcome,
       })),
+      // Phase 15D — Strategy/Setup grouping reuses the SAME already-fetched
+      // Trader/System eligible arrays (they already carry `strategyId`/
+      // `setupId` — Phase 14B never gated eligibility on classification), no
+      // new query.
+      frameworkTrader: raw.data.trader.map((record) => ({
+        tradeId: record.tradeId,
+        strategyId: record.strategyId,
+        setupId: record.setupId,
+        r: record.actualR,
+        outcome: record.traderOutcome,
+      })),
+      frameworkSystem: raw.data.system.map((record) => ({
+        tradeId: record.tradeId,
+        strategyId: record.strategyId,
+        setupId: record.setupId,
+        r: record.systemR,
+        outcome: record.systemOutcome,
+      })),
+      // Phase 15D — Context breakdowns, Trader-only (documented decision).
+      // `raw.data.trader` was widened (`server/dal/analytics.ts`) to also
+      // carry symbol/direction/session/timeframe on this same query.
+      contextSymbol: raw.data.trader.map((record) => ({
+        tradeId: record.tradeId,
+        value: record.symbol,
+        r: record.actualR,
+        outcome: record.traderOutcome,
+      })),
+      contextDirection: raw.data.trader.map((record) => ({
+        tradeId: record.tradeId,
+        value: record.direction,
+        r: record.actualR,
+        outcome: record.traderOutcome,
+      })),
+      contextSession: raw.data.trader.map((record) => ({
+        tradeId: record.tradeId,
+        value: record.session,
+        r: record.actualR,
+        outcome: record.traderOutcome,
+      })),
+      contextTimeframe: raw.data.trader.map((record) => ({
+        tradeId: record.tradeId,
+        value: record.timeframe,
+        r: record.actualR,
+        outcome: record.traderOutcome,
+      })),
     }),
   };
 }

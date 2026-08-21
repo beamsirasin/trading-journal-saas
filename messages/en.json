@@ -1190,6 +1190,7 @@
       "scope": { "label": "Current analytics scope" },
       "overview": {
         "explore": "Explore",
+        "top": "Analytics Overview",
         "results": {
           "title": "Results",
           "description": "What happened?",
@@ -1208,7 +1209,11 @@
         "edge": {
           "title": "Edge",
           "description": "What seems to produce an edge?",
-          "empty": "No Setup Checklist data recorded at entry"
+          "empty": "No Setup Checklist data recorded at entry",
+          "bestStrategy": "Best observed Strategy",
+          "bestSetup": "Best observed Setup",
+          "noBestStrategy": "No Strategy classification yet",
+          "noBestSetup": "No Setup data"
         },
         "behavior": {
           "title": "Behavior",
@@ -1217,8 +1222,68 @@
           "emotionEmpty": "No Emotion data recorded for this analysis",
           "strongestConfidence": "Strongest observed confidence",
           "strongestEmotion": "Strongest observed state",
-          "emotionConcern": "Potential concern",
-          "avgSuffix": "Avg"
+          "emotionConcern": "Potential concern"
+        },
+        "avgSuffix": "Avg"
+      },
+      "exploreNav": {
+        "label": "Analytics views",
+        "overview": "Overview",
+        "results": "Results",
+        "edge": "Edge",
+        "behavior": "Behavior"
+      },
+      "explore": {
+        "results": {
+          "title": "Results Explore",
+          "description": "The full Trader and System performance record behind the Overview answer."
+        },
+        "edge": {
+          "title": "Edge Explore",
+          "description": "Which Strategies and Setups seem to produce better opportunities, and how closely entries matched their Setup Checklist."
+        },
+        "behavior": {
+          "title": "Behavior Explore",
+          "description": "The full independent Trader and System record behind each recorded Confidence bucket and Emotion group."
+        },
+        "tradeManagement": { "title": "Trade Management" },
+        "coverage": {
+          "classified": "{count, plural, one {# classified} other {# classified}}",
+          "unclassified": "{count, plural, one {# unclassified} other {# unclassified}}"
+        },
+        "strategyPerformance": {
+          "title": "Strategy Performance",
+          "description": "Trader and System performance grouped by Strategy — each axis uses its own eligible population and date semantics.",
+          "empty": "No Strategy classification yet",
+          "onlyOneNote": "Only one classified Strategy in this filtered sample."
+        },
+        "setupPerformance": {
+          "title": "Setup Performance",
+          "description": "Trader and System performance grouped by Setup — distinct from Setup Adherence, which measures how closely entries matched the configured Setup Checklist.",
+          "empty": "No Setup data",
+          "onlyOneNote": "Only one classified Setup in this filtered sample."
+        },
+        "context": {
+          "title": "Context",
+          "symbol": {
+            "title": "By Symbol",
+            "description": "Trader-eligible performance grouped by traded Symbol."
+          },
+          "direction": {
+            "title": "By Direction",
+            "description": "Trader-eligible performance grouped by trade Direction."
+          },
+          "session": {
+            "title": "By Session",
+            "description": "Trader-eligible performance grouped by recorded Session."
+          },
+          "timeframe": {
+            "title": "By Timeframe",
+            "description": "Trader-eligible performance grouped by recorded Timeframe."
+          },
+          "recorded": "{count, plural, one {# recorded} other {# recorded}}",
+          "missing": "{count, plural, one {# missing} other {# missing}}",
+          "empty": "No data recorded for this dimension"
         }
       },
       "performance": {

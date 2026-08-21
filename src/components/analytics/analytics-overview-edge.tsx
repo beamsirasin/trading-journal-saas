@@ -1,30 +1,58 @@
 import { Compass } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { SetupAdherenceAnalyticsModel } from '@/lib/analytics/metrics';
+import type {
+  FrameworkPerformanceAnalyticsModel,
+  SetupAdherenceAnalyticsModel,
+  SetupPerformanceAnalyticsModel,
+} from '@/lib/analytics/metrics';
+import {
+  selectBestObservedSetup,
+  selectBestObservedStrategy,
+} from '@/lib/analytics/overview-selectors';
 import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
+import type { AnalyticsSetupOption, AnalyticsStrategyOption } from '@/server/dal/analytics';
 import { HeroMetric } from '@/components/product/summary-primitives';
 import { ZoneSection } from '@/components/product/zone-section';
+import { Badge } from '@/components/ui/badge';
 
 /**
- * Phase 15C — Analytics Overview, EDGE zone. Setup Adherence is the ONLY
- * card here this phase — Strategy Performance and Setup Performance ("best
- * observed Strategy/Setup") are explicitly Phase 15D work (brief §11/§13):
- * no current component compares Trades across multiple Strategies/Setups,
- * so there is nothing truthful to summarize yet. A clean, smaller Edge zone
- * now beats a fake "Coming soon" placeholder (brief §11).
- *
- * Preserves the existing Setup Adherence formula/sample-count exactly — this
- * card only relocates the two headline figures (`averageAdherence`,
- * `sampleCount`) that `composeSetupAdherenceAnalytics` already computes; the
- * full bucket breakdown and Setup Condition performance stay in the existing
- * "Setup Quality" section below, reachable via Explore.
+ * Phase 15C/15D — Analytics Overview, EDGE zone. Three compact cards: Best
+ * observed Strategy, Best observed Setup (both Phase 15D — net-new
+ * composition, `lib/analytics/metrics.ts`'s `composeStrategyPerformance`/
+ * `composeSetupPerformance`), and Setup Adherence (Phase 15C, unchanged).
+ * "Best observed" — never "Best Strategy"/"Best Setup" (brief §8/§12): no
+ * statistical-significance claim is made, only what was observed. The full
+ * ranking, coverage, and independent Trader/System detail for every
+ * Strategy/Setup live in Edge Explore, reachable below.
  */
-export function EdgeZone({ setupAdherence }: { setupAdherence: SetupAdherenceAnalyticsModel }) {
+export function EdgeZone({
+  setupAdherence,
+  strategyPerformance,
+  setupPerformance,
+  strategyOptions,
+  setupOptions,
+}: {
+  setupAdherence: SetupAdherenceAnalyticsModel;
+  strategyPerformance: FrameworkPerformanceAnalyticsModel;
+  setupPerformance: SetupPerformanceAnalyticsModel;
+  strategyOptions: readonly AnalyticsStrategyOption[];
+  setupOptions: readonly AnalyticsSetupOption[];
+}) {
   const t = useTranslations('analytics.real');
   const tZones = useTranslations('zones');
   const average = formatAnalyticsMetric(setupAdherence.averageAdherence, 'percent');
-  const hasData = setupAdherence.sampleCount > 0 && average.status === 'available';
+  const hasAdherenceData = setupAdherence.sampleCount > 0 && average.status === 'available';
+
+  const bestStrategy = selectBestObservedStrategy(strategyPerformance);
+  const bestStrategyOption = strategyOptions.find((s) => s.strategyId === bestStrategy?.strategyId);
+  const bestStrategyAvg =
+    bestStrategy === null ? null : formatAnalyticsMetric(bestStrategy.trader.averageR, 'r');
+
+  const bestSetup = selectBestObservedSetup(setupPerformance);
+  const bestSetupOption = setupOptions.find((s) => s.setupId === bestSetup?.setupId);
+  const bestSetupAvg =
+    bestSetup === null ? null : formatAnalyticsMetric(bestSetup.trader.averageR, 'r');
 
   return (
     <ZoneSection
@@ -34,16 +62,64 @@ export function EdgeZone({ setupAdherence }: { setupAdherence: SetupAdherenceAna
       description={t('overview.edge.description')}
       id="analytics-overview-edge"
     >
-      <div className="border-border rounded-lg border p-4 sm:p-5">
-        {!hasData ? (
-          <p className="text-muted-foreground text-sm">{t('overview.edge.empty')}</p>
-        ) : (
-          <HeroMetric
-            label={t('setupAdherence.average')}
-            value={average.text}
-            sample={t('setupAdherence.sampleCount', { count: setupAdherence.sampleCount })}
-          />
-        )}
+      <div className="grid min-w-0 gap-4 sm:grid-cols-3">
+        <div
+          className="border-border rounded-lg border p-4 sm:p-5"
+          data-overview-card="best-strategy"
+        >
+          {bestStrategy === null || bestStrategyAvg?.status !== 'available' ? (
+            <p className="text-muted-foreground text-sm">{t('overview.edge.noBestStrategy')}</p>
+          ) : (
+            <HeroMetric
+              label={t('overview.edge.bestStrategy')}
+              value={
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {bestStrategyOption?.label ?? bestStrategy.strategyId}
+                  {bestStrategyOption?.isArchived === true ? (
+                    <Badge>{t('filters.archived')}</Badge>
+                  ) : null}
+                </span>
+              }
+              supporting={`${bestStrategyAvg.text} ${t('overview.avgSuffix')}`}
+              sample={t('axis.tradeCount', { count: bestStrategy.trader.tradeCount })}
+            />
+          )}
+        </div>
+
+        <div className="border-border rounded-lg border p-4 sm:p-5" data-overview-card="best-setup">
+          {bestSetup === null || bestSetupAvg?.status !== 'available' ? (
+            <p className="text-muted-foreground text-sm">{t('overview.edge.noBestSetup')}</p>
+          ) : (
+            <HeroMetric
+              label={t('overview.edge.bestSetup')}
+              value={
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {bestSetupOption?.label ?? bestSetup.setupId}
+                  {bestSetupOption?.isArchived === true ? (
+                    <Badge>{t('filters.archived')}</Badge>
+                  ) : null}
+                </span>
+              }
+              supporting={`${bestSetupAvg.text} ${t('overview.avgSuffix')}`}
+              sample={t('axis.tradeCount', { count: bestSetup.trader.tradeCount })}
+            />
+          )}
+        </div>
+
+        <div
+          className="border-border rounded-lg border p-4 sm:p-5"
+          data-overview-card="setup-adherence"
+        >
+          {!hasAdherenceData ? (
+            <p className="text-muted-foreground text-sm">{t('overview.edge.empty')}</p>
+          ) : (
+            <HeroMetric
+              label={t('setupAdherence.average')}
+              value={average.text}
+              sample={t('setupAdherence.sampleCount', { count: setupAdherence.sampleCount })}
+            />
+          )}
+        </div>
       </div>
 
       <a

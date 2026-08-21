@@ -6,8 +6,12 @@ import type {
   ConfidenceAnalyticsModel,
   DimensionAxisSummary,
   EmotionGroupModel,
+  FrameworkPerformanceAnalyticsModel,
+  SetupPerformanceAnalyticsModel,
 } from './metrics';
 import {
+  selectBestObservedSetup,
+  selectBestObservedStrategy,
   selectEmotionConcern,
   selectExecutionGapObservation,
   selectStrongestConfidenceLevel,
@@ -181,5 +185,80 @@ describe('selectExecutionGapObservation', () => {
         comparison({ comparableCount: 8, averageExecutionGapR: available('0.0000') }),
       ),
     ).toEqual({ tone: 'even', comparableCount: 8 });
+  });
+});
+
+describe('selectBestObservedStrategy / selectBestObservedSetup', () => {
+  it('returns the already-sorted top Strategy when it has Trader data', () => {
+    const model: FrameworkPerformanceAnalyticsModel = {
+      strategies: [
+        { strategyId: 'strategy-a', trader: dimAxis(24, '1.4800'), system: dimAxis(20, '2.1000') },
+        { strategyId: 'strategy-b', trader: dimAxis(5, '0.5000'), system: dimAxis(4, '0.4000') },
+      ],
+      classifiedTraderCount: 29,
+      unclassifiedTraderCount: 0,
+      classifiedSystemCount: 24,
+      unclassifiedSystemCount: 0,
+    };
+    expect(selectBestObservedStrategy(model)?.strategyId).toBe('strategy-a');
+  });
+
+  it('returns null when the top entry has no Trader data at all (System-only), never a false "best observed"', () => {
+    const model: FrameworkPerformanceAnalyticsModel = {
+      strategies: [
+        {
+          strategyId: 'strategy-system-only',
+          trader: dimAxis(0, null),
+          system: dimAxis(4, '1.0000'),
+        },
+      ],
+      classifiedTraderCount: 0,
+      unclassifiedTraderCount: 0,
+      classifiedSystemCount: 4,
+      unclassifiedSystemCount: 0,
+    };
+    expect(selectBestObservedStrategy(model)).toBeNull();
+  });
+
+  it('returns null for an empty Strategy list', () => {
+    expect(
+      selectBestObservedStrategy({
+        strategies: [],
+        classifiedTraderCount: 0,
+        unclassifiedTraderCount: 0,
+        classifiedSystemCount: 0,
+        unclassifiedSystemCount: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns the already-sorted top Setup when it has Trader data', () => {
+    const model: SetupPerformanceAnalyticsModel = {
+      setups: [
+        {
+          setupId: 'setup-a',
+          strategyId: 'strategy-a',
+          trader: dimAxis(18, '1.9200'),
+          system: dimAxis(15, '2.4000'),
+        },
+      ],
+      classifiedTraderCount: 18,
+      unclassifiedTraderCount: 0,
+      classifiedSystemCount: 15,
+      unclassifiedSystemCount: 0,
+    };
+    expect(selectBestObservedSetup(model)?.setupId).toBe('setup-a');
+  });
+
+  it('returns null for an empty Setup list', () => {
+    expect(
+      selectBestObservedSetup({
+        setups: [],
+        classifiedTraderCount: 0,
+        unclassifiedTraderCount: 0,
+        classifiedSystemCount: 0,
+        unclassifiedSystemCount: 0,
+      }),
+    ).toBeNull();
   });
 });

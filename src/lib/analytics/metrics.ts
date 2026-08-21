@@ -695,6 +695,220 @@ export function composeEmotionAnalytics(
     );
 }
 
+// ---------------------------------------------------------------------------
+// Phase 15D — Strategy / Setup Performance (net-new composition)
+//
+// Reuses the SAME Trader-eligible/System-eligible arrays already fetched for
+// core Performance (`selectTraderAnalyticsRecords`/`selectSystemAnalyticsRecords`
+// already carry `strategyId`/`setupId` — Phase 14B never gated eligibility on
+// classification) — no new query, no new eligibility rule, only new grouping,
+// exactly the same shape of addition Phase 13H made for Confidence/Emotion.
+//
+// Unclassified Trades (`strategyId`/`setupId === null`) are counted in
+// coverage but never assigned to a fabricated "Unknown Strategy" bucket —
+// brief §5/§10 is explicit that doing so would misrepresent unclassified
+// Trades as belonging to a real, comparable group.
+// ---------------------------------------------------------------------------
+
+/** Reused for both the Trader-eligible and System-eligible reads (Strategy and Setup grouping share the same source shape). */
+export interface FrameworkMetricRecord {
+  readonly tradeId: string;
+  readonly strategyId: string | null;
+  readonly setupId: string | null;
+  readonly r: string;
+  readonly outcome: OutcomeValue;
+}
+
+export interface StrategyPerformanceModel {
+  readonly strategyId: string;
+  readonly trader: DimensionAxisSummary;
+  readonly system: DimensionAxisSummary;
+}
+
+export interface FrameworkPerformanceAnalyticsModel {
+  /**
+   * Sorted by `trader.averageR` descending (the same "Best observed" measure
+   * used for the Overview headline, §8) — ties broken by `trader.tradeCount`
+   * descending (more evidence wins a tie), then `strategyId` ascending as
+   * the final deterministic tie-break (brief §26). A Strategy absent from
+   * the Trader-eligible population entirely (System-only) still appears,
+   * with `trader.tradeCount === 0`, sorted after every Trader-populated
+   * Strategy by construction (an empty/unavailable average sorts last).
+   */
+  readonly strategies: readonly StrategyPerformanceModel[];
+  readonly classifiedTraderCount: number;
+  readonly unclassifiedTraderCount: number;
+  readonly classifiedSystemCount: number;
+  readonly unclassifiedSystemCount: number;
+}
+
+function groupByKey(
+  records: readonly FrameworkMetricRecord[],
+  key: 'strategyId' | 'setupId',
+): Map<string, { r: string; outcome: OutcomeValue }[]> {
+  const groups = new Map<string, { r: string; outcome: OutcomeValue }[]>();
+  for (const record of records) {
+    const id = record[key];
+    if (id === null) continue;
+    const entry = { r: record.r, outcome: record.outcome };
+    const existing = groups.get(id);
+    if (existing === undefined) groups.set(id, [entry]);
+    else existing.push(entry);
+  }
+  return groups;
+}
+
+/** Deterministic ranking: `trader.averageR` desc, then `trader.tradeCount` desc, then `id` asc — never DB row order (brief §26). */
+function sortByTraderAverageRThenSampleSize<T extends { id: string; trader: DimensionAxisSummary }>(
+  entries: readonly T[],
+): T[] {
+  return [...entries].sort((a, b) => {
+    const aR =
+      a.trader.averageR.status === 'available' ? new CalcDecimal(a.trader.averageR.value) : null;
+    const bR =
+      b.trader.averageR.status === 'available' ? new CalcDecimal(b.trader.averageR.value) : null;
+    if (aR !== null && bR !== null && !aR.equals(bR)) return bR.comparedTo(aR);
+    if (aR !== null && bR === null) return -1;
+    if (aR === null && bR !== null) return 1;
+    if (a.trader.tradeCount !== b.trader.tradeCount)
+      return b.trader.tradeCount - a.trader.tradeCount;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function composeStrategyPerformance(
+  traderRecords: readonly FrameworkMetricRecord[],
+  systemRecords: readonly FrameworkMetricRecord[],
+): FrameworkPerformanceAnalyticsModel {
+  const traderGroups = groupByKey(traderRecords, 'strategyId');
+  const systemGroups = groupByKey(systemRecords, 'strategyId');
+  const ids = new Set([...traderGroups.keys(), ...systemGroups.keys()]);
+
+  const strategies = sortByTraderAverageRThenSampleSize(
+    [...ids].map((strategyId) => ({
+      id: strategyId,
+      strategyId,
+      trader: summarizeAxis(traderGroups.get(strategyId) ?? []),
+      system: summarizeAxis(systemGroups.get(strategyId) ?? []),
+    })),
+  ).map(({ id: _id, ...rest }) => rest);
+
+  return {
+    strategies,
+    classifiedTraderCount: traderRecords.filter((r) => r.strategyId !== null).length,
+    unclassifiedTraderCount: traderRecords.filter((r) => r.strategyId === null).length,
+    classifiedSystemCount: systemRecords.filter((r) => r.strategyId !== null).length,
+    unclassifiedSystemCount: systemRecords.filter((r) => r.strategyId === null).length,
+  };
+}
+
+export interface SetupPerformanceModel {
+  readonly setupId: string;
+  /** Every Setup requires a Strategy by domain contract (`trades_setup_requires_strategy_check`) — never `null` here. */
+  readonly strategyId: string;
+  readonly trader: DimensionAxisSummary;
+  readonly system: DimensionAxisSummary;
+}
+
+export interface SetupPerformanceAnalyticsModel {
+  /** Same deterministic ordering as {@link FrameworkPerformanceAnalyticsModel.strategies} (brief §26). */
+  readonly setups: readonly SetupPerformanceModel[];
+  readonly classifiedTraderCount: number;
+  readonly unclassifiedTraderCount: number;
+  readonly classifiedSystemCount: number;
+  readonly unclassifiedSystemCount: number;
+}
+
+export function composeSetupPerformance(
+  traderRecords: readonly FrameworkMetricRecord[],
+  systemRecords: readonly FrameworkMetricRecord[],
+): SetupPerformanceAnalyticsModel {
+  const traderGroups = groupByKey(traderRecords, 'setupId');
+  const systemGroups = groupByKey(systemRecords, 'setupId');
+  const strategyIdBySetupId = new Map<string, string>();
+  for (const record of [...traderRecords, ...systemRecords]) {
+    if (record.setupId !== null && record.strategyId !== null) {
+      strategyIdBySetupId.set(record.setupId, record.strategyId);
+    }
+  }
+  const ids = new Set([...traderGroups.keys(), ...systemGroups.keys()]);
+
+  const setups = sortByTraderAverageRThenSampleSize(
+    [...ids].map((setupId) => ({
+      id: setupId,
+      setupId,
+      // Non-null: every id in `ids` came from a record that had this setupId, which always carried a strategyId alongside it.
+      strategyId: strategyIdBySetupId.get(setupId) as string,
+      trader: summarizeAxis(traderGroups.get(setupId) ?? []),
+      system: summarizeAxis(systemGroups.get(setupId) ?? []),
+    })),
+  ).map(({ id: _id, ...rest }) => rest);
+
+  return {
+    setups,
+    classifiedTraderCount: traderRecords.filter((r) => r.setupId !== null).length,
+    unclassifiedTraderCount: traderRecords.filter((r) => r.setupId === null).length,
+    classifiedSystemCount: systemRecords.filter((r) => r.setupId !== null).length,
+    unclassifiedSystemCount: systemRecords.filter((r) => r.setupId === null).length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 15D — Context breakdowns (Symbol / Direction / Session / Timeframe)
+//
+// Trader-side only (documented decision, `docs/phases/PHASE-15-ux-simplification.md`
+// §56) — mirrors the same "Trader is the primary headline axis" precedent
+// Confidence/Setup Adherence already established; System-side context was
+// evaluated and deliberately deferred, not silently dropped.
+// ---------------------------------------------------------------------------
+
+export interface ContextMetricRecord {
+  readonly tradeId: string;
+  /** `null` means the dimension was never recorded for this Trade (only possible for Session/Timeframe — Symbol/Direction are `NOT NULL` core fields). */
+  readonly value: string | null;
+  readonly r: string;
+  readonly outcome: OutcomeValue;
+}
+
+export interface ContextGroupModel {
+  readonly value: string;
+  readonly trader: DimensionAxisSummary;
+}
+
+export interface ContextBreakdownModel {
+  /** Sorted by `trader.tradeCount` descending, then `value` ascending — a coverage-first ordering that does not itself imply a performance ranking (brief §21/§26). */
+  readonly groups: readonly ContextGroupModel[];
+  readonly recordedCount: number;
+  readonly missingCount: number;
+}
+
+export function composeContextBreakdown(
+  records: readonly ContextMetricRecord[],
+): ContextBreakdownModel {
+  const groups = new Map<string, { r: string; outcome: OutcomeValue }[]>();
+  let missingCount = 0;
+  for (const record of records) {
+    if (record.value === null) {
+      missingCount += 1;
+      continue;
+    }
+    const entry = { r: record.r, outcome: record.outcome };
+    const existing = groups.get(record.value);
+    if (existing === undefined) groups.set(record.value, [entry]);
+    else existing.push(entry);
+  }
+
+  const sortedGroups = [...groups.entries()]
+    .map(([value, entries]) => ({ value, trader: summarizeAxis(entries) }))
+    .sort((a, b) => b.trader.tradeCount - a.trader.tradeCount || a.value.localeCompare(b.value));
+
+  return {
+    groups: sortedGroups,
+    recordedCount: records.length - missingCount,
+    missingCount,
+  };
+}
+
 export interface AnalyticsScopeModel {
   readonly datePreset: AnalyticsDatePreset;
   readonly dateBounds: AnalyticsDateBounds;
@@ -728,6 +942,14 @@ export interface AnalyticsSnapshotInput {
   readonly confidenceSystem: readonly ConfidenceMetricRecord[];
   readonly emotions: readonly EmotionMetricRecord[];
   readonly emotionsSystem: readonly EmotionMetricRecord[];
+  /** Phase 15D — shared source for both Strategy and Setup grouping (same shape, different grouping key). */
+  readonly frameworkTrader: readonly FrameworkMetricRecord[];
+  readonly frameworkSystem: readonly FrameworkMetricRecord[];
+  /** Phase 15D — Trader-only (documented decision; see `composeContextBreakdown`'s doc comment). One pre-mapped array per dimension, matching the existing Confidence/Emotion convention of the service pre-selecting fields. */
+  readonly contextSymbol: readonly ContextMetricRecord[];
+  readonly contextDirection: readonly ContextMetricRecord[];
+  readonly contextSession: readonly ContextMetricRecord[];
+  readonly contextTimeframe: readonly ContextMetricRecord[];
 }
 
 export interface AnalyticsSnapshot {
@@ -749,6 +971,12 @@ export interface AnalyticsSnapshot {
   readonly conditions: readonly ConditionAnalyticsModel[];
   readonly confidence: ConfidenceAnalyticsModel;
   readonly emotions: readonly EmotionGroupModel[];
+  readonly strategyPerformance: FrameworkPerformanceAnalyticsModel;
+  readonly setupPerformance: SetupPerformanceAnalyticsModel;
+  readonly contextSymbol: ContextBreakdownModel;
+  readonly contextDirection: ContextBreakdownModel;
+  readonly contextSession: ContextBreakdownModel;
+  readonly contextTimeframe: ContextBreakdownModel;
 }
 
 export function composeAnalyticsSnapshot(input: AnalyticsSnapshotInput): AnalyticsSnapshot {
@@ -767,6 +995,12 @@ export function composeAnalyticsSnapshot(input: AnalyticsSnapshotInput): Analyti
     conditions: composeConditionAnalytics(input.conditions, input.conditionsSystem),
     confidence: composeConfidenceAnalytics(input.confidence, input.confidenceSystem),
     emotions: composeEmotionAnalytics(input.emotions, input.emotionsSystem),
+    strategyPerformance: composeStrategyPerformance(input.frameworkTrader, input.frameworkSystem),
+    setupPerformance: composeSetupPerformance(input.frameworkTrader, input.frameworkSystem),
+    contextSymbol: composeContextBreakdown(input.contextSymbol),
+    contextDirection: composeContextBreakdown(input.contextDirection),
+    contextSession: composeContextBreakdown(input.contextSession),
+    contextTimeframe: composeContextBreakdown(input.contextTimeframe),
   };
 }
 

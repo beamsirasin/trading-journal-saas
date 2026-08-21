@@ -16,6 +16,7 @@ import type {
   OutcomeValue,
   RuleCheckStatus,
   SystemStatus,
+  TradeDirection,
   TradeStatus,
 } from '@/lib/trades/constants';
 import {
@@ -348,6 +349,19 @@ export interface TraderAnalyticsRecord {
   readonly strategyId: string | null;
   readonly strategyVersionId: string | null;
   readonly setupId: string | null;
+  /**
+   * Phase 15D — Context breakdowns (Symbol/Direction/Session/Timeframe).
+   * Added to this ALREADY-fetched, already-eligible query rather than a new
+   * one (brief §42/§43: reuse the canonical Trader-eligible read, avoid a
+   * second query for the same population). `symbol`/`direction` are always
+   * present (`NOT NULL` core Trade fields); `session`/`timeframe` are the
+   * existing optional Plan fields and may be `null` — Trader-only, per the
+   * Phase 15 doc's documented decision to defer System-side context.
+   */
+  readonly symbol: string;
+  readonly direction: TradeDirection;
+  readonly session: string | null;
+  readonly timeframe: string | null;
 }
 
 async function selectTraderAnalyticsRecords(
@@ -365,6 +379,10 @@ async function selectTraderAnalyticsRecords(
       strategyId: trades.strategyId,
       strategyVersionId: trades.strategyVersionId,
       setupId: trades.setupId,
+      symbol: trades.symbol,
+      direction: trades.direction,
+      session: trades.session,
+      timeframe: trades.timeframe,
     })
     .from(trades)
     .where(
@@ -387,6 +405,7 @@ async function selectTraderAnalyticsRecords(
     actualR: row.actualR as string,
     traderOutcome: row.traderOutcome as OutcomeValue,
     exitedAt: (row.exitedAt as Date).toISOString(),
+    direction: row.direction as TradeDirection,
   }));
 }
 

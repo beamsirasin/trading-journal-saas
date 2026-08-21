@@ -457,11 +457,11 @@ test.describe('real deep Analytics', () => {
     const resultsIndex = overviewHeadings.indexOf('Results');
     const edgeIndex = overviewHeadings.indexOf('Edge');
     const behaviorIndex = overviewHeadings.indexOf('Behavior');
-    const performanceIndex = overviewHeadings.indexOf('System and Trader Performance');
+    const resultsExploreIndex = overviewHeadings.indexOf('Results Explore');
     expect(resultsIndex).toBeGreaterThanOrEqual(0);
     expect(edgeIndex).toBeGreaterThan(resultsIndex);
     expect(behaviorIndex).toBeGreaterThan(edgeIndex);
-    expect(performanceIndex).toBeGreaterThan(behaviorIndex);
+    expect(resultsExploreIndex).toBeGreaterThan(behaviorIndex);
 
     const resultsZone = page.locator('section[aria-labelledby="analytics-overview-results"]');
     const edgeZone = page.locator('section[aria-labelledby="analytics-overview-edge"]');
@@ -482,9 +482,15 @@ test.describe('real deep Analytics', () => {
       '#analytics-performance-heading',
     );
 
-    // EDGE: Setup Adherence only — no Strategy/Setup ranking placeholder yet.
+    // EDGE: Setup Adherence, plus Phase 15D's Best observed Strategy/Setup —
+    // "Best observed", never "Best Strategy"/"Best Setup" outright, and
+    // never a fake "Coming soon" placeholder.
     await expect(edgeZone.getByText('Average Setup Adherence')).toBeVisible();
-    await expect(edgeZone.getByText(/Best Strategy|Best Setup|Coming soon/i)).toHaveCount(0);
+    await expect(edgeZone.getByText('Best observed Strategy')).toBeVisible();
+    await expect(edgeZone.getByText('Breakout Momentum')).toBeVisible();
+    await expect(edgeZone.getByText('Best observed Setup')).toBeVisible();
+    await expect(edgeZone.getByText('Opening Retest')).toBeVisible();
+    await expect(edgeZone.getByText(/^Best Strategy$|^Best Setup$|Coming soon/i)).toHaveCount(0);
     await expect(edgeZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
       '#analytics-setup-quality-heading',
@@ -564,6 +570,34 @@ test.describe('real deep Analytics', () => {
     await expect(fearfulGroup.locator('[data-analytics-axis="trader"]')).toContainText('1 Trade');
     await expect(fearfulGroup.locator('[data-analytics-axis="system"]')).toContainText('2 Trades');
 
+    // Phase 15D — Edge Explore: Strategy/Setup Performance groups by identity
+    // across Strategy Versions (Breakout Momentum v1 + v2 collapse into one
+    // "Breakout Momentum" group) — every seeded Trade in this fixture is
+    // classified, so coverage discloses zero unclassified on both axes.
+    const strategyPerformancePanel = page.locator('[data-analytics-panel="strategy-performance"]');
+    await expect(strategyPerformancePanel.getByText('Breakout Momentum')).toBeVisible();
+    await expect(strategyPerformancePanel.getByText(/5 classified/)).toBeVisible();
+    await expect(strategyPerformancePanel.getByText(/0 unclassified/).first()).toBeVisible();
+
+    const setupPerformancePanel = page.locator('[data-analytics-panel="setup-performance"]');
+    await expect(setupPerformancePanel.getByText('Opening Retest')).toBeVisible();
+    await expect(setupPerformancePanel.getByText(/5 classified/)).toBeVisible();
+
+    // Phase 15D — Context breakdowns (Trader-only): 5 distinct Symbols, one
+    // Trade each, and a single Direction group (every seeded Trade is Long).
+    const symbolPanel = page.locator('[data-analytics-panel="context-By Symbol"]');
+    await expect(symbolPanel.getByText('XAUUSD')).toBeVisible();
+    await expect(symbolPanel.getByText('EURUSD')).toBeVisible();
+    const directionPanel = page.locator('[data-analytics-panel="context-By Direction"]');
+    await expect(directionPanel.getByText('Long')).toBeVisible();
+    await expect(directionPanel.getByText('5 Trades')).toBeVisible();
+
+    // Phase 15D — Explore navigation: jumping to the Edge view lands on Edge
+    // Explore, preserving the active filter scope.
+    await page.getByRole('link', { name: 'Edge', exact: true }).click();
+    await expect(page).toHaveURL(/view=edge/);
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeInViewport();
+
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: '30D' }).click();
     await expect(page).toHaveURL(/range=30d/);
@@ -634,6 +668,15 @@ test.describe('real deep Analytics', () => {
     await expect(page.locator('[data-analytics-panel="conditions"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="confidence"]')).toBeVisible();
     await expect(page.locator('[data-analytics-panel="emotions"]')).toBeVisible();
+    // Phase 15D — Explore nav + zones + net-new panels must also render
+    // cleanly at 320px, above the same overflow assertion below.
+    await expect(page.getByRole('navigation', { name: 'Analytics views' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Results Explore' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Behavior Explore' })).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="strategy-performance"]')).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="setup-performance"]')).toBeVisible();
+    await expect(page.locator('[data-analytics-panel="context-By Symbol"]')).toBeVisible();
     const rangeBox = await page.getByRole('button', { name: '30D' }).boundingBox();
     expect(rangeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
     const dimensions = await page.evaluate(() => ({
