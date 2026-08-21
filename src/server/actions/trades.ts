@@ -265,6 +265,15 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       tradingviewUrl: parsed.data.tradingviewUrl ?? null,
       notes: parsed.data.notes ?? null,
       chartAttachmentStorageKey: parsed.data.chartAttachmentStorageKey ?? null,
+      // Phase 14E — present exactly when the normal customer New Trade form
+      // wants this Trade created already `open`; omitted for the legacy
+      // `planned` create path.
+      actualResultMode: parsed.data.actualResultMode,
+      actualEntry: parsed.data.actualEntry ?? null,
+      actualInitialStop: parsed.data.actualInitialStop ?? null,
+      actualInitialRiskMinor: parsed.data.actualInitialRiskMinor ?? null,
+      actualPositionSize: parsed.data.actualPositionSize ?? null,
+      enteredAt: parsed.data.enteredAt,
     });
     if (!result.ok) return planFailure(result);
     revalidateTradeRoutes();

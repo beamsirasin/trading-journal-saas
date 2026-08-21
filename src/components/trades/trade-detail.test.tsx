@@ -130,14 +130,29 @@ function renderDetail(trade: TradeDetailModel) {
 }
 
 describe('TradeDetail', () => {
-  it('shows a plan-only Trade without invented numeric zero values', () => {
+  // Phase 14E — Open/Close-Only Trade Flow: `planned` is now a legacy/
+  // internal compatibility state (never produced by the normal New Trade
+  // form) — the Execution section shows friendly "needs execution details"
+  // copy for it, never the raw "not opened" wording, without inventing
+  // numeric zero values.
+  it('shows a legacy planned Trade with friendly compatibility copy, never invented numeric zero values', () => {
     renderDetail(base);
     expect(
-      screen.getByText('This Trade has not been opened. No actual execution has been recorded.'),
+      screen.getByText('This Trade was saved before execution information was recorded.'),
     ).toBeInTheDocument();
     expect(screen.getByText(/System result is Pending/)).toBeInTheDocument();
     expect(screen.getAllByText('Not available').length).toBeGreaterThan(0);
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
+  });
+
+  it('shows the distinct "not opened" copy for a canceled Trade, not the legacy planned copy', () => {
+    renderDetail({ ...base, status: 'canceled' });
+    expect(
+      screen.getByText('This Trade has not been opened. No actual execution has been recorded.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('This Trade was saved before execution information was recorded.'),
+    ).not.toBeInTheDocument();
   });
 
   it('renders Confidence as "X% · Label", never "/100" or "/5"', () => {

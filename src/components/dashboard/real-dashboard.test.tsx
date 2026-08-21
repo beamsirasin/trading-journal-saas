@@ -111,6 +111,7 @@ const ATTENTION = {
   pendingSystemOutcomes: 0,
   unclassifiedTrades: 0,
   reviewsPending: 0,
+  needsExecutionDetails: 0,
 };
 
 function renderDashboard(
@@ -273,6 +274,7 @@ describe('RealDashboard', () => {
       pendingSystemOutcomes: 0,
       unclassifiedTrades: 5,
       reviewsPending: 0,
+      needsExecutionDetails: 0,
     });
     const panel = container.querySelector(
       '[data-dashboard-panel="needs-attention"]',
@@ -284,10 +286,30 @@ describe('RealDashboard', () => {
     expect(within(panel).getByText('5')).toBeVisible();
     expect(within(panel).queryByText('Pending System Outcomes')).not.toBeInTheDocument();
     expect(within(panel).queryByText('Reviews Pending')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('Needs Execution Details')).not.toBeInTheDocument();
     expect(within(panel).getByRole('link', { name: /Review/ })).toHaveAttribute(
       'href',
       '/app/trades',
     );
+  });
+
+  // Phase 14E — Open/Close-Only Trade Flow: a small optional bucket for
+  // legacy/internal `planned` rows only — shown exclusively when they
+  // actually exist, never a major new workflow.
+  it('shows the Needs Execution Details bucket only when legacy planned Trades exist', () => {
+    const { container } = renderDashboard(overview(), [RECENT], {
+      openTrades: 0,
+      pendingSystemOutcomes: 0,
+      unclassifiedTrades: 0,
+      reviewsPending: 0,
+      needsExecutionDetails: 3,
+    });
+    const panel = container.querySelector(
+      '[data-dashboard-panel="needs-attention"]',
+    ) as HTMLElement;
+    expect(panel).not.toBeNull();
+    expect(within(panel).getByText('Needs Execution Details')).toBeVisible();
+    expect(within(panel).getByText('3')).toBeVisible();
   });
 
   it('renders an instructional recent-Trades state without replacing populated metrics', () => {

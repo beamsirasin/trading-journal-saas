@@ -2,7 +2,7 @@
 
 **Depends on:** 08, 09, 13 · **Blocks:** —
 
-**Status:** 14A (read-only audit), 14B (persistence/domain foundation), 14C (customer-facing Independent Journal UX), 14C.1 (Quick Capture Persistence Completion), and 14D (Trading Calendar + Trade Log) are all **complete**. Founder acceptance is **not yet obtained**.
+**Status:** 14A (read-only audit), 14B (persistence/domain foundation), 14C (customer-facing Independent Journal UX), 14C.1 (Quick Capture Persistence Completion), 14D (Trading Calendar + Trade Log), and 14E (Open/Close-Only Trade Flow) are all **complete**. Founder acceptance is **not yet obtained**.
 
 ---
 
@@ -131,6 +131,70 @@ Arbitrary/unrestricted reclassification. Discipline Score or any combined comple
 
 **No migration was needed** — every field the Calendar reads (`exited_at`, `system_exited_at`, `actual_r`, `system_r`, `status`, `system_status`, `strategy_id`) already existed from Phase 07/13/14B. Migrations remain exactly `0000`–`0016`.
 
-### 15. Founder acceptance
+### 15. Founder acceptance (14A–14D)
+
+Not obtained. This document records engineering completion of the scoped work, not product sign-off.
+
+## 14E — Open/Close-Only Trade Flow (complete)
+
+Founder manual UAT of 14A–14D exposed a real UX defect: after recording a Trade, the Founder expected to close it immediately, but the product created a customer-visible `planned` Trade requiring a second, separate "Open" action first. 14E's product decision: the normal customer mental model is now **New Trade → OPEN → optional Partial Close(s) → CLOSED**. No normal customer-facing "Planned Trade" step exists any more.
+
+### 1. New customer lifecycle
+
+`TradeCreateForm` (`src/components/trades/trade-create-form.tsx`) now collects one additional REQUIRED section — **Actual Execution** — alongside the still-optional Plan, Strategy & Setup, and Entry Snapshot sections, and its primary action is **[Open Trade]**, not "Save Trade" followed by a second Open step. The New Trade minimum contract is now Core (Account/Symbol/Direction) + exactly one authoritative Actual execution basis: Price mode requires Actual Entry + Initial Stop; Money mode requires Initial Risk > 0. Plan, Strategy, Setup, Confidence, Emotions, Entry Reason, and Chart remain entirely optional and never block Open — unchanged from 14C.
+
+### 2. Plan is data, not status
+
+Migration 0016's optionality (14C.1) is unaffected and unchanged: a Trade may be Open with no Plan, a Price-only Plan, a Money-only Plan, or both. 14E adds a requirement on top of that, not instead of it — Actual Execution is now mandatory to _create_ a Trade through the normal customer form, but the Plan above it remains exactly as optional as 14C.1 left it.
+
+### 3. Atomic create-and-open
+
+`createTrade` (`src/server/services/trade-management.ts`) was extended, not duplicated, with an optional `actualResultMode` (+ its Price/Money basis + `enteredAt`) input. When present, the SAME atomic transaction that already handles entitlement locking, replay/idempotency, Strategy Version locking, Setup snapshot semantics, Rule snapshots, and emotion/condition temporal truth also validates the Actual basis (identical Price/Money checks `openTrade` itself performs, same two error codes — `invalid_execution_context`/`invalid_initial_risk` — reused verbatim) and inserts the row already `status = 'open'`. There is no second `openTrade` call chained after `createTrade`; a mid-flow failure can never leave a half-created Trade stuck `planned`. Omitting `actualResultMode` still produces the pre-14E `status = 'planned'` row shape byte-for-byte. Extending the existing function was a deliberate choice over a new `createAndOpenTrade` service: duplicating ~300 lines of entitlement/lock/Strategy/Setup/Condition/Rule/Emotion/audit logic would have been the premature-abstraction CLAUDE.md §10 warns against, and would have risked the two paths silently drifting apart.
+
+`CreateTradeSchema` (`src/lib/trades/schemas.ts`) mirrors this at the boundary: the same optional Actual-execution fields, validated by a `superRefine` that requires `enteredAt` and rejects a mismatched Price/Money shape whenever `actualResultMode` is present, and rejects any Actual-execution field being sent WITHOUT `actualResultMode` (Actual is fact, Planned is optional intent — CLAUDE.md §6 — the two are never allowed to blur even at the validation layer).
+
+### 4. Backend `planned` — audited, kept internal-only
+
+`planned` was audited for its full blast radius before any removal decision: it remains a member of `TRADE_STATUSES`, both `trades_status_check` and `trades_status_consistency_check` (neither references Plan/Strategy/Setup fields, confirmed unaffected), `canOpenFromStatus`/`canCancelFromStatus` (`src/server/services/trade-recalculation.ts`, unchanged), historical row shapes, and a substantial existing test surface. Removing it would require a migration (forbidden this phase without a proven blocker) and break backward compatibility for every pre-14E row, for zero product benefit — Trader/System analytics eligibility, the Trading Calendar's Trader-axis query, and `getWorkspaceTradeAttentionCounts` were all independently confirmed to already treat `planned` as a non-match via positive allow-lists (`status = 'closed'`/`'resolved'`/`'open'`), never as a literal exclusion needing code to change.
+
+**Decision: `planned` is retained internally, permanently, for backward compatibility** — it is simply never produced by the normal customer New Trade form any more. `openTrade`/`openTradeAction`/`OpenTradeDialog` are preserved completely unchanged as the mechanism that resolves a legacy `planned` row (see §5) and as a domain-level capability for any future completed-Trade-import or bulk-entry flow (§7).
+
+### 5. Legacy `planned` compatibility surface
+
+A pre-14E `planned` Trade is never hidden or deleted, and no historical row was silently mutated. It reads with friendly, non-technical copy everywhere it appears, never the raw status name:
+
+- **Trade Detail** (`trade-detail.tsx`): the Execution section shows "This Trade was saved before execution information was recorded." (`detail.needsExecutionDetails`) — distinct from `canceled`'s own separate "not opened" copy, which is unchanged.
+- **Trade Lifecycle Actions** (`trade-lifecycle-actions.tsx`): unchanged structurally — still renders `OpenTradeDialog` + `CancelTradeControl` for `status === 'planned'` — but `OpenTradeDialog`'s own trigger/title/description (`trade-execution-actions.tsx`) were re-skinned for this now-legacy-only context: trigger reads "Add execution details & Open" (`lifecycle.execution.addExecutionDetails`), dialog title "Add execution details", description explains the row predates execution recording. The dialog's own field set and submit behavior are completely unchanged.
+- **Trade Status Badge / Trade List** (`trade-status-badge.tsx`): `status.execution.planned`'s displayed text changed from "Planned" to "Needs details" — normal new rows only ever read Open/Partial/Closed/Canceled.
+- **Needs Attention** (`getWorkspaceTradeAttentionCounts`, `src/server/dal/trades.ts`; `NeedsAttentionPanel`, `real-dashboard.tsx`): a fifth independent, informational count, `needsExecutionDetails` (`status = 'planned'`), added alongside the existing four — zero, and therefore invisible via the panel's existing `count > 0` filter, for every workspace with no legacy rows. Not a new workflow; the same "informational, never a task list, never a completeness score" posture as the other four counts.
+
+No workspace's existing `planned` rows were transitioned automatically. This was audited and explicitly decided against — a silent historical mutation is exactly what CLAUDE.md's working agreement forbids without prior reporting and approval, and there was no product requirement forcing it (the friendly compatibility surface above makes leaving them in place completely safe).
+
+### 6. Quick Capture — retained at the persistence layer, removed from the normal form
+
+14C.1's Quick Capture capability (Account + Symbol + Direction alone, migration 0016) still exists at the `createTrade` service/domain level — omitting `actualResultMode` still produces exactly that row shape. What changed is reachability: the normal customer `TradeCreateForm` no longer omits `actualResultMode`, so the normal flow cannot reach this shape any more. The capability remains available for internal/future use (bulk import, a future completed-Trade entry flow) without needing to be reinvented, but it is deliberately not customer-reachable through `/app/trades/new` as of 14E.
+
+### 7. Deferred: "Add completed Trade" flow
+
+Not implemented this phase. A future enhancement could let a customer record a Trade that is already fully closed in one submission (Core + Actual + exit fields together) — explicitly out of scope for 14E, recorded here only as a possible later slice.
+
+### 8. Unchanged by this phase
+
+- **Analytics formulas** — Trader eligibility remains `status = 'closed'` only, System eligibility remains `system_status = 'resolved'` only, Execution Gap remains paired-final-results-only; both were confirmed never to reference `'planned'` as anything but an implicit non-match, so removing it from the normal flow changes zero calculations (CLAUDE.md §6, brief §23).
+- **Trading Calendar** — the Trader-axis query already filtered to `status = 'closed'` explicitly; `planned`/`open` were already implicitly excluded. No Calendar code changed.
+- **`entered_at` handling** — `TradeDateTimeInput`'s established convention (blank on the server, populated to "now" client-side post-hydration, always editable, never silently overwritten) was reused as-is for the New Trade form's own Entered field, now load-bearing since creation immediately opens.
+- **Partial Close semantics** — unchanged from Phase 13; a partially-closed Trade remains `status = 'open'`, no new customer-facing "Partial" status was introduced.
+
+### 9. Testing
+
+- **Unit/component:** `trade-plan-validation.test.ts` (new `actualExecutionErrors`), `trade-create-form.test.tsx` (Actual Execution required-field errors with the exact brief §20 copy, Price/Money open-at-creation payload shape, Plan-remains-optional regression), `trade-create-gate.test.tsx`, `trade-execution-actions.test.tsx` (re-skinned legacy trigger copy), `trade-detail.test.tsx` (legacy `planned` vs `canceled` copy split), `trade-list.test.tsx`, `real-dashboard.test.tsx` (new `needsExecutionDetails` bucket).
+- **DAL/service integration (real Postgres):** `trade-management.integration.test.ts` (new atomic open-at-creation describe block — Price/Money success, both rejection codes with no row created, audit-trail `newStatus`, exact-replay idempotency), `trades.integration.test.ts` DAL-level (`getWorkspaceTradeAttentionCounts`'s new fifth count), action-level (`createTradeAction` atomic open success/validation-error paths).
+- **E2E (production build, `e2e/trades.spec.ts`):** every New-Trade-creation journey in the file was updated for the new required Actual Execution section and the "Open Trade" primary action — the full desktop Founder-journey test ("walks one Trade through create (already Open), partial close, independent System resolve, final close, review...") now proves the Trade lands on Detail already Open with Partial Close/Close Remaining immediately visible, with no separate Open step; the minimal-New-Trade journey (no Plan/Strategy/Setup) proves the same atomic-open contract holds at the Quick-Capture-equivalent minimum; the responsive sweep and mobile journeys were updated to check the new required section's own layout.
+
+### 10. Out of scope (unchanged from the working brief)
+
+Arbitrary/unrestricted reclassification. Discipline Score or any combined completeness/discipline metric. Analytics architecture redesign. A new "Add completed Trade" flow (§7 above). Trading Calendar redesign beyond the label/comment adjustments already covered.
+
+### 11. Founder acceptance (14E)
 
 Not obtained. This document records engineering completion of the scoped work, not product sign-off.

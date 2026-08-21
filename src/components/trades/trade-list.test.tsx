@@ -58,7 +58,7 @@ describe('TradeList', () => {
     expect(screen.getAllByText('Pinned Strategy 0').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Pinned Setup 0/).length).toBeGreaterThan(0);
     for (const label of [
-      'Planned',
+      'Needs details',
       'Open',
       'Closed',
       'Canceled',

@@ -426,6 +426,28 @@ export interface CreateTradeInput {
    * public URL, only this stable private key.
    */
   readonly chartAttachmentStorageKey?: string | null;
+  /**
+   * Phase 14E — Open/Close-Only Trade Flow. Present exactly when the caller
+   * wants this Trade to be created ALREADY `open` (the normal customer New
+   * Trade flow) — omitted entirely means the pre-14E `status = 'planned'`
+   * path (retained internally for backward compatibility and any future
+   * Quick Capture/completed-trade-import use, deliberately no longer
+   * produced by the normal customer form — see the module doc comment).
+   * When present, this is the SAME atomic transaction as everything else
+   * `createTrade` already does — one insert, one lock order, one audit
+   * event — never a second `openTrade` call chained afterward, so a
+   * mid-flow failure can never leave a half-created Trade stuck `planned`.
+   * Validated identically to `openTrade`'s own Price/Money checks (inline,
+   * near the top of `createTrade`'s body, guarded by `openAtCreation`);
+   * `enteredAt` is REQUIRED whenever `actualResultMode` is present, matching
+   * `OpenTradeInput`'s own contract exactly.
+   */
+  readonly actualResultMode?: ActualResultMode | undefined;
+  readonly actualEntry?: string | null;
+  readonly actualInitialStop?: string | null;
+  readonly actualInitialRiskMinor?: bigint | null;
+  readonly actualPositionSize?: string | null;
+  readonly enteredAt?: Date | undefined;
 }
 
 export type CreateTradeErrorCode =
@@ -450,7 +472,10 @@ export type CreateTradeErrorCode =
   | 'invalid_condition_status'
   | 'duplicate_emotion_key'
   | 'unknown_emotion_key'
-  | 'emotion_type_not_usable';
+  | 'emotion_type_not_usable'
+  /** Phase 14E — same two codes `openTrade` returns for the same checks, reused verbatim so client error-mapping never has to distinguish the two mutation paths. */
+  | 'invalid_initial_risk'
+  | 'invalid_execution_context';
 
 type SetupConditionInputErrorCode = Extract<
   CreateTradeErrorCode,
@@ -481,6 +506,17 @@ export type CreateTradeResult =
  * `setup_version_id` are NEVER accepted from the caller — only
  * `strategyId`/`setupId` (identity) are; this function alone resolves and
  * pins the current Version of each, under lock, exactly once.
+ *
+ * Phase 14E — Open/Close-Only Trade Flow: the normal customer New Trade form
+ * now supplies `actualResultMode` (+ its Price/Money basis + `enteredAt`),
+ * which this ONE atomic transaction validates and persists together with
+ * everything else, producing `status = 'open'` directly — never a separate
+ * `openTrade` call chained after `createTrade`, so a mid-flow failure can
+ * never leave a half-created `planned` Trade behind. Omitting
+ * `actualResultMode` still produces the pre-14E `status = 'planned'` shape
+ * byte-for-byte — retained internally for backward compatibility with
+ * historical rows and any future Quick Capture/completed-trade-import use,
+ * but deliberately no longer reachable from the normal customer form.
  */
 export async function createTrade(
   workspaceId: string,
@@ -569,6 +605,48 @@ export async function createTrade(
       if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
       if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
       const plannedR = composed.value.plannedR;
+
+      // Phase 14E — Open/Close-Only Trade Flow. `actualResultMode` present
+      // means this Trade must be created already `open`; validated
+      // identically to `openTrade`'s own Price/Money checks (same error
+      // codes), just before the insert rather than in a second mutation.
+      const openAtCreation = input.actualResultMode !== undefined;
+      if (openAtCreation) {
+        const actualResultMode = input.actualResultMode as ActualResultMode;
+        const actualEntry = input.actualEntry ?? null;
+        const actualInitialStop = input.actualInitialStop ?? null;
+        const actualInitialRiskMinor = input.actualInitialRiskMinor ?? null;
+        if (actualResultMode === 'price') {
+          if (actualInitialRiskMinor !== null) {
+            return { ok: false, code: 'invalid_execution_context' };
+          }
+          const context = composeRealizedActual({
+            actualResultMode: 'price',
+            direction: input.direction,
+            actualEntry,
+            actualInitialStop,
+            exits: [],
+          });
+          if (!context.ok) return { ok: false, code: 'invalid_execution_context' };
+        } else {
+          if (actualInitialRiskMinor === null || actualInitialRiskMinor <= 0n) {
+            return { ok: false, code: 'invalid_initial_risk' };
+          }
+          if ((actualEntry === null) !== (actualInitialStop === null)) {
+            return { ok: false, code: 'invalid_execution_context' };
+          }
+          if (actualEntry !== null) {
+            const context = composeRealizedActual({
+              actualResultMode: 'price',
+              direction: input.direction,
+              actualEntry,
+              actualInitialStop,
+              exits: [],
+            });
+            if (!context.ok) return { ok: false, code: 'invalid_execution_context' };
+          }
+        }
+      }
 
       // Step 5 — plain scoped read, not FOR UPDATE (see module comment).
       const account = await tx.query.tradingAccounts.findFirst({
@@ -689,6 +767,21 @@ export async function createTrade(
           plannedRiskMinor: input.plannedRiskMinor ?? null,
           plannedRewardMinor: input.plannedRewardMinor ?? null,
           plannedR,
+          // Phase 14E — one atomic insert, never insert-then-update. Absent
+          // `actualResultMode` leaves every field below at its column
+          // default (`status = 'planned'`, everything else `null`) —
+          // byte-for-byte the pre-14E row shape.
+          ...(openAtCreation
+            ? {
+                status: 'open' as const,
+                actualResultMode: input.actualResultMode,
+                actualEntry: input.actualEntry ?? null,
+                actualInitialStop: input.actualInitialStop ?? null,
+                actualInitialRiskMinor: input.actualInitialRiskMinor ?? null,
+                actualPositionSize: input.actualPositionSize ?? null,
+                enteredAt: input.enteredAt,
+              }
+            : {}),
         })
         .onConflictDoNothing({ target: [trades.workspaceId, trades.mutationKey] })
         .returning({ id: trades.id });
@@ -770,6 +863,12 @@ export async function createTrade(
         metadata: {
           tradeId: created.id,
           tradingAccountId: input.tradingAccountId,
+          // Phase 14E — the normal customer flow now creates a Trade already
+          // `open`; the legacy/internal `planned` path remains reachable
+          // (never produced by the normal New Trade form) — this makes
+          // which one happened explicit in the audit trail, reusing the
+          // same `newStatus` field `openTrade`'s own audit event uses.
+          newStatus: openAtCreation ? 'open' : 'planned',
           // Phase 14B: omitted entirely (never `null`) when unclassified —
           // `AuditLogMetadata`'s fields are `string | undefined`, never
           // `string | null`, under `exactOptionalPropertyTypes`.

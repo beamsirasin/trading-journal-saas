@@ -206,7 +206,8 @@ function NeedsAttentionPanel({ attention }: { attention: TradeAttentionCounts })
     attention.openTrades +
     attention.pendingSystemOutcomes +
     attention.unclassifiedTrades +
-    attention.reviewsPending;
+    attention.reviewsPending +
+    attention.needsExecutionDetails;
   if (total === 0) return null;
 
   const items: readonly { readonly key: string; readonly count: number }[] = [
@@ -214,6 +215,9 @@ function NeedsAttentionPanel({ attention }: { attention: TradeAttentionCounts })
     { key: 'pendingSystemOutcomes', count: attention.pendingSystemOutcomes },
     { key: 'unclassifiedTrades', count: attention.unclassifiedTrades },
     { key: 'reviewsPending', count: attention.reviewsPending },
+    // Phase 14E — legacy/internal `planned` rows only; zero (and hidden via
+    // the `count > 0` filter below) for every workspace with none.
+    { key: 'needsExecutionDetails', count: attention.needsExecutionDetails },
   ];
 
   return (

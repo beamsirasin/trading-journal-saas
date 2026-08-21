@@ -370,6 +370,7 @@
         "pendingSystemOutcomes": "ผลของระบบที่รอสรุป",
         "unclassifiedTrades": "ออเดอร์ที่ยังไม่จัดหมวดหมู่",
         "reviewsPending": "รอทบทวน",
+        "needsExecutionDetails": "ต้องการข้อมูลการเทรดจริง",
         "review": "ทบทวน"
       },
       "unavailable": {
@@ -491,7 +492,7 @@
     "direction": { "long": "Long", "short": "Short" },
     "status": {
       "execution": {
-        "planned": "วางแผนแล้ว",
+        "planned": "ต้องการรายละเอียด",
         "open": "เปิดอยู่",
         "closed": "ปิดแล้ว",
         "canceled": "ยกเลิกแล้ว"
@@ -621,6 +622,7 @@
       "openChartImage": "เปิดรูปภาพกราฟ",
       "chartImageAlt": "รูปภาพกราฟที่อัปโหลด",
       "notOpened": "ออเดอร์นี้ยังไม่ได้เปิด จึงยังไม่มีข้อมูลการเทรดจริง",
+      "needsExecutionDetails": "ออเดอร์นี้ถูกบันทึกไว้ก่อนที่จะมีการบันทึกข้อมูลการเทรดจริง",
       "systemPending": "ผลของระบบยังรอดำเนินการ จึงยังไม่มี System R และผลลัพธ์",
       "systemNoTrade": "กลยุทธ์และเซ็ตอัพที่บันทึกไว้จะไม่อนุญาตให้เทรดรายการนี้ จึงไม่มี System R",
       "noRules": "ออเดอร์นี้ไม่มีสแนปช็อตกฎ",
@@ -683,6 +685,9 @@
         "open": "เปิดออเดอร์",
         "openTitle": "บันทึกการเข้าออเดอร์",
         "openDescription": "เลือก Price หรือ Money เป็นโหมดผลลัพธ์จริงหลัก แล้วบันทึกข้อมูลการเทรดที่จำเป็น สถานะกฎจะไม่ขัดขวางการเปิด",
+        "addExecutionDetails": "เพิ่มข้อมูลการเทรดจริงแล้วเปิด",
+        "legacyOpenTitle": "เพิ่มข้อมูลการเทรดจริง",
+        "legacyOpenDescription": "ออเดอร์นี้ถูกบันทึกไว้ก่อนที่จะมีการบันทึกข้อมูลการเทรดจริง เลือก Price หรือ Money เป็นโหมดผลลัพธ์จริงหลัก แล้วบันทึกข้อมูลการเทรดที่จำเป็นเพื่อเปิดออเดอร์นี้",
         "priceMode": "Price",
         "moneyMode": "Money",
         "partialClose": "ปิดบางส่วน",
@@ -817,9 +822,11 @@
       "strategyDescription": "ไม่บังคับ — จะจัดหมวดหมู่ตอนนี้หรือเพิ่มทีหลังจากหน้าออเดอร์ก็ได้ เซิร์ฟเวอร์จะบันทึกเวอร์ชันปัจจุบันทุกครั้งที่กำหนด",
       "chooseStrategy": "เลือกกลยุทธ์",
       "chooseSetup": "เลือกเซ็ตอัพ",
-      "planTitle": "บันทึกแผน",
+      "planTitle": "รายละเอียดออเดอร์",
       "sections": {
         "corePlan": "แผนหลัก",
+        "actualExecution": "การเข้าเทรดจริง",
+        "tradePlan": "แผนการเทรด (ไม่บังคับ)",
         "context": "บริบท",
         "conditions": "เงื่อนไขของเซ็ตอัพ",
         "confidence": "ความมั่นใจ",
@@ -870,7 +877,7 @@
         "confirmDescription": "ผ่าน {met} จาก {total} เงื่อนไข ({percentage}%) และจะบันทึก {unmet} เงื่อนไขเป็น ไม่ผ่าน",
         "uncheckedSavedNotMet": "รายการนี้ไม่ขัดขวางการบันทึกออเดอร์ แต่เก็บข้อเท็จจริง ณ เวลาเข้าเทรดไว้",
         "goBack": "ตรวจสอบเงื่อนไข",
-        "confirmSave": "บันทึกออเดอร์"
+        "confirmSave": "เปิดออเดอร์"
       },
       "chart": {
         "linkOption": "ลิงก์",
@@ -892,7 +899,7 @@
       "back": "กลับ",
       "continue": "ดำเนินการต่อ",
       "create": "สร้างออเดอร์",
-      "saveTrade": "บันทึกออเดอร์",
+      "saveTrade": "เปิดออเดอร์",
       "creating": "กำลังสร้าง…"
     },
     "prerequisite": {
@@ -913,6 +920,8 @@
       "requiredDirection": "เลือก Long หรือ Short",
       "requiredEntry": "กรอกราคาเข้าตามแผน",
       "requiredStop": "กรอกจุดตัดขาดทุนตามแผน",
+      "requiredActualPrice": "กรอกราคาเข้าจริงและจุดตัดขาดทุนเริ่มต้นเพื่อเปิดออเดอร์นี้",
+      "requiredActualRisk": "กรอกจำนวนความเสี่ยงเริ่มต้นเพื่อเปิดออเดอร์นี้",
       "invalidDecimal": "กรอกเลขทศนิยมบวกที่ถูกต้อง",
       "invalidTradingViewUrl": "กรอก URL HTTPS ของ TradingView",
       "invalidField": "ตรวจสอบค่านี้",

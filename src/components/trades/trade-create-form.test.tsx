@@ -104,7 +104,7 @@ const options = {
 function renderForm(customOptions: TradeCreateOptions = options) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeCreateForm options={customOptions} />
+      <TradeCreateForm options={customOptions} timezone="Asia/Bangkok" />
     </NextIntlClientProvider>,
   );
 }
@@ -118,12 +118,24 @@ function chooseRetest() {
   });
 }
 
+/**
+ * Phase 14E — Open/Close-Only Trade Flow. The one REQUIRED representation
+ * on this form: an Actual execution basis (defaults to Price mode). Every
+ * submitting test must call this (directly or via `fillPricePlan`), exactly
+ * as every real New Trade submission must supply it.
+ */
+function fillActualExecution() {
+  fireEvent.change(screen.getByLabelText('Actual entry'), { target: { value: '100' } });
+  fireEvent.change(screen.getByLabelText('Initial Stop'), { target: { value: '90' } });
+}
+
 function fillPricePlan() {
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('button', { name: 'Long' }));
   fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
   fireEvent.change(screen.getByLabelText('Stop'), { target: { value: '90' } });
   fireEvent.change(screen.getByLabelText(/Target/), { target: { value: '130' } });
+  fillActualExecution();
 }
 
 function checkAllConditions() {
@@ -141,7 +153,7 @@ beforeEach(() => {
 });
 
 describe('TradeCreateForm — Phase 13C single-page entry', () => {
-  it('renders all sections together with one Save Trade action and no wizard', () => {
+  it('renders all sections together with one Open Trade action and no wizard', () => {
     renderForm();
     expect(screen.getByLabelText('Trading Account')).toBeVisible();
     expect(screen.getByLabelText('Strategy')).toBeVisible();
@@ -151,7 +163,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByText('How are you feeling?')).toBeVisible();
     expect(screen.getAllByText('Entry Reason').length).toBeGreaterThan(0);
     expect(screen.getByText('Chart attachment')).toBeVisible();
-    expect(screen.getAllByRole('button', { name: 'Save Trade' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Open Trade' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
     expect(screen.queryByText('Review the planned Trade')).not.toBeInTheDocument();
   });
@@ -176,7 +188,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByLabelText(/75%/)).toBeChecked();
     expect(screen.getByLabelText(/Entry Reason/)).toHaveValue('Reason remains stable.');
     fillPricePlan();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     expect(createTradeActionMock.mock.calls[0]?.[0].emotionKeys).toEqual(['calm', 'fomo']);
   });
@@ -229,7 +241,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByText('Not configured')).toBeVisible();
     expect(screen.queryByText(/0\/0/)).not.toBeInTheDocument();
     fillPricePlan();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     expect(createTradeActionMock.mock.calls[0]?.[0]).toMatchObject({
       conditionSetToken: 'c'.repeat(64),
@@ -243,7 +255,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.conditionSetToken).toBe('a'.repeat(64));
@@ -270,7 +282,8 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
       target: { value: 'Clear confirmation at the level.' },
     });
     checkAllConditions();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fillActualExecution();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     expect(createTradeActionMock.mock.calls[0]?.[0]).toMatchObject({
       plannedEntry: null,
@@ -290,7 +303,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '50.00' } });
     fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '500.00' } });
     checkAllConditions();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(screen.getAllByText('Price and Money plans disagree').length).toBeGreaterThan(0);
     expect(createTradeActionMock).not.toHaveBeenCalled();
   });
@@ -301,12 +314,12 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     fireEvent.click(screen.getByLabelText(conditionA.label));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(createTradeActionMock).not.toHaveBeenCalled();
     const dialog = screen.getByRole('alertdialog');
     expect(within(dialog).getByText(/1 of 2 Conditions are met \(50%\)/)).toBeVisible();
     expect(within(dialog).getByText(/saved as Not Met/)).toBeVisible();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     expect(createTradeActionMock.mock.calls[0]?.[0].conditionAnswers).toEqual([
       { conditionKey: conditionA.conditionKey, status: 'met' },
@@ -344,9 +357,9 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(2));
     expect(createTradeActionMock.mock.calls[0]?.[0].mutationKey).toBe(
       createTradeActionMock.mock.calls[1]?.[0].mutationKey,
@@ -362,7 +375,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(await screen.findByText(/Setup changed while you were entering/)).toBeVisible();
     expect(screen.getByLabelText('Symbol')).toHaveValue('XAUUSD');
   });
@@ -376,7 +389,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() =>
       expect(pushMock).toHaveBeenCalledWith(
         '/app/trades?trade=018f0000-0000-7000-8000-000000000099',
@@ -399,7 +412,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
       ],
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(createTradeActionMock).not.toHaveBeenCalled();
     const account = screen.getByLabelText('Trading Account');
     expect(account).toHaveAttribute('aria-invalid', 'true');
@@ -415,7 +428,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
       target: { value: options.strategies[1].strategyId },
     });
     fillPricePlan();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
   });
 
@@ -432,7 +445,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(setup).toBeDisabled();
 
     fillPricePlan();
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
 
     expect(strategy).toHaveAttribute('aria-invalid', 'false');
@@ -446,7 +459,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(payload).not.toHaveProperty('conditionAnswers');
   });
 
-  it('never requires a Plan — Quick Capture submits with only Account/Symbol/Direction and no Strategy/Setup (Phase 14C.1)', async () => {
+  it('never requires a Plan — submits with only Account/Symbol/Direction/Actual execution and no Strategy/Setup/Plan (Phase 14C.1, Phase 14E)', async () => {
     createTradeActionMock.mockResolvedValue({
       ok: true,
       data: { tradeId: '018f0000-0000-7000-8000-0000000000bb', alreadyCreated: false },
@@ -454,7 +467,8 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
     fireEvent.click(screen.getByRole('button', { name: 'Long' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fillActualExecution();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
 
     const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -465,7 +479,58 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(payload.plannedTarget).toBeNull();
     expect(payload.plannedRiskMinor).toBeNull();
     expect(payload.plannedRewardMinor).toBeNull();
+    // Phase 14E — the one required representation: created already `open`.
+    expect(payload.actualResultMode).toBe('price');
+    expect(payload.actualEntry).toBe('100');
+    expect(payload.actualInitialStop).toBe('90');
+    expect(typeof payload.enteredAt).toBe('string');
     expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=018f0000-0000-7000-8000-0000000000bb');
+  });
+
+  it('blocks Open with the exact Price-mode Actual Execution copy and never a generic "incomplete" message (Phase 14E §20)', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
+    expect(createTradeActionMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Enter your actual entry and initial stop to open this Trade.'),
+    ).toBeVisible();
+  });
+
+  it('blocks Open with the exact Money-mode Actual Execution copy when Risk is missing (Phase 14E §20)', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    fireEvent.change(screen.getByLabelText('Actual result mode'), {
+      target: { value: 'money' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
+    expect(createTradeActionMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Enter the amount initially at risk to open this Trade.'),
+    ).toBeVisible();
+  });
+
+  it('opens a Money-mode Trade from Initial risk alone, with no Actual Entry/Stop required (Phase 14E §6)', async () => {
+    createTradeActionMock.mockResolvedValue({
+      ok: true,
+      data: { tradeId: '018f0000-0000-7000-8000-0000000000cc', alreadyCreated: false },
+    });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    fireEvent.change(screen.getByLabelText('Actual result mode'), {
+      target: { value: 'money' },
+    });
+    fireEvent.change(screen.getByLabelText('Initial risk'), { target: { value: '50.00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.actualResultMode).toBe('money');
+    expect(payload.actualEntry).toBeNull();
+    expect(payload.actualInitialStop).toBeNull();
+    expect(payload.actualInitialRiskMinor).toBe('5000');
   });
 
   it('still requires a Strategy before a Setup can be chosen, without blocking the rest of the form', () => {
@@ -496,7 +561,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     fireEvent.change(screen.getByLabelText(/Entry Reason/), {
       target: { value: 'Retest confirmation remained intact.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
 
     expect(
       await screen.findByText('The Stop is on the wrong side of Entry for this direction.'),
@@ -572,7 +637,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(preview.src).toBe('blob:mock-object-url');
     expect(uploadChartAttachmentActionMock).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.chartAttachmentStorageKey).toBe('trade-charts/ws/obj.png');
@@ -600,7 +665,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByLabelText('Upload image')).toBeInTheDocument();
     expect(deleteChartAttachmentActionMock).toHaveBeenCalledWith('trade-charts/ws/remove-me.png');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     expect(createTradeActionMock.mock.calls[0]?.[0].chartAttachmentStorageKey).toBeNull();
   });

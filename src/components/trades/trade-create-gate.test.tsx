@@ -54,6 +54,7 @@ describe('TradeCreateGate', () => {
       },
       canWrite: false,
       writeBlockReason: 'read_only_workspace',
+      timezone: 'Asia/Bangkok',
     });
     expect(screen.getByText('Trade creation is unavailable')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to trades' })).toHaveAttribute(
@@ -98,7 +99,7 @@ describe('TradeCreateGate', () => {
       '/app/strategies',
     ],
   ] as const)('renders the actionable prerequisite state %s', (options, heading, href) => {
-    renderGate({ options, canWrite: true, writeBlockReason: null });
+    renderGate({ options, canWrite: true, writeBlockReason: null, timezone: 'Asia/Bangkok' });
     expect(screen.getByText(heading)).toBeInTheDocument();
     expect(screen.getByRole('link')).toHaveAttribute('href', href);
   });

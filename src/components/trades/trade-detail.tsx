@@ -413,8 +413,16 @@ export function TradeDetail({
       </Section>
 
       <Section id="trade-execution" title={t('detail.sections.execution')}>
-        {trade.status === 'planned' || trade.status === 'canceled' ? (
+        {trade.status === 'canceled' ? (
           <p className="text-muted-foreground text-sm">{t('detail.notOpened')}</p>
+        ) : trade.status === 'planned' ? (
+          // Phase 14E — Open/Close-Only Trade Flow. `planned` is a legacy/
+          // internal compatibility state (never produced by the normal New
+          // Trade form since this phase) — friendly copy, never the raw
+          // status name. The action to resolve it lives in the Lifecycle
+          // Actions card below (`OpenTradeDialog`, relabeled for this
+          // context), not duplicated here.
+          <p className="text-muted-foreground text-sm">{t('detail.needsExecutionDetails')}</p>
         ) : (
           <div className="grid gap-5">
             <dl className="divide-border divide-y">

@@ -789,6 +789,163 @@ describe('trade-management (real database)', () => {
   });
 
   // -------------------------------------------------------------------------
+  // Open/Close-Only Trade Flow (Phase 14E) — the normal customer New Trade
+  // form now supplies `actualResultMode` (+ its Price/Money basis), so
+  // `createTrade` produces `status = 'open'` in ONE atomic transaction,
+  // never a separate `openTrade` call after. Omitting `actualResultMode`
+  // still produces the pre-14E `status = 'planned'` shape byte-for-byte
+  // (already covered above) — retained internally for backward
+  // compatibility, no longer reachable from the normal customer form.
+  // -------------------------------------------------------------------------
+  describe('createTrade — atomic open-at-creation (Phase 14E)', () => {
+    it('creates an already-open Trade from Price mode in one atomic transaction, with no Plan required', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'ATOMICPRICE',
+        direction: 'long',
+        actualResultMode: 'price',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      expect(result).toMatchObject({ ok: true, alreadyCreated: false });
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row?.status).toBe('open');
+      expect(row?.systemStatus).toBe('pending');
+      expect(row?.actualResultMode).toBe('price');
+      expect(row?.actualEntry).toBe('1.1005000000');
+      expect(row?.actualInitialStop).toBe('1.0950000000');
+      expect(row?.actualInitialRiskMinor).toBeNull();
+      expect(row?.enteredAt).toEqual(new Date('2026-08-01T09:00:00Z'));
+      // No Plan supplied — Plan is optional data, never required to open.
+      expect(row?.plannedEntry).toBeNull();
+      expect(row?.plannedStop).toBeNull();
+      expect(row?.strategyId).toBeNull();
+      expect(row?.setupId).toBeNull();
+    });
+
+    it('creates an already-open Trade from Money mode, with no Actual Entry/Stop required', async () => {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'ATOMICMONEY',
+        direction: 'short',
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5_000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      expect(result).toMatchObject({ ok: true, alreadyCreated: false });
+      if (!result.ok) return;
+      const row = await readTrade(result.tradeId);
+      expect(row?.status).toBe('open');
+      expect(row?.actualResultMode).toBe('money');
+      expect(row?.actualEntry).toBeNull();
+      expect(row?.actualInitialStop).toBeNull();
+      expect(row?.actualInitialRiskMinor).toBe(5000n);
+    });
+
+    it('rejects Price mode missing Entry or Stop with invalid_execution_context, before any insert', async () => {
+      const fw = await freshFramework();
+      const input = {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'REJECTPRICE',
+        direction: 'long' as const,
+        actualResultMode: 'price' as const,
+        actualEntry: '1.1005000000',
+        actualInitialStop: null,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      };
+      const result = await createTrade(workspaceId, actorUserId, input);
+      expect(result).toEqual({ ok: false, code: 'invalid_execution_context' });
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(eq(trades.mutationKey, input.mutationKey));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('rejects Money mode with a non-positive Initial Risk with invalid_initial_risk, before any insert', async () => {
+      const fw = await freshFramework();
+      const input = {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'REJECTMONEY',
+        direction: 'long' as const,
+        actualResultMode: 'money' as const,
+        actualInitialRiskMinor: 0n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      };
+      const result = await createTrade(workspaceId, actorUserId, input);
+      expect(result).toEqual({ ok: false, code: 'invalid_initial_risk' });
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(eq(trades.mutationKey, input.mutationKey));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('records `newStatus: "open"` in the audit trail for an atomic open-at-creation, distinct from a legacy planned create', async () => {
+      const fw = await freshFramework();
+      const opened = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'AUDITOPEN',
+        direction: 'long',
+        actualResultMode: 'price',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      expect(opened.ok).toBe(true);
+      if (!opened.ok) return;
+      const [openedEvent] = await db
+        .select()
+        .from(auditLogs)
+        .where(and(eq(auditLogs.action, 'trade.created'), eq(auditLogs.entityId, opened.tradeId)));
+      expect(openedEvent?.metadata).toMatchObject({ newStatus: 'open' });
+
+      const planned = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
+      expect(planned.ok).toBe(true);
+      if (!planned.ok) return;
+      const [plannedEvent] = await db
+        .select()
+        .from(auditLogs)
+        .where(and(eq(auditLogs.action, 'trade.created'), eq(auditLogs.entityId, planned.tradeId)));
+      expect(plannedEvent?.metadata).toMatchObject({ newStatus: 'planned' });
+    });
+
+    it('an exact replay of an atomic open-at-creation is idempotent and never double-creates', async () => {
+      const fw = await freshFramework();
+      const input = {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'REPLAYOPEN',
+        direction: 'long' as const,
+        actualResultMode: 'price' as const,
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      };
+      const first = await createTrade(workspaceId, actorUserId, input);
+      const replay = await createTrade(workspaceId, actorUserId, input);
+      expect(first).toMatchObject({ ok: true, alreadyCreated: false });
+      expect(replay).toMatchObject({ ok: true, alreadyCreated: true });
+      if (!first.ok || !replay.ok) return;
+      expect(replay.tradeId).toBe(first.tradeId);
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(eq(trades.mutationKey, input.mutationKey));
+      expect(rows).toHaveLength(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Price/Money independence (Founder-UAT Trade Plan UX correction slice,
   // migration 0010) — against a real database, so `trades_planned_price_shape_check`/
   // `trades_planned_money_check`/`trades_plan_minimum_check`/`trades_confidence_check`

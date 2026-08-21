@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
-import { getWorkspaceEntitlement } from '@/server/auth/dal';
+import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
 import { getTradeCreateOptions } from '@/server/dal/trades';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
@@ -40,9 +40,10 @@ export default async function NewTradePage({ params }: { params: Promise<PagePar
   const { locale } = await params;
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
-  const [options, entitlement] = await Promise.all([
+  const [options, entitlement, preferences] = await Promise.all([
     getTradeCreateOptions(),
     getWorkspaceEntitlement(),
+    getCurrentUserPreferences(),
   ]);
   const authorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
 
@@ -64,6 +65,7 @@ export default async function NewTradePage({ params }: { params: Promise<PagePar
         options={options}
         canWrite={authorization.allowed}
         writeBlockReason={authorization.allowed ? null : authorization.code}
+        timezone={preferences.timezone}
       />
     </Container>
   );

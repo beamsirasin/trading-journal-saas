@@ -1095,10 +1095,18 @@ export interface TradeAttentionCounts {
    * analytics eligibility (CLAUDE.md §1/§6) — purely informational.
    */
   readonly reviewsPending: number;
+  /**
+   * `status = 'planned'` (Phase 14E) — exclusively legacy/internal rows;
+   * the normal customer New Trade flow no longer produces this status.
+   * Zero for every workspace with no such historical rows, which is the
+   * common case going forward — never a major new workflow, purely a
+   * backward-compatibility surface for records that predate this phase.
+   */
+  readonly needsExecutionDetails: number;
 }
 
 /**
- * Four independent, informational counts — never combined into a single
+ * Five independent, informational counts — never combined into a single
  * "completeness score" (Phase 14C §18/CLAUDE.md's Discipline Score
  * precedent). Each count is its own explicit, testable predicate over the
  * caller's active workspace; none of them implies a Trade is invalid or
@@ -1114,6 +1122,7 @@ export async function getWorkspaceTradeAttentionCounts(): Promise<TradeAttention
       pendingSystemOutcomes: sql<number>`count(*) filter (where ${trades.systemStatus} = 'pending')::int`,
       unclassifiedTrades: sql<number>`count(*) filter (where ${trades.strategyId} is null)::int`,
       reviewsPending: sql<number>`count(*) filter (where ${trades.status} = 'closed' and ${trades.reviewNotes} is null)::int`,
+      needsExecutionDetails: sql<number>`count(*) filter (where ${trades.status} = 'planned')::int`,
     })
     .from(trades)
     .where(and(eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)));
@@ -1124,6 +1133,7 @@ export async function getWorkspaceTradeAttentionCounts(): Promise<TradeAttention
       pendingSystemOutcomes: 0,
       unclassifiedTrades: 0,
       reviewsPending: 0,
+      needsExecutionDetails: 0,
     }
   );
 }

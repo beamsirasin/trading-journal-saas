@@ -1151,6 +1151,7 @@ describe('trades DAL (real database)', () => {
         pendingSystemOutcomes: 4, // every Trade except `reviewed`
         unclassifiedTrades: 1, // `unclassified` only
         reviewsPending: 1, // `unreviewed` only — closed with no review notes
+        needsExecutionDetails: 2, // `planned` and `unclassified` — both left planned (Phase 14E legacy state)
       });
     });
 
@@ -1180,6 +1181,7 @@ describe('trades DAL (real database)', () => {
         pendingSystemOutcomes: 0,
         unclassifiedTrades: 0,
         reviewsPending: 0,
+        needsExecutionDetails: 0,
       });
     });
   });

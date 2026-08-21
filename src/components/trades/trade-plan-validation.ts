@@ -176,3 +176,49 @@ export function furthestReachableStage(values: PlanValidationValues): PlanStage 
 export function canNavigateToStage(target: PlanStage, values: PlanValidationValues): boolean {
   return target <= furthestReachableStage(values);
 }
+
+// ---------------------------------------------------------------------------
+// Actual Execution (Phase 14E — Open/Close-Only Trade Flow)
+// ---------------------------------------------------------------------------
+
+/**
+ * The normal customer New Trade form's one REQUIRED representation of what
+ * actually happened — distinct from, and never derived from, the optional
+ * Trade Plan above (`PlanValidationValues`). Mirrors `CreateTradeSchema`'s
+ * `superRefine` (`src/lib/trades/schemas.ts`) exactly, so client and server
+ * can never quietly diverge on what "a valid Actual Execution basis" means.
+ */
+export interface ActualExecutionValidationValues {
+  readonly actualResultMode: 'price' | 'money';
+  readonly actualEntry: string;
+  readonly actualInitialStop: string;
+  readonly actualInitialRiskMinor: string;
+}
+
+/**
+ * Exactly one error code per mode — the copy attached to each (by the
+ * caller, via i18n) is deliberately specific per brief §20: "Enter your
+ * actual entry and initial stop to open this Trade." / "Enter the amount
+ * initially at risk to open this Trade." — never a generic "Trade
+ * incomplete"/"Invalid Plan"/"Planned R missing".
+ */
+export type ActualExecutionErrorCode =
+  'required_actual_price' | 'invalid_actual_price' | 'required_actual_risk' | 'invalid_actual_risk';
+
+export function actualExecutionErrors(
+  values: ActualExecutionValidationValues,
+): ActualExecutionErrorCode | null {
+  if (values.actualResultMode === 'price') {
+    const entry = values.actualEntry.trim();
+    const stop = values.actualInitialStop.trim();
+    if (entry === '' || stop === '') return 'required_actual_price';
+    if (!DECIMAL_PATTERN.test(entry) || !DECIMAL_PATTERN.test(stop)) {
+      return 'invalid_actual_price';
+    }
+    return null;
+  }
+  const risk = values.actualInitialRiskMinor.trim();
+  if (risk === '') return 'required_actual_risk';
+  if (!DECIMAL_PATTERN.test(risk)) return 'invalid_actual_risk';
+  return null;
+}

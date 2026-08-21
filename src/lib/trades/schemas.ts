@@ -338,6 +338,24 @@ const CreateTradeObjectSchema = z
     tradingviewUrl: tradingViewUrlField(),
     notes: optionalTextField(NOTES_MAX_LENGTH),
     chartAttachmentStorageKey: chartAttachmentStorageKeyField().nullable().optional(),
+    /**
+     * Phase 14E — Open/Close-Only Trade Flow. Present exactly when the
+     * normal customer New Trade flow wants this Trade created already
+     * `open` — mirrors `OpenTradeSchema`'s own Price/Money shape
+     * validation (see the `superRefine` below), just validated as part of
+     * Create instead of a second Open action afterward. Omitted entirely
+     * still produces the pre-14E `status = 'planned'` shape — retained
+     * internally for backward compatibility, no longer reachable from the
+     * normal customer form.
+     */
+    actualResultMode: z.enum(['price', 'money']).optional(),
+    actualEntry: decimalField().nullable().optional(),
+    actualInitialStop: decimalField().nullable().optional(),
+    /** Authoritative, never price-derived (CLAUDE.md §6) — a positive account-currency minor-unit integer string. */
+    actualInitialRiskMinor: positiveMinorField().nullable().optional(),
+    actualPositionSize: decimalField().nullable().optional(),
+    /** Required exactly when `actualResultMode` is present — see the refine below. */
+    enteredAt: instantField().optional(),
   })
   .strict();
 
@@ -358,6 +376,55 @@ export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSche
   .refine((data) => data.setupId !== undefined || (data.conditionAnswers ?? []).length === 0, {
     message: 'condition_answers_require_setup',
     path: ['conditionAnswers'],
+  })
+  // Phase 14E: Actual-execution fields are only meaningful alongside
+  // `actualResultMode` (open-at-creation); a legacy/internal `planned`
+  // create (no `actualResultMode`) must not smuggle in Actual values —
+  // Actual is fact, Planned is optional intent, kept conceptually separate
+  // (brief §6).
+  .superRefine((data, context) => {
+    if (data.actualResultMode === undefined) {
+      if (
+        data.actualEntry != null ||
+        data.actualInitialStop != null ||
+        data.actualInitialRiskMinor != null ||
+        data.actualPositionSize != null ||
+        data.enteredAt != null
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'actual_execution_requires_result_mode',
+          path: ['actualResultMode'],
+        });
+      }
+      return;
+    }
+    if (data.enteredAt == null) {
+      context.addIssue({ code: 'custom', message: 'entered_at_required', path: ['enteredAt'] });
+    }
+    const hasPrice = data.actualEntry != null && data.actualInitialStop != null;
+    const hasPartialPrice = (data.actualEntry == null) !== (data.actualInitialStop == null);
+    if (hasPartialPrice || (data.actualResultMode === 'price' && !hasPrice)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'incomplete_actual_price_context',
+        path: ['actualEntry'],
+      });
+    }
+    if (data.actualResultMode === 'price' && data.actualInitialRiskMinor != null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'price_mode_forbids_money_risk',
+        path: ['actualInitialRiskMinor'],
+      });
+    }
+    if (data.actualResultMode === 'money' && data.actualInitialRiskMinor == null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'money_mode_requires_risk',
+        path: ['actualInitialRiskMinor'],
+      });
+    }
   });
 export type CreateTradeActionInput = z.input<typeof CreateTradeSchema>;
 export type CreateTradeActionData = z.output<typeof CreateTradeSchema>;

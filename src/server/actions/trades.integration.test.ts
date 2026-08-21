@@ -367,6 +367,86 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(result);
     });
 
+    // Phase 14E — Open/Close-Only Trade Flow: the normal customer New Trade
+    // form now supplies `actualResultMode`, producing an already-`open`
+    // Trade through the same atomic action -> Zod -> service -> database
+    // path, never a second `openTradeAction` call after.
+    it('opens a Price-mode Trade atomically through the full action -> Zod -> service -> database path', async () => {
+      const { fw, workspaceId } = await freshFixture();
+      const result = await createTradeAction({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        emotionKeys: [],
+        symbol: 'EURUSD',
+        direction: 'long',
+        actualResultMode: 'price',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: '2026-08-01T09:00:00.000Z',
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      assertJsonSerializable(result);
+      const [row] = await db.select().from(trades).where(eq(trades.id, result.data.tradeId));
+      expect(row?.status).toBe('open');
+      expect(row?.workspaceId).toBe(workspaceId);
+      expect(row?.actualResultMode).toBe('price');
+    });
+
+    it('opens a Money-mode Trade atomically with no Actual Entry/Stop required', async () => {
+      const { fw } = await freshFixture();
+      const result = await createTradeAction({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        emotionKeys: [],
+        symbol: 'EURUSD',
+        direction: 'short',
+        actualResultMode: 'money',
+        actualInitialRiskMinor: '5000',
+        enteredAt: '2026-08-01T09:00:00.000Z',
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const [row] = await db.select().from(trades).where(eq(trades.id, result.data.tradeId));
+      expect(row?.status).toBe('open');
+      expect(row?.actualResultMode).toBe('money');
+      expect(row?.actualInitialRiskMinor).toBe(5000n);
+    });
+
+    it('rejects Price mode missing Entry/Stop as a schema validation_error, creating no Trade', async () => {
+      const { fw, workspaceId } = await freshFixture();
+      const result = await createTradeAction({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        actualResultMode: 'price',
+        enteredAt: '2026-08-01T09:00:00.000Z',
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('validation_error');
+      const rows = await db.select().from(trades).where(eq(trades.workspaceId, workspaceId));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('rejects Money mode missing Initial Risk as a schema validation_error, creating no Trade', async () => {
+      const { fw, workspaceId } = await freshFixture();
+      const result = await createTradeAction({
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'EURUSD',
+        direction: 'long',
+        actualResultMode: 'money',
+        enteredAt: '2026-08-01T09:00:00.000Z',
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe('validation_error');
+      const rows = await db.select().from(trades).where(eq(trades.workspaceId, workspaceId));
+      expect(rows).toHaveLength(0);
+    });
+
     it('returns a stable public stale-Conditions error without creating a Trade', async () => {
       const { fw } = await freshFixture();
       const result = await createTradeAction(

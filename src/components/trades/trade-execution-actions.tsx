@@ -90,12 +90,16 @@ export function OpenTradeDialog({ trade, timezone }: { trade: TradeDetail; timez
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>{t('lifecycle.execution.open')}</Button>
+        {/* Phase 14E — Open/Close-Only Trade Flow: this dialog is now reached
+            only from a legacy/internal `planned` Trade (never produced by
+            the normal New Trade form) — the trigger and dialog copy frame it
+            as a backward-compatibility action, not the primary create flow. */}
+        <Button>{t('lifecycle.execution.addExecutionDetails')}</Button>
       </DialogTrigger>
       <DialogContent closeLabel={t('lifecycle.common.close')}>
         <DialogHeader>
-          <DialogTitle>{t('lifecycle.execution.openTitle')}</DialogTitle>
-          <DialogDescription>{t('lifecycle.execution.openDescription')}</DialogDescription>
+          <DialogTitle>{t('lifecycle.execution.legacyOpenTitle')}</DialogTitle>
+          <DialogDescription>{t('lifecycle.execution.legacyOpenDescription')}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
           <TradeField id="open-mode" label={t('field.actualResultMode')}>

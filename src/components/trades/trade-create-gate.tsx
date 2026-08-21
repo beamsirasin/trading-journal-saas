@@ -12,10 +12,12 @@ export function TradeCreateGate({
   options,
   canWrite,
   writeBlockReason,
+  timezone,
 }: {
   options: TradeCreateOptions;
   canWrite: boolean;
   writeBlockReason: MutationDenialReason | null;
+  timezone: string;
 }) {
   const t = useTranslations('trades');
 
@@ -75,5 +77,5 @@ export function TradeCreateGate({
       />
     );
   }
-  return <TradeCreateForm options={options} />;
+  return <TradeCreateForm options={options} timezone={timezone} />;
 }

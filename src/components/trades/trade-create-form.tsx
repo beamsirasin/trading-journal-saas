@@ -38,14 +38,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useIsHydrated } from '@/hooks/use-is-hydrated';
 import { Link, useRouter } from '@/i18n/navigation';
 
 import { TradeConfidenceControl } from './trade-confidence-control';
-import { parseTradeMoneyInput } from './trade-form-values';
+import {
+  datetimeLocalToIso,
+  instantToDatetimeLocal,
+  parseTradeMoneyInput,
+} from './trade-form-values';
 import { formatR } from './trade-format';
 import { PlanField } from './trade-plan-field';
 import {
+  actualExecutionErrors,
   stageErrors,
+  type ActualExecutionErrorCode,
   type PlanErrorCode,
   type PlanErrorMap,
   type PlanValidationValues,
@@ -69,6 +76,19 @@ interface Values {
   /** Human decimal text, e.g. "50.00" — converted to minor units only at submit time via `parseTradeMoneyInput`. */
   plannedRiskMinor: string;
   plannedRewardMinor: string;
+  /**
+   * Phase 14E — Open/Close-Only Trade Flow. The one REQUIRED representation
+   * of what actually happened, independent of the optional Plan fields
+   * above — never fabricated from them (CLAUDE.md §6, brief §6).
+   */
+  actualResultMode: 'price' | 'money';
+  actualEntry: string;
+  actualInitialStop: string;
+  /** Human decimal text — converted to minor units only at submit time, exactly like `plannedRiskMinor`. */
+  actualInitialRiskMinor: string;
+  actualPositionSize: string;
+  /** `datetime-local` wall-clock text in the user's saved timezone; defaults to "now" post-hydration, always editable — mirrors `TradeDateTimeInput`'s own convention. */
+  enteredAt: string;
   timeframe: string;
   session: string;
   /** '' | '0' | '25' | '50' | '75' | '100' — Founder-UAT Confidence redesign; no other value is ever set. */
@@ -104,6 +124,19 @@ const PLAN_ERROR_MESSAGE_KEY: Record<PlanErrorCode, string> = {
   invalid_tradingview_url: 'validation.invalidTradingViewUrl',
 };
 
+/**
+ * Phase 14E — Open/Close-Only Trade Flow. The one REQUIRED-field error
+ * surface for the New Trade form (everything else in `PLAN_ERROR_MESSAGE_KEY`
+ * is either shape validation or, since Plan is optional data, never blocks
+ * Open). Exact copy per brief §20 — never "Trade incomplete"/"Invalid Plan".
+ */
+const ACTUAL_EXECUTION_ERROR_MESSAGE_KEY: Record<ActualExecutionErrorCode, string> = {
+  required_actual_price: 'validation.requiredActualPrice',
+  invalid_actual_price: 'validation.invalidDecimal',
+  required_actual_risk: 'validation.requiredActualRisk',
+  invalid_actual_risk: 'validation.invalidDecimal',
+};
+
 function translatePlanErrors(
   errors: PlanErrorMap,
   t: ReturnType<typeof useTranslations<'trades'>>,
@@ -136,7 +169,13 @@ const DIRECTION_STYLE = {
   },
 } as const;
 
-export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
+export function TradeCreateForm({
+  options,
+  timezone,
+}: {
+  options: TradeCreateOptions;
+  timezone: string;
+}) {
   const t = useTranslations('trades');
   const router = useRouter();
   const [mutationKey] = useState(generateId);
@@ -166,6 +205,12 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
     plannedPositionSize: '',
     plannedRiskMinor: '',
     plannedRewardMinor: '',
+    actualResultMode: 'price',
+    actualEntry: '',
+    actualInitialStop: '',
+    actualInitialRiskMinor: '',
+    actualPositionSize: '',
+    enteredAt: '',
     timeframe: '',
     session: '',
     confidence: '',
@@ -183,6 +228,20 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
     const { previewObjectUrl } = uploadState;
     return () => URL.revokeObjectURL(previewObjectUrl);
   }, [uploadState]);
+
+  // Entered-At defaults to the current instant, editable, never silently
+  // overwritten once the user has touched it — the same SSR-safe convention
+  // `TradeDateTimeInput` establishes (empty on the server, "now" once
+  // hydrated), applied via this codebase's own `useIsHydrated` idiom
+  // (`src/hooks/use-is-hydrated.ts`, already used by `theme-selector.tsx`/
+  // `use-trade-plan-favorites.ts`): computed fresh at render time, never a
+  // `useEffect` that calls `setState`, which cascades an extra render and is
+  // flagged by this project's React Compiler lint rule.
+  const isHydrated = useIsHydrated();
+  const defaultEnteredAt = isHydrated
+    ? instantToDatetimeLocal(new Date().toISOString(), timezone)
+    : '';
+  const enteredAtValue = values.enteredAt === '' ? defaultEnteredAt : values.enteredAt;
 
   const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
   const timeframeFavorites = useTradePlanFavorites('timeframe', options.workspaceId);
@@ -347,8 +406,45 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
       setFormError(t('create.plan.mismatchBlocked'));
       return;
     }
+    // Phase 14E — the one REQUIRED field on this form beyond Core: exactly
+    // one authoritative Actual execution basis. Checked separately from
+    // `stageErrors` (which governs the optional Plan) so its error copy can
+    // stay specific per brief §20.
+    const executionError = actualExecutionErrors({
+      actualResultMode: values.actualResultMode,
+      actualEntry: values.actualEntry,
+      actualInitialStop: values.actualInitialStop,
+      actualInitialRiskMinor: values.actualInitialRiskMinor,
+    });
+    if (executionError !== null) {
+      const field = values.actualResultMode === 'price' ? 'actualEntry' : 'actualInitialRiskMinor';
+      setErrors((current) => ({
+        ...current,
+        [field]: t(ACTUAL_EXECUTION_ERROR_MESSAGE_KEY[executionError]),
+      }));
+      return;
+    }
 
     const currency = selectedAccount?.baseCurrency ?? '';
+    let actualInitialRiskMinor: string | null = null;
+    if (values.actualResultMode === 'money') {
+      const risk = parseTradeMoneyInput(values.actualInitialRiskMinor.trim(), currency, {
+        allowZero: false,
+      });
+      if (!risk.ok) {
+        setErrors((current) => ({
+          ...current,
+          actualInitialRiskMinor: t('lifecycle.validation.money'),
+        }));
+        return;
+      }
+      actualInitialRiskMinor = risk.value;
+    }
+    const enteredAtResult = datetimeLocalToIso(enteredAtValue, timezone);
+    if (!enteredAtResult.ok) {
+      setErrors((current) => ({ ...current, enteredAt: t('lifecycle.validation.time') }));
+      return;
+    }
     let plannedRiskMinor: string | null = null;
     if (values.plannedRiskMinor.trim() !== '') {
       const risk = parseTradeMoneyInput(values.plannedRiskMinor.trim(), currency, {
@@ -411,6 +507,17 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
         values.plannedPositionSize.trim() === '' ? null : values.plannedPositionSize.trim(),
       plannedRiskMinor,
       plannedRewardMinor,
+      // Phase 14E — the normal customer New Trade flow always supplies its
+      // one required Actual execution basis, so this Trade is created
+      // already `open`, atomically, never a separate `openTrade` call after.
+      actualResultMode: values.actualResultMode,
+      actualEntry: values.actualResultMode === 'price' ? values.actualEntry.trim() : null,
+      actualInitialStop:
+        values.actualResultMode === 'price' ? values.actualInitialStop.trim() : null,
+      actualInitialRiskMinor,
+      actualPositionSize:
+        values.actualPositionSize.trim() === '' ? null : values.actualPositionSize.trim(),
+      enteredAt: enteredAtResult.value,
       timeframe: values.timeframe,
       session: values.session,
       ...(confidence === undefined ? {} : { confidence }),
@@ -501,63 +608,6 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
           </PlanField>
         </fieldset>
 
-        <fieldset className="grid gap-5">
-          <legend className="text-card-title mb-2">{t('create.strategyTitle')}</legend>
-          <p className="text-muted-foreground text-sm">{t('create.strategyDescription')}</p>
-          <PlanField
-            id="trade-strategy"
-            label={t('field.strategy')}
-            error={fieldError('strategyId')}
-          >
-            <Select
-              id="trade-strategy"
-              value={values.strategyId}
-              onChange={(event) => handleStrategyChange(event.target.value)}
-              aria-invalid={fieldError('strategyId') !== undefined}
-              aria-describedby={
-                fieldError('strategyId') === undefined ? undefined : 'trade-strategy-error'
-              }
-            >
-              <option value="">{t('create.chooseStrategy')}</option>
-              {options.strategies.map((strategy) => (
-                <option key={strategy.strategyId} value={strategy.strategyId}>
-                  {strategy.name} · {t('common.version', { number: strategy.currentVersionNumber })}
-                </option>
-              ))}
-            </Select>
-          </PlanField>
-          <PlanField id="trade-setup" label={t('field.setup')} error={fieldError('setupId')}>
-            <Select
-              id="trade-setup"
-              value={values.setupId}
-              disabled={selectedStrategy === undefined}
-              onChange={(event) => handleSetupChange(event.target.value)}
-              aria-invalid={fieldError('setupId') !== undefined}
-              aria-describedby={
-                fieldError('setupId') === undefined ? undefined : 'trade-setup-error'
-              }
-            >
-              <option value="">{t('create.chooseSetup')}</option>
-              {(selectedStrategy?.setups ?? []).map((setup) => (
-                <option key={setup.setupId} value={setup.setupId}>
-                  {setup.name}
-                </option>
-              ))}
-            </Select>
-          </PlanField>
-          {selectedStrategy !== undefined && selectedStrategy.setups.length === 0 ? (
-            <p className="border-warning/30 bg-warning/10 rounded-md border p-3 text-sm">
-              {t('prerequisite.noSetupDescription')}{' '}
-              <Link
-                href={`/app/strategies?strategy=${selectedStrategy.strategyId}`}
-                className="text-primary inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline"
-              >
-                {t('prerequisite.manageStrategies')}
-              </Link>
-            </p>
-          ) : null}
-        </fieldset>
-
         <fieldset className="grid gap-8">
           <legend className="text-card-title mb-2">{t('create.planTitle')}</legend>
 
@@ -616,6 +666,89 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
               </fieldset>
             </div>
 
+            <div className="border-border flex flex-col gap-4 rounded-lg border p-4">
+              <h3 className="text-sm font-semibold">{t('create.sections.actualExecution')}</h3>
+              <PlanField id="trade-actual-mode" label={t('field.actualResultMode')}>
+                <Select
+                  id="trade-actual-mode"
+                  value={values.actualResultMode}
+                  onChange={(event) =>
+                    setField('actualResultMode', event.target.value as 'price' | 'money')
+                  }
+                >
+                  <option value="price">{t('lifecycle.execution.priceMode')}</option>
+                  <option value="money">{t('lifecycle.execution.moneyMode')}</option>
+                </Select>
+              </PlanField>
+              <div className="grid gap-5 sm:grid-cols-2">
+                {values.actualResultMode === 'price' ? (
+                  <>
+                    <DecimalField
+                      id="trade-actual-entry"
+                      field="actualEntry"
+                      label={t('field.actualEntry')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('actualEntry')}
+                    />
+                    <DecimalField
+                      id="trade-actual-stop"
+                      field="actualInitialStop"
+                      label={t('field.initialStop')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('actualInitialStop')}
+                    />
+                  </>
+                ) : (
+                  <DecimalField
+                    id="trade-actual-risk"
+                    field="actualInitialRiskMinor"
+                    label={t('field.initialRisk')}
+                    hint={
+                      selectedAccount === undefined
+                        ? undefined
+                        : t('lifecycle.execution.moneyHint', {
+                            currency: selectedAccount.baseCurrency,
+                          })
+                    }
+                    values={values}
+                    setField={setField}
+                    error={fieldError('actualInitialRiskMinor')}
+                  />
+                )}
+                <DecimalField
+                  id="trade-actual-size"
+                  field="actualPositionSize"
+                  label={t('field.actualPositionSize')}
+                  values={values}
+                  setField={setField}
+                  error={fieldError('actualPositionSize')}
+                  optional
+                />
+              </div>
+              <PlanField
+                id="trade-entered-at"
+                label={t('field.enteredAt')}
+                hint={t('lifecycle.execution.timezoneHint', { timezone })}
+                error={fieldError('enteredAt')}
+              >
+                <Input
+                  id="trade-entered-at"
+                  type="datetime-local"
+                  value={enteredAtValue}
+                  onChange={(event) => setField('enteredAt', event.target.value)}
+                  aria-invalid={fieldError('enteredAt') !== undefined}
+                  aria-describedby={
+                    fieldError('enteredAt') === undefined ? undefined : 'trade-entered-at-error'
+                  }
+                />
+              </PlanField>
+            </div>
+
+            <h3 className="text-label text-muted-foreground uppercase">
+              {t('create.sections.tradePlan')}
+            </h3>
             <PlanRepresentationToggle
               title={t('create.plan.priceTitle')}
               isOpen={priceOpen}
@@ -722,6 +855,66 @@ export function TradeCreateForm({ options }: { options: TradeCreateOptions }) {
               </div>
             ) : null}
           </div>
+
+          <fieldset className="grid gap-5">
+            <legend className="text-label text-muted-foreground uppercase">
+              {t('create.strategyTitle')}
+            </legend>
+            <p className="text-muted-foreground text-sm">{t('create.strategyDescription')}</p>
+            <PlanField
+              id="trade-strategy"
+              label={t('field.strategy')}
+              error={fieldError('strategyId')}
+            >
+              <Select
+                id="trade-strategy"
+                value={values.strategyId}
+                onChange={(event) => handleStrategyChange(event.target.value)}
+                aria-invalid={fieldError('strategyId') !== undefined}
+                aria-describedby={
+                  fieldError('strategyId') === undefined ? undefined : 'trade-strategy-error'
+                }
+              >
+                <option value="">{t('create.chooseStrategy')}</option>
+                {options.strategies.map((strategy) => (
+                  <option key={strategy.strategyId} value={strategy.strategyId}>
+                    {strategy.name} ·{' '}
+                    {t('common.version', { number: strategy.currentVersionNumber })}
+                  </option>
+                ))}
+              </Select>
+            </PlanField>
+            <PlanField id="trade-setup" label={t('field.setup')} error={fieldError('setupId')}>
+              <Select
+                id="trade-setup"
+                value={values.setupId}
+                disabled={selectedStrategy === undefined}
+                onChange={(event) => handleSetupChange(event.target.value)}
+                aria-invalid={fieldError('setupId') !== undefined}
+                aria-describedby={
+                  fieldError('setupId') === undefined ? undefined : 'trade-setup-error'
+                }
+              >
+                <option value="">{t('create.chooseSetup')}</option>
+                {(selectedStrategy?.setups ?? []).map((setup) => (
+                  <option key={setup.setupId} value={setup.setupId}>
+                    {setup.name}
+                  </option>
+                ))}
+              </Select>
+            </PlanField>
+            {selectedStrategy !== undefined && selectedStrategy.setups.length === 0 ? (
+              <p className="border-warning/30 bg-warning/10 rounded-md border p-3 text-sm">
+                {t('prerequisite.noSetupDescription')}{' '}
+                <Link
+                  href={`/app/strategies?strategy=${selectedStrategy.strategyId}`}
+                  className="text-primary inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline"
+                >
+                  {t('prerequisite.manageStrategies')}
+                </Link>
+              </p>
+            ) : null}
+          </fieldset>
 
           <div className="grid gap-5">
             <h3 className="text-label text-muted-foreground uppercase">
@@ -1137,7 +1330,11 @@ function DecimalField({
     | 'plannedTarget'
     | 'plannedPositionSize'
     | 'plannedRiskMinor'
-    | 'plannedRewardMinor';
+    | 'plannedRewardMinor'
+    | 'actualEntry'
+    | 'actualInitialStop'
+    | 'actualInitialRiskMinor'
+    | 'actualPositionSize';
   label: string;
   values: Values;
   setField: <K extends keyof Values>(field: K, value: Values[K]) => void;

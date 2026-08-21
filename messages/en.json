@@ -370,6 +370,7 @@
         "pendingSystemOutcomes": "Pending System Outcomes",
         "unclassifiedTrades": "Unclassified Trades",
         "reviewsPending": "Reviews Pending",
+        "needsExecutionDetails": "Needs Execution Details",
         "review": "Review"
       },
       "unavailable": {
@@ -491,7 +492,7 @@
     "direction": { "long": "Long", "short": "Short" },
     "status": {
       "execution": {
-        "planned": "Planned",
+        "planned": "Needs details",
         "open": "Open",
         "closed": "Closed",
         "canceled": "Canceled"
@@ -621,6 +622,7 @@
       "openChartImage": "Open chart image",
       "chartImageAlt": "Uploaded chart image",
       "notOpened": "This Trade has not been opened. No actual execution has been recorded.",
+      "needsExecutionDetails": "This Trade was saved before execution information was recorded.",
       "systemPending": "The System result is Pending. System R and outcome are not available yet.",
       "systemNoTrade": "The pinned Strategy and Setup would not have permitted this Trade. System R is not available.",
       "noRules": "No Rule snapshots are attached to this Trade.",
@@ -683,6 +685,9 @@
         "open": "Open Trade",
         "openTitle": "Record Trade entry",
         "openDescription": "Choose Price or Money as the authoritative Actual result mode, then record the required execution context. Rule status never blocks this transition.",
+        "addExecutionDetails": "Add execution details & Open",
+        "legacyOpenTitle": "Add execution details",
+        "legacyOpenDescription": "This Trade was saved before execution information was recorded. Choose Price or Money as the authoritative Actual result mode, then record the required execution context to open it.",
         "priceMode": "Price",
         "moneyMode": "Money",
         "partialClose": "Partial Close",
@@ -817,9 +822,11 @@
       "strategyDescription": "Optional — classify now, or add it later from the Trade. The server pins the current Version whenever it's assigned.",
       "chooseStrategy": "Choose a Strategy",
       "chooseSetup": "Choose a Setup",
-      "planTitle": "Record the Plan",
+      "planTitle": "Trade Details",
       "sections": {
         "corePlan": "Core plan",
+        "actualExecution": "Actual Execution",
+        "tradePlan": "Trade Plan (optional)",
         "context": "Context",
         "conditions": "Setup Conditions",
         "confidence": "Confidence",
@@ -870,7 +877,7 @@
         "confirmDescription": "{met} of {total} Conditions are met ({percentage}%). {unmet} will be saved as Not Met.",
         "uncheckedSavedNotMet": "This does not block the Trade. It preserves what was true at entry time.",
         "goBack": "Review conditions",
-        "confirmSave": "Save Trade"
+        "confirmSave": "Open Trade"
       },
       "chart": {
         "linkOption": "Link",
@@ -892,7 +899,7 @@
       "back": "Back",
       "continue": "Continue",
       "create": "Create Trade",
-      "saveTrade": "Save Trade",
+      "saveTrade": "Open Trade",
       "creating": "Creating…"
     },
     "prerequisite": {
@@ -913,6 +920,8 @@
       "requiredDirection": "Choose Long or Short.",
       "requiredEntry": "Enter the planned Entry.",
       "requiredStop": "Enter the planned Stop.",
+      "requiredActualPrice": "Enter your actual entry and initial stop to open this Trade.",
+      "requiredActualRisk": "Enter the amount initially at risk to open this Trade.",
       "invalidDecimal": "Enter a valid positive decimal.",
       "invalidTradingViewUrl": "Enter an HTTPS TradingView URL.",
       "invalidField": "Check this value.",
