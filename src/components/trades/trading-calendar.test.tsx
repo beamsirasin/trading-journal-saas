@@ -84,15 +84,15 @@ describe('TradingCalendar (Phase 14D)', () => {
     renderCalendar();
     expect(screen.getByRole('link', { name: 'Previous month' })).toHaveAttribute(
       'href',
-      '/app/trades?month=2026-07',
+      '/app/trades?view=calendar&month=2026-07',
     );
     expect(screen.getByRole('link', { name: 'Next month' })).toHaveAttribute(
       'href',
-      '/app/trades?month=2026-09',
+      '/app/trades?view=calendar&month=2026-09',
     );
     expect(screen.getByRole('button', { name: 'Today' }).closest('a')).toHaveAttribute(
       'href',
-      '/app/trades',
+      '/app/trades?view=calendar',
     );
   });
 
@@ -100,7 +100,7 @@ describe('TradingCalendar (Phase 14D)', () => {
     renderCalendar(baseProps({ year: 2026, month: 12, todayDate: '2026-12-01' }));
     expect(screen.getByRole('link', { name: 'Next month' })).toHaveAttribute(
       'href',
-      '/app/trades?month=2027-01',
+      '/app/trades?view=calendar&month=2027-01',
     );
   });
 
@@ -108,7 +108,7 @@ describe('TradingCalendar (Phase 14D)', () => {
     const user = userEvent.setup();
     renderCalendar();
     await user.click(screen.getByRole('button', { name: /^20 August 2026/ }));
-    expect(push).toHaveBeenCalledWith('/app/trades?month=2026-08&date=2026-08-20');
+    expect(push).toHaveBeenCalledWith('/app/trades?view=log&month=2026-08&date=2026-08-20');
   });
 
   it('marks the selected day distinctly from today, and both are announced without relying on color alone', () => {
@@ -120,11 +120,11 @@ describe('TradingCalendar (Phase 14D)', () => {
     expect(today).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('clicking the already-selected day clears the selection (toggle)', async () => {
+  it('clicking an already-selected day still opens that date in Trade Log', async () => {
     const user = userEvent.setup();
     renderCalendar(baseProps({ selectedDate: '2026-08-05' }));
     await user.click(screen.getByRole('button', { name: /^5 August 2026/ }));
-    expect(push).toHaveBeenCalledWith('/app/trades?month=2026-08');
+    expect(push).toHaveBeenCalledWith('/app/trades?view=log&month=2026-08&date=2026-08-05');
   });
 
   it('shows the selected-day summary label and a working Clear date action', async () => {
@@ -152,7 +152,7 @@ describe('TradingCalendar (Phase 14D)', () => {
     expect(within(summary).queryByText('Unclassified')).not.toBeInTheDocument();
 
     await user.click(within(summary).getByRole('button', { name: 'Clear date' }));
-    expect(push).toHaveBeenCalledWith('/app/trades?month=2026-08');
+    expect(push).toHaveBeenCalledWith('/app/trades?view=calendar&month=2026-08');
   });
 
   it('shows the month summary totals, using "No results" rather than a fabricated 0R when nothing finalized', () => {

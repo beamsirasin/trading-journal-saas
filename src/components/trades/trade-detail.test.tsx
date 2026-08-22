@@ -147,6 +147,20 @@ describe('TradeDetail', () => {
     ).toBeInTheDocument();
   });
 
+  it('makes the canonical optional Take Profit and Planned R visible/editable in Actual, not Entry Snapshot', () => {
+    const trade = { ...base, plannedTarget: '130.0000', plannedR: '3.0000' };
+    const actual = renderDetail(trade, 'actual', true);
+    expect(screen.getByText('Take Profit')).toBeVisible();
+    expect(screen.getByText('130.0000')).toBeVisible();
+    expect(screen.getByText('+3.00R')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Edit Plan' })).toBeVisible();
+    actual.unmount();
+
+    renderDetail(trade, 'entry', true);
+    expect(screen.queryByText('Take Profit')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Plan' })).not.toBeInTheDocument();
+  });
+
   it('shows System result Pending on the System section, independent of the Actual state', () => {
     renderDetail(base, 'system');
     expect(screen.getByText(/System result is Pending/)).toBeInTheDocument();

@@ -12,7 +12,7 @@ import { StatusBadge } from '@/components/status/status-badge';
 import { formatR } from '@/components/trades/trade-format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Link, usePathname, useRouter } from '@/i18n/navigation';
+import { Link, usePathname } from '@/i18n/navigation';
 
 export type TradeListView = TradeListItem & { readonly occurredAtDisplay: string };
 type Translation = ReturnType<typeof useTranslations<'trades'>>;
@@ -145,19 +145,22 @@ export function TradeList({
   trades,
   selectedTradeId,
   nextCursor,
-  hasCursor,
+  currentCursor,
+  cursorTrail,
   canWrite,
 }: {
   trades: readonly TradeListView[];
   selectedTradeId: string | null;
   nextCursor: string | null;
-  hasCursor: boolean;
+  currentCursor: string | null;
+  cursorTrail: string;
   canWrite: boolean;
 }) {
   const t = useTranslations('trades');
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const previousCursors = cursorTrail.split(',').filter(Boolean).slice(-99);
+  const pageNumber = currentCursor === null ? 1 : previousCursors.length + 2;
 
   function tradeHref(tradeId: string, section?: TradeDetailSection): string {
     const params = new URLSearchParams(searchParams.toString());
@@ -172,12 +175,41 @@ export function TradeList({
     params.delete('trade');
     params.delete('section');
     params.set('cursor', cursor);
+    const nextTrail =
+      currentCursor === null ? previousCursors : [...previousCursors, currentCursor];
+    if (nextTrail.length === 0) params.delete('trail');
+    else params.set('trail', nextTrail.join(','));
+    return `${pathname}?${params.toString()}`;
+  }
+
+  function previousHref(): string {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('trade');
+    params.delete('section');
+    const previousCursor = previousCursors.at(-1);
+    if (previousCursor === undefined) params.delete('cursor');
+    else params.set('cursor', previousCursor);
+    const remainingTrail = previousCursors.slice(0, -1);
+    if (remainingTrail.length === 0) params.delete('trail');
+    else params.set('trail', remainingTrail.join(','));
     return `${pathname}?${params.toString()}`;
   }
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div role="list" aria-label={t('list.caption')} className="grid min-w-0 gap-3">
+      <div
+        role="list"
+        aria-label={t('list.caption')}
+        className="grid min-w-0 gap-3 md:gap-0 md:overflow-hidden md:rounded-lg md:border"
+      >
+        <div className="bg-muted/60 text-muted-foreground hidden grid-cols-[minmax(9rem,1.05fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(8rem,1fr)_auto] gap-3 px-3 py-2 text-xs font-semibold uppercase md:grid">
+          <span>{t('list.date')}</span>
+          <span>{t('list.trade')}</span>
+          <span>{t('list.actual')}</span>
+          <span>{t('list.system')}</span>
+          <span>{t('list.strategy')}</span>
+          <span>{t('list.action.label')}</span>
+        </div>
         {trades.map((trade) => {
           const attention = getAttention(trade, canWrite, t);
           const isOpen = trade.status === 'open';
@@ -188,12 +220,22 @@ export function TradeList({
               role="listitem"
               aria-labelledby={`trade-${trade.tradeId}`}
               className={cn(
-                'border-border bg-card min-w-0 rounded-lg border p-3.5 transition-colors',
+                'border-border bg-card min-w-0 rounded-lg border p-3.5 transition-colors md:grid md:grid-cols-[minmax(9rem,1.05fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(8rem,1fr)_auto] md:items-center md:gap-3 md:rounded-none md:border-x-0 md:border-b-0 md:p-3',
                 isOpen && 'border-info/35 bg-info/5',
                 trade.status === 'closed' && 'bg-card/70',
                 isSelected && 'border-primary ring-primary/20 ring-2',
               )}
             >
+              <div className="text-muted-foreground hidden min-w-0 text-xs md:block">
+                <span className="break-words">{trade.occurredAtDisplay}</span>
+                <span className="block break-words">
+                  {trade.tradingAccountName}
+                  <ArchivedNote
+                    show={trade.tradingAccountIsArchived}
+                    label={t('common.archived')}
+                  />
+                </span>
+              </div>
               <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-1">
                 <div className="min-w-0">
                   <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -209,7 +251,7 @@ export function TradeList({
                       {t(`direction.${trade.direction}`)}
                     </span>
                   </div>
-                  <p className="text-muted-foreground mt-0.5 text-xs break-words">
+                  <p className="text-muted-foreground mt-0.5 text-xs break-words md:hidden">
                     {trade.occurredAtDisplay}
                     <span aria-hidden="true"> · </span>
                     <span className="break-words">{trade.tradingAccountName}</span>
@@ -221,9 +263,9 @@ export function TradeList({
                 </div>
               </div>
 
-              <dl className="mt-3 grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-3">
+              <dl className="mt-3 grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-3 md:contents">
                 <div className="min-w-0">
-                  <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                  <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase md:sr-only">
                     {t('list.actual')}
                   </dt>
                   <dd>
@@ -231,7 +273,7 @@ export function TradeList({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                  <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase md:sr-only">
                     {t('list.system')}
                   </dt>
                   <dd>
@@ -239,7 +281,7 @@ export function TradeList({
                   </dd>
                 </div>
                 <div className="min-w-0">
-                  <dt className="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">
+                  <dt className="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase md:sr-only">
                     {t('list.strategy')}
                   </dt>
                   <dd className="text-sm">
@@ -250,12 +292,12 @@ export function TradeList({
 
               <div
                 className={cn(
-                  'mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t pt-3',
+                  'mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t pt-3 md:mt-0 md:justify-end md:border-0 md:pt-0',
                   attention === null ? 'justify-end' : 'justify-between',
                 )}
               >
                 {attention === null ? null : (
-                  <p className="text-sm font-medium break-words">{attention.message}</p>
+                  <p className="text-sm font-medium break-words md:sr-only">{attention.message}</p>
                 )}
                 <Button asChild variant={attention === null ? 'ghost' : 'outline'} size="sm">
                   <Link href={tradeHref(trade.tradeId, attention?.section)}>
@@ -269,24 +311,33 @@ export function TradeList({
         })}
       </div>
 
-      {hasCursor || nextCursor !== null ? (
-        <nav aria-label={t('pagination.label')} className="flex items-center justify-between gap-3">
-          <Button variant="outline" disabled={!hasCursor} onClick={() => router.back()}>
+      <nav aria-label={t('pagination.label')} className="flex items-center justify-between gap-3">
+        {currentCursor === null ? (
+          <Button variant="outline" disabled>
             <ArrowLeft aria-hidden="true" /> {t('pagination.previous')}
           </Button>
-          {nextCursor === null ? (
-            <Button variant="outline" disabled>
+        ) : (
+          <Button asChild variant="outline">
+            <Link href={previousHref()}>
+              <ArrowLeft aria-hidden="true" /> {t('pagination.previous')}
+            </Link>
+          </Button>
+        )}
+        <span className="text-muted-foreground text-sm font-medium" aria-current="page">
+          {t('pagination.page', { page: pageNumber })}
+        </span>
+        {nextCursor === null ? (
+          <Button variant="outline" disabled>
+            {t('pagination.next')} <ArrowRight aria-hidden="true" />
+          </Button>
+        ) : (
+          <Button asChild variant="outline">
+            <Link href={nextHref(nextCursor)}>
               {t('pagination.next')} <ArrowRight aria-hidden="true" />
-            </Button>
-          ) : (
-            <Button asChild variant="outline">
-              <Link href={nextHref(nextCursor)}>
-                {t('pagination.next')} <ArrowRight aria-hidden="true" />
-              </Link>
-            </Button>
-          )}
-        </nav>
-      ) : null}
+            </Link>
+          </Button>
+        )}
+      </nav>
     </div>
   );
 }

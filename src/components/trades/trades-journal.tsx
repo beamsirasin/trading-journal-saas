@@ -2,6 +2,7 @@ import { BookOpen, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
+import type { TradesView } from '@/lib/trades/view';
 import { cn } from '@/lib/utils';
 import type { WorkspaceTradeDaySummary } from '@/server/dal/trade-calendar';
 import type {
@@ -11,6 +12,7 @@ import type {
 import { EmptyState } from '@/components/product/empty-state';
 import { TradeDetail } from '@/components/trades/trade-detail';
 import { TradeList, type TradeListView } from '@/components/trades/trade-list';
+import { TradesViewNav } from '@/components/trades/trades-view-nav';
 import { TradingCalendar } from '@/components/trades/trading-calendar';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
@@ -37,9 +39,11 @@ export interface TradesJournalCalendarProps {
 }
 
 export function TradesJournal({
+  view,
   trades,
   nextCursor,
-  hasCursor,
+  currentCursor,
+  cursorTrail,
   selectedTrade,
   selectedTradeId,
   canWrite,
@@ -49,9 +53,11 @@ export function TradesJournal({
   classificationOptions,
   calendar,
 }: {
+  view: TradesView;
   trades: readonly TradeListView[];
   nextCursor: string | null;
-  hasCursor: boolean;
+  currentCursor: string | null;
+  cursorTrail: string;
   selectedTrade: TradeDetailModel | null;
   selectedTradeId: string | null;
   canWrite: boolean;
@@ -81,10 +87,27 @@ export function TradesJournal({
     />
   );
 
-  if (trades.length === 0 && !hasCursor) {
+  if (view === 'calendar') {
+    return (
+      <div className="flex min-w-0 flex-col gap-6">
+        <TradesViewNav view={view} />
+        {calendarElement}
+        {!canWrite && writeBlockReason !== null ? (
+          <div
+            role="status"
+            className="border-warning/30 bg-warning/10 rounded-lg border p-4 text-sm"
+          >
+            {t(`errors.${writeBlockReason}`)}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (trades.length === 0 && currentCursor === null) {
     return (
       <div className="flex flex-col gap-6">
-        {calendarElement}
+        <TradesViewNav view={view} />
         {!canWrite && writeBlockReason !== null ? (
           <div
             role="status"
@@ -103,7 +126,7 @@ export function TradesJournal({
               action={
                 <Button asChild variant="outline">
                   <Link
-                    href={`/app/trades?month=${calendar.year}-${String(calendar.month).padStart(2, '0')}`}
+                    href={`/app/trades?view=log&month=${calendar.year}-${String(calendar.month).padStart(2, '0')}`}
                   >
                     {t('calendar.clearDate')}
                   </Link>
@@ -134,7 +157,7 @@ export function TradesJournal({
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      {calendarElement}
+      <TradesViewNav view={view} />
       {!canWrite && writeBlockReason !== null ? (
         <div
           role="status"
@@ -156,7 +179,8 @@ export function TradesJournal({
               trades={trades}
               selectedTradeId={selectedTradeId}
               nextCursor={nextCursor}
-              hasCursor={hasCursor}
+              currentCursor={currentCursor}
+              cursorTrail={cursorTrail}
               canWrite={canWrite}
             />
           </div>

@@ -52,7 +52,12 @@ function makeTrade(overrides: Partial<TradeListView> = {}): TradeListView {
 
 function renderList(
   trades: readonly TradeListView[],
-  options: { canWrite?: boolean; nextCursor?: string | null; hasCursor?: boolean } = {},
+  options: {
+    canWrite?: boolean;
+    nextCursor?: string | null;
+    currentCursor?: string | null;
+    cursorTrail?: string;
+  } = {},
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -60,7 +65,8 @@ function renderList(
         trades={trades}
         selectedTradeId={null}
         nextCursor={options.nextCursor ?? null}
-        hasCursor={options.hasCursor ?? false}
+        currentCursor={options.currentCursor ?? null}
+        cursorTrail={options.cursorTrail ?? ''}
         canWrite={options.canWrite ?? true}
       />
     </NextIntlClientProvider>,
@@ -203,15 +209,19 @@ describe('TradeList', () => {
           setupIsArchived: true,
         }),
       ],
-      { nextCursor: 'opaque', hasCursor: true },
+      { nextCursor: 'opaque', currentCursor: 'current', cursorTrail: 'prior' },
     );
-    expect(screen.getByText('Main account')).toBeInTheDocument();
+    expect(screen.getAllByText('Main account')).toHaveLength(2);
     expect(screen.getByText('Elliott Wave')).toBeInTheDocument();
-    expect(screen.getAllByText('Archived')).toHaveLength(2);
+    expect(screen.getAllByText('Archived')).toHaveLength(3);
     expect(screen.getByRole('link', { name: /Next/ })).toHaveAttribute(
       'href',
-      '/app/trades?month=2026-08&date=2026-08-20&cursor=opaque',
+      '/app/trades?month=2026-08&date=2026-08-20&cursor=opaque&trail=prior%2Ccurrent',
     );
-    expect(screen.getByRole('button', { name: /Previous/ })).toBeEnabled();
+    expect(screen.getByRole('link', { name: /Previous/ })).toHaveAttribute(
+      'href',
+      '/app/trades?month=2026-08&date=2026-08-20&cursor=prior',
+    );
+    expect(screen.getByText('Page 3')).toBeVisible();
   });
 });

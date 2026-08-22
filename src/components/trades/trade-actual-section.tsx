@@ -1,6 +1,7 @@
 import { useTranslations } from 'next-intl';
 
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
+import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actions';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
 import {
   ExecutionCorrectionDialog,
@@ -37,11 +38,60 @@ export function ActualSection({
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
   const money = (value: string | null) =>
     formatTradeMoney(value, trade.tradingAccountBaseCurrency) ?? '—';
+  const plan = (
+    <section
+      aria-labelledby="trade-actual-plan-heading"
+      className="border-border bg-muted/20 grid gap-3 rounded-lg border p-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 id="trade-actual-plan-heading" className="text-sm font-semibold">
+          {t('detail.sections.plan')}
+        </h3>
+        {canWrite ? <PlanCorrectionDialog trade={trade} /> : null}
+      </div>
+      <dl className="divide-border divide-y">
+        {trade.plannedEntry === null && trade.actualResultMode !== 'price' ? null : (
+          <>
+            <DetailRow label={t('field.entry')} value={trade.plannedEntry ?? t('common.notSet')} />
+            <DetailRow
+              label={t('field.stopLoss')}
+              value={trade.plannedStop ?? t('common.notSet')}
+            />
+            <DetailRow
+              label={t('field.takeProfit')}
+              value={trade.plannedTarget ?? t('common.notSet')}
+            />
+          </>
+        )}
+        {trade.plannedRiskMinor === null ? null : (
+          <>
+            <DetailRow label={t('field.plannedRisk')} value={money(trade.plannedRiskMinor)} />
+            <DetailRow
+              label={t('field.plannedReward')}
+              value={
+                trade.plannedRewardMinor === null
+                  ? t('common.notSet')
+                  : money(trade.plannedRewardMinor)
+              }
+            />
+          </>
+        )}
+        <DetailRow
+          label={t('field.plannedR')}
+          value={formatR(trade.plannedR) ?? t('common.notAvailable')}
+        />
+        {trade.plannedPositionSize === null ? null : (
+          <DetailRow label={t('field.positionSize')} value={trade.plannedPositionSize} />
+        )}
+      </dl>
+    </section>
+  );
 
   if (trade.status === 'canceled') {
     return (
-      <section aria-labelledby="trade-actual-heading">
+      <section aria-labelledby="trade-actual-heading" className="grid gap-5">
         <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
+        {plan}
         <p className="text-muted-foreground text-sm">{t('detail.notOpened')}</p>
       </section>
     );
@@ -49,8 +99,9 @@ export function ActualSection({
 
   if (trade.status === 'planned') {
     return (
-      <section aria-labelledby="trade-actual-heading">
+      <section aria-labelledby="trade-actual-heading" className="grid gap-5">
         <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
+        {plan}
         <p className="text-muted-foreground mb-4 text-sm">{t('detail.needsExecutionDetails')}</p>
         {canWrite ? <OpenTradeDialog trade={trade} timezone={timezone} /> : null}
       </section>
@@ -63,6 +114,8 @@ export function ActualSection({
   return (
     <section aria-labelledby="trade-actual-heading" className="grid gap-5">
       <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
+
+      {plan}
 
       {/* Compact final answer first (brief §11) — never let exit-leg history compete with it visually. A label stays attached to the value (never colour/size alone) so the number's meaning survives for assistive tech and reads unambiguously in isolation. */}
       {isClosed ? (

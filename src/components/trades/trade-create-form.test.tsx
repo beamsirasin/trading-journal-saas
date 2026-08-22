@@ -133,8 +133,8 @@ function fillPricePlan() {
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('button', { name: 'Long' }));
   fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
-  fireEvent.change(screen.getByLabelText('Stop'), { target: { value: '90' } });
-  fireEvent.change(screen.getByLabelText(/Target/), { target: { value: '130' } });
+  fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
+  fireEvent.change(screen.getByLabelText(/Take Profit/), { target: { value: '130' } });
   fillActualExecution();
 }
 
@@ -263,6 +263,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
       { conditionKey: conditionA.conditionKey, status: 'met' },
       { conditionKey: conditionB.conditionKey, status: 'met' },
     ]);
+    expect(payload.plannedTarget).toBe('130');
     expect(JSON.stringify(payload.conditionAnswers)).not.toContain('label');
     expect(payload).not.toHaveProperty('setupVersionId');
     expect(payload).not.toHaveProperty('strategyVersionId');
@@ -487,6 +488,27 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=018f0000-0000-7000-8000-0000000000bb');
   });
 
+  it('opens a Price Trade with Entry and Stop Loss while optional Take Profit is blank', async () => {
+    createTradeActionMock.mockResolvedValue({
+      ok: true,
+      data: { tradeId: '018f0000-0000-7000-8000-0000000000bc', alreadyCreated: false },
+    });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
+    expect(screen.getByLabelText(/Take Profit/)).toBeVisible();
+    expect(screen.getByLabelText(/Take Profit/)).toHaveValue('');
+    fillActualExecution();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
+    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
+    const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.plannedEntry).toBe('100');
+    expect(payload.plannedStop).toBe('90');
+    expect(payload.plannedTarget).toBeNull();
+  });
+
   it('blocks Open with the exact Price-mode Actual Execution copy and never a generic "incomplete" message (Phase 14E §20)', async () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
@@ -566,13 +588,13 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(
       await screen.findByText('The Stop is on the wrong side of Entry for this direction.'),
     ).toBeVisible();
-    const stop = screen.getByLabelText('Stop');
+    const stop = screen.getByLabelText('Stop Loss');
     expect(stop).toHaveValue('90');
     expect(stop).toHaveAttribute('aria-invalid', 'true');
     expect(stop).toHaveAttribute('aria-describedby', 'trade-stop-error');
     expect(screen.getByLabelText('Symbol')).toHaveValue('XAUUSD');
     expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
-    expect(screen.getByLabelText(/Target/)).toHaveValue('130');
+    expect(screen.getByLabelText(/Take Profit/)).toHaveValue('130');
     expect(screen.getByLabelText(conditionA.label)).toBeChecked();
     expect(screen.getByLabelText(/Entry Reason/)).toHaveValue(
       'Retest confirmation remained intact.',
@@ -582,7 +604,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(stop).toHaveAttribute('aria-invalid', 'false');
     expect(stop).not.toHaveAttribute('aria-describedby');
     expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
-    expect(screen.getByLabelText(/Target/)).toHaveValue('130');
+    expect(screen.getByLabelText(/Take Profit/)).toHaveValue('130');
     expect(screen.getByLabelText(conditionB.label)).toBeChecked();
   });
 
@@ -596,14 +618,14 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hide Money plan' }));
     expect(screen.queryByLabelText('Planned risk')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
-    expect(screen.getByLabelText('Stop')).toHaveValue('90');
-    expect(screen.getByLabelText(/Target/)).toHaveValue('130');
+    expect(screen.getByLabelText('Stop Loss')).toHaveValue('90');
+    expect(screen.getByLabelText(/Take Profit/)).toHaveValue('130');
 
     fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
     expect(screen.getByLabelText('Planned risk')).toHaveValue('50.00');
     expect(screen.getByLabelText(/Planned reward/)).toHaveValue('150.00');
     expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
-    expect(screen.getByLabelText('Stop')).toHaveValue('90');
+    expect(screen.getByLabelText('Stop Loss')).toHaveValue('90');
   });
 
   it('shows the live Planned R preview for a complete Price-only plan', () => {

@@ -95,8 +95,9 @@ export function TradingCalendar({
 
   function selectDate(date: string) {
     const params = new URLSearchParams();
+    params.set('view', 'log');
     params.set('month', monthQuery(year, month));
-    if (date !== selectedDate) params.set('date', date);
+    params.set('date', date);
     router.push(`/app/trades?${params.toString()}`);
   }
 
@@ -123,7 +124,7 @@ export function TradingCalendar({
         >
           <div className="flex items-center gap-1">
             <Link
-              href={`/app/trades?month=${monthQuery(prev.year, prev.month)}`}
+              href={`/app/trades?view=calendar&month=${monthQuery(prev.year, prev.month)}`}
               aria-label={t('previousMonth')}
               className="hover:bg-accent focus-visible:ring-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-md outline-none focus-visible:ring-2"
             >
@@ -133,14 +134,14 @@ export function TradingCalendar({
               {monthLabel}
             </span>
             <Link
-              href={`/app/trades?month=${monthQuery(next.year, next.month)}`}
+              href={`/app/trades?view=calendar&month=${monthQuery(next.year, next.month)}`}
               aria-label={t('nextMonth')}
               className="hover:bg-accent focus-visible:ring-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-md outline-none focus-visible:ring-2"
             >
               <span aria-hidden="true">›</span>
             </Link>
           </div>
-          <Link href="/app/trades">
+          <Link href="/app/trades?view=calendar">
             <Button type="button" variant="outline" size="sm">
               {t('today')}
             </Button>
@@ -259,7 +260,9 @@ export function TradingCalendar({
             date={selectedDate}
             locale={locale}
             summary={daySummary}
-            onClear={() => router.push(`/app/trades?month=${monthQuery(year, month)}`)}
+            onClear={() =>
+              router.push(`/app/trades?view=calendar&month=${monthQuery(year, month)}`)
+            }
           />
         )}
       </CardContent>

@@ -672,9 +672,11 @@ export function TradeCreateForm({
                 <Select
                   id="trade-actual-mode"
                   value={values.actualResultMode}
-                  onChange={(event) =>
-                    setField('actualResultMode', event.target.value as 'price' | 'money')
-                  }
+                  onChange={(event) => {
+                    const mode = event.target.value as 'price' | 'money';
+                    setField('actualResultMode', mode);
+                    if (mode === 'price') setPriceOpen(true);
+                  }}
                 >
                   <option value="price">{t('lifecycle.execution.priceMode')}</option>
                   <option value="money">{t('lifecycle.execution.moneyMode')}</option>
@@ -744,57 +746,115 @@ export function TradeCreateForm({
                   }
                 />
               </PlanField>
+              {values.actualResultMode === 'price' ? (
+                <div className="border-border grid gap-4 border-t pt-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">{t('create.sections.tradePlan')}</h4>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {t('create.plan.actualPlanHint')}
+                    </p>
+                  </div>
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <DecimalField
+                      id="trade-entry"
+                      field="plannedEntry"
+                      label={t('field.entry')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('plannedEntry')}
+                    />
+                    <DecimalField
+                      id="trade-stop"
+                      field="plannedStop"
+                      label={t('field.stopLoss')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('plannedStop')}
+                    />
+                    <DecimalField
+                      id="trade-target"
+                      field="plannedTarget"
+                      label={t('field.takeProfit')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('plannedTarget')}
+                      optional
+                    />
+                    <DecimalField
+                      id="trade-position-size"
+                      field="plannedPositionSize"
+                      label={t('field.positionSize')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('plannedPositionSize')}
+                      optional
+                    />
+                  </div>
+                  {liveSnapshot !== null &&
+                  liveSnapshot.ok &&
+                  !liveSnapshot.value.mismatch &&
+                  liveSnapshot.value.plannedR !== null ? (
+                    <div className="border-border bg-muted/30 rounded-lg border p-3 text-sm">
+                      {t('create.plan.previewR', {
+                        value: formatR(liveSnapshot.value.plannedR) ?? '—',
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <h3 className="text-label text-muted-foreground uppercase">
               {t('create.sections.tradePlan')}
             </h3>
-            <PlanRepresentationToggle
-              title={t('create.plan.priceTitle')}
-              isOpen={priceOpen}
-              onOpen={() => setPriceOpen(true)}
-              onClose={closePriceSection}
-              addLabel={t('create.plan.addPrice')}
-              hideLabel={t('create.plan.hidePrice')}
-              canClose={moneyOpen}
-            >
-              <div className="grid gap-5 sm:grid-cols-2">
-                <DecimalField
-                  id="trade-entry"
-                  field="plannedEntry"
-                  label={t('field.entry')}
-                  values={values}
-                  setField={setField}
-                  error={fieldError('plannedEntry')}
-                />
-                <DecimalField
-                  id="trade-stop"
-                  field="plannedStop"
-                  label={t('field.stop')}
-                  values={values}
-                  setField={setField}
-                  error={fieldError('plannedStop')}
-                />
-                <DecimalField
-                  id="trade-target"
-                  field="plannedTarget"
-                  label={t('field.target')}
-                  values={values}
-                  setField={setField}
-                  error={fieldError('plannedTarget')}
-                  optional
-                />
-                <DecimalField
-                  id="trade-position-size"
-                  field="plannedPositionSize"
-                  label={t('field.positionSize')}
-                  values={values}
-                  setField={setField}
-                  error={fieldError('plannedPositionSize')}
-                  optional
-                />
-              </div>
-            </PlanRepresentationToggle>
+            {values.actualResultMode === 'money' ? (
+              <PlanRepresentationToggle
+                title={t('create.plan.priceTitle')}
+                isOpen={priceOpen}
+                onOpen={() => setPriceOpen(true)}
+                onClose={closePriceSection}
+                addLabel={t('create.plan.addPrice')}
+                hideLabel={t('create.plan.hidePrice')}
+                canClose={moneyOpen}
+              >
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <DecimalField
+                    id="trade-entry"
+                    field="plannedEntry"
+                    label={t('field.entry')}
+                    values={values}
+                    setField={setField}
+                    error={fieldError('plannedEntry')}
+                  />
+                  <DecimalField
+                    id="trade-stop"
+                    field="plannedStop"
+                    label={t('field.stop')}
+                    values={values}
+                    setField={setField}
+                    error={fieldError('plannedStop')}
+                  />
+                  <DecimalField
+                    id="trade-target"
+                    field="plannedTarget"
+                    label={t('field.target')}
+                    values={values}
+                    setField={setField}
+                    error={fieldError('plannedTarget')}
+                    optional
+                  />
+                  <DecimalField
+                    id="trade-position-size"
+                    field="plannedPositionSize"
+                    label={t('field.positionSize')}
+                    values={values}
+                    setField={setField}
+                    error={fieldError('plannedPositionSize')}
+                    optional
+                  />
+                </div>
+              </PlanRepresentationToggle>
+            ) : null}
 
             <PlanRepresentationToggle
               title={t('create.plan.moneyTitle')}
@@ -846,7 +906,10 @@ export function TradeCreateForm({
                   })}
                 </p>
               </div>
-            ) : liveSnapshot !== null && liveSnapshot.ok && liveSnapshot.value.plannedR !== null ? (
+            ) : values.actualResultMode === 'money' &&
+              liveSnapshot !== null &&
+              liveSnapshot.ok &&
+              liveSnapshot.value.plannedR !== null ? (
               <div className="border-border bg-muted/30 rounded-lg border p-3 text-sm">
                 {t('create.plan.previewR', {
                   value: formatR(liveSnapshot.value.plannedR) ?? '—',

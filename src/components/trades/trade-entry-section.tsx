@@ -3,9 +3,7 @@ import { useTranslations } from 'next-intl';
 
 import { confidenceLevelKey } from '@/lib/trades/constants';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
-import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actions';
 import { DetailRow, SectionTitle, SubSection } from '@/components/trades/trade-detail-primitives';
-import { formatR, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeEmotionsEditor } from '@/components/trades/trade-reflection-editor';
 import { Badge } from '@/components/ui/badge';
 
@@ -75,11 +73,9 @@ function emotionSummary(trade: TradeDetailModel, t: ReturnType<typeof useTransla
  * decorative accordion). Preserves entry-time truth exactly (brief §23):
  * `not_recorded`/`not_configured`/NULL-vs-0/empty-vs-never-recorded all stay
  * byte-for-byte the same distinctions the current domain model already
- * makes — nothing here reinterprets or invents history. Plan reference data
- * (target, planned risk/reward, timeframe, session, TradingView URL,
- * generic notes) lives here as supporting data, not a lifecycle step (brief
- * §38) — the single existing `PlanCorrectionDialog` needs no split, since
- * every field it edits now belongs to this one section.
+ * makes — nothing here reinterprets or invents history. Operational Plan
+ * values and correction now live in Actual; this section retains only the
+ * contextual evidence captured around entry.
  */
 export function EntrySnapshotSection({
   trade,
@@ -89,44 +85,11 @@ export function EntrySnapshotSection({
   canWrite: boolean;
 }) {
   const t = useTranslations('trades');
-  const money = (value: string | null) =>
-    formatTradeMoney(value, trade.tradingAccountBaseCurrency) ?? '—';
-
   return (
     <section aria-labelledby="trade-entry-heading" className="grid gap-5">
       <SectionTitle id="trade-entry-heading">{t('detail.sections.entrySnapshot')}</SectionTitle>
 
       <dl className="divide-border divide-y">
-        {/* Planned R is the load-bearing fact the whole product measures
-            against (CLAUDE.md §1) — it stays in the always-visible summary,
-            never behind the "Show full details" disclosure below. */}
-        {trade.plannedEntry === null ? null : (
-          <>
-            <DetailRow label={t('field.entry')} value={trade.plannedEntry} />
-            <DetailRow label={t('field.stop')} value={trade.plannedStop ?? '—'} />
-            <DetailRow
-              label={t('field.target')}
-              value={trade.plannedTarget ?? t('common.notSet')}
-            />
-          </>
-        )}
-        {trade.plannedRiskMinor === null ? null : (
-          <>
-            <DetailRow label={t('field.plannedRisk')} value={money(trade.plannedRiskMinor)} />
-            <DetailRow
-              label={t('field.plannedReward')}
-              value={
-                trade.plannedRewardMinor === null
-                  ? t('common.notSet')
-                  : money(trade.plannedRewardMinor)
-              }
-            />
-          </>
-        )}
-        <DetailRow
-          label={t('field.plannedR')}
-          value={formatR(trade.plannedR) ?? t('common.notAvailable')}
-        />
         <DetailRow label={t('detail.sections.conditions')} value={checklistSummary(trade, t)} />
         <DetailRow
           label={t('field.confidence')}
@@ -182,16 +145,8 @@ export function EntrySnapshotSection({
             )}
           </SubSection>
 
-          <SubSection id="trade-entry-plan" title={t('detail.sections.plan')}>
+          <SubSection id="trade-entry-plan" title={t('create.sections.context')}>
             <dl className="divide-border divide-y">
-              <DetailRow
-                label={t('field.positionSize')}
-                value={trade.plannedPositionSize ?? t('common.notSet')}
-              />
-              <DetailRow
-                label={t('field.plannedR')}
-                value={formatR(trade.plannedR) ?? t('common.notAvailable')}
-              />
               {trade.timeframe === null ? null : (
                 <DetailRow label={t('field.timeframe')} value={trade.timeframe} />
               )}
@@ -241,11 +196,6 @@ export function EntrySnapshotSection({
                 <DetailRow label={t('field.notes')} value={trade.notes} />
               )}
             </dl>
-            {canWrite ? (
-              <div className="pt-3">
-                <PlanCorrectionDialog trade={trade} />
-              </div>
-            ) : null}
           </SubSection>
         </div>
       </details>

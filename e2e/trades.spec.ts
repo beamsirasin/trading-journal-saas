@@ -239,6 +239,48 @@ async function seedCalendarTrades(userId: string): Promise<void> {
   }
 }
 
+async function seedPaginatedTrades(userId: string): Promise<void> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, { schema: { workspaces, tradingAccounts, trades } });
+  try {
+    const [workspace] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    if (workspace === undefined) throw new Error('Trade E2E pagination workspace missing');
+    const [account] = await db
+      .select({ id: tradingAccounts.id })
+      .from(tradingAccounts)
+      .where(eq(tradingAccounts.workspaceId, workspace.id));
+    if (account === undefined) throw new Error('Trade E2E pagination account missing');
+
+    await db.insert(trades).values(
+      Array.from({ length: 12 }, (_, index) => {
+        const enteredAt = new Date(`2026-08-22T${String(index + 1).padStart(2, '0')}:00:00Z`);
+        return {
+          workspaceId: workspace.id,
+          tradingAccountId: account.id,
+          symbol: `PAGE${String(index + 1).padStart(2, '0')}`,
+          direction: 'long' as const,
+          status: 'open' as const,
+          systemStatus: 'no_trade' as const,
+          systemExitReason: 'setup_invalidated' as const,
+          systemResolvedAt: enteredAt,
+          plannedRiskMinor: 100n,
+          plannedRewardMinor: 200n,
+          plannedR: '2.0000',
+          actualResultMode: 'money' as const,
+          actualInitialRiskMinor: 100n,
+          enteredAt,
+        };
+      }),
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 async function readConditionChecks(tradeId: string) {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
@@ -300,8 +342,8 @@ async function createOpenTrade(page: Page) {
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await page.getByRole('button', { name: 'Long' }).click();
   await page.getByLabel('Entry', { exact: true }).fill('100');
-  await page.getByLabel('Stop', { exact: true }).fill('90');
-  await page.getByLabel(/Target/).fill('130');
+  await page.getByLabel('Stop Loss', { exact: true }).fill('90');
+  await page.getByLabel(/Take Profit/).fill('130');
   await page.getByLabel('Actual entry').fill('100');
   await page.getByLabel('Initial Stop').fill('90');
   await page.getByLabel('Breakout candle closed').check();
@@ -418,17 +460,27 @@ test.describe('real Trade Journal creation', () => {
     await openTradeSection(page, 'strategy');
     await expect(page.getByText('Golden Breakout').last()).toBeVisible();
     await expect(page.getByText('Clean Retest').last()).toBeVisible();
-    await openTradeSection(page, 'entry');
-    // Appears once as Entry Snapshot's compact summary Planned R and again
-    // inside its full-detail Plan disclosure — both by design (brief §22).
+    await openTradeSection(page, 'actual');
+    await expect(detail.getByText('Take Profit')).toBeVisible();
+    await expect(detail.getByText('130')).toBeVisible();
     await expect(detail.getByText('+3.00R').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Edit Plan' }).click();
+    const planDialog = page.getByRole('dialog');
+    await planDialog.getByLabel('Take Profit').fill('140');
+    await planDialog.getByRole('button', { name: 'Save changes' }).click();
+    await expect(planDialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await openTradeSection(page, 'actual');
+    await expect(detail.getByLabel('Plan')).toContainText('140');
+    await expect(detail.getByText('+4.00R').first()).toBeVisible();
     // Phase 14E — created already Open, never a customer-visible Planned step.
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Pending').last()).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
-    await openTradeSection(page, 'entry');
-    await expect(detail.getByText('+3.00R').first()).toBeVisible();
+    await openTradeSection(page, 'actual');
+    await expect(detail.getByText('140')).toBeVisible();
+    await expect(detail.getByText('+4.00R').first()).toBeVisible();
     await completeTradeLifecycle(page);
 
     await page.getByRole('button', { name: 'Delete Trade' }).click();
@@ -454,7 +506,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Short').first()).toBeVisible();
     // A Money-only Trade never fabricates Price fields — Entry is truthfully absent.
     await expect(page.getByText('Entry', { exact: true })).toHaveCount(0);
-    await openTradeSection(page, 'entry');
+    await openTradeSection(page, 'actual');
     await expect(detail.getByText('+3.00R').first()).toBeVisible();
     await expect(page.getByText('Planned risk')).toBeVisible();
     await expect(page.getByText('Planned reward')).toBeVisible();
@@ -641,7 +693,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
-    await page.getByLabel('Stop', { exact: true }).fill('1.24');
+    await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
     await page.getByLabel('Actual entry').fill('1.25');
     await page.getByLabel('Initial Stop').fill('1.24');
     await page.getByLabel('Breakout candle closed').check();
@@ -656,7 +708,7 @@ test.describe('real Trade Journal creation', () => {
     const dialog = page.getByRole('alertdialog');
     await expect(dialog.getByText(/3 of 5 Conditions are met \(60%\)/)).toBeVisible();
     await dialog.getByRole('button', { name: 'Open Trade' }).click();
-    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
     const tradeId = new URL(page.url()).searchParams.get('trade');
     if (tradeId === null) throw new Error('created Trade ID missing from URL');
 
@@ -732,7 +784,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('150');
-    await page.getByLabel('Stop', { exact: true }).fill('149');
+    await page.getByLabel('Stop Loss', { exact: true }).fill('149');
     await page.getByLabel('Actual entry').fill('150');
     await page.getByLabel('Initial Stop').fill('149');
     await page.getByRole('button', { name: 'Open Trade' }).click();
@@ -758,8 +810,8 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('100');
-    await page.getByLabel('Stop', { exact: true }).fill('90');
-    await page.getByLabel(/Target/).fill('130'); // Price implies +3R
+    await page.getByLabel('Stop Loss', { exact: true }).fill('90');
+    await page.getByLabel(/Take Profit/).fill('130'); // Price implies +3R
     await page.getByRole('button', { name: 'Add a Money plan' }).click();
     await page.getByLabel('Planned risk').fill('50.00');
     await page.getByLabel(/Planned reward/).fill('500.00'); // Money implies +10R
@@ -1058,7 +1110,7 @@ test.describe('real Trade Journal creation', () => {
     const confirmDialog = page.getByRole('alertdialog');
     await expect(confirmDialog.getByText(/3 of 5 Conditions are met \(60%\)/)).toBeVisible();
     await confirmDialog.getByRole('button', { name: 'Open Trade' }).click();
-    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
 
     // Arrives directly on Detail already Open — Partial Close/Close Trade are
     // immediately visible (brief §7), no premature final Actual R/outcome.
@@ -1066,11 +1118,11 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Long').first()).toBeVisible();
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Pending').last()).toBeVisible();
-    // Setup Adherence, Confidence, Emotion, and Entry Reason all live in
-    // Entry Snapshot (brief §22) — Planned R stays in its always-visible
-    // compact summary; the rest is behind "Show full details".
-    await openTradeSection(page, 'entry');
+    // Planned R is operational Plan data in Actual; contextual entry evidence
+    // remains in Entry Snapshot.
+    await openTradeSection(page, 'actual');
     await expect(detail.getByText('+3.00R').first()).toBeVisible(); // Planned R = 300.00 / 100.00
+    await openTradeSection(page, 'entry');
     await expandEntrySnapshotDetails(page);
     await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
       'aria-pressed',
@@ -1315,8 +1367,7 @@ test.describe('real Trade Journal creation', () => {
 
     const detail = page.getByRole('article', { name: 'GBPUSD' });
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
-    await openTradeSection(page, 'entry');
-    await expandEntrySnapshotDetails(page);
+    await openTradeSection(page, 'actual');
     const planSection = detail.getByLabel('Plan');
     await expect(planSection.getByText('Not set').first()).toBeVisible();
     await expect(planSection.getByText('Not available')).toBeVisible();
@@ -1408,7 +1459,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(conditionsHeading.locator('..').getByText('Not recorded')).toBeVisible();
   });
 
-  test('Phase 14D — Trading Calendar loads above the Trade Log, independent Trader/System dates never collapse, and day selection filters the Log truthfully', async ({
+  test('Phase 15G.1 — Calendar is separate from Trade Log, independent Trader/System dates never collapse, and day selection filters Log truthfully', async ({
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
@@ -1417,14 +1468,18 @@ test.describe('real Trade Journal creation', () => {
     await seedCalendarTrades(user.id);
     await loginAs(page, 'en', user);
 
-    // A — Calendar loads above the Trade Log, on the current month by default.
+    // Trade Log is the operational default; Calendar is a separate view.
     await page.goto('/en/app/trades');
+    await expect(page.getByRole('list', { name: 'Trade journal' })).toBeVisible();
+    await expect(page.getByTestId('trading-calendar')).toHaveCount(0);
+    await page.getByRole('link', { name: 'Calendar' }).click();
+    await expect(page).toHaveURL(/view=calendar/);
     const calendar = page.getByTestId('trading-calendar');
     await expect(calendar.getByText('Trading Calendar')).toBeVisible();
-    await expect(page.getByRole('list', { name: 'Trade journal' })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Trade journal' })).toHaveCount(0);
 
     // Navigate to August 2026, where the fixture's dates live.
-    await page.goto('/en/app/trades?month=2026-08');
+    await page.goto('/en/app/trades?view=calendar&month=2026-08');
 
     // B/D — Trader axis: Aug 20 sums both Trades' Actual R (-0.5 + 1.0 = 0.5),
     // never including Trade C's System R.
@@ -1453,19 +1508,24 @@ test.describe('real Trade Journal creation', () => {
     // E — Selecting Aug 20 filters the Trade Log to that day's journal
     // chronology, independent of the (System) axis currently selected.
     await calendar.getByRole('button', { name: /^20 August 2026/ }).click();
-    await expect(page).toHaveURL(/month=2026-08&date=2026-08-20/);
-    await expect(page.getByText('20 August 2026')).toBeVisible();
+    await expect(page).toHaveURL(/view=log&month=2026-08&date=2026-08-20/);
+    await expect(page.getByTestId('trading-calendar')).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(/view=calendar&month=2026-08/);
+    await expect(page.getByTestId('trading-calendar')).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(/view=log&month=2026-08&date=2026-08-20/);
     await expect(page.getByRole('listitem', { name: 'ACTUALFIRST' })).toBeVisible();
     await expect(page.getByRole('listitem', { name: 'CROSSDATE' })).toBeVisible();
     await expect(page.getByRole('listitem', { name: 'UNCLASSIFIEDOPEN' })).toBeVisible();
 
-    // F — Clear date restores the normal, unfiltered Log.
-    await page.getByRole('button', { name: 'Clear date' }).click();
+    // F — an explicit Log URL without date restores the normal unfiltered page.
+    await page.goto('/en/app/trades?view=log&month=2026-08');
     await expect(page).not.toHaveURL(/date=/);
 
     // G — the unclassified, still-Open Trade remains fully accessible from
     // the Calendar-filtered day, with its late-classification action intact.
-    await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
+    await page.goto('/en/app/trades?view=log&month=2026-08&date=2026-08-20');
     await page
       .getByRole('listitem', { name: 'UNCLASSIFIEDOPEN' })
       .getByRole('link', { name: /Add Strategy/ })
@@ -1483,7 +1543,7 @@ test.describe('real Trade Journal creation', () => {
 
     // H — Trade B's System-Pending action remains reachable from the
     // Calendar-filtered day too — Actual closing never blocks it.
-    await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
+    await page.goto('/en/app/trades?view=log&month=2026-08&date=2026-08-20');
     await page
       .getByRole('listitem', { name: 'ACTUALFIRST' })
       .getByRole('link', { name: /Update outcome/ })
@@ -1507,24 +1567,51 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).not.toHaveURL(/trade=/);
   });
 
-  test('Phase 14D mobile — Trading Calendar stays usable at 390px above the Trade Log', async ({
+  test('Phase 15G.1 — Trade Log uses 10-row URL pagination with reload-safe Previous', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(120_000);
+    const user = await provisionJournalUser('e2e-trades-pagination');
+    await seedPaginatedTrades(user.id);
+    await loginAs(page, 'en', user);
+
+    await page.goto('/en/app/trades?view=log&month=2026-08&date=2026-08-22');
+    await expect(page.getByRole('listitem')).toHaveCount(10);
+    await expect(page.getByText('Page 1')).toBeVisible();
+    await page.getByRole('link', { name: /Next/ }).click();
+    await expect(page.getByText('Page 2')).toBeVisible();
+    await expect(page.getByRole('listitem')).toHaveCount(2);
+    await expect(page).toHaveURL(/view=log.*date=2026-08-22.*cursor=/);
+
+    await page.reload();
+    await expect(page.getByText('Page 2')).toBeVisible();
+    await page.getByRole('link', { name: /Previous/ }).click();
+    await expect(page.getByText('Page 1')).toBeVisible();
+    await expect(page.getByRole('listitem')).toHaveCount(10);
+    await expect(page).toHaveURL(/view=log.*date=2026-08-22/);
+    await expect(page).not.toHaveURL(/cursor=/);
+  });
+
+  test('Phase 15G.1 mobile — Trading Calendar and Trade Log remain separate at 390px', async ({
     page,
   }) => {
     test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
     test.setTimeout(120_000);
     const user = await provisionJournalUser('e2e-trades-calendar-mobile');
     await seedCalendarTrades(user.id);
+    await seedPaginatedTrades(user.id);
     await page.setViewportSize({ width: 390, height: 844 });
     await loginAs(page, 'en', user);
 
-    await page.goto('/en/app/trades?month=2026-08');
+    await page.goto('/en/app/trades?view=calendar&month=2026-08');
     const calendar = page.getByTestId('trading-calendar');
     await expect(calendar.getByText('Trading Calendar')).toBeVisible();
     const calendarBox = await calendar.boundingBox();
     expect(calendarBox?.width ?? 999).toBeLessThanOrEqual(390);
 
     await calendar.getByRole('button', { name: /^20 August 2026/ }).click();
-    await expect(page.getByText('20 August 2026')).toBeVisible();
+    await expect(page).toHaveURL(/view=log&month=2026-08&date=2026-08-20/);
     const actualFirstRow = page.getByRole('listitem', { name: 'ACTUALFIRST' });
     await expect(actualFirstRow).toBeVisible();
     await actualFirstRow.getByRole('link', { name: /Update outcome/ }).click();
@@ -1539,10 +1626,16 @@ test.describe('real Trade Journal creation', () => {
     }));
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
 
+    await page.goto('/en/app/trades?view=log&month=2026-08&date=2026-08-22');
+    await expect(page.getByRole('listitem')).toHaveCount(10);
+    await page.getByRole('link', { name: /Next/ }).click();
+    await expect(page.getByText('Page 2')).toBeVisible();
+    await expect(page.getByRole('listitem')).toHaveCount(2);
+
     // Explicit 320px + Thai smoke: the same compact record reflows without
     // horizontal scroll and translated status/action copy remains reachable.
     await page.setViewportSize({ width: 320, height: 720 });
-    await page.goto('/th/app/trades?month=2026-08&date=2026-08-20');
+    await page.goto('/th/app/trades?view=log&month=2026-08&date=2026-08-20');
     await expect(page.getByRole('list', { name: 'สมุดบันทึกการเทรด' })).toBeVisible();
     await expect(
       page

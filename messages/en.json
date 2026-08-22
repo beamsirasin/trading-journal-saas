@@ -544,12 +544,14 @@
         "description": "Nothing was logged for the selected day. Clear the date to see the full Journal."
       }
     },
+    "views": { "label": "Trades view", "calendar": "Calendar", "log": "Trade Log" },
     "list": {
       "caption": "Trade journal",
       "title": "Trade Log",
       "description": "Scan your journal, then open a Trade only when you need the full detail.",
       "descriptionDay": "Trades matching the day selected in the Calendar.",
       "trade": "Trade",
+      "date": "Date",
       "strategy": "Strategy",
       "account": "Trading Account",
       "execution": "Execution",
@@ -568,6 +570,7 @@
         "strategy": "Strategy not assigned"
       },
       "action": {
+        "label": "Action",
         "openTrade": "Open Trade",
         "addExecution": "Add execution details & Open",
         "viewActual": "View Actual",
@@ -576,7 +579,12 @@
         "addStrategy": "Add Strategy"
       }
     },
-    "pagination": { "label": "Trade pages", "previous": "Previous", "next": "Next" },
+    "pagination": {
+      "label": "Trade pages",
+      "previous": "Previous",
+      "page": "Page {page}",
+      "next": "Next"
+    },
     "empty": {
       "title": "No Trades yet",
       "description": "Log your first Trade to start a journal grounded in your execution."
@@ -594,6 +602,8 @@
       "entry": "Entry",
       "stop": "Stop",
       "target": "Target",
+      "stopLoss": "Stop Loss",
+      "takeProfit": "Take Profit",
       "positionSize": "Planned position size",
       "plannedRisk": "Planned risk",
       "plannedReward": "Planned reward",
@@ -888,6 +898,7 @@
       },
       "plan": {
         "priceTitle": "Price",
+        "actualPlanHint": "Set the intended Entry and Stop Loss. Take Profit is optional.",
         "moneyTitle": "Money / Risk & Reward",
         "addPrice": "Add a Price plan",
         "hidePrice": "Hide Price plan",

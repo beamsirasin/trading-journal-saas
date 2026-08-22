@@ -104,12 +104,12 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
                 defaultValue={trade.plannedEntry ?? ''}
               />
             </TradeField>
-            <TradeField id="plan-stop" label={t('field.stop')} hint={t('common.optional')}>
+            <TradeField id="plan-stop" label={t('field.stopLoss')} hint={t('common.optional')}>
               <FormInput id="plan-stop" name="plannedStop" defaultValue={trade.plannedStop ?? ''} />
             </TradeField>
             <TradeField
               id="plan-target"
-              label={t('field.target')}
+              label={t('field.takeProfit')}
               hint={t('lifecycle.plan.targetHint')}
             >
               <FormInput

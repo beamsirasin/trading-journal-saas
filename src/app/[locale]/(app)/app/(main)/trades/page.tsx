@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
 import { calendarDateIn, dayRangeIn, monthRangeIn } from '@/lib/time';
 import { TradeIdSchema } from '@/lib/trades/schemas';
+import { parseTradesView } from '@/lib/trades/view';
 import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
 import {
   getWorkspaceTradeCalendarMonth,
@@ -25,11 +26,25 @@ import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
-type PageSearchParams = { trade?: string; cursor?: string; month?: string; date?: string };
+type SearchValue = string | string[] | undefined;
+type PageSearchParams = {
+  trade?: SearchValue;
+  cursor?: SearchValue;
+  trail?: SearchValue;
+  month?: SearchValue;
+  date?: SearchValue;
+  view?: SearchValue;
+};
+
+const TRADE_LOG_PAGE_SIZE = 10;
 
 const DATE_LOCALE: Record<string, string> = { en: 'en-GB', th: 'th' };
 const MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function singleSearchValue(value: SearchValue): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
 
 export async function generateMetadata({
   params,
@@ -60,7 +75,13 @@ export default async function TradesPage({
   searchParams: Promise<PageSearchParams>;
 }) {
   const { locale } = await params;
-  const { trade: tradeParam, cursor, month: monthParam, date: dateParam } = await searchParams;
+  const query = await searchParams;
+  const tradeParam = singleSearchValue(query.trade);
+  const cursor = singleSearchValue(query.cursor);
+  const trail = singleSearchValue(query.trail) ?? '';
+  const monthParam = singleSearchValue(query.month);
+  const dateParam = singleSearchValue(query.date);
+  const view = parseTradesView(query.view);
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
 
@@ -99,6 +120,7 @@ export default async function TradesPage({
   const [page, entitlement, createOptions, calendarMonth, daySummary] = await Promise.all([
     listWorkspaceTrades({
       cursor: cursor ?? null,
+      limit: TRADE_LOG_PAGE_SIZE,
       ...(journalDateRange === undefined ? {} : { journalDateRange }),
     }),
     getWorkspaceEntitlement(),
@@ -144,9 +166,11 @@ export default async function TradesPage({
         }
       />
       <TradesJournal
+        view={view}
         trades={trades}
         nextCursor={page.nextCursor}
-        hasCursor={cursor !== undefined}
+        currentCursor={cursor ?? null}
+        cursorTrail={trail}
         selectedTrade={selectedTrade}
         selectedTradeId={selectedTrade?.tradeId ?? null}
         canWrite={writeAuthorization.allowed}
