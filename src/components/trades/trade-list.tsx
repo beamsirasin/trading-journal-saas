@@ -2,16 +2,21 @@
 
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 
+import type { StatusKind } from '@/lib/status/status-kind';
+import type { TradeDetailSection } from '@/lib/trades/section';
+import { cn } from '@/lib/utils';
 import type { TradeListItem } from '@/server/dal/trades';
+import { StatusBadge } from '@/components/status/status-badge';
 import { formatR } from '@/components/trades/trade-format';
-import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
-import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Link, useRouter } from '@/i18n/navigation';
+import { Link, usePathname, useRouter } from '@/i18n/navigation';
 
-/** Truthful "archived" disclosure for the LIVE Strategy/Setup/Account — never hides the pinned historical label, only annotates it (mirrors Trade Detail, Phase 13G §3/§14/§21). */
+export type TradeListView = TradeListItem & { readonly occurredAtDisplay: string };
+type Translation = ReturnType<typeof useTranslations<'trades'>>;
+
 function ArchivedNote({ show, label }: { show: boolean; label: string }) {
   if (!show) return null;
   return (
@@ -21,102 +26,119 @@ function ArchivedNote({ show, label }: { show: boolean; label: string }) {
   );
 }
 
-export type TradeListView = TradeListItem & { readonly occurredAtDisplay: string };
+function performanceTone(value: string | null): string {
+  if (value === null || Number(value) === 0) return 'text-muted-foreground';
+  return value.startsWith('-') ? 'text-negative' : 'text-positive';
+}
 
 function RValue({ value, label }: { value: string | null; label?: string }) {
+  const formatted = formatR(value);
+  if (formatted === null) return null;
   return (
-    <span className="block">
-      {label === undefined ? null : (
-        <span className="text-muted-foreground block text-[11px] tracking-wide uppercase">
-          {label}
-        </span>
-      )}
-      <span className="font-mono text-sm tabular-nums">{formatR(value) ?? '—'}</span>
+    <span className={cn('font-mono text-sm font-semibold tabular-nums', performanceTone(value))}>
+      {label === undefined ? null : <span className="sr-only">{label}: </span>}
+      {formatted}
     </span>
   );
 }
 
-/**
- * The Actual-side result summary for one list row (Phase 13G §20/§21). A
- * `closed` Trade shows its authoritative final `actualR`; a partially-exited
- * `open` Trade shows remaining % and realized-to-date R (never the closed
- * figure, and never inventing a final number early); every other state
- * (`planned`, an `open` Trade with no Exits yet, `canceled`) falls back to
- * the Plan's own `plannedR` — never a fake `0R`.
- */
-type Translation = ReturnType<typeof useTranslations>;
+function LabeledStatus({ kind, label }: { kind: StatusKind; label: string }) {
+  return <StatusBadge kind={kind} label={label} className="max-w-full" />;
+}
 
-function TraderResult({ trade, t }: { trade: TradeListView; t: Translation }) {
+function ActualSummary({ trade, t }: { trade: TradeListView; t: Translation }) {
+  if (trade.status === 'planned') {
+    return <LabeledStatus kind="needs_attention" label={t('list.needsExecutionDetails')} />;
+  }
+  if (trade.status === 'open') {
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+        <LabeledStatus kind="active" label={t('status.execution.open')} />
+        {trade.closedBps > 0 ? (
+          <span className="text-muted-foreground text-xs">
+            {t('list.remainingPercent', { percent: trade.remainingBps / 100 })}
+          </span>
+        ) : null}
+        {trade.closedBps > 0 ? (
+          <RValue value={trade.realizedRToDate} label={t('list.realized')} />
+        ) : null}
+      </div>
+    );
+  }
   if (trade.status === 'closed') {
     return (
-      <>
-        <RValue value={trade.actualR} />
-        <div>
-          <TradeOutcomeBadge outcome={trade.traderOutcome} />
-        </div>
-      </>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <LabeledStatus kind="complete" label={t('status.execution.closed')} />
+        <RValue value={trade.actualR} label={t('list.actualR')} />
+      </div>
     );
   }
-  if (trade.status === 'open' && trade.closedBps > 0) {
-    return (
-      <>
-        <span className="text-muted-foreground block text-xs">
-          {t('list.remainingPercent', { percent: trade.remainingBps / 100 })}
-        </span>
-        <RValue value={trade.realizedRToDate} label={t('list.realized')} />
-      </>
-    );
-  }
-  return <RValue value={trade.plannedR} label={t('field.plannedR')} />;
+  return <LabeledStatus kind="not_recorded" label={t('status.execution.canceled')} />;
 }
 
-/**
- * Strategy/Setup classification is optional since Phase 14B — an
- * unclassified Trade renders "Not assigned" (never a fake label like
- * "Unknown Strategy", never a blank cell). `strategyVersionNumber` is only
- * ever meaningful alongside a Strategy Version, so the "· Version N" segment
- * is skipped entirely rather than rendering "Version null".
- */
-function ClassificationCell({ trade, t }: { trade: TradeListView; t: Translation }) {
-  if (trade.strategyName === null) {
-    return (
-      <span className="text-muted-foreground block break-words">{t('common.notAssigned')}</span>
-    );
-  }
+function SystemSummary({ trade, t }: { trade: TradeListView; t: Translation }) {
+  const kind: StatusKind =
+    trade.systemStatus === 'resolved'
+      ? 'complete'
+      : trade.systemStatus === 'pending'
+        ? 'needs_attention'
+        : 'not_recorded';
   return (
-    <>
-      <span className="block font-medium break-words">
-        {trade.strategyName}
-        <ArchivedNote show={trade.strategyIsArchived} label={t('common.archived')} />
-      </span>
-      <span className="text-muted-foreground block text-xs break-words">
-        {trade.setupName === null ? (
-          t('common.notAssigned')
-        ) : (
-          <>
-            {trade.setupName}
-            {trade.strategyVersionNumber === null
-              ? null
-              : ` · ${t('common.version', { number: trade.strategyVersionNumber })}`}
-            <ArchivedNote show={trade.setupIsArchived} label={t('common.archived')} />
-          </>
-        )}
-      </span>
-    </>
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <LabeledStatus kind={kind} label={t(`status.system.${trade.systemStatus}`)} />
+      {trade.systemStatus === 'resolved' ? (
+        <RValue value={trade.systemR} label={t('list.systemR')} />
+      ) : null}
+    </div>
   );
 }
 
-function ConditionsAdherence({ trade }: { trade: TradeListView }) {
-  const t = useTranslations('trades');
-  if (trade.setupConditionMetCount === null || trade.setupConditionTotalCount === null) return null;
+function StrategySummary({ trade, t }: { trade: TradeListView; t: Translation }) {
+  if (trade.strategyName === null) {
+    return <span className="text-muted-foreground break-words">{t('common.notAssigned')}</span>;
+  }
   return (
-    <span className="text-muted-foreground block text-xs">
-      {t('list.conditionsMet', {
-        met: trade.setupConditionMetCount,
-        total: trade.setupConditionTotalCount,
-      })}
+    <span className="font-medium break-words">
+      {trade.strategyName}
+      <ArchivedNote show={trade.strategyIsArchived} label={t('common.archived')} />
     </span>
   );
+}
+
+type RowAttention = {
+  readonly section: TradeDetailSection;
+  readonly message: string;
+  readonly action: string;
+};
+
+/** One deterministic row action: legacy Actual, then pending System, then optional classification. */
+function getAttention(
+  trade: TradeListView,
+  canWrite: boolean,
+  t: Translation,
+): RowAttention | null {
+  if (trade.status === 'planned') {
+    return {
+      section: 'actual',
+      message: t('list.attention.execution'),
+      action: canWrite ? t('list.action.addExecution') : t('list.action.viewActual'),
+    };
+  }
+  if (trade.systemStatus === 'pending') {
+    return {
+      section: 'system',
+      message: t('list.attention.system'),
+      action: canWrite ? t('list.action.updateSystem') : t('list.action.viewSystem'),
+    };
+  }
+  if (canWrite && trade.strategyName === null) {
+    return {
+      section: 'strategy',
+      message: t('list.attention.strategy'),
+      action: t('list.action.addStrategy'),
+    };
+  }
+  return null;
 }
 
 export function TradeList({
@@ -124,115 +146,127 @@ export function TradeList({
   selectedTradeId,
   nextCursor,
   hasCursor,
+  canWrite,
 }: {
   trades: readonly TradeListView[];
   selectedTradeId: string | null;
   nextCursor: string | null;
   hasCursor: boolean;
+  canWrite: boolean;
 }) {
   const t = useTranslations('trades');
   const router = useRouter();
-  const archivedLabel = t('common.archived');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function tradeHref(tradeId: string, section?: TradeDetailSection): string {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('trade', tradeId);
+    if (section === undefined) params.delete('section');
+    else params.set('section', section);
+    return `${pathname}?${params.toString()}`;
+  }
+
+  function nextHref(cursor: string): string {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('trade');
+    params.delete('section');
+    params.set('cursor', cursor);
+    return `${pathname}?${params.toString()}`;
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div className="hidden overflow-hidden rounded-lg border md:block">
-        <table className="w-full table-fixed text-left text-sm">
-          <caption className="sr-only">{t('list.caption')}</caption>
-          <thead className="bg-muted/50 text-muted-foreground">
-            <tr>
-              <th className="w-[18%] px-3 py-3 font-medium">{t('list.trade')}</th>
-              <th className="w-[22%] px-3 py-3 font-medium">{t('list.strategy')}</th>
-              <th className="w-[16%] px-3 py-3 font-medium">{t('list.account')}</th>
-              <th className="w-[15%] px-3 py-3 font-medium">{t('list.execution')}</th>
-              <th className="w-[14%] px-3 py-3 font-medium">{t('list.trader')}</th>
-              <th className="w-[15%] px-3 py-3 font-medium">{t('list.system')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-border divide-y">
-            {trades.map((trade) => (
-              <tr key={trade.tradeId} className="hover:bg-muted/30 align-top">
-                <td className="p-0">
-                  <Link
-                    href={`/app/trades?trade=${trade.tradeId}`}
-                    aria-current={selectedTradeId === trade.tradeId ? 'true' : undefined}
-                    className="focus-visible:ring-ring block min-h-11 px-3 py-3 outline-none focus-visible:ring-2"
-                  >
-                    <span className="block font-semibold">{trade.symbol}</span>
-                    <span className="text-muted-foreground block text-xs">
-                      {t(`direction.${trade.direction}`)} · {trade.occurredAtDisplay}
+      <div role="list" aria-label={t('list.caption')} className="grid min-w-0 gap-3">
+        {trades.map((trade) => {
+          const attention = getAttention(trade, canWrite, t);
+          const isOpen = trade.status === 'open';
+          const isSelected = selectedTradeId === trade.tradeId;
+          return (
+            <article
+              key={trade.tradeId}
+              role="listitem"
+              aria-labelledby={`trade-${trade.tradeId}`}
+              className={cn(
+                'border-border bg-card min-w-0 rounded-lg border p-3.5 transition-colors',
+                isOpen && 'border-info/35 bg-info/5',
+                trade.status === 'closed' && 'bg-card/70',
+                isSelected && 'border-primary ring-primary/20 ring-2',
+              )}
+            >
+              <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-1">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <Link
+                      id={`trade-${trade.tradeId}`}
+                      href={tradeHref(trade.tradeId)}
+                      aria-current={isSelected ? 'page' : undefined}
+                      className="focus-visible:ring-ring rounded-sm text-base font-bold break-all outline-none hover:underline focus-visible:ring-2"
+                    >
+                      {trade.symbol}
+                    </Link>
+                    <span className="text-sm font-semibold tracking-wide uppercase">
+                      {t(`direction.${trade.direction}`)}
                     </span>
-                  </Link>
-                </td>
-                <td className="px-3 py-3">
-                  <ClassificationCell trade={trade} t={t} />
-                  <ConditionsAdherence trade={trade} />
-                </td>
-                <td className="px-3 py-3 break-words">
-                  {trade.tradingAccountName}
-                  <ArchivedNote show={trade.tradingAccountIsArchived} label={archivedLabel} />
-                </td>
-                <td className="px-3 py-3">
-                  <TradeStatusBadge status={trade.status} />
-                </td>
-                <td className="space-y-2 px-3 py-3">
-                  <TraderResult trade={trade} t={t} />
-                </td>
-                <td className="space-y-2 px-3 py-3">
-                  <SystemStatusBadge status={trade.systemStatus} />
-                  <div>
-                    <RValue value={trade.systemR} />
                   </div>
-                  <div>
-                    <TradeOutcomeBadge outcome={trade.systemOutcome} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="grid gap-3 md:hidden">
-        {trades.map((trade) => (
-          <Link
-            key={trade.tradeId}
-            href={`/app/trades?trade=${trade.tradeId}`}
-            aria-current={selectedTradeId === trade.tradeId ? 'true' : undefined}
-            className="border-border bg-card focus-visible:ring-ring flex min-h-11 flex-col gap-3 rounded-lg border p-4 outline-none focus-visible:ring-2"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <span className="block text-base font-semibold">{trade.symbol}</span>
-                <span className="text-muted-foreground text-sm">
-                  {t(`direction.${trade.direction}`)} · {trade.occurredAtDisplay}
-                </span>
-              </div>
-              <TradeStatusBadge status={trade.status} />
-            </div>
-            <div className="text-sm">
-              <ClassificationCell trade={trade} t={t} />
-              <span className="text-muted-foreground block break-words">
-                {trade.tradingAccountName}
-                <ArchivedNote show={trade.tradingAccountIsArchived} label={archivedLabel} />
-              </span>
-              <ConditionsAdherence trade={trade} />
-            </div>
-            <div className="grid grid-cols-2 gap-3 border-t pt-3 text-sm">
-              <div>
-                <span className="text-muted-foreground block text-xs">{t('list.trader')}</span>
-                <TraderResult trade={trade} t={t} />
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-xs">{t('list.system')}</span>
-                <div className="mt-1">
-                  <SystemStatusBadge status={trade.systemStatus} />
+                  <p className="text-muted-foreground mt-0.5 text-xs break-words">
+                    {trade.occurredAtDisplay}
+                    <span aria-hidden="true"> · </span>
+                    <span className="break-words">{trade.tradingAccountName}</span>
+                    <ArchivedNote
+                      show={trade.tradingAccountIsArchived}
+                      label={t('common.archived')}
+                    />
+                  </p>
                 </div>
-                <RValue value={trade.systemR} />
               </div>
-            </div>
-          </Link>
-        ))}
+
+              <dl className="mt-3 grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-3">
+                <div className="min-w-0">
+                  <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                    {t('list.actual')}
+                  </dt>
+                  <dd>
+                    <ActualSummary trade={trade} t={t} />
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase">
+                    {t('list.system')}
+                  </dt>
+                  <dd>
+                    <SystemSummary trade={trade} t={t} />
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-muted-foreground mb-1 text-[11px] font-medium tracking-wide uppercase">
+                    {t('list.strategy')}
+                  </dt>
+                  <dd className="text-sm">
+                    <StrategySummary trade={trade} t={t} />
+                  </dd>
+                </div>
+              </dl>
+
+              <div
+                className={cn(
+                  'mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t pt-3',
+                  attention === null ? 'justify-end' : 'justify-between',
+                )}
+              >
+                {attention === null ? null : (
+                  <p className="text-sm font-medium break-words">{attention.message}</p>
+                )}
+                <Button asChild variant={attention === null ? 'ghost' : 'outline'} size="sm">
+                  <Link href={tradeHref(trade.tradeId, attention?.section)}>
+                    {attention?.action ?? t('list.action.openTrade')}
+                    <ArrowRight aria-hidden="true" />
+                  </Link>
+                </Button>
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {hasCursor || nextCursor !== null ? (
@@ -246,7 +280,7 @@ export function TradeList({
             </Button>
           ) : (
             <Button asChild variant="outline">
-              <Link href={`/app/trades?cursor=${encodeURIComponent(nextCursor)}`}>
+              <Link href={nextHref(nextCursor)}>
                 {t('pagination.next')} <ArrowRight aria-hidden="true" />
               </Link>
             </Button>

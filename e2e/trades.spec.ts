@@ -122,7 +122,7 @@ async function seedFramework(userId: string, withConditions = true): Promise<voi
  * bearing date scenarios the phase brief names: Trade B (Actual-first, System
  * still Pending), Trade C (Actual Aug 20, System resolves the NEXT day, Aug
  * 21 — proving the two axes never collapse to one date), and an unclassified
- * open Trade (proving "Add Strategy"/late-classification remains reachable
+ * open/System-No-Trade Trade (proving "Add Strategy"/late-classification remains reachable
  * from a Calendar-filtered day). All Money-only Plan (never Price) — this
  * fixture exercises the Calendar's READ side against known dates; the
  * Open/Close/System-resolve WRITE flows are already proven end-to-end by the
@@ -220,13 +220,16 @@ async function seedCalendarTrades(userId: string): Promise<void> {
       });
     });
 
-    // Unclassified, still-Open Trade entered Aug 20 — proves the day's Log
-    // and its "Add Strategy" action remain reachable from the Calendar.
+    // Unclassified, still-Open/System-No-Trade Trade entered Aug 20 — gives
+    // classification its own one-action row without competing with the
+    // higher-priority pending-System action proven by ACTUALFIRST.
     await db.insert(trades).values({
       ...basePlan,
       symbol: 'UNCLASSIFIEDOPEN',
       status: 'open',
-      systemStatus: 'pending',
+      systemStatus: 'no_trade',
+      systemExitReason: 'setup_invalidated',
+      systemResolvedAt: new Date('2026-08-20T12:05:00Z'),
       actualResultMode: 'money',
       actualInitialRiskMinor: 100n,
       enteredAt: new Date('2026-08-20T12:00:00Z'),
@@ -1217,12 +1220,12 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Trimmed the first leg early, ahead of plan.')).toBeVisible();
     await expect(reviewNotes).toHaveValue('Followed the Setup but exited the first leg too early.');
 
-    // 7. List — the Trade List reflects the correct CLOSED-state figures, never a
-    // stale partial figure.
+    // 7. List — the compact Log reflects the authoritative CLOSED Actual R,
+    // never a stale partial figure; outcome wording remains Detail-only.
     await page.goto('/en/app/trades');
-    const listRow = page.getByRole('row', { name: /NZDUSD/ });
+    const listRow = page.getByRole('listitem', { name: 'NZDUSD' });
     await expect(listRow.getByText('+4.00R')).toBeVisible();
-    await expect(listRow.getByText('Win', { exact: true }).first()).toBeVisible();
+    await expect(listRow.getByText('Win', { exact: true })).toHaveCount(0);
     await expect(listRow.getByText('Realized R to date')).toHaveCount(0);
 
     // 8. Analytics — this Trade contributes to both Trader and System
@@ -1327,7 +1330,7 @@ test.describe('real Trade Journal creation', () => {
     // The Trade List already reflects this unclassified, no-Plan, already-
     // Open Trade truthfully — it appears normally, nothing hidden or blocked.
     await page.goto('/en/app/trades');
-    await expect(page.getByRole('row', { name: /GBPUSD/ })).toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'GBPUSD' })).toBeVisible();
     await page.goto(tradeUrl);
 
     // Journey B — Full Close the Actual side; System remains explicitly
@@ -1418,7 +1421,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades');
     const calendar = page.getByTestId('trading-calendar');
     await expect(calendar.getByText('Trading Calendar')).toBeVisible();
-    await expect(page.getByRole('table', { name: 'Trade journal' })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Trade journal' })).toBeVisible();
 
     // Navigate to August 2026, where the fixture's dates live.
     await page.goto('/en/app/trades?month=2026-08');
@@ -1452,9 +1455,9 @@ test.describe('real Trade Journal creation', () => {
     await calendar.getByRole('button', { name: /^20 August 2026/ }).click();
     await expect(page).toHaveURL(/month=2026-08&date=2026-08-20/);
     await expect(page.getByText('20 August 2026')).toBeVisible();
-    await expect(page.getByRole('row', { name: /ACTUALFIRST/ })).toBeVisible();
-    await expect(page.getByRole('row', { name: /CROSSDATE/ })).toBeVisible();
-    await expect(page.getByRole('row', { name: /UNCLASSIFIEDOPEN/ })).toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'ACTUALFIRST' })).toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'CROSSDATE' })).toBeVisible();
+    await expect(page.getByRole('listitem', { name: 'UNCLASSIFIEDOPEN' })).toBeVisible();
 
     // F — Clear date restores the normal, unfiltered Log.
     await page.getByRole('button', { name: 'Clear date' }).click();
@@ -1463,9 +1466,12 @@ test.describe('real Trade Journal creation', () => {
     // G — the unclassified, still-Open Trade remains fully accessible from
     // the Calendar-filtered day, with its late-classification action intact.
     await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
-    await page.getByRole('link', { name: /UNCLASSIFIEDOPEN/ }).click();
+    await page
+      .getByRole('listitem', { name: 'UNCLASSIFIEDOPEN' })
+      .getByRole('link', { name: /Add Strategy/ })
+      .click();
+    await expect(page).toHaveURL(/trade=.*&section=strategy/);
     const unclassifiedDetail = page.getByRole('article', { name: 'UNCLASSIFIEDOPEN' });
-    await openTradeSection(page, 'strategy');
     await expect(
       unclassifiedDetail.getByLabel('Strategy & Setup').getByText('Not assigned'),
     ).toBeVisible();
@@ -1478,12 +1484,27 @@ test.describe('real Trade Journal creation', () => {
     // H — Trade B's System-Pending action remains reachable from the
     // Calendar-filtered day too — Actual closing never blocks it.
     await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
-    await page.getByRole('link', { name: /ACTUALFIRST/ }).click();
+    await page
+      .getByRole('listitem', { name: 'ACTUALFIRST' })
+      .getByRole('link', { name: /Update outcome/ })
+      .click();
+    await expect(page).toHaveURL(/trade=.*&section=system/);
     const actualFirstDetail = page.getByRole('article', { name: 'ACTUALFIRST' });
-    await openTradeSection(page, 'system');
     await expect(
       actualFirstDetail.getByRole('button', { name: 'Resolve System result' }),
     ).toBeVisible();
+    await actualFirstDetail.getByRole('button', { name: 'Resolve System result' }).click();
+    const systemDialog = page.getByRole('dialog');
+    await expect(systemDialog.getByLabel('System result')).toHaveValue('money_target');
+    await systemDialog.getByRole('button', { name: 'Confirm resolved result' }).click();
+    await expect(systemDialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(
+      page.getByRole('article', { name: 'ACTUALFIRST' }).getByText('Resolved').last(),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/month=2026-08&date=2026-08-20/);
+    await expect(page).not.toHaveURL(/trade=/);
   });
 
   test('Phase 14D mobile — Trading Calendar stays usable at 390px above the Trade Log', async ({
@@ -1504,17 +1525,35 @@ test.describe('real Trade Journal creation', () => {
 
     await calendar.getByRole('button', { name: /^20 August 2026/ }).click();
     await expect(page.getByText('20 August 2026')).toBeVisible();
-    // Desktop table (`hidden md:block`, first in DOM) and mobile card list
-    // (`md:hidden`, second) both exist in the DOM, CSS-toggled per
-    // breakpoint — at this 390px viewport the table copy is hidden, so the
-    // LAST matching link is the one actually visible.
-    await expect(page.getByRole('link', { name: /ACTUALFIRST/ }).last()).toBeVisible();
+    const actualFirstRow = page.getByRole('listitem', { name: 'ACTUALFIRST' });
+    await expect(actualFirstRow).toBeVisible();
+    await actualFirstRow.getByRole('link', { name: /Update outcome/ }).click();
+    await expect(page).toHaveURL(/trade=.*&section=system/);
+    await expect(
+      page.getByRole('article', { name: 'ACTUALFIRST' }).getByLabel('System', { exact: true }),
+    ).toBeVisible();
 
     const dimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,
     }));
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+
+    // Explicit 320px + Thai smoke: the same compact record reflows without
+    // horizontal scroll and translated status/action copy remains reachable.
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto('/th/app/trades?month=2026-08&date=2026-08-20');
+    await expect(page.getByRole('list', { name: 'สมุดบันทึกการเทรด' })).toBeVisible();
+    await expect(
+      page
+        .getByRole('listitem', { name: 'ACTUALFIRST' })
+        .getByRole('link', { name: /อัปเดตผลลัพธ์/ }),
+    ).toBeVisible();
+    const narrowDimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(narrowDimensions.scroll).toBeLessThanOrEqual(narrowDimensions.client + 1);
   });
 });
 

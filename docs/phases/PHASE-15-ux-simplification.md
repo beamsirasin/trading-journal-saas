@@ -1,16 +1,12 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
-> **Status:** 15A (audit + contract), 15B (UX design primitives, status semantics, deep-action
-> navigation foundation), and 15C (Analytics Overview simplification) are complete and
-> committed — see §54/§55 for their as-built decisions. 15D (Analytics Explore, Strategy/Setup
-> Edge composition, Context breakdowns) is implemented — see §56 below. The full Trade Detail
-> step redesign and Trade Log simplification are **not** implemented — 15E–15G remain proposed,
-> not started.
+> **Status:** 15A–15E are complete and committed. 15F (Trade Log simplification and deep actions)
+> is implemented in the working tree — see §58. Phase 15G Founder UAT remains open and must not
+> be marked complete before Founder acceptance.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-21 (Phase 15D — Analytics Explore, Strategy/Setup Edge & Context
-> breakdowns).
+> **Last updated:** 2026-08-22 (Phase 15F — Trade Log simplification and deep actions).
 
 ---
 
@@ -1270,3 +1266,144 @@ unchanged (`drizzle-kit check` confirms `0000`–`0016` only).
 always-visible summary (rather than the disclosure) is the right call, or whether a future
 Founder-UAT pass prefers it surfaced even higher (e.g., a fourth Trade Overview hero metric) —
 recorded here as a build-time judgment call, not a locked decision.
+
+---
+
+## 58. Phase 15F — Trade Log Simplification & Deep Action Workflow (as built)
+
+**Scope and baseline.** Phase 15F changes only the Trade Log presentation, its Calendar/Log visual
+boundary, localized row copy, tests, and this documentation. HEAD at preflight was `38406d9`
+(`feat(journal): redesign trade detail as step workspace`) on
+`feature/trade-plan-ux-uat`, with a clean worktree. Migrations remain exactly `0000`–`0016`; no
+`0017`, schema, server action, DAL, calculation, Analytics, Trading Calendar semantics, or Trade
+Detail architecture is changed.
+
+**Final first-layer contract.** Each Trade is one semantic compact record, not separate desktop
+and mobile copies. The scan order is Symbol + explicit Direction, one journal timestamp + quiet
+Trading Account, Actual state/result, System state/result, Strategy, then at most one attention
+message/action. Open uses the shared blue `active` vocabulary; Closed and Resolved use shared
+`complete`; pending/legacy actionable work uses shared amber `needs_attention`; No Trade,
+Canceled, and Not assigned remain neutral. Positive/negative R uses performance colors, with
+negative using the `negative` token rather than the error/destructive token.
+
+Actual presentation is truthful by lifecycle: Closed shows final Actual R; Open with no Exit shows
+only Open; partial Open remains backend `open` and shows Remaining % plus Realized R to date;
+legacy `planned` reads “Needs execution details”; Canceled is neutral. Planned R is never used as a
+first-layer fallback. System independently shows Pending, Resolved + System R, or No Trade. Outcome
+words are Detail-only because R is the more useful first-layer result.
+
+**Classification/account/date decisions.** Strategy name stays first-layer and optional absence is
+neutral “Not assigned.” Setup is Detail-only: showing Strategy + Setup/version/checklist in every
+record was the largest classification-density source, and long EN/TH names need room to wrap.
+Setup history and archived state remain intact in Trade Detail. Trading Account stays as receded
+metadata because this page has no selected-account filter that otherwise establishes context;
+archived Account and Strategy labels remain disclosed. Exactly one canonical journal timestamp
+(`coalesce(exited_at, entered_at, created_at)`) is shown; full lifecycle timestamps stay in Detail.
+
+**Attention priority and actions.** The deterministic writable priority is (1) legacy execution
+details → `section=actual`, (2) pending System outcome → `section=system`, (3) unassigned Strategy
+→ `section=strategy`. Review is not surfaced. If no attention exists, the footer offers the
+general Open Trade navigation and defaults to Actual by omitting `section`. The Symbol link is
+also a general Open action. Read-only/over-limit users get non-mutating View Actual/View System
+deep links for load-bearing legacy/pending states, never mutation wording; unassigned Strategy
+remains neutral. URLs only navigate and never mutate. Existing server actions remain the write
+boundary.
+
+All links reuse the Phase 15B/15E `trade=<id>&section=<canonical-section>` contract, preserve the
+localized pathname and existing month/date/cursor query parameters, and remain reload/back/forward
+safe. General navigation clears a stale `section`; pagination preserves Calendar queries while
+clearing selected Trade/section. There are no nested interactive elements: a semantic `article`
+and labelled `listitem` contains separate keyboard-focusable Symbol and action links.
+
+**Calendar, filtering, and responsive composition.** A border, whitespace, “Trade Log” heading,
+and selected-day explanation create a clear boundary below the unchanged Calendar card. Calendar
+axis semantics and selected-day journal chronology remain independent. No filters were added;
+existing month/date selection, cursor pagination, ordering, and limits remain unchanged. A single
+responsive record replaces the duplicated table/mobile DOM: three summary columns on wider
+screens and a compact stacked layout below `sm`, with `min-w-0`, wrapping, and no fixed row width.
+The mobile e2e covers 390px English and an explicit 320px Thai overflow/action smoke.
+
+### 58.1 Complete field relocation map
+
+| Previously rendered Log field                               | Phase 15F placement                               |
+| ----------------------------------------------------------- | ------------------------------------------------- |
+| Symbol                                                      | First layer, primary identity/general Detail link |
+| Direction                                                   | First layer, explicit text (not color-only)       |
+| Journal date/time                                           | First layer, one canonical chronology timestamp   |
+| Trading Account name + archived                             | Secondary first-layer metadata                    |
+| Actual lifecycle status                                     | First layer                                       |
+| Final Actual R                                              | First layer for Closed only                       |
+| Remaining % + Realized R                                    | First layer for partial Open only                 |
+| Planned R fallback                                          | Removed from Log; Entry Snapshot Detail-only      |
+| Trader Win/Loss/Break even                                  | Detail-only                                       |
+| System status                                               | First layer                                       |
+| System R                                                    | First layer for Resolved only                     |
+| System Win/Loss/Break even                                  | Detail-only                                       |
+| Strategy name + archived                                    | First layer; neutral Not assigned when absent     |
+| Setup name + archived                                       | Detail-only, Strategy & Setup / Entry Snapshot    |
+| Strategy version number                                     | Detail-only                                       |
+| Setup Checklist met/total                                   | Detail-only, Entry Snapshot                       |
+| Confidence, Emotions, Entry Reason/Chart, Plan prices/money | Already Detail-only; explicitly absent from Log   |
+| Rules, Mistakes, Review notes/completeness                  | Already Detail-only, Review → Trade Management    |
+
+No data is deleted; “removed” above means removed from the Log display only.
+
+### 58.2 Complete action relocation map
+
+| Action                              | Phase 15F destination                                                         |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| Symbol/general Open Trade           | Detail default Actual (no `section`)                                          |
+| Legacy Add execution details & Open | Detail `section=actual`; navigation performs no mutation                      |
+| Update pending System outcome       | Detail `section=system`                                                       |
+| Add Strategy                        | Detail `section=strategy`                                                     |
+| Review                              | Not surfaced in Log; Detail `section=review` remains available in section nav |
+| Duplicate whole-row anchor          | Removed to avoid nested link/button invalidity                                |
+| Previous/Next pagination            | Preserved; next keeps month/date and removes selected Trade state             |
+
+**Testing contract.** Component coverage enumerates Closed, Open, partial Open, Pending, Resolved,
+No Trade, legacy planned, unassigned Strategy, Strategy-only first-layer behavior, archived
+Account/Strategy, writable, read-only/over-limit-shaped presentation, performance colors,
+attention priority, canonical deep links/query preservation, pagination, and the absence of Setup,
+version, checklist, outcomes, Planned R, Confidence, Emotion, Entry Reason, Rules, and Mistakes.
+The real-DB Trade E2E now drives Calendar → selected-day Log → Add Strategy/System Update direct
+links, proves the selected section, completes and saves a System resolution, reloads it, and uses
+browser Back naturally. Mobile drives the System deep action at 390px and checks English 390px plus
+Thai 320px page overflow.
+
+Final verification on 2026-08-22: focused Trade Log/Calendar/section navigation **25 passed**;
+full Vitest **140 files, 2002 passed**; ESLint, TypeScript, Prettier check, `drizzle-kit check`,
+production `next build`, and `git diff --check` pass. Guarded disposable-PostgreSQL desktop direct
+workflow **2/2 passed** and mobile 390/320 workflow **2/2 passed** (each count includes the auth
+setup). The final parallel full Trades run reported **22 passed, 22 intentionally project-gated
+skipped, 1 failed**: the pre-existing full-journey New Trade redirect flake already documented in
+§57 reproduced under 10 workers. Its isolated real-DB rerun passed together with the other updated
+desktop regression (**3/3 passed**). No server/DAL/domain file changed, so a new PG integration
+regression beyond the real-DB Trades journeys is not applicable.
+
+**Performance/server impact.** Query count and network behavior are unchanged: the same single
+`listWorkspaceTrades` composition and its existing batched Exit/Setup-Condition reads are used;
+there is no per-record request and no new derived query. Some already-fetched values are simply no
+longer rendered. Cursor pagination remains capped at the existing 25/default and 50/maximum.
+
+### 58.3 Founder UAT questions and Phase 15G plan
+
+Founder UAT should use real representative data at desktop 1440px, mobile 390px, and narrow 320px
+in both EN/TH where useful:
+
+1. Can the Founder answer symbol/direction, Open vs Closed, Actual R, System state/R, Strategy, and
+   the one next action without reading every line?
+2. Is Setup correctly Detail-only, or is it essential enough in the Founder’s routine to justify
+   more row density?
+3. Is the quiet Account line sufficient for multi-account use, including archived history?
+4. Does legacy → Actual, pending System → System, and Add Strategy → Strategy feel like one-click
+   work, with Back returning naturally to the same selected Calendar day?
+5. Are open records easy enough to find without making Closed history too faint?
+6. Do long Thai labels, long symbols, and long Strategy names remain scannable at 320/390px?
+7. Does the Calendar/Trade Log boundary solve the “one giant scroll” concern without needing a new
+   route?
+
+Phase 15G must be UAT only: provision representative rows for every Phase 15F state, run the seven
+questions above with the Founder, record pass/fail and requested copy/density adjustments, fix only
+accepted UAT defects without changing domain semantics, rerun focused/full regression in proportion
+to any fixes, and mark Phase 15G complete only after explicit Founder acceptance. Do not infer
+acceptance from test results.

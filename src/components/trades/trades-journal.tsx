@@ -93,38 +93,41 @@ export function TradesJournal({
             {t(`errors.${writeBlockReason}`)}
           </div>
         ) : null}
-        {isDayFiltered ? (
-          <EmptyState
-            icon={BookOpen}
-            title={t('calendar.empty.title')}
-            description={t('calendar.empty.description')}
-            action={
-              <Button asChild variant="outline">
-                <Link
-                  href={`/app/trades?month=${calendar.year}-${String(calendar.month).padStart(2, '0')}`}
-                >
-                  {t('calendar.clearDate')}
-                </Link>
-              </Button>
-            }
-          />
-        ) : (
-          <EmptyState
-            icon={BookOpen}
-            title={t('empty.title')}
-            description={t('empty.description')}
-            action={
-              canWrite ? (
-                <Button asChild>
-                  <Link href="/app/trades/new">
-                    <Plus aria-hidden="true" />
-                    {t('logTrade')}
+        <section aria-labelledby="trade-log-heading" className="border-border border-t pt-6">
+          <JournalLogHeader isDayFiltered={isDayFiltered} />
+          {isDayFiltered ? (
+            <EmptyState
+              icon={BookOpen}
+              title={t('calendar.empty.title')}
+              description={t('calendar.empty.description')}
+              action={
+                <Button asChild variant="outline">
+                  <Link
+                    href={`/app/trades?month=${calendar.year}-${String(calendar.month).padStart(2, '0')}`}
+                  >
+                    {t('calendar.clearDate')}
                   </Link>
                 </Button>
-              ) : null
-            }
-          />
-        )}
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={BookOpen}
+              title={t('empty.title')}
+              description={t('empty.description')}
+              action={
+                canWrite ? (
+                  <Button asChild>
+                    <Link href="/app/trades/new">
+                      <Plus aria-hidden="true" />
+                      {t('logTrade')}
+                    </Link>
+                  </Button>
+                ) : null
+              }
+            />
+          )}
+        </section>
       </div>
     );
   }
@@ -140,30 +143,48 @@ export function TradesJournal({
           {t(`errors.${writeBlockReason}`)}
         </div>
       ) : null}
-      <div
-        className={cn(
-          'grid min-w-0 items-start gap-6',
-          hasSelection && 'lg:grid-cols-[minmax(430px,0.85fr)_minmax(0,1.15fr)]',
-        )}
-      >
-        <div className={cn('min-w-0', hasSelection && 'hidden lg:block')}>
-          <TradeList
-            trades={trades}
-            selectedTradeId={selectedTradeId}
-            nextCursor={nextCursor}
-            hasCursor={hasCursor}
-          />
+      <section aria-labelledby="trade-log-heading" className="border-border border-t pt-6">
+        <JournalLogHeader isDayFiltered={isDayFiltered} />
+        <div
+          className={cn(
+            'grid min-w-0 items-start gap-6',
+            hasSelection && 'lg:grid-cols-[minmax(430px,0.85fr)_minmax(0,1.15fr)]',
+          )}
+        >
+          <div className={cn('min-w-0', hasSelection && 'hidden lg:block')}>
+            <TradeList
+              trades={trades}
+              selectedTradeId={selectedTradeId}
+              nextCursor={nextCursor}
+              hasCursor={hasCursor}
+              canWrite={canWrite}
+            />
+          </div>
+          {hasSelection ? (
+            <TradeDetail
+              trade={selectedTrade}
+              timezone={timezone}
+              locale={locale}
+              canWrite={canWrite}
+              classificationOptions={classificationOptions}
+            />
+          ) : null}
         </div>
-        {hasSelection ? (
-          <TradeDetail
-            trade={selectedTrade}
-            timezone={timezone}
-            locale={locale}
-            canWrite={canWrite}
-            classificationOptions={classificationOptions}
-          />
-        ) : null}
-      </div>
+      </section>
+    </div>
+  );
+}
+
+function JournalLogHeader({ isDayFiltered }: { readonly isDayFiltered: boolean }) {
+  const t = useTranslations('trades.list');
+  return (
+    <div className="mb-4">
+      <h2 id="trade-log-heading" className="text-xl font-semibold tracking-tight">
+        {t('title')}
+      </h2>
+      <p className="text-muted-foreground mt-1 text-sm">
+        {t(isDayFiltered ? 'descriptionDay' : 'description')}
+      </p>
     </div>
   );
 }

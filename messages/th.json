@@ -546,20 +546,40 @@
     },
     "list": {
       "caption": "สมุดบันทึกการเทรด",
+      "title": "บันทึกการเทรด",
+      "description": "ดูภาพรวมจากบันทึก แล้วเปิดออเดอร์เมื่อต้องการรายละเอียดทั้งหมด",
+      "descriptionDay": "ออเดอร์ที่ตรงกับวันที่เลือกในปฏิทิน",
       "trade": "ออเดอร์",
-      "strategy": "กลยุทธ์และเซ็ตอัพ",
+      "strategy": "กลยุทธ์",
       "account": "บัญชีเทรด",
       "execution": "การเทรดจริง",
       "trader": "เทรดเดอร์",
+      "actual": "ผลจริง",
       "system": "ระบบ",
+      "actualR": "R จริง",
+      "systemR": "R ของระบบ",
       "realized": "R ที่รับรู้",
       "remainingPercent": "เหลือ {percent}%",
-      "conditionsMet": "เซ็ตอัพ {met}/{total}"
+      "conditionsMet": "เซ็ตอัพ {met}/{total}",
+      "needsExecutionDetails": "ต้องเพิ่มรายละเอียดการเข้าเทรด",
+      "attention": {
+        "execution": "ต้องเพิ่มรายละเอียดการเข้าเทรด",
+        "system": "ต้องสรุปผลตามระบบ",
+        "strategy": "ยังไม่ได้กำหนดกลยุทธ์"
+      },
+      "action": {
+        "openTrade": "เปิดดูออเดอร์",
+        "addExecution": "เพิ่มรายละเอียดและเปิดออเดอร์",
+        "viewActual": "ดูผลจริง",
+        "updateSystem": "อัปเดตผลลัพธ์",
+        "viewSystem": "ดูผลตามระบบ",
+        "addStrategy": "เพิ่มกลยุทธ์"
+      }
     },
     "pagination": { "label": "หน้ารายการออเดอร์", "previous": "ก่อนหน้า", "next": "ถัดไป" },
     "empty": {
       "title": "ยังไม่มีออเดอร์",
-      "description": "สร้างแผนการเทรดแรกโดยอ้างอิงกลยุทธ์และเซ็ตอัพของคุณ"
+      "description": "บันทึกออเดอร์แรกเพื่อเริ่มสมุดบันทึกจากการเทรดจริงของคุณ"
     },
     "field": {
       "account": "บัญชีเทรด",

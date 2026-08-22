@@ -546,20 +546,40 @@
     },
     "list": {
       "caption": "Trade journal",
+      "title": "Trade Log",
+      "description": "Scan your journal, then open a Trade only when you need the full detail.",
+      "descriptionDay": "Trades matching the day selected in the Calendar.",
       "trade": "Trade",
-      "strategy": "Strategy & Setup",
+      "strategy": "Strategy",
       "account": "Trading Account",
       "execution": "Execution",
       "trader": "Trader",
+      "actual": "Actual",
       "system": "System",
+      "actualR": "Actual R",
+      "systemR": "System R",
       "realized": "Realized R",
       "remainingPercent": "{percent}% remaining",
-      "conditionsMet": "Setup {met}/{total}"
+      "conditionsMet": "Setup {met}/{total}",
+      "needsExecutionDetails": "Needs execution details",
+      "attention": {
+        "execution": "Execution details needed",
+        "system": "System outcome needed",
+        "strategy": "Strategy not assigned"
+      },
+      "action": {
+        "openTrade": "Open Trade",
+        "addExecution": "Add execution details & Open",
+        "viewActual": "View Actual",
+        "updateSystem": "Update outcome",
+        "viewSystem": "View System",
+        "addStrategy": "Add Strategy"
+      }
     },
     "pagination": { "label": "Trade pages", "previous": "Previous", "next": "Next" },
     "empty": {
       "title": "No Trades yet",
-      "description": "Create your first planned Trade to start a journal grounded in your Strategy and Setup."
+      "description": "Log your first Trade to start a journal grounded in your execution."
     },
     "field": {
       "account": "Trading Account",
