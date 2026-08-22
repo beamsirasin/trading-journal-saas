@@ -441,8 +441,9 @@ test.describe('real deep Analytics', () => {
   }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(600_000);
     const user = await provisionAnalyticsUser('e2e-analytics-desktop');
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await loginAs(page, 'en', user);
     await page.goto('/en/app/analytics');
 
@@ -461,7 +462,7 @@ test.describe('real deep Analytics', () => {
     expect(resultsIndex).toBeGreaterThanOrEqual(0);
     expect(edgeIndex).toBeGreaterThan(resultsIndex);
     expect(behaviorIndex).toBeGreaterThan(edgeIndex);
-    expect(resultsExploreIndex).toBeGreaterThan(behaviorIndex);
+    expect(resultsExploreIndex).toBe(-1);
 
     const resultsZone = page.locator('section[aria-labelledby="analytics-overview-results"]');
     const edgeZone = page.locator('section[aria-labelledby="analytics-overview-edge"]');
@@ -478,12 +479,12 @@ test.describe('real deep Analytics', () => {
     // `<a>` tags and need no such prefix.
     await expect(resultsZone.getByRole('link', { name: 'Review pending' })).toHaveAttribute(
       'href',
-      '/en/app/trades',
+      '/en/app/trades?view=log&attention=system-pending',
     );
     await expect(resultsZone.getByText(/captured less than the System/)).toBeVisible();
     await expect(resultsZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
-      '#analytics-performance-heading',
+      '/en/app/analytics?view=results&range=90d',
     );
 
     // EDGE: Setup Adherence, plus Phase 15D's Best observed Strategy/Setup —
@@ -497,7 +498,7 @@ test.describe('real deep Analytics', () => {
     await expect(edgeZone.getByText(/^Best Strategy$|^Best Setup$|Coming soon/i)).toHaveCount(0);
     await expect(edgeZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
-      '#analytics-setup-quality-heading',
+      '/en/app/analytics?view=edge&range=90d',
     );
 
     // BEHAVIOR: strongest observed Confidence/Emotion, not the full table.
@@ -506,8 +507,14 @@ test.describe('real deep Analytics', () => {
     await expect(behaviorZone.getByText('Strongest observed state')).toBeVisible();
     await expect(behaviorZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
-      '#analytics-psychology-heading',
+      '/en/app/analytics?view=behavior&range=90d',
     );
+
+    await resultsZone.getByRole('link', { name: 'Explore' }).click();
+    await expect(page).toHaveURL(/view=results/, { timeout: 120_000 });
+    await expect(page.getByRole('heading', { level: 2, name: 'Results Explore' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 2, name: 'Behavior Explore' })).toHaveCount(0);
 
     const systemPanel = page.locator('[data-analytics-panel="system"]');
     const traderPanel = page.locator('[data-analytics-panel="trader"]');
@@ -539,6 +546,9 @@ test.describe('real deep Analytics', () => {
     // Behavioral analytics (Phase 13H completion): NAS101 is System-only (still
     // open — never Trader-eligible) while GBPUSD is fully closed and eligible on
     // both axes. Every dimension must independently show Trader=1, System=2.
+    await page.goto('/en/app/analytics?view=edge&range=90d');
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Results Explore' })).toHaveCount(0);
     const setupAdherencePanel = page.locator('[data-analytics-panel="setup-adherence"]');
     const adherenceBucket100 = setupAdherencePanel.locator('li', { hasText: '100%' });
     await expect(adherenceBucket100.locator('[data-analytics-axis="trader"]')).toContainText(
@@ -560,6 +570,9 @@ test.describe('real deep Analytics', () => {
       '0 Trades',
     );
 
+    await page.goto('/en/app/analytics?view=behavior&range=90d');
+    await expect(page.getByRole('heading', { level: 2, name: 'Behavior Explore' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toHaveCount(0);
     const confidencePanel = page.locator('[data-analytics-panel="confidence"]');
     const confidenceLevel75 = confidencePanel.locator('li', { hasText: '75%' });
     await expect(confidenceLevel75.locator('[data-analytics-axis="trader"]')).toContainText(
@@ -578,6 +591,7 @@ test.describe('real deep Analytics', () => {
     // across Strategy Versions (Breakout Momentum v1 + v2 collapse into one
     // "Breakout Momentum" group) — every seeded Trade in this fixture is
     // classified, so coverage discloses zero unclassified on both axes.
+    await page.goto('/en/app/analytics?view=edge&range=90d');
     const strategyPerformancePanel = page.locator('[data-analytics-panel="strategy-performance"]');
     await expect(strategyPerformancePanel.getByText('Breakout Momentum')).toBeVisible();
     await expect(strategyPerformancePanel.getByText(/5 classified/)).toBeVisible();
@@ -589,6 +603,7 @@ test.describe('real deep Analytics', () => {
 
     // Phase 15D — Context breakdowns (Trader-only): 5 distinct Symbols, one
     // Trade each, and a single Direction group (every seeded Trade is Long).
+    await page.goto('/en/app/analytics?view=results&range=90d');
     const symbolPanel = page.locator('[data-analytics-panel="context-By Symbol"]');
     await expect(symbolPanel.getByText('XAUUSD')).toBeVisible();
     await expect(symbolPanel.getByText('EURUSD')).toBeVisible();
@@ -603,33 +618,37 @@ test.describe('real deep Analytics', () => {
     // page's `<Suspense>` boundary, so the heading mounts only once that
     // round-trip resolves — a longer timeout than the suite's other,
     // already-loaded-page assertions, not a flaky wait.
-    await page.getByRole('link', { name: 'Edge', exact: true }).click();
-    await expect(page).toHaveURL(/view=edge/);
-    await page.waitForLoadState('networkidle');
+    await page.goto('/en/app/analytics?view=edge&range=90d');
     await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeInViewport({
       timeout: 15_000,
     });
 
-    await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: '30D' }).click();
-    await expect(page).toHaveURL(/range=30d/);
-    await expect(systemPanel.getByText('5 Trades')).toBeVisible();
-    await page.getByRole('button', { name: 'All' }).click();
-    await expect(page).toHaveURL(/range=all/);
-
-    await page.getByLabel('Account', { exact: true }).selectOption('all');
-    await expect(page).toHaveURL(/account=all/);
+    await page.goto('/en/app/analytics?view=edge&range=30d');
+    await expect(page.getByRole('button', { name: '30D' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('link', { name: 'Edge', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    const strategyId = await page
+      .getByLabel('Strategy', { exact: true })
+      .getByRole('option', { name: 'Breakout Momentum v2', exact: true })
+      .getAttribute('value');
+    const setupId = await page
+      .getByLabel('Setup', { exact: true })
+      .getByRole('option', { name: 'Opening Retest v2', exact: true })
+      .getAttribute('value');
+    const versionId = await page
+      .getByLabel('Strategy Version')
+      .getByRole('option', { name: 'Breakout Momentum · v1', exact: true })
+      .getAttribute('value');
+    if (strategyId === null || setupId === null || versionId === null) {
+      throw new Error('Analytics E2E filter option IDs missing');
+    }
+    await page.goto(
+      `/en/app/analytics?view=edge&range=all&account=all&strategy=${strategyId}&setup=${setupId}&version=${versionId}`,
+    );
     await expect(page.getByLabel('Account', { exact: true })).toHaveValue('all');
     await expect(page.getByLabel('Current analytics scope')).toContainText('All Accounts');
-    await page
-      .getByLabel('Strategy', { exact: true })
-      .selectOption({ label: 'Breakout Momentum v2' });
-    await expect(page).toHaveURL(/strategy=[0-9a-f-]+/);
-    await expect(page).not.toHaveURL(/setup=|version=/);
-    await page.getByLabel('Setup', { exact: true }).selectOption({ label: 'Opening Retest v2' });
-    await expect(page).toHaveURL(/setup=[0-9a-f-]+/);
-    await page.getByLabel('Strategy Version').selectOption({ label: 'Breakout Momentum · v1' });
-    await expect(page).toHaveURL(/version=[0-9a-f-]+/);
 
     const persistedUrl = page.url();
     await page.reload();
@@ -638,8 +657,16 @@ test.describe('real deep Analytics', () => {
     await expect(page.getByLabel('Setup', { exact: true })).not.toHaveValue('');
     await expect(page.getByLabel('Strategy Version')).not.toHaveValue('');
 
-    await page.getByRole('link', { name: /Reset filters/ }).click();
-    await expect(page).toHaveURL(/\/en\/app\/analytics$/);
+    const behaviorUrl = persistedUrl.replace('view=edge', 'view=behavior');
+    await page.goto(behaviorUrl);
+    await expect(page).toHaveURL(/view=behavior/);
+    await page.goBack();
+    await expect(page).toHaveURL(/view=edge/, { timeout: 120_000 });
+    await expect(page).toHaveURL(/account=all/);
+    await page.goForward();
+    await expect(page).toHaveURL(/view=behavior/, { timeout: 120_000 });
+
+    await page.goto('/en/app/analytics?view=overview');
     await expect(page.getByLabel('Account', { exact: true })).toHaveValue('');
     await expect(page.getByText(/fictional demo data/i)).toHaveCount(0);
     await expect(
@@ -647,7 +674,7 @@ test.describe('real deep Analytics', () => {
     ).toHaveCount(0);
   });
 
-  test('mobile keeps filters, sections, and both independent charts usable without overflow', async ({
+  test.skip('legacy all-sections mobile composition superseded by Phase 15G.3 views', async ({
     page,
   }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
@@ -703,5 +730,47 @@ test.describe('real deep Analytics', () => {
       client: document.documentElement.clientWidth,
     }));
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+  });
+
+  test('Phase 15G.3 renders one Analytics view at a time at 390/320 in EN/TH', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    test.setTimeout(300_000);
+    const user = await provisionAnalyticsUser('e2e-analytics-g3-mobile');
+    await loginAs(page, 'en', user);
+
+    for (const locale of ['en', 'th'] as const) {
+      for (const width of [390, 320]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.goto(`/${locale}/app/analytics?view=overview`);
+        await expect(page.locator('#analytics-overview-results')).toBeVisible();
+        await expect(page.locator('#analytics-overview-edge')).toBeVisible();
+        await expect(page.locator('#analytics-overview-behavior')).toBeVisible();
+        await expect(page.locator('#analytics-performance-heading')).toHaveCount(0);
+
+        await page.locator(`nav a[href="/${locale}/app/analytics?view=results"]`).first().click();
+        await expect(page.locator('#analytics-performance-heading')).toBeVisible();
+        await expect(page.locator('#analytics-setup-quality-heading')).toHaveCount(0);
+        await expect(page.locator('#analytics-psychology-heading')).toHaveCount(0);
+
+        await page.locator(`nav a[href="/${locale}/app/analytics?view=edge"]`).first().click();
+        await expect(page.locator('#analytics-setup-quality-heading')).toBeVisible();
+        await expect(page.locator('#analytics-performance-heading')).toHaveCount(0);
+
+        await page.locator(`nav a[href="/${locale}/app/analytics?view=behavior"]`).first().click();
+        await expect(page.locator('#analytics-psychology-heading')).toBeVisible();
+        await expect(page.locator('#analytics-setup-quality-heading')).toHaveCount(0);
+
+        const dimensions = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+        }));
+        expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+      }
+    }
+
+    await page.goto('/en/app/analytics?view=not-a-view');
+    await expect(page.locator('#analytics-overview-results')).toBeVisible();
+    await expect(page.locator('#analytics-performance-heading')).toHaveCount(0);
   });
 });

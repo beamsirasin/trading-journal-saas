@@ -7,12 +7,33 @@ import {
 const URL_FILTER_KEYS = ['range', 'account', 'strategy', 'setup', 'version'] as const;
 const URL_FILTER_KEY_SET = new Set<string>(URL_FILTER_KEYS);
 
+export const ANALYTICS_VIEWS = ['overview', 'results', 'edge', 'behavior'] as const;
+export type AnalyticsView = (typeof ANALYTICS_VIEWS)[number];
+
+export function parseAnalyticsView(value: unknown): AnalyticsView {
+  return typeof value === 'string' && (ANALYTICS_VIEWS as readonly string[]).includes(value)
+    ? (value as AnalyticsView)
+    : 'overview';
+}
+
 export interface AnalyticsUrlSelection {
   readonly range: AnalyticsDatePreset;
   readonly account: string | null;
   readonly strategy: string | null;
   readonly setup: string | null;
   readonly version: string | null;
+}
+
+export function buildAnalyticsViewHref(
+  selection: AnalyticsUrlSelection,
+  view: AnalyticsView,
+): string {
+  const params = new URLSearchParams({ view, range: selection.range });
+  if (selection.account !== null) params.set('account', selection.account);
+  if (selection.strategy !== null) params.set('strategy', selection.strategy);
+  if (selection.setup !== null) params.set('setup', selection.setup);
+  if (selection.version !== null) params.set('version', selection.version);
+  return `/app/analytics?${params.toString()}`;
 }
 
 export type ParseAnalyticsUrlFiltersResult =

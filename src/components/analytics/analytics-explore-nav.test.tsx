@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import en from '../../../messages/en.json';
 import { AnalyticsExploreNav } from './analytics-explore-nav';
@@ -21,20 +21,16 @@ vi.mock('@/i18n/navigation', () => ({
   usePathname: () => '/app/analytics',
 }));
 
-function renderNav(search = '') {
+function renderNav(search = '', view: 'overview' | 'results' | 'edge' | 'behavior' = 'overview') {
   currentSearch = search;
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <AnalyticsExploreNav />
+      <AnalyticsExploreNav view={view} />
     </NextIntlClientProvider>,
   );
 }
 
 describe('AnalyticsExploreNav', () => {
-  beforeEach(() => {
-    Element.prototype.scrollIntoView = vi.fn();
-  });
-
   it('renders all four views', () => {
     renderNav();
     expect(screen.getByRole('link', { name: 'Overview' })).toBeInTheDocument();
@@ -53,24 +49,13 @@ describe('AnalyticsExploreNav', () => {
   });
 
   it('marks the active view via aria-current', () => {
-    renderNav('view=behavior');
-    expect(screen.getByRole('link', { name: 'Behavior' })).toHaveAttribute('aria-current', 'true');
+    renderNav('view=overview', 'behavior');
+    expect(screen.getByRole('link', { name: 'Behavior' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Results' })).not.toHaveAttribute('aria-current');
   });
 
-  it('scrolls to the matching anchor for a valid ?view=', () => {
-    document.body.innerHTML = '<h2 id="analytics-setup-quality-heading">Edge Explore</h2>';
-    renderNav('view=edge');
-    expect(
-      document.getElementById('analytics-setup-quality-heading')?.scrollIntoView,
-    ).toHaveBeenCalled();
-  });
-
-  it('never crashes and never scrolls for an invalid ?view=', () => {
-    document.body.innerHTML = '<h2 id="analytics-setup-quality-heading">Edge Explore</h2>';
-    expect(() => renderNav('view=not-a-real-view')).not.toThrow();
-    expect(
-      document.getElementById('analytics-setup-quality-heading')?.scrollIntoView,
-    ).not.toHaveBeenCalled();
+  it('uses the canonical Overview state independently of stale query text', () => {
+    renderNav('view=not-a-real-view', 'overview');
+    expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
   });
 });

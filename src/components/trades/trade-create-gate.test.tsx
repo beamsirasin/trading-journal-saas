@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -100,6 +100,7 @@ describe('TradeCreateGate', () => {
         timezone: 'Asia/Bangkok',
       });
       expect(screen.getByLabelText('Trading Account')).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
       expect(screen.getByLabelText('Strategy')).toBeVisible();
       expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
     },

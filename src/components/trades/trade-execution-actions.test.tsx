@@ -69,7 +69,7 @@ describe('Trade execution lifecycle dialogs', () => {
       <OpenTradeDialog trade={{ ...base, status: 'planned' }} timezone="Asia/Bangkok" />,
     );
     await user.click(screen.getByRole('button', { name: 'Add execution details & Open' }));
-    await user.selectOptions(screen.getByLabelText('Actual result mode'), 'money');
+    await user.selectOptions(screen.getByLabelText('How result is recorded'), 'money');
     await user.type(screen.getByLabelText('Initial risk'), '500');
     await user.click(screen.getByRole('button', { name: 'Open Trade' }));
 
@@ -119,7 +119,7 @@ describe('Trade execution lifecycle dialogs', () => {
       <OpenTradeDialog trade={{ ...base, status: 'planned' }} timezone="Asia/Bangkok" />,
     );
     await user.click(screen.getByRole('button', { name: 'Add execution details & Open' }));
-    await user.selectOptions(screen.getByLabelText('Actual result mode'), 'money');
+    await user.selectOptions(screen.getByLabelText('How result is recorded'), 'money');
     await user.type(screen.getByLabelText('Initial risk'), '500.5');
     await user.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/supported precision/);

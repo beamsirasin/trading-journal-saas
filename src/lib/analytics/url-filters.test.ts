@@ -1,12 +1,44 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseAnalyticsUrlFilters } from './url-filters';
+import {
+  buildAnalyticsViewHref,
+  parseAnalyticsUrlFilters,
+  parseAnalyticsView,
+} from './url-filters';
 
 const STRATEGY_ID = '018f0000-0000-7000-8000-000000000001';
 const SETUP_ID = '018f0000-0000-7000-8000-000000000002';
 const VERSION_ID = '018f0000-0000-7000-8000-000000000003';
 
 describe('Analytics URL filters', () => {
+  it('builds a view link with the complete selected filter scope', () => {
+    expect(
+      buildAnalyticsViewHref(
+        {
+          range: 'all',
+          account: 'all',
+          strategy: STRATEGY_ID,
+          setup: SETUP_ID,
+          version: VERSION_ID,
+        },
+        'edge',
+      ),
+    ).toBe(
+      `/app/analytics?view=edge&range=all&account=all&strategy=${STRATEGY_ID}&setup=${SETUP_ID}&version=${VERSION_ID}`,
+    );
+  });
+
+  it.each([
+    ['overview', 'overview'],
+    ['results', 'results'],
+    ['edge', 'edge'],
+    ['behavior', 'behavior'],
+    ['invalid', 'overview'],
+    [['results'], 'overview'],
+    [undefined, 'overview'],
+  ])('parses Analytics view %j as %s', (value, expected) => {
+    expect(parseAnalyticsView(value)).toBe(expected);
+  });
   it('defaults to active Account and 90D', () => {
     expect(parseAnalyticsUrlFilters({})).toEqual({
       ok: true,

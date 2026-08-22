@@ -27,6 +27,7 @@ import { attachTradeMistake, updateTradeReviewNotes } from '@/server/services/tr
 import { addTradeExit } from '@/server/services/trade-execution';
 import {
   createTrade,
+  markSystemNoTrade,
   openTrade,
   resolveSystemTrade,
   softDeleteTrade,
@@ -597,6 +598,49 @@ describe('trades DAL (real database)', () => {
   });
 
   describe('list pagination', () => {
+    it('filters only pending System outcomes across cursor pages', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const createdIds: string[] = [];
+      for (let index = 0; index < 5; index += 1) {
+        const created = await createTrade(
+          workspaceId,
+          userId,
+          basePlanInput(fw, { mutationKey: crypto.randomUUID(), symbol: `PENDING${index}` }),
+        );
+        if (!created.ok) throw new Error('create failed');
+        createdIds.push(created.tradeId);
+      }
+      const resolvedId = createdIds[0];
+      const noTradeId = createdIds[1];
+      if (resolvedId === undefined || noTradeId === undefined) throw new Error('missing trade');
+      const resolved = await resolveSystemTrade(workspaceId, userId, resolvedId, {
+        resolutionKind: 'price_exit',
+        systemExitPrice: '1.1100000000',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemExitReason: 'target_hit',
+        systemCostR: '0.0000',
+      });
+      if (!resolved.ok) throw new Error(`resolve failed: ${resolved.code}`);
+      const marked = await markSystemNoTrade(workspaceId, userId, noTradeId);
+      if (!marked.ok) throw new Error(`no trade failed: ${marked.code}`);
+
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      for (let guard = 0; guard < 10; guard += 1) {
+        const page = await listWorkspaceTrades({ limit: 2, cursor, systemStatus: 'pending' });
+        expect(page.items.every((item) => item.systemStatus === 'pending')).toBe(true);
+        seen.push(...page.items.map((item) => item.tradeId));
+        if (page.nextCursor === null) break;
+        cursor = page.nextCursor;
+      }
+
+      expect(seen).toHaveLength(3);
+      expect(seen).not.toContain(resolvedId);
+      expect(seen).not.toContain(noTradeId);
+      expect(new Set(seen).size).toBe(seen.length);
+    });
+
     it('paginates deterministically, newest first, with no duplicate or skipped rows across pages', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);

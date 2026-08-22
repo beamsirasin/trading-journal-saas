@@ -76,6 +76,8 @@ describe('trades/schemas — valid input', () => {
   });
 
   it('accepts zero or multiple canonical Emotions and rejects duplicates or unknown keys', () => {
+    const { emotionKeys: _emotionKeys, ...withoutEntryEmotionAnswer } = baseCreateInput();
+    expect(CreateTradeSchema.safeParse(withoutEntryEmotionAnswer).success).toBe(true);
     expect(CreateTradeSchema.safeParse({ ...baseCreateInput(), emotionKeys: [] }).success).toBe(
       true,
     );

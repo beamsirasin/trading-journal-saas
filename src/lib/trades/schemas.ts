@@ -333,8 +333,12 @@ const CreateTradeObjectSchema = z
     session: optionalTextField(SESSION_MAX_LENGTH),
     confirmationNotes: optionalTextField(CONFIRMATION_NOTES_MAX_LENGTH),
     confidence: confidenceField().optional(),
-    /** Stable taxonomy keys only; IDs and labels remain server-owned. */
-    emotionKeys: emotionKeysField(),
+    /**
+     * Stable taxonomy keys only; IDs and labels remain server-owned. Omitted
+     * means the At Entry view was skipped, while an explicit empty array is a
+     * truthful "none selected" answer.
+     */
+    emotionKeys: emotionKeysField().optional(),
     tradingviewUrl: tradingViewUrlField(),
     notes: optionalTextField(NOTES_MAX_LENGTH),
     chartAttachmentStorageKey: chartAttachmentStorageKeyField().nullable().optional(),

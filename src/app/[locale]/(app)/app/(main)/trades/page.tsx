@@ -5,7 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
 import { calendarDateIn, dayRangeIn, monthRangeIn } from '@/lib/time';
 import { TradeIdSchema } from '@/lib/trades/schemas';
-import { parseTradesView } from '@/lib/trades/view';
+import { parseTradesAttention, parseTradesView } from '@/lib/trades/view';
 import { getCurrentUserPreferences, getWorkspaceEntitlement } from '@/server/auth/dal';
 import {
   getWorkspaceTradeCalendarMonth,
@@ -34,6 +34,7 @@ type PageSearchParams = {
   month?: SearchValue;
   date?: SearchValue;
   view?: SearchValue;
+  attention?: SearchValue;
 };
 
 const TRADE_LOG_PAGE_SIZE = 10;
@@ -82,6 +83,7 @@ export default async function TradesPage({
   const monthParam = singleSearchValue(query.month);
   const dateParam = singleSearchValue(query.date);
   const view = parseTradesView(query.view);
+  const attention = view === 'log' ? parseTradesAttention(query.attention) : null;
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
 
@@ -122,6 +124,7 @@ export default async function TradesPage({
       cursor: cursor ?? null,
       limit: TRADE_LOG_PAGE_SIZE,
       ...(journalDateRange === undefined ? {} : { journalDateRange }),
+      ...(attention === 'system-pending' ? { systemStatus: 'pending' as const } : {}),
     }),
     getWorkspaceEntitlement(),
     getTradeCreateOptions(),
@@ -140,7 +143,12 @@ export default async function TradesPage({
     parsedTradeId !== null && parsedTradeId.success ? parsedTradeId.data : null;
   const detailResult =
     requestedTradeId === null ? null : await getWorkspaceTradeDetail(requestedTradeId);
-  const selectedTrade = detailResult !== null && detailResult.ok ? detailResult.trade : null;
+  const selectedTradeCandidate =
+    detailResult !== null && detailResult.ok ? detailResult.trade : null;
+  const selectedTrade =
+    attention === 'system-pending' && selectedTradeCandidate?.systemStatus !== 'pending'
+      ? null
+      : selectedTradeCandidate;
   const writeAuthorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
   const dateLocale = DATE_LOCALE[locale] ?? 'en-GB';
   const trades = page.items.map((trade) => ({
@@ -167,6 +175,7 @@ export default async function TradesPage({
       />
       <TradesJournal
         view={view}
+        attention={attention}
         trades={trades}
         nextCursor={page.nextCursor}
         currentCursor={cursor ?? null}

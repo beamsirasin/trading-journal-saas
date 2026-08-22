@@ -59,7 +59,7 @@ const selection: AnalyticsUrlSelection = {
 function renderFilters(current: AnalyticsUrlSelection = selection) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <AnalyticsFilters options={options} selection={current} />
+      <AnalyticsFilters options={options} selection={current} view="overview" />
     </NextIntlClientProvider>,
   );
 }
@@ -82,7 +82,7 @@ describe('AnalyticsFilters', () => {
     renderFilters();
     fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: 'strategy-b' } });
     expect(navigation.replace).toHaveBeenCalledWith(
-      '/app/analytics?range=90d&account=all&strategy=strategy-b',
+      '/app/analytics?view=overview&range=90d&account=all&strategy=strategy-b',
     );
   });
 
@@ -90,7 +90,7 @@ describe('AnalyticsFilters', () => {
     renderFilters();
     fireEvent.change(screen.getByLabelText('Account'), { target: { value: 'account-old' } });
     expect(navigation.replace).toHaveBeenCalledWith(
-      '/app/analytics?range=90d&account=account-old&strategy=strategy-a&setup=setup-a&version=version-a',
+      '/app/analytics?view=overview&range=90d&account=account-old&strategy=strategy-a&setup=setup-a&version=version-a',
     );
   });
 
@@ -99,11 +99,11 @@ describe('AnalyticsFilters', () => {
     expect(screen.getByRole('button', { name: '90D' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '30D' }));
     expect(navigation.replace).toHaveBeenCalledWith(
-      '/app/analytics?range=30d&account=all&strategy=strategy-a&setup=setup-a&version=version-a',
+      '/app/analytics?view=overview&range=30d&account=all&strategy=strategy-a&setup=setup-a&version=version-a',
     );
     expect(screen.getByRole('link', { name: /Reset filters/ })).toHaveAttribute(
       'href',
-      '/app/analytics',
+      '/app/analytics?view=overview',
     );
   });
 

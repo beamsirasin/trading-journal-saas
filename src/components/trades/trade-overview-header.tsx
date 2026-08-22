@@ -119,11 +119,16 @@ export function TradeOverviewHeader({
       )}
 
       {!canWrite ? null : (
-        <div className="border-border flex flex-wrap gap-2 border-t pt-4">
-          <IdentityCorrectionDialog trade={trade} />
-          {trade.status === 'planned' ? <CancelTradeControl tradeId={trade.tradeId} /> : null}
-          <DeleteTradeControl tradeId={trade.tradeId} />
-        </div>
+        <details className="border-border border-t pt-4">
+          <summary className="text-muted-foreground hover:text-foreground min-h-11 cursor-pointer py-3 text-sm font-medium">
+            {t('detail.overview.administration')}
+          </summary>
+          <div className="flex flex-wrap gap-2 pt-2">
+            <IdentityCorrectionDialog trade={trade} />
+            {trade.status === 'planned' ? <CancelTradeControl tradeId={trade.tradeId} /> : null}
+            <DeleteTradeControl tradeId={trade.tradeId} />
+          </div>
+        </details>
       )}
     </header>
   );

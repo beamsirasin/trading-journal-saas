@@ -21,6 +21,7 @@ export function TradesViewNav({ view }: { readonly view: TradesView }) {
     if (nextView === 'calendar') {
       params.delete('cursor');
       params.delete('trail');
+      params.delete('attention');
     }
     return `${pathname}?${params.toString()}`;
   }

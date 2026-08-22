@@ -548,6 +548,7 @@ export async function createTrade(
       const denial = await resolveMutationDenial(tx, workspaceId, clock);
       if (denial !== null) return { ok: false, code: denial };
 
+      const emotionsRecorded = input.emotionKeys !== undefined;
       const emotionKeys = input.emotionKeys ?? [];
       if (new Set(emotionKeys).size !== emotionKeys.length) {
         return { ok: false, code: 'duplicate_emotion_key' };
@@ -755,7 +756,7 @@ export async function createTrade(
           session: normalizeOptionalText(input.session),
           confirmationNotes: normalizeOptionalText(input.confirmationNotes),
           confidence: input.confidence ?? null,
-          emotionsRecordedAt: clock.now(),
+          emotionsRecordedAt: emotionsRecorded ? clock.now() : null,
           tradingviewUrl: normalizeOptionalText(input.tradingviewUrl),
           notes: normalizeOptionalText(input.notes),
           chartAttachmentStorageKey: input.chartAttachmentStorageKey ?? null,

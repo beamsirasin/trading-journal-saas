@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useTransition } from 'react';
 
 import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
-import type { AnalyticsUrlSelection } from '@/lib/analytics/url-filters';
+import type { AnalyticsUrlSelection, AnalyticsView } from '@/lib/analytics/url-filters';
 import { cn } from '@/lib/utils';
 import type { AnalyticsFilterOptions } from '@/server/dal/analytics';
 import { Label } from '@/components/ui/label';
@@ -29,9 +29,11 @@ function FilterSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 export function AnalyticsFilters({
   options,
   selection,
+  view,
 }: {
   options: AnalyticsFilterOptions;
   selection: AnalyticsUrlSelection;
+  view: AnalyticsView;
 }) {
   const t = useTranslations('analytics.real');
   const router = useRouter();
@@ -54,6 +56,7 @@ export function AnalyticsFilters({
 
   function currentParams() {
     const params = new URLSearchParams();
+    params.set('view', view);
     params.set('range', selection.range);
     if (selection.account !== null) params.set('account', selection.account);
     if (selection.strategy !== null) params.set('strategy', selection.strategy);
@@ -199,7 +202,7 @@ export function AnalyticsFilters({
 
         <div>
           <Link
-            href="/app/analytics"
+            href="/app/analytics?view=overview"
             className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             <RotateCcw className="size-4" aria-hidden="true" /> {t('filters.reset')}

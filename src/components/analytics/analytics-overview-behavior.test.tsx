@@ -54,7 +54,11 @@ function renderZone(
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <BehaviorZone confidence={confidenceModel} emotions={emotions} />
+      <BehaviorZone
+        confidence={confidenceModel}
+        emotions={emotions}
+        exploreHref="/app/analytics?view=behavior&range=90d"
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -91,7 +95,7 @@ describe('BehaviorZone', () => {
     expect(screen.getByText('Strongest observed state')).toBeVisible();
     expect(screen.getByText('Focused')).toBeVisible();
     expect(screen.getByText('+1.40R Avg')).toBeVisible();
-    expect(screen.getByText('Potential concern')).toBeVisible();
+    expect(screen.getByText('Worth reviewing')).toBeVisible();
     expect(screen.getByText('Fearful')).toBeVisible();
     expect(screen.getByText('-0.70R Avg')).toBeVisible();
     expect(screen.queryByText(/causes|because of/i)).not.toBeInTheDocument();
@@ -100,7 +104,7 @@ describe('BehaviorZone', () => {
   it('omits the concern card when only one Emotion group has data, never fabricating a second', () => {
     renderZone(undefined, [emotion('focused', 'Focused', 12, '1.4000')]);
     expect(screen.getByText('Strongest observed state')).toBeVisible();
-    expect(screen.queryByText('Potential concern')).not.toBeInTheDocument();
+    expect(screen.queryByText('Worth reviewing')).not.toBeInTheDocument();
   });
 
   it('shows a calm empty state when no Emotion was recorded', () => {
@@ -108,11 +112,11 @@ describe('BehaviorZone', () => {
     expect(screen.getByText('No Emotion data recorded for this analysis')).toBeVisible();
   });
 
-  it('links Explore to the existing detailed Psychology section', () => {
+  it('links Explore to the Behavior URL view while preserving filters', () => {
     renderZone();
     expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
-      '#analytics-psychology-heading',
+      '/en/app/analytics?view=behavior&range=90d',
     );
   });
 });

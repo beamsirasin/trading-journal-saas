@@ -36,11 +36,12 @@ const calendar = {
   daySummary: null,
 } as const;
 
-function renderJournal(view: 'calendar' | 'log') {
+function renderJournal(view: 'calendar' | 'log', attention: 'system-pending' | null = null) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <TradesJournal
         view={view}
+        attention={attention}
         trades={[]}
         nextCursor={null}
         currentCursor={null}
@@ -69,5 +70,15 @@ describe('TradesJournal views', () => {
     renderJournal('log');
     expect(screen.getByRole('heading', { name: 'Trade Log' })).toBeVisible();
     expect(screen.queryByTestId('calendar-surface')).not.toBeInTheDocument();
+  });
+
+  it('shows a focused empty state for the pending System workflow', () => {
+    renderJournal('log', 'system-pending');
+    expect(screen.getByText('No pending System outcomes')).toBeVisible();
+    expect(screen.getByText('Only Trades whose System outcome still needs review.')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Show all Trades' })).toHaveAttribute(
+      'href',
+      '/app/trades?view=log',
+    );
   });
 });

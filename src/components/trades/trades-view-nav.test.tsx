@@ -9,7 +9,7 @@ import { TradesViewNav } from './trades-view-nav';
 vi.mock('next/navigation', () => ({
   useSearchParams: () =>
     new URLSearchParams(
-      'view=log&month=2026-08&date=2026-08-20&cursor=current&trail=prior&trade=id&section=system',
+      'view=log&attention=system-pending&month=2026-08&date=2026-08-20&cursor=current&trail=prior&trade=id&section=system',
     ),
 }));
 
@@ -37,7 +37,7 @@ describe('TradesViewNav', () => {
     );
     expect(screen.getByRole('link', { name: 'Trade Log' })).toHaveAttribute(
       'href',
-      '/app/trades?view=log&month=2026-08&date=2026-08-20&cursor=current&trail=prior',
+      '/app/trades?view=log&attention=system-pending&month=2026-08&date=2026-08-20&cursor=current&trail=prior',
     );
   });
 });

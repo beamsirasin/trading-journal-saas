@@ -261,7 +261,7 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       session: parsed.data.session ?? null,
       confirmationNotes: parsed.data.confirmationNotes ?? null,
       confidence: parsed.data.confidence ?? null,
-      emotionKeys: parsed.data.emotionKeys,
+      ...(parsed.data.emotionKeys === undefined ? {} : { emotionKeys: parsed.data.emotionKeys }),
       tradingviewUrl: parsed.data.tradingviewUrl ?? null,
       notes: parsed.data.notes ?? null,
       chartAttachmentStorageKey: parsed.data.chartAttachmentStorageKey ?? null,

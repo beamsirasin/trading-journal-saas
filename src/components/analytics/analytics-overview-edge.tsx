@@ -15,6 +15,7 @@ import type { AnalyticsSetupOption, AnalyticsStrategyOption } from '@/server/dal
 import { HeroMetric } from '@/components/product/summary-primitives';
 import { ZoneSection } from '@/components/product/zone-section';
 import { Badge } from '@/components/ui/badge';
+import { Link } from '@/i18n/navigation';
 
 /**
  * Phase 15C/15D — Analytics Overview, EDGE zone. Three compact cards: Best
@@ -32,12 +33,14 @@ export function EdgeZone({
   setupPerformance,
   strategyOptions,
   setupOptions,
+  exploreHref,
 }: {
   setupAdherence: SetupAdherenceAnalyticsModel;
   strategyPerformance: FrameworkPerformanceAnalyticsModel;
   setupPerformance: SetupPerformanceAnalyticsModel;
   strategyOptions: readonly AnalyticsStrategyOption[];
   setupOptions: readonly AnalyticsSetupOption[];
+  exploreHref: string;
 }) {
   const t = useTranslations('analytics.real');
   const tZones = useTranslations('zones');
@@ -122,12 +125,12 @@ export function EdgeZone({
         </div>
       </div>
 
-      <a
-        href="#analytics-setup-quality-heading"
+      <Link
+        href={exploreHref}
         className="text-primary mt-4 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline"
       >
         {t('overview.explore')}
-      </a>
+      </Link>
     </ZoneSection>
   );
 }

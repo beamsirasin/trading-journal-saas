@@ -60,6 +60,7 @@ function renderZone(props: Partial<React.ComponentProps<typeof ResultsZone>> = {
         system={axis({ totalR: available('26.8000'), winRate: available('0.6700') })}
         systemPendingCount={0}
         comparison={comparison()}
+        exploreHref="/app/analytics?view=results&range=90d"
         {...props}
       />
     </NextIntlClientProvider>,
@@ -96,7 +97,7 @@ describe('ResultsZone', () => {
     expect(screen.getByText('5 pending System outcomes')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Review pending' })).toHaveAttribute(
       'href',
-      '/app/trades',
+      '/app/trades?view=log&attention=system-pending',
     );
     expect(screen.queryByText(/pending this.*period/i)).not.toBeInTheDocument();
   });
@@ -117,9 +118,9 @@ describe('ResultsZone', () => {
     expect(screen.queryByText(/captured less than the System/)).not.toBeInTheDocument();
   });
 
-  it('links Explore to the existing detailed Performance section, not a new route', () => {
+  it('links Explore to the Results URL view while preserving filters', () => {
     renderZone();
     const link = screen.getByRole('link', { name: 'Explore' });
-    expect(link).toHaveAttribute('href', '#analytics-performance-heading');
+    expect(link).toHaveAttribute('href', '/app/analytics?view=results&range=90d');
   });
 });

@@ -62,6 +62,7 @@ function renderZone(props: Partial<React.ComponentProps<typeof EdgeZone>> = {}) 
         setupPerformance={emptySetupPerformance}
         strategyOptions={[]}
         setupOptions={[]}
+        exploreHref="/app/analytics?view=edge&range=90d"
         {...props}
       />
     </NextIntlClientProvider>,
@@ -86,11 +87,11 @@ describe('EdgeZone', () => {
     expect(screen.getByText('No Setup Checklist data recorded at entry')).toBeVisible();
   });
 
-  it('links Explore to the existing detailed Setup Quality section', () => {
+  it('links Explore to the Edge URL view while preserving filters', () => {
     renderZone();
     expect(screen.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
-      '#analytics-setup-quality-heading',
+      '/en/app/analytics?view=edge&range=90d',
     );
   });
 

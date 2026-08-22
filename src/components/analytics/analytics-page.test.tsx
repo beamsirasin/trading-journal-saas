@@ -225,7 +225,10 @@ function unavailableNoTrades(): AnalyticsMetric {
   return { status: 'unavailable', reason: 'no_trades' };
 }
 
-function renderPage(model = snapshot()) {
+function renderPage(
+  model = snapshot(),
+  view: 'overview' | 'results' | 'edge' | 'behavior' = 'overview',
+) {
   const display = (
     model.trader.equityCurve.status === 'available' ? model.trader.equityCurve.value : []
   ).map((point) => ({
@@ -245,42 +248,38 @@ function renderPage(model = snapshot()) {
         filterOptions={options}
         selection={{ range: '90d', account: null, strategy: null, setup: null, version: null }}
         equity={{ trader: display, system: systemDisplay }}
+        view={view}
       />
     </NextIntlClientProvider>,
   );
 }
 
 describe('RealAnalyticsPage', () => {
-  it('leads with the RESULTS, EDGE, and BEHAVIOR Overview zones, in that order, before the detailed sections', () => {
+  it('renders only the three Overview zones in Overview', () => {
     const { container } = renderPage();
     const headingOrder = [...container.querySelectorAll('h2')].map((node) => node.textContent);
     const resultsIndex = headingOrder.indexOf('Results');
     const edgeIndex = headingOrder.indexOf('Edge');
     const behaviorIndex = headingOrder.indexOf('Behavior');
-    const resultsExploreIndex = headingOrder.indexOf('Results Explore');
     expect(resultsIndex).toBeGreaterThanOrEqual(0);
     expect(edgeIndex).toBeGreaterThan(resultsIndex);
     expect(behaviorIndex).toBeGreaterThan(edgeIndex);
-    expect(resultsExploreIndex).toBeGreaterThan(behaviorIndex);
+    expect(screen.queryByText('Results Explore')).not.toBeInTheDocument();
   });
 
-  it('Overview does not delete any existing detailed section — every one remains reachable below it, reorganized into Explore per Phase 15D', () => {
-    renderPage();
-    for (const title of [
-      'Results Explore',
-      'Trader Performance',
-      'System Performance',
-      'System vs Trader Comparison',
-      'Edge Explore',
-      'Behavior Explore',
-      'Trade Management',
-    ]) {
-      expect(screen.getByText(title)).toBeVisible();
-    }
+  it.each([
+    ['results', 'Results Explore', 'Edge Explore'],
+    ['edge', 'Edge Explore', 'Behavior Explore'],
+    ['behavior', 'Behavior Explore', 'Results Explore'],
+  ] as const)('renders only the selected %s detail surface', (view, visible, hidden) => {
+    renderPage(snapshot(), view);
+    expect(screen.getByText(visible)).toBeVisible();
+    expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+    expect(screen.queryByText('Analytics Overview')).not.toBeInTheDocument();
   });
 
   it('renders complete independent System and Trader metric families without Average R duplication', () => {
-    const { container } = renderPage();
+    const { container } = renderPage(snapshot(), 'results');
     const system = container.querySelector('[data-analytics-panel="system"]') as HTMLElement;
     const trader = container.querySelector('[data-analytics-panel="trader"]') as HTMLElement;
     expect(within(system).getByText('2 Trades')).toBeVisible();
@@ -303,7 +302,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('uses paired totals and preserves negative efficiency without a verdict', () => {
-    renderPage();
+    renderPage(snapshot(), 'results');
     const comparison = screen
       .getByText('System vs Trader Comparison')
       .closest('section') as HTMLElement;
@@ -318,7 +317,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('renders independently ordered equity curves with accessible high-precision fallback values', () => {
-    renderPage();
+    renderPage(snapshot(), 'results');
     expect(screen.getByText('Trader Equity Curve')).toBeVisible();
     expect(screen.getByText('System Equity Curve')).toBeVisible();
     expect(screen.getByText('Trader cumulative R values by exit date')).toBeInTheDocument();
@@ -328,7 +327,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('shows Rule statuses distinctly and count-only canonical Mistake ranking, both consolidated under Trade Management', () => {
-    renderPage();
+    renderPage(snapshot(), 'results');
     const tradeManagement = screen.getByText('Trade Management').closest('section') as HTMLElement;
     expect(within(tradeManagement).getByText('75.00%')).toBeVisible();
     expect(within(tradeManagement).getByText('Not Checked')).toBeVisible();
@@ -342,7 +341,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('shows Average Setup Adherence distinct from Conditions Met Rate, and independent per-bucket Trader/System performance', () => {
-    renderPage();
+    renderPage(snapshot(), 'edge');
     const panel = document.querySelector('[data-analytics-panel="setup-adherence"]') as HTMLElement;
     expect(within(panel).getByText('Average Setup Adherence')).toBeVisible();
     expect(within(panel).getByText('70.00%')).toBeVisible();
@@ -358,7 +357,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('shows Condition performance grouped by Met vs Not Met with independent Trader/System sample counts', () => {
-    renderPage();
+    renderPage(snapshot(), 'edge');
     const panel = document.querySelector('[data-analytics-panel="conditions"]') as HTMLElement;
     expect(within(panel).getByText('Above the 200 EMA')).toBeVisible();
     expect(within(panel).getByText('Met')).toBeVisible();
@@ -371,7 +370,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('shows Average Confidence and independent per-level Trader/System performance, never converting NULL to 0', () => {
-    renderPage();
+    renderPage(snapshot(), 'behavior');
     const panel = document.querySelector('[data-analytics-panel="confidence"]') as HTMLElement;
     expect(within(panel).getByText('Average Confidence')).toBeVisible();
     expect(within(panel).getByText('62.50%')).toBeVisible();
@@ -384,7 +383,7 @@ describe('RealAnalyticsPage', () => {
   });
 
   it('shows Emotion groups with independent per-group Trader/System sample sizes, never a fake shared total', () => {
-    renderPage();
+    renderPage(snapshot(), 'behavior');
     const panel = document.querySelector('[data-analytics-panel="emotions"]') as HTMLElement;
     expect(within(panel).getByText('Fearful')).toBeVisible();
     // Trader 2 Trades/-1.00R, System 3 Trades/+4.00R — different Trades, different values.
@@ -432,6 +431,7 @@ describe('RealAnalyticsPage', () => {
         },
         emotions: [],
       }),
+      'results',
     );
     expect(screen.getAllByText('No eligible Trades').length).toBeGreaterThan(0);
     expect(screen.getAllByText('No comparable Trades')).toHaveLength(5);
@@ -439,12 +439,6 @@ describe('RealAnalyticsPage', () => {
     expect(screen.getByText('No mistakes recorded')).toBeVisible();
     expect(screen.getByText('No eligible Trader equity points in this scope.')).toBeVisible();
     expect(screen.getByText('No eligible System equity points in this scope.')).toBeVisible();
-    expect(
-      screen.getAllByText('No Trades with applicable Setup Conditions').length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByText('No Setup Condition snapshots in this scope')).toBeVisible();
-    expect(screen.getByText('No Trades with recorded Confidence')).toBeVisible();
-    expect(screen.getByText('No Emotions recorded')).toBeVisible();
     // Never a fake 0% for an empty/unrecorded population.
     expect(screen.queryByText('0.00%')).not.toBeInTheDocument();
   });

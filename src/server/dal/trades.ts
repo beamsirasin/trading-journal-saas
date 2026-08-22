@@ -163,6 +163,7 @@ export interface ListWorkspaceTradesParams {
   readonly cursor?: string | null;
   /** Optional trusted/read-scoped Account identity; workspace scope still applies independently. */
   readonly tradingAccountId?: string;
+  readonly systemStatus?: SystemStatus;
   /**
    * Optional half-open `[start, end)` UTC bound on the SAME `occurredAt`
    * expression (`coalesce(exited_at, entered_at, created_at)`) this list
@@ -243,6 +244,9 @@ export async function listWorkspaceTrades(
   const conditions = [eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)];
   if (params.tradingAccountId !== undefined) {
     conditions.push(eq(trades.tradingAccountId, params.tradingAccountId));
+  }
+  if (params.systemStatus !== undefined) {
+    conditions.push(eq(trades.systemStatus, params.systemStatus));
   }
   if (params.journalDateRange !== undefined) {
     conditions.push(

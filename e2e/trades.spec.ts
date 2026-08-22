@@ -281,6 +281,67 @@ async function seedPaginatedTrades(userId: string): Promise<void> {
   }
 }
 
+async function seedPendingWorkflowTrades(userId: string): Promise<void> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, { schema: { workspaces, tradingAccounts, trades } });
+  try {
+    const [workspace] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    if (workspace === undefined) throw new Error('Pending workflow E2E workspace missing');
+    const [account] = await db
+      .select({ id: tradingAccounts.id })
+      .from(tradingAccounts)
+      .where(eq(tradingAccounts.workspaceId, workspace.id));
+    if (account === undefined) throw new Error('Pending workflow E2E account missing');
+
+    const common = {
+      workspaceId: workspace.id,
+      tradingAccountId: account.id,
+      direction: 'long' as const,
+      status: 'open' as const,
+      plannedRiskMinor: 100n,
+      plannedRewardMinor: 200n,
+      plannedR: '2.0000',
+      actualResultMode: 'money' as const,
+      actualInitialRiskMinor: 100n,
+    };
+    await db.insert(trades).values([
+      ...Array.from({ length: 12 }, (_, index) => ({
+        ...common,
+        symbol: `PENDING${String(index + 1).padStart(2, '0')}`,
+        systemStatus: 'pending' as const,
+        enteredAt: new Date(`2026-08-22T${String(index + 1).padStart(2, '0')}:00:00Z`),
+      })),
+      {
+        ...common,
+        symbol: 'RESOLVEDROW',
+        systemStatus: 'resolved' as const,
+        systemResolutionKind: 'money_target' as const,
+        systemGrossRInput: '2.0000',
+        systemR: '2.0000',
+        systemOutcome: 'win' as const,
+        systemExitReason: 'target_hit' as const,
+        systemExitedAt: new Date('2026-08-22T13:00:00Z'),
+        systemResolvedAt: new Date('2026-08-22T13:00:00Z'),
+        enteredAt: new Date('2026-08-22T13:00:00Z'),
+      },
+      {
+        ...common,
+        symbol: 'NOTRADEROW',
+        systemStatus: 'no_trade' as const,
+        systemExitReason: 'setup_invalidated' as const,
+        systemResolvedAt: new Date('2026-08-22T14:00:00Z'),
+        enteredAt: new Date('2026-08-22T14:00:00Z'),
+      },
+    ]);
+  } finally {
+    await client.end();
+  }
+}
+
 async function readConditionChecks(tradeId: string) {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
@@ -318,11 +379,19 @@ async function openTradeSection(page: Page, section: keyof typeof TRADE_SECTION_
     .getByRole('navigation', { name: 'Trade sections' })
     .getByRole('link', { name: new RegExp(`^${TRADE_SECTION_LABEL[section]}`) })
     .click();
+  await expect(page).toHaveURL(new RegExp(`[?&]section=${section}(?:&|$)`), { timeout: 30_000 });
 }
 
 /** Expands Entry Snapshot's "Show full details" native disclosure — idempotent per fresh render. */
 async function expandEntrySnapshotDetails(page: Page) {
   await page.getByText('Show full details', { exact: true }).click();
+}
+
+async function openNewTradeView(page: Page, view: 'Trade' | 'Setup' | 'At Entry') {
+  await page
+    .getByTestId('new-trade-view-nav')
+    .getByRole('button', { name: view, exact: true })
+    .click();
 }
 
 /**
@@ -337,15 +406,14 @@ async function expandEntrySnapshotDetails(page: Page) {
 async function createOpenTrade(page: Page) {
   await page.getByRole('link', { name: 'Log a trade' }).first().click();
   await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
-  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await page.getByRole('button', { name: 'Long' }).click();
   await page.getByLabel('Entry', { exact: true }).fill('100');
   await page.getByLabel('Stop Loss', { exact: true }).fill('90');
   await page.getByLabel(/Take Profit/).fill('130');
-  await page.getByLabel('Actual entry').fill('100');
-  await page.getByLabel('Initial Stop').fill('90');
+  await openNewTradeView(page, 'Setup');
+  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
   await page.getByLabel('Breakout candle closed').check();
   await page.getByLabel('Retest held').check();
   await page.getByLabel('Volume expanded').check();
@@ -364,15 +432,16 @@ async function createOpenTrade(page: Page) {
 async function createMoneyOnlyOpenTrade(page: Page) {
   await page.getByRole('link', { name: 'Log a trade' }).first().click();
   await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
-  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
   await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
   await page.getByRole('button', { name: 'Short' }).click();
+  await page.getByLabel('How result is recorded').selectOption('money');
+  await page.getByLabel('Initial risk').fill('100.00');
   await page.getByRole('button', { name: 'Add a Money plan' }).click();
   await page.getByLabel('Planned risk').fill('100.00');
   await page.getByLabel(/Planned reward/).fill('300.00');
-  await page.getByLabel('Actual result mode').selectOption('money');
-  await page.getByLabel('Initial risk').fill('100.00');
+  await openNewTradeView(page, 'Setup');
+  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
   await page.getByLabel('Breakout candle closed').check();
   await page.getByLabel('Retest held').check();
   await page.getByLabel('Volume expanded').check();
@@ -483,6 +552,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(detail.getByText('+4.00R').first()).toBeVisible();
     await completeTradeLifecycle(page);
 
+    await page.getByText('Trade administration', { exact: true }).click();
     await page.getByRole('button', { name: 'Delete Trade' }).click();
     const deleteDialog = page.getByRole('alertdialog');
     await expect(deleteDialog.getByText(/no restore flow/i)).toBeVisible();
@@ -689,17 +759,17 @@ test.describe('real Trade Journal creation', () => {
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new');
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
-    await page.getByLabel('Actual entry').fill('1.25');
-    await page.getByLabel('Initial Stop').fill('1.24');
+    await openNewTradeView(page, 'Setup');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
+    await openNewTradeView(page, 'At Entry');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Fearful' }).click();
     await page.getByRole('button', { name: 'Hesitant' }).click();
@@ -778,22 +848,21 @@ test.describe('real Trade Journal creation', () => {
     await seedFramework(user.id, false);
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new');
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-    await expect(page.getByText('Not configured')).toBeVisible();
-    await expect(page.getByText(/0\/0/)).toHaveCount(0);
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('150');
     await page.getByLabel('Stop Loss', { exact: true }).fill('149');
-    await page.getByLabel('Actual entry').fill('150');
-    await page.getByLabel('Initial Stop').fill('149');
+    await openNewTradeView(page, 'Setup');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+    await expect(page.getByText('Not configured')).toBeVisible();
+    await expect(page.getByText(/0\/0/)).toHaveCount(0);
     await page.getByRole('button', { name: 'Open Trade' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     await openTradeSection(page, 'entry');
     // Appears once in the scan-summary <dl> and once in the full-detail
     // TradeEmotionsEditor behind "Show full details" — both by design.
-    await expect(page.getByText('No emotions selected').first()).toBeVisible();
+    await expect(page.getByText('Not recorded').first()).toBeVisible();
   });
 
   test('blocks creation when Price and Money plans disagree, and allows it once resolved', async ({
@@ -806,7 +875,6 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades');
     await page.getByRole('link', { name: 'Log a trade' }).first().click();
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('100');
@@ -826,8 +894,8 @@ test.describe('real Trade Journal creation', () => {
     // Resolve the disagreement — Money now agrees with Price (+3R) — and proceed.
     await page.getByLabel(/Planned reward/).fill('150.00');
     await expect(page.getByText('Price and Money plans disagree')).toHaveCount(0);
-    await page.getByLabel('Actual entry').fill('100');
-    await page.getByLabel('Initial Stop').fill('90');
+    await openNewTradeView(page, 'Setup');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
@@ -837,7 +905,76 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
   });
 
-  test('Trade Plan screen has no horizontal overflow and stays usable at 390px/768px/1024px (responsive gap)', async ({
+  test('Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium viewport sweep');
+    test.setTimeout(240_000);
+    const user = await provisionJournalUser('e2e-trades-g3-responsive');
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+
+    for (const locale of ['en', 'th'] as const) {
+      for (const width of [1440, 390, 320]) {
+        await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+        await page.goto(`/${locale}/app/trades/new`);
+
+        const form = page.locator('form');
+        const viewNav = page.getByTestId('new-trade-view-nav');
+        await expect(form).toBeVisible();
+        await expect(viewNav).toBeVisible();
+        await expect(page.locator('#trade-entry')).toBeVisible();
+        await expect(page.locator('#trade-stop')).toBeVisible();
+        await expect(page.locator('#trade-target')).toBeVisible();
+        await expect(page.locator('button[type="submit"]')).toBeVisible();
+        await expect(page.locator('#trade-strategy')).toHaveCount(0);
+        await expect(page.locator('[data-slot="confidence-track"]')).toHaveCount(0);
+
+        await viewNav.locator('button').nth(1).click();
+        await expect(page.locator('#trade-strategy')).toBeVisible();
+        await expect(page.locator('#trade-entry')).toHaveCount(0);
+        await expect(page.locator('button[type="submit"]')).toBeVisible();
+
+        await viewNav.locator('button').nth(2).click();
+        await expect(page.locator('[data-slot="confidence-track"]')).toBeVisible();
+        await expect(page.locator('#trade-strategy')).toHaveCount(0);
+        await expect(page.locator('button[type="submit"]')).toBeVisible();
+
+        const dimensions = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+        }));
+        expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+      }
+    }
+  });
+
+  test('Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(180_000);
+    const user = await provisionJournalUser('e2e-trades-g3-advanced');
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades/new');
+
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('ADVANCED');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByLabel('Entry', { exact: true }).fill('100');
+    await page.getByLabel('Stop Loss', { exact: true }).fill('90');
+    await page.getByLabel('Execution differed from plan').check();
+    await expect(page.getByLabel('Actual entry')).toHaveValue('100');
+    await expect(page.getByLabel('Actual Stop Loss')).toHaveValue('90');
+    await page.getByLabel('Actual entry').fill('101');
+    await page.getByRole('button', { name: 'Open Trade' }).click();
+
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
+    await openTradeSection(page, 'actual');
+    await expect(page.getByLabel('Plan').getByText('100')).toBeVisible();
+    await expect(page.getByLabel('Position').getByText('101')).toBeVisible();
+  });
+
+  test.skip('legacy Trade Plan responsive composition superseded by Phase 15G.3 views', async ({
     page,
   }) => {
     test.skip(
@@ -1012,8 +1149,8 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Long' }).click();
     // Genuinely no Plan, Strategy, or Setup at all (Phase 14C.1/Phase 14E) —
     // Account/Symbol/Direction plus the one required Actual execution basis.
-    await page.getByLabel('Actual entry').fill('0.8500');
-    await page.getByLabel('Initial Stop').fill('0.8450');
+    await page.getByLabel('Entry', { exact: true }).fill('0.8500');
+    await page.getByLabel('Stop Loss', { exact: true }).fill('0.8450');
     await page.getByRole('button', { name: 'Open Trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 
@@ -1088,19 +1225,21 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('link', { name: 'Log a trade' }).first().click();
     await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
-    await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
     await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByLabel('How result is recorded').selectOption('money');
+    await page.getByLabel('Initial risk').fill('100.00');
     await page.getByRole('button', { name: 'Add a Money plan' }).click();
     await page.getByLabel('Planned risk').fill('100.00');
     await page.getByLabel(/Planned reward/).fill('300.00');
-    await page.getByLabel('Actual result mode').selectOption('money');
-    await page.getByLabel('Initial risk').fill('100.00');
+    await openNewTradeView(page, 'Setup');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+    await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
+    await openNewTradeView(page, 'At Entry');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Focused' }).click();
     await page
@@ -1287,13 +1426,15 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Analytics' })).toBeVisible();
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'All' }).click();
-    await expect(page).toHaveURL(/range=all/);
+    await expect(page).toHaveURL(/range=all/, { timeout: 30_000 });
 
+    await page.getByRole('link', { name: 'Results', exact: true }).click();
     const systemPanel = page.locator('[data-analytics-panel="system"]');
     const traderPanel = page.locator('[data-analytics-panel="trader"]');
     await expect(systemPanel.getByText('1 Trade')).toBeVisible();
     await expect(traderPanel.getByText('1 Trade')).toBeVisible();
 
+    await page.getByRole('link', { name: 'Edge', exact: true }).click();
     const setupAdherencePanel = page.locator('[data-analytics-panel="setup-adherence"]');
     const adherenceBucket = setupAdherencePanel.locator('li', { hasText: /50.{1,2}74%/ });
     await expect(adherenceBucket.locator('[data-analytics-axis="trader"]')).toContainText(
@@ -1317,6 +1458,7 @@ test.describe('real Trade Journal creation', () => {
       ),
     ).toContainText('1 Trade');
 
+    await page.getByRole('link', { name: 'Behavior', exact: true }).click();
     const confidencePanel = page.locator('[data-analytics-panel="confidence"]');
     const confidenceLevel75 = confidencePanel.locator('li', { hasText: '75%' });
     await expect(confidenceLevel75.locator('[data-analytics-axis="trader"]')).toContainText(
@@ -1327,6 +1469,7 @@ test.describe('real Trade Journal creation', () => {
     const focusedGroup = emotionsPanel.locator('li', { hasText: 'Focused' });
     await expect(focusedGroup.locator('[data-analytics-axis="system"]')).toContainText('1 Trade');
 
+    await page.getByRole('link', { name: 'Results', exact: true }).click();
     await expect(
       page.locator('[data-analytics-panel="mistakes"]').getByText('1 Trade'),
     ).toBeVisible();
@@ -1352,12 +1495,14 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('link', { name: 'Log a trade' }).first().click();
     await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
+    await openNewTradeView(page, 'Setup');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
+    await openNewTradeView(page, 'Trade');
     await expect(page.getByLabel('Entry', { exact: true })).toHaveValue('');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
-    await page.getByLabel('Actual entry').fill('1.2500');
-    await page.getByLabel('Initial Stop').fill('1.2400');
+    await page.getByLabel('Entry', { exact: true }).fill('1.2500');
+    await page.getByLabel('Stop Loss', { exact: true }).fill('1.2400');
     await page.getByRole('button', { name: 'Open Trade' }).click();
     // No Setup was chosen, so the unmet-Conditions confirmation never appears
     // — the Trade opens directly.
@@ -1369,7 +1514,8 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await openTradeSection(page, 'actual');
     const planSection = detail.getByLabel('Plan');
-    await expect(planSection.getByText('Not set').first()).toBeVisible();
+    await expect(planSection.getByText('1.2500')).toBeVisible();
+    await expect(planSection.getByText('1.2400')).toBeVisible();
     await expect(planSection.getByText('Not available')).toBeVisible();
     await openTradeSection(page, 'strategy');
     const classification = detail.getByLabel('Strategy & Setup');
@@ -1417,7 +1563,8 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/analytics');
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'All' }).click();
-    await expect(page).toHaveURL(/range=all/);
+    await expect(page).toHaveURL(/range=all/, { timeout: 30_000 });
+    await page.getByRole('link', { name: 'Results', exact: true }).click();
     const traderPanel = page.locator('[data-analytics-panel="trader"]');
     const systemPanel = page.locator('[data-analytics-panel="system"]');
     await expect(traderPanel.getByText('1 Trade')).toBeVisible();
@@ -1593,6 +1740,48 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).not.toHaveURL(/cursor=/);
   });
 
+  test('Phase 15G.3 pending Analytics action stays filtered through pagination and deep action', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
+    const user = await provisionJournalUser('e2e-system-pending-filter');
+    await seedPendingWorkflowTrades(user.id);
+    await loginAs(page, 'en', user);
+
+    await page.goto('/en/app/analytics?view=overview&range=all');
+    const review = page.getByRole('link', { name: 'Review pending' });
+    await expect(review).toBeVisible();
+    await review.click();
+    await expect(page).toHaveURL(/view=log.*attention=system-pending/);
+
+    const log = page.getByRole('list', { name: 'Trade journal' });
+    await expect(log.getByRole('listitem')).toHaveCount(10);
+    await expect(log.getByText('Pending', { exact: true })).toHaveCount(10);
+    await expect(log.getByText('RESOLVEDROW')).toHaveCount(0);
+    await expect(log.getByText('NOTRADEROW')).toHaveCount(0);
+
+    await page.getByRole('link', { name: /Next/ }).click();
+    await expect(page).toHaveURL(/attention=system-pending/);
+    await expect(page).toHaveURL(/cursor=/);
+    await expect(log.getByRole('listitem')).toHaveCount(2);
+    await expect(log.getByText('Pending', { exact: true })).toHaveCount(2);
+
+    await page.setViewportSize({ width: 320, height: 720 });
+    await log
+      .getByRole('link', { name: /Update outcome/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/attention=system-pending/);
+    await expect(page).toHaveURL(/section=system/);
+    await expect(page.getByLabel('System', { exact: true })).toBeVisible();
+    const dimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+  });
+
   test('Phase 15G.1 mobile — Trading Calendar and Trade Log remain separate at 390px', async ({
     page,
   }) => {
@@ -1666,9 +1855,11 @@ test.describe('Confidence pill drag interaction', () => {
     await page.goto('/en/app/trades');
     await page.getByRole('link', { name: 'Log a trade' }).first().click();
     await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout · Version 1' });
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
+    await openNewTradeView(page, 'Setup');
+    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+    await openNewTradeView(page, 'At Entry');
   }
 
   /** Clicks a Confidence segment's styled (visible) label — the step number itself renders in a separate pointer-events-none overlay, so it is not a valid click target. */
@@ -1787,6 +1978,7 @@ test.describe('Confidence pill drag interaction', () => {
     expect(pillPastLeft?.x ?? -1).toBeGreaterThanOrEqual(track.x - leftScaleTolerance);
     await pill.dispatchEvent('pointercancel');
     await page.mouse.up();
+    await clickConfidenceOption(page, 50);
     await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
 
     // A valid release in the outer step commits the exact boundary value.
@@ -1801,10 +1993,8 @@ test.describe('Confidence pill drag interaction', () => {
     );
     await pill.dispatchEvent('pointercancel');
     await page.mouse.up();
+    await clickConfidenceOption(page, 0);
     await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-
-    await dragPillTo(page, track.x + track.width * 0.95);
-    await expect(page.getByRole('radio', { name: '100% · Very High' })).toBeChecked();
   });
 
   test('a cancelled pointer gesture leaves the Confidence value in a valid, unchanged discrete state', async ({

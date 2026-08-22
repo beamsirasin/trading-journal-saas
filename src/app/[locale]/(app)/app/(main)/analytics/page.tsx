@@ -3,7 +3,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Suspense } from 'react';
 
 import type { AnalyticsEquityPoint } from '@/lib/analytics/metrics';
-import { parseAnalyticsUrlFilters } from '@/lib/analytics/url-filters';
+import { parseAnalyticsUrlFilters, parseAnalyticsView } from '@/lib/analytics/url-filters';
 import { formatInstant, parseInstant } from '@/lib/time';
 import { getAnalyticsPageData } from '@/server/services/analytics';
 import {
@@ -73,6 +73,7 @@ async function AnalyticsContent({
   rawSearchParams: PageSearchParams;
 }) {
   const parsed = parseAnalyticsUrlFilters(rawSearchParams);
+  const view = parseAnalyticsView(rawSearchParams.view);
   const result = await getAnalyticsPageData(
     parsed.ok ? parsed.input : { unsupportedAnalyticsFilter: true },
   ).catch(() => null);
@@ -104,6 +105,7 @@ async function AnalyticsContent({
       filterOptions={result.data.filterOptions}
       selection={parsed.selection}
       equity={equity}
+      view={view}
     />
   );
 }

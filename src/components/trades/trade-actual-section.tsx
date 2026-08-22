@@ -43,12 +43,9 @@ export function ActualSection({
       aria-labelledby="trade-actual-plan-heading"
       className="border-border bg-muted/20 grid gap-3 rounded-lg border p-4"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 id="trade-actual-plan-heading" className="text-sm font-semibold">
-          {t('detail.sections.plan')}
-        </h3>
-        {canWrite ? <PlanCorrectionDialog trade={trade} /> : null}
-      </div>
+      <h3 id="trade-actual-plan-heading" className="text-sm font-semibold">
+        {t('detail.actualGroups.tradePlan')}
+      </h3>
       <dl className="divide-border divide-y">
         {trade.plannedEntry === null && trade.actualResultMode !== 'price' ? null : (
           <>
@@ -93,6 +90,16 @@ export function ActualSection({
         <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
         {plan}
         <p className="text-muted-foreground text-sm">{t('detail.notOpened')}</p>
+        {canWrite ? (
+          <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
+            <h3 id="trade-actual-actions-heading" className="text-sm font-semibold">
+              {t('detail.actualGroups.actions')}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <PlanCorrectionDialog trade={trade} />
+            </div>
+          </section>
+        ) : null}
       </section>
     );
   }
@@ -103,7 +110,17 @@ export function ActualSection({
         <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
         {plan}
         <p className="text-muted-foreground mb-4 text-sm">{t('detail.needsExecutionDetails')}</p>
-        {canWrite ? <OpenTradeDialog trade={trade} timezone={timezone} /> : null}
+        {canWrite ? (
+          <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
+            <h3 id="trade-actual-actions-heading" className="text-sm font-semibold">
+              {t('detail.actualGroups.actions')}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              <OpenTradeDialog trade={trade} timezone={timezone} />
+              <PlanCorrectionDialog trade={trade} />
+            </div>
+          </section>
+        ) : null}
       </section>
     );
   }
@@ -117,131 +134,150 @@ export function ActualSection({
 
       {plan}
 
-      {/* Compact final answer first (brief §11) — never let exit-leg history compete with it visually. A label stays attached to the value (never colour/size alone) so the number's meaning survives for assistive tech and reads unambiguously in isolation. */}
-      {isClosed ? (
-        <div className="flex flex-wrap items-baseline gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground text-xs">{t('field.actualR')}</span>
-            <span className="text-metric numeric">
-              {formatR(trade.actualR) ?? t('common.notAvailable')}
-            </span>
+      <section aria-labelledby="trade-actual-position-heading" className="grid gap-3">
+        <h3 id="trade-actual-position-heading" className="text-sm font-semibold">
+          {t('detail.actualGroups.position')}
+        </h3>
+        {/* Compact final answer first (brief §11) — never let exit-leg history compete with it visually. A label stays attached to the value (never colour/size alone) so the number's meaning survives for assistive tech and reads unambiguously in isolation. */}
+        {isClosed ? (
+          <div className="flex flex-wrap items-baseline gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-muted-foreground text-xs">{t('field.actualR')}</span>
+              <span className="text-metric numeric">
+                {formatR(trade.actualR) ?? t('common.notAvailable')}
+              </span>
+            </div>
+            <TradeOutcomeBadge outcome={trade.traderOutcome} />
           </div>
-          <TradeOutcomeBadge outcome={trade.traderOutcome} />
-        </div>
-      ) : isPartial ? (
-        <div className="flex flex-wrap items-baseline gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground text-xs">{t('field.realizedRToDate')}</span>
-            <span className="text-metric numeric">{formatR(trade.realizedRToDate) ?? '—'}</span>
+        ) : isPartial ? (
+          <div className="flex flex-wrap items-baseline gap-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-muted-foreground text-xs">{t('field.realizedRToDate')}</span>
+              <span className="text-metric numeric">{formatR(trade.realizedRToDate) ?? '—'}</span>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {canWrite ? (
-        <div className="flex flex-wrap gap-2">
-          {isClosed ? (
-            <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
-          ) : (
-            <>
-              <AddExitDialog trade={trade} timezone={timezone} />
-              <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
-              <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
-            </>
+        <dl className="divide-border divide-y">
+          <DetailRow
+            label={t('field.actualResultMode')}
+            value={
+              trade.actualResultMode === null
+                ? '—'
+                : t(`lifecycle.execution.${trade.actualResultMode}Mode`)
+            }
+          />
+          <DetailRow label={t('field.actualEntry')} value={trade.actualEntry ?? '—'} />
+          <DetailRow label={t('field.initialStop')} value={trade.actualInitialStop ?? '—'} />
+          {trade.actualPositionSize === null ? null : (
+            <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
           )}
-        </div>
-      ) : null}
-
-      <dl className="divide-border divide-y">
-        <DetailRow
-          label={t('field.actualResultMode')}
-          value={
-            trade.actualResultMode === null
-              ? '—'
-              : t(`lifecycle.execution.${trade.actualResultMode}Mode`)
-          }
-        />
-        <DetailRow label={t('field.actualEntry')} value={trade.actualEntry ?? '—'} />
-        <DetailRow label={t('field.initialStop')} value={trade.actualInitialStop ?? '—'} />
-        {trade.actualPositionSize === null ? null : (
-          <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
-        )}
-        <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
-        {trade.actualExit === null ? null : (
-          <DetailRow label={t('field.exit')} value={trade.actualExit} />
-        )}
-        {trade.grossPnlMinor === null ? null : (
-          <DetailRow label={t('field.grossPnl')} value={money(trade.grossPnlMinor)} />
-        )}
-        <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
-        <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
-        <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
-        {trade.netPnlMinor === null ? null : (
-          <DetailRow label={t('field.netPnl')} value={money(trade.netPnlMinor)} />
-        )}
-        {trade.exits.length === 0 ? null : (
-          <>
-            <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
-            <DetailRow label={t('field.remainingPercent')} value={`${trade.remainingBps / 100}%`} />
-          </>
-        )}
-        {/* Always present, even Open with zero Exits — a truthful "Not
+          <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
+          {/* Always present, even Open with zero Exits — a truthful "Not
             available" (never a blank or fabricated 0) until the final Actual
             R genuinely exists (CLAUDE.md §6). */}
-        <DetailRow
-          label={t('field.actualR')}
-          value={formatR(trade.actualR) ?? t('common.notAvailable')}
-        />
-        <DetailRow
-          label={t('field.traderOutcome')}
-          value={<TradeOutcomeBadge outcome={trade.traderOutcome} />}
-        />
-        <DetailRow label={t('field.enteredAt')} value={instant(trade.enteredAt)} />
-        {trade.exitedAt === null ? null : (
-          <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
-        )}
-      </dl>
+          <DetailRow
+            label={t('field.actualR')}
+            value={formatR(trade.actualR) ?? t('common.notAvailable')}
+          />
+          <DetailRow
+            label={t('field.traderOutcome')}
+            value={<TradeOutcomeBadge outcome={trade.traderOutcome} />}
+          />
+          <DetailRow label={t('field.enteredAt')} value={instant(trade.enteredAt)} />
+        </dl>
+      </section>
 
-      {trade.exits.length === 0 ? null : (
-        <div className="grid gap-3">
-          {trade.exits.map((exit) => (
-            <article
-              key={exit.exitId}
-              className="border-border grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
-            >
-              <div className="grid gap-1 text-sm">
-                <h4 className="font-semibold">
-                  {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
-                </h4>
+      {canWrite ? (
+        <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
+          <h3 id="trade-actual-actions-heading" className="text-sm font-semibold">
+            {t('detail.actualGroups.actions')}
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <PlanCorrectionDialog trade={trade} />
+            {isClosed ? (
+              <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
+            ) : (
+              <>
+                <AddExitDialog trade={trade} timezone={timezone} />
+                <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
+                <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="trade-actual-exits-heading" className="grid gap-3">
+        <h3 id="trade-actual-exits-heading" className="text-sm font-semibold">
+          {t('detail.actualGroups.exits')}
+        </h3>
+        {trade.exits.length === 0 && trade.actualExit === null ? (
+          <p className="text-muted-foreground text-sm">{t('common.notAvailable')}</p>
+        ) : (
+          <dl className="divide-border divide-y">
+            {trade.actualExit === null ? null : (
+              <DetailRow label={t('field.exit')} value={trade.actualExit} />
+            )}
+            {trade.grossPnlMinor === null ? null : (
+              <DetailRow label={t('field.grossPnl')} value={money(trade.grossPnlMinor)} />
+            )}
+            <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
+            <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
+            <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
+            {trade.netPnlMinor === null ? null : (
+              <DetailRow label={t('field.netPnl')} value={money(trade.netPnlMinor)} />
+            )}
+            {trade.exits.length === 0 ? null : (
+              <>
+                <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
+                <DetailRow
+                  label={t('field.remainingPercent')}
+                  value={`${trade.remainingBps / 100}%`}
+                />
+              </>
+            )}
+            {trade.exitedAt === null ? null : (
+              <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
+            )}
+          </dl>
+        )}
+        {trade.exits.map((exit) => (
+          <article
+            key={exit.exitId}
+            className="border-border grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
+          >
+            <div className="grid gap-1 text-sm">
+              <h4 className="font-semibold">
+                {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
+              </h4>
+              <p>
+                {t('field.closedPercent')}:{' '}
+                {(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%
+              </p>
+              {exit.exitPrice === null ? null : (
                 <p>
-                  {t('field.closedPercent')}:{' '}
-                  {(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%
+                  {t('field.exit')}: {exit.exitPrice}
                 </p>
-                {exit.exitPrice === null ? null : (
-                  <p>
-                    {t('field.exit')}: {exit.exitPrice}
-                  </p>
-                )}
-                {exit.realizedPnlMinor === null ? null : (
-                  <p>
-                    {t('field.realizedPnl')}: {money(exit.realizedPnlMinor)}
-                  </p>
-                )}
+              )}
+              {exit.realizedPnlMinor === null ? null : (
                 <p>
-                  {t('field.exitedAt')}: {instant(exit.exitedAt)}
+                  {t('field.realizedPnl')}: {money(exit.realizedPnlMinor)}
                 </p>
-                {exit.exitReason === null ? null : (
-                  <p>
-                    {t('field.exitReason')}: {exit.exitReason}
-                  </p>
-                )}
-              </div>
-              {canWrite ? (
-                <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} />
-              ) : null}
-            </article>
-          ))}
-        </div>
-      )}
+              )}
+              <p>
+                {t('field.exitedAt')}: {instant(exit.exitedAt)}
+              </p>
+              {exit.exitReason === null ? null : (
+                <p>
+                  {t('field.exitReason')}: {exit.exitReason}
+                </p>
+              )}
+            </div>
+            {canWrite ? <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} /> : null}
+          </article>
+        ))}
+      </section>
     </section>
   );
 }

@@ -7,6 +7,7 @@ import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
 import { ActionableNotice } from '@/components/product/actionable-notice';
 import { HeroMetric, InsightNote } from '@/components/product/summary-primitives';
 import { ZoneSection } from '@/components/product/zone-section';
+import { Link } from '@/i18n/navigation';
 
 /**
  * Phase 15C — Analytics Overview, RESULTS zone. Answers "what happened?"
@@ -24,11 +25,13 @@ export function ResultsZone({
   system,
   systemPendingCount,
   comparison,
+  exploreHref,
 }: {
   trader: PerformanceAnalyticsModel;
   system: PerformanceAnalyticsModel;
   systemPendingCount: number;
   comparison: ComparisonAnalyticsModel;
+  exploreHref: string;
 }) {
   const t = useTranslations('analytics.real');
   const tZones = useTranslations('zones');
@@ -87,7 +90,7 @@ export function ResultsZone({
                   <ActionableNotice
                     fact={t('pendingCount', { count: systemPendingCount })}
                     actionLabel={t('reviewPending')}
-                    href="/app/trades"
+                    href="/app/trades?view=log&attention=system-pending"
                   />
                 ) : undefined
               }
@@ -105,12 +108,12 @@ export function ResultsZone({
         noPatternMessage={t('overview.results.insight.independent')}
       />
 
-      <a
-        href="#analytics-performance-heading"
+      <Link
+        href={exploreHref}
         className="text-primary mt-4 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline"
       >
         {t('overview.explore')}
-      </a>
+      </Link>
     </ZoneSection>
   );
 }

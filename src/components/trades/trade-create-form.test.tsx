@@ -109,7 +109,20 @@ function renderForm(customOptions: TradeCreateOptions = options) {
   );
 }
 
+function showTrade() {
+  fireEvent.click(screen.getByRole('button', { name: 'Trade' }));
+}
+
+function showSetup() {
+  fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
+}
+
+function showEntry() {
+  fireEvent.click(screen.getByRole('button', { name: 'At Entry' }));
+}
+
 function chooseRetest() {
+  showSetup();
   fireEvent.change(screen.getByLabelText('Strategy'), {
     target: { value: options.strategies[0].strategyId },
   });
@@ -125,20 +138,23 @@ function chooseRetest() {
  * as every real New Trade submission must supply it.
  */
 function fillActualExecution() {
+  showTrade();
+  fireEvent.click(screen.getByLabelText(/Execution differed from plan/));
   fireEvent.change(screen.getByLabelText('Actual entry'), { target: { value: '100' } });
-  fireEvent.change(screen.getByLabelText('Initial Stop'), { target: { value: '90' } });
+  fireEvent.change(screen.getByLabelText('Actual Stop Loss'), { target: { value: '90' } });
 }
 
 function fillPricePlan() {
+  showTrade();
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('button', { name: 'Long' }));
   fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
   fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
   fireEvent.change(screen.getByLabelText(/Take Profit/), { target: { value: '130' } });
-  fillActualExecution();
 }
 
 function checkAllConditions() {
+  showSetup();
   fireEvent.click(screen.getByLabelText(conditionA.label));
   fireEvent.click(screen.getByLabelText(conditionB.label));
 }
@@ -152,25 +168,34 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('TradeCreateForm — Phase 13C single-page entry', () => {
-  it('renders all sections together with one Open Trade action and no wizard', () => {
+describe('TradeCreateForm — Phase 15G.3 focused views', () => {
+  it('renders mutually exclusive Trade, Setup, and At Entry views with Open Trade always reachable', () => {
     renderForm();
     expect(screen.getByLabelText('Trading Account')).toBeVisible();
-    expect(screen.getByLabelText('Strategy')).toBeVisible();
     expect(screen.getByLabelText('Symbol')).toBeVisible();
+    expect(screen.queryByLabelText('Strategy')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Open Trade' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
+    expect(screen.getByLabelText('Strategy')).toBeVisible();
     expect(screen.getByText('Setup Checklist')).toBeVisible();
+    expect(screen.queryByLabelText('Symbol')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Open Trade' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'At Entry' }));
     expect(screen.getAllByText('Confidence').length).toBeGreaterThan(0);
     expect(screen.getByText('How are you feeling?')).toBeVisible();
     expect(screen.getAllByText('Entry Reason').length).toBeGreaterThan(0);
     expect(screen.getByText('Chart attachment')).toBeVisible();
     expect(screen.getAllByRole('button', { name: 'Open Trade' })).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Strategy')).not.toBeInTheDocument();
     expect(screen.queryByText('Review the planned Trade')).not.toBeInTheDocument();
   });
 
   it('supports accessible optional Emotion multi-select and preserves it across Strategy changes', async () => {
     createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
     renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'At Entry' }));
     const calm = screen.getByRole('button', { name: 'Calm' });
     const fomo = screen.getByRole('button', { name: 'FOMO' });
     expect(calm).toHaveAttribute('aria-pressed', 'false');
@@ -181,9 +206,11 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
       target: { value: 'Reason remains stable.' },
     });
     expect(calm).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
     fireEvent.change(screen.getByLabelText('Strategy'), {
       target: { value: options.strategies[1].strategyId },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'At Entry' }));
     expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText(/75%/)).toBeChecked();
     expect(screen.getByLabelText(/Entry Reason/)).toHaveValue('Reason remains stable.');
@@ -223,6 +250,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
         },
       ],
     });
+    showSetup();
     fireEvent.change(screen.getByLabelText('Strategy'), {
       target: { value: options.strategies[0].strategyId },
     });
@@ -235,6 +263,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
   it('shows zero-Condition N/A and saves directly with an empty answer set', async () => {
     createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
     renderForm();
+    showSetup();
     fireEvent.change(screen.getByLabelText('Strategy'), {
       target: { value: options.strategies[1].strategyId },
     });
@@ -273,11 +302,13 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     createTradeActionMock.mockResolvedValue({ ok: false, error: { code: 'unexpected_error' } });
     renderForm();
     chooseRetest();
+    showTrade();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'EURUSD' } });
     fireEvent.click(screen.getByRole('button', { name: 'Short' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add a Money plan' }));
     fireEvent.change(screen.getByLabelText('Planned risk'), { target: { value: '100.00' } });
     fireEvent.change(screen.getByLabelText(/Planned reward/), { target: { value: '300.00' } });
+    showEntry();
     fireEvent.click(screen.getByLabelText(/75%/));
     fireEvent.change(screen.getByLabelText(/Entry Reason/), {
       target: { value: 'Clear confirmation at the level.' },
@@ -314,6 +345,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     renderForm();
     chooseRetest();
     fillPricePlan();
+    showSetup();
     fireEvent.click(screen.getByLabelText(conditionA.label));
     fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(createTradeActionMock).not.toHaveBeenCalled();
@@ -378,6 +410,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     checkAllConditions();
     fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     expect(await screen.findByText(/Setup changed while you were entering/)).toBeVisible();
+    showTrade();
     expect(screen.getByLabelText('Symbol')).toHaveValue('XAUUSD');
   });
 
@@ -425,6 +458,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     fireEvent.change(account, { target: { value: options.tradingAccounts[0].tradingAccountId } });
     expect(account).toHaveAttribute('aria-invalid', 'false');
     expect(account).not.toHaveAttribute('aria-describedby');
+    showSetup();
     fireEvent.change(screen.getByLabelText('Strategy'), {
       target: { value: options.strategies[1].strategyId },
     });
@@ -439,6 +473,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
       data: { tradeId: '018f0000-0000-7000-8000-0000000000aa', alreadyCreated: false },
     });
     renderForm();
+    showSetup();
     const strategy = screen.getByLabelText('Strategy');
     const setup = screen.getByLabelText('Setup');
     // Setup is disabled until a Strategy is chosen — it belongs to one by
@@ -484,6 +519,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(payload.actualResultMode).toBe('price');
     expect(payload.actualEntry).toBe('100');
     expect(payload.actualInitialStop).toBe('90');
+    expect(payload).not.toHaveProperty('emotionKeys');
     expect(typeof payload.enteredAt).toBe('string');
     expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=018f0000-0000-7000-8000-0000000000bb');
   });
@@ -500,13 +536,14 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
     expect(screen.getByLabelText(/Take Profit/)).toBeVisible();
     expect(screen.getByLabelText(/Take Profit/)).toHaveValue('');
-    fillActualExecution();
     fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
     await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
     const payload = createTradeActionMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.plannedEntry).toBe('100');
     expect(payload.plannedStop).toBe('90');
     expect(payload.plannedTarget).toBeNull();
+    expect(payload.actualEntry).toBe('100');
+    expect(payload.actualInitialStop).toBe('90');
   });
 
   it('blocks Open with the exact Price-mode Actual Execution copy and never a generic "incomplete" message (Phase 14E §20)', async () => {
@@ -524,7 +561,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
     fireEvent.click(screen.getByRole('button', { name: 'Long' }));
-    fireEvent.change(screen.getByLabelText('Actual result mode'), {
+    fireEvent.change(screen.getByLabelText('How result is recorded'), {
       target: { value: 'money' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Open Trade' }));
@@ -542,7 +579,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpusd' } });
     fireEvent.click(screen.getByRole('button', { name: 'Long' }));
-    fireEvent.change(screen.getByLabelText('Actual result mode'), {
+    fireEvent.change(screen.getByLabelText('How result is recorded'), {
       target: { value: 'money' },
     });
     fireEvent.change(screen.getByLabelText('Initial risk'), { target: { value: '50.00' } });
@@ -557,6 +594,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
 
   it('still requires a Strategy before a Setup can be chosen, without blocking the rest of the form', () => {
     renderForm();
+    showSetup();
     const strategy = screen.getByLabelText('Strategy');
     const setup = screen.getByLabelText('Setup');
 
@@ -580,6 +618,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
+    showEntry();
     fireEvent.change(screen.getByLabelText(/Entry Reason/), {
       target: { value: 'Retest confirmation remained intact.' },
     });
@@ -595,17 +634,18 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     expect(screen.getByLabelText('Symbol')).toHaveValue('XAUUSD');
     expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
     expect(screen.getByLabelText(/Take Profit/)).toHaveValue('130');
-    expect(screen.getByLabelText(conditionA.label)).toBeChecked();
-    expect(screen.getByLabelText(/Entry Reason/)).toHaveValue(
-      'Retest confirmation remained intact.',
-    );
-
     fireEvent.change(stop, { target: { value: '85' } });
     expect(stop).toHaveAttribute('aria-invalid', 'false');
     expect(stop).not.toHaveAttribute('aria-describedby');
     expect(screen.getByLabelText('Entry', { exact: true })).toHaveValue('100');
     expect(screen.getByLabelText(/Take Profit/)).toHaveValue('130');
+    showSetup();
+    expect(screen.getByLabelText(conditionA.label)).toBeChecked();
     expect(screen.getByLabelText(conditionB.label)).toBeChecked();
+    showEntry();
+    expect(screen.getByLabelText(/Entry Reason/)).toHaveValue(
+      'Retest confirmation remained intact.',
+    );
   });
 
   it('preserves Price and Money values when the Money disclosure is closed and reopened', () => {
@@ -636,6 +676,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
 
   it('omits Upload UI when chart storage is unconfigured while retaining TradingView URL', () => {
     renderForm({ ...options, chartUploadConfigured: false });
+    showEntry();
     expect(screen.queryByRole('button', { name: 'Upload image' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Upload image')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/TradingView URL/)).toBeVisible();
@@ -651,6 +692,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
+    showEntry();
     fireEvent.click(screen.getByRole('button', { name: 'Upload image' }));
 
     const file = new File(['fake-png-bytes'], 'chart.png', { type: 'image/png' });
@@ -677,6 +719,7 @@ describe('TradeCreateForm — Phase 13C single-page entry', () => {
     chooseRetest();
     fillPricePlan();
     checkAllConditions();
+    showEntry();
     fireEvent.click(screen.getByRole('button', { name: 'Upload image' }));
     const file = new File(['fake-webp-bytes'], 'chart.webp', { type: 'image/webp' });
     fireEvent.change(screen.getByLabelText('Upload image'), { target: { files: [file] } });

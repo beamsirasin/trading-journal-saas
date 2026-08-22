@@ -61,6 +61,7 @@ import { TradeQuickSelectField } from './trade-quick-select';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 type Direction = '' | 'long' | 'short';
+type CreateView = 'trade' | 'setup' | 'entry';
 type ErrorMap = Record<string, string>;
 
 interface Values {
@@ -181,7 +182,10 @@ export function TradeCreateForm({
   const [mutationKey] = useState(generateId);
   const [chartTab, setChartTab] = useState<'link' | 'upload'>('link');
   const [uploadState, setUploadState] = useState<UploadState>({ status: 'idle' });
-  const [priceOpen, setPriceOpen] = useState(true);
+  const [activeView, setActiveView] = useState<CreateView>('trade');
+  const [entryViewVisited, setEntryViewVisited] = useState(false);
+  const [executionDiffers, setExecutionDiffers] = useState(false);
+  const [priceOpen, setPriceOpen] = useState(false);
   const [moneyOpen, setMoneyOpen] = useState(false);
   const [errors, setErrors] = useState<ErrorMap>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -347,11 +351,9 @@ export function TradeCreateForm({
   }
 
   function closePriceSection() {
-    if (!moneyOpen) return;
     setPriceOpen(false);
   }
   function closeMoneySection() {
-    if (!priceOpen) return;
     setMoneyOpen(false);
   }
 
@@ -396,13 +398,44 @@ export function TradeCreateForm({
     return errors[field];
   }
 
+  const effectiveActualEntry =
+    values.actualResultMode === 'price' && !executionDiffers
+      ? values.plannedEntry
+      : values.actualEntry;
+  const effectiveActualStop =
+    values.actualResultMode === 'price' && !executionDiffers
+      ? values.plannedStop
+      : values.actualInitialStop;
+  const effectiveActualPositionSize =
+    values.actualResultMode === 'price' && !executionDiffers
+      ? values.plannedPositionSize
+      : values.actualPositionSize;
+
+  function setExecutionDifference(next: boolean) {
+    setExecutionDiffers(next);
+    if (!next) return;
+    setValues((current) => ({
+      ...current,
+      actualEntry: current.actualEntry || current.plannedEntry,
+      actualInitialStop: current.actualInitialStop || current.plannedStop,
+      actualPositionSize: current.actualPositionSize || current.plannedPositionSize,
+    }));
+  }
+
+  function showView(view: CreateView) {
+    setActiveView(view);
+    if (view === 'entry') setEntryViewVisited(true);
+  }
+
   async function submit(unmetConfirmed = false) {
     const finalErrors = stageErrors(2, planValidationValues());
     if (Object.keys(finalErrors).length > 0) {
+      setActiveView('trade');
       setErrors(translatePlanErrors(finalErrors, t));
       return;
     }
     if (hasLiveMismatch()) {
+      setActiveView('trade');
       setFormError(t('create.plan.mismatchBlocked'));
       return;
     }
@@ -412,12 +445,18 @@ export function TradeCreateForm({
     // stay specific per brief §20.
     const executionError = actualExecutionErrors({
       actualResultMode: values.actualResultMode,
-      actualEntry: values.actualEntry,
-      actualInitialStop: values.actualInitialStop,
+      actualEntry: effectiveActualEntry,
+      actualInitialStop: effectiveActualStop,
       actualInitialRiskMinor: values.actualInitialRiskMinor,
     });
     if (executionError !== null) {
-      const field = values.actualResultMode === 'price' ? 'actualEntry' : 'actualInitialRiskMinor';
+      setActiveView('trade');
+      const field =
+        values.actualResultMode === 'price'
+          ? executionDiffers
+            ? 'actualEntry'
+            : 'plannedEntry'
+          : 'actualInitialRiskMinor';
       setErrors((current) => ({
         ...current,
         [field]: t(ACTUAL_EXECUTION_ERROR_MESSAGE_KEY[executionError]),
@@ -511,17 +550,16 @@ export function TradeCreateForm({
       // one required Actual execution basis, so this Trade is created
       // already `open`, atomically, never a separate `openTrade` call after.
       actualResultMode: values.actualResultMode,
-      actualEntry: values.actualResultMode === 'price' ? values.actualEntry.trim() : null,
-      actualInitialStop:
-        values.actualResultMode === 'price' ? values.actualInitialStop.trim() : null,
+      actualEntry: values.actualResultMode === 'price' ? effectiveActualEntry.trim() : null,
+      actualInitialStop: values.actualResultMode === 'price' ? effectiveActualStop.trim() : null,
       actualInitialRiskMinor,
       actualPositionSize:
-        values.actualPositionSize.trim() === '' ? null : values.actualPositionSize.trim(),
+        effectiveActualPositionSize.trim() === '' ? null : effectiveActualPositionSize.trim(),
       enteredAt: enteredAtResult.value,
       timeframe: values.timeframe,
       session: values.session,
       ...(confidence === undefined ? {} : { confidence }),
-      emotionKeys,
+      ...(entryViewVisited ? { emotionKeys } : {}),
       confirmationNotes: values.confirmationNotes,
       tradingviewUrl: values.tradingviewUrl,
       notes: values.notes,
@@ -546,6 +584,18 @@ export function TradeCreateForm({
     }
     setErrors(mapped);
     setFormError(t(`errors.${result.error.code}`));
+    if (
+      'plannedEntry' in mapped ||
+      'plannedStop' in mapped ||
+      'plannedTarget' in mapped ||
+      'plannedRiskMinor' in mapped ||
+      'plannedRewardMinor' in mapped ||
+      'actualEntry' in mapped ||
+      'actualInitialStop' in mapped ||
+      'actualInitialRiskMinor' in mapped
+    ) {
+      setActiveView('trade');
+    }
     if ('plannedRiskMinor' in mapped || 'plannedRewardMinor' in mapped) setMoneyOpen(true);
     if ('plannedEntry' in mapped || 'plannedStop' in mapped || 'plannedTarget' in mapped)
       setPriceOpen(true);
@@ -581,631 +631,715 @@ export function TradeCreateForm({
         }}
         className="border-border bg-card grid gap-10 rounded-lg border p-4 sm:p-6"
       >
-        <fieldset className="grid gap-5">
-          <legend className="text-card-title mb-2">{t('create.accountTitle')}</legend>
-          <p className="text-muted-foreground text-sm">{t('create.accountDescription')}</p>
-          <PlanField
-            id="trade-account"
-            label={t('field.account')}
-            error={fieldError('tradingAccountId')}
-          >
-            <Select
-              id="trade-account"
-              value={values.tradingAccountId}
-              onChange={(event) => setField('tradingAccountId', event.target.value)}
-              aria-invalid={fieldError('tradingAccountId') !== undefined}
-              aria-describedby={
-                fieldError('tradingAccountId') === undefined ? undefined : 'trade-account-error'
-              }
+        <nav
+          aria-label={t('create.views.label')}
+          data-testid="new-trade-view-nav"
+          className="bg-muted grid grid-cols-3 gap-1 rounded-lg p-1"
+        >
+          {(['trade', 'setup', 'entry'] as const).map((view) => (
+            <button
+              key={view}
+              type="button"
+              aria-current={activeView === view ? 'page' : undefined}
+              onClick={() => showView(view)}
+              className={cn(
+                'min-h-11 rounded-md px-2 text-sm font-semibold transition-colors',
+                activeView === view
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
             >
-              <option value="">{t('create.chooseAccount')}</option>
-              {options.tradingAccounts.map((account) => (
-                <option key={account.tradingAccountId} value={account.tradingAccountId}>
-                  {account.name} · {account.baseCurrency}
-                </option>
-              ))}
-            </Select>
-          </PlanField>
-        </fieldset>
+              {t(`create.views.${view}`)}
+            </button>
+          ))}
+        </nav>
 
-        <fieldset className="grid gap-8">
-          <legend className="text-card-title mb-2">{t('create.planTitle')}</legend>
-
-          <div className="grid gap-5">
-            <h3 className="text-label text-muted-foreground uppercase">
-              {t('create.sections.corePlan')}
-            </h3>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <TradeQuickSelectField
-                id="trade-symbol"
-                label={t('field.symbol')}
-                value={values.symbol}
-                onChange={(value) => setField('symbol', value)}
-                transform={(value) => value.toUpperCase()}
-                favorites={symbolFavorites.favorites}
-                recents={symbolFavorites.recents}
-                onToggleFavorite={symbolFavorites.toggle}
-                error={fieldError('symbol')}
-              />
-              <fieldset
-                className="flex flex-col gap-2"
-                aria-invalid={fieldError('direction') !== undefined}
-                aria-describedby={
-                  fieldError('direction') === undefined ? undefined : 'trade-direction-error'
-                }
+        {activeView === 'trade' ? (
+          <div id="new-trade-trade-panel" className="grid gap-8">
+            <fieldset className="grid gap-5">
+              <legend className="text-card-title mb-2">{t('create.accountTitle')}</legend>
+              <p className="text-muted-foreground text-sm">{t('create.accountDescription')}</p>
+              <PlanField
+                id="trade-account"
+                label={t('field.account')}
+                error={fieldError('tradingAccountId')}
               >
-                <legend className="text-sm font-medium">{t('field.direction')}</legend>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['long', 'short'] as const).map((direction) => {
-                    const isSelected = values.direction === direction;
-                    const style = DIRECTION_STYLE[direction];
-                    const Icon = style.Icon;
-                    return (
-                      <button
-                        key={direction}
-                        type="button"
-                        aria-pressed={isSelected}
-                        onClick={() => setField('direction', direction)}
-                        className={cn(
-                          'flex min-h-11 items-center justify-center gap-2 rounded-md border-2 px-3 py-2 text-sm font-semibold transition-colors',
-                          isSelected ? style.selected : style.unselected,
-                        )}
-                      >
-                        <Icon aria-hidden="true" size={16} />
-                        {t(`direction.${direction}`)}
-                        {isSelected ? <Check aria-hidden="true" size={16} /> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-                {fieldError('direction') === undefined ? null : (
-                  <p id="trade-direction-error" role="alert" className="text-destructive text-xs">
-                    {fieldError('direction')}
-                  </p>
-                )}
-              </fieldset>
-            </div>
-
-            <div className="border-border flex flex-col gap-4 rounded-lg border p-4">
-              <h3 className="text-sm font-semibold">{t('create.sections.actualExecution')}</h3>
-              <PlanField id="trade-actual-mode" label={t('field.actualResultMode')}>
                 <Select
-                  id="trade-actual-mode"
-                  value={values.actualResultMode}
-                  onChange={(event) => {
-                    const mode = event.target.value as 'price' | 'money';
-                    setField('actualResultMode', mode);
-                    if (mode === 'price') setPriceOpen(true);
-                  }}
+                  id="trade-account"
+                  value={values.tradingAccountId}
+                  onChange={(event) => setField('tradingAccountId', event.target.value)}
+                  aria-invalid={fieldError('tradingAccountId') !== undefined}
+                  aria-describedby={
+                    fieldError('tradingAccountId') === undefined ? undefined : 'trade-account-error'
+                  }
                 >
-                  <option value="price">{t('lifecycle.execution.priceMode')}</option>
-                  <option value="money">{t('lifecycle.execution.moneyMode')}</option>
+                  <option value="">{t('create.chooseAccount')}</option>
+                  {options.tradingAccounts.map((account) => (
+                    <option key={account.tradingAccountId} value={account.tradingAccountId}>
+                      {account.name} · {account.baseCurrency}
+                    </option>
+                  ))}
                 </Select>
               </PlanField>
-              <div className="grid gap-5 sm:grid-cols-2">
-                {values.actualResultMode === 'price' ? (
-                  <>
-                    <DecimalField
-                      id="trade-actual-entry"
-                      field="actualEntry"
-                      label={t('field.actualEntry')}
-                      values={values}
-                      setField={setField}
-                      error={fieldError('actualEntry')}
-                    />
-                    <DecimalField
-                      id="trade-actual-stop"
-                      field="actualInitialStop"
-                      label={t('field.initialStop')}
-                      values={values}
-                      setField={setField}
-                      error={fieldError('actualInitialStop')}
-                    />
-                  </>
-                ) : (
-                  <DecimalField
-                    id="trade-actual-risk"
-                    field="actualInitialRiskMinor"
-                    label={t('field.initialRisk')}
-                    hint={
-                      selectedAccount === undefined
-                        ? undefined
-                        : t('lifecycle.execution.moneyHint', {
-                            currency: selectedAccount.baseCurrency,
-                          })
-                    }
-                    values={values}
-                    setField={setField}
-                    error={fieldError('actualInitialRiskMinor')}
+            </fieldset>
+
+            <fieldset className="grid gap-8">
+              <legend className="text-card-title mb-2">
+                {t('create.sections.tradePlanTitle')}
+              </legend>
+
+              <div className="grid gap-5">
+                <h3 className="text-label text-muted-foreground uppercase">
+                  {t('create.sections.corePlan')}
+                </h3>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <TradeQuickSelectField
+                    id="trade-symbol"
+                    label={t('field.symbol')}
+                    value={values.symbol}
+                    onChange={(value) => setField('symbol', value)}
+                    transform={(value) => value.toUpperCase()}
+                    favorites={symbolFavorites.favorites}
+                    recents={symbolFavorites.recents}
+                    onToggleFavorite={symbolFavorites.toggle}
+                    error={fieldError('symbol')}
                   />
-                )}
-                <DecimalField
-                  id="trade-actual-size"
-                  field="actualPositionSize"
-                  label={t('field.actualPositionSize')}
-                  values={values}
-                  setField={setField}
-                  error={fieldError('actualPositionSize')}
-                  optional
-                />
-              </div>
-              <PlanField
-                id="trade-entered-at"
-                label={t('field.enteredAt')}
-                hint={t('lifecycle.execution.timezoneHint', { timezone })}
-                error={fieldError('enteredAt')}
-              >
-                <Input
-                  id="trade-entered-at"
-                  type="datetime-local"
-                  value={enteredAtValue}
-                  onChange={(event) => setField('enteredAt', event.target.value)}
-                  aria-invalid={fieldError('enteredAt') !== undefined}
-                  aria-describedby={
-                    fieldError('enteredAt') === undefined ? undefined : 'trade-entered-at-error'
-                  }
-                />
-              </PlanField>
-              {values.actualResultMode === 'price' ? (
-                <div className="border-border grid gap-4 border-t pt-4">
-                  <div>
-                    <h4 className="text-sm font-semibold">{t('create.sections.tradePlan')}</h4>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {t('create.plan.actualPlanHint')}
-                    </p>
-                  </div>
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <DecimalField
-                      id="trade-entry"
-                      field="plannedEntry"
-                      label={t('field.entry')}
-                      values={values}
-                      setField={setField}
-                      error={fieldError('plannedEntry')}
-                    />
-                    <DecimalField
-                      id="trade-stop"
-                      field="plannedStop"
-                      label={t('field.stopLoss')}
-                      values={values}
-                      setField={setField}
-                      error={fieldError('plannedStop')}
-                    />
-                    <DecimalField
-                      id="trade-target"
-                      field="plannedTarget"
-                      label={t('field.takeProfit')}
-                      values={values}
-                      setField={setField}
-                      error={fieldError('plannedTarget')}
-                      optional
-                    />
-                    <DecimalField
-                      id="trade-position-size"
-                      field="plannedPositionSize"
-                      label={t('field.positionSize')}
-                      values={values}
-                      setField={setField}
-                      error={fieldError('plannedPositionSize')}
-                      optional
-                    />
-                  </div>
-                  {liveSnapshot !== null &&
-                  liveSnapshot.ok &&
-                  !liveSnapshot.value.mismatch &&
-                  liveSnapshot.value.plannedR !== null ? (
-                    <div className="border-border bg-muted/30 rounded-lg border p-3 text-sm">
-                      {t('create.plan.previewR', {
-                        value: formatR(liveSnapshot.value.plannedR) ?? '—',
+                  <fieldset
+                    className="flex flex-col gap-2"
+                    aria-invalid={fieldError('direction') !== undefined}
+                    aria-describedby={
+                      fieldError('direction') === undefined ? undefined : 'trade-direction-error'
+                    }
+                  >
+                    <legend className="text-sm font-medium">{t('field.direction')}</legend>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['long', 'short'] as const).map((direction) => {
+                        const isSelected = values.direction === direction;
+                        const style = DIRECTION_STYLE[direction];
+                        const Icon = style.Icon;
+                        return (
+                          <button
+                            key={direction}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => setField('direction', direction)}
+                            className={cn(
+                              'flex min-h-11 items-center justify-center gap-2 rounded-md border-2 px-3 py-2 text-sm font-semibold transition-colors',
+                              isSelected ? style.selected : style.unselected,
+                            )}
+                          >
+                            <Icon aria-hidden="true" size={16} />
+                            {t(`direction.${direction}`)}
+                            {isSelected ? <Check aria-hidden="true" size={16} /> : null}
+                          </button>
+                        );
                       })}
                     </div>
-                  ) : null}
+                    {fieldError('direction') === undefined ? null : (
+                      <p
+                        id="trade-direction-error"
+                        role="alert"
+                        className="text-destructive text-xs"
+                      >
+                        {fieldError('direction')}
+                      </p>
+                    )}
+                  </fieldset>
                 </div>
-              ) : null}
-            </div>
 
-            <h3 className="text-label text-muted-foreground uppercase">
-              {t('create.sections.tradePlan')}
-            </h3>
-            {values.actualResultMode === 'money' ? (
-              <PlanRepresentationToggle
-                title={t('create.plan.priceTitle')}
-                isOpen={priceOpen}
-                onOpen={() => setPriceOpen(true)}
-                onClose={closePriceSection}
-                addLabel={t('create.plan.addPrice')}
-                hideLabel={t('create.plan.hidePrice')}
-                canClose={moneyOpen}
+                <div className="border-border flex flex-col gap-5 rounded-lg border p-4">
+                  <PlanField id="trade-actual-mode" label={t('field.actualResultMode')}>
+                    <Select
+                      id="trade-actual-mode"
+                      value={values.actualResultMode}
+                      onChange={(event) => {
+                        const mode = event.target.value as 'price' | 'money';
+                        setField('actualResultMode', mode);
+                        if (mode === 'price') setPriceOpen(false);
+                      }}
+                    >
+                      <option value="price">{t('lifecycle.execution.priceMode')}</option>
+                      <option value="money">{t('lifecycle.execution.moneyMode')}</option>
+                    </Select>
+                  </PlanField>
+                  {values.actualResultMode === 'price' ? (
+                    <div className="grid gap-5">
+                      <div className="grid gap-5 sm:grid-cols-2">
+                        <DecimalField
+                          id="trade-entry"
+                          field="plannedEntry"
+                          label={t('field.entry')}
+                          values={values}
+                          setField={setField}
+                          error={fieldError('plannedEntry')}
+                        />
+                        <DecimalField
+                          id="trade-stop"
+                          field="plannedStop"
+                          label={t('field.stopLoss')}
+                          values={values}
+                          setField={setField}
+                          error={fieldError('plannedStop')}
+                        />
+                        <DecimalField
+                          id="trade-target"
+                          field="plannedTarget"
+                          label={t('field.takeProfit')}
+                          values={values}
+                          setField={setField}
+                          error={fieldError('plannedTarget')}
+                          optional
+                        />
+                        <DecimalField
+                          id="trade-position-size"
+                          field="plannedPositionSize"
+                          label={t('field.positionSizeSimple')}
+                          values={values}
+                          setField={setField}
+                          error={fieldError('plannedPositionSize')}
+                          optional
+                        />
+                      </div>
+                      {liveSnapshot !== null &&
+                      liveSnapshot.ok &&
+                      !liveSnapshot.value.mismatch &&
+                      liveSnapshot.value.plannedR !== null ? (
+                        <div className="border-border bg-muted/30 rounded-lg border p-3 text-sm">
+                          {t('create.plan.previewR', {
+                            value: formatR(liveSnapshot.value.plannedR) ?? '—',
+                          })}
+                        </div>
+                      ) : null}
+                      <label className="border-border flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={executionDiffers}
+                          onChange={(event) => setExecutionDifference(event.target.checked)}
+                          className="mt-0.5 size-4 shrink-0"
+                        />
+                        <span>
+                          <span className="block font-medium">
+                            {t('create.executionDiffers.label')}
+                          </span>
+                          <span className="text-muted-foreground mt-1 block text-xs">
+                            {t('create.executionDiffers.description')}
+                          </span>
+                        </span>
+                      </label>
+                      {executionDiffers ? (
+                        <div className="border-border grid gap-4 border-t pt-4">
+                          <h4 className="text-sm font-semibold">
+                            {t('create.executionDiffers.title')}
+                          </h4>
+                          <div className="grid gap-5 sm:grid-cols-2">
+                            <DecimalField
+                              id="trade-actual-entry"
+                              field="actualEntry"
+                              label={t('field.actualEntry')}
+                              values={values}
+                              setField={setField}
+                              error={fieldError('actualEntry')}
+                            />
+                            <DecimalField
+                              id="trade-actual-stop"
+                              field="actualInitialStop"
+                              label={t('field.actualStopLoss')}
+                              values={values}
+                              setField={setField}
+                              error={fieldError('actualInitialStop')}
+                            />
+                            <DecimalField
+                              id="trade-actual-size"
+                              field="actualPositionSize"
+                              label={t('field.actualPositionSize')}
+                              values={values}
+                              setField={setField}
+                              error={fieldError('actualPositionSize')}
+                              optional
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground text-xs">
+                          {t('create.plan.sharedExecutionHint')}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <DecimalField
+                        id="trade-actual-risk"
+                        field="actualInitialRiskMinor"
+                        label={t('field.initialRisk')}
+                        hint={
+                          selectedAccount === undefined
+                            ? undefined
+                            : t('lifecycle.execution.moneyHint', {
+                                currency: selectedAccount.baseCurrency,
+                              })
+                        }
+                        values={values}
+                        setField={setField}
+                        error={fieldError('actualInitialRiskMinor')}
+                      />
+                      <DecimalField
+                        id="trade-actual-size"
+                        field="actualPositionSize"
+                        label={t('field.positionSizeSimple')}
+                        values={values}
+                        setField={setField}
+                        error={fieldError('actualPositionSize')}
+                        optional
+                      />
+                    </div>
+                  )}
+                  <PlanField
+                    id="trade-entered-at"
+                    label={t('field.enteredAt')}
+                    hint={t('lifecycle.execution.timezoneHint', { timezone })}
+                    error={fieldError('enteredAt')}
+                  >
+                    <Input
+                      id="trade-entered-at"
+                      type="datetime-local"
+                      value={enteredAtValue}
+                      onChange={(event) => setField('enteredAt', event.target.value)}
+                      aria-invalid={fieldError('enteredAt') !== undefined}
+                      aria-describedby={
+                        fieldError('enteredAt') === undefined ? undefined : 'trade-entered-at-error'
+                      }
+                    />
+                  </PlanField>
+                </div>
+
+                {values.actualResultMode === 'money' ? (
+                  <PlanRepresentationToggle
+                    title={t('create.plan.priceTitle')}
+                    isOpen={priceOpen}
+                    onOpen={() => setPriceOpen(true)}
+                    onClose={closePriceSection}
+                    addLabel={t('create.plan.addPrice')}
+                    hideLabel={t('create.plan.hidePrice')}
+                    canClose
+                  >
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <DecimalField
+                        id="trade-entry"
+                        field="plannedEntry"
+                        label={t('field.entry')}
+                        values={values}
+                        setField={setField}
+                        error={fieldError('plannedEntry')}
+                      />
+                      <DecimalField
+                        id="trade-stop"
+                        field="plannedStop"
+                        label={t('field.stopLoss')}
+                        values={values}
+                        setField={setField}
+                        error={fieldError('plannedStop')}
+                      />
+                      <DecimalField
+                        id="trade-target"
+                        field="plannedTarget"
+                        label={t('field.takeProfit')}
+                        values={values}
+                        setField={setField}
+                        error={fieldError('plannedTarget')}
+                        optional
+                      />
+                      <DecimalField
+                        id="trade-position-size"
+                        field="plannedPositionSize"
+                        label={t('field.positionSizeSimple')}
+                        values={values}
+                        setField={setField}
+                        error={fieldError('plannedPositionSize')}
+                        optional
+                      />
+                    </div>
+                  </PlanRepresentationToggle>
+                ) : null}
+
+                <PlanRepresentationToggle
+                  title={t('create.plan.moneyTitle')}
+                  isOpen={moneyOpen}
+                  onOpen={() => setMoneyOpen(true)}
+                  onClose={closeMoneySection}
+                  addLabel={t('create.plan.addMoney')}
+                  hideLabel={t('create.plan.hideMoney')}
+                  canClose
+                >
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <DecimalField
+                      id="trade-risk"
+                      field="plannedRiskMinor"
+                      label={t('field.plannedRisk')}
+                      hint={
+                        selectedAccount === undefined
+                          ? undefined
+                          : t('lifecycle.execution.moneyHint', {
+                              currency: selectedAccount.baseCurrency,
+                            })
+                      }
+                      values={values}
+                      setField={setField}
+                      error={fieldError('plannedRiskMinor')}
+                    />
+                    <DecimalField
+                      id="trade-reward"
+                      field="plannedRewardMinor"
+                      label={t('field.plannedReward')}
+                      values={values}
+                      setField={setField}
+                      error={fieldError('plannedRewardMinor')}
+                      optional
+                    />
+                  </div>
+                </PlanRepresentationToggle>
+
+                {liveSnapshot !== null && liveSnapshot.ok && liveSnapshot.value.mismatch ? (
+                  <div
+                    role="alert"
+                    className="border-destructive/40 bg-destructive/10 text-destructive rounded-lg border p-4 text-sm"
+                  >
+                    <p className="font-medium">{t('create.plan.mismatchTitle')}</p>
+                    <p className="mt-1">
+                      {t('create.plan.mismatchBody', {
+                        priceR: formatR(liveSnapshot.value.priceR) ?? '—',
+                        moneyR: formatR(liveSnapshot.value.moneyR) ?? '—',
+                      })}
+                    </p>
+                  </div>
+                ) : values.actualResultMode === 'money' &&
+                  liveSnapshot !== null &&
+                  liveSnapshot.ok &&
+                  liveSnapshot.value.plannedR !== null ? (
+                  <div className="border-border bg-muted/30 rounded-lg border p-3 text-sm">
+                    {t('create.plan.previewR', {
+                      value: formatR(liveSnapshot.value.plannedR) ?? '—',
+                    })}
+                    {liveSnapshot.value.source === 'both'
+                      ? ` · ${t('create.plan.previewAgree')}`
+                      : ''}
+                  </div>
+                ) : null}
+              </div>
+            </fieldset>
+          </div>
+        ) : null}
+
+        {activeView === 'setup' ? (
+          <div id="new-trade-setup-panel" className="grid gap-8">
+            <fieldset className="grid gap-5">
+              <legend className="text-label text-muted-foreground uppercase">
+                {t('create.strategyTitle')}
+              </legend>
+              <p className="text-muted-foreground text-sm">{t('create.strategyDescription')}</p>
+              <PlanField
+                id="trade-strategy"
+                label={t('field.strategy')}
+                error={fieldError('strategyId')}
               >
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <DecimalField
-                    id="trade-entry"
-                    field="plannedEntry"
-                    label={t('field.entry')}
-                    values={values}
-                    setField={setField}
-                    error={fieldError('plannedEntry')}
-                  />
-                  <DecimalField
-                    id="trade-stop"
-                    field="plannedStop"
-                    label={t('field.stop')}
-                    values={values}
-                    setField={setField}
-                    error={fieldError('plannedStop')}
-                  />
-                  <DecimalField
-                    id="trade-target"
-                    field="plannedTarget"
-                    label={t('field.target')}
-                    values={values}
-                    setField={setField}
-                    error={fieldError('plannedTarget')}
-                    optional
-                  />
-                  <DecimalField
-                    id="trade-position-size"
-                    field="plannedPositionSize"
-                    label={t('field.positionSize')}
-                    values={values}
-                    setField={setField}
-                    error={fieldError('plannedPositionSize')}
-                    optional
-                  />
-                </div>
-              </PlanRepresentationToggle>
-            ) : null}
-
-            <PlanRepresentationToggle
-              title={t('create.plan.moneyTitle')}
-              isOpen={moneyOpen}
-              onOpen={() => setMoneyOpen(true)}
-              onClose={closeMoneySection}
-              addLabel={t('create.plan.addMoney')}
-              hideLabel={t('create.plan.hideMoney')}
-              canClose={priceOpen}
-            >
-              <div className="grid gap-5 sm:grid-cols-2">
-                <DecimalField
-                  id="trade-risk"
-                  field="plannedRiskMinor"
-                  label={t('field.plannedRisk')}
-                  hint={
-                    selectedAccount === undefined
-                      ? undefined
-                      : t('lifecycle.execution.moneyHint', {
-                          currency: selectedAccount.baseCurrency,
-                        })
+                <Select
+                  id="trade-strategy"
+                  value={values.strategyId}
+                  onChange={(event) => handleStrategyChange(event.target.value)}
+                  aria-invalid={fieldError('strategyId') !== undefined}
+                  aria-describedby={
+                    fieldError('strategyId') === undefined ? undefined : 'trade-strategy-error'
                   }
-                  values={values}
-                  setField={setField}
-                  error={fieldError('plannedRiskMinor')}
+                >
+                  <option value="">{t('create.chooseStrategy')}</option>
+                  {options.strategies.map((strategy) => (
+                    <option key={strategy.strategyId} value={strategy.strategyId}>
+                      {strategy.name}
+                    </option>
+                  ))}
+                </Select>
+              </PlanField>
+              <PlanField id="trade-setup" label={t('field.setup')} error={fieldError('setupId')}>
+                <Select
+                  id="trade-setup"
+                  value={values.setupId}
+                  disabled={selectedStrategy === undefined}
+                  onChange={(event) => handleSetupChange(event.target.value)}
+                  aria-invalid={fieldError('setupId') !== undefined}
+                  aria-describedby={
+                    fieldError('setupId') === undefined ? undefined : 'trade-setup-error'
+                  }
+                >
+                  <option value="">{t('create.chooseSetup')}</option>
+                  {(selectedStrategy?.setups ?? []).map((setup) => (
+                    <option key={setup.setupId} value={setup.setupId}>
+                      {setup.name}
+                    </option>
+                  ))}
+                </Select>
+              </PlanField>
+              {selectedStrategy !== undefined && selectedStrategy.setups.length === 0 ? (
+                <p className="border-warning/30 bg-warning/10 rounded-md border p-3 text-sm">
+                  {t('prerequisite.noSetupDescription')}{' '}
+                  <Link
+                    href={`/app/strategies?strategy=${selectedStrategy.strategyId}`}
+                    className="text-primary inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline"
+                  >
+                    {t('prerequisite.manageStrategies')}
+                  </Link>
+                </p>
+              ) : null}
+            </fieldset>
+
+            <div className="grid gap-5">
+              <h3 className="text-label text-muted-foreground uppercase">
+                {t('create.sections.context')}
+              </h3>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <TradeQuickSelectField
+                  id="trade-timeframe"
+                  label={t('field.timeframe')}
+                  value={values.timeframe}
+                  onChange={(value) => setField('timeframe', value)}
+                  favorites={timeframeFavorites.favorites}
+                  recents={timeframeFavorites.recents}
+                  suggestions={TIMEFRAME_QUICK_SUGGESTIONS}
+                  onToggleFavorite={timeframeFavorites.toggle}
+                  optional
                 />
-                <DecimalField
-                  id="trade-reward"
-                  field="plannedRewardMinor"
-                  label={t('field.plannedReward')}
-                  values={values}
-                  setField={setField}
-                  error={fieldError('plannedRewardMinor')}
+                <TradeQuickSelectField
+                  id="trade-session"
+                  label={t('field.session')}
+                  value={values.session}
+                  onChange={(value) => setField('session', value)}
+                  favorites={sessionFavorites.favorites}
+                  recents={sessionFavorites.recents}
+                  suggestions={SESSION_QUICK_SUGGESTIONS}
+                  onToggleFavorite={sessionFavorites.toggle}
                   optional
                 />
               </div>
-            </PlanRepresentationToggle>
-
-            {liveSnapshot !== null && liveSnapshot.ok && liveSnapshot.value.mismatch ? (
-              <div
-                role="alert"
-                className="border-destructive/40 bg-destructive/10 text-destructive rounded-lg border p-4 text-sm"
-              >
-                <p className="font-medium">{t('create.plan.mismatchTitle')}</p>
-                <p className="mt-1">
-                  {t('create.plan.mismatchBody', {
-                    priceR: formatR(liveSnapshot.value.priceR) ?? '—',
-                    moneyR: formatR(liveSnapshot.value.moneyR) ?? '—',
-                  })}
-                </p>
-              </div>
-            ) : values.actualResultMode === 'money' &&
-              liveSnapshot !== null &&
-              liveSnapshot.ok &&
-              liveSnapshot.value.plannedR !== null ? (
-              <div className="border-border bg-muted/30 rounded-lg border p-3 text-sm">
-                {t('create.plan.previewR', {
-                  value: formatR(liveSnapshot.value.plannedR) ?? '—',
-                })}
-                {liveSnapshot.value.source === 'both' ? ` · ${t('create.plan.previewAgree')}` : ''}
-              </div>
-            ) : null}
-          </div>
-
-          <fieldset className="grid gap-5">
-            <legend className="text-label text-muted-foreground uppercase">
-              {t('create.strategyTitle')}
-            </legend>
-            <p className="text-muted-foreground text-sm">{t('create.strategyDescription')}</p>
-            <PlanField
-              id="trade-strategy"
-              label={t('field.strategy')}
-              error={fieldError('strategyId')}
-            >
-              <Select
-                id="trade-strategy"
-                value={values.strategyId}
-                onChange={(event) => handleStrategyChange(event.target.value)}
-                aria-invalid={fieldError('strategyId') !== undefined}
-                aria-describedby={
-                  fieldError('strategyId') === undefined ? undefined : 'trade-strategy-error'
-                }
-              >
-                <option value="">{t('create.chooseStrategy')}</option>
-                {options.strategies.map((strategy) => (
-                  <option key={strategy.strategyId} value={strategy.strategyId}>
-                    {strategy.name} ·{' '}
-                    {t('common.version', { number: strategy.currentVersionNumber })}
-                  </option>
-                ))}
-              </Select>
-            </PlanField>
-            <PlanField id="trade-setup" label={t('field.setup')} error={fieldError('setupId')}>
-              <Select
-                id="trade-setup"
-                value={values.setupId}
-                disabled={selectedStrategy === undefined}
-                onChange={(event) => handleSetupChange(event.target.value)}
-                aria-invalid={fieldError('setupId') !== undefined}
-                aria-describedby={
-                  fieldError('setupId') === undefined ? undefined : 'trade-setup-error'
-                }
-              >
-                <option value="">{t('create.chooseSetup')}</option>
-                {(selectedStrategy?.setups ?? []).map((setup) => (
-                  <option key={setup.setupId} value={setup.setupId}>
-                    {setup.name}
-                  </option>
-                ))}
-              </Select>
-            </PlanField>
-            {selectedStrategy !== undefined && selectedStrategy.setups.length === 0 ? (
-              <p className="border-warning/30 bg-warning/10 rounded-md border p-3 text-sm">
-                {t('prerequisite.noSetupDescription')}{' '}
-                <Link
-                  href={`/app/strategies?strategy=${selectedStrategy.strategyId}`}
-                  className="text-primary inline-flex min-h-11 items-center font-medium underline-offset-4 hover:underline"
-                >
-                  {t('prerequisite.manageStrategies')}
-                </Link>
-              </p>
-            ) : null}
-          </fieldset>
-
-          <div className="grid gap-5">
-            <h3 className="text-label text-muted-foreground uppercase">
-              {t('create.sections.context')}
-            </h3>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <TradeQuickSelectField
-                id="trade-timeframe"
-                label={t('field.timeframe')}
-                value={values.timeframe}
-                onChange={(value) => setField('timeframe', value)}
-                favorites={timeframeFavorites.favorites}
-                recents={timeframeFavorites.recents}
-                suggestions={TIMEFRAME_QUICK_SUGGESTIONS}
-                onToggleFavorite={timeframeFavorites.toggle}
-                optional
-              />
-              <TradeQuickSelectField
-                id="trade-session"
-                label={t('field.session')}
-                value={values.session}
-                onChange={(value) => setField('session', value)}
-                favorites={sessionFavorites.favorites}
-                recents={sessionFavorites.recents}
-                suggestions={SESSION_QUICK_SUGGESTIONS}
-                onToggleFavorite={sessionFavorites.toggle}
-                optional
-              />
             </div>
-          </div>
 
-          <section aria-labelledby="trade-conditions-title" className="grid gap-3">
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <h3
-                  id="trade-conditions-title"
-                  className="text-label text-muted-foreground uppercase"
-                >
-                  {t('create.sections.conditions')}
-                </h3>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  {t('create.conditions.description')}
-                </p>
-              </div>
-              {conditionCount === 0 ? null : (
-                <output className="text-sm font-medium" aria-live="polite">
-                  {t('create.conditions.adherence', {
-                    met: metConditionCount,
-                    total: conditionCount,
-                    percentage: conditionPercentage ?? 0,
-                  })}
-                </output>
-              )}
-            </div>
-            {selectedSetup === undefined ? (
-              <p className="border-border bg-muted/30 rounded-md border p-4 text-sm">
-                {t('create.conditions.chooseSetup')}
-              </p>
-            ) : conditionCount === 0 ? (
-              <p className="border-border bg-muted/30 rounded-md border p-4 text-sm">
-                {t('create.conditions.notConfigured')}
-              </p>
-            ) : (
-              <div className="grid gap-2">
-                {selectedSetup.conditions.map((condition) => (
-                  <label
-                    key={condition.conditionKey}
-                    className="border-border hover:bg-accent/40 flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm"
+            <section aria-labelledby="trade-conditions-title" className="grid gap-3">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h3
+                    id="trade-conditions-title"
+                    className="text-label text-muted-foreground uppercase"
                   >
-                    <input
-                      type="checkbox"
-                      checked={conditionMetByKey[condition.conditionKey] === true}
-                      onChange={(event) =>
-                        setConditionMetByKey((current) => ({
-                          ...current,
-                          [condition.conditionKey]: event.target.checked,
-                        }))
-                      }
-                      className="mt-0.5 size-4 shrink-0"
-                    />
-                    <span>{condition.label}</span>
-                  </label>
-                ))}
+                    {t('create.sections.conditions')}
+                  </h3>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    {t('create.conditions.description')}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {t('create.conditions.context')}
+                  </p>
+                </div>
+                {conditionCount === 0 ? null : (
+                  <output className="text-sm font-medium" aria-live="polite">
+                    {t('create.conditions.adherence', {
+                      met: metConditionCount,
+                      total: conditionCount,
+                      percentage: conditionPercentage ?? 0,
+                    })}
+                  </output>
+                )}
               </div>
-            )}
-          </section>
-
-          <div className="grid gap-3">
-            <h3 className="text-label text-muted-foreground uppercase">
-              {t('create.sections.confidence')}
-            </h3>
-            <TradeConfidenceControl
-              id="trade-confidence"
-              label={t('field.confidence')}
-              value={confidenceNum ?? null}
-              onChange={(next) => setField('confidence', next === null ? '' : String(next))}
-            />
+              {selectedSetup === undefined ? (
+                <p className="border-border bg-muted/30 rounded-md border p-4 text-sm">
+                  {t('create.conditions.chooseSetup')}
+                </p>
+              ) : conditionCount === 0 ? (
+                <p className="border-border bg-muted/30 rounded-md border p-4 text-sm">
+                  {t('create.conditions.notConfigured')}
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {selectedSetup.conditions.map((condition) => (
+                    <label
+                      key={condition.conditionKey}
+                      className="border-border hover:bg-accent/40 flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={conditionMetByKey[condition.conditionKey] === true}
+                        onChange={(event) =>
+                          setConditionMetByKey((current) => ({
+                            ...current,
+                            [condition.conditionKey]: event.target.checked,
+                          }))
+                        }
+                        className="mt-0.5 size-4 shrink-0"
+                      />
+                      <span>{condition.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
+        ) : null}
 
-          <fieldset className="grid gap-3">
-            <legend className="text-label text-muted-foreground uppercase">
-              {t('create.sections.emotions')}
-            </legend>
-            <p className="text-muted-foreground text-sm">{t('create.emotions.description')}</p>
-            <div className="flex flex-wrap gap-2">
-              {options.emotionCatalog.map((emotion) => {
-                const selected = emotionKeys.includes(emotion.key);
-                return (
+        {activeView === 'entry' ? (
+          <div id="new-trade-entry-panel" className="grid gap-8">
+            <div className="grid gap-3">
+              <h3 className="text-label text-muted-foreground uppercase">
+                {t('create.sections.confidence')}
+              </h3>
+              <TradeConfidenceControl
+                id="trade-confidence"
+                label={t('field.confidence')}
+                value={confidenceNum ?? null}
+                onChange={(next) => setField('confidence', next === null ? '' : String(next))}
+              />
+            </div>
+
+            <fieldset className="grid gap-3">
+              <legend className="text-label text-muted-foreground uppercase">
+                {t('create.sections.emotions')}
+              </legend>
+              <p className="text-muted-foreground text-sm">{t('create.emotions.description')}</p>
+              <div className="flex flex-wrap gap-2">
+                {options.emotionCatalog.map((emotion) => {
+                  const selected = emotionKeys.includes(emotion.key);
+                  return (
+                    <button
+                      key={emotion.key}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setEmotionKeys((current) =>
+                          current.includes(emotion.key)
+                            ? current.filter((key) => key !== emotion.key)
+                            : [...current, emotion.key],
+                        )
+                      }
+                      className={cn(
+                        'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors',
+                        selected
+                          ? 'border-primary bg-primary/10 text-foreground ring-primary/25 ring-2'
+                          : 'border-border bg-card hover:bg-accent/50',
+                      )}
+                    >
+                      {selected ? <Check aria-hidden="true" size={15} /> : null}
+                      {t(`emotions.${emotion.key}`)}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <div className="grid gap-3">
+              <h3 className="text-label text-muted-foreground uppercase">
+                {t('create.sections.entryReason')}
+              </h3>
+              <PlanField id="trade-confirmation" label={t('create.sections.entryReason')} optional>
+                <Textarea
+                  id="trade-confirmation"
+                  value={values.confirmationNotes}
+                  onChange={(event) => setField('confirmationNotes', event.target.value)}
+                />
+              </PlanField>
+            </div>
+
+            <div className="grid gap-3">
+              <h3 className="text-label text-muted-foreground uppercase">
+                {t('create.sections.chart')}
+              </h3>
+              {options.chartUploadConfigured ? (
+                <div className="flex gap-2">
                   <button
-                    key={emotion.key}
                     type="button"
-                    aria-pressed={selected}
-                    onClick={() =>
-                      setEmotionKeys((current) =>
-                        current.includes(emotion.key)
-                          ? current.filter((key) => key !== emotion.key)
-                          : [...current, emotion.key],
-                      )
-                    }
+                    aria-pressed={chartTab === 'link'}
+                    onClick={() => setChartTab('link')}
                     className={cn(
-                      'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors',
-                      selected
-                        ? 'border-primary bg-primary/10 text-foreground ring-primary/25 ring-2'
-                        : 'border-border bg-card hover:bg-accent/50',
+                      'inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
+                      chartTab === 'link'
+                        ? 'border-primary bg-primary/10 text-foreground'
+                        : 'border-border text-muted-foreground hover:bg-accent/50',
                     )}
                   >
-                    {selected ? <Check aria-hidden="true" size={15} /> : null}
-                    {t(`emotions.${emotion.key}`)}
+                    <Link2 aria-hidden="true" size={14} />
+                    {t('create.chart.linkOption')}
                   </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <div className="grid gap-3">
-            <h3 className="text-label text-muted-foreground uppercase">
-              {t('create.sections.entryReason')}
-            </h3>
-            <PlanField id="trade-confirmation" label={t('create.sections.entryReason')} optional>
-              <Textarea
-                id="trade-confirmation"
-                value={values.confirmationNotes}
-                onChange={(event) => setField('confirmationNotes', event.target.value)}
-              />
-            </PlanField>
-          </div>
-
-          <div className="grid gap-3">
-            <h3 className="text-label text-muted-foreground uppercase">
-              {t('create.sections.chart')}
-            </h3>
-            {options.chartUploadConfigured ? (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  aria-pressed={chartTab === 'link'}
-                  onClick={() => setChartTab('link')}
-                  className={cn(
-                    'inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
-                    chartTab === 'link'
-                      ? 'border-primary bg-primary/10 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent/50',
-                  )}
-                >
-                  <Link2 aria-hidden="true" size={14} />
-                  {t('create.chart.linkOption')}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={chartTab === 'upload'}
-                  onClick={() => setChartTab('upload')}
-                  className={cn(
-                    'inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
-                    chartTab === 'upload'
-                      ? 'border-primary bg-primary/10 text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-accent/50',
-                  )}
-                >
-                  <ImageIcon aria-hidden="true" size={14} />
-                  {t('create.chart.uploadOption')}
-                </button>
-              </div>
-            ) : null}
-            {options.chartUploadConfigured && chartTab === 'upload' ? (
-              <ChartUploadPanel
-                t={t}
-                state={uploadState}
-                onFileSelected={(file) => void handleFileSelected(file)}
-                onRemove={handleRemoveUpload}
-              />
-            ) : (
-              <PlanField
-                id="trade-tv"
-                label={t('field.tradingViewUrl')}
-                optional
-                error={fieldError('tradingviewUrl')}
-              >
-                <Input
-                  id="trade-tv"
-                  type="url"
-                  value={values.tradingviewUrl}
-                  onChange={(event) => setField('tradingviewUrl', event.target.value)}
-                  aria-invalid={fieldError('tradingviewUrl') !== undefined}
-                  aria-describedby={
-                    fieldError('tradingviewUrl') === undefined ? undefined : 'trade-tv-error'
-                  }
+                  <button
+                    type="button"
+                    aria-pressed={chartTab === 'upload'}
+                    onClick={() => setChartTab('upload')}
+                    className={cn(
+                      'inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
+                      chartTab === 'upload'
+                        ? 'border-primary bg-primary/10 text-foreground'
+                        : 'border-border text-muted-foreground hover:bg-accent/50',
+                    )}
+                  >
+                    <ImageIcon aria-hidden="true" size={14} />
+                    {t('create.chart.uploadOption')}
+                  </button>
+                </div>
+              ) : null}
+              {options.chartUploadConfigured && chartTab === 'upload' ? (
+                <ChartUploadPanel
+                  t={t}
+                  state={uploadState}
+                  onFileSelected={(file) => void handleFileSelected(file)}
+                  onRemove={handleRemoveUpload}
                 />
-              </PlanField>
+              ) : (
+                <PlanField
+                  id="trade-tv"
+                  label={t('field.tradingViewUrl')}
+                  optional
+                  error={fieldError('tradingviewUrl')}
+                >
+                  <Input
+                    id="trade-tv"
+                    type="url"
+                    value={values.tradingviewUrl}
+                    onChange={(event) => setField('tradingviewUrl', event.target.value)}
+                    aria-invalid={fieldError('tradingviewUrl') !== undefined}
+                    aria-describedby={
+                      fieldError('tradingviewUrl') === undefined ? undefined : 'trade-tv-error'
+                    }
+                  />
+                </PlanField>
+              )}
+            </div>
+
+            <details className="border-border rounded-md border p-4">
+              <summary className="cursor-pointer text-sm font-medium">
+                {t('create.sections.notes')}
+              </summary>
+              <div className="mt-4">
+                <PlanField id="trade-notes" label={t('field.notes')} optional>
+                  <Textarea
+                    id="trade-notes"
+                    value={values.notes}
+                    onChange={(event) => setField('notes', event.target.value)}
+                  />
+                </PlanField>
+              </div>
+            </details>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+          <div>
+            {activeView === 'trade' ? (
+              <Button type="button" variant="outline" onClick={() => showView('setup')}>
+                {t('create.continueOptional')}
+              </Button>
+            ) : activeView === 'setup' ? (
+              <Button type="button" variant="outline" onClick={() => showView('entry')}>
+                {t('create.continueAtEntry')}
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" onClick={() => showView('trade')}>
+                {t('create.backToTrade')}
+              </Button>
             )}
           </div>
-
-          <details className="border-border rounded-md border p-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              {t('create.sections.notes')}
-            </summary>
-            <div className="mt-4">
-              <PlanField id="trade-notes" label={t('field.notes')} optional>
-                <Textarea
-                  id="trade-notes"
-                  value={values.notes}
-                  onChange={(event) => setField('notes', event.target.value)}
-                />
-              </PlanField>
-            </div>
-          </details>
-        </fieldset>
-
-        <div className="flex justify-end border-t pt-5">
           <Button type="submit" disabled={isPending}>
             <Check aria-hidden="true" />
             {isPending ? t('create.creating') : t('create.saveTrade')}

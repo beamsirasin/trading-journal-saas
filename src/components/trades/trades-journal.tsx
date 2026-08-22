@@ -2,7 +2,7 @@ import { BookOpen, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
-import type { TradesView } from '@/lib/trades/view';
+import type { TradesAttention, TradesView } from '@/lib/trades/view';
 import { cn } from '@/lib/utils';
 import type { WorkspaceTradeDaySummary } from '@/server/dal/trade-calendar';
 import type {
@@ -40,6 +40,7 @@ export interface TradesJournalCalendarProps {
 
 export function TradesJournal({
   view,
+  attention,
   trades,
   nextCursor,
   currentCursor,
@@ -54,6 +55,7 @@ export function TradesJournal({
   calendar,
 }: {
   view: TradesView;
+  attention: TradesAttention;
   trades: readonly TradeListView[];
   nextCursor: string | null;
   currentCursor: string | null;
@@ -117,8 +119,19 @@ export function TradesJournal({
           </div>
         ) : null}
         <section aria-labelledby="trade-log-heading" className="border-border border-t pt-6">
-          <JournalLogHeader isDayFiltered={isDayFiltered} />
-          {isDayFiltered ? (
+          <JournalLogHeader isDayFiltered={isDayFiltered} attention={attention} />
+          {attention === 'system-pending' ? (
+            <EmptyState
+              icon={BookOpen}
+              title={t('list.pendingEmptyTitle')}
+              description={t('list.pendingEmptyDescription')}
+              action={
+                <Button asChild variant="outline">
+                  <Link href="/app/trades?view=log">{t('list.showAll')}</Link>
+                </Button>
+              }
+            />
+          ) : isDayFiltered ? (
             <EmptyState
               icon={BookOpen}
               title={t('calendar.empty.title')}
@@ -167,7 +180,7 @@ export function TradesJournal({
         </div>
       ) : null}
       <section aria-labelledby="trade-log-heading" className="border-border border-t pt-6">
-        <JournalLogHeader isDayFiltered={isDayFiltered} />
+        <JournalLogHeader isDayFiltered={isDayFiltered} attention={attention} />
         <div
           className={cn(
             'grid min-w-0 items-start gap-6',
@@ -199,7 +212,13 @@ export function TradesJournal({
   );
 }
 
-function JournalLogHeader({ isDayFiltered }: { readonly isDayFiltered: boolean }) {
+function JournalLogHeader({
+  isDayFiltered,
+  attention,
+}: {
+  readonly isDayFiltered: boolean;
+  readonly attention: TradesAttention;
+}) {
   const t = useTranslations('trades.list');
   return (
     <div className="mb-4">
@@ -207,7 +226,13 @@ function JournalLogHeader({ isDayFiltered }: { readonly isDayFiltered: boolean }
         {t('title')}
       </h2>
       <p className="text-muted-foreground mt-1 text-sm">
-        {t(isDayFiltered ? 'descriptionDay' : 'description')}
+        {t(
+          attention === 'system-pending'
+            ? 'descriptionPending'
+            : isDayFiltered
+              ? 'descriptionDay'
+              : 'description',
+        )}
       </p>
     </div>
   );

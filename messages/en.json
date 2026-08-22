@@ -145,7 +145,7 @@
   "workflow": {
     "eyebrow": "How it works",
     "title": "Six steps, entered by hand, on purpose",
-    "description": "The counterfactual — what the rules would have done — does not exist in any broker feed. Only you know it, so only you can record it.",
+    "description": "A rule-based System result does not exist in any broker feed. You record what the rules would have done.",
     "steps": {
       "record": {
         "title": "Record the trade",
@@ -550,6 +550,10 @@
       "title": "Trade Log",
       "description": "Scan your journal, then open a Trade only when you need the full detail.",
       "descriptionDay": "Trades matching the day selected in the Calendar.",
+      "descriptionPending": "Only Trades whose System outcome still needs review.",
+      "pendingEmptyTitle": "No pending System outcomes",
+      "pendingEmptyDescription": "Every System outcome in this journal has been reviewed.",
+      "showAll": "Show all Trades",
       "trade": "Trade",
       "date": "Date",
       "strategy": "Strategy",
@@ -597,7 +601,7 @@
       "symbol": "Symbol",
       "direction": "Direction",
       "executionStatus": "Execution status",
-      "actualResultMode": "Actual result mode",
+      "actualResultMode": "How result is recorded",
       "systemStatus": "System status",
       "entry": "Entry",
       "stop": "Stop",
@@ -605,6 +609,7 @@
       "stopLoss": "Stop Loss",
       "takeProfit": "Take Profit",
       "positionSize": "Planned position size",
+      "positionSizeSimple": "Position Size",
       "plannedRisk": "Planned risk",
       "plannedReward": "Planned reward",
       "plannedR": "Planned R",
@@ -620,6 +625,7 @@
       "enteredAt": "Entered",
       "exitedAt": "Exited",
       "actualEntry": "Actual entry",
+      "actualStopLoss": "Actual Stop Loss",
       "initialStop": "Initial Stop",
       "actualPositionSize": "Actual position size",
       "initialRisk": "Initial risk",
@@ -638,7 +644,7 @@
       "traderOutcome": "Trader outcome",
       "systemExitedAt": "System exited",
       "systemExitReason": "Reason",
-      "systemResolutionKind": "Resolution basis",
+      "systemResolutionKind": "How result was calculated",
       "systemCostR": "System Cost R",
       "systemR": "System R",
       "systemOutcome": "System outcome",
@@ -680,7 +686,14 @@
         "logged": "Logged {date}",
         "checklistCount": "{met}/{total} recorded",
         "viewEntrySnapshot": "View Entry Snapshot",
-        "showDetails": "Show full details"
+        "showDetails": "Show full details",
+        "administration": "Trade administration"
+      },
+      "actualGroups": {
+        "tradePlan": "Trade Plan",
+        "position": "Position",
+        "exits": "Exits",
+        "actions": "Actions"
       },
       "nav": {
         "label": "Trade sections",
@@ -771,7 +784,7 @@
       "system": {
         "resolve": "Resolve System result",
         "resolveTitle": "Resolve the System result",
-        "resolveDescription": "Confirm the counterfactual exit primitives. System R and outcome are calculated by the server.",
+        "resolveDescription": "Confirm what the rules would have done at exit. System R and outcome are calculated automatically.",
         "confirmResolve": "Confirm resolved result",
         "noTrade": "Mark no trade",
         "noTradeTitle": "Mark the System result as no trade?",
@@ -794,7 +807,7 @@
         "previewCost": "Cost",
         "previewSystem": "System",
         "costHint": "Enter System Cost R directly. System R is calculated by the server.",
-        "correctionNoTradeWarning": "Saving will replace the resolved counterfactual with No trade. The actual execution remains unchanged."
+        "correctionNoTradeWarning": "Saving will replace the resolved rule-based result with No trade. The actual execution remains unchanged."
       },
       "rules": { "statusFor": "Rule status for {title}" },
       "mistakes": {
@@ -880,10 +893,16 @@
       "accountDescription": "Only active Trading Accounts are available.",
       "chooseAccount": "Choose an account",
       "strategyTitle": "Strategy & Setup",
-      "strategyDescription": "Optional — classify now, or add it later from the Trade. The server pins the current Version whenever it's assigned.",
+      "strategyDescription": "Optional — classify now, or add it later from the Trade.",
       "chooseStrategy": "Choose a Strategy",
       "chooseSetup": "Choose a Setup",
       "planTitle": "Trade Details",
+      "views": {
+        "label": "New Trade sections",
+        "trade": "Trade",
+        "setup": "Setup",
+        "entry": "At Entry"
+      },
       "sections": {
         "corePlan": "Core plan",
         "actualExecution": "Actual Execution",
@@ -894,7 +913,8 @@
         "emotions": "How are you feeling?",
         "entryReason": "Entry Reason",
         "chart": "Chart attachment",
-        "notes": "Notes"
+        "notes": "Notes",
+        "tradePlanTitle": "Trade"
       },
       "plan": {
         "priceTitle": "Price",
@@ -908,7 +928,13 @@
         "mismatchBody": "Price implies {priceR}, but Money implies {moneyR}. Adjust one before continuing.",
         "mismatchBlocked": "Price and Money plans disagree — adjust one before continuing.",
         "previewR": "Planned R: {value}",
-        "previewAgree": "Price and Money agree"
+        "previewAgree": "Price and Money agree",
+        "sharedExecutionHint": "Entry, Stop Loss, and Position Size are used for both the plan and actual execution unless you mark that execution differed."
+      },
+      "executionDiffers": {
+        "label": "Execution differed from plan",
+        "title": "Actual execution",
+        "description": "Reveal separate actual values only when the fill or initial stop differed from the plan."
       },
       "quickSelect": {
         "groupLabel": "Quick values for {label}",
@@ -932,6 +958,7 @@
       },
       "conditions": {
         "description": "Check every condition that is met now. Unchecked conditions are saved as Not Met.",
+        "context": "This records what your setup required before entry. Trade Management is where you review what you did after entry.",
         "chooseSetup": "Choose a Setup to load its current Conditions.",
         "notConfigured": "Not configured",
         "adherence": "{met}/{total} met · {percentage}%",
@@ -960,6 +987,9 @@
       },
       "back": "Back",
       "continue": "Continue",
+      "continueOptional": "Continue with optional Setup",
+      "continueAtEntry": "Continue to optional At Entry",
+      "backToTrade": "Back to Trade",
       "create": "Create Trade",
       "saveTrade": "Open Trade",
       "creating": "Creating…"
@@ -1271,7 +1301,7 @@
           "emotionEmpty": "No Emotion data recorded for this analysis",
           "strongestConfidence": "Strongest observed confidence",
           "strongestEmotion": "Strongest observed state",
-          "emotionConcern": "Potential concern"
+          "emotionConcern": "Worth reviewing"
         },
         "avgSuffix": "Avg"
       },
@@ -1295,14 +1325,20 @@
           "title": "Behavior Explore",
           "description": "The full independent Trader and System record behind each recorded Confidence bucket and Emotion group."
         },
-        "tradeManagement": { "title": "Trade Management" },
+        "tradeManagement": {
+          "title": "Trade Management",
+          "description": "What you did after entry, including rule follow-through and recorded mistakes."
+        },
+        "setupChecklist": {
+          "description": "What was true before entry, based on the Setup Checklist recorded at that time."
+        },
         "coverage": {
           "classified": "{count, plural, one {# classified} other {# classified}}",
           "unclassified": "{count, plural, one {# unclassified} other {# unclassified}}"
         },
         "strategyPerformance": {
           "title": "Strategy Performance",
-          "description": "Trader and System performance grouped by Strategy — each axis uses its own eligible population and date semantics.",
+          "description": "Trader and System performance grouped by Strategy. Trader results use closed Trades; System results use resolved outcomes, so counts may differ.",
           "empty": "No Strategy classification yet",
           "onlyOneNote": "Only one classified Strategy in this filtered sample."
         },
@@ -1337,11 +1373,11 @@
       },
       "performance": {
         "title": "System and Trader Performance",
-        "description": "Each side uses its own eligible Trade population, so sample counts may differ."
+        "description": "Trader results use closed Trades. System results use resolved outcomes, so sample counts may differ."
       },
       "system": {
         "title": "System Performance",
-        "description": "The rule-based counterfactual result when the System outcome is resolved. Pending and no-trade outcomes are excluded, not counted as zero.",
+        "description": "What the rules would have produced when the System outcome is resolved. Pending and no-trade outcomes are left out, not counted as zero.",
         "empty": "No eligible System Trades in this scope. Resolve System outcomes to build this view."
       },
       "trader": {
@@ -1372,10 +1408,10 @@
       },
       "comparison": {
         "title": "System vs Trader Comparison",
-        "description": "A paired view using only Trades where both System and actual outcomes are comparable.",
+        "description": "Uses only the same Trades with both a resolved System result and a closed actual result.",
         "comparableTrades": "Comparable Trades",
-        "pairedSystemTotal": "Paired System Total R",
-        "pairedActualTotal": "Paired Actual Total R",
+        "pairedSystemTotal": "System Total R on comparable Trades",
+        "pairedActualTotal": "Actual Total R on comparable Trades",
         "averageExecutionGap": "Average Execution Gap",
         "executionGap": "Execution Gap (Total)",
         "executionEfficiency": "Execution Efficiency",
@@ -1387,7 +1423,7 @@
         "no_losses": "No losing Trades",
         "no_profit_or_loss": "No positive or negative R",
         "no_comparable_trades": "No comparable Trades",
-        "system_has_no_edge": "Paired System total is not positive",
+        "system_has_no_edge": "System total on comparable Trades is not positive",
         "no_rule_checks": "No evaluated Rule checks",
         "no_conditions_applicable": "No Trades with applicable Setup Conditions",
         "no_confidence_recorded": "No Trades with recorded Confidence",
@@ -1407,7 +1443,7 @@
         },
         "system": {
           "title": "System Equity Curve",
-          "description": "Counterfactual cumulative R ordered by System exit time.",
+          "description": "Rule-based cumulative R ordered by System exit time.",
           "caption": "Resolved System outcomes in their canonical exit order.",
           "tableCaption": "System cumulative R values by exit date",
           "empty": "No eligible System equity points in this scope."

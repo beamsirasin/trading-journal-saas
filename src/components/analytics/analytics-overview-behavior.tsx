@@ -10,6 +10,7 @@ import {
 import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
 import { HeroMetric } from '@/components/product/summary-primitives';
 import { ZoneSection } from '@/components/product/zone-section';
+import { Link } from '@/i18n/navigation';
 
 /**
  * Phase 15C — Analytics Overview, BEHAVIOR zone. Confidence and Emotion each
@@ -26,9 +27,11 @@ import { ZoneSection } from '@/components/product/zone-section';
 export function BehaviorZone({
   confidence,
   emotions,
+  exploreHref,
 }: {
   confidence: ConfidenceAnalyticsModel;
   emotions: readonly EmotionGroupModel[];
+  exploreHref: string;
 }) {
   const t = useTranslations('analytics.real');
   const tZones = useTranslations('zones');
@@ -96,12 +99,12 @@ export function BehaviorZone({
         </div>
       </div>
 
-      <a
-        href="#analytics-psychology-heading"
+      <Link
+        href={exploreHref}
         className="text-primary mt-4 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline"
       >
         {t('overview.explore')}
-      </a>
+      </Link>
     </ZoneSection>
   );
 }
