@@ -860,8 +860,8 @@
       "frustrated": "Frustrated"
     },
     "create": {
-      "pageTitle": "Log a planned Trade",
-      "pageDescription": "Capture the account, pinned Strategy and Setup, then record the Plan for server-verified creation.",
+      "pageTitle": "Open a Trade",
+      "pageDescription": "Record the actual entry details. Strategy, Setup, and the Trade Plan are optional and can be added now or later.",
       "blockedTitle": "Trade creation is unavailable",
       "progress": "Trade creation progress",
       "ready": "Ready",

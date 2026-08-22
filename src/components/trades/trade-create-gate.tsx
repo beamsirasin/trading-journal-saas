@@ -1,4 +1,4 @@
-import { CircleAlert, Landmark, Layers } from 'lucide-react';
+import { CircleAlert, Landmark } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
@@ -44,34 +44,6 @@ export function TradeCreateGate({
         action={
           <Button asChild>
             <Link href="/app/accounts">{t('prerequisite.manageAccounts')}</Link>
-          </Button>
-        }
-      />
-    );
-  }
-  if (options.strategies.length === 0) {
-    return (
-      <EmptyState
-        icon={Layers}
-        title={t('prerequisite.noStrategyTitle')}
-        description={t('prerequisite.noStrategyDescription')}
-        action={
-          <Button asChild>
-            <Link href="/app/strategies">{t('prerequisite.createStrategy')}</Link>
-          </Button>
-        }
-      />
-    );
-  }
-  if (options.strategies.every((strategy) => strategy.setups.length === 0)) {
-    return (
-      <EmptyState
-        icon={Layers}
-        title={t('prerequisite.noSetupTitle')}
-        description={t('prerequisite.noSetupDescription')}
-        action={
-          <Button asChild>
-            <Link href="/app/strategies">{t('prerequisite.manageStrategies')}</Link>
           </Button>
         }
       />

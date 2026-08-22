@@ -64,43 +64,44 @@ describe('TradeCreateGate', () => {
     expect(screen.queryByRole('button', { name: /Create Trade/ })).not.toBeInTheDocument();
   });
 
-  it.each([
-    [
-      {
+  it('requires an active Trading Account', () => {
+    renderGate({
+      options: {
         tradingAccounts: [],
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
         emotionCatalog,
       },
-      'No active Trading Account',
-      '/app/accounts',
-    ],
-    [
-      {
-        tradingAccounts: [account],
-        strategies: [],
-        workspaceId: 'ws-1',
-        chartUploadConfigured: false,
-        emotionCatalog,
-      },
-      'No active Strategy',
-      '/app/strategies',
-    ],
-    [
-      {
-        tradingAccounts: [account],
-        strategies: [{ ...strategy, setups: [] }],
-        workspaceId: 'ws-1',
-        chartUploadConfigured: false,
-        emotionCatalog,
-      },
-      'No usable Setup',
-      '/app/strategies',
-    ],
-  ] as const)('renders the actionable prerequisite state %s', (options, heading, href) => {
-    renderGate({ options, canWrite: true, writeBlockReason: null, timezone: 'Asia/Bangkok' });
-    expect(screen.getByText(heading)).toBeInTheDocument();
-    expect(screen.getByRole('link')).toHaveAttribute('href', href);
+      canWrite: true,
+      writeBlockReason: null,
+      timezone: 'Asia/Bangkok',
+    });
+    expect(screen.getByText('No active Trading Account')).toBeInTheDocument();
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/app/accounts');
   });
+
+  it.each([
+    ['no Strategy', []],
+    ['a Strategy with no Setup', [{ ...strategy, setups: [] }]],
+  ] as const)(
+    'keeps New Trade available with %s because classification is optional',
+    (_, strategies) => {
+      renderGate({
+        options: {
+          tradingAccounts: [account],
+          strategies,
+          workspaceId: 'ws-1',
+          chartUploadConfigured: false,
+          emotionCatalog,
+        },
+        canWrite: true,
+        writeBlockReason: null,
+        timezone: 'Asia/Bangkok',
+      });
+      expect(screen.getByLabelText('Trading Account')).toBeVisible();
+      expect(screen.getByLabelText('Strategy')).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
+    },
+  );
 });
