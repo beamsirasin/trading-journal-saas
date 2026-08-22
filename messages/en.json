@@ -643,13 +643,30 @@
       },
       "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" },
       "conditions": { "met": "Met", "notMet": "Not met" },
+      "overview": {
+        "actual": "Actual",
+        "system": "System",
+        "remainingPercent": "{percent}% remaining",
+        "logged": "Logged {date}",
+        "checklistCount": "{met}/{total} recorded",
+        "viewEntrySnapshot": "View Entry Snapshot",
+        "showDetails": "Show full details"
+      },
       "nav": {
         "label": "Trade sections",
         "actual": "Actual",
         "system": "System",
         "strategy": "Strategy & Setup",
         "entry": "Entry Snapshot",
-        "review": "Review"
+        "review": "Review",
+        "status": {
+          "actualNeedsAttention": "Needs execution details",
+          "strategyRecorded": "Recorded",
+          "strategyPartial": "Strategy assigned",
+          "entryRecorded": "Recorded",
+          "reviewRecorded": "Reviewed",
+          "reviewNotReviewed": "Not reviewed"
+        }
       }
     },
     "tradeManagement": {
@@ -762,6 +779,7 @@
         "emotions": "Emotions",
         "reviewNotes": "Post-trade review",
         "notRecorded": "Not recorded",
+        "recorded": "Recorded",
         "noneSelected": "No emotions selected",
         "selectHint": "Select every emotion that applied. Zero is a valid answer.",
         "saveEmotions": "Save emotions",

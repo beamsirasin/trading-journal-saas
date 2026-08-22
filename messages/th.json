@@ -643,13 +643,30 @@
       },
       "ruleGroups": { "strategy": "กฎระดับกลยุทธ์", "setup": "กฎระดับเซ็ตอัพ" },
       "conditions": { "met": "ตรงตามเงื่อนไข", "notMet": "ไม่ตรงตามเงื่อนไข" },
+      "overview": {
+        "actual": "การเทรดจริง",
+        "system": "ระบบ",
+        "remainingPercent": "เหลืออีก {percent}%",
+        "logged": "บันทึกเมื่อ {date}",
+        "checklistCount": "บันทึกแล้ว {met}/{total}",
+        "viewEntrySnapshot": "ดูข้อมูลตอนเข้าเทรด",
+        "showDetails": "แสดงรายละเอียดทั้งหมด"
+      },
       "nav": {
         "label": "ส่วนต่าง ๆ ของออเดอร์",
         "actual": "การเทรดจริง",
         "system": "ระบบ",
         "strategy": "กลยุทธ์และเซ็ตอัพ",
         "entry": "ข้อมูลตอนเข้าเทรด",
-        "review": "ทบทวน"
+        "review": "ทบทวน",
+        "status": {
+          "actualNeedsAttention": "ต้องเพิ่มข้อมูลการเข้าเทรด",
+          "strategyRecorded": "บันทึกแล้ว",
+          "strategyPartial": "ระบุกลยุทธ์แล้ว",
+          "entryRecorded": "บันทึกแล้ว",
+          "reviewRecorded": "ทบทวนแล้ว",
+          "reviewNotReviewed": "ยังไม่ได้ทบทวน"
+        }
       }
     },
     "tradeManagement": {
@@ -762,6 +779,7 @@
         "emotions": "อารมณ์",
         "reviewNotes": "การทบทวนหลังเทรด",
         "notRecorded": "ไม่ได้บันทึก",
+        "recorded": "บันทึกแล้ว",
         "noneSelected": "ไม่ได้เลือกอารมณ์",
         "selectHint": "เลือกทุกอารมณ์ที่เกิดขึ้น การไม่เลือกเลยเป็นคำตอบที่ถูกต้องได้",
         "saveEmotions": "บันทึกอารมณ์",

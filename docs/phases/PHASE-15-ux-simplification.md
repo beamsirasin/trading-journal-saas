@@ -1101,3 +1101,172 @@ fixture, no new provisioning cost): Edge Explore Strategy/Setup Performance asse
 (proving Version-collapse against real seeded multi-Version data), Context breakdown assertions,
 and an Explore-nav navigation assertion, for both the desktop and the existing 320px mobile
 journey — also currently un-executable here (no test DB) and confirmed to compile/skip cleanly.
+
+---
+
+## 57. Phase 15E — Trade Detail Step-Based Journal Experience (as built)
+
+**IA delivered exactly as §30 specified**, with one deliberate refinement to §35's Entry Snapshot
+grouping (below): Trade Overview (identity, Actual/System hero, paired Execution Gap only when
+both sides are truthfully final, quiet Trade-level actions) followed by `TradeSectionNav` — now a
+genuine **switcher**, not a scroll-to-anchor proof — showing exactly one of the five conceptual
+sections at a time: **Actual → System → Strategy & Setup → Entry Snapshot → Review**. `actual` is
+the default landing section (`DEFAULT_TRADE_DETAIL_SECTION`, `lib/trades/section.ts`) — the
+natural first question about any Trade, never a forced sequence: every nav item stays reachable
+from every other, none is ever disabled.
+
+**Switcher architecture.** `TradeSectionNav` (`components/trades/trade-section-nav.tsx`) now takes
+a `sections: Record<TradeDetailSection, ReactNode>` prop — five already-rendered Server Component
+subtrees passed down from `TradeDetail` — and renders only `sections[activeSection]`, where
+`activeSection` is derived client-side from `?section=` (`useSearchParams`, never reaching the
+server — zero authorization surface, unchanged from 15B). Switching sections is therefore a pure
+client re-render with no re-fetch; each section's own data was already fetched once by the page's
+Server Component tree. Screen-reader focus moves to the newly-selected panel on every switch
+(`panelRef.current?.focus()`), since a sighted-only content swap would otherwise strand
+assistive-tech focus on now-hidden controls. `deriveTradeSectionStatuses()` (15B) needed **no
+logic changes** — its existing heuristics already matched this phase's refined semantics exactly;
+only section-specific status **wording** overrides were added (`sectionStatusLabel()`): Strategy's
+`complete` reads "Recorded" (never "Complete"), `partial` reads "Strategy assigned"; Review's
+`complete`/`not_recorded` read "Reviewed"/"Not reviewed"; Actual's legacy `planned` row reads
+"Needs execution details," never exposing "Planned Trade" as a customer concept.
+
+**Action colocation (brief §12/§15/§29, load-bearing).** Every mutation trigger now lives beside
+the data it changes, and the old generic `trade-lifecycle-actions.tsx` "Lifecycle Actions" card
+(§4's central finding) is **deleted** — grep-confirmed zero remaining references before removal:
+
+- **Actual** (`trade-actual-section.tsx`): `AddExitDialog` (partial/full close), `AddExitDialog`
+  with `closeRemaining`, `ExecutionCorrectionDialog`, and the legacy-planned `OpenTradeDialog`
+  ("Add execution details & Open") — shown only for a `planned` row.
+- **System** (`trade-system-section.tsx`): `ResolveSystemDialog`, `MarkSystemNoTradeDialog`,
+  `CorrectSystemDialog` — genuinely independent of Actual's state (a Trade may read Actual Closed
+  alongside System Pending, or vice versa; neither implies the other is blocked).
+- **Strategy & Setup** (`trade-strategy-section.tsx`): `AssignClassificationDialog` — unchanged
+  position, already correctly colocated before this phase.
+- **Entry Snapshot** (`trade-entry-section.tsx`): `TradeEmotionsEditor`, `PlanCorrectionDialog`.
+- **Review** (`trade-review-section.tsx`): `TradeRulesEditor`, `TradeMistakesEditor`,
+  `TradeReviewNotesEditor`.
+- **Trade Overview** (`trade-overview-header.tsx`): `IdentityCorrectionDialog`, the legacy
+  `CancelTradeControl` (only for a `planned` row), and `DeleteTradeControl` — small, quietly
+  positioned controls below the hero row, deliberately never a hero CTA (brief §35/§36).
+  Archive/Restore do not apply to Trades at all (CLAUDE.md A7: Trades soft-delete via
+  `deleted_at`, the app's one deliberate exception to its `is_archived` convention) — no such
+  control exists or was added.
+
+**Compact-summary vs. full-detail split (brief §22, refined during build).** Entry Snapshot leads
+with a scan-friendly `<dl>` — Setup Checklist count, Confidence "75% · High", Emotion summary,
+Entry Reason/Chart presence — then a native `<details>/<summary>` ("Show full details") holding
+the full Setup Checklist breakdown, the Emotions editor, the full Entry Reason text, and Plan
+reference data. **One deviation from a literal reading of §38 "Plan is data, not status":** Planned
+Entry/Stop/Target, Planned Risk/Reward, and **Planned R** — the single figure CLAUDE.md §1 frames
+as what the whole product measures against — were promoted into the always-visible compact
+summary rather than left behind the disclosure, once build-time review showed hiding it behind an
+extra tap contradicted that same load-bearing status; Position Size/Timeframe/Session/TradingView
+URL/Notes/chart and the `PlanCorrectionDialog` trigger remain in the full-detail disclosure. No
+dedicated "Plan" step exists or was considered — Plan data lives exclusively inside Entry
+Snapshot, addressable on its own via `SubSection`'s new optional `id` (`getByLabel('Plan')`
+resolves to this sub-group, the same accessible-name contract `SectionTitle`'s top-level sections
+already offered).
+
+**Legacy `planned` row.** Unchanged customer-facing contract from Phase 14E: the Actual section
+shows "This Trade was saved before execution information was recorded." plus the
+`OpenTradeDialog` trigger; a `canceled` row shows the distinct "This Trade has not been opened. No
+actual execution has been recorded." — the two are never conflated, and "Planned Trade" is never
+exposed as a normal, ongoing customer concept.
+
+**Regression found and fixed during the rebuild — Actual/System dl completeness.** Rebuilding the
+Actual and System sections from scratch (rather than moving the existing JSX verbatim) initially
+dropped three previously-always-present facts: an unconditional **Actual R** row (truthfully "Not
+available" for any Open Trade, even with zero Exits — CLAUDE.md §6's "never a blank, never a
+silent 0"), the paired **Trader Outcome** row, and the **Closed %/Remaining %** rows once a Trade
+reaches `closed` (previously shown for any Trade with recorded Exits, closed or not). All three
+were restored, and the compact "result-first" hero (brief §11) now carries its own explicit label
+(`Actual R`/`Realized R to date`/`System R`) beside the number, rather than an unlabeled numeral —
+both for assistive tech and so the figure reads unambiguously in isolation. Every restored row was
+independently confirmed against the Phase 15D-era `trade-detail.tsx` (git history) rather than
+guessed.
+
+**Accessibility regression found and fixed — Trade Detail's own name.** The rebuilt `<article>`
+initially lost the `aria-labelledby="trade-detail-heading"` wiring the pre-15E component carried
+(pointing at the Symbol `<h2>`), silently breaking every `getByRole('article', { name: <symbol> })`
+query — including this phase's own new e2e assertions. Restored on both the `<article>`
+(`trade-detail.tsx`) and the `<h2 id="trade-detail-heading">` (`trade-overview-header.tsx`);
+confirmed via a real Playwright run against the canonical test database, not merely inferred.
+
+**Terminology (EN/TH).** New keys added under `trades.detail.overview` (`actual`/`system`/
+`remainingPercent`/`logged`/`checklistCount`/`viewEntrySnapshot`/`showDetails`) and
+`trades.detail.nav.status` (the six section-specific status-wording overrides above), plus
+`trades.lifecycle.reflection.recorded` ("Recorded" — the compact Entry Snapshot summary's word for
+a non-empty Entry Reason/Chart). Thai equivalents added alongside every EN key, following this
+repo's existing natural-Thai-phrasing convention (`localization-glossary.md`) rather than a literal
+word-for-word gloss.
+
+**Desktop/mobile.** Section nav wraps to a full-width vertical stack of tap targets below
+`sm:`(desktop keeps a horizontal row); every nav link and the "Show full details" disclosure summary
+carry `min-h-11` for touch-target compliance. No horizontal page overflow at 390px was introduced —
+confirmed via the existing responsive e2e coverage plus manual review of every new component's
+Tailwind classes (all `flex-wrap`/`grid`/`min-w-0`, matching this repo's established pattern; no
+fixed-width element was added).
+
+**Testing.** `lib/trades/section.test.ts`: `DEFAULT_TRADE_DETAIL_SECTION` membership/value: `actual`.
+`trade-section-nav.test.tsx`: fully rewritten for switcher behavior — only the active section's
+body renders, default-section fallback for an absent/invalid `?section=`, href-building preserves
+existing query params, `aria-current` on the active item only, per-section status-label overrides.
+`trade-detail.test.tsx`: fully rewritten (every case now navigates to the section under test via
+the `?section=` mock, since only one section renders per pass) — 24 tests, including a new `action
+colocation` describe block confirming Actual/System/Strategy actions render only on their own
+section and never leak into another's, and that Trade-level Identity/Delete/Cancel controls render
+on Trade Overview regardless of the active section. Full project suite: **2002 passed, 0 failed,
+0 skipped** (`npx vitest run`, 140 files) — no regression in any other feature area.
+`npx tsc --noEmit`, `npx eslint .`, `npx prettier --check .`, `npx drizzle-kit check` (`Everything's
+fine`), and `npx next build` all pass clean; `git status`/`git diff --check` confirm no migration
+was touched and no whitespace errors.
+
+E2E (`e2e/trades.spec.ts`, 22 tests) updated throughout for one-section-at-a-time navigation
+(`openTradeSection`/`expandEntrySnapshotDetails` helpers added) and run five times against the
+canonical test PostgreSQL database (chromium project) while iterating to a clean pass, plus once
+against `mobile-chrome` (390px). Failures found and their classification:
+
+- **Phase 15E regression (fixed):** the rebuilt `<article>` lost its `aria-labelledby` wiring to
+  the Symbol `<h2>` (documented above) — broke every `getByRole('article', { name: <symbol> })`
+  query across ~10 of this file's own tests. Fixed in `trade-detail.tsx`/`trade-overview-header.tsx`.
+- **Phase 15E regression (fixed):** several R-values and outcome badges now legitimately render
+  twice per page — once in Trade Overview's always-visible hero, once in the active section's own
+  compact hero or full-detail row (an intentional summary/full-detail split, not a bug) — causing
+  Playwright strict-mode "resolved to 2 elements" failures on assertions written when the page had
+  only one copy of each fact. Every such assertion was updated to `.first()`/`.last()`, each with an
+  inline comment naming the two legitimate locations.
+- **Pre-existing test defect (fixed, not a 15E regression):** a "Close Remaining" button's text
+  contains the substring "Remaining", colliding with the `Remaining` field label — confirmed via
+  `git show` that this exact collision existed in the pre-15E component too; the assertion was
+  fixed to `.last()`, the DOM-order-later of the two.
+- **Pre-existing test defect (fixed, not a 15E regression):** the "confirms unmet Conditions..."
+  and "Phase 14C/14E — minimal New Trade..." tests asserted a heading named "Setup Conditions" that
+  never matched the real, unchanged-since-before-15E heading text "Setup Checklist" — confirmed via
+  `git show` on the pre-15E component. Fixed to the correct text.
+- **Pre-existing/genuine regression found and fixed in application code, not the test:** rebuilding
+  Actual/System from scratch (§ above) initially dropped the always-present "Actual R"/"Trader
+  outcome"/Closed-%/Remaining-% facts for an Open Trade — restored in `trade-actual-section.tsx`.
+- **Environment/infrastructure flake (not a regression, did not reproduce on re-run):** one run
+  saw the "walks one Trade through create..." test fail with the New Trade form not redirecting
+  after submission — re-ran in isolation twice and it passed both times once the genuine
+  strict-mode issue above (in the same test) was fixed; not reproducible. One run of the unrelated
+  Confidence-pill-drag suite (New Trade form, untouched by this phase) saw one pointer-simulation
+  test fail once and pass on every other run — a known category of flake for synthetic
+  mouse-drag gestures in headless Chromium, unrelated to Trade Detail.
+
+**Final confirmed state:** chromium project — **19 passed, 0 failed, 4 skipped** (the 4 being
+`mobile-chrome`-gated tests, correctly skipped on desktop). `mobile-chrome` project (390px) — **5
+passed, 0 failed, 18 skipped** (the 18 being `chromium`-gated tests, correctly skipped on mobile).
+320px was not separately re-verified in this phase (no new fixed-width elements were introduced;
+existing 390px coverage plus the desktop responsive sweep's Tailwind-class review stand in for it,
+consistent with this phase's "no horizontal overflow" review method above).
+
+**Trade Log / Calendar:** untouched, as instructed — no file under `components/trades/trade-log*`,
+`trading-calendar*`, or the Trade Log/Calendar route was modified. **Analytics:** untouched — no
+calculation, DAL, or Analytics UI file was modified. **Migrations:** none created; schema
+unchanged (`drizzle-kit check` confirms `0000`–`0016` only).
+
+**Founder-UAT open question carried forward:** whether Planned R's promotion into Entry Snapshot's
+always-visible summary (rather than the disclosure) is the right call, or whether a future
+Founder-UAT pass prefers it surfaced even higher (e.g., a fourth Trade Overview hero metric) —
+recorded here as a build-time judgment call, not a locked decision.

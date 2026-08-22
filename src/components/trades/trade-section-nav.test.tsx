@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { StatusKind } from '@/lib/status/status-kind';
 
@@ -31,21 +31,29 @@ const ALL_COMPLETE: Record<'actual' | 'system' | 'strategy' | 'entry' | 'review'
   review: 'not_recorded_at_entry',
 };
 
+const SECTIONS: Record<'actual' | 'system' | 'strategy' | 'entry' | 'review', ReactNode> = {
+  actual: <p>Actual body</p>,
+  system: <p>System body</p>,
+  strategy: <p>Strategy body</p>,
+  entry: <p>Entry body</p>,
+  review: <p>Review body</p>,
+};
+
 function renderNav(search = '') {
   currentSearch = search;
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeSectionNav tradeId="018f0000-0000-7000-8000-000000000001" statuses={ALL_COMPLETE} />
+      <TradeSectionNav
+        tradeId="018f0000-0000-7000-8000-000000000001"
+        statuses={ALL_COMPLETE}
+        sections={SECTIONS}
+      />
     </NextIntlClientProvider>,
   );
 }
 
 describe('TradeSectionNav', () => {
-  beforeEach(() => {
-    Element.prototype.scrollIntoView = vi.fn();
-  });
-
-  it('renders all five sections with their short labels', () => {
+  it('renders all five section nav items with their short labels', () => {
     renderNav();
     expect(screen.getByRole('link', { name: /Actual/ })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /System/ })).toBeInTheDocument();
@@ -54,13 +62,24 @@ describe('TradeSectionNav', () => {
     expect(screen.getByRole('link', { name: /Review/ })).toBeInTheDocument();
   });
 
-  it('renders each section’s status badge, never colour-only', () => {
+  it('shows only the default (Actual) section body when no ?section= is present — one thing at a time', () => {
     renderNav();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
-    expect(screen.getByText('Needs attention')).toBeInTheDocument();
-    expect(screen.getByText('Partially recorded')).toBeInTheDocument();
-    expect(screen.getByText('Not recorded')).toBeInTheDocument();
-    expect(screen.getByText('Not recorded at entry')).toBeInTheDocument();
+    expect(screen.getByText('Actual body')).toBeInTheDocument();
+    expect(screen.queryByText('System body')).not.toBeInTheDocument();
+    expect(screen.queryByText('Strategy body')).not.toBeInTheDocument();
+    expect(screen.queryByText('Entry body')).not.toBeInTheDocument();
+    expect(screen.queryByText('Review body')).not.toBeInTheDocument();
+  });
+
+  it('shows only the requested section body for a valid ?section=', () => {
+    renderNav('section=system');
+    expect(screen.getByText('System body')).toBeInTheDocument();
+    expect(screen.queryByText('Actual body')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the default section for an invalid ?section=, never crashing', () => {
+    expect(() => renderNav('section=not-a-real-section')).not.toThrow();
+    expect(screen.getByText('Actual body')).toBeInTheDocument();
   });
 
   it('builds hrefs that preserve existing query params and set the target section', () => {
@@ -80,24 +99,17 @@ describe('TradeSectionNav', () => {
     expect(screen.getByRole('link', { name: /Actual/ })).not.toHaveAttribute('aria-current');
   });
 
-  it('scrolls the matching section into view for a valid ?section= value', () => {
-    document.body.innerHTML = '<h3 id="trade-system">System Result</h3>';
-    renderNav('section=system');
-    expect(document.getElementById('trade-system')?.scrollIntoView).toHaveBeenCalled();
-  });
-
-  it('never crashes and never scrolls for an invalid ?section= value', () => {
-    document.body.innerHTML = '<h3 id="trade-system">System Result</h3>';
-    expect(() => renderNav('section=not-a-real-section')).not.toThrow();
-    expect(document.getElementById('trade-system')?.scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it('leaves nothing active when no ?section= is present', () => {
+  it('marks Actual as active by default when no ?section= is present', () => {
     renderNav();
-    for (const name of ['Actual', 'System', 'Strategy & Setup', 'Entry Snapshot', 'Review']) {
-      expect(screen.getByRole('link', { name: new RegExp(name) })).not.toHaveAttribute(
-        'aria-current',
-      );
-    }
+    expect(screen.getByRole('link', { name: /Actual/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it("renders each section's status badge, never colour-only", () => {
+    renderNav();
+    expect(screen.getByText('Closed')).toBeInTheDocument(); // actual: complete -> "Closed"
+    expect(screen.getByText('Pending')).toBeInTheDocument(); // system: needs_attention -> "Pending"
+    expect(screen.getByText('Strategy assigned')).toBeInTheDocument(); // strategy: partial
+    expect(screen.getByText('Not recorded')).toBeInTheDocument(); // entry: not_recorded (shared default)
+    expect(screen.getByText('Not recorded at entry')).toBeInTheDocument(); // review: shared default
   });
 });

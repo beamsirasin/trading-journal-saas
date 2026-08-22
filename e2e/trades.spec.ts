@@ -254,6 +254,32 @@ async function readConditionChecks(tradeId: string) {
   }
 }
 
+const TRADE_SECTION_LABEL = {
+  actual: 'Actual',
+  system: 'System',
+  strategy: 'Strategy & Setup',
+  entry: 'Entry Snapshot',
+  review: 'Review',
+} as const;
+
+/**
+ * Phase 15E — Trade Detail now shows exactly one of five sections at a time
+ * (`TradeSectionNav`). Clicks the matching nav item, the same way a real user
+ * would reach that section, rather than editing the `?section=` URL param
+ * directly.
+ */
+async function openTradeSection(page: Page, section: keyof typeof TRADE_SECTION_LABEL) {
+  await page
+    .getByRole('navigation', { name: 'Trade sections' })
+    .getByRole('link', { name: new RegExp(`^${TRADE_SECTION_LABEL[section]}`) })
+    .click();
+}
+
+/** Expands Entry Snapshot's "Show full details" native disclosure — idempotent per fresh render. */
+async function expandEntrySnapshotDetails(page: Page) {
+  await page.getByText('Show full details', { exact: true }).click();
+}
+
 /**
  * Phase 14E — Open/Close-Only Trade Flow: the normal customer New Trade form
  * now requires one authoritative Actual execution basis alongside the
@@ -312,6 +338,9 @@ async function createMoneyOnlyOpenTrade(page: Page) {
 }
 
 async function completeTradeLifecycle(page: Page) {
+  // Phase 15E — Rule status and Mistake attachment now live in the Review
+  // section, colocated with the rest of Trade Management (brief §29).
+  await openTradeSection(page, 'review');
   const ruleStatus = page.getByRole('combobox', {
     name: 'Rule status for Wait for confirmation',
   });
@@ -325,10 +354,13 @@ async function completeTradeLifecycle(page: Page) {
   await attachMistake.click();
   await expect(page.getByText('E2E lifecycle note')).toBeVisible({ timeout: 120_000 });
   await page.reload();
+  await openTradeSection(page, 'review');
   await expect(page.getByText('E2E lifecycle note')).toBeVisible();
 
   // Phase 14E — the Trade is already Open from creation (no separate Open
-  // step); proceed straight to Close.
+  // step); proceed straight to Close, colocated on the Actual section
+  // (brief §12).
+  await openTradeSection(page, 'actual');
   await page.getByRole('button', { name: 'Full Close' }).click();
   let dialog = page.getByRole('dialog');
   await dialog.getByLabel('Exit', { exact: true }).fill('110');
@@ -337,8 +369,11 @@ async function completeTradeLifecycle(page: Page) {
   await page.reload();
   await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
   const detail = page.getByRole('article', { name: 'XAUUSD' });
+  await openTradeSection(page, 'actual');
   await expect(detail.getByText('+1.00R').first()).toBeVisible();
 
+  // System resolves independently on its own section (brief §14).
+  await openTradeSection(page, 'system');
   await page.getByRole('button', { name: 'Resolve System result' }).click();
   dialog = page.getByRole('dialog');
   await dialog.getByLabel('System exit price').fill('120');
@@ -346,12 +381,15 @@ async function completeTradeLifecycle(page: Page) {
   await expect(dialog).toBeHidden({ timeout: 60_000 });
   await page.reload();
   await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
-  await expect(detail.getByText('+1.00R').first()).toBeVisible();
-  await expect(detail.getByText('+2.00R')).toBeVisible();
-  await expect(
-    detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
-  ).toBeVisible();
+  await openTradeSection(page, 'system');
+  await expect(detail.getByText('+2.00R').first()).toBeVisible();
   await expect(detail.getByLabel('System Result').getByText('Win', { exact: true })).toBeVisible();
+
+  await openTradeSection(page, 'actual');
+  await expect(detail.getByText('+1.00R').first()).toBeVisible();
+  await expect(
+    detail.getByLabel('Actual Execution').getByText('Win', { exact: true }).first(),
+  ).toBeVisible();
 }
 
 test.describe('real Trade Journal creation', () => {
@@ -374,15 +412,20 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
     const detail = page.getByRole('article', { name: 'XAUUSD' });
     await expect(page.getByText('Long').first()).toBeVisible();
+    await openTradeSection(page, 'strategy');
     await expect(page.getByText('Golden Breakout').last()).toBeVisible();
     await expect(page.getByText('Clean Retest').last()).toBeVisible();
-    await expect(detail.getByText('+3.00R')).toBeVisible();
+    await openTradeSection(page, 'entry');
+    // Appears once as Entry Snapshot's compact summary Planned R and again
+    // inside its full-detail Plan disclosure — both by design (brief §22).
+    await expect(detail.getByText('+3.00R').first()).toBeVisible();
     // Phase 14E — created already Open, never a customer-visible Planned step.
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Pending').last()).toBeVisible();
     await page.reload();
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
-    await expect(detail.getByText('+3.00R')).toBeVisible();
+    await openTradeSection(page, 'entry');
+    await expect(detail.getByText('+3.00R').first()).toBeVisible();
     await completeTradeLifecycle(page);
 
     await page.getByRole('button', { name: 'Delete Trade' }).click();
@@ -408,9 +451,10 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Short').first()).toBeVisible();
     // A Money-only Trade never fabricates Price fields — Entry is truthfully absent.
     await expect(page.getByText('Entry', { exact: true })).toHaveCount(0);
+    await openTradeSection(page, 'entry');
+    await expect(detail.getByText('+3.00R').first()).toBeVisible();
     await expect(page.getByText('Planned risk')).toBeVisible();
     await expect(page.getByText('Planned reward')).toBeVisible();
-    await expect(detail.getByText('+3.00R')).toBeVisible();
   });
 
   test('Price Partial Close weights every leg, closes the exact remainder, and corrects an earlier Exit', async ({
@@ -437,7 +481,10 @@ test.describe('real Trade Journal creation', () => {
     await expect(
       detail.getByText('Realized R to date').locator('..').getByText('+1.00R'),
     ).toBeVisible();
-    await expect(detail.getByText('Remaining').locator('..').getByText('50%')).toBeVisible();
+    // The "Close Remaining" button (rendered above the dl) and the dl's own
+    // "Remaining" label both contain the substring "Remaining" — `.last()`
+    // reaches the dl row, which is the one with a sibling percent value.
+    await expect(detail.getByText('Remaining').last().locator('..').getByText('50%')).toBeVisible();
 
     await page.getByRole('button', { name: 'Partial Close' }).click();
     dialog = page.getByRole('dialog');
@@ -526,6 +573,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
 
+    await openTradeSection(page, 'system');
     await page.getByRole('button', { name: 'Resolve System result' }).click();
     dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel('System exit price')).toHaveCount(0);
@@ -537,7 +585,11 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible();
-    await expect(page.getByRole('article', { name: 'EURUSD' }).getByText('+2.90R')).toBeVisible();
+    // Appears once in Trade Overview's own System hero and once in the
+    // System section's compact result-first hero — both by design.
+    await expect(
+      page.getByRole('article', { name: 'EURUSD' }).getByText('+2.90R').first(),
+    ).toBeVisible();
   });
 
   test('Money-only System Stop can be corrected to Custom gross R', async ({ page }) => {
@@ -549,6 +601,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades');
     await createMoneyOnlyOpenTrade(page);
 
+    await openTradeSection(page, 'system');
     await page.getByRole('button', { name: 'Resolve System result' }).click();
     let dialog = page.getByRole('dialog');
     await dialog.getByLabel('System result').selectOption('money_stop');
@@ -559,6 +612,7 @@ test.describe('real Trade Journal creation', () => {
       page.getByRole('article', { name: 'EURUSD' }).getByText('-1.00R').last(),
     ).toBeVisible();
 
+    await openTradeSection(page, 'system');
     await page.getByRole('button', { name: 'Correct System result' }).click();
     dialog = page.getByRole('dialog');
     await dialog.getByLabel('System result').selectOption('money_custom');
@@ -568,7 +622,9 @@ test.describe('real Trade Journal creation', () => {
     await dialog.getByRole('button', { name: 'Save changes' }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
-    await expect(page.getByRole('article', { name: 'EURUSD' }).getByText('+2.50R')).toBeVisible();
+    await expect(
+      page.getByRole('article', { name: 'EURUSD' }).getByText('+2.50R').first(),
+    ).toBeVisible();
   });
 
   test('confirms unmet Conditions and persists the exact mixed snapshots', async ({ page }) => {
@@ -600,6 +656,10 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     const tradeId = new URL(page.url()).searchParams.get('trade');
     if (tradeId === null) throw new Error('created Trade ID missing from URL');
+
+    // Phase 15E — recorded Emotions live in Entry Snapshot's full detail.
+    await openTradeSection(page, 'entry');
+    await expandEntrySnapshotDetails(page);
     await expect(page.getByRole('button', { name: 'Fearful' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -608,18 +668,27 @@ test.describe('real Trade Journal creation', () => {
       'aria-pressed',
       'true',
     );
+
+    // Post-trade review lives in the Review section (brief §29).
+    await openTradeSection(page, 'review');
     const reviewNotes = page.getByRole('textbox', { name: 'Post-trade review', exact: true });
     await reviewNotes.fill('Stayed patient after entry.');
     await page.getByRole('button', { name: 'Save review' }).click();
     await expect(page.getByText('Saved')).toBeVisible();
     await page.reload();
+    await openTradeSection(page, 'review');
     await expect(reviewNotes).toHaveValue('Stayed patient after entry.');
+
+    await openTradeSection(page, 'entry');
+    await expandEntrySnapshotDetails(page);
     await page.getByRole('button', { name: 'Fearful' }).click();
     await page.getByRole('button', { name: 'Hesitant' }).click();
     await page.getByRole('button', { name: 'Focused' }).click();
     await page.getByRole('button', { name: 'Save emotions' }).click();
     await expect(page.getByText('Saved')).toBeVisible();
     await page.reload();
+    await openTradeSection(page, 'entry');
+    await expandEntrySnapshotDetails(page);
     await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -628,10 +697,13 @@ test.describe('real Trade Journal creation', () => {
       'aria-pressed',
       'false',
     );
+
+    await openTradeSection(page, 'review');
     await reviewNotes.fill('Waited for confirmation and managed risk.');
     await page.getByRole('button', { name: 'Save review' }).click();
     await expect(page.getByText('Saved')).toBeVisible();
     await page.reload();
+    await openTradeSection(page, 'review');
     await expect(reviewNotes).toHaveValue('Waited for confirmation and managed risk.');
     expect(await readConditionChecks(tradeId)).toEqual([
       { label: 'Breakout candle closed', checkStatus: 'met' },
@@ -663,7 +735,10 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Open Trade' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
-    await expect(page.getByText('No emotions selected')).toBeVisible();
+    await openTradeSection(page, 'entry');
+    // Appears once in the scan-summary <dl> and once in the full-detail
+    // TradeEmotionsEditor behind "Show full details" — both by design.
+    await expect(page.getByText('No emotions selected').first()).toBeVisible();
   });
 
   test('blocks creation when Price and Money plans disagree, and allows it once resolved', async ({
@@ -845,6 +920,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible();
+    await openTradeSection(page, 'system');
     await page.getByRole('button', { name: 'Resolve System result' }).click();
     dialog = page.getByRole('dialog');
     const systemDialogBox = await dialog.boundingBox();
@@ -887,6 +963,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 
     const detail = page.getByRole('article', { name: 'NZDCAD' });
+    await openTradeSection(page, 'strategy');
     const classification = detail.getByLabel('Strategy & Setup');
     await expect(classification.getByText('Not assigned')).toBeVisible();
     const addStrategyButton = classification.getByRole('button', { name: 'Add Strategy' });
@@ -902,6 +979,7 @@ test.describe('real Trade Journal creation', () => {
     await classifyDialog.getByRole('button', { name: 'Save changes' }).click();
     await expect(classifyDialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
+    await openTradeSection(page, 'strategy');
     await expect(classification.getByText('Golden Breakout')).toBeVisible({ timeout: 60_000 });
     let dimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
@@ -983,13 +1061,21 @@ test.describe('real Trade Journal creation', () => {
     // immediately visible (brief §7), no premature final Actual R/outcome.
     const detail = page.getByRole('article', { name: 'NZDUSD' });
     await expect(page.getByText('Long').first()).toBeVisible();
-    await expect(detail.getByText('+3.00R')).toBeVisible(); // Planned R = 300.00 / 100.00
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Pending').last()).toBeVisible();
+    // Setup Adherence, Confidence, Emotion, and Entry Reason all live in
+    // Entry Snapshot (brief §22) — Planned R stays in its always-visible
+    // compact summary; the rest is behind "Show full details".
+    await openTradeSection(page, 'entry');
+    await expect(detail.getByText('+3.00R').first()).toBeVisible(); // Planned R = 300.00 / 100.00
+    await expandEntrySnapshotDetails(page);
     await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+
+    // Partial Close/Close Trade are colocated on the Actual section (brief §12).
+    await openTradeSection(page, 'actual');
     await expect(page.getByRole('button', { name: 'Partial Close' })).toBeVisible();
     // Zero Exits recorded yet, so the full-close variant reads "Full Close" —
     // "Close Remaining" only appears once at least one partial Exit exists.
@@ -1012,10 +1098,14 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await openTradeSection(page, 'actual');
     await expect(
       detail.getByText('Realized R to date').locator('..').getByText('+1.50R'),
     ).toBeVisible();
-    await expect(detail.getByText('Remaining').locator('..').getByText('50%')).toBeVisible();
+    // The "Close Remaining" button (rendered above the dl) and the dl's own
+    // "Remaining" label both contain the substring "Remaining" — `.last()`
+    // reaches the dl row, which is the one with a sibling percent value.
+    await expect(detail.getByText('Remaining').last().locator('..').getByText('50%')).toBeVisible();
     await expect(
       detail.getByText('Actual R', { exact: true }).locator('..').getByText('Not available'),
     ).toBeVisible();
@@ -1025,6 +1115,7 @@ test.describe('real Trade Journal creation', () => {
 
     // 3. System resolve — resolved completely independently of the Actual side's
     // partial-open state; the System Result is visible while Actual is untouched.
+    await openTradeSection(page, 'system');
     await page.getByRole('button', { name: 'Resolve System result' }).click();
     dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel('System exit price')).toHaveCount(0);
@@ -1036,9 +1127,11 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible();
+    await openTradeSection(page, 'system');
     await expect(
       detail.getByLabel('System Result').getByText('Win', { exact: true }),
     ).toBeVisible();
+    await openTradeSection(page, 'actual');
     await expect(
       detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
     ).toHaveCount(0);
@@ -1055,16 +1148,21 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await openTradeSection(page, 'actual');
     await expect(detail.getByLabel('Actual Execution').getByText('+4.00R').first()).toBeVisible();
+    // Appears once in the compact result-first hero and once in the full
+    // detail's Trader Outcome row — both by design (brief §11).
     await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }).first(),
     ).toBeVisible();
+    await openTradeSection(page, 'system');
     await expect(
       detail.getByLabel('System Result').getByText('Win', { exact: true }),
     ).toBeVisible();
 
     // 5. Review — tag a Mistake, mark the Execution Rule status, and write a
-    // Post-Trade Review note.
+    // Post-Trade Review note, all colocated in the Review section (brief §29).
+    await openTradeSection(page, 'review');
     const ruleStatus = page.getByRole('combobox', {
       name: 'Rule status for Wait for confirmation',
     });
@@ -1088,6 +1186,9 @@ test.describe('real Trade Journal creation', () => {
     // with Actual and System kept in clearly independent sections, never blended.
     await page.reload();
     await expect(page.getByRole('heading', { name: 'NZDUSD' })).toBeVisible();
+
+    await openTradeSection(page, 'entry');
+    await expandEntrySnapshotDetails(page);
     await expect(detail.getByText('3/5 met · 60%')).toBeVisible();
     await expect(detail.getByText('75% · High')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Focused' })).toHaveAttribute(
@@ -1097,15 +1198,21 @@ test.describe('real Trade Journal creation', () => {
     await expect(
       detail.getByText('Clean breakout confirmed on the retest with expanding volume.'),
     ).toBeVisible();
+
+    await openTradeSection(page, 'actual');
     const actualSection = detail.getByLabel('Actual Execution');
     await expect(actualSection.getByText('Money', { exact: true })).toBeVisible();
     await expect(actualSection.getByText('+4.00R').first()).toBeVisible();
-    await expect(actualSection.getByText('Win', { exact: true })).toBeVisible();
+    await expect(actualSection.getByText('Win', { exact: true }).first()).toBeVisible();
     await expect(actualSection.getByText('Exit 1', { exact: true })).toBeVisible();
     await expect(actualSection.getByText('Exit 2', { exact: true })).toBeVisible();
+
+    await openTradeSection(page, 'system');
     const systemSection = detail.getByLabel('System Result');
     await expect(systemSection.getByText('+2.90R')).toBeVisible();
     await expect(systemSection.getByText('Win', { exact: true })).toBeVisible();
+
+    await openTradeSection(page, 'review');
     await expect(ruleStatus).toHaveValue('followed');
     await expect(page.getByText('Trimmed the first leg early, ahead of plan.')).toBeVisible();
     await expect(reviewNotes).toHaveValue('Followed the Setup but exited the first leg too early.');
@@ -1205,9 +1312,12 @@ test.describe('real Trade Journal creation', () => {
 
     const detail = page.getByRole('article', { name: 'GBPUSD' });
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
+    await openTradeSection(page, 'entry');
+    await expandEntrySnapshotDetails(page);
     const planSection = detail.getByLabel('Plan');
     await expect(planSection.getByText('Not set').first()).toBeVisible();
     await expect(planSection.getByText('Not available')).toBeVisible();
+    await openTradeSection(page, 'strategy');
     const classification = detail.getByLabel('Strategy & Setup');
     await expect(classification.getByText('Not assigned')).toBeVisible();
     await expect(classification.getByText('You can classify this Trade later.')).toBeVisible();
@@ -1222,6 +1332,7 @@ test.describe('real Trade Journal creation', () => {
 
     // Journey B — Full Close the Actual side; System remains explicitly
     // Pending throughout — never inferred, never blocked.
+    await openTradeSection(page, 'actual');
     await page.getByRole('button', { name: 'Full Close' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel('Exit', { exact: true }).fill('1.2700');
@@ -1229,11 +1340,15 @@ test.describe('real Trade Journal creation', () => {
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
+    await openTradeSection(page, 'actual');
+    // Appears once in the compact result-first hero and once in the full
+    // detail's Trader Outcome row — both by design (brief §11).
     await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
+      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }).first(),
     ).toBeVisible();
     // System is still Pending — Actual closing never advances it.
     await expect(page.getByText('Pending', { exact: true }).last()).toBeVisible();
+    await openTradeSection(page, 'system');
     await expect(
       detail
         .getByLabel('System Result')
@@ -1259,6 +1374,7 @@ test.describe('real Trade Journal creation', () => {
     // same submission (the sanctioned none -> Strategy+Setup transition).
     await page.goto(tradeUrl);
     await expect(page.getByRole('heading', { name: 'GBPUSD' })).toBeVisible();
+    await openTradeSection(page, 'strategy');
     await addStrategyButton.click();
     const classifyDialog = page.getByRole('dialog');
     await expect(classifyDialog.getByText('Classify this Trade')).toBeVisible();
@@ -1269,6 +1385,7 @@ test.describe('real Trade Journal creation', () => {
     await classifyDialog.getByRole('button', { name: 'Save changes' }).click();
     await expect(classifyDialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
+    await openTradeSection(page, 'strategy');
 
     await expect(classification.getByText('Golden Breakout')).toBeVisible({ timeout: 60_000 });
     await expect(classification.getByText('Clean Retest')).toBeVisible();
@@ -1279,8 +1396,10 @@ test.describe('real Trade Journal creation', () => {
     // Late Setup assignment never fabricates a retrospective Condition
     // snapshot — the Setup has Conditions configured, but this Trade recorded
     // none of them, so it reads "Not recorded", never 0/5 or all-unmet.
+    await openTradeSection(page, 'entry');
+    await expandEntrySnapshotDetails(page);
     const conditionsHeading = detail.getByRole('heading', {
-      name: 'Setup Conditions',
+      name: 'Setup Checklist',
       level: 4,
     });
     await expect(conditionsHeading.locator('..').getByText('Not recorded')).toBeVisible();
@@ -1346,6 +1465,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
     await page.getByRole('link', { name: /UNCLASSIFIEDOPEN/ }).click();
     const unclassifiedDetail = page.getByRole('article', { name: 'UNCLASSIFIEDOPEN' });
+    await openTradeSection(page, 'strategy');
     await expect(
       unclassifiedDetail.getByLabel('Strategy & Setup').getByText('Not assigned'),
     ).toBeVisible();
@@ -1360,6 +1480,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades?month=2026-08&date=2026-08-20');
     await page.getByRole('link', { name: /ACTUALFIRST/ }).click();
     const actualFirstDetail = page.getByRole('article', { name: 'ACTUALFIRST' });
+    await openTradeSection(page, 'system');
     await expect(
       actualFirstDetail.getByRole('button', { name: 'Resolve System result' }),
     ).toBeVisible();

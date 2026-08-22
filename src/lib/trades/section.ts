@@ -17,36 +17,30 @@ import type { StatusKind } from '@/lib/status/status-kind';
 export const TRADE_DETAIL_SECTIONS = ['actual', 'system', 'strategy', 'entry', 'review'] as const;
 export type TradeDetailSection = (typeof TRADE_DETAIL_SECTIONS)[number];
 
+/**
+ * Phase 15E — the default landing section when `?section=` is absent or
+ * invalid. `actual` answers "what did I actually do?", the most natural
+ * first question about any Trade (mirrored by Trade Overview's own hero,
+ * which leads with Actual R first) — never a forced sequence, just a
+ * sensible starting point the user is free to leave immediately via any nav
+ * item (brief §5: this is navigation by workflow, not a wizard).
+ */
+export const DEFAULT_TRADE_DETAIL_SECTION: TradeDetailSection = 'actual';
+
 /** Zod-validated at the server boundary (CLAUDE.md §4) — an unrecognized value parses to `null`, never throws. */
 export const TradeDetailSectionSchema = z.enum(TRADE_DETAIL_SECTIONS);
 
 /**
  * Parses an untrusted `?section=` query value. Returns `null` for anything
- * absent or invalid — callers must treat `null` as "no section requested",
- * degrading to the default Trade view rather than crashing (brief §9).
+ * absent or invalid — callers must treat `null` as "no section requested"
+ * and fall back to {@link DEFAULT_TRADE_DETAIL_SECTION} rather than crashing
+ * (brief §9).
  */
 export function parseTradeDetailSection(value: string | undefined): TradeDetailSection | null {
   if (value === undefined) return null;
   const result = TradeDetailSectionSchema.safeParse(value);
   return result.success ? result.data : null;
 }
-
-/**
- * The existing DOM anchor each section maps onto — these ids already exist
- * on `trade-detail.tsx`'s `Section` components (unchanged since before this
- * phase); this map is what lets 15B prove the deep-link contract WITHOUT
- * restructuring Trade Detail's layout (that restructuring is Phase 15E's
- * job). `review` maps to the current "Discipline & Review" section — the
- * customer-facing rename to a standalone "Review" step happens in 15E, not
- * here.
- */
-export const TRADE_SECTION_DOM_ID: Record<TradeDetailSection, string> = {
-  actual: 'trade-execution',
-  system: 'trade-system',
-  strategy: 'trade-classification',
-  entry: 'trade-entry-snapshot',
-  review: 'trade-discipline',
-};
 
 /** The minimal Trade fields the status derivation below reads — a narrow view onto `TradeDetail` (`server/dal/trades.ts`), never the whole model, so this stays independently testable with small fixtures. */
 export interface TradeSectionStatusInput {

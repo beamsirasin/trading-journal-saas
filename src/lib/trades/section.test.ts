@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_TRADE_DETAIL_SECTION,
   deriveTradeSectionStatuses,
   parseTradeDetailSection,
   TRADE_DETAIL_SECTIONS,
-  TRADE_SECTION_DOM_ID,
   type TradeSectionStatusInput,
 } from './section';
 
@@ -39,10 +39,13 @@ describe('parseTradeDetailSection', () => {
   });
 });
 
-describe('TRADE_SECTION_DOM_ID', () => {
-  it('maps every section to a distinct existing Trade Detail section id', () => {
-    const ids = TRADE_DETAIL_SECTIONS.map((section) => TRADE_SECTION_DOM_ID[section]);
-    expect(new Set(ids).size).toBe(TRADE_DETAIL_SECTIONS.length);
+describe('DEFAULT_TRADE_DETAIL_SECTION', () => {
+  it('is a member of the canonical section list', () => {
+    expect(TRADE_DETAIL_SECTIONS).toContain(DEFAULT_TRADE_DETAIL_SECTION);
+  });
+
+  it('is "actual" — the natural first question about any Trade', () => {
+    expect(DEFAULT_TRADE_DETAIL_SECTION).toBe('actual');
   });
 });
 
