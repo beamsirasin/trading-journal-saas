@@ -101,7 +101,7 @@ describe('TradeCreateGate', () => {
       });
       expect(screen.getByLabelText('Trading Account')).toBeVisible();
       fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
-      expect(screen.getByLabelText('Strategy')).toBeVisible();
+      expect(screen.getByLabelText(/^Strategy/)).toBeVisible();
       expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
     },
   );

@@ -1,13 +1,13 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
 > **Status:** 15A–15F and the approved 15G.4 recording-model audit are complete. The 15G.5A
-> domain/service foundation, 15G.5B atomic completed-create foundation, and 15G.5C retrospective
-> analytics truth are implemented in the working tree — see §§59–61. Phase 15G Founder UAT
+> domain/service foundation, 15G.5B atomic completed-create foundation, 15G.5C retrospective
+> analytics truth, and 15G.5D recording UX are implemented in the working tree — see §§59–62. Phase 15G Founder UAT
 > remains open and must not be marked complete before Founder acceptance.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-23 (Phase 15G.5C — Retrospective Behavioral Analytics Truth).
+> **Last updated:** 2026-08-23 (Phase 15G.5D — Founder Recording UX).
 
 ---
 
@@ -1546,3 +1546,41 @@ explicit-empty versus never-recorded emotions, zero eligible samples, all eight 
 projections, the unchanged financial/classification/Trade Management populations, durable context
 retention, and the Trade Detail marker/copy. No Founder acceptance or After Trade UI completion is
 claimed by this section.
+
+## 62. Phase 15G.5D — Founder Recording UX: At Entry / After Trade (as built)
+
+The customer New Trade route now begins with the explicit, mutually exclusive “When are you
+journaling?” choice and defaults to At Entry. At Entry and After Trade share Account, Symbol,
+Direction, the authoritative System Plan, optional Setup classification/checklist, and optional
+entry context. Each timing renders one compact panel at a time; the save CTA remains reachable from
+every optional panel, and neither path is a forced wizard. English and Thai use the frozen customer
+terms. Founder acceptance remains pending.
+
+**At Entry.** The first panel is a short Trade ticket: identity, Entered At, and exactly one System
+Plan basis selected by Price or Money. Switching basis clears the other representation. The normal
+surface has no Actual-result selector or duplicated Actual inputs; omission of an override lets the
+15G.5A service copy the selected Plan opening into Actual opening. A collapsed Advanced disclosure
+retains explicit same-basis and cross-basis Actual opening overrides. Setup and Entry Context remain
+optional and do not block direct Open Trade submission through the existing canonical create action.
+
+**After Trade.** Trade captures identity, Entered/Exited timestamps, and the same exclusive System
+Plan. Result separately selects the independent Actual Result basis. The simple Price path maps one
+Exit Price to one 100% canonical Price Exit; the simple Money path maps Realized P&L to one 100%
+canonical Money Exit without weighting the total twice. Partial exits are secondary and must total
+100%. Shared calculators preview derived Actual R and Win/Loss/Break Even; the customer never
+selects Trader Outcome.
+
+System Outcome defaults to Review later, which omits `systemResult` and leaves System Pending.
+Target, Stop, Break even, Custom, and No Trade map to the existing canonical completed-create
+resolution shapes; Target is unavailable without the selected Plan basis's target/reward. The
+browser calls `createCompletedTradeAction` exactly once and navigates directly to the resulting
+Trade Detail selector. It never chains Open, Exit/Close, or Resolve mutations.
+
+**Draft safety and retrospective truth.** Timing switches preserve shared draft data but clear
+After Trade Actual/System fields. Plan and Actual basis switches clear the prior basis's fields, so
+hidden stale representations are never submitted. Setup and Entry Context show one quiet
+“Recorded retrospectively” / “บันทึกย้อนหลัง” section label in After Trade. The 15G.5C analytics
+boundary remains authoritative; no client-side provenance inference was added.
+
+This slice adds no schema or migration, changes no financial formula, and does not redesign Trade
+Log, Analytics, or Trade Detail Plan placement. The migration ledger remains `0000`–`0016`.

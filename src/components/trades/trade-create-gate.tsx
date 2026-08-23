@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 import { EmptyState } from '@/components/product/empty-state';
-import { TradeCreateForm } from '@/components/trades/trade-create-form';
+import { TradeRecordingForm } from '@/components/trades/trade-recording-form';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
 
@@ -49,5 +49,5 @@ export function TradeCreateGate({
       />
     );
   }
-  return <TradeCreateForm options={options} timezone={timezone} />;
+  return <TradeRecordingForm options={options} timezone={timezone} />;
 }
