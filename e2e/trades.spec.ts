@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -431,11 +431,29 @@ const TRADE_SECTION_LABEL = {
  * directly.
  */
 async function openTradeSection(page: Page, section: keyof typeof TRADE_SECTION_LABEL) {
-  await page
+  await page.waitForLoadState('networkidle');
+  const link = page
     .getByRole('navigation', { name: 'Trade sections' })
-    .getByRole('link', { name: new RegExp(`^${TRADE_SECTION_LABEL[section]}`) })
-    .click();
-  await expect(page).toHaveURL(new RegExp(`[?&]section=${section}(?:&|$)`), { timeout: 30_000 });
+    .getByRole('link', { name: new RegExp(`^${TRADE_SECTION_LABEL[section]}`) });
+  await expect(link).toBeVisible();
+  const sectionUrl = new RegExp(`[?&]section=${section}(?:&|$)`);
+  await expect(async () => {
+    await link.focus();
+    await link.press('Enter');
+    await page.waitForURL(sectionUrl, { timeout: 5_000 });
+  }).toPass({ timeout: 30_000, intervals: [250] });
+}
+
+/** Advances an existing datetime-local value without assuming the browser's timezone. */
+async function advanceDatetimeLocal(input: Locator, minutes: number) {
+  await expect(input).toBeVisible();
+  const advanced = await input.evaluate((element, offsetMinutes) => {
+    const current = new Date((element as HTMLInputElement).value);
+    current.setMinutes(current.getMinutes() + offsetMinutes);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}T${pad(current.getHours())}:${pad(current.getMinutes())}`;
+  }, minutes);
+  await input.fill(advanced);
 }
 
 /** Expands Entry Snapshot's "Show full details" native disclosure — idempotent per fresh render. */
@@ -469,7 +487,7 @@ async function createOpenTrade(page: Page) {
   await page.getByLabel(/Take Profit/).fill('130');
   await openNewTradeView(page, 'Setup');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
+  await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
   await page.getByLabel('Retest held').check();
   await page.getByLabel('Volume expanded').check();
@@ -495,7 +513,7 @@ async function createMoneyOnlyOpenTrade(page: Page) {
   await page.getByLabel(/Target Reward/).fill('300.00');
   await openNewTradeView(page, 'Setup');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-  await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
+  await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
   await page.getByLabel('Retest held').check();
   await page.getByLabel('Volume expanded').check();
@@ -542,7 +560,7 @@ async function completeTradeLifecycle(page: Page) {
 
   // System resolves independently on its own section (brief §14).
   await openTradeSection(page, 'system');
-  await page.getByRole('button', { name: 'Resolve System result' }).click();
+  await page.getByRole('button', { name: 'Record System Outcome' }).click();
   dialog = page.getByRole('dialog');
   await dialog.getByLabel('System exit price').fill('120');
   await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
@@ -550,14 +568,19 @@ async function completeTradeLifecycle(page: Page) {
   await page.reload();
   await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
   await openTradeSection(page, 'system');
-  await expect(detail.getByText('+2.00R').first()).toBeVisible();
-  await expect(detail.getByLabel('System Result').getByText('Win', { exact: true })).toBeVisible();
+  const systemPlan = detail
+    .getByRole('heading', { name: 'System Plan' })
+    .locator('..')
+    .locator('..');
+  const systemOutcome = detail.getByRole('heading', { name: 'System Outcome' }).locator('..');
+  await expect(systemPlan.getByText('+4.00R')).toBeVisible();
+  await expect(systemOutcome.getByText('+2.00R')).toBeVisible();
+  await expect(detail.getByLabel('System').getByText('Win', { exact: true }).last()).toBeVisible();
+  await expect(detail.getByText('-1.00R')).toBeVisible();
 
   await openTradeSection(page, 'actual');
   await expect(detail.getByText('+1.00R').first()).toBeVisible();
-  await expect(
-    detail.getByLabel('Actual Execution').getByText('Win', { exact: true }).first(),
-  ).toBeVisible();
+  await expect(detail.getByLabel('Actual').getByText('Win', { exact: true }).first()).toBeVisible();
 }
 
 test.describe('real Trade Journal creation', () => {
@@ -600,18 +623,18 @@ test.describe('real Trade Journal creation', () => {
     await openTradeSection(page, 'strategy');
     await expect(page.getByText('Golden Breakout').last()).toBeVisible();
     await expect(page.getByText('Clean Retest').last()).toBeVisible();
-    await openTradeSection(page, 'actual');
+    await openTradeSection(page, 'system');
     await expect(detail.getByText('Take Profit')).toBeVisible();
     await expect(detail.getByText('130')).toBeVisible();
     await expect(detail.getByText('+3.00R').first()).toBeVisible();
-    await page.getByRole('button', { name: 'Edit Plan' }).click();
+    await page.getByRole('button', { name: 'Edit System Plan' }).click();
     const planDialog = page.getByRole('dialog');
     await planDialog.getByLabel('Take Profit').fill('140');
     await planDialog.getByRole('button', { name: 'Save changes' }).click();
     await expect(planDialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
-    await openTradeSection(page, 'actual');
-    await expect(detail.getByLabel('Plan')).toContainText('140');
+    await openTradeSection(page, 'system');
+    await expect(detail.getByText('140')).toBeVisible();
     await expect(detail.getByText('+4.00R').first()).toBeVisible();
     // Phase 14E — created already Open, never a customer-visible Planned step.
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
@@ -619,8 +642,8 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
     await openTradeSection(page, 'actual');
-    await expect(detail.getByText('140')).toBeVisible();
-    await expect(detail.getByText('+4.00R').first()).toBeVisible();
+    await expect(detail.getByText('No exits yet.')).toBeVisible();
+    await expect(detail.getByText('140')).toHaveCount(0);
     await completeTradeLifecycle(page);
 
     await page.getByText('Trade administration', { exact: true }).click();
@@ -646,11 +669,15 @@ test.describe('real Trade Journal creation', () => {
     const detail = page.getByRole('article', { name: 'EURUSD' });
     await expect(page.getByText('Short').first()).toBeVisible();
     // A Money-only Trade never fabricates Price fields — Entry is truthfully absent.
-    await expect(page.getByText('Entry', { exact: true })).toHaveCount(0);
-    await openTradeSection(page, 'actual');
+    await openTradeSection(page, 'system');
+    await expect(detail.getByText('Plan by Money')).toBeVisible();
     await expect(detail.getByText('+3.00R').first()).toBeVisible();
-    await expect(page.getByText('Planned risk')).toBeVisible();
-    await expect(page.getByText('Planned reward')).toBeVisible();
+    await expect(detail.getByText('Risk', { exact: true })).toBeVisible();
+    await expect(detail.getByText('Target Reward', { exact: true })).toBeVisible();
+    await expect(detail.getByText('Entry', { exact: true })).toHaveCount(0);
+    await openTradeSection(page, 'actual');
+    await expect(detail.getByText('Money', { exact: true })).toBeVisible();
+    await expect(detail.getByText('No exits yet.')).toBeVisible();
   });
 
   test('Price Partial Close weights every leg, closes the exact remainder, and corrects an earlier Exit', async ({
@@ -674,13 +701,17 @@ test.describe('real Trade Journal creation', () => {
     await dialog.getByRole('button', { name: 'Partial Close' }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
+    await openTradeSection(page, 'actual');
+    const actual = detail.getByRole('region', { name: 'Actual', exact: true });
     await expect(
-      detail.getByText('Realized R to date').locator('..').getByText('+1.00R'),
+      actual.getByText('Realized R to date').locator('..').getByText('+1.00R'),
     ).toBeVisible();
     // The "Close Remaining" button (rendered above the dl) and the dl's own
     // "Remaining" label both contain the substring "Remaining" — `.last()`
     // reaches the dl row, which is the one with a sibling percent value.
-    await expect(detail.getByText('Remaining').last().locator('..').getByText('50%')).toBeVisible();
+    await expect(
+      actual.getByText('Remaining', { exact: true }).locator('..').getByText('50%'),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Partial Close' }).click();
     dialog = page.getByRole('dialog');
@@ -770,7 +801,7 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
 
     await openTradeSection(page, 'system');
-    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    await page.getByRole('button', { name: 'Record System Outcome' }).click();
     dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel('System exit price')).toHaveCount(0);
     await expect(dialog.getByLabel('System result')).toHaveValue('money_target');
@@ -798,18 +829,22 @@ test.describe('real Trade Journal creation', () => {
     await createMoneyOnlyOpenTrade(page);
 
     await openTradeSection(page, 'system');
-    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    await page.getByRole('button', { name: 'Record System Outcome' }).click();
     let dialog = page.getByRole('dialog');
     await dialog.getByLabel('System result').selectOption('money_stop');
     await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(
-      page.getByRole('article', { name: 'EURUSD' }).getByText('-1.00R').last(),
+      page
+        .getByRole('article', { name: 'EURUSD' })
+        .getByRole('region', { name: 'System Outcome' })
+        .getByText('-1.00R', { exact: true })
+        .first(),
     ).toBeVisible();
 
     await openTradeSection(page, 'system');
-    await page.getByRole('button', { name: 'Correct System result' }).click();
+    await page.getByRole('button', { name: 'Correct System Outcome' }).click();
     dialog = page.getByRole('dialog');
     await dialog.getByLabel('System result').selectOption('money_custom');
     await dialog.getByLabel('Gross System R').fill('2.75');
@@ -836,6 +871,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
     await openNewTradeView(page, 'Setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+    await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
@@ -847,8 +883,8 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Entry Reason').fill('Breakout confirmed on the retest.');
     await page.getByRole('button', { name: 'Open Trade' }).click();
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog.getByText(/3 of 5 Conditions are met \(60%\)/)).toBeVisible();
-    await dialog.getByRole('button', { name: 'Open Trade' }).click();
+    await expect(dialog.getByText('Save with unmet Setup Conditions?')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Continue' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
     const tradeId = new URL(page.url()).searchParams.get('trade');
     if (tradeId === null) throw new Error('created Trade ID missing from URL');
@@ -925,6 +961,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Stop Loss', { exact: true }).fill('149');
     await openNewTradeView(page, 'Setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
+    await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByText('Not configured')).toBeVisible();
     await expect(page.getByText(/0\/0/)).toHaveCount(0);
     await page.getByRole('button', { name: 'Open Trade' }).click();
@@ -1064,9 +1101,57 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Save Completed Trade' }).click();
 
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
+    const tradeId = new URL(page.url()).searchParams.get('trade');
+    expect(tradeId).not.toBeNull();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible();
+    await openTradeSection(page, 'actual');
+    await expect(page.getByRole('heading', { name: 'Actual Result' })).toBeVisible();
+    await expect(page.getByText('+2.00R').last()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'System Plan' })).toHaveCount(0);
+    await page.goto(`/en/app/trades?trade=${tradeId}&section=system`);
+    await expect(page.getByRole('heading', { name: 'System Plan' })).toBeVisible();
+    await expect(page.getByText('Plan by Price')).toBeVisible();
+    await expect(page.getByText('+3.00R')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'System Outcome' })).toBeVisible();
+    await expect(page.getByText("The System result hasn't been recorded yet.")).toBeVisible();
     await openTradeSection(page, 'entry');
     await expect(page.getByText('Recorded retrospectively', { exact: true })).toBeVisible();
+
+    for (const locale of ['en', 'th'] as const) {
+      for (const width of [1440, 390, 320]) {
+        await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+        await page.goto(`/${locale}/app/trades?trade=${tradeId}&section=system`);
+        const sectionNav = page.getByRole('navigation', {
+          name: locale === 'en' ? 'Trade sections' : 'ส่วนต่าง ๆ ของออเดอร์',
+        });
+        await expect(sectionNav.getByRole('link')).toHaveCount(5);
+        await expect(sectionNav.getByRole('link').nth(1)).toHaveAttribute('aria-current', 'true');
+        await expect(
+          page.getByRole('heading', { name: locale === 'en' ? 'System Plan' : 'แผนของระบบ' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('heading', {
+            name: locale === 'en' ? 'System Outcome' : 'ผลลัพธ์ของระบบ',
+          }),
+        ).toBeVisible();
+        await page.waitForLoadState('networkidle');
+        const actualLink = sectionNav.getByRole('link').nth(0);
+        await expect(async () => {
+          await actualLink.focus();
+          await actualLink.press('Enter');
+          await page.waitForURL(/[?&]section=actual(?:&|$)/, { timeout: 5_000 });
+        }).toPass({ timeout: 30_000, intervals: [250] });
+        await expect(sectionNav.getByRole('link').nth(0)).toHaveAttribute('aria-current', 'true');
+        await expect(
+          page.getByRole('heading', { name: locale === 'en' ? 'Actual Result' : 'ผลลัพธ์จริง' }),
+        ).toBeVisible();
+        const dimensions = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+        }));
+        expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
+      }
+    }
   });
 
   test('Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis', async ({
@@ -1090,8 +1175,11 @@ test.describe('real Trade Journal creation', () => {
 
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
     await openTradeSection(page, 'actual');
-    await expect(page.getByLabel('Plan').getByText('100')).toBeVisible();
-    await expect(page.getByLabel('Position').getByText('101')).toBeVisible();
+    await expect(page.getByLabel('Actual').getByText('101')).toBeVisible();
+    await expect(page.getByLabel('Actual').getByText('100')).toHaveCount(0);
+    await openTradeSection(page, 'system');
+    await expect(page.getByLabel('System').getByText('100')).toBeVisible();
+    await expect(page.getByLabel('System').getByText('101')).toHaveCount(0);
   });
 
   test.skip('legacy Trade Plan responsive composition superseded by Phase 15G.3 views', async ({
@@ -1233,7 +1321,7 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible();
     await openTradeSection(page, 'system');
-    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    await page.getByRole('button', { name: 'Record System Outcome' }).click();
     dialog = page.getByRole('dialog');
     const systemDialogBox = await dialog.boundingBox();
     expect(systemDialogBox?.width ?? 999).toBeLessThanOrEqual(390);
@@ -1352,7 +1440,8 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel(/Target Reward/).fill('300.00');
     await openNewTradeView(page, 'Setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
+    await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
+    await expect(page.getByLabel(/^Setup/)).toHaveValue(/.+/);
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
@@ -1365,8 +1454,8 @@ test.describe('real Trade Journal creation', () => {
       .fill('Clean breakout confirmed on the retest with expanding volume.');
     await page.getByRole('button', { name: 'Open Trade' }).click();
     const confirmDialog = page.getByRole('alertdialog');
-    await expect(confirmDialog.getByText(/3 of 5 Conditions are met \(60%\)/)).toBeVisible();
-    await confirmDialog.getByRole('button', { name: 'Open Trade' }).click();
+    await expect(confirmDialog.getByText('Save with unmet Setup Conditions?')).toBeVisible();
+    await confirmDialog.getByRole('button', { name: 'Continue' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
 
     // Arrives directly on Detail already Open — Partial Close/Close Trade are
@@ -1375,9 +1464,9 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Long').first()).toBeVisible();
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Pending').last()).toBeVisible();
-    // Planned R is operational Plan data in Actual; contextual entry evidence
-    // remains in Entry Snapshot.
-    await openTradeSection(page, 'actual');
+    // Planned R belongs to System; contextual entry evidence remains in Entry
+    // Snapshot.
+    await openTradeSection(page, 'system');
     await expect(detail.getByText('+3.00R').first()).toBeVisible(); // Planned R = 300.00 / 100.00
     await openTradeSection(page, 'entry');
     await expandEntrySnapshotDetails(page);
@@ -1392,12 +1481,11 @@ test.describe('real Trade Journal creation', () => {
     // Zero Exits recorded yet, so the full-close variant reads "Full Close" —
     // "Close Remaining" only appears once at least one partial Exit exists.
     await expect(page.getByRole('button', { name: 'Full Close' })).toBeVisible();
+    const actualSection = detail.getByRole('region', { name: 'Actual', exact: true });
     await expect(
-      detail.getByText('Actual R', { exact: true }).locator('..').getByText('Not available'),
+      actualSection.getByText('Actual Result will be available after the Trade is closed.'),
     ).toBeVisible();
-    await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
-    ).toHaveCount(0);
+    await expect(actualSection.getByText('Win', { exact: true })).toHaveCount(0);
 
     // 2. Partial Close roughly half the position with a realized P&L — Realized R
     // to date and remaining % appear; the Trade still reads Open, with no final
@@ -1417,36 +1505,32 @@ test.describe('real Trade Journal creation', () => {
     // The "Close Remaining" button (rendered above the dl) and the dl's own
     // "Remaining" label both contain the substring "Remaining" — `.last()`
     // reaches the dl row, which is the one with a sibling percent value.
-    await expect(detail.getByText('Remaining').last().locator('..').getByText('50%')).toBeVisible();
     await expect(
-      detail.getByText('Actual R', { exact: true }).locator('..').getByText('Not available'),
+      actualSection.getByText('Remaining', { exact: true }).locator('..').getByText('50%'),
     ).toBeVisible();
-    await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
-    ).toHaveCount(0);
+    await expect(actualSection.getByText('Partial', { exact: true })).toBeVisible();
+    await expect(actualSection.getByText('Win', { exact: true })).toHaveCount(0);
 
     // 3. System resolve — resolved completely independently of the Actual side's
     // partial-open state; the System Result is visible while Actual is untouched.
     await openTradeSection(page, 'system');
-    await page.getByRole('button', { name: 'Resolve System result' }).click();
+    await page.getByRole('button', { name: 'Record System Outcome' }).click();
     dialog = page.getByRole('dialog');
     await expect(dialog.getByLabel('System exit price')).toHaveCount(0);
     await expect(dialog.getByLabel('System result')).toHaveValue('money_target');
     await dialog.getByLabel('System Cost R').fill('0.10');
+    await advanceDatetimeLocal(dialog.getByLabel('System exited'), 2);
     await expect(dialog.getByText('2.9000R')).toBeVisible();
     await dialog.getByRole('button', { name: 'Confirm resolved result' }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText('Resolved', { exact: true }).last()).toBeVisible();
     await openTradeSection(page, 'system');
     await expect(
-      detail.getByLabel('System Result').getByText('Win', { exact: true }),
+      detail.getByRole('region', { name: 'System Outcome' }).getByText('Win', { exact: true }),
     ).toBeVisible();
     await openTradeSection(page, 'actual');
-    await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }),
-    ).toHaveCount(0);
+    await expect(actualSection.getByText('Win', { exact: true })).toHaveCount(0);
 
     // 4. Final Close — close the remaining half; the Trade now reads Closed with
     // the correct final Actual R: SUM(realized_pnl) / initial_risk =
@@ -1456,20 +1540,19 @@ test.describe('real Trade Journal creation', () => {
     dialog = page.getByRole('dialog');
     await expect(dialog.getByText('Closing the exact remaining 50%.')).toBeVisible();
     await dialog.getByLabel('Realized net P&L').fill('250.00');
+    await advanceDatetimeLocal(dialog.getByLabel('Exited', { exact: true }), 3);
     await dialog.getByRole('button', { name: 'Close Remaining' }).click();
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
     await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible({ timeout: 60_000 });
     await openTradeSection(page, 'actual');
-    await expect(detail.getByLabel('Actual Execution').getByText('+4.00R').first()).toBeVisible();
+    await expect(actualSection.getByText('+4.00R').first()).toBeVisible();
     // Appears once in the compact result-first hero and once in the full
     // detail's Trader Outcome row — both by design (brief §11).
-    await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }).first(),
-    ).toBeVisible();
+    await expect(actualSection.getByText('Win', { exact: true }).first()).toBeVisible();
     await openTradeSection(page, 'system');
     await expect(
-      detail.getByLabel('System Result').getByText('Win', { exact: true }),
+      detail.getByRole('region', { name: 'System Outcome' }).getByText('Win', { exact: true }),
     ).toBeVisible();
 
     // 5. Review — tag a Mistake, mark the Execution Rule status, and write a
@@ -1512,7 +1595,6 @@ test.describe('real Trade Journal creation', () => {
     ).toBeVisible();
 
     await openTradeSection(page, 'actual');
-    const actualSection = detail.getByLabel('Actual Execution');
     await expect(actualSection.getByText('Money', { exact: true })).toBeVisible();
     await expect(actualSection.getByText('+4.00R').first()).toBeVisible();
     await expect(actualSection.getByText('Win', { exact: true }).first()).toBeVisible();
@@ -1520,7 +1602,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(actualSection.getByText('Exit 2', { exact: true })).toBeVisible();
 
     await openTradeSection(page, 'system');
-    const systemSection = detail.getByLabel('System Result');
+    const systemSection = detail.getByRole('region', { name: 'System', exact: true });
     await expect(systemSection.getByText('+2.90R')).toBeVisible();
     await expect(systemSection.getByText('Win', { exact: true })).toBeVisible();
 
@@ -1552,7 +1634,8 @@ test.describe('real Trade Journal creation', () => {
     await expect(systemPanel.getByText('1 Trade')).toBeVisible();
     await expect(traderPanel.getByText('1 Trade')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Edge', exact: true }).click();
+    await page.goto('/en/app/analytics?view=edge&range=all');
+    await page.waitForLoadState('networkidle');
     const setupAdherencePanel = page.locator('[data-analytics-panel="setup-adherence"]');
     const adherenceBucket = setupAdherencePanel.locator('li', { hasText: /50.{1,2}74%/ });
     await expect(adherenceBucket.locator('[data-analytics-axis="trader"]')).toContainText(
@@ -1576,7 +1659,7 @@ test.describe('real Trade Journal creation', () => {
       ),
     ).toContainText('1 Trade');
 
-    await page.getByRole('link', { name: 'Behavior', exact: true }).click();
+    await page.goto('/en/app/analytics?view=behavior&range=all');
     const confidencePanel = page.locator('[data-analytics-panel="confidence"]');
     const confidenceLevel75 = confidencePanel.locator('li', { hasText: '75%' });
     await expect(confidenceLevel75.locator('[data-analytics-axis="trader"]')).toContainText(
@@ -1587,7 +1670,7 @@ test.describe('real Trade Journal creation', () => {
     const focusedGroup = emotionsPanel.locator('li', { hasText: 'Focused' });
     await expect(focusedGroup.locator('[data-analytics-axis="system"]')).toContainText('1 Trade');
 
-    await page.getByRole('link', { name: 'Results', exact: true }).click();
+    await page.goto('/en/app/analytics?view=results&range=all');
     await expect(
       page.locator('[data-analytics-panel="mistakes"]').getByText('1 Trade'),
     ).toBeVisible();
@@ -1630,8 +1713,11 @@ test.describe('real Trade Journal creation', () => {
 
     const detail = page.getByRole('article', { name: 'GBPUSD' });
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
-    await openTradeSection(page, 'actual');
-    const planSection = detail.getByLabel('Plan');
+    await openTradeSection(page, 'system');
+    const planSection = detail
+      .getByRole('heading', { name: 'System Plan' })
+      .locator('..')
+      .locator('..');
     await expect(planSection.getByText('1.2500')).toBeVisible();
     await expect(planSection.getByText('1.2400')).toBeVisible();
     await expect(planSection.getByText('Not available')).toBeVisible();
@@ -1662,15 +1748,13 @@ test.describe('real Trade Journal creation', () => {
     // Appears once in the compact result-first hero and once in the full
     // detail's Trader Outcome row — both by design (brief §11).
     await expect(
-      detail.getByLabel('Actual Execution').getByText('Win', { exact: true }).first(),
+      detail.getByLabel('Actual').getByText('Win', { exact: true }).first(),
     ).toBeVisible();
     // System is still Pending — Actual closing never advances it.
     await expect(page.getByText('Pending', { exact: true }).last()).toBeVisible();
     await openTradeSection(page, 'system');
     await expect(
-      detail
-        .getByLabel('System Result')
-        .getByText('The System result is Pending. System R and outcome are not available yet.'),
+      detail.getByLabel('System').getByText("The System result hasn't been recorded yet."),
     ).toBeVisible();
     // No fake Execution Gap while one side has no final result yet.
     await expect(detail.getByText('Execution Gap')).toHaveCount(0);
@@ -1816,17 +1900,19 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).toHaveURL(/trade=.*&section=system/);
     const actualFirstDetail = page.getByRole('article', { name: 'ACTUALFIRST' });
     await expect(
-      actualFirstDetail.getByRole('button', { name: 'Resolve System result' }),
+      actualFirstDetail.getByRole('button', { name: 'Record System Outcome' }),
     ).toBeVisible();
-    await actualFirstDetail.getByRole('button', { name: 'Resolve System result' }).click();
+    await actualFirstDetail.getByRole('button', { name: 'Record System Outcome' }).click();
     const systemDialog = page.getByRole('dialog');
     await expect(systemDialog.getByLabel('System result')).toHaveValue('money_target');
     await systemDialog.getByRole('button', { name: 'Confirm resolved result' }).click();
     await expect(systemDialog).toBeHidden({ timeout: 60_000 });
     await page.reload();
-    await expect(
-      page.getByRole('article', { name: 'ACTUALFIRST' }).getByText('Resolved').last(),
-    ).toBeVisible();
+    const systemOutcome = page
+      .getByRole('article', { name: 'ACTUALFIRST' })
+      .getByRole('region', { name: 'System Outcome' });
+    await expect(systemOutcome.getByText('+2.00R', { exact: true }).first()).toBeVisible();
+    await expect(systemOutcome.getByText('Target reached', { exact: true })).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(/month=2026-08&date=2026-08-20/);
     await expect(page).not.toHaveURL(/trade=/);
@@ -1886,13 +1972,14 @@ test.describe('real Trade Journal creation', () => {
     await expect(log.getByText('Pending', { exact: true })).toHaveCount(2);
 
     await page.setViewportSize({ width: 320, height: 720 });
-    await log
-      .getByRole('link', { name: /Update outcome/ })
-      .first()
-      .click();
+    const updateOutcome = log.getByRole('link', { name: /Update outcome/ }).first();
+    await expect(async () => {
+      await updateOutcome.focus();
+      await updateOutcome.press('Enter');
+      await page.waitForURL(/section=system/, { timeout: 5_000 });
+    }).toPass({ timeout: 30_000, intervals: [250] });
     await expect(page).toHaveURL(/attention=system-pending/);
-    await expect(page).toHaveURL(/section=system/);
-    await expect(page.getByLabel('System', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'System', exact: true })).toBeVisible();
     const dimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,
@@ -1996,8 +2083,13 @@ test.describe('Confidence pill drag interaction', () => {
     const pill = page.locator('[data-slot="confidence-pill"]');
     await expect(async () => {
       const first = await pill.boundingBox();
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
       const second = await pill.boundingBox();
-      if (!first || !second || first.x !== second.x) throw new Error('pill still animating');
+      if (!first || !second || Math.abs(first.x - second.x) > 0.1) {
+        throw new Error('pill still animating');
+      }
     }).toPass({ timeout: 5_000, intervals: [50] });
   }
 

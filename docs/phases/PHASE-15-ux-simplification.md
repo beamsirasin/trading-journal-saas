@@ -1584,3 +1584,36 @@ boundary remains authoritative; no client-side provenance inference was added.
 
 This slice adds no schema or migration, changes no financial formula, and does not redesign Trade
 Log, Analytics, or Trade Detail Plan placement. The migration ledger remains `0000`–`0016`.
+
+## 63. Phase 15G.5E — Trade Detail Recording Model Realignment (as built)
+
+Trade Detail retains its five mutually exclusive sections — Actual, System, Strategy & Setup,
+Entry Snapshot, and Review — while correcting the conceptual ownership established by the Founder
+recording model. System now owns two visibly separate groups: **System Plan**, which records what
+the trading system intended at entry, and **System Outcome**, which records what the system would
+ultimately have produced. Actual contains only the trader's result, position state, execution,
+Exit history/cost detail, and Actual correction/close actions.
+
+System Plan presents one canonical authority: Price shows Entry, Stop Loss, optional Take Profit,
+Planned R, and optional planned Position Size; Money shows Risk, optional Target Reward, and
+Planned R. Plan-less historical records truthfully show Not recorded. Historical dual-plan rows
+retain Price precedence when complete and place supplemental Money data under a quiet historical
+disclosure without rewriting storage. Edit System Plan is colocated with this group and uses the
+existing update contract with explicit Price/Money basis selection; switching basis clears the
+other representation while preserving Actual execution and entry-context values.
+
+System Outcome shows Pending with a direct Record System Outcome action, Resolved with an
+unambiguous System R and customer-facing Target/Stop/Break-even/Custom summary, or the terminal
+According to the rules: No Trade state. Correct System Outcome remains separate from Edit System
+Plan. Resolution mechanics and System costs remain available under a secondary details
+disclosure. Planned R, Actual R, System R, and the paired Overview Execution Gap keep their
+existing formulas and eligibility rules.
+
+Actual now leads with Actual Result, then Position, Execution, Exits, and Actions. Price Actual
+shows Actual Entry/Initial Stop and optional size; Money Actual shows Initial Risk and monetary
+result detail. Open and partial records show truthful no-Exit/remaining states, and all four
+Plan/Actual basis combinations remain readable without empty fields from the other basis.
+Retrospective disclosure remains solely at Entry Snapshot level. Strategy & Setup, Review, Trade
+administration, Trade Log, Analytics, New Trade, data storage, and lifecycle contracts are
+unchanged. The migration ledger remains `0000`–`0016`; no `0017` exists. Founder acceptance remains
+pending manual retest.

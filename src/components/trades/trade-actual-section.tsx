@@ -1,7 +1,6 @@
 import { useTranslations } from 'next-intl';
 
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
-import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actions';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
 import {
   ExecutionCorrectionDialog,
@@ -11,18 +10,7 @@ import { AddExitDialog, CorrectExitDialog } from '@/components/trades/trade-exit
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 
-/**
- * ACTUAL — Phase 15E. Answers "what did I actually do?" Owns every
- * Actual-lifecycle mutation (brief §12, load-bearing): Partial Close, Close
- * Trade/Close Remaining, per-exit correction, the legacy-planned "Add
- * execution details" transition, and the general execution correction —
- * relocated verbatim from the former generic "Lifecycle Actions" card, now
- * colocated with the data they change. A `canceled` or legacy `planned` row
- * shows friendly compatibility copy, never the raw status name (Phase 14E).
- * Price mode and Money mode both stay first-class: fields are shown or
- * omitted purely by presence (`actualEntry`/`actualInitialStop` vs. the
- * money fields), never forced into the other shape.
- */
+/** ACTUAL answers only “what did I actually do?” System Plan ownership lives in SystemSection. */
 export function ActualSection({
   trade,
   timezone,
@@ -38,68 +26,12 @@ export function ActualSection({
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
   const money = (value: string | null) =>
     formatTradeMoney(value, trade.tradingAccountBaseCurrency) ?? '—';
-  const plan = (
-    <section
-      aria-labelledby="trade-actual-plan-heading"
-      className="border-border bg-muted/20 grid gap-3 rounded-lg border p-4"
-    >
-      <h3 id="trade-actual-plan-heading" className="text-sm font-semibold">
-        {t('detail.actualGroups.tradePlan')}
-      </h3>
-      <dl className="divide-border divide-y">
-        {trade.plannedEntry === null && trade.actualResultMode !== 'price' ? null : (
-          <>
-            <DetailRow label={t('field.entry')} value={trade.plannedEntry ?? t('common.notSet')} />
-            <DetailRow
-              label={t('field.stopLoss')}
-              value={trade.plannedStop ?? t('common.notSet')}
-            />
-            <DetailRow
-              label={t('field.takeProfit')}
-              value={trade.plannedTarget ?? t('common.notSet')}
-            />
-          </>
-        )}
-        {trade.plannedRiskMinor === null ? null : (
-          <>
-            <DetailRow label={t('field.plannedRisk')} value={money(trade.plannedRiskMinor)} />
-            <DetailRow
-              label={t('field.plannedReward')}
-              value={
-                trade.plannedRewardMinor === null
-                  ? t('common.notSet')
-                  : money(trade.plannedRewardMinor)
-              }
-            />
-          </>
-        )}
-        <DetailRow
-          label={t('field.plannedR')}
-          value={formatR(trade.plannedR) ?? t('common.notAvailable')}
-        />
-        {trade.plannedPositionSize === null ? null : (
-          <DetailRow label={t('field.positionSize')} value={trade.plannedPositionSize} />
-        )}
-      </dl>
-    </section>
-  );
 
   if (trade.status === 'canceled') {
     return (
       <section aria-labelledby="trade-actual-heading" className="grid gap-5">
-        <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
-        {plan}
+        <SectionTitle id="trade-actual-heading">{t('detail.nav.actual')}</SectionTitle>
         <p className="text-muted-foreground text-sm">{t('detail.notOpened')}</p>
-        {canWrite ? (
-          <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
-            <h3 id="trade-actual-actions-heading" className="text-sm font-semibold">
-              {t('detail.actualGroups.actions')}
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              <PlanCorrectionDialog trade={trade} />
-            </div>
-          </section>
-        ) : null}
       </section>
     );
   }
@@ -107,17 +39,15 @@ export function ActualSection({
   if (trade.status === 'planned') {
     return (
       <section aria-labelledby="trade-actual-heading" className="grid gap-5">
-        <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
-        {plan}
-        <p className="text-muted-foreground mb-4 text-sm">{t('detail.needsExecutionDetails')}</p>
+        <SectionTitle id="trade-actual-heading">{t('detail.nav.actual')}</SectionTitle>
+        <p className="text-muted-foreground text-sm">{t('detail.needsExecutionDetails')}</p>
         {canWrite ? (
           <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
-            <h3 id="trade-actual-actions-heading" className="text-sm font-semibold">
+            <h4 id="trade-actual-actions-heading" className="font-semibold">
               {t('detail.actualGroups.actions')}
-            </h3>
+            </h4>
             <div className="flex flex-wrap gap-2">
               <OpenTradeDialog trade={trade} timezone={timezone} />
-              <PlanCorrectionDialog trade={trade} />
             </div>
           </section>
         ) : null}
@@ -127,18 +57,20 @@ export function ActualSection({
 
   const isClosed = trade.status === 'closed';
   const isPartial = !isClosed && trade.closedBps > 0;
+  const positionStatus = isClosed
+    ? t('status.execution.closed')
+    : isPartial
+      ? t('detail.actualGroups.partial')
+      : t('status.execution.open');
 
   return (
-    <section aria-labelledby="trade-actual-heading" className="grid gap-5">
-      <SectionTitle id="trade-actual-heading">{t('detail.sections.execution')}</SectionTitle>
+    <section aria-labelledby="trade-actual-heading" className="grid gap-6">
+      <SectionTitle id="trade-actual-heading">{t('detail.nav.actual')}</SectionTitle>
 
-      {plan}
-
-      <section aria-labelledby="trade-actual-position-heading" className="grid gap-3">
-        <h3 id="trade-actual-position-heading" className="text-sm font-semibold">
-          {t('detail.actualGroups.position')}
-        </h3>
-        {/* Compact final answer first (brief §11) — never let exit-leg history compete with it visually. A label stays attached to the value (never colour/size alone) so the number's meaning survives for assistive tech and reads unambiguously in isolation. */}
+      <section aria-labelledby="trade-actual-result-heading" className="grid gap-3">
+        <h4 id="trade-actual-result-heading" className="font-semibold">
+          {t('detail.actualGroups.result')}
+        </h4>
         {isClosed ? (
           <div className="flex flex-wrap items-baseline gap-3">
             <div className="flex flex-col gap-1">
@@ -150,70 +82,70 @@ export function ActualSection({
             <TradeOutcomeBadge outcome={trade.traderOutcome} />
           </div>
         ) : isPartial ? (
-          <div className="flex flex-wrap items-baseline gap-3">
-            <div className="flex flex-col gap-1">
-              <span className="text-muted-foreground text-xs">{t('field.realizedRToDate')}</span>
-              <span className="text-metric numeric">{formatR(trade.realizedRToDate) ?? '—'}</span>
-            </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground text-xs">{t('field.realizedRToDate')}</span>
+            <span className="text-metric numeric">{formatR(trade.realizedRToDate) ?? '—'}</span>
           </div>
-        ) : null}
+        ) : (
+          <p className="text-sm font-medium">{t('detail.actualGroups.resultOpen')}</p>
+        )}
+      </section>
 
+      <section aria-labelledby="trade-actual-position-heading" className="grid gap-3">
+        <h4 id="trade-actual-position-heading" className="font-semibold">
+          {t('detail.actualGroups.position')}
+        </h4>
+        <dl className="divide-border divide-y">
+          <DetailRow label={t('detail.actualGroups.positionStatus')} value={positionStatus} />
+          {isPartial ? (
+            <DetailRow label={t('field.remainingPercent')} value={`${trade.remainingBps / 100}%`} />
+          ) : null}
+          {trade.netPnlMinor === null ? null : (
+            <DetailRow label={t('field.netPnl')} value={money(trade.netPnlMinor)} />
+          )}
+        </dl>
+      </section>
+
+      <section aria-labelledby="trade-actual-execution-heading" className="grid gap-3">
+        <h4 id="trade-actual-execution-heading" className="font-semibold">
+          {t('detail.actualGroups.execution')}
+        </h4>
         <dl className="divide-border divide-y">
           <DetailRow
             label={t('field.actualResultMode')}
             value={
               trade.actualResultMode === null
-                ? '—'
+                ? t('common.notAvailable')
                 : t(`lifecycle.execution.${trade.actualResultMode}Mode`)
             }
           />
-          <DetailRow label={t('field.actualEntry')} value={trade.actualEntry ?? '—'} />
-          <DetailRow label={t('field.initialStop')} value={trade.actualInitialStop ?? '—'} />
-          {trade.actualPositionSize === null ? null : (
-            <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
-          )}
-          <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
-          {/* Always present, even Open with zero Exits — a truthful "Not
-            available" (never a blank or fabricated 0) until the final Actual
-            R genuinely exists (CLAUDE.md §6). */}
-          <DetailRow
-            label={t('field.actualR')}
-            value={formatR(trade.actualR) ?? t('common.notAvailable')}
-          />
-          <DetailRow
-            label={t('field.traderOutcome')}
-            value={<TradeOutcomeBadge outcome={trade.traderOutcome} />}
-          />
+          {trade.actualResultMode === 'price' ? (
+            <>
+              <DetailRow
+                label={t('field.actualEntry')}
+                value={trade.actualEntry ?? t('common.notAvailable')}
+              />
+              <DetailRow
+                label={t('field.initialStop')}
+                value={trade.actualInitialStop ?? t('common.notAvailable')}
+              />
+              {trade.actualPositionSize === null ? null : (
+                <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
+              )}
+            </>
+          ) : trade.actualResultMode === 'money' ? (
+            <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
+          ) : null}
           <DetailRow label={t('field.enteredAt')} value={instant(trade.enteredAt)} />
         </dl>
       </section>
 
-      {canWrite ? (
-        <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
-          <h3 id="trade-actual-actions-heading" className="text-sm font-semibold">
-            {t('detail.actualGroups.actions')}
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <PlanCorrectionDialog trade={trade} />
-            {isClosed ? (
-              <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
-            ) : (
-              <>
-                <AddExitDialog trade={trade} timezone={timezone} />
-                <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
-                <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
-              </>
-            )}
-          </div>
-        </section>
-      ) : null}
-
       <section aria-labelledby="trade-actual-exits-heading" className="grid gap-3">
-        <h3 id="trade-actual-exits-heading" className="text-sm font-semibold">
+        <h4 id="trade-actual-exits-heading" className="font-semibold">
           {t('detail.actualGroups.exits')}
-        </h3>
+        </h4>
         {trade.exits.length === 0 && trade.actualExit === null ? (
-          <p className="text-muted-foreground text-sm">{t('common.notAvailable')}</p>
+          <p className="text-muted-foreground text-sm">{t('detail.actualGroups.noExits')}</p>
         ) : (
           <dl className="divide-border divide-y">
             {trade.actualExit === null ? null : (
@@ -225,17 +157,8 @@ export function ActualSection({
             <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
             <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
             <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
-            {trade.netPnlMinor === null ? null : (
-              <DetailRow label={t('field.netPnl')} value={money(trade.netPnlMinor)} />
-            )}
             {trade.exits.length === 0 ? null : (
-              <>
-                <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
-                <DetailRow
-                  label={t('field.remainingPercent')}
-                  value={`${trade.remainingBps / 100}%`}
-                />
-              </>
+              <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
             )}
             {trade.exitedAt === null ? null : (
               <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
@@ -248,9 +171,9 @@ export function ActualSection({
             className="border-border grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
           >
             <div className="grid gap-1 text-sm">
-              <h4 className="font-semibold">
+              <h5 className="font-semibold">
                 {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
-              </h4>
+              </h5>
               <p>
                 {t('field.closedPercent')}:{' '}
                 {(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%
@@ -278,6 +201,25 @@ export function ActualSection({
           </article>
         ))}
       </section>
+
+      {canWrite ? (
+        <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
+          <h4 id="trade-actual-actions-heading" className="font-semibold">
+            {t('detail.actualGroups.actions')}
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {isClosed ? (
+              <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
+            ) : (
+              <>
+                <AddExitDialog trade={trade} timezone={timezone} />
+                <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
+                <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

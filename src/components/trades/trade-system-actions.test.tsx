@@ -60,7 +60,7 @@ describe('System result lifecycle controls', () => {
   it('resolves Pending with primitives and never offers setup_invalidated', async () => {
     const user = userEvent.setup();
     renderWithMessages(<ResolveSystemDialog trade={base} timezone="Asia/Bangkok" />);
-    await user.click(screen.getByRole('button', { name: 'Resolve System result' }));
+    await user.click(screen.getByRole('button', { name: 'Record System Outcome' }));
     await user.type(screen.getByLabelText('System exit price'), '120');
     const reason = screen.getByLabelText('Reason') as HTMLSelectElement;
     expect(Array.from(reason.options).map((option) => option.value)).not.toContain(
@@ -103,7 +103,7 @@ describe('System result lifecycle controls', () => {
         timezone="Asia/Bangkok"
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Resolve System result' }));
+    await user.click(screen.getByRole('button', { name: 'Record System Outcome' }));
     expect(screen.queryByLabelText('System exit price')).not.toBeInTheDocument();
     expect(screen.getAllByText('5.0000R')).toHaveLength(2);
     const cost = screen.getByLabelText('System Cost R');
@@ -136,7 +136,7 @@ describe('System result lifecycle controls', () => {
         timezone="Asia/Bangkok"
       />,
     );
-    await user.click(screen.getByRole('button', { name: 'Resolve System result' }));
+    await user.click(screen.getByRole('button', { name: 'Record System Outcome' }));
     await user.selectOptions(screen.getByLabelText('System result'), 'money_custom');
     expect(screen.getByLabelText('Gross System R')).toHaveValue('');
     expect(screen.getByText(/not Actual R/i)).toBeInTheDocument();
@@ -147,7 +147,7 @@ describe('System result lifecycle controls', () => {
     renderWithMessages(
       <CorrectSystemDialog trade={{ ...base, systemStatus: 'no_trade' }} timezone="Asia/Bangkok" />,
     );
-    await user.click(screen.getByRole('button', { name: 'Correct System result' }));
+    await user.click(screen.getByRole('button', { name: 'Correct System Outcome' }));
     const target = screen.getByLabelText('Corrected result') as HTMLSelectElement;
     expect(Array.from(target.options).map((option) => option.value)).toEqual([
       'resolved',

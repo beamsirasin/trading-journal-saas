@@ -690,10 +690,34 @@
         "administration": "Trade administration"
       },
       "actualGroups": {
-        "tradePlan": "Trade Plan",
+        "result": "Actual Result",
+        "resultOpen": "Actual Result will be available after the Trade is closed.",
         "position": "Position",
+        "positionStatus": "Status",
+        "partial": "Partial",
+        "execution": "Execution",
         "exits": "Exits",
+        "noExits": "No exits yet.",
         "actions": "Actions"
+      },
+      "systemPlan": {
+        "title": "System Plan",
+        "byPrice": "Plan by Price",
+        "byMoney": "Plan by Money",
+        "notRecorded": "Not recorded",
+        "risk": "Risk",
+        "targetReward": "Target Reward",
+        "legacyDetails": "Additional historical plan data"
+      },
+      "systemOutcome": {
+        "title": "System Outcome",
+        "pending": "The System result hasn't been recorded yet.",
+        "noTrade": "According to the rules: No Trade",
+        "target": "Target reached",
+        "stop": "Stop reached",
+        "breakEven": "Break even",
+        "custom": "Custom",
+        "details": "Resolution details"
       },
       "nav": {
         "label": "Trade sections",
@@ -733,9 +757,12 @@
         "saving": "Saving…"
       },
       "plan": {
-        "edit": "Edit Plan",
-        "title": "Correct the Plan",
-        "description": "Update the stored Plan. The server recalculates Planned R from the authoritative values.",
+        "edit": "Edit System Plan",
+        "title": "Edit System Plan",
+        "description": "Update what the System intended. Actual execution and results remain unchanged.",
+        "basis": "Plan by",
+        "price": "Price",
+        "money": "Money",
         "targetHint": "Leave blank to explicitly remove the Target."
       },
       "identity": {
@@ -782,16 +809,16 @@
         "timezoneHint": "Wall-clock time in your saved timezone: {timezone}."
       },
       "system": {
-        "resolve": "Resolve System result",
-        "resolveTitle": "Resolve the System result",
+        "resolve": "Record System Outcome",
+        "resolveTitle": "Record System Outcome",
         "resolveDescription": "Confirm what the rules would have done at exit. System R and outcome are calculated automatically.",
         "confirmResolve": "Confirm resolved result",
         "noTrade": "Mark no trade",
         "noTradeTitle": "Mark the System result as no trade?",
         "noTradeDescription": "This records that the pinned Strategy and Setup would not have permitted this Trade. The actual execution remains unchanged.",
         "confirmNoTrade": "Confirm no trade",
-        "correct": "Correct System result",
-        "correctTitle": "Correct the System result",
+        "correct": "Correct System Outcome",
+        "correctTitle": "Correct System Outcome",
         "correctDescription": "A terminal System result can be corrected to Resolved or No trade. It cannot return to Pending.",
         "result": "Corrected result",
         "exitPrice": "System exit price",

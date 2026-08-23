@@ -9,11 +9,9 @@ import {
   actionErrorCode,
   ActionFeedback,
   FormInput,
-  FormTextarea,
   NativeSelect,
   TradeField,
 } from '@/components/trades/trade-action-form';
-import { TradeConfidenceControl } from '@/components/trades/trade-confidence-control';
 import { parseTradeMoneyInput, tradeMoneyInputValue } from '@/components/trades/trade-form-values';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,9 +35,9 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
-  // Confidence is a controlled 5-step selector, not a plain form field —
-  // its value is never read from `FormData` (see `submit` below).
-  const [confidence, setConfidence] = useState<number | null>(trade.confidence);
+  const initialBasis =
+    trade.plannedEntry !== null && trade.plannedStop !== null ? 'price' : 'money';
+  const [basis, setBasis] = useState<'price' | 'money'>(initialBasis);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,14 +45,14 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
     const data = new FormData(event.currentTarget);
     const currency = trade.tradingAccountBaseCurrency;
 
-    const riskRaw = String(data.get('plannedRiskMinor') ?? '').trim();
+    const riskRaw = basis === 'money' ? String(data.get('plannedRiskMinor') ?? '').trim() : '';
     let plannedRiskMinor: string | null = null;
     if (riskRaw !== '') {
       const risk = parseTradeMoneyInput(riskRaw, currency, { allowZero: false });
       if (!risk.ok) return setFeedback(t('lifecycle.validation.money'));
       plannedRiskMinor = risk.value;
     }
-    const rewardRaw = String(data.get('plannedRewardMinor') ?? '').trim();
+    const rewardRaw = basis === 'money' ? String(data.get('plannedRewardMinor') ?? '').trim() : '';
     let plannedRewardMinor: string | null = null;
     if (rewardRaw !== '') {
       const reward = parseTradeMoneyInput(rewardRaw, currency, { allowZero: true });
@@ -65,18 +63,23 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
     startTransition(async () => {
       const result = await updateTradePlanAction({
         tradeId: trade.tradeId,
-        plannedEntry: String(data.get('plannedEntry') ?? '').trim() || null,
-        plannedStop: String(data.get('plannedStop') ?? '').trim() || null,
-        plannedTarget: String(data.get('plannedTarget') ?? '').trim() || null,
-        plannedPositionSize: String(data.get('plannedPositionSize') ?? '').trim() || null,
+        systemPlanBasis: basis,
+        plannedEntry:
+          basis === 'price' ? String(data.get('plannedEntry') ?? '').trim() || null : null,
+        plannedStop:
+          basis === 'price' ? String(data.get('plannedStop') ?? '').trim() || null : null,
+        plannedTarget:
+          basis === 'price' ? String(data.get('plannedTarget') ?? '').trim() || null : null,
+        plannedPositionSize:
+          basis === 'price' ? String(data.get('plannedPositionSize') ?? '').trim() || null : null,
         plannedRiskMinor,
         plannedRewardMinor,
-        timeframe: String(data.get('timeframe') ?? '').trim() || null,
-        session: String(data.get('session') ?? '').trim() || null,
-        confirmationNotes: String(data.get('confirmationNotes') ?? '').trim() || null,
-        confidence,
-        tradingviewUrl: String(data.get('tradingviewUrl') ?? '').trim() || null,
-        notes: String(data.get('notes') ?? '').trim() || null,
+        timeframe: trade.timeframe,
+        session: trade.session,
+        confirmationNotes: trade.confirmationNotes,
+        confidence: trade.confidence,
+        tradingviewUrl: trade.tradingviewUrl,
+        notes: trade.notes,
       });
       const code = actionErrorCode(result);
       if (code !== null) return setFeedback(errorMessage(t, code));
@@ -96,100 +99,88 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
           <DialogDescription>{t('lifecycle.plan.description')}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TradeField id="plan-entry" label={t('field.entry')} hint={t('common.optional')}>
-              <FormInput
-                id="plan-entry"
-                name="plannedEntry"
-                defaultValue={trade.plannedEntry ?? ''}
-              />
-            </TradeField>
-            <TradeField id="plan-stop" label={t('field.stopLoss')} hint={t('common.optional')}>
-              <FormInput id="plan-stop" name="plannedStop" defaultValue={trade.plannedStop ?? ''} />
-            </TradeField>
-            <TradeField
-              id="plan-target"
-              label={t('field.takeProfit')}
-              hint={t('lifecycle.plan.targetHint')}
+          <TradeField id="plan-basis" label={t('lifecycle.plan.basis')}>
+            <NativeSelect
+              id="plan-basis"
+              value={basis}
+              onChange={(event) => setBasis(event.target.value as 'price' | 'money')}
             >
-              <FormInput
+              <option value="price">{t('lifecycle.plan.price')}</option>
+              <option value="money">{t('lifecycle.plan.money')}</option>
+            </NativeSelect>
+          </TradeField>
+          {basis === 'price' ? (
+            <div key="price-plan" className="grid gap-4 sm:grid-cols-2">
+              <TradeField id="plan-entry" label={t('field.entry')}>
+                <FormInput
+                  id="plan-entry"
+                  name="plannedEntry"
+                  defaultValue={trade.plannedEntry ?? ''}
+                  required
+                />
+              </TradeField>
+              <TradeField id="plan-stop" label={t('field.stopLoss')}>
+                <FormInput
+                  id="plan-stop"
+                  name="plannedStop"
+                  defaultValue={trade.plannedStop ?? ''}
+                  required
+                />
+              </TradeField>
+              <TradeField
                 id="plan-target"
-                name="plannedTarget"
-                defaultValue={trade.plannedTarget ?? ''}
-              />
-            </TradeField>
-            <TradeField id="plan-size" label={t('field.positionSize')}>
-              <FormInput
-                id="plan-size"
-                name="plannedPositionSize"
-                defaultValue={trade.plannedPositionSize ?? ''}
-              />
-            </TradeField>
-            <TradeField
-              id="plan-risk"
-              label={t('field.plannedRisk')}
-              hint={t('lifecycle.execution.moneyHint', {
-                currency: trade.tradingAccountBaseCurrency,
-              })}
-            >
-              <FormInput
+                label={t('field.takeProfit')}
+                hint={t('lifecycle.plan.targetHint')}
+              >
+                <FormInput
+                  id="plan-target"
+                  name="plannedTarget"
+                  defaultValue={trade.plannedTarget ?? ''}
+                />
+              </TradeField>
+              <TradeField id="plan-size" label={t('field.positionSize')}>
+                <FormInput
+                  id="plan-size"
+                  name="plannedPositionSize"
+                  defaultValue={trade.plannedPositionSize ?? ''}
+                />
+              </TradeField>
+            </div>
+          ) : (
+            <div key="money-plan" className="grid gap-4 sm:grid-cols-2">
+              <TradeField
                 id="plan-risk"
-                name="plannedRiskMinor"
-                defaultValue={tradeMoneyInputValue(
-                  trade.plannedRiskMinor,
-                  trade.tradingAccountBaseCurrency,
-                )}
-              />
-            </TradeField>
-            <TradeField
-              id="plan-reward"
-              label={t('field.plannedReward')}
-              hint={t('common.optional')}
-            >
-              <FormInput
+                label={t('detail.systemPlan.risk')}
+                hint={t('lifecycle.execution.moneyHint', {
+                  currency: trade.tradingAccountBaseCurrency,
+                })}
+              >
+                <FormInput
+                  id="plan-risk"
+                  name="plannedRiskMinor"
+                  defaultValue={tradeMoneyInputValue(
+                    trade.plannedRiskMinor,
+                    trade.tradingAccountBaseCurrency,
+                  )}
+                  required
+                />
+              </TradeField>
+              <TradeField
                 id="plan-reward"
-                name="plannedRewardMinor"
-                defaultValue={tradeMoneyInputValue(
-                  trade.plannedRewardMinor,
-                  trade.tradingAccountBaseCurrency,
-                )}
-              />
-            </TradeField>
-            <TradeField id="plan-timeframe" label={t('field.timeframe')}>
-              <FormInput
-                id="plan-timeframe"
-                name="timeframe"
-                defaultValue={trade.timeframe ?? ''}
-              />
-            </TradeField>
-            <TradeField id="plan-session" label={t('field.session')}>
-              <FormInput id="plan-session" name="session" defaultValue={trade.session ?? ''} />
-            </TradeField>
-            <TradeField id="plan-chart" label={t('field.tradingViewUrl')}>
-              <FormInput
-                id="plan-chart"
-                name="tradingviewUrl"
-                type="url"
-                defaultValue={trade.tradingviewUrl ?? ''}
-              />
-            </TradeField>
-          </div>
-          <TradeConfidenceControl
-            id="plan-confidence"
-            label={t('field.confidence')}
-            value={confidence}
-            onChange={setConfidence}
-          />
-          <TradeField id="plan-confirmation" label={t('field.entryReason')}>
-            <FormTextarea
-              id="plan-confirmation"
-              name="confirmationNotes"
-              defaultValue={trade.confirmationNotes ?? ''}
-            />
-          </TradeField>
-          <TradeField id="plan-notes" label={t('field.notes')}>
-            <FormTextarea id="plan-notes" name="notes" defaultValue={trade.notes ?? ''} />
-          </TradeField>
+                label={t('detail.systemPlan.targetReward')}
+                hint={t('common.optional')}
+              >
+                <FormInput
+                  id="plan-reward"
+                  name="plannedRewardMinor"
+                  defaultValue={tradeMoneyInputValue(
+                    trade.plannedRewardMinor,
+                    trade.tradingAccountBaseCurrency,
+                  )}
+                />
+              </TradeField>
+            </div>
+          )}
           <ActionFeedback message={feedback} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
