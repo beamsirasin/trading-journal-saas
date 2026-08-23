@@ -1,12 +1,13 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
-> **Status:** 15A–15F and the approved 15G.4 recording-model audit are complete. 15G.5A's
-> domain/service foundation is implemented in the working tree — see §59. Phase 15G Founder UAT
-> remains open and must not be marked complete before Founder acceptance.
+> **Status:** 15A–15F and the approved 15G.4 recording-model audit are complete. The 15G.5A
+> domain/service foundation and 15G.5B atomic completed-create foundation are implemented in the
+> working tree — see §§59–60. Phase 15G Founder UAT remains open and must not be marked complete
+> before Founder acceptance.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-23 (Phase 15G.5A — Recording Model Domain & Service Foundation).
+> **Last updated:** 2026-08-23 (Phase 15G.5B — Atomic Completed-Trade Creation Foundation).
 
 ---
 
@@ -1460,3 +1461,46 @@ Authorization, workspace scoping, membership, `ordinary_write` entitlement behav
 classification/version constraints, mutation-key replay ordering, snapshots, audit logging, Actual
 R, System R, Execution Gap, and derived outcomes are unchanged. After Trade creation and Founder
 UAT acceptance are explicitly not implemented by 15G.5A.
+
+## 60. Phase 15G.5B — Atomic Completed-Trade Creation Foundation (as built)
+
+This server-only slice adds the strict `createCompletedTradeAction` and dedicated
+`createCompletedTrade` service. It adds no UI, Analytics work, or database migration; the migration
+ledger remains `0000`–`0016`.
+
+**One atomic lifecycle.** A completed write carries `recordingTiming: 'after_trade'`, one explicit
+System Plan basis, one independent Actual Result basis, `enteredAt`, `exitedAt`, and one or more
+Actual Exit legs whose coverage totals exactly 10,000 bps. The service reuses `createTradeInTx`, the
+canonical Exit aggregation primitive, and the canonical System resolution primitive beneath one
+outer transaction. The temporary Open state is transaction-internal only: success exposes a Closed
+Trade with final Actual R and Trader Outcome; any later validation, Exit, System, Setup snapshot,
+authorization, or database failure rolls the whole graph back.
+
+Price and Money remain independent authorities. All Price/Price, Price/Money, Money/Price, and
+Money/Money Plan/Actual combinations are supported without copying Plan facts into Actual facts.
+Price Actual requires Entry, Initial Stop, and priced Exit legs. Money Actual requires Initial Risk
+and realized-P&L Exit legs. Partial exits use the same exact 10,000-bps coverage and existing
+weighted aggregation/close formulas as ordinary execution mutations. Zero-duration Trades are
+valid; all completion times must be no later than the service clock. The final persisted
+`exited_at` is the supplied chronological completion time, and retrospective recording is still
+derived by the 15G.5A millisecond rule rather than a new column.
+
+**System and replay.** Omitting `systemResult` leaves System Pending. A completed write may instead
+atomically resolve the canonical Price or Money target/stop/break-even/custom outcome, or mark
+System `no_trade`; no special Execution Gap path exists. One caller-owned mutation key identifies
+the entire operation, while Exit mutation keys are generated internally. Exact replay returns the
+already-finalized Trade without duplicating Trade, Exit, snapshot, emotion, System, or audit rows;
+a collision with a non-finalized lifecycle returns `completed_trade_replay_conflict`.
+
+**Context and audit truthfulness.** Strategy remains optional and Setup still requires Strategy.
+Setup Conditions, confidence, emotions, notes, confirmation context, and chart attachment retain
+their existing storage and validation semantics. Because this is retrospective input, none is
+described as captured at entry. The operation emits one top-level `trade.created` event only after
+the full graph succeeds, with structural `recordingTiming`, final Trader/System status, and Exit
+count metadata; it deliberately suppresses misleading intermediate `exit_added`, `open`, `closed`,
+and System lifecycle events.
+
+Review notes, Rule-check edits, and Mistake attachment are deliberately deferred from the atomic
+completed-create contract. Their current public services own separate transactions, and extracting
+them would enlarge this foundation beyond its required creation graph. Existing At Entry behavior
+is unchanged.

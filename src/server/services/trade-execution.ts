@@ -13,7 +13,9 @@ import { tradeExits, trades } from '@/server/db/schema';
 import { insertAuditLog } from './audit-log';
 import { acquireTradeWriteContext, type WorkspaceAccessDenial } from './trade-management';
 
-type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+export type TradeExecutionTx = Parameters<Parameters<Database['transaction']>[0]>[0];
+type Tx = TradeExecutionTx;
+type TradeRow = typeof trades.$inferSelect;
 type ExitRow = typeof tradeExits.$inferSelect;
 
 export interface AddTradeExitInput {
@@ -131,18 +133,39 @@ async function persistAggregate(
   return { ok: true as const, realized: realized.value, final: snapshot.value };
 }
 
-async function addTradeExitInTx(
+export interface AddTradeExitInTxOptions {
+  readonly closeRemaining?: boolean;
+  /**
+   * A row created and owned by the SAME outer transaction. Supplying it
+   * deliberately skips the existing-Trade authorization/lock boundary so a
+   * completed create authorizes exactly once, before any persistence.
+   */
+  readonly trustedTrade?: TradeRow;
+  /** Public exit mutations keep their lifecycle events; atomic completed
+   * creation suppresses them and emits one truthful top-level event instead. */
+  readonly emitAudit?: boolean;
+}
+
+export async function addTradeExitInTx(
   tx: Tx,
   workspaceId: string,
   userId: string,
   tradeId: string,
   input: AddTradeExitInput,
   clock: Clock,
-  closeRemaining: boolean,
+  options: AddTradeExitInTxOptions = {},
 ): Promise<TradeExitMutationResult> {
-  const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
-  if (!ctx.ok) return ctx;
-  const { trade } = ctx;
+  let trade: TradeRow;
+  if (options.trustedTrade !== undefined) {
+    if (options.trustedTrade.id !== tradeId || options.trustedTrade.workspaceId !== workspaceId) {
+      throw new Error('addTradeExitInTx: trusted Trade scope mismatch');
+    }
+    trade = options.trustedTrade;
+  } else {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+    trade = ctx.trade;
+  }
 
   const replay = await tx.query.tradeExits.findFirst({
     where: and(
@@ -178,7 +201,7 @@ async function addTradeExitInTx(
   const exits = await currentExits(tx, tradeId);
   const alreadyClosed = exits.reduce((total, exit) => total + exit.closedBps, 0);
   const remaining = CLOSED_BPS_TOTAL - alreadyClosed;
-  const closedBps = closeRemaining ? remaining : input.closedBps;
+  const closedBps = options.closeRemaining === true ? remaining : input.closedBps;
   if (!Number.isSafeInteger(closedBps) || closedBps <= 0 || closedBps > remaining) {
     return { ok: false, code: 'invalid_closed_bps' };
   }
@@ -203,23 +226,25 @@ async function addTradeExitInTx(
   const allExits = [...exits, inserted];
   const aggregate = await persistAggregate(tx, trade, allExits, clock.now());
   if (!aggregate.ok) return { ok: false, code: 'invalid_exit_shape', calcReason: aggregate.reason };
-  await insertAuditLog(tx, {
-    action: 'trade.exit_added',
-    workspaceId,
-    actorUserId: userId,
-    entityType: 'trade_exit',
-    entityId: inserted.id,
-    metadata: { tradeId, exitId: inserted.id, sequence, closedBps },
-  });
-  if (aggregate.final !== null) {
+  if (options.emitAudit !== false) {
     await insertAuditLog(tx, {
-      action: 'trade.closed',
+      action: 'trade.exit_added',
       workspaceId,
       actorUserId: userId,
-      entityType: 'trade',
-      entityId: tradeId,
-      metadata: { tradeId, previousStatus: 'open', newStatus: 'closed' },
+      entityType: 'trade_exit',
+      entityId: inserted.id,
+      metadata: { tradeId, exitId: inserted.id, sequence, closedBps },
     });
+    if (aggregate.final !== null) {
+      await insertAuditLog(tx, {
+        action: 'trade.closed',
+        workspaceId,
+        actorUserId: userId,
+        entityType: 'trade',
+        entityId: tradeId,
+        metadata: { tradeId, previousStatus: 'open', newStatus: 'closed' },
+      });
+    }
   }
   return {
     ok: true,
@@ -242,7 +267,7 @@ export async function addTradeExit(
   clock: Clock = systemClock,
 ): Promise<TradeExitMutationResult> {
   return getDb().transaction((tx) =>
-    addTradeExitInTx(tx, workspaceId, userId, tradeId, input, clock, false),
+    addTradeExitInTx(tx, workspaceId, userId, tradeId, input, clock),
   );
 }
 
@@ -254,7 +279,9 @@ export async function closeRemainingTrade(
   clock: Clock = systemClock,
 ): Promise<TradeExitMutationResult> {
   return getDb().transaction((tx) =>
-    addTradeExitInTx(tx, workspaceId, userId, tradeId, { ...input, closedBps: 1 }, clock, true),
+    addTradeExitInTx(tx, workspaceId, userId, tradeId, { ...input, closedBps: 1 }, clock, {
+      closeRemaining: true,
+    }),
   );
 }
 

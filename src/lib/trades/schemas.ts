@@ -693,9 +693,8 @@ export type CorrectTradeExecutionActionData = z.output<typeof CorrectTradeExecut
 // 8. resolveSystemTrade
 // ---------------------------------------------------------------------------
 
-const PriceResolveSystemTradeSchema = z
+const PriceSystemResolutionSchema = z
   .object({
-    tradeId: uuidField(),
     resolutionKind: z.literal('price_exit'),
     systemExitPrice: decimalField(),
     systemExitedAt: instantField(),
@@ -705,36 +704,32 @@ const PriceResolveSystemTradeSchema = z
   })
   .strict();
 
-const MoneyTargetResolveSystemTradeSchema = z
+const MoneyTargetSystemResolutionSchema = z
   .object({
-    tradeId: uuidField(),
     resolutionKind: z.literal('money_target'),
     systemExitedAt: instantField(),
     systemCostR: decimalField(),
   })
   .strict();
 
-const MoneyStopResolveSystemTradeSchema = z
+const MoneyStopSystemResolutionSchema = z
   .object({
-    tradeId: uuidField(),
     resolutionKind: z.literal('money_stop'),
     systemExitedAt: instantField(),
     systemCostR: decimalField(),
   })
   .strict();
 
-const MoneyBreakEvenResolveSystemTradeSchema = z
+const MoneyBreakEvenSystemResolutionSchema = z
   .object({
-    tradeId: uuidField(),
     resolutionKind: z.literal('money_break_even'),
     systemExitedAt: instantField(),
     systemCostR: decimalField(),
   })
   .strict();
 
-const MoneyCustomResolveSystemTradeSchema = z
+const MoneyCustomSystemResolutionSchema = z
   .object({
-    tradeId: uuidField(),
     resolutionKind: z.literal('money_custom'),
     systemGrossRInput: decimalField(),
     systemExitedAt: instantField(),
@@ -743,14 +738,127 @@ const MoneyCustomResolveSystemTradeSchema = z
   .strict();
 
 export const ResolveSystemTradeSchema = z.discriminatedUnion('resolutionKind', [
-  PriceResolveSystemTradeSchema,
-  MoneyTargetResolveSystemTradeSchema,
-  MoneyStopResolveSystemTradeSchema,
-  MoneyBreakEvenResolveSystemTradeSchema,
-  MoneyCustomResolveSystemTradeSchema,
+  PriceSystemResolutionSchema.extend({ tradeId: uuidField() }),
+  MoneyTargetSystemResolutionSchema.extend({ tradeId: uuidField() }),
+  MoneyStopSystemResolutionSchema.extend({ tradeId: uuidField() }),
+  MoneyBreakEvenSystemResolutionSchema.extend({ tradeId: uuidField() }),
+  MoneyCustomSystemResolutionSchema.extend({ tradeId: uuidField() }),
 ]);
 export type ResolveSystemTradeActionInput = z.input<typeof ResolveSystemTradeSchema>;
 export type ResolveSystemTradeActionData = z.output<typeof ResolveSystemTradeSchema>;
+
+// ---------------------------------------------------------------------------
+// 8a. createCompletedTrade (Phase 15G.5B service/action foundation)
+// ---------------------------------------------------------------------------
+
+const CompletedTradeExitSchema = z
+  .object({
+    closedBps: z.number().int().min(1).max(10_000),
+    exitPrice: decimalField().nullable().optional(),
+    realizedPnlMinor: signedMinorField().nullable().optional(),
+    exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
+    /** Omitted legs inherit the completed Trade's canonical `exitedAt`. */
+    exitedAt: instantField().optional(),
+  })
+  .strict();
+
+const CompletedSystemResultSchema = z.union([
+  z.object({ status: z.literal('no_trade') }).strict(),
+  z.discriminatedUnion('resolutionKind', [
+    PriceSystemResolutionSchema.extend({ status: z.literal('resolved') }),
+    MoneyTargetSystemResolutionSchema.extend({ status: z.literal('resolved') }),
+    MoneyStopSystemResolutionSchema.extend({ status: z.literal('resolved') }),
+    MoneyBreakEvenSystemResolutionSchema.extend({ status: z.literal('resolved') }),
+    MoneyCustomSystemResolutionSchema.extend({ status: z.literal('resolved') }),
+  ]),
+]);
+
+const CompletedTradeObjectSchema = CreateTradeObjectSchema.omit({
+  recordingTiming: true,
+  systemPlanBasis: true,
+  actualResultMode: true,
+  enteredAt: true,
+}).extend({
+  recordingTiming: z.literal('after_trade'),
+  systemPlanBasis: z.enum(SYSTEM_PLAN_BASES),
+  actualResultBasis: z.enum(SYSTEM_PLAN_BASES),
+  enteredAt: instantField(),
+  exitedAt: instantField(),
+  exits: z.array(CompletedTradeExitSchema).min(1),
+  systemResult: CompletedSystemResultSchema.optional(),
+});
+
+export const CreateCompletedTradeSchema = applyPlanShapeRefinements(CompletedTradeObjectSchema)
+  .refine((data) => data.setupId === undefined || data.strategyId !== undefined, {
+    message: 'setup_requires_strategy',
+    path: ['setupId'],
+  })
+  .refine((data) => (data.setupId === undefined) === (data.conditionSetToken === undefined), {
+    message: 'setup_requires_condition_token',
+    path: ['conditionSetToken'],
+  })
+  .refine((data) => data.setupId !== undefined || (data.conditionAnswers ?? []).length === 0, {
+    message: 'condition_answers_require_setup',
+    path: ['conditionAnswers'],
+  })
+  .superRefine((data, context) => {
+    const authority = validateNewWritePlanAuthority(data, data.systemPlanBasis, {
+      allowInferredBasis: false,
+    });
+    if (!authority.ok) {
+      context.addIssue({
+        code: 'custom',
+        message: authority.code,
+        path: ['systemPlanBasis'],
+      });
+    }
+
+    const hasPriceContext = data.actualEntry != null && data.actualInitialStop != null;
+    const hasPartialPriceContext = (data.actualEntry == null) !== (data.actualInitialStop == null);
+    if (hasPartialPriceContext || (data.actualResultBasis === 'price' && !hasPriceContext)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'incomplete_actual_price_context',
+        path: ['actualEntry'],
+      });
+    }
+    if (data.actualResultBasis === 'price' && data.actualInitialRiskMinor != null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'price_mode_forbids_money_risk',
+        path: ['actualInitialRiskMinor'],
+      });
+    }
+    if (data.actualResultBasis === 'money' && data.actualInitialRiskMinor == null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'money_mode_requires_risk',
+        path: ['actualInitialRiskMinor'],
+      });
+    }
+
+    for (const [index, exit] of data.exits.entries()) {
+      if (
+        data.actualResultBasis === 'price' &&
+        (exit.exitPrice == null || exit.realizedPnlMinor != null)
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'invalid_price_exit',
+          path: ['exits', index],
+        });
+      }
+      if (data.actualResultBasis === 'money' && exit.realizedPnlMinor == null) {
+        context.addIssue({
+          code: 'custom',
+          message: 'invalid_money_exit',
+          path: ['exits', index],
+        });
+      }
+    }
+  });
+export type CreateCompletedTradeActionInput = z.input<typeof CreateCompletedTradeSchema>;
+export type CreateCompletedTradeActionData = z.output<typeof CreateCompletedTradeSchema>;
 
 // ---------------------------------------------------------------------------
 // 9. markSystemNoTrade

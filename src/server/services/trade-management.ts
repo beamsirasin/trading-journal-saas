@@ -149,11 +149,16 @@ import {
  */
 
 /** Structurally matches both a Drizzle transaction handle and the plain database. */
-type Executor = Pick<Database, 'select' | 'insert' | 'update' | 'delete' | 'query'>;
+export type TradeTransactionExecutor = Pick<
+  Database,
+  'select' | 'insert' | 'update' | 'delete' | 'query'
+>;
+type Executor = TradeTransactionExecutor;
 
 export type WorkspaceAccessDenial = 'workspace_access_denied' | MutationDenialReason;
 
-type TradeRow = typeof trades.$inferSelect;
+export type TradeServiceTradeRow = typeof trades.$inferSelect;
+type TradeRow = TradeServiceTradeRow;
 type StrategyRow = typeof strategies.$inferSelect;
 type StrategyVersionRow = typeof strategyVersions.$inferSelect;
 
@@ -489,7 +494,7 @@ export type CreateTradeErrorCode =
   | 'invalid_initial_risk'
   | 'invalid_execution_context';
 
-type SetupConditionInputErrorCode = Extract<
+export type SetupConditionInputErrorCode = Extract<
   CreateTradeErrorCode,
   | 'duplicate_condition_answer'
   | 'unknown_condition_answer'
@@ -497,7 +502,7 @@ type SetupConditionInputErrorCode = Extract<
   | 'invalid_condition_status'
 >;
 
-class SetupConditionSnapshotFailure extends Error {
+export class SetupConditionSnapshotFailure extends Error {
   constructor(readonly code: SetupConditionInputErrorCode) {
     super(code);
     this.name = 'SetupConditionSnapshotFailure';
@@ -516,9 +521,10 @@ export type CreateTradeResult =
  * Internal transaction primitive for canonical Trade/Plan/Actual-opening
  * persistence. It deliberately accepts an existing executor and never opens
  * or commits a transaction, so Phase 15G.5B can reuse it inside the SAME
- * outer completed-create transaction. It is not exported from this module.
+ * outer completed-create transaction. The export is an internal service
+ * composition seam, not a public action or transaction owner.
  */
-async function createTradeInTx(
+export async function createTradeInTx(
   tx: Executor,
   workspaceId: string,
   userId: string,
@@ -876,31 +882,34 @@ async function createTradeInTx(
     );
   }
 
-  // Step 16.
-  await insertAuditLog(tx, {
-    action: 'trade.created',
-    workspaceId,
-    actorUserId: userId,
-    entityType: 'trade',
-    entityId: created.id,
-    metadata: {
-      tradeId: created.id,
-      tradingAccountId: input.tradingAccountId,
-      // Phase 14E — the normal customer flow now creates a Trade already
-      // `open`; the legacy/internal `planned` path remains reachable
-      // (never produced by the normal New Trade form) — this makes
-      // which one happened explicit in the audit trail, reusing the
-      // same `newStatus` field `openTrade`'s own audit event uses.
-      newStatus: openAtCreation ? 'open' : 'planned',
-      // Phase 14B: omitted entirely (never `null`) when unclassified —
-      // `AuditLogMetadata`'s fields are `string | undefined`, never
-      // `string | null`, under `exactOptionalPropertyTypes`.
-      ...(input.strategyId !== undefined ? { strategyId: input.strategyId } : {}),
-      ...(strategyVersionId !== null ? { strategyVersionId } : {}),
-      ...(setupId !== null ? { setupId } : {}),
-      ...(setupVersionId !== null ? { setupVersionId } : {}),
-    },
-  });
+  // Step 16. Atomic completed creation defers its sole audit write until
+  // Actual exits and the optional System outcome have also succeeded.
+  if (path === 'at_entry') {
+    await insertAuditLog(tx, {
+      action: 'trade.created',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'trade',
+      entityId: created.id,
+      metadata: {
+        tradeId: created.id,
+        tradingAccountId: input.tradingAccountId,
+        // Phase 14E — the normal customer flow now creates a Trade already
+        // `open`; the legacy/internal `planned` path remains reachable
+        // (never produced by the normal New Trade form) — this makes
+        // which one happened explicit in the audit trail, reusing the
+        // same `newStatus` field `openTrade`'s own audit event uses.
+        newStatus: openAtCreation ? 'open' : 'planned',
+        // Phase 14B: omitted entirely (never `null`) when unclassified —
+        // `AuditLogMetadata`'s fields are `string | undefined`, never
+        // `string | null`, under `exactOptionalPropertyTypes`.
+        ...(input.strategyId !== undefined ? { strategyId: input.strategyId } : {}),
+        ...(strategyVersionId !== null ? { strategyVersionId } : {}),
+        ...(setupId !== null ? { setupId } : {}),
+        ...(setupVersionId !== null ? { setupVersionId } : {}),
+      },
+    });
+  }
 
   return { ok: true, tradeId: created.id, alreadyCreated: false };
 }
@@ -2158,72 +2167,69 @@ export type ResolveSystemTradeResult =
  * `system_exit_reason = 'setup_invalidated'` is exclusive to `no_trade` and
  * rejected here.
  */
-export async function resolveSystemTrade(
+export async function resolveSystemTradeInTx(
+  tx: Executor,
   workspaceId: string,
   userId: string,
   tradeId: string,
+  trade: TradeRow,
   input: ResolveSystemTradeInput,
-  clock: Clock = systemClock,
+  clock: Clock,
+  emitAudit: boolean,
 ): Promise<ResolveSystemTradeResult> {
-  const db = getDb();
+  if (trade.systemStatus !== 'pending' && trade.systemStatus !== 'resolved') {
+    return { ok: false, code: 'invalid_system_status_transition' };
+  }
+  const prepared = prepareSystemResolution(trade, input);
+  if (!prepared.ok) return prepared;
 
-  return db.transaction(async (tx) => {
-    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
-    if (!ctx.ok) return ctx;
-    const { trade } = ctx;
-
-    if (trade.systemStatus !== 'pending' && trade.systemStatus !== 'resolved') {
-      return { ok: false, code: 'invalid_system_status_transition' };
+  if (trade.systemStatus === 'resolved') {
+    if (
+      trade.systemResolutionKind !== null &&
+      trade.systemExitedAt !== null &&
+      trade.systemExitReason !== null &&
+      trade.systemR !== null &&
+      trade.systemOutcome !== null &&
+      matchesSystemResolveRetry(
+        {
+          systemResolutionKind: trade.systemResolutionKind,
+          systemExitPrice: trade.systemExitPrice,
+          systemGrossRInput: trade.systemGrossRInput,
+          systemExitedAt: trade.systemExitedAt,
+          systemExitReason: trade.systemExitReason,
+          systemCostR: trade.systemCostR,
+        },
+        prepared.value,
+      )
+    ) {
+      return {
+        ok: true,
+        systemR: trade.systemR,
+        systemOutcome: trade.systemOutcome as OutcomeValue,
+      };
     }
-    const prepared = prepareSystemResolution(trade, input);
-    if (!prepared.ok) return prepared;
+    return { ok: false, code: 'invalid_system_status_transition' };
+  }
 
-    if (trade.systemStatus === 'resolved') {
-      if (
-        trade.systemResolutionKind !== null &&
-        trade.systemExitedAt !== null &&
-        trade.systemExitReason !== null &&
-        trade.systemR !== null &&
-        trade.systemOutcome !== null &&
-        matchesSystemResolveRetry(
-          {
-            systemResolutionKind: trade.systemResolutionKind,
-            systemExitPrice: trade.systemExitPrice,
-            systemGrossRInput: trade.systemGrossRInput,
-            systemExitedAt: trade.systemExitedAt,
-            systemExitReason: trade.systemExitReason,
-            systemCostR: trade.systemCostR,
-          },
-          prepared.value,
-        )
-      ) {
-        return {
-          ok: true,
-          systemR: trade.systemR,
-          systemOutcome: trade.systemOutcome as OutcomeValue,
-        };
-      }
-      return { ok: false, code: 'invalid_system_status_transition' };
-    }
+  await tx
+    .update(trades)
+    .set({
+      systemStatus: 'resolved',
+      systemResolutionKind: prepared.value.systemResolutionKind,
+      systemExitPrice: prepared.value.systemExitPrice,
+      systemGrossRInput: prepared.value.systemGrossRInput,
+      systemExitedAt: prepared.value.systemExitedAt,
+      systemExitReason: prepared.value.systemExitReason,
+      systemCostR: prepared.value.systemCostR,
+      systemResolvedAt: clock.now(),
+      systemR: prepared.value.systemR,
+      systemOutcome: prepared.value.systemOutcome,
+      calcVersion: prepared.value.calcVersion,
+      updatedAt: new Date(),
+    })
+    .where(eq(trades.id, tradeId));
 
-    await tx
-      .update(trades)
-      .set({
-        systemStatus: 'resolved',
-        systemResolutionKind: prepared.value.systemResolutionKind,
-        systemExitPrice: prepared.value.systemExitPrice,
-        systemGrossRInput: prepared.value.systemGrossRInput,
-        systemExitedAt: prepared.value.systemExitedAt,
-        systemExitReason: prepared.value.systemExitReason,
-        systemCostR: prepared.value.systemCostR,
-        systemResolvedAt: clock.now(),
-        systemR: prepared.value.systemR,
-        systemOutcome: prepared.value.systemOutcome,
-        calcVersion: prepared.value.calcVersion,
-        updatedAt: new Date(),
-      })
-      .where(eq(trades.id, tradeId));
-
+  if (emitAudit) {
     await insertAuditLog(tx, {
       action: 'trade.system_resolved',
       workspaceId,
@@ -2237,12 +2243,26 @@ export async function resolveSystemTrade(
         resolutionKind: prepared.value.systemResolutionKind,
       },
     });
+  }
 
-    return {
-      ok: true,
-      systemR: prepared.value.systemR,
-      systemOutcome: prepared.value.systemOutcome,
-    };
+  return {
+    ok: true,
+    systemR: prepared.value.systemR,
+    systemOutcome: prepared.value.systemOutcome,
+  };
+}
+
+export async function resolveSystemTrade(
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  input: ResolveSystemTradeInput,
+  clock: Clock = systemClock,
+): Promise<ResolveSystemTradeResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+    return resolveSystemTradeInTx(tx, workspaceId, userId, tradeId, ctx.trade, input, clock, true);
   });
 }
 
@@ -2258,41 +2278,38 @@ export type MarkSystemNoTradeResult =
     };
 
 /** `pending -> no_trade` only. An exact repeat (already `no_trade`) is a safe no-op. */
-export async function markSystemNoTrade(
+export async function markSystemNoTradeInTx(
+  tx: Executor,
   workspaceId: string,
   userId: string,
   tradeId: string,
-  clock: Clock = systemClock,
+  trade: TradeRow,
+  clock: Clock,
+  emitAudit: boolean,
 ): Promise<MarkSystemNoTradeResult> {
-  const db = getDb();
+  if (trade.systemStatus === 'no_trade') return { ok: true };
+  if (trade.systemStatus !== 'pending') {
+    return { ok: false, code: 'invalid_system_status_transition' };
+  }
 
-  return db.transaction(async (tx) => {
-    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
-    if (!ctx.ok) return ctx;
-    const { trade } = ctx;
+  await tx
+    .update(trades)
+    .set({
+      systemStatus: 'no_trade',
+      systemResolutionKind: null,
+      systemExitPrice: null,
+      systemGrossRInput: null,
+      systemExitedAt: null,
+      systemExitReason: 'setup_invalidated',
+      systemCostR: '0',
+      systemResolvedAt: clock.now(),
+      systemR: null,
+      systemOutcome: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(trades.id, tradeId));
 
-    if (trade.systemStatus === 'no_trade') return { ok: true };
-    if (trade.systemStatus !== 'pending') {
-      return { ok: false, code: 'invalid_system_status_transition' };
-    }
-
-    await tx
-      .update(trades)
-      .set({
-        systemStatus: 'no_trade',
-        systemResolutionKind: null,
-        systemExitPrice: null,
-        systemGrossRInput: null,
-        systemExitedAt: null,
-        systemExitReason: 'setup_invalidated',
-        systemCostR: '0',
-        systemResolvedAt: clock.now(),
-        systemR: null,
-        systemOutcome: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(trades.id, tradeId));
-
+  if (emitAudit) {
     await insertAuditLog(tx, {
       action: 'trade.system_no_trade',
       workspaceId,
@@ -2301,8 +2318,21 @@ export async function markSystemNoTrade(
       entityId: tradeId,
       metadata: { tradeId, previousStatus: 'pending', newStatus: 'no_trade' },
     });
+  }
 
-    return { ok: true };
+  return { ok: true };
+}
+
+export async function markSystemNoTrade(
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  clock: Clock = systemClock,
+): Promise<MarkSystemNoTradeResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+    return markSystemNoTradeInTx(tx, workspaceId, userId, tradeId, ctx.trade, clock, true);
   });
 }
 

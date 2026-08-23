@@ -63,10 +63,14 @@ export interface AuditLogMetadata {
   readonly exitId?: string;
   readonly sequence?: number;
   readonly closedBps?: number;
+  readonly exitCount?: number;
   readonly tradingAccountId?: string;
   readonly mistakeTypeId?: string;
   readonly previousStatus?: string;
   readonly newStatus?: string;
+  /** Recording-model discriminators only; no user-authored or financial values. */
+  readonly recordingTiming?: string;
+  readonly systemStatus?: string;
   /** Stable System-resolution discriminator only; never a price or R value. */
   readonly resolutionKind?: string;
 }

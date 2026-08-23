@@ -79,6 +79,7 @@ const {
   closeTradeAction,
   correctSystemResolutionAction,
   correctTradeIdentityAction,
+  createCompletedTradeAction,
   createTradeAction,
   markSystemNoTradeAction,
   openTradeAction,
@@ -946,6 +947,64 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
 
   // -------------------------------------------------------------------------
   // Public error mapping / serialization proof
+  // -------------------------------------------------------------------------
+  describe('createCompletedTradeAction', () => {
+    function completedPayload(fw: Framework, overrides: Record<string, unknown> = {}) {
+      const exitedAt = new Date(Date.now() - 60 * 60 * 1000);
+      return baseCreateInput(fw, {
+        recordingTiming: 'after_trade',
+        systemPlanBasis: 'price',
+        actualResultBasis: 'price',
+        actualEntry: '1.1000000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000).toISOString(),
+        exitedAt: exitedAt.toISOString(),
+        exits: [{ closedBps: 10_000, exitPrice: '1.1100000000' }],
+        ...overrides,
+      });
+    }
+
+    it('returns a stable serializable closed result and exact replay', async () => {
+      const { fw } = await freshFixture();
+      const input = completedPayload(fw);
+      const first = await createCompletedTradeAction(input);
+      expect(first).toMatchObject({
+        ok: true,
+        data: {
+          alreadyCreated: false,
+          status: 'closed',
+          systemStatus: 'pending',
+          recordedRetrospectively: true,
+        },
+      });
+      assertJsonSerializable(first);
+
+      const replay = await createCompletedTradeAction(input);
+      expect(replay).toEqual({
+        ...first,
+        data: { ...(first.ok ? first.data : {}), alreadyCreated: true },
+      });
+      assertJsonSerializable(replay);
+    });
+
+    it('rejects unknown fields and malformed coverage at the strict boundary', async () => {
+      const { fw } = await freshFixture();
+      const mutationKey = crypto.randomUUID();
+      const result = await createCompletedTradeAction(
+        completedPayload(fw, {
+          mutationKey,
+          exits: [{ closedBps: 9_999, exitPrice: '1.11', injected: true }],
+        }),
+      );
+      expect(result).toMatchObject({ ok: false, error: { code: 'validation_error' } });
+      expect(
+        await db.query.trades.findFirst({ where: eq(trades.mutationKey, mutationKey) }),
+      ).toBeUndefined();
+      expect(revalidatePath).not.toHaveBeenCalled();
+      assertJsonSerializable(result);
+    });
+  });
+
   // -------------------------------------------------------------------------
   describe('public error mapping and serialization', () => {
     it('never leaks a raw SQL/internal error for a not-found Trade', async () => {

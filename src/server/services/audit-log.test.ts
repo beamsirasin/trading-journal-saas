@@ -51,10 +51,13 @@ describe('AuditLogMetadata is a closed, safe shape', () => {
       readonly exitId?: string;
       readonly sequence?: number;
       readonly closedBps?: number;
+      readonly exitCount?: number;
       readonly tradingAccountId?: string;
       readonly mistakeTypeId?: string;
       readonly previousStatus?: string;
       readonly newStatus?: string;
+      readonly recordingTiming?: string;
+      readonly systemStatus?: string;
       readonly resolutionKind?: string;
     }>();
   });

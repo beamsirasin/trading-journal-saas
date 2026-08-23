@@ -10,6 +10,7 @@ import {
   CorrectTradeExecutionSchema,
   CorrectTradeExitSchema,
   CorrectTradeIdentitySchema,
+  CreateCompletedTradeSchema,
   CreateTradeSchema,
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
@@ -40,6 +41,26 @@ function baseCreateInput() {
     plannedEntry: '1.1000000000',
     plannedStop: '1.0950000000',
     plannedTarget: '1.1100000000',
+  };
+}
+
+function baseCompletedInput() {
+  const {
+    strategyId: _strategyId,
+    setupId: _setupId,
+    conditionSetToken: _token,
+    ...base
+  } = baseCreateInput();
+  return {
+    ...base,
+    recordingTiming: 'after_trade' as const,
+    systemPlanBasis: 'price' as const,
+    actualResultBasis: 'price' as const,
+    actualEntry: '1.1000000000',
+    actualInitialStop: '1.0950000000',
+    enteredAt: '2026-08-01T09:00:00Z',
+    exitedAt: '2026-08-01T12:00:00Z',
+    exits: [{ closedBps: 10_000, exitPrice: '1.1100000000' }],
   };
 }
 
@@ -162,6 +183,64 @@ describe('trades/schemas — valid input', () => {
       systemCostR: '0.0500',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('CreateCompletedTradeSchema accepts Price completion and optional resolved System outcome', () => {
+    const result = CreateCompletedTradeSchema.safeParse({
+      ...baseCompletedInput(),
+      systemResult: {
+        status: 'resolved',
+        resolutionKind: 'price_exit',
+        systemExitPrice: '1.1100000000',
+        systemExitedAt: '2026-08-01T11:00:00Z',
+        systemExitReason: 'target_hit',
+        systemCostR: '0.05',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CreateCompletedTradeSchema accepts Money Plan + Money Actual with partial exits', () => {
+    const {
+      plannedEntry: _entry,
+      plannedStop: _stop,
+      plannedTarget: _target,
+      actualEntry: _actualEntry,
+      actualInitialStop: _actualStop,
+      ...base
+    } = baseCompletedInput();
+    const result = CreateCompletedTradeSchema.safeParse({
+      ...base,
+      systemPlanBasis: 'money',
+      plannedRiskMinor: '5000',
+      plannedRewardMinor: '10000',
+      actualResultBasis: 'money',
+      actualInitialRiskMinor: '5000',
+      exits: [
+        { closedBps: 4000, realizedPnlMinor: '3000', exitedAt: '2026-08-01T11:00:00Z' },
+        { closedBps: 6000, realizedPnlMinor: '7000' },
+      ],
+      systemResult: { status: 'no_trade' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('CreateCompletedTradeSchema rejects At Entry, mixed Actual authority, and unknown fields', () => {
+    expect(
+      CreateCompletedTradeSchema.safeParse({
+        ...baseCompletedInput(),
+        recordingTiming: 'at_entry',
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateCompletedTradeSchema.safeParse({
+        ...baseCompletedInput(),
+        exits: [{ closedBps: 10_000, realizedPnlMinor: '5000' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), workspaceId: uuid3 }).success,
+    ).toBe(false);
   });
 
   it.each(['money_target', 'money_stop', 'money_break_even'] as const)(
