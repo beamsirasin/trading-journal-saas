@@ -7,6 +7,11 @@ import {
   isValidChartAttachmentStorageKey,
 } from '@/lib/storage/chart-attachment';
 import { parseInstant } from '@/lib/time/parse';
+import {
+  RECORDING_TIMINGS,
+  SYSTEM_PLAN_BASES,
+  validateNewWritePlanAuthority,
+} from '@/lib/trades/recording-model';
 
 import { hasNoControlOrHtmlCharacters } from '../trading-accounts/validation';
 import {
@@ -313,6 +318,10 @@ const CreateTradeObjectSchema = z
     conditionAnswers: z.array(setupConditionAnswerField()).optional(),
     symbol: requiredTextField(SYMBOL_MAX_LENGTH),
     direction: directionField(),
+    /** Phase 15G.5A. Omitted only by the pre-foundation compatibility facade. */
+    recordingTiming: z.enum(RECORDING_TIMINGS).optional(),
+    /** Required for an explicit 15G.5A write whenever a System Plan exists. */
+    systemPlanBasis: z.enum(SYSTEM_PLAN_BASES).optional(),
     /**
      * Price and Money are independent, both-optional Plan representations
      * (Founder-UAT correction slice) — a Trade may supply Price only, Money
@@ -387,14 +396,42 @@ export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSche
   // Actual is fact, Planned is optional intent, kept conceptually separate
   // (brief §6).
   .superRefine((data, context) => {
+    const authority = validateNewWritePlanAuthority(data, data.systemPlanBasis, {
+      allowInferredBasis: data.recordingTiming === undefined,
+    });
+    if (!authority.ok) {
+      context.addIssue({
+        code: 'custom',
+        message: authority.code,
+        path: ['systemPlanBasis'],
+      });
+    }
+
     if (data.actualResultMode === undefined) {
       if (
         data.actualEntry != null ||
         data.actualInitialStop != null ||
         data.actualInitialRiskMinor != null ||
-        data.actualPositionSize != null ||
-        data.enteredAt != null
+        data.actualPositionSize != null
       ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'actual_execution_requires_result_mode',
+          path: ['actualResultMode'],
+        });
+      }
+      if (data.recordingTiming === 'at_entry') {
+        if (authority.ok && authority.systemPlanBasis === null) {
+          context.addIssue({
+            code: 'custom',
+            message: 'at_entry_requires_opening_basis',
+            path: ['actualResultMode'],
+          });
+        }
+        if (data.enteredAt == null) {
+          context.addIssue({ code: 'custom', message: 'entered_at_required', path: ['enteredAt'] });
+        }
+      } else if (data.enteredAt != null) {
         context.addIssue({
           code: 'custom',
           message: 'actual_execution_requires_result_mode',
@@ -440,6 +477,8 @@ export type CreateTradeActionData = z.output<typeof CreateTradeSchema>;
 const UpdateTradePlanObjectSchema = z
   .object({
     tradeId: uuidField(),
+    /** Supplying this is the only way to switch canonical Plan basis. */
+    systemPlanBasis: z.enum(SYSTEM_PLAN_BASES).optional(),
     /** Presence-sensitive — migration 0010 widened this from set-only to tri-state, so a Price plan can be cleared down to Money-only. See {@link patchableTextField}. */
     plannedEntry: patchableDecimalField(),
     plannedStop: patchableDecimalField(),

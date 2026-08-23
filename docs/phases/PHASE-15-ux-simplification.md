@@ -1,12 +1,12 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
-> **Status:** 15A–15E are complete and committed. 15F (Trade Log simplification and deep actions)
-> is implemented in the working tree — see §58. Phase 15G Founder UAT remains open and must not
-> be marked complete before Founder acceptance.
+> **Status:** 15A–15F and the approved 15G.4 recording-model audit are complete. 15G.5A's
+> domain/service foundation is implemented in the working tree — see §59. Phase 15G Founder UAT
+> remains open and must not be marked complete before Founder acceptance.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-22 (Phase 15F — Trade Log simplification and deep actions).
+> **Last updated:** 2026-08-23 (Phase 15G.5A — Recording Model Domain & Service Foundation).
 
 ---
 
@@ -1407,3 +1407,56 @@ questions above with the Founder, record pass/fail and requested copy/density ad
 accepted UAT defects without changing domain semantics, rerun focused/full regression in proportion
 to any fixes, and mark Phase 15G complete only after explicit Founder acceptance. Do not infer
 acceptance from test results.
+
+## 59. Phase 15G.5A — Recording Model Domain & Service Foundation (as built)
+
+This slice changes the server contract only. It does not build the At Entry / After Trade UI,
+completed-Trade creation, Trade Detail relocation, or Analytics redesign, and it adds no migration.
+The migration ledger remains `0000`–`0016`.
+
+**Recording timing.** Canonical create input now carries `recordingTiming: 'at_entry' |
+'after_trade'`. The existing create service accepts only `at_entry`; `after_trade` returns the typed,
+public-safe `completed_trade_path_required` result and never creates an intermediate Open row. The
+later completed-create service must reuse the internal `createTradeInTx` primitive inside one outer
+transaction rather than chaining public mutations.
+
+**System Plan authority.** Canonical new writes with Plan data carry `systemPlanBasis: 'price' |
+'money'`; the value is not persisted. Price authority persists only `planned_entry`, `planned_stop`,
+optional `planned_target`, and optional `planned_position_size`. Money authority persists only
+`planned_risk_minor` and optional `planned_reward_minor`. Cross-basis fields and dual input are
+rejected, never silently discarded. `planned_r` is composed only from the one surviving
+representation; a missing Price Target or Money Reward truthfully leaves it null.
+
+Historical rows containing both representations remain readable and unchanged. System resolution
+retains its historical Price precedence whenever complete Price Entry/Stop geometry exists. This is
+legacy compatibility only: canonical create and correction paths cannot produce a new dual row.
+
+**At Entry opening basis.** If the caller omits an Advanced Actual override, a Price Plan explicitly
+defaults Actual to Price with `actual_entry = planned_entry` and `actual_initial_stop = planned_stop`;
+a Money Plan defaults Actual to Money with `actual_initial_risk_minor = planned_risk_minor`. These
+are copies into physically separate Actual columns. A caller may explicitly choose the other Actual
+basis, so Price/Price, Price/Money, Money/Money, and Money/Price are all supported. Creation remains
+Open with System Pending and no final Actual R, Trader Outcome, exit time, System R, or Execution
+Gap. Existing Actual formulas, derived outcome tolerance, and mode immutability after the first Exit
+are unchanged.
+
+**Plan correction.** Editing within the current canonical basis may omit `systemPlanBasis`.
+Switching basis requires it explicitly: Price → Money clears all Price Plan columns (including
+position size) in the same mutation; Money → Price clears both Money columns. Plan correction never
+changes Actual execution fields, and Actual correction never changes Plan fields. A historical dual
+row can still follow the compatibility correction path; supplying an explicit basis canonicalizes
+it deliberately.
+
+**Temporal contract for 15G.5B.** The reusable validator accepts
+`enteredAt <= exitedAt <= serviceClock`; equality is valid. The derived retrospective marker is
+`createdAt.getTime() > exitedAt.getTime()` for finalized Trades. JavaScript `Date` and the strict
+input parser expose milliseconds while PostgreSQL can retain finer timestamp precision, so equality
+is conservatively **not provably retrospective**. Only a created time at least one observable
+millisecond later returns true. This is a Trade-level timing signal, not per-field provenance;
+future After Trade entry-context data may be stored and labeled retrospective but must not be
+treated as genuinely captured at entry.
+
+Authorization, workspace scoping, membership, `ordinary_write` entitlement behavior, account and
+classification/version constraints, mutation-key replay ordering, snapshots, audit logging, Actual
+R, System R, Execution Gap, and derived outcomes are unchanged. After Trade creation and Founder
+UAT acceptance are explicitly not implemented by 15G.5A.

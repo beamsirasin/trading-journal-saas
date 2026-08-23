@@ -480,12 +480,18 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(result);
     });
 
-    it('rejects a Price/Money disagreement with planned_r_mismatch and persists nothing', async () => {
+    it('rejects dual Price/Money create input at the schema authority boundary and persists nothing', async () => {
       const { fw, workspaceId } = await freshFixture();
       const result = await createTradeAction(
         baseCreateInput(fw, { plannedRiskMinor: '1000', plannedRewardMinor: '50000' }), // Money R = 50, Price R = 2
       );
-      expect(result).toEqual({ ok: false, error: { code: 'planned_r_mismatch' } });
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: 'validation_error',
+          fieldErrors: { systemPlanBasis: ['conflicting_plan_basis'] },
+        },
+      });
       const events = await db
         .select()
         .from(auditLogs)
@@ -612,10 +618,11 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       expect(cleared.data.plannedR).toBeNull();
     });
 
-    it('adds a Money plan alongside the existing Price plan through the action layer', async () => {
+    it('switches the existing Price plan to Money through the action layer', async () => {
       const { tradeId } = await createdTrade(); // Price R = 2.0000
       const result = await updateTradePlanAction({
         tradeId,
+        systemPlanBasis: 'money',
         plannedRiskMinor: '1000',
         plannedRewardMinor: '2000', // Money R = 2.0000, agrees
       });
@@ -625,14 +632,14 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(result);
     });
 
-    it('rejects a Money patch that disagrees with the existing Price plan', async () => {
+    it('rejects adding Money fields to the existing Price plan without an explicit switch', async () => {
       const { tradeId } = await createdTrade(); // Price R = 2.0000
       const result = await updateTradePlanAction({
         tradeId,
         plannedRiskMinor: '1000',
         plannedRewardMinor: '50000', // Money R = 50.0000
       });
-      expect(result).toEqual({ ok: false, error: { code: 'planned_r_mismatch' } });
+      expect(result).toEqual({ ok: false, error: { code: 'invalid_plan_authority' } });
     });
   });
 

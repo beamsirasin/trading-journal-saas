@@ -945,6 +945,176 @@ describe('trade-management (real database)', () => {
     });
   });
 
+  describe('createTrade — recording-model foundation (Phase 15G.5A)', () => {
+    const enteredAt = new Date('2026-08-23T09:00:00Z');
+
+    async function createCanonical(overrides: Partial<CreateTradeInput>) {
+      const fw = await freshFramework();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'FOUNDATION',
+        direction: 'long',
+        recordingTiming: 'at_entry',
+        enteredAt,
+        ...overrides,
+      });
+      if (!result.ok) throw new Error(`canonical create failed: ${result.code}`);
+      const row = await readTrade(result.tradeId);
+      if (row === undefined) throw new Error('created Trade missing');
+      return row;
+    }
+
+    function expectPendingOpen(row: Awaited<ReturnType<typeof createCanonical>>) {
+      expect(row).toMatchObject({
+        status: 'open',
+        actualR: null,
+        traderOutcome: null,
+        systemStatus: 'pending',
+        systemR: null,
+      });
+      expect(row.exitedAt).toBeNull();
+    }
+
+    it('maps Price Plan to Price Actual by default', async () => {
+      const row = await createCanonical({
+        systemPlanBasis: 'price',
+        plannedEntry: '100.0000000000',
+        plannedStop: '90.0000000000',
+        plannedTarget: '120.0000000000',
+      });
+      expect(row).toMatchObject({
+        plannedEntry: '100.0000000000',
+        plannedStop: '90.0000000000',
+        plannedTarget: '120.0000000000',
+        plannedRiskMinor: null,
+        plannedRewardMinor: null,
+        plannedR: '2.0000',
+        actualResultMode: 'price',
+        actualEntry: '100.0000000000',
+        actualInitialStop: '90.0000000000',
+        actualInitialRiskMinor: null,
+      });
+      expectPendingOpen(row);
+    });
+
+    it('supports Price Plan / Money Actual as an explicit override', async () => {
+      const row = await createCanonical({
+        systemPlanBasis: 'price',
+        plannedEntry: '100.0000000000',
+        plannedStop: '90.0000000000',
+        plannedTarget: null,
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 1_200n,
+      });
+      expect(row).toMatchObject({
+        plannedR: null,
+        actualResultMode: 'money',
+        actualEntry: null,
+        actualInitialStop: null,
+        actualInitialRiskMinor: 1_200n,
+      });
+      expectPendingOpen(row);
+    });
+
+    it('maps Money Plan to Money Actual by default', async () => {
+      const row = await createCanonical({
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 1_000n,
+        plannedRewardMinor: 3_000n,
+      });
+      expect(row).toMatchObject({
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+        plannedRiskMinor: 1_000n,
+        plannedRewardMinor: 3_000n,
+        plannedR: '3.0000',
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 1_000n,
+      });
+      expectPendingOpen(row);
+    });
+
+    it('keeps Money Plan risk independent from corrected Actual risk and System resolution', async () => {
+      const row = await createCanonical({
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 1_000n,
+        plannedRewardMinor: 3_000n,
+      });
+      expect(
+        await correctTradeExecution(workspaceId, actorUserId, row.id, {
+          actualInitialRiskMinor: 1_200n,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(
+        await updateTradePlan(workspaceId, actorUserId, row.id, {
+          plannedRiskMinor: 800n,
+        }),
+      ).toMatchObject({ ok: true, plannedR: '3.7500' });
+      expect(
+        await addTradeExit(workspaceId, actorUserId, row.id, {
+          mutationKey: crypto.randomUUID(),
+          closedBps: 10_000,
+          realizedPnlMinor: 1_200n,
+          exitedAt: new Date('2026-08-23T10:00:00Z'),
+        }),
+      ).toMatchObject({ ok: true, actualR: '1.0000' });
+      expect(
+        await resolveSystemTrade(workspaceId, actorUserId, row.id, {
+          resolutionKind: 'money_target',
+          systemExitedAt: new Date('2026-08-23T10:30:00Z'),
+          systemCostR: '0',
+        }),
+      ).toMatchObject({ ok: true, systemR: '3.7500' });
+
+      expect(await readTrade(row.id)).toMatchObject({
+        plannedRiskMinor: 800n,
+        plannedRewardMinor: 3_000n,
+        actualInitialRiskMinor: 1_200n,
+        actualR: '1.0000',
+        systemR: '3.7500',
+      });
+    });
+
+    it('supports Money Plan / Price Actual as an explicit override', async () => {
+      const row = await createCanonical({
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 1_000n,
+        plannedRewardMinor: null,
+        actualResultMode: 'price',
+        actualEntry: '102.0000000000',
+        actualInitialStop: '91.0000000000',
+      });
+      expect(row).toMatchObject({
+        plannedR: null,
+        actualResultMode: 'price',
+        actualEntry: '102.0000000000',
+        actualInitialStop: '91.0000000000',
+        actualInitialRiskMinor: null,
+      });
+      expectPendingOpen(row);
+    });
+
+    it('rejects after_trade before any row is created', async () => {
+      const fw = await freshFramework();
+      const mutationKey = crypto.randomUUID();
+      const result = await createTrade(workspaceId, actorUserId, {
+        mutationKey,
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'AFTERTRADE',
+        direction: 'long',
+        recordingTiming: 'after_trade',
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 1_000n,
+      });
+      expect(result).toEqual({ ok: false, code: 'completed_trade_path_required' });
+      expect(
+        await db.select().from(trades).where(eq(trades.mutationKey, mutationKey)),
+      ).toHaveLength(0);
+    });
+  });
+
   // -------------------------------------------------------------------------
   // Price/Money independence (Founder-UAT Trade Plan UX correction slice,
   // migration 0010) — against a real database, so `trades_planned_price_shape_check`/
@@ -977,18 +1147,14 @@ describe('trade-management (real database)', () => {
       expect(row?.plannedR).toBe('3.0000');
     });
 
-    it('accepts Price and Money together when they agree, Price-precedence stored in planned_r', async () => {
+    it('rejects dual Plan input even when the two R values agree', async () => {
       const fw = await freshFramework();
       const result = await createTrade(
         workspaceId,
         actorUserId,
         basePlanInput(fw, { plannedRiskMinor: 5000n, plannedRewardMinor: 10000n }), // Money R = 2.0000, matches Price R
       );
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      const row = await readTrade(result.tradeId);
-      expect(row?.plannedR).toBe('2.0000');
-      expect(row?.plannedRiskMinor).toBe(5000n);
+      expect(result).toEqual({ ok: false, code: 'invalid_plan_authority' });
     });
 
     it('rejects Price and Money that disagree beyond tolerance — nothing is persisted', async () => {
@@ -998,7 +1164,7 @@ describe('trade-management (real database)', () => {
         actorUserId,
         basePlanInput(fw, { plannedRiskMinor: 5000n, plannedRewardMinor: 50000n }), // Money R = 10.0000, Price R = 2.0000
       );
-      expect(result).toMatchObject({ ok: false, code: 'planned_r_mismatch' });
+      expect(result).toMatchObject({ ok: false, code: 'invalid_plan_authority' });
     });
 
     it('accepts neither Price nor Money present, and no Strategy/Setup — the frozen Quick Capture contract (Phase 14C.1)', async () => {
@@ -1167,21 +1333,43 @@ describe('trade-management (real database)', () => {
     // Price/Money independence (migration 0010)
     // -----------------------------------------------------------------------
 
-    it('clears Entry/Stop down to a Money-only Plan when a Money representation already exists', async () => {
-      const { tradeId } = await createPlanned({
-        plannedRiskMinor: 1000n,
-        plannedRewardMinor: 2000n, // agrees with basePlanInput's Price R (2.0000)
-      });
+    it('switches Price → Money explicitly and clears every old Price field', async () => {
+      const { tradeId } = await createPlanned({ plannedPositionSize: '2' });
       const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
-        plannedEntry: null,
-        plannedStop: null,
-        plannedTarget: null,
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 2000n,
       });
       expect(result.ok).toBe(true);
       const row = await readTrade(tradeId);
       expect(row?.plannedEntry).toBeNull();
       expect(row?.plannedStop).toBeNull();
+      expect(row?.plannedTarget).toBeNull();
+      expect(row?.plannedPositionSize).toBeNull();
+      expect(row?.plannedRiskMinor).toBe(1000n);
       // Money alone now determines planned_r: 2000/1000 = 2.0000.
+      expect(row?.plannedR).toBe('2.0000');
+    });
+
+    it('switches Money → Price explicitly and clears every old Money field', async () => {
+      const { tradeId } = await createPlanned({
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 3000n,
+      });
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        systemPlanBasis: 'price',
+        plannedEntry: '1.1000000000',
+        plannedStop: '1.0950000000',
+        plannedTarget: '1.1100000000',
+      });
+      expect(result.ok).toBe(true);
+      const row = await readTrade(tradeId);
+      expect(row?.plannedRiskMinor).toBeNull();
+      expect(row?.plannedRewardMinor).toBeNull();
+      expect(row?.plannedEntry).toBe('1.1000000000');
       expect(row?.plannedR).toBe('2.0000');
     });
 
@@ -1197,23 +1385,20 @@ describe('trade-management (real database)', () => {
       expect(after).toEqual(before);
     });
 
-    it('rejects a patch that would leave Price and Money disagreeing (planned_r_mismatch) — nothing persists', async () => {
+    it('rejects adding another representation without an explicit switch — nothing persists', async () => {
       const { tradeId } = await createPlanned(); // Price R = 2.0000
       const before = await readTrade(tradeId);
       const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
         plannedRiskMinor: 1000n,
         plannedRewardMinor: 50000n, // Money R = 50.0000
       });
-      expect(result).toMatchObject({ ok: false, code: 'planned_r_mismatch' });
+      expect(result).toMatchObject({ ok: false, code: 'invalid_plan_authority' });
       const after = await readTrade(tradeId);
       expect(after).toEqual(before);
     });
 
     it('rejects clearing the Price plan while the System result is already resolved (system_requires_price_plan)', async () => {
-      const { tradeId } = await createPlanned({
-        plannedRiskMinor: 1000n,
-        plannedRewardMinor: 2000n, // agrees with basePlanInput's Price R (2.0000)
-      });
+      const { tradeId } = await createPlanned();
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
         resolutionKind: 'price_exit',
         systemExitPrice: '1.1100000000',
@@ -1232,9 +1417,9 @@ describe('trade-management (real database)', () => {
       // correction always resends Target's current value (or null)
       // alongside Entry/Stop — see `PlanCorrectionDialog`.
       const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
-        plannedEntry: null,
-        plannedStop: null,
-        plannedTarget: null,
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 2000n,
       });
       expect(result).toMatchObject({ ok: false, code: 'system_requires_price_plan' });
       const after = await readTrade(tradeId);
@@ -2029,12 +2214,16 @@ describe('trade-management (real database)', () => {
       });
 
       const fw = await freshFramework();
-      const both = await createTrade(
-        workspaceId,
-        actorUserId,
-        basePlanInput(fw, { plannedRiskMinor: 10n, plannedRewardMinor: 20n }),
-      );
+      const both = await createTrade(workspaceId, actorUserId, basePlanInput(fw));
       if (!both.ok) throw new Error('create failed');
+      // Historical compatibility fixture: pre-15G.5A rows may physically
+      // contain both representations. Canonical create no longer permits
+      // constructing this shape, so the fixture mirrors a legacy persisted
+      // row directly and verifies the unchanged Price precedence on reads.
+      await db
+        .update(trades)
+        .set({ plannedRiskMinor: 10n, plannedRewardMinor: 20n })
+        .where(eq(trades.id, both.tradeId));
       await expect(
         resolveSystemTrade(workspaceId, actorUserId, both.tradeId, {
           resolutionKind: 'money_target',

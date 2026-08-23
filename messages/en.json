@@ -1070,6 +1070,8 @@
       "invalid_setup_condition_answers": "The Setup Condition answers are no longer valid. Reload the page and review the current Conditions.",
       "invalid_emotion_selection": "The emotion selection is no longer valid. Reload the page and try again.",
       "invalid_plan": "This Plan is not valid. Check that the Stop and Target are on the correct side of Entry.",
+      "invalid_plan_authority": "Choose one System Plan calculation: Price or Money. The two representations cannot be saved together.",
+      "completed_trade_path_required": "After Trade recording requires the completed-trade flow, which is not available in this step yet.",
       "no_plan_representation": "This change would leave the Trade with no Plan at all. Enter a Price plan (Entry/Stop) or a Money plan (planned risk), or cancel this edit.",
       "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",
       "system_requires_price_plan": "The System result needs a Price plan (Entry/Stop) — this Trade currently has none.",

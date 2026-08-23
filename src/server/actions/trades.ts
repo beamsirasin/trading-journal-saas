@@ -245,6 +245,8 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
     const result = await createTrade(ctx.workspaceId, ctx.userId, {
       mutationKey: parsed.data.mutationKey,
       tradingAccountId: parsed.data.tradingAccountId,
+      recordingTiming: parsed.data.recordingTiming,
+      systemPlanBasis: parsed.data.systemPlanBasis,
       strategyId: parsed.data.strategyId,
       setupId: parsed.data.setupId,
       conditionSetToken: parsed.data.conditionSetToken,

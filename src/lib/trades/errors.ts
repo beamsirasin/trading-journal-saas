@@ -22,6 +22,8 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'blank_symbol',
   'invalid_direction',
   'invalid_plan',
+  'invalid_plan_authority',
+  'completed_trade_path_required',
   'no_plan_representation',
   'planned_r_mismatch',
   'system_requires_price_plan',
@@ -102,6 +104,8 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'invalid_setup_condition_answers',
   'invalid_emotion_selection',
   'invalid_plan',
+  'invalid_plan_authority',
+  'completed_trade_path_required',
   'no_plan_representation',
   'planned_r_mismatch',
   'system_requires_price_plan',
@@ -159,6 +163,8 @@ export function mapServiceErrorToPublicCode(
     case 'setup_snapshot_missing':
     case 'stale_setup_conditions':
     case 'invalid_plan':
+    case 'invalid_plan_authority':
+    case 'completed_trade_path_required':
     case 'no_plan_representation':
     case 'planned_r_mismatch':
     case 'system_requires_price_plan':

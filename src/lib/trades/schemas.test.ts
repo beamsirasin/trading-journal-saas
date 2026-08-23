@@ -432,7 +432,7 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
     expect(result.success).toBe(true);
   });
 
-  it('accepts both Price and Money together', () => {
+  it('rejects legacy dual Price and Money input for a new write', () => {
     const result = CreateTradeSchema.safeParse({
       ...baseIdentity(),
       plannedEntry: '1.1000000000',
@@ -440,11 +440,57 @@ describe('trades/schemas — CreateTradeSchema Price/Money independence (migrati
       plannedRiskMinor: '5000',
       plannedRewardMinor: '15000',
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it('accepts neither Price nor Money present (Phase 14C.1 Quick Capture — no Plan required)', () => {
     const result = CreateTradeSchema.safeParse(baseIdentity());
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts the explicit At Entry Price contract and its default Actual opening basis shape', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      recordingTiming: 'at_entry',
+      systemPlanBasis: 'price',
+      plannedEntry: '1.1000000000',
+      plannedStop: '1.0950000000',
+      enteredAt: '2026-08-23T09:00:00Z',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects explicit Price authority with Money fields and Money authority with Price fields', () => {
+    expect(
+      CreateTradeSchema.safeParse({
+        ...baseIdentity(),
+        recordingTiming: 'at_entry',
+        systemPlanBasis: 'price',
+        plannedEntry: '1.1',
+        plannedStop: '1.0',
+        plannedRiskMinor: '5000',
+        enteredAt: '2026-08-23T09:00:00Z',
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateTradeSchema.safeParse({
+        ...baseIdentity(),
+        recordingTiming: 'at_entry',
+        systemPlanBasis: 'money',
+        plannedEntry: '1.1',
+        plannedStop: '1.0',
+        enteredAt: '2026-08-23T09:00:00Z',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts after_trade at the action shape boundary for typed service rejection', () => {
+    const result = CreateTradeSchema.safeParse({
+      ...baseIdentity(),
+      recordingTiming: 'after_trade',
+      systemPlanBasis: 'money',
+      plannedRiskMinor: '5000',
+    });
     expect(result.success).toBe(true);
   });
 

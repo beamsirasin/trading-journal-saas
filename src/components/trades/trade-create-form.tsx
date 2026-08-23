@@ -525,9 +525,15 @@ export function TradeCreateForm({
     setIsPending(true);
     setFormError(null);
     const confidence = parseConfidence(values.confidence);
+    const hasPricePlan = values.plannedEntry.trim() !== '' || values.plannedStop.trim() !== '';
+    const hasMoneyPlan = plannedRiskMinor !== null;
+    const systemPlanBasis =
+      hasPricePlan && !hasMoneyPlan ? 'price' : !hasPricePlan && hasMoneyPlan ? 'money' : undefined;
     const result = await createTradeAction({
       mutationKey,
       tradingAccountId: values.tradingAccountId,
+      recordingTiming: 'at_entry',
+      ...(systemPlanBasis === undefined ? {} : { systemPlanBasis }),
       // Strategy/Setup are optional (Phase 14C) — omitted entirely, never
       // sent as an empty string, exactly when nothing was chosen.
       // `CreateTradeSchema`'s `strategyId`/`setupId` are `uuidField().optional()`,
