@@ -1,6 +1,7 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   emotionTypes,
   mistakeTypes,
@@ -26,6 +27,7 @@ import {
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { closeDb } from '../db/client';
+import { createCompletedTrade } from './trade-completed';
 
 type MockSession = {
   user: { id: string; name: string; email: string; emailVerified: boolean; image: null };
@@ -45,6 +47,7 @@ vi.mock('@/lib/auth/server', () => ({
 
 const { getAnalyticsPageData, getAnalyticsSnapshot, getDashboardOverview } =
   await import('./analytics');
+const { getAnalyticsRawPopulations } = await import('../dal/analytics');
 
 const db = getTestDb();
 const workspaceIds: string[] = [];
@@ -184,6 +187,7 @@ interface TradeInput {
   actualR?: string;
   traderOutcome?: 'win' | 'loss' | 'break_even';
   exitedAt?: Date;
+  createdAt?: Date;
   systemStatus?: 'pending' | 'resolved' | 'no_trade';
   systemR?: string;
   systemOutcome?: 'win' | 'loss' | 'break_even';
@@ -260,6 +264,7 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
         plannedTarget: '102.0000000000',
         plannedR: '2.0000',
         status,
+        createdAt: input.createdAt ?? new Date(exitedAt.getTime() - 2 * 60 * 60 * 1000),
         deletedAt: input.deleted ? new Date('2026-08-05T00:00:00Z') : null,
         ...actualFields,
         ...systemFields,
@@ -295,22 +300,18 @@ interface Fixture {
   deletedTradeId: string;
 }
 
-async function addDisciplineRows(
-  workspaceId: string,
-  framework: Framework,
-  firstTradeId: string,
-  secondTradeId: string,
-): Promise<void> {
-  const statuses = [
-    ...Array.from({ length: 8 }, () => 'followed' as const),
-    ...Array.from({ length: 2 }, () => 'violated' as const),
-    'not_applicable' as const,
-    'not_checked' as const,
-  ];
-  const rules = await db
+const DISCIPLINE_STATUSES = [
+  ...Array.from({ length: 8 }, () => 'followed' as const),
+  ...Array.from({ length: 2 }, () => 'violated' as const),
+  'not_applicable' as const,
+  'not_checked' as const,
+];
+
+async function createDisciplineRules(workspaceId: string, framework: Framework) {
+  return db
     .insert(strategyRules)
     .values(
-      statuses.map((status, sortOrder) => ({
+      DISCIPLINE_STATUSES.map((_, sortOrder) => ({
         workspaceId,
         strategyVersionId: framework.strategyVersionId,
         ruleKey: crypto.randomUUID(),
@@ -326,21 +327,50 @@ async function addDisciplineRows(
       ruleKey: strategyRules.ruleKey,
       sortOrder: strategyRules.sortOrder,
     });
-  await db.insert(tradeRuleChecks).values(
-    rules.map((rule, index) => ({
-      workspaceId,
-      tradeId: firstTradeId,
-      strategyRuleId: rule.id,
-      strategyVersionId: framework.strategyVersionId,
-      ruleKey: rule.ruleKey,
-      checkStatus: statuses[index] as (typeof statuses)[number],
-      title: `Rule snapshot ${index}`,
-      category: 'entry',
-      isRequired: true,
-      isPreTradeCheck: true,
-      sortOrder: rule.sortOrder,
-    })),
-  );
+}
+
+async function addDisciplineRows(
+  workspaceId: string,
+  framework: Framework,
+  firstTradeId: string,
+  secondTradeId: string,
+  options: {
+    readonly rules?: Awaited<ReturnType<typeof createDisciplineRules>>;
+    readonly firstTradeHasSnapshots?: boolean;
+  } = {},
+): Promise<void> {
+  const rules = options.rules ?? (await createDisciplineRules(workspaceId, framework));
+  if (options.firstTradeHasSnapshots === true) {
+    await Promise.all(
+      rules.map((rule, index) =>
+        db
+          .update(tradeRuleChecks)
+          .set({ checkStatus: DISCIPLINE_STATUSES[index] })
+          .where(
+            and(
+              eq(tradeRuleChecks.tradeId, firstTradeId),
+              eq(tradeRuleChecks.strategyRuleId, rule.id),
+            ),
+          ),
+      ),
+    );
+  } else {
+    await db.insert(tradeRuleChecks).values(
+      rules.map((rule, index) => ({
+        workspaceId,
+        tradeId: firstTradeId,
+        strategyRuleId: rule.id,
+        strategyVersionId: framework.strategyVersionId,
+        ruleKey: rule.ruleKey,
+        checkStatus: DISCIPLINE_STATUSES[index] as (typeof DISCIPLINE_STATUSES)[number],
+        title: `Rule snapshot ${index}`,
+        category: 'entry',
+        isRequired: true,
+        isPreTradeCheck: true,
+        sortOrder: rule.sortOrder,
+      })),
+    );
+  }
 
   const canonical = await db.query.mistakeTypes.findMany({
     where: eq(mistakeTypes.isSystem, true),
@@ -937,6 +967,411 @@ describe('analytics service (real PostgreSQL)', () => {
     });
 
     expect(() => JSON.stringify(result.data)).not.toThrow();
+  });
+
+  it('Phase 15G.5C: excludes proven retrospective entry context before aggregation while preserving every financial/classification axis', async () => {
+    const userId = await createUser('analytics-15g5c-service');
+    const workspaceId = await createWorkspace(userId, 'analytics-15g5c-service');
+    const accountId = await createAccount(workspaceId, 'Active Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+    const framework = await createFramework(workspaceId, 'Temporal Truth Strategy');
+    const zeroConfiguredFramework = await createFramework(workspaceId, 'Zero Conditions Strategy');
+    currentSession = sessionFor(userId);
+
+    const [condition] = await db
+      .insert(setupConditions)
+      .values({
+        workspaceId,
+        setupId: framework.setupId,
+        setupVersionId: framework.setupVersionId,
+        label: 'Live entry evidence',
+        sortOrder: 0,
+      })
+      .returning({ id: setupConditions.id, conditionKey: setupConditions.conditionKey });
+    if (condition === undefined) throw new Error('condition insert failed');
+    const emotion = await db.query.emotionTypes.findFirst({
+      where: eq(emotionTypes.isSystem, true),
+    });
+    if (emotion === undefined) throw new Error('canonical emotion seed missing');
+    const disciplineRules = await createDisciplineRules(workspaceId, framework);
+
+    const exitedAt = new Date('2026-08-01T10:00:00.000Z');
+    const liveTradeId = await createTrade(workspaceId, {
+      accountId,
+      framework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T08:00:00.000Z'),
+      actualR: '1.0000',
+      systemR: '2.0000',
+    });
+    const completedAfterTrade = await createCompletedTrade(workspaceId, userId, {
+      mutationKey: crypto.randomUUID(),
+      tradingAccountId: accountId,
+      recordingTiming: 'after_trade',
+      systemPlanBasis: 'money',
+      strategyId: framework.strategyId,
+      setupId: framework.setupId,
+      conditionSetToken: createConditionSetToken(framework.setupVersionId),
+      conditionAnswers: [{ conditionKey: condition.conditionKey, status: 'not_met' }],
+      symbol: 'EURUSD',
+      direction: 'long',
+      plannedRiskMinor: 100n,
+      plannedRewardMinor: 400n,
+      actualResultBasis: 'money',
+      actualInitialRiskMinor: 100n,
+      enteredAt: new Date('2026-08-01T09:00:00.000Z'),
+      exitedAt,
+      exits: [{ closedBps: 10_000, realizedPnlMinor: 300n }],
+      confidence: 100,
+      emotionKeys: [emotion.key],
+      systemResult: {
+        status: 'resolved',
+        resolutionKind: 'money_target',
+        systemExitedAt: new Date('2026-08-01T11:00:00.000Z'),
+        systemCostR: '0',
+      },
+    });
+    if (!completedAfterTrade.ok) throw new Error(completedAfterTrade.code);
+    expect(completedAfterTrade.recordedRetrospectively).toBe(true);
+    const retrospectiveResolvedId = completedAfterTrade.tradeId;
+    const retrospectivePendingId = await createTrade(workspaceId, {
+      accountId,
+      framework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T10:00:00.001Z'),
+      actualR: '5.0000',
+      systemStatus: 'pending',
+    });
+    const retrospectiveNoTradeId = await createTrade(workspaceId, {
+      accountId,
+      framework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T10:00:00.001Z'),
+      actualR: '6.0000',
+      systemStatus: 'no_trade',
+    });
+    const lateClassificationId = await createTrade(workspaceId, {
+      accountId,
+      framework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T10:00:00.001Z'),
+    });
+    const noChecklistId = await createTrade(workspaceId, {
+      accountId,
+      framework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T08:00:00.000Z'),
+    });
+    const zeroConfiguredId = await createTrade(workspaceId, {
+      accountId,
+      framework: zeroConfiguredFramework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T08:00:00.000Z'),
+    });
+    const liveConfidenceIds = await Promise.all(
+      [25, 50, 75, 100].map(async (confidence, index) => {
+        const tradeId = await createTrade(workspaceId, {
+          accountId,
+          framework,
+          exitedAt: new Date(exitedAt.getTime() + (index + 1) * 60_000),
+          createdAt: new Date('2026-08-01T08:00:00.000Z'),
+        });
+        await db.update(trades).set({ confidence }).where(eq(trades.id, tradeId));
+        return tradeId;
+      }),
+    );
+
+    const manuallySeededContextualTradeIds = [
+      liveTradeId,
+      retrospectivePendingId,
+      retrospectiveNoTradeId,
+    ];
+    await db.insert(tradeSetupConditionChecks).values(
+      manuallySeededContextualTradeIds.map((tradeId, index) => ({
+        workspaceId,
+        tradeId,
+        setupConditionId: condition.id,
+        setupVersionId: framework.setupVersionId,
+        conditionKey: condition.conditionKey,
+        label: 'Live entry evidence',
+        sortOrder: 0,
+        checkStatus: index === 0 ? ('met' as const) : ('not_met' as const),
+      })),
+    );
+    await Promise.all([
+      db.update(trades).set({ confidence: 0 }).where(eq(trades.id, liveTradeId)),
+      db.update(trades).set({ confidence: 75 }).where(eq(trades.id, retrospectivePendingId)),
+      db.update(trades).set({ confidence: 50 }).where(eq(trades.id, retrospectiveNoTradeId)),
+      // Explicitly recorded empty remains distinct from never recorded, but
+      // neither fabricates an Emotion group.
+      db
+        .update(trades)
+        .set({ emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+        .where(eq(trades.id, noChecklistId)),
+      // Classification assigned after completion remains meaningful for
+      // Strategy/Setup performance but must not fabricate Checklist rows.
+      db
+        .update(trades)
+        .set({
+          strategyAssignedAt: new Date('2026-08-01T10:00:00.001Z'),
+          setupAssignedAt: new Date('2026-08-01T10:00:00.001Z'),
+        })
+        .where(eq(trades.id, lateClassificationId)),
+    ]);
+    await db.insert(tradeEmotions).values(
+      manuallySeededContextualTradeIds.map((tradeId) => ({
+        workspaceId,
+        tradeId,
+        emotionTypeId: emotion.id,
+      })),
+    );
+    await db
+      .update(trades)
+      .set({ emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+      .where(inArray(trades.id, manuallySeededContextualTradeIds));
+    await addDisciplineRows(workspaceId, framework, retrospectiveResolvedId, liveTradeId, {
+      rules: disciplineRules,
+      firstTradeHasSnapshots: true,
+    });
+
+    const raw = await getAnalyticsRawPopulations({ datePreset: 'all' }, READ_OPTIONS);
+    if (!raw.ok) throw new Error(raw.code);
+    const affectedTradeIds = (records: readonly { tradeId: string }[]) =>
+      [...new Set(records.map((record) => record.tradeId))].sort();
+    expect(affectedTradeIds(raw.data.setupAdherence)).toEqual([liveTradeId]);
+    expect(affectedTradeIds(raw.data.setupAdherenceSystem)).toEqual([liveTradeId]);
+    expect(affectedTradeIds(raw.data.conditions)).toEqual([liveTradeId]);
+    expect(affectedTradeIds(raw.data.conditionsSystem)).toEqual([liveTradeId]);
+    expect(affectedTradeIds(raw.data.confidence)).toEqual(
+      [liveTradeId, ...liveConfidenceIds].sort(),
+    );
+    expect(affectedTradeIds(raw.data.confidenceSystem)).toEqual(
+      [liveTradeId, ...liveConfidenceIds].sort(),
+    );
+    expect(affectedTradeIds(raw.data.emotions)).toEqual([liveTradeId]);
+    expect(affectedTradeIds(raw.data.emotionsSystem)).toEqual([liveTradeId]);
+
+    expect(affectedTradeIds(raw.data.trader)).toEqual(
+      [
+        liveTradeId,
+        noChecklistId,
+        retrospectiveNoTradeId,
+        retrospectivePendingId,
+        retrospectiveResolvedId,
+        lateClassificationId,
+        zeroConfiguredId,
+        ...liveConfidenceIds,
+      ].sort(),
+    );
+    expect(affectedTradeIds(raw.data.system)).toEqual(
+      [
+        liveTradeId,
+        noChecklistId,
+        lateClassificationId,
+        retrospectiveResolvedId,
+        zeroConfiguredId,
+        ...liveConfidenceIds,
+      ].sort(),
+    );
+    expect(affectedTradeIds(raw.data.paired)).toEqual(
+      [
+        liveTradeId,
+        noChecklistId,
+        lateClassificationId,
+        retrospectiveResolvedId,
+        zeroConfiguredId,
+        ...liveConfidenceIds,
+      ].sort(),
+    );
+    expect(affectedTradeIds(raw.data.rules)).toContain(retrospectiveResolvedId);
+    expect(affectedTradeIds(raw.data.mistakes)).toContain(retrospectiveResolvedId);
+
+    const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    expect(result.data.trader.sampleCount).toBe(11);
+    expect(result.data.system.sampleCount).toBe(9);
+    expect(result.data.comparison.comparableCount).toBe(9);
+    expect(result.data.setupAdherence).toMatchObject({
+      sampleCount: 1,
+      averageAdherence: { status: 'available', value: '1.0000' },
+      conditionsMetRate: { status: 'available', value: '1.0000' },
+    });
+    expect(result.data.conditions[0]).toMatchObject({
+      trader: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
+      system: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
+    });
+    expect(result.data.confidence).toMatchObject({
+      sampleCount: 5,
+      averageConfidence: { status: 'available', value: '0.5000' },
+    });
+    for (const level of [0, 25, 50, 75, 100]) {
+      expect(result.data.confidence.levels.find((row) => row.level === level)).toMatchObject({
+        trader: { tradeCount: 1 },
+        system: { tradeCount: 1 },
+      });
+    }
+    expect(result.data.emotions).toHaveLength(1);
+    expect(result.data.emotions[0]).toMatchObject({
+      trader: { tradeCount: 1 },
+      system: { tradeCount: 1 },
+    });
+    expect(
+      result.data.strategyPerformance.strategies.find(
+        (strategy) => strategy.strategyId === framework.strategyId,
+      ),
+    ).toMatchObject({ trader: { tradeCount: 10 }, system: { tradeCount: 8 } });
+    expect(
+      result.data.setupPerformance.setups.find((setup) => setup.setupId === framework.setupId),
+    ).toMatchObject({ trader: { tradeCount: 10 }, system: { tradeCount: 8 } });
+    expect(result.data.rules.followedCount).toBe(8);
+    expect(result.data.mistakes.map((mistake) => mistake.tradeCount)).toEqual([2, 1]);
+
+    // Exclusion is analytical only: retrospective snapshots and Emotion
+    // links remain durably stored for Journal presentation.
+    expect(
+      await db
+        .select()
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.tradeId, retrospectiveResolvedId)),
+    ).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(tradeEmotions)
+        .where(eq(tradeEmotions.tradeId, retrospectiveResolvedId)),
+    ).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(tradeSetupConditionChecks)
+        .where(eq(tradeSetupConditionChecks.tradeId, lateClassificationId)),
+    ).toHaveLength(0);
+    const emotionCaptureStates = await db
+      .select({ id: trades.id, recordedAt: trades.emotionsRecordedAt })
+      .from(trades)
+      .where(inArray(trades.id, [noChecklistId, zeroConfiguredId]));
+    const emotionCaptureByTrade = new Map(
+      emotionCaptureStates.map((row) => [row.id, row.recordedAt]),
+    );
+    expect(emotionCaptureByTrade.get(noChecklistId)).toBeInstanceOf(Date);
+    expect(emotionCaptureByTrade.get(zeroConfiguredId)).toBeNull();
+    expect(
+      await db
+        .select()
+        .from(tradeEmotions)
+        .where(inArray(tradeEmotions.tradeId, [noChecklistId, zeroConfiguredId])),
+    ).toHaveLength(0);
+
+    const retrospectiveOnlyAccountId = await createAccount(workspaceId, 'Retrospective only');
+    const retrospectiveOnlyId = await createTrade(workspaceId, {
+      accountId: retrospectiveOnlyAccountId,
+      framework,
+      exitedAt,
+      createdAt: new Date('2026-08-01T10:00:00.001Z'),
+    });
+    await db.insert(tradeSetupConditionChecks).values({
+      workspaceId,
+      tradeId: retrospectiveOnlyId,
+      setupConditionId: condition.id,
+      setupVersionId: framework.setupVersionId,
+      conditionKey: condition.conditionKey,
+      label: 'Live entry evidence',
+      sortOrder: 0,
+      checkStatus: 'met',
+    });
+    await db
+      .update(trades)
+      .set({ confidence: 25, emotionsRecordedAt: new Date('2026-08-01T09:00:00Z') })
+      .where(eq(trades.id, retrospectiveOnlyId));
+    await db.insert(tradeEmotions).values({
+      workspaceId,
+      tradeId: retrospectiveOnlyId,
+      emotionTypeId: emotion.id,
+    });
+    const zeroEligible = await getAnalyticsSnapshot(
+      { datePreset: 'all', tradingAccountId: retrospectiveOnlyAccountId },
+      READ_OPTIONS,
+    );
+    if (!zeroEligible.ok) throw new Error(zeroEligible.code);
+    expect(zeroEligible.data.trader.sampleCount).toBe(1);
+    expect(zeroEligible.data.system.sampleCount).toBe(1);
+    expect(zeroEligible.data.comparison.comparableCount).toBe(1);
+    expect(zeroEligible.data.setupAdherence).toMatchObject({
+      sampleCount: 0,
+      averageAdherence: { status: 'unavailable', reason: 'no_conditions_applicable' },
+      conditionsMetRate: { status: 'unavailable', reason: 'no_conditions_applicable' },
+    });
+    expect(zeroEligible.data.conditions).toHaveLength(0);
+    expect(zeroEligible.data.confidence).toMatchObject({
+      sampleCount: 0,
+      averageConfidence: { status: 'unavailable', reason: 'no_confidence_recorded' },
+    });
+    expect(zeroEligible.data.emotions).toHaveLength(0);
+  });
+
+  it('Phase 15G.5C: SQL eligibility preserves millisecond equality and keeps Open Trades non-retrospective', async () => {
+    const userId = await createUser('analytics-15g5c-precision');
+    const workspaceId = await createWorkspace(userId, 'analytics-15g5c-precision');
+    const accountId = await createAccount(workspaceId, 'Precision Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+    currentSession = sessionFor(userId);
+
+    const exitedAt = new Date('2026-08-01T10:00:00.000Z');
+    const liveId = await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      exitedAt,
+      createdAt: new Date('2026-08-01T09:59:59.999Z'),
+    });
+    const equalMillisecondId = await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      exitedAt,
+      createdAt: exitedAt,
+    });
+    // PostgreSQL retains microseconds that JavaScript Date cannot observe.
+    // The shared SQL predicate truncates both sides to milliseconds, so this
+    // remains equality/not-proven-retrospective exactly like the read model.
+    await db.execute(
+      sql`update trades set created_at = '2026-08-01T10:00:00.000500Z'::timestamptz where id = ${equalMillisecondId}`,
+    );
+    const retrospectiveId = await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      exitedAt,
+      createdAt: new Date('2026-08-01T10:00:00.001Z'),
+    });
+    const openId = await createTrade(workspaceId, {
+      accountId,
+      framework: null,
+      status: 'open',
+      createdAt: new Date('2026-08-01T08:00:00.000Z'),
+    });
+    await db
+      .update(trades)
+      .set({ confidence: 25 })
+      .where(inArray(trades.id, [liveId, equalMillisecondId, retrospectiveId, openId]));
+
+    const raw = await getAnalyticsRawPopulations(
+      { datePreset: 'all', tradingAccountId: accountId },
+      READ_OPTIONS,
+    );
+    if (!raw.ok) throw new Error(raw.code);
+    const ids = (records: readonly { tradeId: string }[]) =>
+      [...new Set(records.map((record) => record.tradeId))].sort();
+    expect(ids(raw.data.confidence)).toEqual([equalMillisecondId, liveId].sort());
+    expect(ids(raw.data.confidenceSystem)).toEqual([equalMillisecondId, liveId, openId].sort());
+    expect(ids(raw.data.trader)).toEqual([equalMillisecondId, liveId, retrospectiveId].sort());
+    expect(ids(raw.data.system)).toEqual(
+      [equalMillisecondId, liveId, openId, retrospectiveId].sort(),
+    );
+    expect(ids(raw.data.paired)).toEqual([equalMillisecondId, liveId, retrospectiveId].sort());
   });
 
   it('Phase 14B: unclassified Trades participate in global Trader/System/paired analytics but never in a Strategy/Setup breakdown', async () => {

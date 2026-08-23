@@ -780,6 +780,47 @@ describe('trades DAL (real database)', () => {
   });
 
   describe('detail includes System fields once resolved', () => {
+    it('exposes the Phase 15G.5C retrospective marker from durable millisecond timestamps', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error('create failed');
+      await openTrade(workspaceId, userId, created.tradeId, {
+        actualResultMode: 'money',
+        actualEntry: '1.1005000000',
+        actualInitialStop: '1.0950000000',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00.000Z'),
+      });
+      const exit = await addTradeExit(workspaceId, userId, created.tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 10_000,
+        realizedPnlMinor: 2500n,
+        exitedAt: new Date('2026-08-01T10:00:00.000Z'),
+      });
+      if (!exit.ok) throw new Error('exit failed');
+
+      await db
+        .update(trades)
+        .set({ createdAt: new Date('2026-08-01T10:00:00.001Z') })
+        .where(eq(trades.id, created.tradeId));
+      const retrospective = await getWorkspaceTradeDetail(created.tradeId);
+      expect(retrospective).toMatchObject({
+        ok: true,
+        trade: { recordedRetrospectively: true },
+      });
+
+      await db
+        .update(trades)
+        .set({ createdAt: new Date('2026-08-01T10:00:00.000Z') })
+        .where(eq(trades.id, created.tradeId));
+      const equalMillisecond = await getWorkspaceTradeDetail(created.tradeId);
+      expect(equalMillisecond).toMatchObject({
+        ok: true,
+        trade: { recordedRetrospectively: false },
+      });
+    });
+
     it('returns the persisted Emotion marker so old absence and recorded zero stay distinct', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);

@@ -195,6 +195,9 @@ async function seedAnalyticsData(userId: string): Promise<void> {
     });
     const trader = (exitedAt: Date, actualR: string, outcome: 'win' | 'loss') => ({
       status: 'closed' as const,
+      // Canonical At Entry fixture: keep entry-context analytics eligible
+      // under the Phase 15G.5C durable timestamp rule.
+      createdAt: new Date(exitedAt.getTime() - 4 * 3_600_000),
       actualResultMode: 'money' as const,
       actualEntry: '100.0000000000',
       actualInitialStop: '99.0000000000',

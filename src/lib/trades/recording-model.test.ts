@@ -92,6 +92,12 @@ describe('recording model foundation', () => {
         exitedAt,
       }),
     ).toBe(true);
+    expect(
+      isRecordedRetrospectively({
+        createdAt: new Date('2026-08-23T10:59:59.999Z'),
+        exitedAt,
+      }),
+    ).toBe(false);
     expect(isRecordedRetrospectively({ createdAt: exitedAt, exitedAt: null })).toBe(false);
   });
 });

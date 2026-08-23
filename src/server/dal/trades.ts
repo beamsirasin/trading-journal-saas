@@ -18,6 +18,7 @@ import type {
   TradeDirection,
   TradeStatus,
 } from '@/lib/trades/constants';
+import { isRecordedRetrospectively } from '@/lib/trades/recording-model';
 import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
@@ -484,6 +485,8 @@ export interface TradeDetail {
   readonly setupAssignedAt: string | null;
   readonly status: TradeStatus;
   readonly systemStatus: SystemStatus;
+  /** Trade-level temporal truth only; never per-field provenance. */
+  readonly recordedRetrospectively: boolean;
 
   readonly symbol: string;
   readonly direction: TradeDirection;
@@ -734,6 +737,10 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       setupAssignedAt: dateToIso(trade.setupAssignedAt),
       status: trade.status as TradeStatus,
       systemStatus: trade.systemStatus as SystemStatus,
+      recordedRetrospectively: isRecordedRetrospectively({
+        createdAt: trade.createdAt,
+        exitedAt: trade.exitedAt,
+      }),
 
       symbol: trade.symbol,
       direction: trade.direction as TradeDirection,

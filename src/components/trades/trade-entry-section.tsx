@@ -87,7 +87,14 @@ export function EntrySnapshotSection({
   const t = useTranslations('trades');
   return (
     <section aria-labelledby="trade-entry-heading" className="grid gap-5">
-      <SectionTitle id="trade-entry-heading">{t('detail.sections.entrySnapshot')}</SectionTitle>
+      <div className="grid gap-1">
+        <SectionTitle id="trade-entry-heading">{t('detail.sections.entrySnapshot')}</SectionTitle>
+        {trade.recordedRetrospectively ? (
+          <p className="text-muted-foreground text-xs">
+            {t('lifecycle.reflection.recordedRetrospectively')}
+          </p>
+        ) : null}
+      </div>
 
       <dl className="divide-border divide-y">
         <DetailRow label={t('detail.sections.conditions')} value={checklistSummary(trade, t)} />

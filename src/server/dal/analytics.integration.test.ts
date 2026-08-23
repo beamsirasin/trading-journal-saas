@@ -245,6 +245,7 @@ interface TradeOverrides {
   accountId?: string;
   status?: 'planned' | 'open' | 'closed' | 'canceled';
   exitedAt?: Date;
+  createdAt?: Date;
   system?: 'pending' | 'resolved' | 'no_trade';
   systemExitedAt?: Date;
   moneyOnlySystem?: boolean;
@@ -327,6 +328,7 @@ async function createTradeRow(
         plannedRewardMinor: moneyOnlySystem ? 200n : null,
         plannedR: '2.0000',
         status,
+        createdAt: overrides.createdAt ?? new Date(enteredAt.getTime() - 60 * 60 * 1000),
         deletedAt: overrides.deleted ? new Date('2026-08-03T00:00:00Z') : null,
         ...actualFields,
         ...systemFields,

@@ -31,6 +31,62 @@ async function provisionJournalUser(prefix: string) {
   });
 }
 
+async function seedRetrospectiveDetailTrade(userId: string): Promise<string> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, { schema: { workspaces, tradingAccounts, trades, tradeExits } });
+  try {
+    const [workspace] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    if (workspace === undefined) throw new Error('Trade E2E retrospective workspace missing');
+    const [account] = await db
+      .select({ id: tradingAccounts.id })
+      .from(tradingAccounts)
+      .where(eq(tradingAccounts.workspaceId, workspace.id));
+    if (account === undefined) throw new Error('Trade E2E retrospective Account missing');
+
+    const exitedAt = new Date('2026-08-21T10:00:00.000Z');
+    return db.transaction(async (tx) => {
+      const [trade] = await tx
+        .insert(trades)
+        .values({
+          workspaceId: workspace.id,
+          tradingAccountId: account.id,
+          symbol: 'RETRODETAIL',
+          direction: 'long',
+          plannedRiskMinor: 100n,
+          plannedRewardMinor: 200n,
+          plannedR: '2.0000',
+          actualResultMode: 'money',
+          actualInitialRiskMinor: 100n,
+          netPnlMinor: 100n,
+          actualR: '1.0000',
+          traderOutcome: 'win',
+          status: 'closed',
+          enteredAt: new Date('2026-08-21T09:00:00.000Z'),
+          exitedAt,
+          createdAt: new Date('2026-08-21T10:00:00.001Z'),
+        })
+        .returning({ id: trades.id });
+      if (trade === undefined) throw new Error('Trade E2E retrospective Trade missing');
+      await tx.insert(tradeExits).values({
+        workspaceId: workspace.id,
+        tradeId: trade.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        closedBps: 10_000,
+        realizedPnlMinor: 100n,
+        exitedAt,
+      });
+      return trade.id;
+    });
+  } finally {
+    await client.end();
+  }
+}
+
 async function seedFramework(userId: string, withConditions = true): Promise<void> {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
@@ -508,6 +564,23 @@ async function completeTradeLifecycle(page: Page) {
 
 test.describe('real Trade Journal creation', () => {
   test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
+
+  test('Phase 15G.5C discloses retrospective recording once at Entry Snapshot level', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    const user = await provisionJournalUser('e2e-trades-retrospective-detail');
+    const tradeId = await seedRetrospectiveDetailTrade(user.id);
+    await loginAs(page, 'en', user);
+    await page.goto(`/en/app/trades?trade=${tradeId}&section=entry`);
+
+    const detail = page.getByRole('article', { name: 'RETRODETAIL' });
+    await expect(detail.getByRole('heading', { name: 'Entry Snapshot' })).toBeVisible();
+    await expect(detail.getByText('Recorded retrospectively', { exact: true })).toHaveCount(1);
+    await expect(detail.getByText('Recorded retrospectively', { exact: true })).toHaveClass(
+      /text-muted-foreground/,
+    );
+  });
 
   test('desktop creates, completes, corrects discipline, resolves, and deletes a Trade', async ({
     page,

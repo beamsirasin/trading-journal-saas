@@ -41,6 +41,8 @@ import {
   tradingAccounts,
 } from '@/server/db/schema';
 
+import { entryContextAnalyticsEligible } from './trade-recording-model';
+
 export type AnalyticsFilterErrorCode =
   'invalid_filters' | 'invalid_timezone' | 'no_active_trading_account';
 
@@ -768,6 +770,7 @@ async function selectSetupAdherenceAnalyticsRecords(
         isNotNull(trades.actualR),
         isNotNull(trades.traderOutcome),
         isNotNull(trades.exitedAt),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -821,6 +824,7 @@ async function selectSetupAdherenceSystemAnalyticsRecords(
         isNotNull(trades.systemR),
         isNotNull(trades.systemOutcome),
         isNotNull(trades.systemExitedAt),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
     )
@@ -893,6 +897,7 @@ async function selectConditionAnalyticsRecords(
         isNotNull(trades.actualR),
         isNotNull(trades.traderOutcome),
         isNotNull(trades.exitedAt),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -959,6 +964,7 @@ async function selectConditionSystemAnalyticsRecords(
         isNotNull(trades.systemR),
         isNotNull(trades.systemOutcome),
         isNotNull(trades.systemExitedAt),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
     )
@@ -1011,6 +1017,7 @@ async function selectConfidenceAnalyticsRecords(
         isNotNull(trades.traderOutcome),
         isNotNull(trades.exitedAt),
         isNotNull(trades.confidence),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -1062,6 +1069,7 @@ async function selectConfidenceSystemAnalyticsRecords(
         isNotNull(trades.systemOutcome),
         isNotNull(trades.systemExitedAt),
         isNotNull(trades.confidence),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
     )
@@ -1123,6 +1131,7 @@ async function selectEmotionAnalyticsRecords(
         isNotNull(trades.actualR),
         isNotNull(trades.traderOutcome),
         isNotNull(trades.exitedAt),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -1182,6 +1191,7 @@ async function selectEmotionSystemAnalyticsRecords(
         isNotNull(trades.systemR),
         isNotNull(trades.systemOutcome),
         isNotNull(trades.systemExitedAt),
+        entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
     )

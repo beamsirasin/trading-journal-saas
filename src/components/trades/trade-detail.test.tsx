@@ -44,6 +44,7 @@ const base: TradeDetailModel = {
   executionGapR: null,
   status: 'planned',
   systemStatus: 'pending',
+  recordedRetrospectively: false,
   systemResolutionKind: null,
   systemGrossRInput: null,
   symbol: 'XAUUSD',
@@ -181,6 +182,12 @@ describe('TradeDetail', () => {
     expect(screen.getByText('75% · High')).toBeInTheDocument();
     expect(screen.queryByText(/75\/100/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/5\b/)).not.toBeInTheDocument();
+  });
+
+  it('labels the Entry Snapshot once when the Trade was recorded retrospectively', () => {
+    renderDetail({ ...base, recordedRetrospectively: true }, 'entry');
+    expect(screen.getByText('Recorded retrospectively')).toBeVisible();
+    expect(screen.getAllByText('Recorded retrospectively')).toHaveLength(1);
   });
 
   it('renders a truthful not-set Confidence state, never an invented percentage', () => {

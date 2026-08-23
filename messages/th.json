@@ -823,6 +823,7 @@
         "reviewNotes": "การทบทวนหลังเทรด",
         "notRecorded": "ไม่ได้บันทึก",
         "recorded": "บันทึกแล้ว",
+        "recordedRetrospectively": "บันทึกย้อนหลัง",
         "noneSelected": "ไม่ได้เลือกอารมณ์",
         "selectHint": "เลือกทุกอารมณ์ที่เกิดขึ้น การไม่เลือกเลยเป็นคำตอบที่ถูกต้องได้",
         "saveEmotions": "บันทึกอารมณ์",

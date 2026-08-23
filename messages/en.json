@@ -823,6 +823,7 @@
         "reviewNotes": "Post-trade review",
         "notRecorded": "Not recorded",
         "recorded": "Recorded",
+        "recordedRetrospectively": "Recorded retrospectively",
         "noneSelected": "No emotions selected",
         "selectHint": "Select every emotion that applied. Zero is a valid answer.",
         "saveEmotions": "Save emotions",

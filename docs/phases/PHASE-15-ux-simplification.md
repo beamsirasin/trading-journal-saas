@@ -1,13 +1,13 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
 > **Status:** 15A–15F and the approved 15G.4 recording-model audit are complete. The 15G.5A
-> domain/service foundation and 15G.5B atomic completed-create foundation are implemented in the
-> working tree — see §§59–60. Phase 15G Founder UAT remains open and must not be marked complete
-> before Founder acceptance.
+> domain/service foundation, 15G.5B atomic completed-create foundation, and 15G.5C retrospective
+> analytics truth are implemented in the working tree — see §§59–61. Phase 15G Founder UAT
+> remains open and must not be marked complete before Founder acceptance.
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-23 (Phase 15G.5B — Atomic Completed-Trade Creation Foundation).
+> **Last updated:** 2026-08-23 (Phase 15G.5C — Retrospective Behavioral Analytics Truth).
 
 ---
 
@@ -1504,3 +1504,45 @@ Review notes, Rule-check edits, and Mistake attachment are deliberately deferred
 completed-create contract. Their current public services own separate transactions, and extracting
 them would enlarge this foundation beyond its required creation graph. Existing At Entry behavior
 is unchanged.
+
+## 61. Phase 15G.5C — Retrospective Behavioral Analytics Truth (as built)
+
+This slice aligns behavioral analytics with the frozen recording model. It adds no new At Entry or
+After Trade UI, no Analytics surface redesign, no formula changes, and no database migration. The
+migration ledger remains `0000`–`0016`; Phase 15G Founder UAT remains open.
+
+**Frozen temporal rule.** A finalized Trade is proven retrospective only when `created_at >
+exited_at` at JavaScript millisecond precision. Equality is not retrospective, a timestamp that is
+later only in PostgreSQL microseconds is not provably retrospective, and an Open Trade with null
+`exited_at` is not retrospective. The reusable application helper compares `Date#getTime()`; the
+DAL predicate uses `date_trunc('milliseconds', ...)` to implement the same conservative rule before
+aggregation. This remains one Trade-level marker and does not claim per-field provenance.
+
+**Behavioral population boundary.** Proven retrospective Trades are excluded before aggregation
+from exactly four entry-context dimensions, on both the Trader and System projections: Setup
+Adherence, condition-level performance, Confidence Performance, and Emotion Performance. Their
+stored checklist answers, confidence (including zero), selected emotions, explicit-empty emotion
+marker, and never-recorded state are not deleted or rewritten and remain available in Journal
+detail. Counts and sample sizes now describe only the eligible population; when no eligible sample
+exists, the existing unavailable/not-recorded presentation is used rather than a fabricated zero.
+
+**Intentionally unchanged axes.** Strategy Performance and Setup Performance continue to include
+retrospective Trades because classification remains meaningful. Trader Performance remains based
+on Actual completion (`exited_at`); System Performance remains based on System resolution
+(`system_exited_at`); paired Execution Gap remains paired on its existing lifecycle truth. Trade
+Management Rule and Mistake analytics remain unchanged. Entry Reason, chart attachment, notes, and
+other Journal context still do not become analytics dimensions. No financial or outcome formula
+was changed.
+
+**Read-model disclosure.** Trade Detail now exposes `recordedRetrospectively`, derived from durable
+timestamps, and shows one quiet Entry Snapshot section label when true: “Recorded retrospectively”
+in English and “บันทึกย้อนหลัง” in Thai. The label is neutral, is not repeated beside individual
+fields, and does not imply that every field has known provenance.
+
+Coverage includes the pure boundary (before/equal/one millisecond after/Open), the PostgreSQL
+microsecond-to-millisecond equality case, canonical At Entry and After Trade records, Resolved,
+Pending, and No Trade System states, late classification, confidence zero, selected versus
+explicit-empty versus never-recorded emotions, zero eligible samples, all eight affected raw
+projections, the unchanged financial/classification/Trade Management populations, durable context
+retention, and the Trade Detail marker/copy. No Founder acceptance or After Trade UI completion is
+claimed by this section.
