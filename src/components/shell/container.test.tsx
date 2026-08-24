@@ -16,7 +16,7 @@ describe('Container', () => {
 
   it('supports a wider variant for analytics surfaces', () => {
     const { container } = render(<Container width="wide">content</Container>);
-    expect(container.firstElementChild?.className).toContain('max-w-[100rem]');
+    expect(container.firstElementChild?.className).toContain('max-w-[112rem]');
   });
 
   it('supports a narrower variant for reading', () => {

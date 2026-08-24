@@ -245,15 +245,20 @@ test.describe('real Dashboard overview', () => {
     await expect(trader.getByRole('heading', { name: 'Trader Performance' })).toBeVisible();
     await expect(system.getByText('3 Trades')).toBeVisible();
     await expect(trader.getByText('3 Trades')).toBeVisible();
-    await expect(system.getByText('+4.00R')).toBeVisible();
-    await expect(trader.getByText('+2.00R')).toBeVisible();
+    const headline = page.locator('[data-dashboard-panel="headline-metrics"]');
+    await expect(
+      headline.locator('[data-metric="System Performance"]').getByText('+4.00R'),
+    ).toBeVisible();
+    await expect(
+      headline.locator('[data-metric="Trader Performance"]').getByText('+2.00R'),
+    ).toBeVisible();
     await expect(system.getByText('+1.33R')).toBeVisible();
     await expect(trader.getByText('+0.67R')).toBeVisible();
     await expect(system.getByText('66.67%')).toBeVisible();
     await expect(trader.getByText('66.67%')).toBeVisible();
     await expect(system.getByText('5.00')).toBeVisible();
     await expect(trader.getByText('3.00')).toBeVisible();
-    await expect(comparison.getByText('+5.00R')).toBeVisible();
+    await expect(comparison.getByText('-2.50R')).toBeVisible();
     await expect(comparison.getByText('0.00%')).toBeVisible();
     await expect(page.getByText('Pinned Momentum v1').first()).toBeVisible();
     await expect(page.getByText('Pinned Opening Retest').first()).toBeVisible();
@@ -262,14 +267,22 @@ test.describe('real Dashboard overview', () => {
     // Wait for the App Router client boundary before exercising its Link.
     // The server-rendered values are visible sooner than hydration completes.
     await page.waitForLoadState('networkidle');
-    await page.getByRole('link', { name: '30D' }).click();
-    await expect(page).toHaveURL(/\/en\/app\?range=30d$/);
+    const range30 = page.getByRole('link', { name: '30D' });
+    await expect(async () => {
+      await range30.focus();
+      await range30.press('Enter');
+      await page.waitForURL(/\/en\/app\?range=30d$/, { timeout: 5_000 });
+    }).toPass({ timeout: 30_000, intervals: [250] });
     await expect(page.getByRole('link', { name: '30D' })).toHaveAttribute('aria-current', 'page');
     await expect(system.getByText('2 Trades')).toBeVisible();
     await expect(trader.getByText('2 Trades')).toBeVisible();
-    await expect(system.getByText('+2.00R')).toBeVisible();
-    await expect(trader.getByText('+1.00R')).toBeVisible();
-    await expect(comparison.getByText('+4.00R')).toBeVisible();
+    await expect(
+      headline.locator('[data-metric="System Performance"]').getByText('+2.00R'),
+    ).toBeVisible();
+    await expect(
+      headline.locator('[data-metric="Trader Performance"]').getByText('+1.00R'),
+    ).toBeVisible();
+    await expect(comparison.getByText('-4.00R')).toBeVisible();
     await expect(comparison.getByText('-33.33%')).toBeVisible();
 
     await page.getByRole('link', { name: 'XAUUSD' }).click();
@@ -297,7 +310,9 @@ test.describe('real Dashboard overview', () => {
     await expect(comparison).toBeVisible();
     const systemBox = await system.boundingBox();
     const traderBox = await trader.boundingBox();
-    expect(traderBox?.y ?? 0).toBeGreaterThan((systemBox?.y ?? 0) + (systemBox?.height ?? 0));
+    expect(systemBox?.y ?? 0).toBeGreaterThanOrEqual(
+      (traderBox?.y ?? 0) + (traderBox?.height ?? 0),
+    );
 
     const range = page.getByRole('link', { name: '30D' });
     const rangeBox = await range.boundingBox();

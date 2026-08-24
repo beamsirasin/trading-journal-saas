@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Suspense } from 'react';
 
-import { getActiveTradingAccount } from '@/server/auth/dal';
+import { calendarDateIn, monthRangeIn } from '@/lib/time';
+import { getActiveTradingAccount, getCurrentUserPreferences } from '@/server/auth/dal';
+import { getWorkspaceTradeCalendarMonth } from '@/server/dal/trade-calendar';
 import { getWorkspaceTradeAttentionCounts } from '@/server/dal/trades';
 import { getDashboardOverview } from '@/server/services/analytics';
 import {
@@ -68,10 +70,23 @@ export default async function AppOverviewPage({
 }
 
 async function DashboardContent({ locale, range }: { locale: string; range: unknown }) {
-  const [account, dashboard, attention] = await Promise.all([
+  const preferences = await getCurrentUserPreferences();
+  const todayResult = calendarDateIn(new Date(), preferences.timezone);
+  const todayDate = todayResult.ok ? todayResult.value : '1970-01-01';
+  const [year, month] = todayDate.split('-').map(Number) as [number, number];
+  const monthBounds = monthRangeIn(year, month, preferences.timezone);
+  if (!monthBounds.ok) throw new Error('dashboard: month bounds resolution failed for today');
+
+  const [account, dashboard, attention, calendarMonth] = await Promise.all([
     getActiveTradingAccount(),
     getDashboardOverview(range),
     getWorkspaceTradeAttentionCounts(),
+    getWorkspaceTradeCalendarMonth({
+      year,
+      month,
+      timezone: preferences.timezone,
+      monthRange: monthBounds.value,
+    }),
   ]);
   if (account === null || (!dashboard.ok && dashboard.code === 'no_active_trading_account')) {
     return <NoActiveTradingAccountRecovery />;
@@ -98,6 +113,19 @@ async function DashboardContent({ locale, range }: { locale: string; range: unkn
       overview={dashboard.data.overview}
       recentTrades={recentTrades}
       attention={attention}
+      calendar={{
+        year,
+        month,
+        locale: dateLocale,
+        todayDate,
+        selectedDate: null,
+        trader: calendarMonth.trader,
+        system: calendarMonth.system,
+        traderTotalR: calendarMonth.traderTotalR,
+        systemTotalR: calendarMonth.systemTotalR,
+        tradingDays: calendarMonth.tradingDays,
+        daySummary: null,
+      }}
     />
   );
 }

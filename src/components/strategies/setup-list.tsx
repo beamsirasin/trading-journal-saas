@@ -112,7 +112,10 @@ export function SetupList({
           }
         />
       ) : (
-        <ul aria-labelledby="setups-heading" className="grid gap-3 sm:grid-cols-2">
+        <ul
+          aria-labelledby="setups-heading"
+          className="border-border bg-card divide-border divide-y overflow-hidden rounded-lg border"
+        >
           {setups.map((setup) => (
             <li key={setup.setupId}>
               <SetupCard
@@ -171,7 +174,11 @@ function SetupCard({
   }
 
   return (
-    <Card role="region" aria-labelledby={headingId} className="flex h-full flex-col">
+    <Card
+      role="region"
+      aria-labelledby={headingId}
+      className="flex h-full flex-col rounded-none border-0"
+    >
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle id={headingId}>{setup.name}</CardTitle>

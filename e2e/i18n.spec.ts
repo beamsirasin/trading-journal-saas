@@ -92,10 +92,10 @@ test.describe('locale rendering', () => {
     page,
   }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
-    await page.goto('/th/app/analytics');
+    await page.goto('/th/app/analytics?view=results');
 
     await expect(
-      page.getByRole('heading', { level: 2, name: 'ผลการทำงานของระบบและเทรดเดอร์' }),
+      page.getByRole('heading', { level: 2, name: 'ผลลัพธ์ (รายละเอียด)' }),
     ).toBeVisible();
     await expect(page.getByText('ไม่มีข้อผิดพลาดที่บันทึกไว้')).toBeVisible();
     await expect(page.getByText('No mistakes recorded', { exact: true })).toHaveCount(0);
@@ -326,7 +326,7 @@ test.describe('localized metadata', () => {
   test('localizes the app overview title', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
-    await expect(page).toHaveTitle(/^ภาพรวม · Trading OS$/);
+    await expect(page).toHaveTitle(/^ภาพรวม · TradeChemist$/);
   });
 });
 

@@ -109,7 +109,7 @@ export function StrategiesManager({
           }
         />
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-[360px_1fr]">
+        <div className="grid items-start gap-6 lg:grid-cols-[320px_1fr]">
           <div className={cn('flex flex-col gap-4', hasSelection && 'hidden lg:flex')}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-card-title">{t('listHeading')}</h2>

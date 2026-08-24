@@ -26,15 +26,15 @@ export function PageHeader({
 }) {
   return (
     <div
-      className={cn('flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between', className)}
+      className={cn('flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between', className)}
     >
-      <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-page-title text-balance">{title}</h1>
           {meta}
         </div>
         {description === undefined ? null : (
-          <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed text-pretty">
+          <p className="text-muted-foreground max-w-2xl text-sm leading-normal text-pretty">
             {description}
           </p>
         )}

@@ -27,7 +27,10 @@ export function TradesViewNav({ view }: { readonly view: TradesView }) {
   }
 
   return (
-    <nav aria-label={t('label')} className="border-border inline-flex w-fit rounded-lg border p-1">
+    <nav
+      aria-label={t('label')}
+      className="bg-surface border-border inline-flex w-fit rounded-lg border p-1"
+    >
       {(['calendar', 'log'] as const).map((item) => {
         const Icon = item === 'calendar' ? CalendarDays : List;
         return (
@@ -37,7 +40,9 @@ export function TradesViewNav({ view }: { readonly view: TradesView }) {
             aria-current={view === item ? 'page' : undefined}
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2',
-              view === item ? 'bg-primary text-primary-foreground' : 'hover:bg-accent',
+              view === item
+                ? 'bg-primary/12 text-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
           >
             <Icon className="size-4" aria-hidden="true" />

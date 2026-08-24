@@ -55,7 +55,7 @@ export function RealAnalyticsPage({
     tTrades.has(`direction.${value}`) ? tTrades(`direction.${value}` as 'direction.long') : value;
 
   return (
-    <div className="flex min-w-0 flex-col gap-8">
+    <div className="flex min-w-0 flex-col gap-6">
       <AnalyticsFilters options={filterOptions} selection={selection} view={view} />
 
       <AnalyticsExploreNav view={view} />
@@ -100,10 +100,9 @@ export function RealAnalyticsPage({
         <ZoneSection
           zone="results"
           title={t('explore.results.title')}
-          description={t('explore.results.description')}
           id="analytics-performance-heading"
         >
-          <div className="flex flex-col gap-8">
+          <div className="grid min-w-0 gap-5 xl:grid-cols-2">
             <section aria-label={t('trader.title')} className="flex flex-col gap-4">
               {/* `PerformancePanel` already renders its own "Trader Performance"
                 CardTitle — no duplicate SectionHeader here. */}
@@ -180,7 +179,10 @@ export function RealAnalyticsPage({
               />
             </section>
 
-            <section aria-labelledby="analytics-comparison-heading" className="flex flex-col gap-4">
+            <section
+              aria-labelledby="analytics-comparison-heading"
+              className="flex flex-col gap-4 xl:col-span-2"
+            >
               <SectionHeader
                 id="analytics-comparison-heading"
                 as="h3"
@@ -200,19 +202,17 @@ export function RealAnalyticsPage({
         <ZoneSection
           zone="edge"
           title={t('explore.edge.title')}
-          description={t('explore.edge.description')}
           id="analytics-setup-quality-heading"
         >
-          <div className="flex flex-col gap-8">
+          <div className="grid min-w-0 gap-6 xl:grid-cols-2">
             <section
               aria-labelledby="analytics-strategy-performance-heading"
-              className="flex flex-col gap-4"
+              className="flex min-w-0 flex-col gap-4"
             >
               <SectionHeader
                 id="analytics-strategy-performance-heading"
                 as="h3"
                 title={t('explore.strategyPerformance.title')}
-                description={t('explore.strategyPerformance.description')}
               />
               <StrategyPerformancePanel
                 performance={snapshot.strategyPerformance}
@@ -222,13 +222,12 @@ export function RealAnalyticsPage({
 
             <section
               aria-labelledby="analytics-setup-performance-heading"
-              className="flex flex-col gap-4"
+              className="flex min-w-0 flex-col gap-4"
             >
               <SectionHeader
                 id="analytics-setup-performance-heading"
                 as="h3"
                 title={t('explore.setupPerformance.title')}
-                description={t('explore.setupPerformance.description')}
               />
               <SetupPerformancePanel
                 performance={snapshot.setupPerformance}
@@ -239,13 +238,12 @@ export function RealAnalyticsPage({
 
             <section
               aria-labelledby="analytics-setup-adherence-heading"
-              className="flex flex-col gap-4"
+              className="flex min-w-0 flex-col gap-4 xl:col-span-2"
             >
               <SectionHeader
                 id="analytics-setup-adherence-heading"
                 as="h3"
                 title={t('setupAdherence.average')}
-                description={t('explore.setupChecklist.description')}
               />
               <div className="grid min-w-0 gap-4 xl:grid-cols-2">
                 <SetupAdherencePanel adherence={snapshot.setupAdherence} />
@@ -263,7 +261,6 @@ export function RealAnalyticsPage({
         <ZoneSection
           zone="behavior"
           title={t('explore.behavior.title')}
-          description={t('explore.behavior.description')}
           id="analytics-psychology-heading"
         >
           <div className="grid min-w-0 gap-4 xl:grid-cols-2">

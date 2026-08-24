@@ -43,11 +43,13 @@ export function ActiveTradingAccountSummaryCard({
   const t = useTranslations('dashboard');
   return (
     <Card role="region" aria-label={t('activeAccountRegionLabel')}>
-      <CardHeader>
-        <CardTitle>{account.name}</CardTitle>
-        <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
+      <CardHeader className="border-border border-b py-3 sm:py-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <CardTitle>{account.name}</CardTitle>
+          <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
+        </div>
       </CardHeader>
-      <CardContent className="grid gap-5 sm:grid-cols-3">
+      <CardContent className="grid gap-4 pt-4 sm:grid-cols-3 sm:pt-4">
         <SummaryStat
           label={t('accountModeLabel')}
           value={t(`accountModeValues.${account.accountMode}`)}
@@ -66,7 +68,7 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-muted-foreground text-xs font-medium">{label}</span>
-      <span className="text-foreground text-lg font-semibold">{value}</span>
+      <span className="text-foreground text-sm font-semibold">{value}</span>
     </div>
   );
 }

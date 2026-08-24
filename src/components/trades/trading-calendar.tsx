@@ -1,8 +1,10 @@
 'use client';
 
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { totalR } from '@/lib/calc/aggregate';
 import { daysInMonth } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import type { TradeCalendarDayBucket, WorkspaceTradeDaySummary } from '@/server/dal/trade-calendar';
@@ -28,6 +30,8 @@ export interface TradingCalendarProps {
   readonly systemTotalR: string | null;
   readonly tradingDays: number;
   readonly daySummary: WorkspaceTradeDaySummary | null;
+  /** Dashboard density: keeps the full month visible beside the operational queue. */
+  readonly compact?: boolean;
 }
 
 function monthQuery(year: number, month: number): string {
@@ -38,6 +42,17 @@ function shiftMonth(year: number, month: number, delta: 1 | -1): { year: number;
   const total = year * 12 + (month - 1) + delta;
   return { year: Math.trunc(total / 12), month: (((total % 12) + 12) % 12) + 1 };
 }
+
+function resultTone(value: string | null): 'positive' | 'negative' | 'neutral' {
+  if (value === null || Number(value) === 0) return 'neutral';
+  return value.startsWith('-') ? 'negative' : 'positive';
+}
+
+const RESULT_TEXT_CLASS = {
+  positive: 'text-positive',
+  negative: 'text-negative',
+  neutral: 'text-muted-foreground',
+} as const;
 
 /**
  * Journal navigation, not another Analytics page (Phase 14D). Deliberately
@@ -59,6 +74,7 @@ export function TradingCalendar({
   systemTotalR,
   tradingDays,
   daySummary,
+  compact = false,
 }: TradingCalendarProps) {
   const t = useTranslations('trades.calendar');
   const router = useRouter();
@@ -79,6 +95,11 @@ export function TradingCalendar({
       return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }),
   ];
+  const trailingBlanks = (7 - (cells.length % 7)) % 7;
+  const paddedCells = [...cells, ...Array.from({ length: trailingBlanks }, () => null)];
+  const weeks = Array.from({ length: paddedCells.length / 7 }, (_, index) =>
+    paddedCells.slice(index * 7, index * 7 + 7),
+  );
 
   const prev = shiftMonth(year, month, -1);
   const next = shiftMonth(year, month, 1);
@@ -102,6 +123,248 @@ export function TradingCalendar({
   }
 
   const weekdayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+  if (compact) {
+    return (
+      <Card data-testid="trading-calendar" className="overflow-hidden">
+        <CardHeader className="border-border/70 gap-3 border-b p-4 sm:p-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:flex">
+            <CardTitle className="col-span-2 shrink-0 sm:col-auto sm:mr-1">{t('title')}</CardTitle>
+            <nav
+              aria-label={t('monthNavLabel')}
+              className="border-border/80 bg-surface flex min-w-0 items-center rounded-md border p-0.5"
+            >
+              <Link
+                href={`/app/trades?view=calendar&month=${monthQuery(prev.year, prev.month)}`}
+                aria-label={t('previousMonth')}
+                className="hover:bg-accent focus-visible:ring-ring inline-flex size-9 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2"
+              >
+                <ChevronLeft aria-hidden="true" className="size-4" />
+              </Link>
+              <span
+                className="numeric min-w-0 flex-1 px-1 text-center text-sm font-semibold sm:min-w-36 sm:px-2"
+                aria-live="polite"
+              >
+                {monthLabel}
+              </span>
+              <Link
+                href={`/app/trades?view=calendar&month=${monthQuery(next.year, next.month)}`}
+                aria-label={t('nextMonth')}
+                className="hover:bg-accent focus-visible:ring-ring inline-flex size-9 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2"
+              >
+                <ChevronRight aria-hidden="true" className="size-4" />
+              </Link>
+            </nav>
+            <Link
+              href="/app/trades?view=calendar"
+              className="border-border text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring inline-flex min-h-9 items-center rounded-md border px-3 text-xs font-medium outline-none focus-visible:ring-2 sm:ml-auto"
+            >
+              {t('today')}
+            </Link>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <dl className="grid min-w-0 flex-1 grid-cols-3 gap-x-3 sm:flex sm:gap-x-6">
+              {[
+                { label: t('monthSummary.trader'), value: traderTotalR },
+                { label: t('monthSummary.system'), value: systemTotalR },
+              ].map((item) => {
+                const tone = resultTone(item.value);
+                return (
+                  <div key={item.label} className="min-w-0">
+                    <dt className="text-muted-foreground text-[10px] leading-tight font-medium sm:text-xs">
+                      {item.label}
+                    </dt>
+                    <dd
+                      className={cn(
+                        'numeric mt-1 text-sm font-semibold tabular-nums',
+                        item.value === null ? 'text-muted-foreground' : RESULT_TEXT_CLASS[tone],
+                      )}
+                    >
+                      {item.value === null ? '—' : formatR(item.value)}
+                    </dd>
+                  </div>
+                );
+              })}
+              <div className="min-w-0">
+                <dt className="text-muted-foreground text-[10px] leading-tight font-medium sm:text-xs">
+                  {t('monthSummary.tradingDays')}
+                </dt>
+                <dd className="numeric mt-1 text-sm font-semibold tabular-nums">{tradingDays}</dd>
+              </div>
+            </dl>
+            <SegmentedControl
+              legend={t('axisLegend')}
+              value={axis}
+              onValueChange={setAxis}
+              options={[
+                { value: 'trader', label: t('axisTrader') },
+                { value: 'system', label: t('axisSystem') },
+              ]}
+              className="shrink-0 [&_label]:min-h-9 [&_label]:px-2.5 [&_label]:text-xs"
+            />
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0 sm:p-0">
+          <div
+            data-testid="calendar-weekday-header"
+            className="border-border/60 bg-surface/70 grid grid-cols-7 border-b sm:grid-cols-[repeat(7,minmax(0,1fr))_minmax(5.75rem,0.7fr)]"
+          >
+            {weekdayKeys.map((key) => (
+              <div
+                key={key}
+                className="text-muted-foreground px-1 py-2 text-center text-[10px] font-semibold tracking-[0.08em] uppercase sm:text-xs"
+                aria-hidden="true"
+              >
+                {t(`weekday.${key}`)}
+              </div>
+            ))}
+            <div
+              className="border-border/60 text-muted-foreground hidden border-l px-2 py-2 text-center text-[10px] font-semibold tracking-[0.08em] uppercase sm:block sm:text-xs"
+              aria-hidden="true"
+            >
+              {t('week')}
+            </div>
+          </div>
+
+          <div data-testid="calendar-month-grid">
+            {weeks.map((week, weekIndex) => {
+              const weekBuckets = week.flatMap((date) => {
+                if (date === null) return [];
+                const bucket = byDate.get(date);
+                return bucket === undefined ? [] : [bucket];
+              });
+              const weekTotalResult = totalR(weekBuckets.map((bucket) => bucket.totalR));
+              const weekTotal = weekTotalResult.ok ? weekTotalResult.value : null;
+              const weekTone = resultTone(weekTotal);
+
+              return (
+                <div
+                  key={`week-${weekIndex + 1}`}
+                  className="border-border/45 grid grid-cols-7 border-t first:border-t-0 sm:grid-cols-[repeat(7,minmax(0,1fr))_minmax(5.75rem,0.7fr)]"
+                >
+                  {week.map((date, dayIndex) => {
+                    const edgeClass = dayIndex === 6 ? 'border-r-0' : 'border-r';
+                    if (date === null) {
+                      return (
+                        <div
+                          key={`blank-${weekIndex}-${dayIndex}`}
+                          aria-hidden="true"
+                          className={cn(
+                            'border-border/40 bg-background/35 min-h-14 sm:min-h-[4.5rem]',
+                            edgeClass,
+                          )}
+                        />
+                      );
+                    }
+
+                    const bucket = byDate.get(date);
+                    const isToday = date === todayDate;
+                    const isSelected = date === selectedDate;
+                    const day = Number(date.slice(-2));
+                    const rDisplay = bucket === undefined ? null : formatR(bucket.totalR);
+                    const tone = resultTone(bucket?.totalR ?? null);
+                    const fullDateLabel = new Date(`${date}T00:00:00Z`).toLocaleDateString(locale, {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                      timeZone: 'UTC',
+                      calendar: 'gregory',
+                    });
+                    const resultWord =
+                      axis === 'trader' ? t('a11yResultTrader') : t('a11yResultSystem');
+                    const countWord =
+                      axis === 'trader'
+                        ? t('a11yCountTrader', { count: bucket?.count ?? 0 })
+                        : t('a11yCountSystem', { count: bucket?.count ?? 0 });
+                    const a11yLabel =
+                      bucket === undefined
+                        ? t('a11yNoResults', { date: fullDateLabel })
+                        : t('a11yDaySummary', {
+                            date: fullDateLabel,
+                            resultWord,
+                            r: rDisplay ?? '',
+                            countWord,
+                          });
+
+                    return (
+                      <button
+                        key={date}
+                        type="button"
+                        onClick={() => selectDate(date)}
+                        aria-pressed={isSelected}
+                        aria-current={isToday ? 'date' : undefined}
+                        aria-label={a11yLabel}
+                        data-calendar-day={date}
+                        data-calendar-tone={bucket === undefined ? 'empty' : tone}
+                        className={cn(
+                          'focus-visible:ring-ring relative flex min-h-14 min-w-0 flex-col items-start justify-between overflow-hidden px-1 py-1.5 text-left transition-colors outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset sm:min-h-[4.5rem] sm:px-2.5 sm:py-2',
+                          'border-border/40',
+                          edgeClass,
+                          bucket === undefined
+                            ? 'bg-surface/25 hover:bg-surface-raised/55'
+                            : tone === 'negative'
+                              ? 'bg-negative/[0.045] hover:bg-negative/[0.08]'
+                              : tone === 'positive'
+                                ? 'bg-positive/[0.045] hover:bg-positive/[0.08]'
+                                : 'bg-surface-raised/40 hover:bg-surface-raised/70',
+                          isSelected && 'ring-primary z-10 ring-2 ring-inset',
+                        )}
+                      >
+                        <span className="numeric text-muted-foreground ml-auto inline-flex items-center gap-1 text-[10px] font-medium tabular-nums sm:text-xs">
+                          {isToday ? (
+                            <span aria-hidden="true" className="bg-primary size-1.5 rounded-full" />
+                          ) : null}
+                          {day}
+                        </span>
+                        {rDisplay === null ? null : (
+                          <span className="mt-auto min-w-0">
+                            <span
+                              className={cn(
+                                'numeric block text-[10px] leading-none font-semibold tracking-tight tabular-nums sm:text-base',
+                                RESULT_TEXT_CLASS[tone],
+                              )}
+                            >
+                              {rDisplay}
+                            </span>
+                            <span className="text-muted-foreground mt-1 hidden text-[10px] leading-none sm:block sm:text-xs">
+                              {countWord}
+                            </span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+
+                  <div
+                    data-calendar-week-summary={weekIndex + 1}
+                    data-calendar-week-tone={weekTone}
+                    className="border-border/60 bg-surface/55 hidden min-h-[4.5rem] flex-col justify-center border-l px-3 py-2 sm:flex"
+                  >
+                    <span className="text-muted-foreground text-[10px] font-semibold tracking-[0.08em] uppercase">
+                      {t('weekLabel', { week: weekIndex + 1 })}
+                    </span>
+                    <span
+                      className={cn(
+                        'numeric mt-1 text-sm font-semibold tabular-nums',
+                        weekTotal === null ? 'text-muted-foreground' : RESULT_TEXT_CLASS[weekTone],
+                      )}
+                    >
+                      {weekTotal === null ? '—' : formatR(weekTotal)}
+                    </span>
+                    <span className="text-muted-foreground mt-0.5 text-[10px] sm:text-xs">
+                      {t('weekDays', { count: weekBuckets.length })}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card data-testid="trading-calendar">
@@ -168,7 +431,7 @@ export function TradingCalendar({
           </span>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 sm:gap-2">
+        <div className="grid grid-cols-7 gap-1">
           {weekdayKeys.map((key) => (
             <div
               key={key}
@@ -225,10 +488,17 @@ export function TradingCalendar({
                 aria-label={a11yLabel}
                 data-calendar-day={date}
                 className={cn(
-                  'focus-visible:ring-ring flex min-h-16 flex-col items-center justify-center gap-0.5 rounded-md border px-1 py-1.5 text-center transition-colors outline-none focus-visible:ring-2 sm:min-h-20',
+                  'focus-visible:ring-ring flex min-h-14 flex-col items-center justify-center gap-0.5 rounded border px-1 py-1.5 text-center transition-colors outline-none focus-visible:ring-2',
+                  compact ? 'sm:min-h-16' : 'sm:min-h-20',
                   isSelected
                     ? 'border-primary bg-primary/10 ring-primary ring-1'
-                    : 'border-border hover:bg-accent',
+                    : bucket === undefined
+                      ? 'border-border/60 bg-surface hover:bg-accent'
+                      : bucket.totalR.startsWith('-')
+                        ? 'border-negative/20 bg-negative/[0.06] hover:bg-negative/10'
+                        : Number(bucket.totalR) === 0
+                          ? 'border-border bg-surface-raised hover:bg-accent'
+                          : 'border-positive/20 bg-positive/[0.06] hover:bg-positive/10',
                 )}
               >
                 <span

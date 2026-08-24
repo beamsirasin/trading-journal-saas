@@ -58,8 +58,8 @@ export function BehaviorZone({
       description={t('overview.behavior.description')}
       id="analytics-overview-behavior"
     >
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-        <div className="border-border rounded-lg border p-4 sm:p-5" data-overview-card="confidence">
+      <div className="border-border grid min-w-0 overflow-hidden border-y sm:grid-cols-2 sm:divide-x">
+        <div className="py-4 pr-4 sm:py-5 sm:pr-5" data-overview-card="confidence">
           {strongestConfidence === null ? (
             <p className="text-muted-foreground text-sm">
               {t('overview.behavior.confidenceEmpty')}
@@ -74,7 +74,10 @@ export function BehaviorZone({
           )}
         </div>
 
-        <div className="border-border rounded-lg border p-4 sm:p-5" data-overview-card="emotion">
+        <div
+          className="border-border border-t py-4 sm:border-t-0 sm:px-5 sm:py-5"
+          data-overview-card="emotion"
+        >
           {strongestEmotion === null ? (
             <p className="text-muted-foreground text-sm">{t('overview.behavior.emotionEmpty')}</p>
           ) : (

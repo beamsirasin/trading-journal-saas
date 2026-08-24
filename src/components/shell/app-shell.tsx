@@ -53,11 +53,11 @@ export async function AppShell({
   entitlement: EffectiveEntitlement | null;
 }) {
   return (
-    <div className="min-h-dvh">
+    <div className="bg-background min-h-dvh">
       <PreferencesSync initialDbTheme={dbTheme} initialDbLocale={dbLocale} />
       <SkipLink />
 
-      <header className="bg-background/85 border-border sticky top-0 z-40 border-b backdrop-blur-sm">
+      <header className="bg-surface border-border sticky top-0 z-40 border-b">
         <div
           className="flex items-center gap-3 px-4"
           style={{ height: 'var(--shell-header-height)' }}
@@ -85,15 +85,15 @@ export async function AppShell({
           inside the mobile drawer, so nav items are defined once.
         */}
         <aside
-          className="border-border sticky hidden shrink-0 border-r lg:block"
+          className="bg-surface border-border sticky hidden shrink-0 border-r lg:block"
           style={{
             top: 'var(--shell-header-height)',
             height: 'calc(100dvh - var(--shell-header-height))',
             width: 'var(--shell-sidebar-width)',
           }}
         >
-          <div className="flex h-full flex-col gap-4 p-3">
-            <Brand href="/app" className="px-2 py-2" />
+          <div className="flex h-full flex-col gap-3 p-3">
+            <Brand href="/app" className="border-border mb-1 border-b px-2 py-2 pb-4" />
             <SidebarNav />
           </div>
         </aside>

@@ -4,7 +4,6 @@ import { useTranslations } from 'next-intl';
 import type { PerformanceAnalyticsModel } from '@/lib/analytics/metrics';
 import { cn } from '@/lib/utils';
 import { AnalyticsMetricDisplay } from '@/components/analytics/analytics-metric';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
 export function PerformancePanel({
@@ -21,35 +20,31 @@ export function PerformancePanel({
   const Icon = series === 'system' ? MonitorCog : UserRound;
 
   return (
-    <Card
+    <section
       data-analytics-panel={series}
-      className={cn(
-        'overflow-hidden border-t-4',
-        series === 'system' ? 'border-t-system' : 'border-t-trader',
-      )}
+      className="border-border min-w-0 overflow-hidden border-y"
     >
-      <CardHeader>
+      <div className="border-border border-b px-1 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <span
               className={cn(
-                'mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg',
+                'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md',
                 series === 'system' ? 'bg-system/10 text-system' : 'bg-trader/10 text-trader',
               )}
             >
-              <Icon className="size-5" aria-hidden="true" />
+              <Icon className="size-4" aria-hidden="true" />
             </span>
             <div>
-              <CardTitle>{t(`${series}.title`)}</CardTitle>
-              <CardDescription className="mt-1">{t(`${series}.description`)}</CardDescription>
+              <h3 className="text-base font-semibold">{t(`${series}.title`)}</h3>
             </div>
           </div>
           <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2.5 py-1 text-xs font-medium">
             {t('sampleCount', { count: metrics.sampleCount })}
           </span>
         </div>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div className="px-1 py-5">
         {series === 'system' && pendingCount !== undefined && pendingCount > 0 ? (
           <div className="border-border bg-muted/40 mb-5 flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
             <span>
@@ -115,7 +110,7 @@ export function PerformancePanel({
             style="factor"
           />
         </dl>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

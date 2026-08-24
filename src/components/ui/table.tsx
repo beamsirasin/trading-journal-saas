@@ -49,7 +49,7 @@ export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSecti
 export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
   return (
     <tr
-      className={cn('border-border hover:bg-accent/50 border-b transition-colors', className)}
+      className={cn('border-border hover:bg-primary/[0.04] border-b transition-colors', className)}
       {...props}
     />
   );
@@ -60,7 +60,7 @@ export function TableHead({ className, ...props }: ThHTMLAttributes<HTMLTableCel
     <th
       scope="col"
       className={cn(
-        'text-muted-foreground h-10 px-3 text-left align-middle text-xs font-medium whitespace-nowrap',
+        'text-muted-foreground h-9 px-3 text-left align-middle text-[11px] font-semibold tracking-[0.08em] whitespace-nowrap uppercase',
         className,
       )}
       {...props}

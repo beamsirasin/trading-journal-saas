@@ -200,9 +200,9 @@ export function TradeList({
       <div
         role="list"
         aria-label={t('list.caption')}
-        className="grid min-w-0 gap-3 md:gap-0 md:overflow-hidden md:rounded-lg md:border"
+        className="border-border divide-border grid min-w-0 divide-y border-y md:gap-0 md:overflow-hidden md:rounded-lg md:border"
       >
-        <div className="bg-muted/60 text-muted-foreground hidden grid-cols-[minmax(9rem,1.05fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(8rem,1fr)_auto] gap-3 px-3 py-2 text-xs font-semibold uppercase md:grid">
+        <div className="bg-surface text-muted-foreground hidden grid-cols-[minmax(9rem,1.05fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(8rem,1fr)_auto] gap-3 px-3 py-2 text-[11px] font-semibold tracking-[0.08em] uppercase md:grid">
           <span>{t('list.date')}</span>
           <span>{t('list.trade')}</span>
           <span>{t('list.actual')}</span>
@@ -220,10 +220,9 @@ export function TradeList({
               role="listitem"
               aria-labelledby={`trade-${trade.tradeId}`}
               className={cn(
-                'border-border bg-card min-w-0 rounded-lg border p-3.5 transition-colors md:grid md:grid-cols-[minmax(9rem,1.05fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(8rem,1fr)_auto] md:items-center md:gap-3 md:rounded-none md:border-x-0 md:border-b-0 md:p-3',
-                isOpen && 'border-info/35 bg-info/5',
-                trade.status === 'closed' && 'bg-card/70',
-                isSelected && 'border-primary ring-primary/20 ring-2',
+                'bg-card hover:bg-primary/[0.05] min-w-0 px-1 py-3 transition-colors md:grid md:grid-cols-[minmax(9rem,1.05fr)_minmax(8rem,0.9fr)_minmax(9rem,1fr)_minmax(9rem,1fr)_minmax(8rem,1fr)_auto] md:items-center md:gap-3 md:border-0 md:p-3',
+                isOpen && 'border-info/25',
+                isSelected && 'bg-primary/[0.08] md:shadow-[inset_2px_0_0_var(--primary)]',
               )}
             >
               <div className="text-muted-foreground hidden min-w-0 text-xs md:block">
@@ -237,7 +236,7 @@ export function TradeList({
                 </span>
               </div>
               <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-1">
-                <div className="min-w-0">
+                <div className="min-w-0 md:text-right">
                   <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                     <Link
                       id={`trade-${trade.tradeId}`}
@@ -264,7 +263,7 @@ export function TradeList({
               </div>
 
               <dl className="mt-3 grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-3 md:contents">
-                <div className="min-w-0">
+                <div className="min-w-0 md:text-right">
                   <dt className="text-muted-foreground mb-1.5 text-[11px] font-medium tracking-wide uppercase md:sr-only">
                     {t('list.actual')}
                   </dt>

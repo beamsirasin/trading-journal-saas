@@ -195,7 +195,7 @@ test.describe('responsive navigation', () => {
     await page.goto('/en/app/settings');
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
-    await page.getByRole('dialog').getByRole('link', { name: 'Trading OS' }).click();
+    await page.getByRole('dialog').getByRole('link', { name: 'TradeChemist' }).click();
 
     await expect(page).toHaveURL(/\/app$/);
     await expect(page.getByRole('dialog')).toBeHidden();

@@ -19,10 +19,7 @@ function SystemPlan({ trade, canWrite }: { trade: TradeDetailModel; canWrite: bo
   const hasMoneyPlan = trade.plannedRiskMinor !== null;
 
   return (
-    <section
-      aria-labelledby="trade-system-plan-heading"
-      className="border-border bg-muted/20 grid gap-4 rounded-lg border p-4"
-    >
+    <section aria-labelledby="trade-system-plan-heading" className="grid gap-4">
       <div>
         <h4 id="trade-system-plan-heading" className="font-semibold">
           {t('detail.systemPlan.title')}
@@ -139,14 +136,14 @@ export function SystemSection({
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
 
   return (
-    <section aria-labelledby="trade-system-heading" className="grid gap-6">
+    <section aria-labelledby="trade-system-heading" className="grid gap-5">
       <SectionTitle id="trade-system-heading">{t('detail.nav.system')}</SectionTitle>
 
       <SystemPlan trade={trade} canWrite={canWrite} />
 
       <section
         aria-labelledby="trade-system-outcome-heading"
-        className="border-border grid gap-4 rounded-lg border p-4"
+        className="border-border grid gap-4 border-t pt-5"
       >
         <h4 id="trade-system-outcome-heading" className="font-semibold">
           {t('detail.systemOutcome.title')}

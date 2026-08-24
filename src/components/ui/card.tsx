@@ -8,8 +8,7 @@ export function Card({ className, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'bg-card text-card-foreground border-border rounded-lg border',
-        'shadow-card',
+        'bg-card text-card-foreground border-border/90 rounded-lg border',
         'transition-colors duration-200',
         className,
       )}
@@ -19,7 +18,7 @@ export function Card({ className, ...props }: CardProps) {
 }
 
 export function CardHeader({ className, ...props }: CardProps) {
-  return <div className={cn('flex flex-col gap-1 p-5 sm:p-6', className)} {...props} />;
+  return <div className={cn('flex flex-col gap-1 p-4 sm:p-5', className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {
@@ -33,5 +32,5 @@ export function CardDescription({ className, ...props }: HTMLAttributes<HTMLPara
 }
 
 export function CardContent({ className, ...props }: CardProps) {
-  return <div className={cn('p-5 pt-0 sm:p-6 sm:pt-0', className)} {...props} />;
+  return <div className={cn('p-4 pt-0 sm:p-5 sm:pt-0', className)} {...props} />;
 }

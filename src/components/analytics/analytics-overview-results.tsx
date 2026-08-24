@@ -50,8 +50,8 @@ export function ResultsZone({
       description={t('overview.results.description')}
       id="analytics-overview-results"
     >
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-        <div className="border-border rounded-lg border p-4 sm:p-5" data-overview-card="trader">
+      <div className="border-border grid min-w-0 overflow-hidden border-y sm:grid-cols-2 sm:divide-x">
+        <div className="py-4 pr-4 sm:py-5 sm:pr-5" data-overview-card="trader">
           {trader.sampleCount === 0 ? (
             <p className="text-muted-foreground text-sm">
               {t('overview.results.traderEmptyTitle')}
@@ -70,7 +70,10 @@ export function ResultsZone({
           )}
         </div>
 
-        <div className="border-border rounded-lg border p-4 sm:p-5" data-overview-card="system">
+        <div
+          className="border-border border-t py-4 sm:border-t-0 sm:px-5 sm:py-5"
+          data-overview-card="system"
+        >
           {system.sampleCount === 0 && systemPendingCount === 0 ? (
             <p className="text-muted-foreground text-sm">
               {t('overview.results.systemEmptyTitle')}

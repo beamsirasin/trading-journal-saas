@@ -160,4 +160,38 @@ describe('TradingCalendar (Phase 14D)', () => {
     expect(screen.getAllByText('No results')).toHaveLength(2);
     expect(screen.getByText('0')).toBeVisible(); // Trading days
   });
+
+  it('renders the Dashboard variant as one cohesive grid with integrated exact weekly summaries', () => {
+    const { container } = renderCalendar(baseProps({ compact: true }));
+
+    const weekdayHeader = screen.getByTestId('calendar-weekday-header');
+    expect(within(weekdayHeader).queryAllByRole('button')).toHaveLength(0);
+    expect(screen.getByTestId('calendar-month-grid')).toBeVisible();
+
+    const weekSummaries = container.querySelectorAll('[data-calendar-week-summary]');
+    expect(weekSummaries).toHaveLength(6);
+    const secondWeek = container.querySelector('[data-calendar-week-summary="2"]');
+    expect(secondWeek).not.toBeNull();
+    expect(within(secondWeek as HTMLElement).getByText('+2.50R')).toBeVisible();
+    expect(within(secondWeek as HTMLElement).getByText('1 day')).toBeVisible();
+
+    const fourthWeek = container.querySelector('[data-calendar-week-summary="4"]');
+    expect(fourthWeek).not.toBeNull();
+    expect(within(fourthWeek as HTMLElement).getByText('-1.00R')).toBeVisible();
+    expect(fourthWeek).toHaveAttribute('data-calendar-week-tone', 'negative');
+  });
+
+  it('keeps empty, positive, negative, Today, and selected Dashboard days semantically distinct', () => {
+    renderCalendar(baseProps({ compact: true, selectedDate: '2026-08-05' }));
+
+    const emptyDay = screen.getByRole('button', { name: /^1 August 2026, no results/ });
+    const positiveDay = screen.getByRole('button', { name: /^5 August 2026/ });
+    const today = screen.getByRole('button', { name: /^20 August 2026/ });
+
+    expect(emptyDay).toHaveAttribute('data-calendar-tone', 'empty');
+    expect(positiveDay).toHaveAttribute('data-calendar-tone', 'positive');
+    expect(positiveDay).toHaveAttribute('aria-pressed', 'true');
+    expect(today).toHaveAttribute('data-calendar-tone', 'negative');
+    expect(today).toHaveAttribute('aria-current', 'date');
+  });
 });

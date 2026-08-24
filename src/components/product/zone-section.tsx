@@ -55,8 +55,8 @@ export function ZoneSection({
   return (
     <section
       className={cn(
-        'flex flex-col gap-4 rounded-lg border-l-2 pl-4',
-        ZONE_ACCENT_CLASS[zone],
+        'border-border bg-card flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:p-5',
+        ZONE_ACCENT_CLASS[zone].split(' ')[0],
         tinted && ZONE_TINT_CLASS[zone],
         className,
       )}

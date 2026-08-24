@@ -10,8 +10,8 @@ interface ContainerProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const WIDTHS = {
-  default: 'max-w-6xl',
-  wide: 'max-w-[100rem]',
+  default: 'max-w-[90rem]',
+  wide: 'max-w-[112rem]',
   prose: 'max-w-3xl',
 } as const;
 
@@ -30,7 +30,7 @@ export function Container({
 }: ContainerProps) {
   return (
     <Component
-      className={cn('mx-auto w-full px-4 sm:px-6 lg:px-8', WIDTHS[width], className)}
+      className={cn('mx-auto w-full px-4 sm:px-5 lg:px-6', WIDTHS[width], className)}
       {...props}
     />
   );

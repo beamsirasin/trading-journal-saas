@@ -91,7 +91,10 @@ export function ActualSection({
         )}
       </section>
 
-      <section aria-labelledby="trade-actual-position-heading" className="grid gap-3">
+      <section
+        aria-labelledby="trade-actual-position-heading"
+        className="border-border grid gap-3 border-t pt-5"
+      >
         <h4 id="trade-actual-position-heading" className="font-semibold">
           {t('detail.actualGroups.position')}
         </h4>
@@ -106,7 +109,10 @@ export function ActualSection({
         </dl>
       </section>
 
-      <section aria-labelledby="trade-actual-execution-heading" className="grid gap-3">
+      <section
+        aria-labelledby="trade-actual-execution-heading"
+        className="border-border grid gap-3 border-t pt-5"
+      >
         <h4 id="trade-actual-execution-heading" className="font-semibold">
           {t('detail.actualGroups.execution')}
         </h4>
@@ -140,7 +146,10 @@ export function ActualSection({
         </dl>
       </section>
 
-      <section aria-labelledby="trade-actual-exits-heading" className="grid gap-3">
+      <section
+        aria-labelledby="trade-actual-exits-heading"
+        className="border-border grid gap-3 border-t pt-5"
+      >
         <h4 id="trade-actual-exits-heading" className="font-semibold">
           {t('detail.actualGroups.exits')}
         </h4>
@@ -168,7 +177,7 @@ export function ActualSection({
         {trade.exits.map((exit) => (
           <article
             key={exit.exitId}
-            className="border-border grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_auto]"
+            className="border-border grid gap-2 border-t py-3 first:border-t-0 sm:grid-cols-[1fr_auto]"
           >
             <div className="grid gap-1 text-sm">
               <h5 className="font-semibold">
@@ -203,7 +212,10 @@ export function ActualSection({
       </section>
 
       {canWrite ? (
-        <section aria-labelledby="trade-actual-actions-heading" className="grid gap-3">
+        <section
+          aria-labelledby="trade-actual-actions-heading"
+          className="border-border grid gap-3 border-t pt-5"
+        >
           <h4 id="trade-actual-actions-heading" className="font-semibold">
             {t('detail.actualGroups.actions')}
           </h4>

@@ -78,7 +78,7 @@ export function TradeOverviewHeader({
   const createdAt = formatTradeInstant(trade.createdAt, timezone, locale);
 
   return (
-    <header className="border-border bg-card flex flex-col gap-5 rounded-lg border p-4 sm:p-5">
+    <header className="border-border bg-card grid gap-5 rounded-lg border p-4 sm:p-5 lg:grid-cols-[minmax(14rem,0.8fr)_minmax(0,2fr)] lg:items-center">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-muted-foreground text-sm">{t(`direction.${trade.direction}`)}</p>
@@ -89,6 +89,11 @@ export function TradeOverviewHeader({
             {trade.tradingAccountName}
             <ArchivedBadge show={trade.tradingAccountIsArchived} label={archivedLabel} />
           </p>
+          {createdAt === null ? null : (
+            <p className="text-muted-foreground mt-2 text-xs">
+              {t('detail.overview.logged', { date: createdAt })}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <TradeStatusBadge status={trade.status} />
@@ -96,30 +101,26 @@ export function TradeOverviewHeader({
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-4 sm:grid-cols-3">
+      <div className="border-border grid min-w-0 grid-cols-2 divide-x border-t pt-4 sm:grid-cols-3 lg:border-t-0 lg:pt-0 lg:pl-5">
         <HeroMetric
           label={t('detail.overview.actual')}
           value={actual.value}
           supporting={actual.supporting}
+          className="px-3 first:pl-0"
         />
         <HeroMetric
           label={t('detail.overview.system')}
           value={system.value}
           supporting={system.supporting}
+          className="px-3"
         />
         {trade.executionGapR === null ? null : (
           <HeroMetric label={t('field.executionGap')} value={formatR(trade.executionGapR) ?? '—'} />
         )}
       </div>
 
-      {createdAt === null ? null : (
-        <p className="text-muted-foreground text-xs">
-          {t('detail.overview.logged', { date: createdAt })}
-        </p>
-      )}
-
       {!canWrite ? null : (
-        <details className="border-border border-t pt-4">
+        <details className="border-border border-t pt-4 lg:col-span-2">
           <summary className="text-muted-foreground hover:text-foreground min-h-11 cursor-pointer py-3 text-sm font-medium">
             {t('detail.overview.administration')}
           </summary>

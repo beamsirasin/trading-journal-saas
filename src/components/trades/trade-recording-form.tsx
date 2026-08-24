@@ -83,7 +83,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cn(
-        'border-input bg-background ring-offset-background focus-visible:ring-ring min-h-11 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none',
+        'border-input bg-surface-raised ring-offset-background focus-visible:ring-ring min-h-11 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none',
         props.className,
       )}
     />
@@ -102,7 +102,11 @@ function Segmented<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="bg-muted grid grid-cols-2 gap-1 rounded-lg p-1">
+    <div
+      role="group"
+      aria-label={label}
+      className="bg-surface border-border grid grid-cols-2 gap-1 rounded-lg border p-1"
+    >
       {options.map((option) => (
         <button
           key={option.value}
@@ -113,7 +117,7 @@ function Segmented<T extends string>({
           className={cn(
             'min-h-11 rounded-md px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45',
             value === option.value
-              ? 'bg-background text-foreground shadow-sm'
+              ? 'bg-primary/12 text-primary'
               : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -699,9 +703,12 @@ export function TradeRecordingForm({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      <section aria-labelledby="recording-timing-title" className="grid gap-3">
-        <h2 id="recording-timing-title" className="text-lg font-semibold">
+    <div className="flex w-full min-w-0 flex-col gap-4">
+      <section
+        aria-labelledby="recording-timing-title"
+        className="flex flex-wrap items-center justify-between gap-3"
+      >
+        <h2 id="recording-timing-title" className="text-sm font-semibold">
           {r('timingQuestion')}
         </h2>
         <Segmented
@@ -732,15 +739,12 @@ export function TradeRecordingForm({
           event.preventDefault();
           void submit();
         }}
-        className="border-border bg-card grid gap-8 rounded-lg border p-4 sm:p-6"
+        className="border-border bg-card grid gap-6 rounded-lg border p-4 sm:p-5 lg:p-6"
       >
         <nav
           data-testid="new-trade-view-nav"
           aria-label={r('panels.label')}
-          className={cn(
-            'bg-muted grid gap-1 rounded-lg p-1',
-            timing === 'at_entry' ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4',
-          )}
+          className="border-border flex max-w-full gap-1 overflow-x-auto border-b pb-2"
         >
           {panels.map((item) => (
             <button
@@ -749,8 +753,10 @@ export function TradeRecordingForm({
               aria-current={panel === item ? 'page' : undefined}
               onClick={() => openPanel(item)}
               className={cn(
-                'min-h-11 rounded-md px-2 text-sm font-semibold',
-                panel === item ? 'bg-background shadow-sm' : 'text-muted-foreground',
+                'relative min-h-10 shrink-0 rounded-md px-3 text-sm font-semibold',
+                panel === item
+                  ? 'bg-primary/10 text-primary after:bg-primary after:absolute after:inset-x-3 after:bottom-0 after:h-0.5'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               )}
             >
               {r(`panels.${item}`)}
@@ -758,17 +764,11 @@ export function TradeRecordingForm({
           ))}
         </nav>
 
-        <div className="border-border bg-card/95 sticky top-2 z-10 -mx-4 flex justify-end border-y p-3 backdrop-blur sm:-mx-6 sm:px-6">
-          <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
-            {pending ? r('saving') : timing === 'at_entry' ? r('openTrade') : r('saveCompleted')}
-          </Button>
-        </div>
-
         {panel === 'trade' ? (
-          <div className="grid gap-8">
-            <fieldset className="grid gap-5">
-              <legend className="text-base font-semibold">{r('identity')}</legend>
-              <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid gap-6">
+            <fieldset className="grid gap-5 lg:grid-cols-3">
+              <legend className="text-base font-semibold lg:col-span-3">{r('identity')}</legend>
+              <div className="grid gap-5 sm:grid-cols-2 lg:contents">
                 <PlanField
                   id="record-account"
                   label={t('field.account')}
@@ -807,7 +807,7 @@ export function TradeRecordingForm({
                         aria-pressed={values.direction === direction}
                         onClick={() => setField('direction', direction)}
                         className={cn(
-                          'flex min-h-11 items-center justify-center gap-2 rounded-md border-2 px-3 text-sm font-semibold',
+                          'flex min-h-11 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold',
                           values.direction === direction
                             ? direction === 'long'
                               ? 'border-positive bg-positive/15 text-positive'
@@ -853,8 +853,13 @@ export function TradeRecordingForm({
               ) : null}
             </div>
 
-            <fieldset className="border-border grid gap-5 rounded-lg border p-4">
-              <legend className="px-1 text-base font-semibold">{r('systemPlan')}</legend>
+            <section
+              aria-labelledby="record-system-plan-title"
+              className="border-border grid gap-5 border-t pt-6"
+            >
+              <h2 id="record-system-plan-title" className="text-base font-semibold">
+                {r('systemPlan')}
+              </h2>
               <PlanField id="plan-basis" label={r('planBy')}>
                 <Segmented
                   label={r('planBy')}
@@ -867,7 +872,7 @@ export function TradeRecordingForm({
                 />
               </PlanField>
               {planBasis === 'price' ? (
-                <div className="grid gap-5 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   <TextField
                     id="planned-entry"
                     label={r('plannedEntry')}
@@ -903,7 +908,7 @@ export function TradeRecordingForm({
                   />
                 </div>
               ) : (
-                <div className="grid gap-5 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                   <TextField
                     id="planned-risk"
                     label={r('plannedRisk')}
@@ -926,16 +931,18 @@ export function TradeRecordingForm({
                 </div>
               )}
               {plannedPreview?.ok && plannedPreview.value.plannedR !== null ? (
-                <div className="bg-muted/40 rounded-md p-3 text-sm">
-                  <span className="text-muted-foreground">{r('plannedR')}</span>{' '}
-                  <strong>{formatR(plannedPreview.value.plannedR)}</strong>
+                <div className="border-border flex items-center justify-between gap-4 border-t pt-4 text-sm">
+                  <span className="text-muted-foreground">{r('plannedR')}</span>
+                  <strong className="numeric text-lg">
+                    {formatR(plannedPreview.value.plannedR)}
+                  </strong>
                 </div>
               ) : null}
-            </fieldset>
+            </section>
 
             {timing === 'at_entry' ? (
               <details
-                className="border-border rounded-lg border p-4"
+                className="border-border border-t pt-4"
                 onToggle={(event) => {
                   if (!(event.currentTarget as HTMLDetailsElement).open) {
                     setAdvancedOpening(false);
@@ -1026,7 +1033,7 @@ export function TradeRecordingForm({
         ) : null}
 
         {panel === 'result' && timing === 'after_trade' ? (
-          <div className="grid gap-8">
+          <div className="grid gap-6">
             <section className="grid gap-5" aria-labelledby="actual-result-title">
               <h2 id="actual-result-title" className="text-base font-semibold">
                 {r('actualResult')}
@@ -1110,7 +1117,7 @@ export function TradeRecordingForm({
                   {exits.map((leg, index) => (
                     <div
                       key={leg.id}
-                      className="border-border grid gap-4 rounded-lg border p-4 sm:grid-cols-3"
+                      className="border-border grid gap-4 border-y py-4 sm:grid-cols-3"
                     >
                       <TextField
                         id={`exit-value-${leg.id}`}
@@ -1187,7 +1194,7 @@ export function TradeRecordingForm({
                 </div>
               ) : null}
               {actualPreview?.ok ? (
-                <div className="border-border bg-muted/40 grid grid-cols-2 gap-4 rounded-lg border p-4">
+                <div className="border-border grid grid-cols-2 gap-4 border-t pt-4">
                   <div>
                     <div className="text-muted-foreground text-xs uppercase">{r('actualR')}</div>
                     <strong>{formatR(actualPreview.value.actualR)}</strong>
@@ -1201,7 +1208,7 @@ export function TradeRecordingForm({
             </section>
 
             <section
-              className="border-border grid gap-5 border-t pt-8"
+              className="border-border grid gap-5 border-t pt-6"
               aria-labelledby="system-outcome-title"
             >
               <div>
@@ -1418,6 +1425,12 @@ export function TradeRecordingForm({
             </PlanField>
           </div>
         ) : null}
+
+        <div className="border-border bg-surface-raised/40 -mx-4 -mb-4 flex justify-end border-t p-4 sm:-mx-5 sm:-mb-5 sm:px-5 lg:-mx-6 lg:-mb-6 lg:px-6">
+          <Button type="submit" className="w-full sm:w-auto sm:min-w-52" disabled={pending}>
+            {pending ? r('saving') : timing === 'at_entry' ? r('openTrade') : r('saveCompleted')}
+          </Button>
+        </div>
       </form>
 
       <AlertDialog open={confirmUnmetOpen} onOpenChange={setConfirmUnmetOpen}>

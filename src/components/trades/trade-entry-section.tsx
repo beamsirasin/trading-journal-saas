@@ -31,11 +31,11 @@ function SetupConditionsDetail({
       <p className="text-sm font-medium">
         {t('create.conditions.adherence', { met, total, percentage })}
       </p>
-      <ul className="grid gap-2">
+      <ul className="divide-border divide-y">
         {trade.setupConditionChecks.map((check) => (
           <li
             key={check.conditionKey}
-            className="border-border flex items-start justify-between gap-3 rounded-md border p-3 text-sm"
+            className="flex items-start justify-between gap-3 py-3 text-sm"
           >
             <span>{check.label}</span>
             <Badge variant={check.checkStatus === 'met' ? 'positive' : 'negative'}>

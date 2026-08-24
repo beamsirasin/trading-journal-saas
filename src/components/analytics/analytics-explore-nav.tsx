@@ -34,7 +34,10 @@ export function AnalyticsExploreNav({
   }
 
   return (
-    <nav aria-label={t('label')} className={cn('flex flex-wrap gap-2', className)}>
+    <nav
+      aria-label={t('label')}
+      className={cn('border-border flex max-w-full gap-1 overflow-x-auto border-b pb-2', className)}
+    >
       {ANALYTICS_VIEWS.map((item) => {
         const isActive = view === item;
         return (
@@ -43,10 +46,10 @@ export function AnalyticsExploreNav({
             href={hrefFor(item)}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'border-border inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium transition-colors',
+              'relative inline-flex min-h-11 shrink-0 items-center rounded-md px-4 text-sm font-medium transition-colors',
               isActive
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'text-muted-foreground hover:bg-muted',
+                ? 'bg-primary/10 text-primary after:bg-primary after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:content-[\"\"]'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
             {t(item)}

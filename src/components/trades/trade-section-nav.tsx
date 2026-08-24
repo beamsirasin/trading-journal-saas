@@ -70,7 +70,7 @@ export function TradeSectionNav({
     <div className={cn('flex min-w-0 flex-col gap-4', className)}>
       <nav
         aria-label={tNav('label')}
-        className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:gap-2"
+        className="border-border flex max-w-full gap-1 overflow-x-auto border-b pb-2"
       >
         {TRADE_DETAIL_SECTIONS.map((section) => {
           const isActive = activeSection === section;
@@ -81,8 +81,10 @@ export function TradeSectionNav({
               href={hrefFor(section)}
               aria-current={isActive ? 'true' : undefined}
               className={cn(
-                'border-border flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm transition-colors sm:flex-col sm:items-start sm:gap-1.5 sm:py-2.5',
-                isActive ? 'border-primary bg-primary/5' : 'hover:bg-muted',
+                'relative flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                isActive
+                  ? 'bg-primary/10 text-primary after:bg-primary after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:content-[\"\"]'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               <span className="font-medium">{tNav(section)}</span>
@@ -98,8 +100,8 @@ export function TradeSectionNav({
       <div
         ref={panelRef}
         tabIndex={-1}
-        aria-label={tNav(activeSection)}
-        className="min-w-0 outline-none"
+        aria-live="polite"
+        className="border-border bg-card min-w-0 rounded-lg border p-4 outline-none sm:p-5"
       >
         {sections[activeSection]}
       </div>

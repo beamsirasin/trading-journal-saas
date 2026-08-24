@@ -146,8 +146,12 @@ describe('RealDashboard', () => {
     ).toBeVisible();
     expect(within(system as HTMLElement).getByText('3 Trades')).toBeVisible();
     expect(within(trader as HTMLElement).getByText('5 Trades')).toBeVisible();
-    expect(within(system as HTMLElement).getByText('+4.00R')).toBeVisible();
-    expect(within(trader as HTMLElement).getByText('-1.00R')).toBeVisible();
+    const headline = container.querySelector('[data-dashboard-panel="headline-metrics"]');
+    expect(headline).not.toBeNull();
+    expect(within(headline as HTMLElement).getByText('+4.00R')).toBeVisible();
+    const traderHeadline = headline?.querySelector('[data-metric="Trader Performance"]');
+    expect(traderHeadline).not.toBeNull();
+    expect(within(traderHeadline as HTMLElement).getByText('-1.00R')).toBeVisible();
   });
 
   it('shows Trader metrics while System is empty', () => {
@@ -161,8 +165,8 @@ describe('RealDashboard', () => {
     const system = container.querySelector('[data-dashboard-panel="system"]') as HTMLElement;
     const trader = container.querySelector('[data-dashboard-panel="trader"]') as HTMLElement;
     expect(within(system).getByText(/No eligible System Trades/i)).toBeVisible();
-    expect(within(system).getAllByText('No eligible Trades')).toHaveLength(4);
-    expect(within(trader).getByText('-1.00R')).toBeVisible();
+    expect(within(system).getAllByText('No eligible Trades')).toHaveLength(3);
+    expect(within(trader).getByText('+1.33R')).toBeVisible();
   });
 
   it('shows System metrics while Trader is empty', () => {
@@ -176,7 +180,7 @@ describe('RealDashboard', () => {
     const system = container.querySelector('[data-dashboard-panel="system"]') as HTMLElement;
     const trader = container.querySelector('[data-dashboard-panel="trader"]') as HTMLElement;
     expect(within(trader).getByText(/No eligible closed Trader Trades/i)).toBeVisible();
-    expect(within(system).getByText('+4.00R')).toBeVisible();
+    expect(within(system).getByText('+1.33R')).toBeVisible();
   });
 
   it.each([
@@ -218,7 +222,9 @@ describe('RealDashboard', () => {
       }),
     );
     expect(screen.getByText('0', { exact: true })).toBeVisible();
-    expect(screen.getAllByText('No comparable Trades')).toHaveLength(2);
+    // The headline Gap plus the detailed Gap/Efficiency panel all disclose
+    // the same canonical unavailable reason.
+    expect(screen.getAllByText('No comparable Trades')).toHaveLength(3);
   });
 
   it('marks the selected date preset and exposes only 30D, 90D, and All links', () => {
@@ -308,8 +314,9 @@ describe('RealDashboard', () => {
       '[data-dashboard-panel="needs-attention"]',
     ) as HTMLElement;
     expect(panel).not.toBeNull();
-    expect(within(panel).getByText('Needs Execution Details')).toBeVisible();
-    expect(within(panel).getByText('3')).toBeVisible();
+    const executionRow = within(panel).getByText('Needs Execution Details').closest('div');
+    expect(executionRow).not.toBeNull();
+    expect(within(executionRow as HTMLElement).getByText('3')).toBeVisible();
   });
 
   it('renders an instructional recent-Trades state without replacing populated metrics', () => {
@@ -319,6 +326,6 @@ describe('RealDashboard', () => {
       'href',
       '/app/trades/new',
     );
-    expect(screen.getByText('+4.00R')).toBeVisible();
+    expect(screen.getAllByText('+4.00R')).not.toHaveLength(0);
   });
 });

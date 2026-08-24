@@ -27,7 +27,10 @@ export function StrategyList({
   const t = useTranslations('strategies');
 
   return (
-    <ul aria-label={t('listLabel')} className="flex flex-col gap-3">
+    <ul
+      aria-label={t('listLabel')}
+      className="border-border bg-card divide-border divide-y overflow-hidden rounded-lg border"
+    >
       {strategies.map((strategy) => {
         const isSelected = strategy.strategyId === selectedStrategyId;
         return (
@@ -36,10 +39,10 @@ export function StrategyList({
               href={`/app/strategies?strategy=${strategy.strategyId}`}
               aria-current={isSelected ? 'true' : undefined}
               className={cn(
-                'border-border bg-card block rounded-lg border p-4 transition-colors',
-                'hover:border-ring focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
-                isSelected && 'border-brand ring-brand/30 ring-2',
-                strategy.isStrategyArchived && 'bg-muted/30',
+                'hover:bg-primary/[0.04] block p-4 transition-colors',
+                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                isSelected && 'bg-primary/[0.08] shadow-[inset_2px_0_0_var(--primary)]',
+                strategy.isStrategyArchived && 'opacity-70',
               )}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">

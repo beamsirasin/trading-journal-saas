@@ -4,7 +4,6 @@ import type { SetupPerformanceAnalyticsModel } from '@/lib/analytics/metrics';
 import type { AnalyticsSetupOption, AnalyticsStrategyOption } from '@/server/dal/analytics';
 import { DimensionAxisSummaryBlock } from '@/components/analytics/dimension-axis-summary';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 
 /**
  * Setup Performance — Phase 15D EDGE Explore. Distinct from Setup Adherence
@@ -24,34 +23,49 @@ export function SetupPerformancePanel({
   const t = useTranslations('analytics.real');
 
   return (
-    <Card data-analytics-panel="setup-performance">
-      <CardContent className="pt-5 sm:pt-6">
+    <div data-analytics-panel="setup-performance" className="min-w-0">
+      <div className="pt-2">
         {performance.setups.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t('explore.setupPerformance.empty')}</p>
         ) : (
-          <ul className="grid gap-3" aria-label={t('explore.setupPerformance.title')}>
-            {performance.setups.map((setup) => {
-              const option = setupOptions.find((item) => item.setupId === setup.setupId);
-              const strategyOption = strategyOptions.find(
-                (item) => item.strategyId === setup.strategyId,
-              );
-              return (
-                <li key={setup.setupId} className="border-border rounded-md border p-3 text-sm">
-                  <p className="inline-flex flex-wrap items-center gap-2 font-medium">
-                    {option?.label ?? setup.setupId}
-                    {option?.isArchived === true ? <Badge>{t('filters.archived')}</Badge> : null}
-                  </p>
-                  {strategyOption === undefined ? null : (
-                    <p className="text-muted-foreground text-xs">{strategyOption.label}</p>
-                  )}
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <div className="overflow-x-auto">
+            <div className="text-muted-foreground hidden min-w-[42rem] grid-cols-[minmax(12rem,1.2fr)_1fr_1fr] gap-5 border-b pb-2 text-[11px] font-semibold tracking-wider uppercase sm:grid">
+              <span>{t('explore.setupPerformance.title')}</span>
+              <span>{t('axis.trader')}</span>
+              <span>{t('axis.system')}</span>
+            </div>
+            <ul
+              className="divide-border min-w-0 divide-y sm:min-w-[42rem]"
+              aria-label={t('explore.setupPerformance.title')}
+            >
+              {performance.setups.map((setup) => {
+                const option = setupOptions.find((item) => item.setupId === setup.setupId);
+                const strategyOption = strategyOptions.find(
+                  (item) => item.strategyId === setup.strategyId,
+                );
+                return (
+                  <li
+                    key={setup.setupId}
+                    className="grid gap-4 py-4 text-sm sm:grid-cols-[minmax(12rem,1.2fr)_1fr_1fr] sm:gap-5"
+                  >
+                    <div>
+                      <p className="inline-flex flex-wrap items-center gap-2 font-medium">
+                        {option?.label ?? setup.setupId}
+                        {option?.isArchived === true ? (
+                          <Badge>{t('filters.archived')}</Badge>
+                        ) : null}
+                      </p>
+                      {strategyOption === undefined ? null : (
+                        <p className="text-muted-foreground text-xs">{strategyOption.label}</p>
+                      )}
+                    </div>
                     <DimensionAxisSummaryBlock axis="trader" summary={setup.trader} />
                     <DimensionAxisSummaryBlock axis="system" summary={setup.system} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
 
         {performance.setups.length === 1 ? (
@@ -78,7 +92,7 @@ export function SetupPerformancePanel({
             </dd>
           </div>
         </dl>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

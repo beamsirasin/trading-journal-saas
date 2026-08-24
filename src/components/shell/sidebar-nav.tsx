@@ -59,22 +59,22 @@ export function SidebarNav({ onNavigate, showDescriptions = false }: SidebarNavP
             className={cn(
               'relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
               isActive
-                ? 'text-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/70',
             )}
           >
             {isActive ? (
               prefersReducedMotion ? (
                 <span
                   data-active-indicator="static"
-                  className="bg-accent absolute inset-0 rounded-md"
+                  className="bg-primary absolute inset-y-2 left-0 w-0.5 rounded-full"
                   aria-hidden="true"
                 />
               ) : (
                 <motion.span
                   data-active-indicator="animated"
                   layoutId="sidebar-active-indicator"
-                  className="bg-accent absolute inset-0 rounded-md"
+                  className="bg-primary absolute inset-y-2 left-0 w-0.5 rounded-full"
                   transition={LAYOUT_SPRING}
                   aria-hidden="true"
                 />

@@ -19,7 +19,7 @@ export function Input({
       type={type}
       data-slot="input"
       className={cn(
-        'border-input bg-background text-foreground flex h-11 w-full min-w-0 rounded-md border px-3 py-2 text-base',
+        'border-input bg-surface-raised text-foreground flex h-11 w-full min-w-0 rounded-md border px-3 py-2 text-base sm:text-sm',
         'placeholder:text-muted-foreground',
         'transition-[color,box-shadow] outline-none',
         'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',

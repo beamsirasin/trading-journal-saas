@@ -1,4 +1,4 @@
-import { ArrowRight, GitCompareArrows, ListChecks, MonitorCog, UserRound } from 'lucide-react';
+import { ArrowRight, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
@@ -19,6 +19,7 @@ import type { TradeAttentionCounts, TradeListItem } from '@/server/dal/trades';
 import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-trading-dashboard';
 import { MetricLabel, MetricValue } from '@/components/product/metric';
 import { TradeStatusBadge } from '@/components/trades/trade-status-badge';
+import { TradingCalendar, type TradingCalendarProps } from '@/components/trades/trading-calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
@@ -38,58 +39,84 @@ export function RealDashboard({
   overview,
   recentTrades,
   attention,
+  calendar,
 }: {
   account: ActiveTradingAccountSummary;
   overview: DashboardOverview;
   recentTrades: readonly DashboardRecentTrade[];
   attention: TradeAttentionCounts;
+  calendar?: TradingCalendarProps;
 }) {
   const t = useTranslations('dashboard.real');
 
   return (
-    <div className="flex min-w-0 flex-col gap-8">
+    <div className="flex min-w-0 flex-col gap-5">
       <ActiveTradingAccountSummaryCard account={account} />
-      <NeedsAttentionPanel attention={attention} />
 
-      <section aria-labelledby="performance-heading" className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-2xl">
+      <section aria-labelledby="performance-heading" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
             <h2 id="performance-heading" className="text-xl font-semibold tracking-tight">
               {t('performanceTitle')}
             </h2>
-            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-              {t('performanceDescription', { account: account.name })}
-            </p>
           </div>
           <DashboardRangeControl selected={overview.scope.datePreset} />
         </div>
 
-        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-          <PerformancePanel
-            series="system"
-            title={t('system.title')}
-            description={t('system.description')}
-            metrics={overview.system}
-          />
-          <PerformancePanel
-            series="trader"
-            title={t('trader.title')}
-            description={t('trader.description')}
-            metrics={overview.trader}
-          />
-        </div>
+        <HeadlineMetrics overview={overview} />
       </section>
 
-      <ComparisonPanel comparison={overview.comparison} />
-      <RecentTrades trades={recentTrades} />
+      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]">
+        {calendar === undefined ? null : <TradingCalendar {...calendar} compact />}
+        <NeedsAttentionPanel attention={attention} />
+      </div>
 
-      <div className="flex justify-end">
-        <Link
-          href="/app/analytics"
-          className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
-        >
-          {t('viewFullAnalytics')} <ArrowRight className="size-4" aria-hidden="true" />
-        </Link>
+      <RecentTrades trades={recentTrades} />
+      <PerformanceWorkspace overview={overview} />
+    </div>
+  );
+}
+
+function HeadlineMetrics({ overview }: { overview: DashboardOverview }) {
+  const t = useTranslations('dashboard.real');
+  return (
+    <div
+      data-dashboard-panel="headline-metrics"
+      className="border-border bg-card grid grid-cols-2 overflow-hidden rounded-lg border sm:grid-cols-4 sm:divide-x"
+    >
+      <div className="border-border border-b p-4 sm:border-b-0">
+        <DashboardMetric
+          label={t('trader.title')}
+          metric={overview.trader.totalR}
+          style="r"
+          prominent
+        />
+      </div>
+      <div className="border-border border-b border-l p-4 sm:border-b-0 sm:border-l-0">
+        <DashboardMetric
+          label={t('system.title')}
+          metric={overview.system.totalR}
+          style="r"
+          prominent
+        />
+      </div>
+      <div className="p-4">
+        <DashboardMetric
+          label={t('winRate')}
+          metric={overview.trader.winRate}
+          style="percent"
+          prominent
+          forceNeutral
+        />
+      </div>
+      <div className="border-border border-l p-4 sm:border-l-0">
+        <DashboardMetric
+          label={t('executionGap')}
+          metric={overview.comparison.averageExecutionGapR}
+          style="r"
+          prominent
+          forceNeutral
+        />
       </div>
     </div>
   );
@@ -100,7 +127,7 @@ function DashboardRangeControl({ selected }: { selected: AnalyticsDatePreset }) 
   return (
     <nav aria-label={t('dateRangeLabel')} className="flex flex-col gap-1.5">
       <span className="text-muted-foreground text-label uppercase">{t('dateRangeLabel')}</span>
-      <div className="border-border bg-muted/50 inline-flex w-fit max-w-full flex-wrap rounded-lg border p-1">
+      <div className="border-border bg-surface inline-flex w-fit max-w-full flex-wrap rounded-lg border p-1">
         {RANGE_ORDER.map((range) => (
           <Link
             key={range}
@@ -109,7 +136,7 @@ function DashboardRangeControl({ selected }: { selected: AnalyticsDatePreset }) 
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-11 min-w-14 items-center justify-center rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2',
               range === selected
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-primary/12 text-primary'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
@@ -123,69 +150,34 @@ function DashboardRangeControl({ selected }: { selected: AnalyticsDatePreset }) 
 
 function PerformancePanel({
   series,
-  title,
-  description,
   metrics,
 }: {
   series: 'system' | 'trader';
-  title: string;
-  description: string;
   metrics: Pick<
     PerformanceAnalyticsModel,
     'sampleCount' | 'totalR' | 'expectancyR' | 'winRate' | 'profitFactor'
   >;
 }) {
   const t = useTranslations('dashboard.real');
-  const Icon = series === 'system' ? MonitorCog : UserRound;
   return (
-    <Card
-      data-dashboard-panel={series}
-      className={cn(
-        'overflow-hidden border-t-4',
-        series === 'system' ? 'border-t-system' : 'border-t-trader',
-      )}
-    >
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span
-              className={cn(
-                'mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg',
-                series === 'system' ? 'bg-system/10 text-system' : 'bg-trader/10 text-trader',
-              )}
-            >
-              <Icon className="size-5" aria-hidden="true" />
-            </span>
-            <div>
-              <CardTitle>{title}</CardTitle>
-              <CardDescription className="mt-1 leading-relaxed">{description}</CardDescription>
-            </div>
-          </div>
-          <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2.5 py-1 text-xs font-medium">
-            {t('sampleCount', { count: metrics.sampleCount })}
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {metrics.sampleCount === 0 ? (
-          <p className="border-border bg-muted/40 text-muted-foreground mb-4 rounded-md border p-3 text-sm">
-            {series === 'system' ? t('system.empty') : t('trader.empty')}
-          </p>
-        ) : null}
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
-          <DashboardMetric
-            className="col-span-2 border-b pb-5"
-            label={t('totalR')}
-            metric={metrics.totalR}
-            style="r"
-            prominent
-          />
-          <DashboardMetric label={t('expectancy')} metric={metrics.expectancyR} style="r" />
-          <DashboardMetric label={t('winRate')} metric={metrics.winRate} style="percent" />
-          <DashboardMetric label={t('profitFactor')} metric={metrics.profitFactor} style="factor" />
-        </dl>
-      </CardContent>
-    </Card>
+    <section data-dashboard-panel={series} className="min-w-0 p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3 border-b pb-3">
+        <h3 className="text-sm font-semibold">{t(`${series}.title`)}</h3>
+        <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2.5 py-1 text-xs font-medium">
+          {t('sampleCount', { count: metrics.sampleCount })}
+        </span>
+      </div>
+      {metrics.sampleCount === 0 ? (
+        <p className="text-muted-foreground py-4 text-sm">
+          {series === 'system' ? t('system.empty') : t('trader.empty')}
+        </p>
+      ) : null}
+      <dl className="grid grid-cols-3 gap-3 pt-4">
+        <DashboardMetric label={t('expectancy')} metric={metrics.expectancyR} style="r" />
+        <DashboardMetric label={t('winRate')} metric={metrics.winRate} style="percent" />
+        <DashboardMetric label={t('profitFactor')} metric={metrics.profitFactor} style="factor" />
+      </dl>
+    </section>
   );
 }
 
@@ -221,88 +213,92 @@ function NeedsAttentionPanel({ attention }: { attention: TradeAttentionCounts })
   ];
 
   return (
-    <section aria-labelledby="needs-attention-heading">
-      <Card data-dashboard-panel="needs-attention" className="overflow-hidden">
-        <CardHeader>
-          <div className="flex items-start gap-3">
-            <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
-              <ListChecks className="size-5" aria-hidden="true" />
-            </span>
-            <div>
-              <CardTitle id="needs-attention-heading">{t('needsAttention.title')}</CardTitle>
-              <CardDescription className="mt-1 leading-relaxed">
-                {t('needsAttention.description')}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {items
-              .filter((item) => item.count > 0)
-              .map((item) => (
-                <div key={item.key} className="flex min-w-0 flex-col gap-1.5">
-                  <MetricLabel>{t(`needsAttention.${item.key}`)}</MetricLabel>
-                  <span className="numeric text-2xl font-semibold">{item.count}</span>
-                </div>
-              ))}
-          </dl>
-          <div className="mt-5">
-            <Link
-              href="/app/trades"
-              className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
-            >
-              {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+    <section
+      aria-labelledby="needs-attention-heading"
+      data-dashboard-panel="needs-attention"
+      className="border-border bg-card overflow-hidden rounded-lg border"
+    >
+      <div className="border-border flex items-center gap-2 border-b px-4 py-3">
+        <ListChecks className="text-primary size-4" aria-hidden="true" />
+        <h2 id="needs-attention-heading" className="text-sm font-semibold">
+          {t('needsAttention.title')}
+        </h2>
+        <span className="bg-warning/10 text-warning numeric ml-auto rounded-full px-2 py-0.5 text-xs font-semibold">
+          {total}
+        </span>
+      </div>
+      <div className="p-4">
+        <dl className="divide-border divide-y">
+          {items
+            .filter((item) => item.count > 0)
+            .map((item) => (
+              <div
+                key={item.key}
+                className="flex min-w-0 items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+              >
+                <MetricLabel>{t(`needsAttention.${item.key}`)}</MetricLabel>
+                <span className="numeric text-lg font-semibold">{item.count}</span>
+              </div>
+            ))}
+        </dl>
+        <div className="mt-5">
+          <Link
+            href="/app/trades"
+            className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+          >
+            {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }
 
-function ComparisonPanel({ comparison }: { comparison: DashboardOverview['comparison'] }) {
+function PerformanceWorkspace({ overview }: { overview: DashboardOverview }) {
   const t = useTranslations('dashboard.real');
   return (
-    <section aria-labelledby="comparison-heading">
-      <Card data-dashboard-panel="comparison" className="overflow-hidden">
-        <CardHeader>
-          <div className="flex items-start gap-3">
-            <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
-              <GitCompareArrows className="size-5" aria-hidden="true" />
-            </span>
-            <div>
-              <CardTitle id="comparison-heading">{t('comparison.title')}</CardTitle>
-              <CardDescription className="mt-1 leading-relaxed">
-                {t('comparison.description')}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-5 sm:grid-cols-3">
+    <section
+      aria-labelledby="comparison-heading"
+      className="border-border bg-card overflow-hidden rounded-lg border"
+    >
+      <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
+        <h2 id="comparison-heading" className="text-base font-semibold">
+          {t('comparison.title')}
+        </h2>
+        <Link href="/app/analytics" className="text-primary text-sm font-medium">
+          {t('viewFullAnalytics')}
+        </Link>
+      </div>
+      <div className="grid min-w-0 lg:grid-cols-[1fr_1fr_1.15fr] lg:divide-x">
+        <PerformancePanel series="trader" metrics={overview.trader} />
+        <PerformancePanel series="system" metrics={overview.system} />
+        <div
+          data-dashboard-panel="comparison"
+          className="border-border border-t p-4 sm:p-5 lg:border-t-0"
+        >
+          <h3 className="border-border border-b pb-3 text-sm font-semibold">{t('executionGap')}</h3>
+          <dl className="grid grid-cols-3 gap-3 pt-4">
             <div className="flex min-w-0 flex-col gap-1.5">
               <MetricLabel>{t('comparableTrades')}</MetricLabel>
-              <span className="numeric text-2xl font-semibold">{comparison.comparableCount}</span>
+              <span className="numeric text-2xl font-semibold">
+                {overview.comparison.comparableCount}
+              </span>
             </div>
             <DashboardMetric
               label={t('executionGap')}
-              metric={comparison.averageExecutionGapR}
+              metric={overview.comparison.averageExecutionGapR}
               style="r"
               forceNeutral
             />
             <DashboardMetric
               label={t('executionEfficiency')}
-              metric={comparison.executionEfficiency}
+              metric={overview.comparison.executionEfficiency}
               style="percent"
               forceNeutral
             />
           </dl>
-          <p className="text-muted-foreground mt-5 text-xs leading-relaxed">
-            {t('comparison.help')}
-          </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </section>
   );
 }
@@ -364,7 +360,6 @@ function RecentTrades({ trades }: { trades: readonly DashboardRecentTrade[] }) {
           <h2 id="recent-trades-heading" className="text-xl font-semibold tracking-tight">
             {t('recent.title')}
           </h2>
-          <p className="text-muted-foreground mt-1 text-sm">{t('recent.description')}</p>
         </div>
         <Link
           href="/app/trades"
@@ -388,44 +383,59 @@ function RecentTrades({ trades }: { trades: readonly DashboardRecentTrade[] }) {
           </Link>
         </div>
       ) : (
-        <ul className="grid gap-3" aria-label={t('recent.listLabel')}>
-          {trades.map((trade) => (
-            <li key={trade.tradeId} className="border-border bg-card rounded-lg border p-4">
-              <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1.25fr)_auto] sm:items-center">
-                <div className="min-w-0">
-                  <Link
-                    href={`/app/trades?trade=${trade.tradeId}`}
-                    className="focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-base font-semibold outline-none focus-visible:ring-2"
-                  >
-                    {trade.symbol}
-                  </Link>
-                  <p className="text-muted-foreground text-sm">
-                    {tTrades(`direction.${trade.direction}`)} · {trade.occurredAtDisplay}
-                  </p>
-                </div>
-                <div className="min-w-0 text-sm">
-                  {trade.strategyName === null ? (
-                    <p className="text-muted-foreground break-words">
-                      {tTrades('common.notAssigned')}
+        <div className="border-border bg-card overflow-hidden rounded-lg border">
+          <div className="bg-surface text-muted-foreground hidden grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.2fr)_7rem_7rem_minmax(8rem,1fr)_auto] gap-3 border-b px-4 py-2 text-[11px] font-semibold tracking-wider uppercase md:grid">
+            <span>{tTrades('list.date')}</span>
+            <span>{tTrades('list.trade')}</span>
+            <span className="text-right">{tTrades('list.actual')}</span>
+            <span className="text-right">{tTrades('list.system')}</span>
+            <span>{tTrades('list.strategy')}</span>
+            <span>{tTrades('list.action.label')}</span>
+          </div>
+          <ul className="divide-border divide-y" aria-label={t('recent.listLabel')}>
+            {trades.map((trade) => (
+              <li
+                key={trade.tradeId}
+                className="hover:bg-primary/[0.04] px-4 py-2 transition-colors"
+              >
+                <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.2fr)_7rem_7rem_minmax(8rem,1fr)_auto] md:items-center">
+                  <p className="text-muted-foreground text-xs">{trade.occurredAtDisplay}</p>
+                  <div className="min-w-0">
+                    <Link
+                      href={`/app/trades?trade=${trade.tradeId}`}
+                      className="focus-visible:ring-ring inline-flex min-h-9 items-center rounded-md text-sm font-bold outline-none focus-visible:ring-2"
+                    >
+                      {trade.symbol}
+                    </Link>
+                    <p className="text-muted-foreground text-xs">
+                      {tTrades(`direction.${trade.direction}`)}
                     </p>
-                  ) : (
-                    <>
-                      <p className="font-medium break-words">{trade.strategyName}</p>
-                      {trade.setupName === null ? null : (
-                        <p className="text-muted-foreground break-words">{trade.setupName}</p>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:justify-end">
-                  <TradeStatusBadge status={trade.status} />
+                  </div>
                   <RecentR label={t('recent.actualR')} value={trade.actualR} />
                   <RecentR label={t('recent.systemR')} value={trade.systemR} />
+                  <div className="min-w-0 text-sm">
+                    {trade.strategyName === null ? (
+                      <p className="text-muted-foreground break-words">
+                        {tTrades('common.notAssigned')}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="font-medium break-words">{trade.strategyName}</p>
+                        {trade.setupName === null ? null : (
+                          <p className="text-muted-foreground break-words">{trade.setupName}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2 md:justify-end">
+                    <TradeStatusBadge status={trade.status} />
+                    <ArrowRight className="text-muted-foreground size-4" aria-hidden="true" />
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );
@@ -436,9 +446,11 @@ function RecentR({ label, value }: { label: string; value: string | null }) {
   const formatted =
     value === null ? null : formatAnalyticsMetric({ status: 'available', value }, 'r');
   return (
-    <span className="flex flex-col gap-0.5">
-      <span className="text-muted-foreground text-[11px] font-medium uppercase">{label}</span>
-      <span className="numeric text-sm font-semibold">
+    <span className="flex items-center justify-between gap-2 md:justify-end">
+      <span className="text-muted-foreground text-[11px] font-medium uppercase md:hidden">
+        {label}
+      </span>
+      <span className="numeric text-sm font-semibold md:text-right">
         {formatted?.status === 'available' ? formatted.text : t('notAvailableShort')}
       </span>
     </span>

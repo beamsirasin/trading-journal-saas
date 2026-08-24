@@ -49,7 +49,7 @@ export function SegmentedControl<T extends string>({
   return (
     <fieldset className={cn('min-w-0', className)}>
       <legend className="sr-only">{legend}</legend>
-      <div className="bg-muted border-border inline-flex flex-wrap gap-1 rounded-lg border p-1">
+      <div className="bg-surface border-border inline-flex flex-wrap gap-1 rounded-lg border p-1">
         {options.map((option) => {
           const checked = option.value === value;
           const id = `${name}-${option.value}`;
@@ -82,7 +82,7 @@ export function SegmentedControl<T extends string>({
                     <span
                       data-segment-indicator="static"
                       aria-hidden="true"
-                      className="bg-card border-border shadow-control absolute inset-0 rounded-md border"
+                      className="bg-primary/12 border-primary/35 absolute inset-0 rounded-md border"
                     />
                   ) : (
                     <motion.span
@@ -90,7 +90,7 @@ export function SegmentedControl<T extends string>({
                       layoutId={layoutId}
                       aria-hidden="true"
                       transition={LAYOUT_SPRING}
-                      className="bg-card border-border shadow-control absolute inset-0 rounded-md border"
+                      className="bg-primary/12 border-primary/35 absolute inset-0 rounded-md border"
                     />
                   )
                 ) : null}

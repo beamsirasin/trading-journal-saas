@@ -185,7 +185,7 @@ export function StrategyDetail({
         ) : null}
 
         {strategy.currentVersion.notes === null ? null : (
-          <div className="border-border bg-muted/30 rounded-lg border p-3">
+          <div className="border-primary/40 border-l-2 pl-3">
             <SectionHeader as="h3" title={t('notesLabel')} />
             <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
               {strategy.currentVersion.notes}

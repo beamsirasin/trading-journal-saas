@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "brandName": "Trading OS",
-    "title": "Trading OS — did the strategy fail, or did you?",
+    "brandName": "TradeChemist",
+    "title": "TradeChemist — did the strategy fail, or did you?",
     "description": "A trading journal that scores every trade twice: what the strategy would have produced, and what your execution actually produced."
   },
   "languageSwitcher": {
@@ -75,13 +75,13 @@
       "risk": "Risk disclosure"
     },
     "soon": "Soon",
-    "disclaimer1": "Trading OS is a journaling and analytics tool. It does not provide financial advice, execute orders, or connect to a broker. Trading involves risk of loss, and past performance does not indicate future results.",
+    "disclaimer1": "TradeChemist is a journaling and analytics tool. It does not provide financial advice, execute orders, or connect to a broker. Trading involves risk of loss, and past performance does not indicate future results.",
     "disclaimer2": "Product in active development. Figures shown anywhere on this site are fictional demo data."
   },
   "hero": {
     "badge": "Attribution, not bookkeeping",
     "title": "Know whether it was the strategy or you.",
-    "description": "Most journals record what happened, so they can only ever show profit and loss. Trading OS records what <em>should</em> have happened too — then measures the distance between them.",
+    "description": "Most journals record what happened, so they can only ever show profit and loss. TradeChemist records what <em>should</em> have happened too — then measures the distance between them.",
     "ctaPrimary": "Sign up",
     "ctaDemo": "See the demo dashboard",
     "trialNote": "{trialDays}-day full-feature trial · no card required"
@@ -511,6 +511,9 @@
       "today": "Today",
       "clearDate": "Clear date",
       "noResults": "No results",
+      "week": "Week",
+      "weekLabel": "Week {week}",
+      "weekDays": "{count, plural, one {# day} other {# days}}",
       "monthSummary": {
         "trader": "Trader R this month",
         "system": "System R this month",
@@ -1710,7 +1713,7 @@
     "completeOnboarding": "Complete onboarding",
     "appearance": {
       "title": "Appearance",
-      "description": "Choose how Trading OS looks on this browser and device.",
+      "description": "Choose how TradeChemist looks on this browser and device.",
       "theme": "Theme",
       "light": "Light",
       "lightHint": "Always light",

@@ -7,7 +7,7 @@
 > **Preceding state:** Phases 14A–14E (Independent Trade Classification, Trading Calendar +
 > Trade Log, Open/Close-Only Trade Flow) are complete and committed; Founder acceptance of 14
 > is recorded as not yet obtained but does not block this work.
-> **Last updated:** 2026-08-23 (Phase 15G.5D — Founder Recording UX).
+> **Last updated:** 2026-08-24 (Phase 15H — TradeChemist Visual System & UI Simplification).
 
 ---
 
@@ -1617,3 +1617,36 @@ Retrospective disclosure remains solely at Entry Snapshot level. Strategy & Setu
 administration, Trade Log, Analytics, New Trade, data storage, and lifecycle contracts are
 unchanged. The migration ledger remains `0000`–`0016`; no `0017` exists. Founder acceptance remains
 pending manual retest.
+
+## 64. Phase 15H — TradeChemist Visual System & UI Simplification (as built)
+
+Phase 15H is a presentation-only realignment around a near-black, blue-accented trading-terminal
+system. Semantic theme tokens now define the page, primary/elevated surfaces, restrained neutral
+borders, blue brand/action/focus states, and result-only green/red states. Shared cards no longer
+carry default elevation; buttons, inputs, badges, segmented controls, tables, page headers,
+content widths, the application shell, and navigation all use a denser and quieter hierarchy.
+The TradeChemist wordmark remains typographic and original.
+
+Dashboard now leads with the existing Trader R, System R, Trader Win Rate, and paired Execution
+Gap metrics, followed by the existing Trade Calendar data presented as a major surface. Attention
+counts are concise actionable rows, recent Trades use a flat scan-friendly list, and the remaining
+performance/comparison metrics stay available below. Trade Log preserves its exclusive Log/
+Calendar views and ten-row cursor pagination while desktop rows read as a compact blotter.
+
+New Trade preserves At Entry / After Trade, every Price/Money basis combination, draft-clearing
+rules, optional Setup/Entry Context, Advanced differing execution, and atomic completed creation.
+It now renders as one trade-ticket surface with lightweight subnavigation, compact basis controls,
+internal section dividers, and concise R output rows. Trade Detail preserves its five exclusive
+sections and all Phase 15G.5E ownership; its Overview heroes and one active section use primary
+surfaces with flat internal Actual/System hierarchy. Entry Snapshot, Review, Strategies, Setups,
+and their metadata are quieter, scan-first rows rather than nested administrative cards.
+
+Analytics keeps Overview/Results/Edge/Behavior exclusive URL views and every existing metric.
+Overview groups each zone into one divided summary surface; Results retains Trader/System priority,
+charts, comparison, management, and context; Edge Strategy/Setup rankings are flat divided rows;
+Behavior remains calm and sample-disclosed. Chart colors use neutral blue/gray/amber series rather
+than purple gradients.
+
+No journal semantics, calculations, action contracts, storage, schema, or migration changed. The
+migration ledger remains `0000`–`0016`; no `0017` exists. Founder visual acceptance remains pending
+manual inspection.

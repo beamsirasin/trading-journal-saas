@@ -51,12 +51,12 @@ export function Brand({
     >
       <span
         aria-hidden="true"
-        className="from-primary to-brand text-primary-foreground inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br text-[11px] font-bold"
+        className="bg-primary text-primary-foreground inline-flex size-6 shrink-0 items-center justify-center rounded text-[11px] font-bold"
       >
         T
       </span>
       <span className={cn('whitespace-nowrap', compact && 'hidden min-[400px]:inline')}>
-        Trading OS
+        TradeChemist
       </span>
     </Link>
   );

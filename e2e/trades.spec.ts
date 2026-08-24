@@ -1893,11 +1893,14 @@ test.describe('real Trade Journal creation', () => {
     // H — Trade B's System-Pending action remains reachable from the
     // Calendar-filtered day too — Actual closing never blocks it.
     await page.goto('/en/app/trades?view=log&month=2026-08&date=2026-08-20');
-    await page
+    const pendingOutcomeLink = page
       .getByRole('listitem', { name: 'ACTUALFIRST' })
-      .getByRole('link', { name: /Update outcome/ })
-      .click();
-    await expect(page).toHaveURL(/trade=.*&section=system/);
+      .getByRole('link', { name: /Update outcome/ });
+    await expect(async () => {
+      await pendingOutcomeLink.focus();
+      await pendingOutcomeLink.press('Enter');
+      await page.waitForURL(/trade=.*&section=system/, { timeout: 5_000 });
+    }).toPass({ timeout: 30_000, intervals: [250] });
     const actualFirstDetail = page.getByRole('article', { name: 'ACTUALFIRST' });
     await expect(
       actualFirstDetail.getByRole('button', { name: 'Record System Outcome' }),
