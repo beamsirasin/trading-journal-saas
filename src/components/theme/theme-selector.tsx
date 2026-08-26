@@ -1,6 +1,6 @@
 'use client';
 
-import { Monitor, Moon, Sun, type LucideIcon } from 'lucide-react';
+import { Moon, Sun, type LucideIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useId } from 'react';
@@ -10,13 +10,12 @@ import { useIsHydrated } from '@/hooks/use-is-hydrated';
 
 const OPTIONS: readonly {
   value: string;
-  labelKey: 'light' | 'dark' | 'system';
-  hintKey: 'lightHint' | 'darkHint' | 'systemHint';
+  labelKey: 'light' | 'dark';
+  hintKey: 'lightHint' | 'darkHint';
   Icon: LucideIcon;
 }[] = [
   { value: 'light', labelKey: 'light', hintKey: 'lightHint', Icon: Sun },
   { value: 'dark', labelKey: 'dark', hintKey: 'darkHint', Icon: Moon },
-  { value: 'system', labelKey: 'system', hintKey: 'systemHint', Icon: Monitor },
 ];
 
 /**
@@ -26,9 +25,11 @@ const OPTIONS: readonly {
  * the current setting IS, which a single icon button cannot express. Both
  * write the same next-themes value, so they can never disagree.
  *
- * Three radios, not a switch: "System" is a distinct choice from "Light", and
- * a two-state control cannot represent "follow my OS" — dropping it regresses
- * anyone who schedules dark mode by time of day (ADR 0005).
+ * TWO radios. There used to be a third, "System", which followed the OS; the
+ * product has removed that mode outright, so the OS no longer participates in
+ * this decision at any layer. Radios rather than the header's toggle because
+ * this surface is about seeing what the setting IS and reading what each
+ * choice means, which a single icon button cannot express.
  *
  * Renders inert until hydrated. The resolved theme depends on `localStorage`
  * and a media query, neither of which exists during SSR, so rendering a
@@ -45,7 +46,7 @@ export function ThemeSelector() {
     <fieldset className="flex flex-col gap-3">
       <legend className="text-foreground mb-1 text-sm font-medium">{t('theme')}</legend>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {OPTIONS.map(({ value, labelKey, hintKey, Icon }) => {
           const id = `${name}-${value}`;
           const checked = isHydrated && theme === value;

@@ -3,6 +3,7 @@ import {
   averageR,
   averageWinR,
   expectancyR,
+  outcomeCounts,
   payoffRatio,
   profitFactor,
   selectSystemEligible,
@@ -12,13 +13,16 @@ import {
 } from '@/lib/calc/aggregate';
 import {
   averageExecutionGapR,
-  executionEfficiency,
   pairedExecutionGapR,
   ruleAdherenceRate,
   selectComparisonEligible,
+  systemEdgeCaptured,
+  tradeRuleAdherence,
 } from '@/lib/calc/attribution';
+import { dayWinRate, type DayWinRateSummary } from '@/lib/calc/day-win-rate';
 import { CalcDecimal } from '@/lib/calc/decimal';
 import { equityCurveR, maximumDrawdownR } from '@/lib/calc/equity';
+import { netPnl, type NetPnlAvailability } from '@/lib/calc/net-pnl';
 import {
   averageSetupAdherence,
   conditionsMetRate,
@@ -38,12 +42,14 @@ import type { AnalyticsDateBounds, AnalyticsDatePreset } from './filters';
 
 export const ANALYTICS_UNAVAILABLE_REASONS = [
   'no_trades',
+  'no_trading_days',
   'no_wins',
   'no_losses',
   'no_profit_or_loss',
   'no_comparable_trades',
   'system_has_no_edge',
   'no_rule_checks',
+  'no_evaluated_trades',
   'no_conditions_applicable',
   'no_confidence_recorded',
 ] as const;
@@ -71,13 +77,17 @@ const FAILURE_CLASSIFICATION = {
   invalid_actual_mode: 'data_integrity_error',
   invalid_exit_shape: 'data_integrity_error',
   invalid_closed_bps: 'data_integrity_error',
+  invalid_timezone: 'data_integrity_error',
+  invalid_timestamp: 'data_integrity_error',
   no_trades: 'no_trades',
+  no_trading_days: 'no_trading_days',
   no_wins: 'no_wins',
   no_losses: 'no_losses',
   no_profit_or_loss: 'no_profit_or_loss',
   system_has_no_edge: 'system_has_no_edge',
   no_comparable_trades: 'no_comparable_trades',
   no_rule_checks: 'no_rule_checks',
+  no_evaluated_trades: 'no_evaluated_trades',
   no_conditions_applicable: 'no_conditions_applicable',
   no_confidence_recorded: 'no_confidence_recorded',
 } as const satisfies Record<CalcFailureReason, AnalyticsUnavailableReason | 'data_integrity_error'>;
@@ -102,6 +112,8 @@ export interface TraderMetricRecord {
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly exitedAt: string;
+  readonly netPnlMinor: string | null;
+  readonly baseCurrency: string;
 }
 
 export interface SystemMetricRecord {
@@ -121,6 +133,11 @@ export interface AnalyticsEquityPoint {
 
 export interface PerformanceAnalyticsModel {
   readonly sampleCount: number;
+  readonly outcomeCounts: {
+    readonly wins: number;
+    readonly breakEvens: number;
+    readonly losses: number;
+  };
   readonly totalR: AnalyticsMetric;
   readonly winRate: AnalyticsMetric;
   readonly averageR: AnalyticsMetric;
@@ -157,6 +174,7 @@ function composePerformanceAxis(records: readonly AxisRecord[]): PerformanceAnal
 
   return {
     sampleCount: records.length,
+    outcomeCounts: outcomeCounts(outcomeRecords),
     totalR: toAnalyticsMetric(totalR(rValues)),
     winRate: toAnalyticsMetric(winRate(outcomeRecords)),
     averageR: toAnalyticsMetric(averageR(rValues)),
@@ -212,8 +230,15 @@ export function composeSystemAnalytics(
 
 export interface ComparisonMetricRecord {
   readonly tradeId: string;
+  readonly status: TradeStatus | string;
+  readonly deletedAt: Date | null;
   readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+  readonly actualExitedAt: string | null;
+  readonly systemStatus: SystemStatus | string;
   readonly systemR: string | null;
+  readonly systemOutcome: OutcomeValue | null;
+  readonly systemExitedAt: string | null;
 }
 
 export interface ComparisonAnalyticsModel {
@@ -224,7 +249,8 @@ export interface ComparisonAnalyticsModel {
   readonly executionGapR: AnalyticsMetric;
   /** `AVG(actualR - systemR)` over the paired population — Phase 13H's PRIMARY Execution Gap aggregate (§6). */
   readonly averageExecutionGapR: AnalyticsMetric;
-  readonly executionEfficiency: AnalyticsMetric;
+  /** UI/domain name: System Edge Captured. Ratio value; presentation formats it as a percentage. */
+  readonly systemEdgeCaptured: AnalyticsMetric;
 }
 
 export function composeComparisonAnalytics(
@@ -246,7 +272,7 @@ export function composeComparisonAnalytics(
       pairedActualTotalR: unavailable,
       executionGapR: unavailable,
       averageExecutionGapR: unavailable,
-      executionEfficiency: unavailable,
+      systemEdgeCaptured: unavailable,
     };
   }
 
@@ -256,12 +282,14 @@ export function composeComparisonAnalytics(
     pairedActualTotalR: toAnalyticsMetric(totalR(eligible.map((record) => record.actualR))),
     executionGapR: toAnalyticsMetric(pairedExecutionGapR(eligible)),
     averageExecutionGapR: toAnalyticsMetric(averageExecutionGapR(eligible)),
-    executionEfficiency: toAnalyticsMetric(executionEfficiency(eligible)),
+    systemEdgeCaptured: toAnalyticsMetric(systemEdgeCaptured(eligible)),
   };
 }
 
 export interface RuleMetricRecord {
+  readonly tradeId: string;
   readonly checkStatus: RuleCheckStatus | string;
+  readonly isRequired: boolean;
 }
 
 export interface RuleAnalyticsModel {
@@ -270,7 +298,15 @@ export interface RuleAnalyticsModel {
   readonly notCheckedCount: number;
   readonly notApplicableCount: number;
   readonly evaluatedCount: number;
-  readonly adherenceRate: AnalyticsMetric;
+  /** Check-level: followed / (followed + violated). */
+  readonly checksFollowedRate: AnalyticsMetric;
+  /** Trade-level: compliant fully evaluated Trades / all fully evaluated Trades. */
+  readonly tradeAdherenceRate: AnalyticsMetric;
+  readonly evaluatedTradeCount: number;
+  readonly compliantTradeCount: number;
+  readonly nonCompliantTradeCount: number;
+  readonly incompleteTradeCount: number;
+  readonly notApplicableTradeCount: number;
 }
 
 export function composeRuleAnalytics(records: readonly RuleMetricRecord[]): RuleAnalyticsModel {
@@ -285,15 +321,28 @@ export function composeRuleAnalytics(records: readonly RuleMetricRecord[]): Rule
     else if (record.checkStatus === 'not_applicable') notApplicableCount += 1;
   }
 
+  const tradeLevel = tradeRuleAdherence(
+    records.map((record) => ({
+      tradeId: record.tradeId,
+      isRequired: record.isRequired,
+      status: record.checkStatus,
+    })),
+  );
   return {
     followedCount,
     violatedCount,
     notCheckedCount,
     notApplicableCount,
     evaluatedCount: followedCount + violatedCount,
-    adherenceRate: toAnalyticsMetric(
+    checksFollowedRate: toAnalyticsMetric(
       ruleAdherenceRate(records.map((record) => ({ status: record.checkStatus }))),
     ),
+    tradeAdherenceRate: toAnalyticsMetric(tradeLevel.rate),
+    evaluatedTradeCount: tradeLevel.evaluatedTradeCount,
+    compliantTradeCount: tradeLevel.compliantTradeCount,
+    nonCompliantTradeCount: tradeLevel.nonCompliantTradeCount,
+    incompleteTradeCount: tradeLevel.incompleteTradeCount,
+    notApplicableTradeCount: tradeLevel.notApplicableTradeCount,
   };
 }
 
@@ -955,6 +1004,8 @@ export interface AnalyticsSnapshotInput {
 export interface AnalyticsSnapshot {
   readonly scope: AnalyticsScopeModel;
   readonly trader: PerformanceAnalyticsModel;
+  readonly traderDayWin: AnalyticsMetric<DayWinRateSummary>;
+  readonly traderNetPnl: NetPnlAvailability;
   readonly system: PerformanceAnalyticsModel;
   /**
    * Count of `system_status = 'pending'` Trades in the current
@@ -980,9 +1031,25 @@ export interface AnalyticsSnapshot {
 }
 
 export function composeAnalyticsSnapshot(input: AnalyticsSnapshotInput): AnalyticsSnapshot {
+  const traderEligible = selectTraderEligible(input.trader);
   return {
     scope: input.scope,
     trader: composeTraderAnalytics(input.trader),
+    traderDayWin: toAnalyticsMetric(
+      dayWinRate(
+        traderEligible.map((record) => ({
+          actualR: record.actualR as string,
+          exitedAt: new Date(record.exitedAt),
+        })),
+        input.scope.timezone,
+      ),
+    ),
+    traderNetPnl: netPnl(
+      traderEligible.map((record) => ({
+        netPnlMinor: record.netPnlMinor,
+        baseCurrency: record.baseCurrency,
+      })),
+    ),
     system: composeSystemAnalytics(input.system),
     systemPendingCount: input.systemPendingCount,
     comparison: composeComparisonAnalytics(input.comparison),

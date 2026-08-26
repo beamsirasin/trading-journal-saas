@@ -146,7 +146,7 @@ describe('selectExecutionGapObservation', () => {
       pairedActualTotalR: unavailable,
       executionGapR: unavailable,
       averageExecutionGapR: unavailable,
-      executionEfficiency: unavailable,
+      systemEdgeCaptured: unavailable,
       ...overrides,
     };
   }

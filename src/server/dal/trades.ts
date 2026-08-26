@@ -1123,8 +1123,10 @@ export interface TradeAttentionCounts {
  * caller's active workspace; none of them implies a Trade is invalid or
  * incomplete.
  */
-export async function getWorkspaceTradeAttentionCounts(): Promise<TradeAttentionCounts> {
-  const { workspaceId } = await getActiveWorkspaceContext();
+/** Trusted scope-resolved variant used by route-level read orchestrators. */
+export async function selectWorkspaceTradeAttentionCounts(
+  workspaceId: string,
+): Promise<TradeAttentionCounts> {
   const db = getDb();
 
   const [row] = await db
@@ -1147,4 +1149,9 @@ export async function getWorkspaceTradeAttentionCounts(): Promise<TradeAttention
       needsExecutionDetails: 0,
     }
   );
+}
+
+export async function getWorkspaceTradeAttentionCounts(): Promise<TradeAttentionCounts> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  return selectWorkspaceTradeAttentionCounts(workspaceId);
 }

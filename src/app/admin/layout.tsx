@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
+import { ThemeBootstrap } from '@/components/theme/theme-bootstrap';
 import { ThemeProvider } from '@/components/theme/theme-provider';
 
 import '../globals.css';
@@ -32,6 +33,9 @@ export default function AdminRootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-dvh overflow-x-hidden antialiased">
+        {/* /admin is its own document root, so it needs its own copy of the
+            pre-paint theme bootstrap — see ThemeBootstrap. */}
+        <ThemeBootstrap />
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

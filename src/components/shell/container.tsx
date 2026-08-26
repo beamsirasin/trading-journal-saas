@@ -5,13 +5,26 @@ import { cn } from '@/lib/utils';
 interface ContainerProps extends HTMLAttributes<HTMLDivElement> {
   /** Render as a different element, e.g. `section`. Defaults to `div`. */
   as?: ElementType;
-  /** `wide` for analytics surfaces, `prose` for reading. Default `default`. */
-  width?: 'default' | 'wide' | 'prose';
+  /**
+   * `canvas` for the Dashboard, `wide` for other analytics surfaces, `prose`
+   * for reading. Default `default`.
+   */
+  width?: 'default' | 'wide' | 'canvas' | 'prose';
 }
 
+/**
+ * `canvas` (120rem) exists because `wide` (100rem) leaves a 1728/1920-class
+ * desktop with ~128px of dead margin on each side of the workspace, which
+ * reads as a tablet layout centred in a monitor. At 1920 the workspace after
+ * the rail is 1856px, so a 1920px ceiling means the gutter — not the ceiling
+ * — decides the width there, and the cap only starts doing work on a genuine
+ * ultrawide. It is deliberately Dashboard-only: widening every analytics
+ * surface is a separate, separately verified decision.
+ */
 const WIDTHS = {
   default: 'max-w-6xl',
   wide: 'max-w-[100rem]',
+  canvas: 'max-w-[120rem]',
   prose: 'max-w-3xl',
 } as const;
 

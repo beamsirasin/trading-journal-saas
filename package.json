@@ -38,6 +38,9 @@
     "email:verify": "node scripts/email-verify.mjs",
     "email:smoke": "node scripts/email-smoke.mjs",
     "scan:client": "node scripts/scan-client-assets.mjs",
+    "seed:visual-dashboard": "tsx --conditions=react-server --env-file=.env.local scripts/seed-visual-dashboard.ts",
+    "validate:visual-dashboard-ids": "tsx --conditions=react-server --env-file=.env.local scripts/validate-visual-dashboard-id-isolation.ts",
+    "validate:visual-dashboard-d5": "tsx --conditions=react-server --env-file=.env.local scripts/validate-visual-dashboard-d5.ts",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm scan:client"
   },
   "dependencies": {
@@ -87,6 +90,7 @@
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

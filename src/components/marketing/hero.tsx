@@ -23,7 +23,7 @@ import { ProductPreview } from './product-preview';
  *
  * Entrance motion is a short CSS `animate-rise` with a small stagger, not a
  * Motion sequence: content must not be gated behind an animation, and the
- * global reduced-motion rule collapses it to nothing.
+ * reduced-motion policy replaces it with the settled static presentation.
  *
  * PHASE 1.1 — one badge, one headline, one description, two CTAs, one
  * preview. This was already the shape before simplification; the density

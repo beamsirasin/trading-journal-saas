@@ -1,89 +1,117 @@
-import { ArrowRight, GitCompareArrows, ListChecks, MonitorCog, UserRound } from 'lucide-react';
+import { ArrowRight, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
-import type {
-  AnalyticsMetric,
-  AnalyticsUnavailableReason,
-  DashboardOverview,
-  PerformanceAnalyticsModel,
-} from '@/lib/analytics/metrics';
+import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
+import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
+import type { DashboardPageData, DashboardRecentTrade } from '@/lib/dashboard/page-data';
+import { composePerformanceCards } from '@/lib/dashboard/performance-card';
 import {
-  formatAnalyticsMetric,
-  type AnalyticsDisplayStyle,
-  type AnalyticsDisplayTone,
-} from '@/lib/analytics/presentation';
+  dashboardLayoutItem,
+  dashboardWidgetAttributes,
+  DEFAULT_DASHBOARD_LAYOUT,
+  type DashboardWidgetId,
+} from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
-import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
-import type { TradeAttentionCounts, TradeListItem } from '@/server/dal/trades';
 import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-trading-dashboard';
-import { MetricLabel, MetricValue } from '@/components/product/metric';
+import { ExecutionGapSection } from '@/components/dashboard/execution-gap/execution-gap-section';
+import { BasicKpiRow } from '@/components/dashboard/kpi/basic-kpi-row';
+import { BASIC_KPI_GRID_CLASS, kpiSpanClassName } from '@/components/dashboard/kpi/kpi-widget-card';
+import { PerformanceCard } from '@/components/dashboard/performance/performance-card';
+import { MetricLabel } from '@/components/product/metric';
+import { formatTradeInstant } from '@/components/trades/trade-format';
 import { TradeStatusBadge } from '@/components/trades/trade-status-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
-export type DashboardRecentTrade = TradeListItem & { readonly occurredAtDisplay: string };
+export type { DashboardRecentTrade } from '@/lib/dashboard/page-data';
 
 const RANGE_ORDER: readonly AnalyticsDatePreset[] = ['30d', '90d', 'all'];
 const RANGE_KEY = { '30d': 'range30', '90d': 'range90', all: 'rangeAll' } as const;
 
-const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
-  positive: 'text-positive',
-  negative: 'text-negative',
-  neutral: 'text-foreground',
-};
+const BASIC_KPI_LAYOUT = DEFAULT_DASHBOARD_LAYOUT.filter((item) =>
+  item.widgetId.startsWith('basic.'),
+);
 
 export function RealDashboard({
-  account,
-  overview,
-  recentTrades,
-  attention,
+  data,
+  dateLocale,
 }: {
-  account: ActiveTradingAccountSummary;
-  overview: DashboardOverview;
-  recentTrades: readonly DashboardRecentTrade[];
-  attention: TradeAttentionCounts;
+  data: DashboardPageData;
+  dateLocale: string;
 }) {
   const t = useTranslations('dashboard.real');
+  const tFilters = useTranslations('dashboard.filters');
+  const accountLabel =
+    data.account.kind === 'account' ? data.account.account.name : tFilters('allAccounts');
+  const performanceCards = composePerformanceCards(data);
 
   return (
-    <div className="flex min-w-0 flex-col gap-8">
-      <ActiveTradingAccountSummaryCard account={account} />
-      <NeedsAttentionPanel attention={attention} />
+    /*
+      SECTION RHYTHM IS EXPLICIT, NOT ONE UNIFORM GAP.
 
-      <section aria-labelledby="performance-heading" className="flex flex-col gap-4">
+      Through D4 every boundary on this page was the same `gap-8` (32px),
+      which spends the same whitespace separating an account label from a KPI
+      band as it does separating two analytical sections — and made the page
+      read like a marketing layout rather than a data product. The margins
+      below step up with the weight of the boundary they separate: 20px into
+      the KPI band, 24px into Needs Attention, 28px into the analytical
+      sections, 32px before the record list. `first:mt-0` keeps the top edge
+      correct when the account context bar is absent (all-accounts scope).
+    */
+    <div className="flex min-w-0 flex-col">
+      {data.account.kind === 'account' ? (
+        <ActiveTradingAccountSummaryCard account={data.account.account} />
+      ) : null}
+      <BasicKpiRow data={data} className="mt-5 first:mt-0" />
+      <NeedsAttentionPanel attention={data.attention.counts} className="mt-6" />
+
+      <section aria-labelledby="performance-heading" className="mt-7 flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
             <h2 id="performance-heading" className="text-xl font-semibold tracking-tight">
               {t('performanceTitle')}
             </h2>
             <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-              {t('performanceDescription', { account: account.name })}
+              {t('performanceDescription', { account: accountLabel })}
             </p>
           </div>
-          <DashboardRangeControl selected={overview.scope.datePreset} />
+          <DashboardRangeControl filters={data.filters} />
         </div>
 
-        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-          <PerformancePanel
-            series="system"
-            title={t('system.title')}
-            description={t('system.description')}
-            metrics={overview.system}
-          />
-          <PerformancePanel
-            series="trader"
-            title={t('trader.title')}
-            description={t('trader.description')}
-            metrics={overview.trader}
-          />
+        {/*
+          Two equal halves, and `items-stretch` so both cards share a top edge
+          and a height whatever each side's population contains. Since D4.5
+          this grid AGREES with the layout metadata rather than contradicting
+          it: `performance` is its own two-column section and each card spans
+          one of its columns, so the retired 2+3-of-five reading is gone from
+          both the page and the record it emits.
+        */}
+        <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-2">
+          {performanceCards.map((model) => (
+            <PerformanceCard key={model.widgetId} model={model} />
+          ))}
         </div>
       </section>
 
-      <ComparisonPanel comparison={overview.comparison} />
-      <RecentTrades trades={recentTrades} />
+      {/*
+        D5B replaces D2's placeholder summary card with the real
+        `execution.gap` widget. It still consumes only
+        `DashboardPageData.comparison` — one server-composed Population C
+        model, no fetch of its own — and it deliberately follows the D4 pair
+        it explains rather than sitting between the KPI band and the
+        baselines.
+      */}
+      <ExecutionGapSection comparison={data.comparison} dateLocale={dateLocale} className="mt-7" />
+      <WidgetSlot widgetId="trades.recent" className="mt-8">
+        <RecentTrades
+          trades={data.recentTrades.items}
+          timezone={data.scope.timezone}
+          dateLocale={dateLocale}
+        />
+      </WidgetSlot>
 
-      <div className="flex justify-end">
+      <div className="mt-6 flex justify-end">
         <Link
           href="/app/analytics"
           className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
@@ -95,7 +123,26 @@ export function RealDashboard({
   );
 }
 
-function DashboardRangeControl({ selected }: { selected: AnalyticsDatePreset }) {
+function WidgetSlot({
+  widgetId,
+  className,
+  children,
+}: {
+  widgetId: DashboardWidgetId;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      {...dashboardWidgetAttributes(dashboardLayoutItem(widgetId))}
+      className={cn('min-w-0', className)}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
   const t = useTranslations('dashboard.real');
   return (
     <nav aria-label={t('dateRangeLabel')} className="flex flex-col gap-1.5">
@@ -104,11 +151,11 @@ function DashboardRangeControl({ selected }: { selected: AnalyticsDatePreset }) 
         {RANGE_ORDER.map((range) => (
           <Link
             key={range}
-            href={`/app?range=${range}`}
-            aria-current={range === selected ? 'page' : undefined}
+            href={buildDashboardHref({ ...filters, datePreset: range })}
+            aria-current={range === filters.datePreset ? 'page' : undefined}
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-11 min-w-14 items-center justify-center rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2',
-              range === selected
+              range === filters.datePreset
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
             )}
@@ -118,74 +165,6 @@ function DashboardRangeControl({ selected }: { selected: AnalyticsDatePreset }) 
         ))}
       </div>
     </nav>
-  );
-}
-
-function PerformancePanel({
-  series,
-  title,
-  description,
-  metrics,
-}: {
-  series: 'system' | 'trader';
-  title: string;
-  description: string;
-  metrics: Pick<
-    PerformanceAnalyticsModel,
-    'sampleCount' | 'totalR' | 'expectancyR' | 'winRate' | 'profitFactor'
-  >;
-}) {
-  const t = useTranslations('dashboard.real');
-  const Icon = series === 'system' ? MonitorCog : UserRound;
-  return (
-    <Card
-      data-dashboard-panel={series}
-      className={cn(
-        'overflow-hidden border-t-4',
-        series === 'system' ? 'border-t-system' : 'border-t-trader',
-      )}
-    >
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span
-              className={cn(
-                'mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg',
-                series === 'system' ? 'bg-system/10 text-system' : 'bg-trader/10 text-trader',
-              )}
-            >
-              <Icon className="size-5" aria-hidden="true" />
-            </span>
-            <div>
-              <CardTitle>{title}</CardTitle>
-              <CardDescription className="mt-1 leading-relaxed">{description}</CardDescription>
-            </div>
-          </div>
-          <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2.5 py-1 text-xs font-medium">
-            {t('sampleCount', { count: metrics.sampleCount })}
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {metrics.sampleCount === 0 ? (
-          <p className="border-border bg-muted/40 text-muted-foreground mb-4 rounded-md border p-3 text-sm">
-            {series === 'system' ? t('system.empty') : t('trader.empty')}
-          </p>
-        ) : null}
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
-          <DashboardMetric
-            className="col-span-2 border-b pb-5"
-            label={t('totalR')}
-            metric={metrics.totalR}
-            style="r"
-            prominent
-          />
-          <DashboardMetric label={t('expectancy')} metric={metrics.expectancyR} style="r" />
-          <DashboardMetric label={t('winRate')} metric={metrics.winRate} style="percent" />
-          <DashboardMetric label={t('profitFactor')} metric={metrics.profitFactor} style="factor" />
-        </dl>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -199,8 +178,28 @@ function PerformancePanel({
  * (Phase 14B); `reviewsPending` = `status = 'closed' AND review_notes IS
  * NULL` — see `getWorkspaceTradeAttentionCounts` (`src/server/dal/trades.ts`)
  * for the exact query.
+ *
+ * D4.5 geometry: one bar, not a card with a header block and a four-column
+ * grid under it. Through D4 this stood 243px tall — taller than the five KPI
+ * cards it sits beneath — to say three numbers, and spread them across the
+ * full page width. It is now header-plus-counts-plus-action on one desktop
+ * row at roughly 88px. Every count, its label, the title, the supporting
+ * sentence and the Review action survive that unchanged; the D2 scope
+ * (`workspace_operational`) and the "no score, no invented category" rule
+ * are untouched.
+ *
+ * It owns its own layout slot rather than being wrapped in one, because it
+ * renders nothing at all when every count is zero — a wrapper would leave a
+ * slot's worth of dead vertical space behind on exactly the workspace with
+ * nothing to show.
  */
-function NeedsAttentionPanel({ attention }: { attention: TradeAttentionCounts }) {
+function NeedsAttentionPanel({
+  attention,
+  className,
+}: {
+  attention: DashboardPageData['attention']['counts'];
+  className?: string;
+}) {
   const t = useTranslations('dashboard.real');
   const total =
     attention.openTrades +
@@ -221,140 +220,62 @@ function NeedsAttentionPanel({ attention }: { attention: TradeAttentionCounts })
   ];
 
   return (
-    <section aria-labelledby="needs-attention-heading">
-      <Card data-dashboard-panel="needs-attention" className="overflow-hidden">
-        <CardHeader>
-          <div className="flex items-start gap-3">
-            <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
-              <ListChecks className="size-5" aria-hidden="true" />
-            </span>
-            <div>
-              <CardTitle id="needs-attention-heading">{t('needsAttention.title')}</CardTitle>
-              <CardDescription className="mt-1 leading-relaxed">
-                {t('needsAttention.description')}
-              </CardDescription>
-            </div>
+    <section
+      {...dashboardWidgetAttributes(dashboardLayoutItem('review.needs-attention'))}
+      aria-labelledby="needs-attention-heading"
+      className={cn('min-w-0', className)}
+    >
+      <Card
+        data-dashboard-panel="needs-attention"
+        className="flex min-w-0 flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between lg:gap-8"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+            <ListChecks className="size-4.5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <CardTitle id="needs-attention-heading">{t('needsAttention.title')}</CardTitle>
+            <CardDescription className="leading-snug text-pretty">
+              {t('needsAttention.description')}
+            </CardDescription>
           </div>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3 sm:gap-x-8">
+          <dl className="flex min-w-0 flex-wrap gap-x-6 gap-y-3 sm:gap-x-8">
             {items
               .filter((item) => item.count > 0)
               .map((item) => (
-                <div key={item.key} className="flex min-w-0 flex-col gap-1.5">
-                  <MetricLabel>{t(`needsAttention.${item.key}`)}</MetricLabel>
-                  <span className="numeric text-2xl font-semibold">{item.count}</span>
+                <div key={item.key} className="flex min-w-0 flex-col gap-0.5">
+                  <dt>
+                    <MetricLabel className="leading-4">
+                      {t(`needsAttention.${item.key}`)}
+                    </MetricLabel>
+                  </dt>
+                  <dd className="numeric text-xl leading-7 font-semibold">{item.count}</dd>
                 </div>
               ))}
           </dl>
-          <div className="mt-5">
-            <Link
-              href="/app/trades"
-              className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
-            >
-              {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </div>
-        </CardContent>
+          <Link
+            href="/app/trades"
+            className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+          >
+            {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
       </Card>
     </section>
   );
 }
 
-function ComparisonPanel({ comparison }: { comparison: DashboardOverview['comparison'] }) {
-  const t = useTranslations('dashboard.real');
-  return (
-    <section aria-labelledby="comparison-heading">
-      <Card data-dashboard-panel="comparison" className="overflow-hidden">
-        <CardHeader>
-          <div className="flex items-start gap-3">
-            <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
-              <GitCompareArrows className="size-5" aria-hidden="true" />
-            </span>
-            <div>
-              <CardTitle id="comparison-heading">{t('comparison.title')}</CardTitle>
-              <CardDescription className="mt-1 leading-relaxed">
-                {t('comparison.description')}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid gap-5 sm:grid-cols-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <MetricLabel>{t('comparableTrades')}</MetricLabel>
-              <span className="numeric text-2xl font-semibold">{comparison.comparableCount}</span>
-            </div>
-            <DashboardMetric
-              label={t('executionGap')}
-              metric={comparison.averageExecutionGapR}
-              style="r"
-              forceNeutral
-            />
-            <DashboardMetric
-              label={t('executionEfficiency')}
-              metric={comparison.executionEfficiency}
-              style="percent"
-              forceNeutral
-            />
-          </dl>
-          <p className="text-muted-foreground mt-5 text-xs leading-relaxed">
-            {t('comparison.help')}
-          </p>
-        </CardContent>
-      </Card>
-    </section>
-  );
-}
-
-function DashboardMetric({
-  label,
-  metric,
-  style,
-  prominent = false,
-  forceNeutral = false,
-  className,
+function RecentTrades({
+  trades,
+  timezone,
+  dateLocale,
 }: {
-  label: string;
-  metric: AnalyticsMetric;
-  style: AnalyticsDisplayStyle;
-  prominent?: boolean;
-  forceNeutral?: boolean;
-  className?: string;
+  trades: readonly DashboardRecentTrade[];
+  timezone: string;
+  dateLocale: string;
 }) {
-  const t = useTranslations('dashboard.real');
-  const formatted = formatAnalyticsMetric(metric, style);
-  return (
-    <div
-      data-metric={label}
-      data-metric-status={formatted.status}
-      className={cn('flex min-w-0 flex-col gap-1.5', className)}
-    >
-      <dt>
-        <MetricLabel>{label}</MetricLabel>
-      </dt>
-      <dd>
-        {formatted.status === 'available' ? (
-          <MetricValue
-            value={formatted.text}
-            className={cn(
-              prominent ? 'text-3xl' : 'text-xl',
-              forceNeutral ? 'text-foreground' : TONE_CLASS[formatted.tone],
-            )}
-          />
-        ) : (
-          <span className="text-muted-foreground text-sm leading-snug">
-            {formatted.status === 'error'
-              ? t('unavailable.data_integrity_error')
-              : t(`unavailable.${formatted.reason as AnalyticsUnavailableReason}`)}
-          </span>
-        )}
-      </dd>
-    </div>
-  );
-}
-
-function RecentTrades({ trades }: { trades: readonly DashboardRecentTrade[] }) {
   const t = useTranslations('dashboard.real');
   const tTrades = useTranslations('trades');
   return (
@@ -400,7 +321,8 @@ function RecentTrades({ trades }: { trades: readonly DashboardRecentTrade[] }) {
                     {trade.symbol}
                   </Link>
                   <p className="text-muted-foreground text-sm">
-                    {tTrades(`direction.${trade.direction}`)} · {trade.occurredAtDisplay}
+                    {tTrades(`direction.${trade.direction}`)} ·{' '}
+                    {formatTradeInstant(trade.occurredAt, timezone, dateLocale) ?? '—'}
                   </p>
                 </div>
                 <div className="min-w-0 text-sm">
@@ -465,16 +387,39 @@ export function DashboardDataError() {
   );
 }
 
+/**
+ * Reserves the real Dashboard's geometry while the server payload resolves.
+ * The Basic KPI band mirrors the row's own grid and span metadata, and its
+ * fixed card height matches the card anatomy's three minimum-height regions,
+ * so the five cards do not resize when the figures arrive.
+ *
+ * The block heights and the margins between them track D4.5's compressed
+ * bars, not the pre-D4.5 ones — a skeleton that reserves the old 173px
+ * account card and 243px attention panel would visibly collapse the moment
+ * the real page arrived, which is the exact jump a skeleton exists to avoid.
+ */
 export function DashboardSkeleton() {
   return (
-    <div className="flex animate-pulse flex-col gap-8" aria-hidden="true">
-      <div className="border-border bg-card h-40 rounded-lg border" />
-      <div className="grid gap-4 lg:grid-cols-2">
+    <div className="flex animate-pulse flex-col" aria-hidden="true">
+      <div className="border-border bg-card h-[74px] rounded-lg border" />
+      <div className={cn('mt-5', BASIC_KPI_GRID_CLASS)}>
+        {BASIC_KPI_LAYOUT.map((layout) => (
+          <div
+            key={layout.widgetId}
+            className={cn(
+              'border-border bg-card h-[138px] rounded-lg border',
+              kpiSpanClassName(layout),
+            )}
+          />
+        ))}
+      </div>
+      <div className="border-border bg-card mt-6 h-[88px] rounded-lg border" />
+      <div className="mt-7 grid gap-4 lg:grid-cols-2">
         <div className="border-border bg-card h-80 rounded-lg border" />
         <div className="border-border bg-card h-80 rounded-lg border" />
       </div>
-      <div className="border-border bg-card h-48 rounded-lg border" />
-      <div className="space-y-3">
+      <div className="border-border bg-card mt-7 h-48 rounded-lg border" />
+      <div className="mt-8 space-y-3">
         <div className="bg-muted h-7 w-40 rounded-md" />
         <div className="border-border bg-card h-24 rounded-lg border" />
         <div className="border-border bg-card h-24 rounded-lg border" />

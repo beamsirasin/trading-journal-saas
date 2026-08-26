@@ -39,7 +39,7 @@ describe('DemoDashboard simplification', () => {
     ]);
   });
 
-  it('does not surface System/Actual Expectancy, Profit Factor, Max Drawdown or Execution Efficiency as top-level cards', () => {
+  it('does not surface System/Actual Expectancy, Profit Factor, Max Drawdown or System Edge Captured as top-level cards', () => {
     renderDashboard();
     const kpiLabels = [...document.querySelectorAll('[data-kpi]')].map((el) =>
       el.getAttribute('data-kpi'),

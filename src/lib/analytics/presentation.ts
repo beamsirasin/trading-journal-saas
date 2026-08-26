@@ -22,7 +22,7 @@ function signedFixed(decimal: InstanceType<typeof DisplayDecimal>): string {
   return `${prefix}${rounded.toFixed(2)}`;
 }
 
-export type AnalyticsDisplayStyle = 'r' | 'percent' | 'factor';
+export type AnalyticsDisplayStyle = 'r' | 'percent' | 'factor' | 'multiple' | 'magnitude';
 export type AnalyticsDisplayTone = 'positive' | 'negative' | 'neutral';
 
 export type FormattedAnalyticsMetric =
@@ -55,6 +55,27 @@ export function formatAnalyticsMetric(
     return {
       status: 'available',
       text: `${decimal.times(100).toDecimalPlaces(2, DisplayDecimal.ROUND_HALF_UP).toFixed(2)}%`,
+      tone,
+    };
+  }
+  if (style === 'magnitude') {
+    // For a metric that is already an unsigned distance rather than a signed
+    // outcome — Maximum Drawdown is the case that matters. `r` would render
+    // a 2R drawdown as `+2.00R`, which reads as a gain, and would tone it
+    // positive. A magnitude has no direction, so it carries neither.
+    return {
+      status: 'available',
+      text: `${decimal.toDecimalPlaces(2, DisplayDecimal.ROUND_HALF_UP).toFixed(2)}R`,
+      tone: 'neutral',
+    };
+  }
+  if (style === 'multiple') {
+    // `2.36x` — the payoff-ratio reading of an already-canonical ratio. The
+    // same number as `factor`, marked as a multiple so Avg Win/Loss is never
+    // misread as an R value or a percentage.
+    return {
+      status: 'available',
+      text: `${decimal.toDecimalPlaces(2, DisplayDecimal.ROUND_HALF_UP).toFixed(2)}x`,
       tone,
     };
   }

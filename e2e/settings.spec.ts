@@ -92,7 +92,10 @@ test.describe('Phase 10 Settings through 10E', () => {
 
     await expect(page.getByRole('radio', { name: /Light/ })).toBeVisible();
     await expect(page.getByRole('radio', { name: /Dark/ })).toBeVisible();
-    await expect(page.getByRole('radio', { name: /System/ })).toBeVisible();
+    // No System radio: the mode was removed from the product, so the
+    // Appearance section offers exactly the two themes that exist.
+    await expect(page.getByRole('radio', { name: /System/ })).toHaveCount(0);
+    await expect(page.getByRole('radio')).toHaveCount(2);
     await expect(
       page
         .getByRole('region', { name: 'Preferences' })
@@ -332,7 +335,10 @@ test.describe('Phase 10 Settings through 10E', () => {
     await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible();
     await expect(page.getByLabel('Current password')).toBeVisible();
     await expect(page.getByText('This session')).toBeVisible();
-    await expect(page.getByRole('radio', { name: /System/ })).toBeVisible();
+    // No System radio: the mode was removed from the product, so the
+    // Appearance section offers exactly the two themes that exist.
+    await expect(page.getByRole('radio', { name: /System/ })).toHaveCount(0);
+    await expect(page.getByRole('radio')).toHaveCount(2);
     await expect(
       page
         .getByRole('region', { name: 'Preferences' })

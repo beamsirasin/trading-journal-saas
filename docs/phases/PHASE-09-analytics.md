@@ -38,7 +38,7 @@ The DAL uses five fixed-shape workspace-scoped projections with no N+1 query pat
 
 System and Trader independently expose sample count, Total R, Win Rate, Expectancy/Average R, Profit Factor, Maximum Drawdown R, Average Win/Loss R, Payoff Ratio, and their own equity curve. The UI presents the identical Average R/Expectancy contract once as **Expectancy (Average R)**.
 
-Paired comparison exposes comparable count, paired System Total R, paired Actual Total R, Edge Leakage R, and Execution Efficiency. Paired totals always come from the identical same-Trade population. Edge Leakage is not clamped; Execution Efficiency is available only when paired System Total R is positive and may be negative or above 100%.
+Paired comparison exposes comparable count, paired System Total R, paired Actual Total R, Execution Gap, and System Edge Captured. Paired totals always come from the identical same-Trade population. Bounded pairing is anchored to Actual `exited_at`; `system_exited_at` stays required metadata but is not a second range gate. Execution Gap is `Actual R − System R` and is not clamped. System Edge Captured is available only when paired System Total R is positive and may be negative or above 100%.
 
 Every calculated value is `available`, explicitly `unavailable`, or a sanitized `data_integrity_error`. Supported unavailable reasons are `no_trades`, `no_wins`, `no_losses`, `no_profit_or_loss`, `no_comparable_trades`, `system_has_no_edge`, and `no_rule_checks`. None is rendered as accidental numeric zero, `NaN`, or `Infinity`.
 

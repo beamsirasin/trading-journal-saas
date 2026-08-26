@@ -39,6 +39,42 @@ describe('Dashboard analytics presentation formatting', () => {
     );
   });
 
+  it('renders an unsigned distance as a magnitude, never as a signed gain', () => {
+    // Maximum Drawdown is non-negative by construction, so `r` would print
+    // `+2.00R` and tone it positive — a 2R drawdown reading as a 2R profit.
+    expect(formatAnalyticsMetric({ status: 'available', value: '2.0000' }, 'magnitude')).toEqual({
+      status: 'available',
+      text: '2.00R',
+      tone: 'neutral',
+    });
+    expect(formatAnalyticsMetric({ status: 'available', value: '0.0000' }, 'magnitude')).toEqual({
+      status: 'available',
+      text: '0.00R',
+      tone: 'neutral',
+    });
+    expect(formatAnalyticsMetric({ status: 'available', value: '2.0000' }, 'r')).toMatchObject({
+      text: '+2.00R',
+      tone: 'positive',
+    });
+    expect(
+      formatAnalyticsMetric({ status: 'unavailable', reason: 'no_trades' }, 'magnitude'),
+    ).toEqual({ status: 'unavailable', reason: 'no_trades' });
+  });
+
+  it('marks a payoff ratio as a multiple so it is not read as R or a percentage', () => {
+    expect(formatAnalyticsMetric({ status: 'available', value: '2.3556' }, 'multiple')).toEqual({
+      status: 'available',
+      text: '2.36x',
+      tone: 'positive',
+    });
+    expect(formatAnalyticsMetric({ status: 'unavailable', reason: 'no_wins' }, 'multiple')).toEqual(
+      {
+        status: 'unavailable',
+        reason: 'no_wins',
+      },
+    );
+  });
+
   it('preserves unavailable and sanitized integrity states instead of displaying zero', () => {
     expect(formatAnalyticsMetric({ status: 'unavailable', reason: 'no_trades' }, 'r')).toEqual({
       status: 'unavailable',

@@ -40,7 +40,7 @@ export function PreferencesSync({
     if (theme === undefined || theme === lastSyncedTheme.current) {
       return;
     }
-    void syncPreferences({ theme: theme as 'light' | 'dark' | 'system' }).then((result) => {
+    void syncPreferences({ theme: theme as 'light' | 'dark' }).then((result) => {
       if (result.ok) lastSyncedTheme.current = theme;
     });
   }, [theme]);

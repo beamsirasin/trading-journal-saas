@@ -26,6 +26,7 @@ const unavailable: AnalyticsMetric = { status: 'unavailable', reason: 'no_trades
 function axis(overrides: Partial<PerformanceAnalyticsModel> = {}): PerformanceAnalyticsModel {
   return {
     sampleCount: 3,
+    outcomeCounts: { wins: 2, breakEvens: 0, losses: 1 },
     totalR: available('12.4000'),
     winRate: available('0.5800'),
     averageR: available('4.1333'),
@@ -47,7 +48,7 @@ function comparison(overrides: Partial<ComparisonAnalyticsModel> = {}): Comparis
     pairedActualTotalR: unavailable,
     executionGapR: unavailable,
     averageExecutionGapR: unavailable,
-    executionEfficiency: unavailable,
+    systemEdgeCaptured: unavailable,
     ...overrides,
   };
 }

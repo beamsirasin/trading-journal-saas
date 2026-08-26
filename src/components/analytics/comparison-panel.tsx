@@ -35,8 +35,8 @@ export function AnalyticsComparisonPanel({ comparison }: { comparison: Compariso
             forceNeutral
           />
           <AnalyticsMetricDisplay
-            label={t('comparison.executionEfficiency')}
-            metric={comparison.executionEfficiency}
+            label={t('comparison.systemEdgeCaptured')}
+            metric={comparison.systemEdgeCaptured}
             style="percent"
             forceNeutral
           />

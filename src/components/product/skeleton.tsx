@@ -5,9 +5,8 @@ import { cn } from '@/lib/utils';
 /**
  * A loading placeholder.
  *
- * `animate-pulse` passes through the global reduced-motion guard in
- * globals.css, which collapses its duration — so the shape still communicates
- * "content is coming" without anything moving.
+ * Reduced motion disables the decorative pulse in globals.css. The settled
+ * shape still communicates "content is coming" without anything moving.
  *
  * Skeletons are `aria-hidden`: a screen reader should hear one "Loading"
  * status, not a dozen meaningless boxes. Callers pair a block of these with a

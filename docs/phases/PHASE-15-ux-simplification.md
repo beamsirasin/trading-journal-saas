@@ -202,7 +202,7 @@ new.
 ## 13. Trade Management placement
 
 Nested under **Trader Performance → Explore** (Analytics), distinct from Setup Adherence
-(§16). Direct relocation of `RuleSummary` (Rule Adherence rate + Followed/Violated/Not
+(§16). Direct relocation of `RuleSummary` (Rule Checks Followed rate + Followed/Violated/Not
 Checked/Not Applicable counts) and `MistakeFrequency` (ranked mistake list) — same
 `composeRuleAnalytics`/`composeMistakeAnalytics` outputs, new placement only. Customer-facing
 rename from "Rule Analytics"/"Most Frequent Mistakes" section labels to a single "Trade

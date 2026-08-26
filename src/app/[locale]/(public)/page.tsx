@@ -26,9 +26,9 @@ export async function generateMetadata({
   const t = await getTranslations({ locale: appLocale, namespace: 'metadata' });
 
   return {
-    // The root layout's template appends "· Trading OS". The home page owns
+    // The root layout's template appends "· TradeChemist". The home page owns
     // its whole title instead, because the template would otherwise produce
-    // "Trading OS · Trading OS".
+    // "TradeChemist · TradeChemist".
     title: { absolute: t('title') },
     description: t('description'),
     alternates: localizedAlternates(appLocale, '/'),

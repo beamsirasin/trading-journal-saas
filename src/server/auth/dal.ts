@@ -270,6 +270,13 @@ export interface CurrentUserPreferences {
 /** Canonical account preference read used by Settings and server-rendered date presentation. */
 export async function getCurrentUserPreferences(): Promise<CurrentUserPreferences> {
   const { user } = await requireSession();
+  return getUserPreferencesForResolvedUser(user.id);
+}
+
+/** Trusted post-authentication variant for route-level scope orchestration. */
+export async function getUserPreferencesForResolvedUser(
+  userId: string,
+): Promise<CurrentUserPreferences> {
   const db = getDb();
 
   const row = await db
@@ -279,14 +286,14 @@ export async function getCurrentUserPreferences(): Promise<CurrentUserPreference
       timezone: userPreferences.timezone,
     })
     .from(userPreferences)
-    .where(eq(userPreferences.userId, user.id))
+    .where(eq(userPreferences.userId, userId))
     .limit(1);
 
   const preferences = row[0];
   if (preferences === undefined) {
     // getActiveWorkspaceContext's repair path always creates this row
     // alongside the workspace; reaching here means that guarantee broke.
-    throw new Error(`getCurrentUserPreferences: no row found for user ${user.id}`);
+    throw new Error(`getCurrentUserPreferences: no row found for user ${userId}`);
   }
 
   return preferences;
@@ -322,6 +329,14 @@ export interface ActiveTradingAccountSummary {
  */
 export async function getActiveTradingAccount(): Promise<ActiveTradingAccountSummary | null> {
   const { userId, workspaceId } = await getActiveWorkspaceContext();
+  return getActiveTradingAccountForResolvedContext(userId, workspaceId);
+}
+
+/** Trusted post-authorization variant; preserves the same validation/repair path. */
+export async function getActiveTradingAccountForResolvedContext(
+  userId: string,
+  workspaceId: string,
+): Promise<ActiveTradingAccountSummary | null> {
   const db = getDb();
 
   const preferenceRow = await db

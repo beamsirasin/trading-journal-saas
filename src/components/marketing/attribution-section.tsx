@@ -28,7 +28,7 @@ import { Section, SectionIntro } from './section';
  * chart. That is analytics-page density on a marketing page. Trimmed to the
  * two figures that best make the pitch (Execution Gap, discipline score) and
  * the three comparison rows the Phase 1.1 brief names explicitly for this
- * exact module. Execution efficiency, total R and the closed-trade count
+ * exact module. System Edge Captured, total R and the closed-trade count
  * still exist — on `/app/analytics` and the real dashboard, not here.
  */
 export function AttributionSection() {

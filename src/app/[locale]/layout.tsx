@@ -5,6 +5,7 @@ import { Noto_Sans_Thai } from 'next/font/google';
 import { notFound } from 'next/navigation';
 
 import { resolveSiteUrl } from '@/config/site-url';
+import { ThemeBootstrap } from '@/components/theme/theme-bootstrap';
 import { ThemeProvider } from '@/components/theme/theme-provider';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { routing } from '@/i18n/routing';
@@ -101,11 +102,23 @@ export async function generateMetadata({
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  // Matches the palette so mobile browser chrome does not flash the wrong colour.
-  themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#070b14' },
-    { media: '(prefers-color-scheme: light)', color: '#f6f8fc' },
-  ],
+  /**
+   * The mobile browser's own chrome, matched to the app's shell chrome so the
+   * two do not meet at a visible seam.
+   *
+   * ONE value, not a `prefers-color-scheme` pair. It used to be a pair, from
+   * when the OS preference decided the theme; the product now defaults to dark
+   * and the OS gets no vote, so keying this off a media query would colour the
+   * browser bar by a signal the page itself ignores. `#0b0c0e` is
+   * `--shell-chrome`, which is the surface directly beneath this bar in BOTH
+   * themes — the header is deep in light mode too — so it is the right answer
+   * either way rather than a compromise.
+   *
+   * Both previous values were stale in any case: neither `#070b14` nor
+   * `#f6f8fc` has been a token since the shell polish pass replaced the
+   * navy-cast blacks with neutral ones.
+   */
+  themeColor: '#0b0c0e',
 };
 
 /**
@@ -137,6 +150,11 @@ export default async function LocaleLayout({
     // report as a mismatch it cannot reconcile.
     <html lang={locale} className={notoSansThai.variable} suppressHydrationWarning>
       <body className="min-h-dvh overflow-x-hidden antialiased">
+        {/* FIRST child of <body>, before anything React owns: a parser-blocking
+            inline script that normalises a legacy stored theme before
+            next-themes (rendered further down, inside ThemeProvider) reads it.
+            Server-rendered on purpose — see ThemeBootstrap. */}
+        <ThemeBootstrap />
         <NextIntlClientProvider>
           <ThemeProvider>{children}</ThemeProvider>
         </NextIntlClientProvider>

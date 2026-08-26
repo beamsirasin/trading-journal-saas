@@ -18,7 +18,7 @@ import { calcErr, calcOk, type CalcResult } from './types';
 /**
  * The minimal shape `isTraderEligible` needs. Trader metrics are eligible
  * when: execution `status` is `closed`; not soft-deleted (`deletedAt`);
- * `actualR` exists; `traderOutcome` exists. **System status does not
+ * `actualR`, `traderOutcome`, and the Actual `exitedAt` exist. **System status does not
  * matter** — a closed Trader Trade with `system_status = 'pending'` is
  * still fully eligible for Trader metrics (Phase 07D's locked eligibility
  * rule; Trader close and System resolution are independent lifecycles,
@@ -29,6 +29,7 @@ export interface TraderEligibleTradeInput {
   readonly deletedAt: Date | null;
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
+  readonly exitedAt: Date | string | null;
 }
 
 export function isTraderEligible(trade: TraderEligibleTradeInput): boolean {
@@ -36,7 +37,8 @@ export function isTraderEligible(trade: TraderEligibleTradeInput): boolean {
     trade.status === 'closed' &&
     trade.deletedAt === null &&
     trade.actualR !== null &&
-    trade.traderOutcome !== null
+    trade.traderOutcome !== null &&
+    trade.exitedAt !== null
   );
 }
 
@@ -50,7 +52,7 @@ export function selectTraderEligible<T extends TraderEligibleTradeInput>(
 /**
  * The minimal shape `isSystemEligible` needs. System metrics are eligible
  * only when `system_status = 'resolved'`, `systemR` exists, `systemOutcome`
- * exists, and the Trade is not soft-deleted. `pending` and `no_trade` are
+ * exists, `systemExitedAt` exists, and the Trade is not soft-deleted. `pending` and `no_trade` are
  * both excluded — neither is ever treated as a `0R` sample.
  */
 export interface SystemEligibleTradeInput {
@@ -58,6 +60,7 @@ export interface SystemEligibleTradeInput {
   readonly deletedAt: Date | null;
   readonly systemR: string | null;
   readonly systemOutcome: OutcomeValue | null;
+  readonly systemExitedAt: Date | string | null;
 }
 
 export function isSystemEligible(trade: SystemEligibleTradeInput): boolean {
@@ -65,7 +68,8 @@ export function isSystemEligible(trade: SystemEligibleTradeInput): boolean {
     trade.systemStatus === 'resolved' &&
     trade.deletedAt === null &&
     trade.systemR !== null &&
-    trade.systemOutcome !== null
+    trade.systemOutcome !== null &&
+    trade.systemExitedAt !== null
   );
 }
 
@@ -143,6 +147,28 @@ export function expectancyR(values: readonly string[]): CalcResult<string> {
 export interface OutcomeRecord {
   readonly r: string;
   readonly outcome: OutcomeValue;
+}
+
+export interface OutcomeCounts {
+  readonly wins: number;
+  readonly breakEvens: number;
+  readonly losses: number;
+}
+
+/**
+ * Canonical resolved-outcome counts. These use the persisted outcome snapshot,
+ * exactly like {@link winRate}; they never reclassify a Trade from its R sign.
+ */
+export function outcomeCounts(records: readonly OutcomeRecord[]): OutcomeCounts {
+  let wins = 0;
+  let breakEvens = 0;
+  let losses = 0;
+  for (const record of records) {
+    if (record.outcome === 'win') wins += 1;
+    else if (record.outcome === 'break_even') breakEvens += 1;
+    else if (record.outcome === 'loss') losses += 1;
+  }
+  return { wins, breakEvens, losses };
 }
 
 /**

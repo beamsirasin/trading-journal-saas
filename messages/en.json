@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "brandName": "Trading OS",
-    "title": "Trading OS — did the strategy fail, or did you?",
+    "brandName": "TradeChemist",
+    "title": "TradeChemist — did the strategy fail, or did you?",
     "description": "A trading journal that scores every trade twice: what the strategy would have produced, and what your execution actually produced."
   },
   "languageSwitcher": {
@@ -39,7 +39,11 @@
       "analytics": "System versus trader",
       "settings": "Profile and preferences"
     },
+    "drawerTitle": "Navigation",
     "drawerDescription": "Application sections.",
+    "preferences": "Preferences",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
     "account": {
       "menuLabel": "Account menu",
       "workspace": "Workspace",
@@ -75,13 +79,13 @@
       "risk": "Risk disclosure"
     },
     "soon": "Soon",
-    "disclaimer1": "Trading OS is a journaling and analytics tool. It does not provide financial advice, execute orders, or connect to a broker. Trading involves risk of loss, and past performance does not indicate future results.",
+    "disclaimer1": "TradeChemist is a journaling and analytics tool. It does not provide financial advice, execute orders, or connect to a broker. Trading involves risk of loss, and past performance does not indicate future results.",
     "disclaimer2": "Product in active development. Figures shown anywhere on this site are fictional demo data."
   },
   "hero": {
     "badge": "Attribution, not bookkeeping",
     "title": "Know whether it was the strategy or you.",
-    "description": "Most journals record what happened, so they can only ever show profit and loss. Trading OS records what <em>should</em> have happened too — then measures the distance between them.",
+    "description": "Most journals record what happened, so they can only ever show profit and loss. TradeChemist records what <em>should</em> have happened too — then measures the distance between them.",
     "ctaPrimary": "Sign up",
     "ctaDemo": "See the demo dashboard",
     "trialNote": "{trialDays}-day full-feature trial · no card required"
@@ -362,7 +366,7 @@
       },
       "comparableTrades": "Comparable Trades",
       "executionGap": "Execution Gap",
-      "executionEfficiency": "Execution Efficiency",
+      "systemEdgeCaptured": "System Edge Captured",
       "needsAttention": {
         "title": "Needs attention",
         "description": "A few things worth a look — not a task list.",
@@ -381,9 +385,14 @@
         "no_comparable_trades": "No comparable Trades",
         "system_has_no_edge": "No positive paired System edge",
         "no_rule_checks": "No evaluated Rule checks",
+        "no_evaluated_trades": "No fully evaluated Trades",
+        "no_trading_days": "No eligible trading days",
         "no_conditions_applicable": "No Trades with applicable Setup Conditions",
         "no_confidence_recorded": "No Trades with recorded Confidence",
-        "data_integrity_error": "Metric temporarily unavailable"
+        "data_integrity_error": "Metric temporarily unavailable",
+        "incomplete": "Incomplete monetary results",
+        "mixed_currency": "Mixed account currencies",
+        "unsupported_currency_scale": "Unsupported account currency"
       },
       "recent": {
         "title": "Recent Trades",
@@ -404,6 +413,72 @@
         "retry": "Reload Dashboard"
       },
       "loading": "Loading Dashboard performance and recent Trades"
+    },
+    "basicKpi": {
+      "regionLabel": "Key trading figures",
+      "infoTrigger": "About {metric}",
+      "empty": "No Trades yet",
+      "compositionTrades": "{wins}W · {breakEvens}BE · {losses}L",
+      "compositionDays": "{wins}W · {breakEvens}BE · {losses}L days",
+      "currencyContext": "{currency} · {count, plural, one {# Trade} other {# Trades}}",
+      "calculatedFromR": "Calculated from R",
+      "averages": "{win} / {loss}",
+      "netPnl": {
+        "label": "Net P&L",
+        "info": "Recorded Net P&L for eligible closed Trades. Unavailable when monetary results are incomplete or currencies are mixed."
+      },
+      "tradeWin": {
+        "label": "Trade Win %",
+        "info": "Winning Trades divided by all eligible closed Actual Trades. Break-even remains in the denominator."
+      },
+      "profitFactor": {
+        "label": "Profit Factor",
+        "info": "Positive Actual R divided by absolute negative Actual R. Calculated from R-multiples."
+      },
+      "dayWin": {
+        "label": "Day Win %",
+        "info": "Winning eligible trading days divided by all eligible trading days. Local days use the trading account's configured timezone. Break-even days remain in the denominator."
+      },
+      "avgWinLoss": {
+        "label": "Avg Win/Loss Trade",
+        "info": "Average winning R divided by absolute average losing R. Break-even Trades excluded."
+      }
+    },
+    "performance": {
+      "metrics": {
+        "winRate": "Win Rate",
+        "averageR": "Avg R",
+        "expectancyR": "Expectancy",
+        "profitFactor": "Profit Factor",
+        "maximumDrawdownR": "Max Drawdown",
+        "sampleCount": "Trades"
+      },
+      "system": {
+        "tagline": "Strategy outcomes",
+        "heroLabel": "System Total R",
+        "purpose": "What the Strategy rules would have produced when resolved.",
+        "definitions": {
+          "totalR": "Total R from eligible resolved System outcomes.",
+          "winRate": "Winning System outcomes divided by all eligible resolved System outcomes. Break-even stays in the denominator.",
+          "averageR": "Average System R per eligible System Trade.",
+          "expectancyR": "Canonical System expectancy, in R.",
+          "profitFactor": "Positive System R divided by absolute negative System R.",
+          "maximumDrawdownR": "Largest peak-to-trough decline in cumulative System R."
+        }
+      },
+      "trader": {
+        "tagline": "Your actual execution",
+        "heroLabel": "Actual Total R",
+        "purpose": "What your actual entries, management, exits and costs produced.",
+        "definitions": {
+          "totalR": "Total R from eligible closed Actual Trades.",
+          "winRate": "Winning Actual Trades divided by all eligible closed Actual Trades. Break-even stays in the denominator.",
+          "averageR": "Average Actual R per eligible closed Trade.",
+          "expectancyR": "Canonical Trader expectancy, in R.",
+          "profitFactor": "Positive Actual R divided by absolute negative Actual R.",
+          "maximumDrawdownR": "Largest peak-to-trough decline in cumulative Actual R."
+        }
+      }
     },
     "netPnl": "Net P&L",
     "netPnlHint": "After commission, fees and swap.",
@@ -453,6 +528,56 @@
       "description": "The three costliest habits, ranked by R.",
       "viewDetailedAnalytics": "View detailed analytics",
       "times": "{count, plural, one {# time} other {# times}}"
+    },
+    "executionGap": {
+      "title": "Execution Gap",
+      "description": "How much of the System's paired edge your execution captured, and how that difference developed.",
+      "infoTrigger": "About Execution Gap",
+      "help": "Execution Gap is Actual R minus System R, measured only on Trades where both the Actual and the System outcome are complete. Negative means you captured less R than the System offered; positive means you captured more. It is a measurement of execution against available System edge, not a verdict on you.",
+      "notAvailableShort": "n/a",
+      "summary": {
+        "totalGap": "Total Execution Gap",
+        "totalGapHint": "Actual R minus System R across paired Trades.",
+        "averageGap": "Average Execution Gap",
+        "systemEdgeCaptured": "System Edge Captured",
+        "pairedTrades": "Paired Trades"
+      },
+      "series": {
+        "system": "System",
+        "systemNote": "dashed",
+        "actual": "Actual",
+        "actualNote": "solid"
+      },
+      "chart": {
+        "cumulativeAriaLabel": "Cumulative paired System R against cumulative paired Actual R over time. The same figures are available in the table that follows.",
+        "cumulativeCaption": "Cumulative paired System R and cumulative paired Actual R by date. The vertical distance between the two lines is the cumulative Execution Gap.",
+        "dailyAriaLabel": "Execution Gap per day, centred on zero. The same figures are available in the table that follows.",
+        "tableCaption": "Paired System, Actual and Execution Gap by date",
+        "dateColumn": "Date",
+        "pairedColumn": "Paired Trades",
+        "cumulativeSystemColumn": "Cumulative System R",
+        "cumulativeActualColumn": "Cumulative Actual R",
+        "cumulativeGapColumn": "Cumulative Execution Gap R",
+        "dailyGapColumn": "Execution Gap R that day"
+      },
+      "daily": {
+        "title": "Execution Gap by day",
+        "gapRow": "Execution Gap"
+      },
+      "tooltip": {
+        "pairedThroughDate": "{count} paired Trades through this date",
+        "pairedOnDate": "{count} paired Trades this day"
+      },
+      "distribution": {
+        "underperformed": "Underperformed System",
+        "matched": "Matched System",
+        "outperformed": "Outperformed System"
+      },
+      "states": {
+        "emptyTitle": "No comparable Trades",
+        "emptyDescription": "A Trade joins this comparison only once it has both a completed Actual outcome and a resolved System outcome. Nothing in this range has both yet.",
+        "error": "This comparison could not be prepared from the stored figures. Nothing here is missing because of your Trades — the recorded data needs review."
+      }
     }
   },
   "trades": {
@@ -489,7 +614,10 @@
       "archived": "Archived",
       "notAssigned": "Not assigned"
     },
-    "direction": { "long": "Long", "short": "Short" },
+    "direction": {
+      "long": "Long",
+      "short": "Short"
+    },
     "status": {
       "execution": {
         "planned": "Needs details",
@@ -497,8 +625,16 @@
         "closed": "Closed",
         "canceled": "Canceled"
       },
-      "system": { "pending": "Pending", "resolved": "Resolved", "no_trade": "No trade" },
-      "outcome": { "win": "Win", "loss": "Loss", "break_even": "Break even" }
+      "system": {
+        "pending": "Pending",
+        "resolved": "Resolved",
+        "no_trade": "No trade"
+      },
+      "outcome": {
+        "win": "Win",
+        "loss": "Loss",
+        "break_even": "Break even"
+      }
     },
     "calendar": {
       "title": "Trading Calendar",
@@ -544,7 +680,11 @@
         "description": "Nothing was logged for the selected day. Clear the date to see the full Journal."
       }
     },
-    "views": { "label": "Trades view", "calendar": "Calendar", "log": "Trade Log" },
+    "views": {
+      "label": "Trades view",
+      "calendar": "Calendar",
+      "log": "Trade Log"
+    },
     "list": {
       "caption": "Trade journal",
       "title": "Trade Log",
@@ -677,8 +817,14 @@
         "rules": "Execution Rules",
         "mistakes": "Mistakes"
       },
-      "ruleGroups": { "strategy": "Strategy Rules", "setup": "Setup Rules" },
-      "conditions": { "met": "Met", "notMet": "Not met" },
+      "ruleGroups": {
+        "strategy": "Strategy Rules",
+        "setup": "Setup Rules"
+      },
+      "conditions": {
+        "met": "Met",
+        "notMet": "Not met"
+      },
       "overview": {
         "actual": "Actual",
         "system": "System",
@@ -836,7 +982,9 @@
         "costHint": "Enter System Cost R directly. System R is calculated by the server.",
         "correctionNoTradeWarning": "Saving will replace the resolved rule-based result with No trade. The actual execution remains unchanged."
       },
-      "rules": { "statusFor": "Rule status for {title}" },
+      "rules": {
+        "statusFor": "Rule status for {title}"
+      },
       "mistakes": {
         "type": "Mistake type",
         "select": "Choose a canonical mistake",
@@ -1079,7 +1227,11 @@
           "setup": "Setup",
           "context": "Entry Context"
         },
-        "outcome": { "win": "Win", "loss": "Loss", "breakEven": "Break Even" },
+        "outcome": {
+          "win": "Win",
+          "loss": "Loss",
+          "breakEven": "Break Even"
+        },
         "system": {
           "pending": "Review later",
           "target": "Target reached",
@@ -1150,7 +1302,11 @@
       "not_applicable": "Not applicable",
       "not_checked": "Not checked"
     },
-    "severity": { "minor": "Minor", "moderate": "Moderate", "severe": "Severe" },
+    "severity": {
+      "minor": "Minor",
+      "moderate": "Moderate",
+      "severe": "Severe"
+    },
     "systemResolutionKind": {
       "price_exit": "Price exit",
       "money_target": "Money-plan target",
@@ -1389,7 +1545,9 @@
         "archived": "Archived",
         "reset": "Reset filters"
       },
-      "scope": { "label": "Current analytics scope" },
+      "scope": {
+        "label": "Current analytics scope"
+      },
       "overview": {
         "explore": "Explore",
         "top": "Analytics Overview",
@@ -1537,7 +1695,7 @@
         "pairedActualTotal": "Actual Total R on comparable Trades",
         "averageExecutionGap": "Average Execution Gap",
         "executionGap": "Execution Gap (Total)",
-        "executionEfficiency": "Execution Efficiency",
+        "systemEdgeCaptured": "System Edge Captured",
         "help": "Execution Gap is Actual R minus System R on comparable Trades. Negative means the Trader captured less than the System; positive means the Trader outperformed the System. It is a measurement, not a cause or verdict."
       },
       "unavailable": {
@@ -1548,6 +1706,8 @@
         "no_comparable_trades": "No comparable Trades",
         "system_has_no_edge": "System total on comparable Trades is not positive",
         "no_rule_checks": "No evaluated Rule checks",
+        "no_evaluated_trades": "No fully evaluated Trades",
+        "no_trading_days": "No eligible trading days",
         "no_conditions_applicable": "No Trades with applicable Setup Conditions",
         "no_confidence_recorded": "No Trades with recorded Confidence",
         "data_integrity_error": "Metric temporarily unavailable"
@@ -1575,13 +1735,13 @@
       "rules": {
         "title": "Rule Analytics",
         "description": "Objective status counts from recorded Rule checks.",
-        "adherence": "Rule Adherence",
+        "checksFollowed": "Rule Checks Followed",
         "followed": "Followed",
         "violated": "Violated",
         "notChecked": "Not Checked",
         "notApplicable": "Not Applicable",
         "evaluated": "Evaluated Checks",
-        "help": "Adherence uses Followed and Violated checks only. Not Checked means unreviewed, not violated; Not Applicable is excluded."
+        "help": "Rule Checks Followed uses Followed and Violated checks only. Not Checked means unreviewed, not violated; Not Applicable is excluded. Trade-level Rule Adherence is a separate metric and is not shown here."
       },
       "setupQuality": {
         "title": "Setup Quality",
@@ -1600,11 +1760,11 @@
         "bucketAvgR": "Actual Avg R",
         "bucketWinRate": "Actual Win Rate",
         "bucket": {
+          "100": "100%",
           "0-24": "0–24%",
           "25-49": "25–49%",
           "50-74": "50–74%",
-          "75-99": "75–99%",
-          "100": "100%"
+          "75-99": "75–99%"
         },
         "help": "Average Setup Adherence weighs every Trade equally. Conditions Met Rate weighs every Condition equally — the two are deliberately distinct metrics, never interchangeable. Trades with no recorded or no configured Setup Conditions are excluded, never counted as 0%. Descriptive only — this does not imply that higher adherence causes better performance."
       },
@@ -1710,7 +1870,7 @@
     "completeOnboarding": "Complete onboarding",
     "appearance": {
       "title": "Appearance",
-      "description": "Choose how Trading OS looks on this browser and device.",
+      "description": "Choose how TradeChemist looks on this browser and device.",
       "theme": "Theme",
       "light": "Light",
       "lightHint": "Always light",

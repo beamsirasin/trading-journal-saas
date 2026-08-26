@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { parseDashboardFilterState } from '@/lib/dashboard/filters';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
   emotionTypes,
@@ -47,6 +48,7 @@ vi.mock('@/lib/auth/server', () => ({
 
 const { getAnalyticsPageData, getAnalyticsSnapshot, getDashboardOverview } =
   await import('./analytics');
+const { getDashboardPageData } = await import('./dashboard');
 const { getAnalyticsRawPopulations } = await import('../dal/analytics');
 
 const db = getTestDb();
@@ -111,6 +113,7 @@ async function createAccount(
   workspaceId: string,
   name: string,
   isArchived = false,
+  baseCurrency = 'USD',
 ): Promise<string> {
   const [row] = await db
     .insert(tradingAccounts)
@@ -118,7 +121,7 @@ async function createAccount(
       workspaceId,
       name,
       accountMode: 'demo',
-      baseCurrency: 'USD',
+      baseCurrency,
       startingBalance: '10000.0000000000',
       timezone: 'UTC',
       isArchived,
@@ -409,7 +412,7 @@ async function createFixture(): Promise<Fixture> {
   const userId = await createUser('analytics-service');
   const workspaceId = await createWorkspace(userId, 'analytics-service');
   const activeAccountId = await createAccount(workspaceId, 'Active Account');
-  const archivedAccountId = await createAccount(workspaceId, 'Archived Account', true);
+  const archivedAccountId = await createAccount(workspaceId, 'Archived Account', true, 'THB');
   const emptyAccountId = await createAccount(workspaceId, 'Empty Account');
   await db
     .update(userPreferences)
@@ -532,15 +535,20 @@ describe('analytics service (real PostgreSQL)', () => {
     });
     expect(result.data.trader.sampleCount).toBe(7);
     expect(result.data.system.sampleCount).toBe(6);
-    expect(result.data.comparison.comparableCount).toBe(5);
+    expect(result.data.traderNetPnl).toEqual({
+      status: 'available',
+      currency: 'USD',
+      totalMinor: '300',
+    });
+    expect(result.data.comparison.comparableCount).toBe(6);
     expect(result.data.trader.winRate).toEqual({ status: 'available', value: '0.7143' });
     expect(result.data.system.winRate).toEqual({ status: 'available', value: '0.5000' });
     expect(result.data.comparison).toMatchObject({
-      pairedSystemTotalR: { status: 'available', value: '2.0000' },
-      pairedActualTotalR: { status: 'available', value: '1.0000' },
+      pairedSystemTotalR: { status: 'available', value: '6.0000' },
+      pairedActualTotalR: { status: 'available', value: '5.0000' },
       executionGapR: { status: 'available', value: '-1.0000' },
-      averageExecutionGapR: { status: 'available', value: '-0.2000' },
-      executionEfficiency: { status: 'available', value: '0.5000' },
+      averageExecutionGapR: { status: 'available', value: '-0.1667' },
+      systemEdgeCaptured: { status: 'available', value: '0.8333' },
     });
     expect(result.data.rules).toEqual({
       followedCount: 8,
@@ -548,7 +556,13 @@ describe('analytics service (real PostgreSQL)', () => {
       notCheckedCount: 1,
       notApplicableCount: 1,
       evaluatedCount: 10,
-      adherenceRate: { status: 'available', value: '0.8000' },
+      checksFollowedRate: { status: 'available', value: '0.8000' },
+      tradeAdherenceRate: { status: 'unavailable', reason: 'no_evaluated_trades' },
+      evaluatedTradeCount: 0,
+      compliantTradeCount: 0,
+      nonCompliantTradeCount: 0,
+      incompleteTradeCount: 1,
+      notApplicableTradeCount: 0,
     });
     expect(result.data.mistakes.map((mistake) => mistake.tradeCount)).toEqual([2, 1]);
     expect(JSON.stringify(result.data)).not.toContain(fixture.deletedTradeId);
@@ -565,12 +579,18 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(all.data.trader.sampleCount).toBe(8);
     expect(all.data.system.sampleCount).toBe(8);
     expect(all.data.comparison.comparableCount).toBe(7);
+    expect(all.data.traderNetPnl).toEqual({ status: 'unavailable', reason: 'mixed_currency' });
 
     const archived = await getAnalyticsSnapshot(
       { datePreset: 'all', tradingAccountId: fixture.archivedAccountId },
       READ_OPTIONS,
     );
     if (!archived.ok) throw new Error(archived.code);
+    expect(archived.data.traderNetPnl).toEqual({
+      status: 'available',
+      currency: 'THB',
+      totalMinor: '100',
+    });
     expect(archived.data.scope.accountScope).toEqual({
       kind: 'account',
       accountId: fixture.archivedAccountId,
@@ -593,7 +613,7 @@ describe('analytics service (real PostgreSQL)', () => {
       if (!filtered.ok) throw new Error(filtered.code);
       expect(filtered.data.trader.sampleCount).toBe(6);
       expect(filtered.data.system.sampleCount).toBe(5);
-      expect(filtered.data.comparison.comparableCount).toBe(4);
+      expect(filtered.data.comparison.comparableCount).toBe(5);
     }
   });
 
@@ -811,6 +831,196 @@ describe('analytics service (real PostgreSQL)', () => {
     if (!invalidRange.ok) throw new Error(invalidRange.code);
     expect(invalidRange.data.overview.scope.datePreset).toBe('90d');
     expect(invalidRange.data.overview.trader.sampleCount).toBe(8);
+  });
+
+  it('D2 propagates explicit Account/date/Strategy/Setup scope into metrics and Recent Trades', async () => {
+    const fixture = await createFixture();
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.secondary,
+      actualR: '9.0000',
+      traderOutcome: 'win',
+      systemR: '9.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-04-01T10:00:00Z'),
+      systemExitedAt: new Date('2026-04-01T11:00:00Z'),
+    });
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: '30d',
+      strategy: fixture.secondary.strategyId,
+      setup: fixture.secondary.setupId,
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+    const result = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+
+    expect(result.data.scope).toMatchObject({
+      datePreset: '30d',
+      accountScope: {
+        kind: 'account',
+        accountId: fixture.activeAccountId,
+        source: 'explicit',
+      },
+      strategyId: fixture.secondary.strategyId,
+      setupId: fixture.secondary.setupId,
+    });
+    expect(result.data.trader.sampleCount).toBe(1);
+    expect(result.data.system.sampleCount).toBe(1);
+    expect(result.data.recentTrades).toMatchObject({
+      scope: 'dashboard_filters',
+      dateAxis: 'occurred_at',
+    });
+    expect(result.data.recentTrades.items).toHaveLength(1);
+    expect(result.data.recentTrades.items[0]).toMatchObject({
+      strategyName: 'Secondary',
+      setupName: 'Secondary Setup',
+      executionGapR: { status: 'available', value: '0.0000' },
+    });
+    expect(result.data.attention.scope).toBe('workspace_operational');
+  });
+
+  it('D2 keeps all-Account R available while propagating mixed-currency Money unavailability', async () => {
+    await createFixture();
+    const parsed = parseDashboardFilterState({ account: 'all', range: 'all', unit: 'money' });
+    if (!parsed.ok) throw new Error(parsed.code);
+    const result = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+
+    expect(result.data.account).toEqual({ kind: 'all' });
+    expect(result.data.trader.totalR.status).toBe('available');
+    expect(result.data.basic.netPnl).toEqual({
+      status: 'unavailable',
+      reason: 'mixed_currency',
+    });
+    expect(result.data.coverage.traderTradeCount).toBeGreaterThan(0);
+  });
+
+  /**
+   * D5A against real PostgreSQL. The point is not the arithmetic — that is
+   * covered exhaustively in `execution-comparison.test.ts` — but that the
+   * DAL's ORDER BY, its `exited_at`-only range gate, and the composer's own
+   * ordering agree end to end, and that the series reconciles with the
+   * summary the same read produced.
+   */
+  it('D5A composes a paired series ordered and bounded by Actual exit alone', async () => {
+    const fixture = await createFixture();
+    // Actual INSIDE the 30D window, System exit far outside it -> included,
+    // because Population C is anchored to the Actual exit and nothing else.
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.primary,
+      actualR: '1.0000',
+      traderOutcome: 'win',
+      systemR: '4.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-08-05T10:00:00Z'),
+      systemExitedAt: new Date('2019-01-01T10:00:00Z'),
+    });
+    // Actual OUTSIDE the window, System exit inside it -> excluded.
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.primary,
+      actualR: '7.0000',
+      traderOutcome: 'win',
+      systemR: '7.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-01-05T10:00:00Z'),
+      systemExitedAt: new Date('2026-08-06T10:00:00Z'),
+    });
+
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: '30d',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+    const result = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    const comparison = result.data.comparison;
+    expect(comparison.status).toBe('available');
+    if (comparison.status !== 'available') throw new Error('unreachable');
+
+    const inWindow = comparison.tradeSeries.find((point) => point.systemR === '4.0000');
+    expect(inWindow).toBeDefined();
+    expect(inWindow?.systemExitedAt).toBe('2019-01-01T10:00:00.000Z');
+    expect(comparison.tradeSeries.some((point) => point.actualR === '7.0000')).toBe(false);
+
+    // Ordering is Actual exit ASC, then Trade ID ASC — no exception.
+    const ordered = [...comparison.tradeSeries].sort((left, right) => {
+      const byInstant = new Date(left.exitedAt).getTime() - new Date(right.exitedAt).getTime();
+      return byInstant !== 0 ? byInstant : left.tradeId.localeCompare(right.tradeId);
+    });
+    expect(comparison.tradeSeries).toEqual(ordered);
+
+    // Every point holds the identity, and the last one IS the summary.
+    for (const point of comparison.tradeSeries) {
+      expect(Number(point.cumulativeExecutionGapR)).toBeCloseTo(
+        Number(point.cumulativeActualR) - Number(point.cumulativeSystemR),
+        10,
+      );
+    }
+    const last = comparison.tradeSeries.at(-1);
+    expect(comparison.summary.pairedSystemTotalR).toEqual({
+      status: 'available',
+      value: last?.cumulativeSystemR,
+    });
+    expect(comparison.summary.pairedActualTotalR).toEqual({
+      status: 'available',
+      value: last?.cumulativeActualR,
+    });
+    expect(comparison.summary.executionGapR).toEqual({
+      status: 'available',
+      value: last?.cumulativeExecutionGapR,
+    });
+    expect(comparison.summary.comparableCount).toBe(comparison.tradeSeries.length);
+    expect(
+      comparison.distribution.underperformedCount +
+        comparison.distribution.matchedCount +
+        comparison.distribution.outperformedCount,
+    ).toBe(comparison.summary.comparableCount);
+
+    // The daily rollup closes on exactly the same totals as the trade series.
+    const lastDaily = comparison.dailySeries.at(-1);
+    expect(lastDaily?.cumulativeSystemR).toBe(last?.cumulativeSystemR);
+    expect(lastDaily?.cumulativeActualR).toBe(last?.cumulativeActualR);
+    expect(lastDaily?.cumulativeExecutionGapR).toBe(last?.cumulativeExecutionGapR);
+    expect(comparison.dailySeries.reduce((total, point) => total + point.pairedTradeCount, 0)).toBe(
+      comparison.summary.comparableCount,
+    );
+  });
+
+  it('D5A reports an empty comparison, not an error, when nothing is paired', async () => {
+    const fixture = await createFixture();
+    // A Trader-complete Trade whose System side is still pending is
+    // Population A only, so this Account has a Trader total and no pairs.
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.emptyAccountId,
+      framework: fixture.primary,
+      systemStatus: 'pending',
+      actualR: '1.0000',
+      traderOutcome: 'win',
+      exitedAt: new Date('2026-08-05T10:00:00Z'),
+    });
+
+    const parsed = parseDashboardFilterState({
+      account: fixture.emptyAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+    const result = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    expect(result.data.trader.sampleCount).toBe(1);
+    expect(result.data.comparison.status).toBe('empty');
+    if (result.data.comparison.status !== 'empty') throw new Error('unreachable');
+    expect(result.data.comparison.reason).toBe('no_comparable_trades');
+    expect(result.data.availability.comparison).toBe('empty');
+    expect(result.data.comparison.summary.executionGapR).toEqual({
+      status: 'unavailable',
+      reason: 'no_comparable_trades',
+    });
   });
 
   it('refreshes Dashboard scope when the active Account changes and distinguishes no data', async () => {

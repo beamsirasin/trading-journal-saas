@@ -110,22 +110,38 @@ function DropdownMenuRadioGroup({
 function DropdownMenuRadioItem({
   className,
   children,
+  // PROJECT CUSTOMISATION. `'dot'` is the shadcn default: a leading bullet in
+  // a reserved 2rem gutter, for a vertical list of alternatives.
+  //
+  // `'none'` is for a radio group that shows its selection through its OWN
+  // appearance instead — a segmented control, where the selected segment is
+  // the filled one. The gutter and the bullet would both be wrong there: the
+  // gutter because segments sit side by side with no column to reserve, the
+  // bullet because it would state a second time what the fill already says.
+  // The ROLE is unchanged either way (`menuitemradio` + `aria-checked`), so
+  // this only ever affects what is drawn, never what is announced.
+  indicator = 'dot',
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & {
+  indicator?: 'dot' | 'none';
+}) {
   return (
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        "focus:bg-accent focus:text-accent-foreground relative flex min-h-11 cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "focus:bg-accent focus:text-accent-foreground relative flex min-h-11 cursor-default items-center gap-2 rounded-sm py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        indicator === 'dot' ? 'pr-2 pl-8' : 'px-2',
         className,
       )}
       {...props}
     >
-      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
-        </DropdownMenuPrimitive.ItemIndicator>
-      </span>
+      {indicator === 'dot' && (
+        <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+          <DropdownMenuPrimitive.ItemIndicator>
+            <CircleIcon className="size-2 fill-current" />
+          </DropdownMenuPrimitive.ItemIndicator>
+        </span>
+      )}
       {children}
     </DropdownMenuPrimitive.RadioItem>
   );
@@ -204,14 +220,22 @@ function DropdownMenuSubContent({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
-    <DropdownMenuPrimitive.SubContent
-      data-slot="dropdown-menu-sub-content"
-      className={cn(
-        'bg-popover text-popover-foreground shadow-popover z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-md border p-1',
-        className,
-      )}
-      {...props}
-    />
+    // PORTALLED, like `DropdownMenuContent` above — and for a reason that only
+    // shows up once a submenu is actually used. Rendered inline, this lands
+    // inside the parent content box, which carries `overflow-x-hidden
+    // overflow-y-auto` to keep long menus scrollable. A submenu opens BESIDE
+    // its parent, so that overflow clipped it: the items were in the DOM and
+    // reported as visible, but nothing could reach them with a pointer.
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        data-slot="dropdown-menu-sub-content"
+        className={cn(
+          'bg-popover text-popover-foreground shadow-popover z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-md border p-1',
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
   );
 }
 

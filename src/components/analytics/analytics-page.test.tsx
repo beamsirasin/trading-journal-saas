@@ -39,6 +39,7 @@ const equity = (
 function axis(sampleCount: number, total = '4.0000'): PerformanceAnalyticsModel {
   return {
     sampleCount,
+    outcomeCounts: { wins: sampleCount, breakEvens: 0, losses: 0 },
     totalR: available(total),
     averageR: available('1.3333'),
     expectancyR: available('1.3333'),
@@ -91,13 +92,24 @@ function snapshot(overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnapshot
     system: axis(2, '4.0000'),
     systemPendingCount: 0,
     trader: axis(3, '-1.0000'),
+    traderDayWin: {
+      status: 'available',
+      value: {
+        eligibleDayCount: 3,
+        winningDayCount: 2,
+        breakEvenDayCount: 0,
+        losingDayCount: 1,
+        rate: '0.6667',
+      },
+    },
+    traderNetPnl: { status: 'available', currency: 'USD', totalMinor: '-100' },
     comparison: {
       comparableCount: 2,
       pairedSystemTotalR: available('3.0000'),
       pairedActualTotalR: available('-1.0000'),
       executionGapR: available('-4.0000'),
       averageExecutionGapR: available('-2.0000'),
-      executionEfficiency: available('-0.3333'),
+      systemEdgeCaptured: available('-0.3333'),
     },
     rules: {
       followedCount: 3,
@@ -105,7 +117,13 @@ function snapshot(overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnapshot
       notCheckedCount: 2,
       notApplicableCount: 4,
       evaluatedCount: 4,
-      adherenceRate: available('0.7500'),
+      checksFollowedRate: available('0.7500'),
+      tradeAdherenceRate: available('0.5000'),
+      evaluatedTradeCount: 2,
+      compliantTradeCount: 1,
+      nonCompliantTradeCount: 1,
+      incompleteTradeCount: 1,
+      notApplicableTradeCount: 0,
     },
     mistakes: [
       { mistakeTypeId: 'm1', key: 'a', label: 'Chased entry', tradeCount: 3 },
@@ -406,7 +424,7 @@ describe('RealAnalyticsPage', () => {
           pairedActualTotalR: { status: 'unavailable', reason: 'no_comparable_trades' },
           executionGapR: { status: 'unavailable', reason: 'no_comparable_trades' },
           averageExecutionGapR: { status: 'unavailable', reason: 'no_comparable_trades' },
-          executionEfficiency: { status: 'unavailable', reason: 'no_comparable_trades' },
+          systemEdgeCaptured: { status: 'unavailable', reason: 'no_comparable_trades' },
         },
         rules: {
           followedCount: 0,
@@ -414,7 +432,13 @@ describe('RealAnalyticsPage', () => {
           notCheckedCount: 0,
           notApplicableCount: 0,
           evaluatedCount: 0,
-          adherenceRate: { status: 'unavailable', reason: 'no_rule_checks' },
+          checksFollowedRate: { status: 'unavailable', reason: 'no_rule_checks' },
+          tradeAdherenceRate: { status: 'unavailable', reason: 'no_evaluated_trades' },
+          evaluatedTradeCount: 0,
+          compliantTradeCount: 0,
+          nonCompliantTradeCount: 0,
+          incompleteTradeCount: 0,
+          notApplicableTradeCount: 0,
         },
         mistakes: [],
         setupAdherence: {

@@ -28,7 +28,14 @@ export async function MarketingHeader() {
   return (
     <header className="bg-background/85 border-border sticky top-0 z-40 border-b backdrop-blur-sm">
       <Container className="flex h-14 items-center gap-4">
-        <Brand href="/" />
+        {/*
+          `compact` for the same reason the app shell's header uses it: at
+          320px this row's wordmark, language, theme and menu controls total
+          more than the available width, and no 44px touch target may shrink
+          to make room. Needed here from the moment the wordmark became
+          "TradeChemist" — the shorter previous name happened to fit.
+        */}
+        <Brand href="/" compact />
 
         {/*
           `whitespace-nowrap` on each link: without it, "How it works" wraps

@@ -7,6 +7,7 @@ import {
   expectancyR,
   isSystemEligible,
   isTraderEligible,
+  outcomeCounts,
   payoffRatio,
   profitFactor,
   selectSystemEligible,
@@ -120,6 +121,19 @@ describe('winRate', () => {
   });
 });
 
+describe('outcomeCounts', () => {
+  it('exposes W / BE / L counts from persisted outcomes without reclassifying R', () => {
+    expect(
+      outcomeCounts([
+        outcome('-5', 'win'),
+        outcome('9', 'break_even'),
+        outcome('0', 'loss'),
+        outcome('1', 'win'),
+      ]),
+    ).toEqual({ wins: 2, breakEvens: 1, losses: 1 });
+  });
+});
+
 describe('averageWinR / averageLossR / payoffRatio', () => {
   it('averageWinR over multiple wins: +2R, +4R => +3R', () => {
     const records = [outcome('2', 'win'), outcome('4', 'win'), outcome('-1', 'loss')];
@@ -211,6 +225,7 @@ describe('isTraderEligible / selectTraderEligible', () => {
     deletedAt: null,
     actualR: '2.0000',
     traderOutcome: 'win' as const,
+    exitedAt: new Date('2026-08-01T00:00:00Z'),
   };
 
   it('eligible when closed, not deleted, actualR and traderOutcome present — regardless of system status', () => {
@@ -232,6 +247,10 @@ describe('isTraderEligible / selectTraderEligible', () => {
     expect(isTraderEligible({ ...base, traderOutcome: null })).toBe(false);
   });
 
+  it('ineligible without an Actual exit timestamp', () => {
+    expect(isTraderEligible({ ...base, exitedAt: null })).toBe(false);
+  });
+
   it('selectTraderEligible filters an array to only the eligible subset', () => {
     const trades = [
       { ...base },
@@ -248,6 +267,7 @@ describe('isSystemEligible / selectSystemEligible', () => {
     deletedAt: null,
     systemR: '3.0000',
     systemOutcome: 'win' as const,
+    systemExitedAt: new Date('2026-08-01T00:00:00Z'),
   };
 
   it('eligible only when system_status is resolved', () => {
@@ -267,6 +287,10 @@ describe('isSystemEligible / selectSystemEligible', () => {
 
   it('ineligible when soft-deleted', () => {
     expect(isSystemEligible({ ...base, deletedAt: new Date() })).toBe(false);
+  });
+
+  it('ineligible without a System exit timestamp', () => {
+    expect(isSystemEligible({ ...base, systemExitedAt: null })).toBe(false);
   });
 
   it('selectSystemEligible filters an array to only the eligible subset', () => {

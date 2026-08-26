@@ -1,0 +1,202 @@
+{
+  "01-desktop-1440-dark-populated": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "status": "available",
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 769
+    },
+    "sectionScrollWidth": 1310,
+    "sectionClientWidth": 1310,
+    "totalGap": "-13.80R",
+    "averageGap": "-0.22R",
+    "systemEdgeCaptured": "61.45%",
+    "pairedTrades": "64",
+    "distribution": ["Underperformed System45", "Matched System2", "Outperformed System17"],
+    "finalTableRow": ["16 Aug", "1", "+35.80R", "+22.00R", "-13.80R", "+0.10R"],
+    "dailyRowCount": 64
+  },
+  "02-desktop-1440-light-populated": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "status": "available",
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 769
+    },
+    "sectionScrollWidth": 1310,
+    "sectionClientWidth": 1310,
+    "totalGap": "-13.80R",
+    "averageGap": "-0.22R",
+    "systemEdgeCaptured": "61.45%",
+    "pairedTrades": "64",
+    "distribution": ["Underperformed System45", "Matched System2", "Outperformed System17"],
+    "finalTableRow": ["16 Aug", "1", "+35.80R", "+22.00R", "-13.80R", "+0.10R"],
+    "dailyRowCount": 64
+  },
+  "03-desktop-1920-dark-populated": {
+    "viewport": {
+      "w": 1920,
+      "h": 1080
+    },
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920
+    },
+    "status": "available",
+    "section": {
+      "x": 96,
+      "w": 1792,
+      "h": 769
+    },
+    "sectionScrollWidth": 1790,
+    "sectionClientWidth": 1790,
+    "totalGap": "-13.80R",
+    "averageGap": "-0.22R",
+    "systemEdgeCaptured": "61.45%",
+    "pairedTrades": "64",
+    "distribution": ["Underperformed System45", "Matched System2", "Outperformed System17"],
+    "finalTableRow": ["16 Aug", "1", "+35.80R", "+22.00R", "-13.80R", "+0.10R"],
+    "dailyRowCount": 64
+  },
+  "04-desktop-1440-dark-empty": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "status": "empty",
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 271
+    },
+    "sectionScrollWidth": 1310,
+    "sectionClientWidth": 1310,
+    "totalGap": "No comparable Trades",
+    "averageGap": "No comparable Trades",
+    "systemEdgeCaptured": "No comparable Trades",
+    "pairedTrades": "0",
+    "distribution": [],
+    "finalTableRow": [],
+    "dailyRowCount": 0
+  },
+  "05-desktop-1440-light-empty": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "status": "empty",
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 271
+    },
+    "sectionScrollWidth": 1310,
+    "sectionClientWidth": 1310,
+    "totalGap": "No comparable Trades",
+    "averageGap": "No comparable Trades",
+    "systemEdgeCaptured": "No comparable Trades",
+    "pairedTrades": "0",
+    "distribution": [],
+    "finalTableRow": [],
+    "dailyRowCount": 0
+  },
+  "06-mobile-390-dark-populated": {
+    "viewport": {
+      "w": 390,
+      "h": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "status": "available",
+    "section": {
+      "x": 16,
+      "w": 358,
+      "h": 860
+    },
+    "sectionScrollWidth": 356,
+    "sectionClientWidth": 356,
+    "totalGap": "-13.80R",
+    "averageGap": "-0.22R",
+    "systemEdgeCaptured": "61.45%",
+    "pairedTrades": "64",
+    "distribution": ["Underperformed System45", "Matched System2", "Outperformed System17"],
+    "finalTableRow": ["16 Aug", "1", "+35.80R", "+22.00R", "-13.80R", "+0.10R"],
+    "dailyRowCount": 64
+  },
+  "07-mobile-390-light-populated": {
+    "viewport": {
+      "w": 390,
+      "h": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "status": "available",
+    "section": {
+      "x": 16,
+      "w": 358,
+      "h": 860
+    },
+    "sectionScrollWidth": 356,
+    "sectionClientWidth": 356,
+    "totalGap": "-13.80R",
+    "averageGap": "-0.22R",
+    "systemEdgeCaptured": "61.45%",
+    "pairedTrades": "64",
+    "distribution": ["Underperformed System45", "Matched System2", "Outperformed System17"],
+    "finalTableRow": ["16 Aug", "1", "+35.80R", "+22.00R", "-13.80R", "+0.10R"],
+    "dailyRowCount": 64
+  },
+  "08-mobile-320-dark-populated": {
+    "viewport": {
+      "w": 320,
+      "h": 800
+    },
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320
+    },
+    "status": "available",
+    "section": {
+      "x": 16,
+      "w": 288,
+      "h": 967
+    },
+    "sectionScrollWidth": 286,
+    "sectionClientWidth": 286,
+    "totalGap": "-13.80R",
+    "averageGap": "-0.22R",
+    "systemEdgeCaptured": "61.45%",
+    "pairedTrades": "64",
+    "distribution": ["Underperformed System45", "Matched System2", "Outperformed System17"],
+    "finalTableRow": ["16 Aug", "1", "+35.80R", "+22.00R", "-13.80R", "+0.10R"],
+    "dailyRowCount": 64
+  }
+}

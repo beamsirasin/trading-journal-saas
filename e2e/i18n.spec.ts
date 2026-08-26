@@ -12,14 +12,25 @@ import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
  * > `en` fallback (see `src/i18n/routing.ts` — `locales: ['en', 'th']`,
  * `defaultLocale: 'en'`, `localePrefix: 'always'`).
  *
- * The switcher itself (`src/components/shell/language-switcher.tsx`) is an
- * icon-only button whose accessible name is `${label}: ${currentLanguage}`
- * ("Language: English" / "ภาษา: ไทย" — never a flag), opening a Radix
- * dropdown with "English" / "ไทย" items. It renders in the public header,
- * the app shell header, both mobile drawers, and the settings page — always
- * visible, with no responsive hiding, so `page.getByRole('banner')` reliably
- * scopes to the one instance that is always mounted (the drawer's copy only
- * exists in the DOM once its Sheet is open).
+ * The switcher itself (`src/components/shell/language-switcher.tsx`) opens a
+ * Radix dropdown with "English" / "ไทย" items — never a flag. It has two
+ * presentations: an icon-only button whose accessible name is
+ * `${label}: ${currentLanguage}` ("Language: English" / "ภาษา: ไทย"), and a
+ * labelled row whose visible "Language" + current value ARE its accessible
+ * name. Both match `/language|ภาษา/i`.
+ *
+ * WHERE it renders split in the shell-polish pass, and `languageTrigger`
+ * below depends on that:
+ *
+ *   PUBLIC routes  — a standing icon button in the marketing header, at any
+ *                    width. `page.getByRole('banner')` scopes to it reliably.
+ *   APP routes     — inside the ACCOUNT MENU, as a submenu, at every width.
+ *                    There is no language control in the app header at all
+ *                    any more, so `languageTrigger` does not apply there and
+ *                    the `/app*` cases use `openAppLanguageSubmenu` instead.
+ *
+ * That is also why the `/app*` cases no longer need to pin a desktop
+ * viewport to find the control: one home, same interaction, every width.
  *
  * A handful of tests below also touch `/app*` routes, which Phase 02 made
  * real, database-verified pages — those use the authenticated storage state
@@ -31,6 +42,24 @@ test.use({ storageState: authStateFile });
 
 const languageTrigger = (page: Page) =>
   page.getByRole('banner').getByRole('button', { name: /language|ภาษา/i });
+
+/**
+ * The APP shell's language control: an inline segmented row inside the
+ * account menu, which is the same path at every viewport width.
+ *
+ * It used to be a SUBMENU, so this helper used to open a second surface
+ * before the locales became reachable. They are on screen as soon as the
+ * account menu is — one step, not two — which is the whole reason the
+ * submenu went away.
+ */
+async function chooseAppLanguage(page: Page, locale: 'English' | 'ไทย') {
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await page
+    .getByRole('menu')
+    .getByRole('group', { name: /language|ภาษา/i })
+    .getByRole('menuitemradio', { name: locale })
+    .click();
+}
 
 test.describe('locale rendering', () => {
   // Pinned to a desktop size regardless of project: the site nav this test
@@ -168,10 +197,26 @@ test.describe('language switcher', () => {
 
   test('switching locale preserves the current route', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    // No viewport pinning any more: the account menu carries this control at
+    // every width, so the same steps work on both projects.
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/en/app/trades');
 
-    await languageTrigger(page).click();
-    await page.getByRole('menuitem', { name: 'ไทย' }).click();
+    await chooseAppLanguage(page, 'ไทย');
+
+    await expect(page).toHaveURL(/\/th\/app\/trades$/);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+  });
+
+  test('switching locale from a phone preserves the current route', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    // The mobile counterpart of the test above. It is deliberately the SAME
+    // interaction now: the control left the drawer for the account menu, so a
+    // phone and a desktop reach it by exactly the same path.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/en/app/trades');
+
+    await chooseAppLanguage(page, 'ไทย');
 
     await expect(page).toHaveURL(/\/th\/app\/trades$/);
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
@@ -181,10 +226,10 @@ test.describe('language switcher', () => {
     page,
   }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/en/app/trades?account=acc-live&range=30d');
 
-    await languageTrigger(page).click();
-    await page.getByRole('menuitem', { name: 'ไทย' }).click();
+    await chooseAppLanguage(page, 'ไทย');
 
     await expect(page).toHaveURL(/\/th\/app\/trades\?account=acc-live&range=30d$/);
   });
@@ -326,7 +371,7 @@ test.describe('localized metadata', () => {
   test('localizes the app overview title', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
-    await expect(page).toHaveTitle(/^ภาพรวม · Trading OS$/);
+    await expect(page).toHaveTitle(/^ภาพรวม · TradeChemist$/);
   });
 });
 

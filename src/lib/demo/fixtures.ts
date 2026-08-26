@@ -225,7 +225,7 @@ const BUNDLE_ALL: DemoBundle = {
     systemMaxDrawdownR: '4.2',
     actualMaxDrawdownR: '4.9',
     executionGapR: '-27.9',
-    executionEfficiencyPct: '26.2',
+    systemEdgeCapturedPct: '26.2',
     disciplineScore: '68',
   },
   equityCurve: [
@@ -288,7 +288,7 @@ const BUNDLE_90D: DemoBundle = {
     systemMaxDrawdownR: '3.6',
     actualMaxDrawdownR: '3.8',
     executionGapR: '-19.3',
-    executionEfficiencyPct: '26.9',
+    systemEdgeCapturedPct: '26.9',
     disciplineScore: '71',
   },
   equityCurve: [
@@ -340,7 +340,7 @@ const BUNDLE_30D: DemoBundle = {
     systemMaxDrawdownR: '2.4',
     actualMaxDrawdownR: '2.6',
     executionGapR: '-8.4',
-    executionEfficiencyPct: '25.0',
+    systemEdgeCapturedPct: '25.0',
     disciplineScore: '74',
   },
   equityCurve: [

@@ -50,7 +50,48 @@ describe('EmptyTradingDashboard', () => {
     renderDashboard();
     expect(screen.getByText('Live', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('USD', { exact: true })).toBeInTheDocument();
-    expect(screen.getByText('10000 USD')).toBeInTheDocument();
+    expect(screen.getByText('$10,000.00')).toBeInTheDocument();
+  });
+
+  /**
+   * The stored column is `NUMERIC(20, 10)`, so the value that actually
+   * arrives from the database carries ten decimal places. Rendering it raw is
+   * what this asserts against; the fixture above uses the shorter `'10000'`
+   * and would pass either way.
+   */
+  it('formats the stored NUMERIC scale rather than printing it raw', () => {
+    renderDashboard({ ...ACCOUNT, startingBalance: '10000.0000000000' });
+    expect(screen.getByText('$10,000.00')).toBeInTheDocument();
+    expect(screen.queryByText(/10000\.0000000000/)).not.toBeInTheDocument();
+  });
+
+  it('keeps a non-registry crypto ticker readable and truthful', () => {
+    renderDashboard({
+      ...ACCOUNT,
+      baseCurrency: 'BTC',
+      startingBalance: '2.5000000000',
+    });
+    expect(screen.getByText('2.5 BTC')).toBeInTheDocument();
+  });
+
+  /**
+   * D4.5 §2. The account bar is context, so it is one compact row on desktop
+   * rather than the 173px card it used to be — but "compact" must never mean
+   * "fewer facts", which is what this asserts alongside the geometry.
+   */
+  it('states every account fact on one labelled desktop row', () => {
+    const { container } = renderDashboard();
+    const region = screen.getByRole('region', { name: 'Active trading account summary' });
+    expect(region.className).toContain('sm:flex-row');
+    expect(region.className).toContain('sm:items-center');
+    // The old three-across grid is what spread three facts over the full page.
+    expect(region.className).not.toContain('sm:grid-cols-3');
+    expect(container.querySelector('[data-dashboard-region="account-context"]')).toBe(region);
+
+    for (const label of ['Your active trading account', 'Account mode', 'Base currency']) {
+      expect(within(region).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(region).getByText('Starting balance')).toBeInTheDocument();
   });
 
   it('shows the honest no-trades explanation', () => {

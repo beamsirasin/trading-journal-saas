@@ -98,19 +98,17 @@ Measured text contrast on the surfaces where each token is used, in both themes:
 
 ## 3. Theming
 
-Precedence, highest priority last:
+Dark is the product default. The only user-selectable modes are **Dark** and
+**Light**; OS/System preference is deliberately not a product mode.
 
-1. **Explicit user choice** — `localStorage`, applied by next-themes as `.light` / `.dark`
-2. **OS preference** — `prefers-color-scheme`, resolved by `enableSystem`
-3. **Documented fallback** — dark, from `:root`
+An explicit choice is persisted in `localStorage` and applied as `.dark` or
+`.light`. A legacy persisted `system` value is migrated to Dark before paint,
+so older preferences cannot restore OS-driven behavior or cause a theme flash.
+`color-scheme` follows the resolved class so native controls and scrollbars
+match.
 
-Implemented without `!important`: the media-query block is guarded by `:root:not(.dark):not(.light)`, so an explicit class stops it matching. `color-scheme` is set alongside the palette so native controls and scrollbars match.
-
-Two controls write the same value: the header `ThemeToggle` (quick change) and the settings `ThemeSelector` (shows what the current setting _is_, which one icon button cannot express). Both offer **Light / Dark / System** — "System" is a distinct choice, not a third state of a switch.
-
-No flash of the wrong theme: next-themes injects a blocking script that sets the class before first paint, which requires `suppressHydrationWarning` on `<html>`. Verified by e2e, including with JavaScript disabled.
-
-> **The dark fallback is not separately observable in a browser.** The CSS spec dropped `prefers-color-scheme: no-preference`, so Chromium reports `light` when the user has expressed nothing. The `:root` dark values therefore apply exactly when no class is set and the OS does not ask for light — indistinguishable from honouring a dark preference. An OS light preference still wins over the dark-first identity: ignoring an accessibility preference to enforce a brand identity is the worse failure, and the toggle gives a one-click persistent override.
+The header `ThemeToggle` and settings `ThemeSelector` write the same two-value
+contract. Neither control offers System.
 
 ## 4. Typography
 
@@ -139,18 +137,22 @@ Thai pages retain the same sizes and hierarchy but override the display, title, 
 
 ## 5. Spacing and layout
 
-| Concern         | Convention                                                        |
-| --------------- | ----------------------------------------------------------------- |
-| Page width      | `Container` — `default` 72rem, `wide` 100rem, `prose` 48rem       |
-| Page gutters    | `px-4` → `sm:px-6` → `lg:px-8`                                    |
-| Section spacing | `py-16` → `sm:py-20` → `lg:py-24`                                 |
-| Card padding    | `p-4` → `sm:p-5`; `p-5` → `sm:p-6` for prominent panels           |
-| Grid gaps       | `gap-4` for cards, `gap-6`–`gap-8` for major regions              |
-| Sidebar width   | `--shell-sidebar-width` (15rem), desktop only                     |
-| Header height   | `--shell-header-height` (3.5rem), sticky on both shells           |
-| Safe area       | `pb-safe` / `px-safe` utilities where content meets a device edge |
+| Concern         | Convention                                                                   |
+| --------------- | ---------------------------------------------------------------------------- |
+| Page width      | `Container` — `default` 72rem, `wide` 100rem, `canvas` 120rem, `prose` 48rem |
+| Page gutters    | `px-4` → `sm:px-6` → `lg:px-8`                                               |
+| Section spacing | `py-16` → `sm:py-20` → `lg:py-24`                                            |
+| Card padding    | `p-4` → `sm:p-5`; `p-5` → `sm:p-6` for prominent panels                      |
+| Grid gaps       | `gap-4` for cards, `gap-6`–`gap-8` for major regions                         |
+| Sidebar width   | `--shell-sidebar-width` (15rem), desktop only                                |
+| Header height   | `--shell-header-height` (3.5rem), sticky on both shells                      |
+| Safe area       | `pb-safe` / `px-safe` utilities where content meets a device edge            |
 
 The shell's geometry lives in CSS variables rather than repeated `top-14` / `w-60` utilities, so the sticky offset and the sidebar width are each one decision.
+
+`canvas` is the Dashboard's width and only the Dashboard's. `wide` leaves a 1728/1920-class monitor with roughly 128px of dead margin on each side of the workspace; the higher ceiling hands those pixels back without changing the gutters, and starts doing any clipping at all only on a genuine ultrawide. Widening the other analytics surfaces is a separate decision, taken separately.
+
+**Dense data surfaces set their own vertical rhythm.** A `gap-6`–`gap-8` between every region reads as generous on a marketing page and as wasteful on a page whose job is figures. The Dashboard steps its margins up with the weight of the boundary instead — 20px into the KPI band, 24px into Needs Attention, 28px into the analytical sections, 32px before the record list — so hierarchy comes from contrast between boundaries rather than from one large gap repeated.
 
 ## 6. Responsive
 

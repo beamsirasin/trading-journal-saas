@@ -46,9 +46,7 @@ test.describe('route protection and session authorization', () => {
     await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible();
   });
 
-  test('an authenticated user reaches the app and sees their own identity and workspace', async ({
-    page,
-  }) => {
+  test('an authenticated user reaches the app and sees their own identity', async ({ page }) => {
     await loginAs(page, E2E_USER_A);
 
     await page.getByRole('button', { name: 'Account menu' }).click();
@@ -59,7 +57,12 @@ test.describe('route protection and session authorization', () => {
     const menu = page.getByRole('menu');
     await expect(menu.getByText(E2E_USER_A.name)).toBeVisible();
     await expect(menu.getByText(E2E_USER_A.email)).toBeVisible();
-    await expect(menu.getByText('Personal workspace')).toBeVisible();
+
+    // The workspace block that used to sit under a "WORKSPACE" heading here is
+    // gone: the account switcher beside this trigger already states the active
+    // context, and the menu's job is the IDENTITY — which is what this case is
+    // actually about, and what still has to be the signed-in user's own.
+    await expect(menu.getByText('Workspace', { exact: true })).toHaveCount(0);
   });
 
   test('a fabricated session cookie grants nothing', async ({ page, context }) => {

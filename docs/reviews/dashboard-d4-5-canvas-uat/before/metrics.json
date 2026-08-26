@@ -1,0 +1,578 @@
+{
+  "01-desktop-1440-dark": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "mainX": 64,
+    "mainW": 1376,
+    "container": {
+      "x": 64,
+      "w": 1376,
+      "padLeft": "32px",
+      "padRight": "32px",
+      "maxWidth": "1600px",
+      "innerW": 1312
+    },
+    "h1": {
+      "x": 96,
+      "y": 89,
+      "w": 141,
+      "h": 37
+    },
+    "account": {
+      "x": 96,
+      "y": 189,
+      "w": 1312,
+      "h": 173
+    },
+    "kpi": {
+      "x": 96,
+      "y": 393,
+      "w": 250,
+      "h": 146
+    },
+    "attention": {
+      "x": 96,
+      "y": 571,
+      "w": 1312,
+      "h": 243
+    },
+    "system": {
+      "x": 96,
+      "y": 938,
+      "w": 648,
+      "h": 384
+    },
+    "trader": {
+      "x": 760,
+      "y": 938,
+      "w": 648,
+      "h": 384
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 32,
+      "attentionToPerformance": 124
+    },
+    "foldBottomOfPerformance": 422,
+    "documentHeight": 2213
+  },
+  "02-desktop-1440-light": {
+    "viewport": {
+      "w": 1440,
+      "h": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "mainX": 64,
+    "mainW": 1376,
+    "container": {
+      "x": 64,
+      "w": 1376,
+      "padLeft": "32px",
+      "padRight": "32px",
+      "maxWidth": "1600px",
+      "innerW": 1312
+    },
+    "h1": {
+      "x": 96,
+      "y": 89,
+      "w": 141,
+      "h": 37
+    },
+    "account": {
+      "x": 96,
+      "y": 189,
+      "w": 1312,
+      "h": 173
+    },
+    "kpi": {
+      "x": 96,
+      "y": 393,
+      "w": 250,
+      "h": 146
+    },
+    "attention": {
+      "x": 96,
+      "y": 571,
+      "w": 1312,
+      "h": 243
+    },
+    "system": {
+      "x": 96,
+      "y": 938,
+      "w": 648,
+      "h": 384
+    },
+    "trader": {
+      "x": 760,
+      "y": 938,
+      "w": 648,
+      "h": 384
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 32,
+      "attentionToPerformance": 124
+    },
+    "foldBottomOfPerformance": 422,
+    "documentHeight": 2213
+  },
+  "03-desktop-1920-dark": {
+    "viewport": {
+      "w": 1920,
+      "h": 1080
+    },
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920
+    },
+    "mainX": 64,
+    "mainW": 1856,
+    "container": {
+      "x": 192,
+      "w": 1600,
+      "padLeft": "32px",
+      "padRight": "32px",
+      "maxWidth": "1600px",
+      "innerW": 1536
+    },
+    "h1": {
+      "x": 224,
+      "y": 89,
+      "w": 141,
+      "h": 37
+    },
+    "account": {
+      "x": 224,
+      "y": 189,
+      "w": 1536,
+      "h": 173
+    },
+    "kpi": {
+      "x": 224,
+      "y": 393,
+      "w": 294,
+      "h": 146
+    },
+    "attention": {
+      "x": 224,
+      "y": 571,
+      "w": 1536,
+      "h": 243
+    },
+    "system": {
+      "x": 224,
+      "y": 938,
+      "w": 760,
+      "h": 384
+    },
+    "trader": {
+      "x": 1000,
+      "y": 938,
+      "w": 760,
+      "h": 384
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 32,
+      "attentionToPerformance": 124
+    },
+    "foldBottomOfPerformance": 242,
+    "documentHeight": 2213
+  },
+  "04-desktop-1920-light": {
+    "viewport": {
+      "w": 1920,
+      "h": 1080
+    },
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920
+    },
+    "mainX": 64,
+    "mainW": 1856,
+    "container": {
+      "x": 192,
+      "w": 1600,
+      "padLeft": "32px",
+      "padRight": "32px",
+      "maxWidth": "1600px",
+      "innerW": 1536
+    },
+    "h1": {
+      "x": 224,
+      "y": 89,
+      "w": 141,
+      "h": 37
+    },
+    "account": {
+      "x": 224,
+      "y": 189,
+      "w": 1536,
+      "h": 173
+    },
+    "kpi": {
+      "x": 224,
+      "y": 393,
+      "w": 294,
+      "h": 146
+    },
+    "attention": {
+      "x": 224,
+      "y": 571,
+      "w": 1536,
+      "h": 243
+    },
+    "system": {
+      "x": 224,
+      "y": 938,
+      "w": 760,
+      "h": 384
+    },
+    "trader": {
+      "x": 1000,
+      "y": 938,
+      "w": 760,
+      "h": 384
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 32,
+      "attentionToPerformance": 124
+    },
+    "foldBottomOfPerformance": 242,
+    "documentHeight": 2213
+  },
+  "05-desktop-1280-dark": {
+    "viewport": {
+      "w": 1280,
+      "h": 800
+    },
+    "overflow": {
+      "scrollWidth": 1280,
+      "clientWidth": 1280
+    },
+    "mainX": 64,
+    "mainW": 1216,
+    "container": {
+      "x": 64,
+      "w": 1216,
+      "padLeft": "32px",
+      "padRight": "32px",
+      "maxWidth": "1600px",
+      "innerW": 1152
+    },
+    "h1": {
+      "x": 96,
+      "y": 89,
+      "w": 141,
+      "h": 37
+    },
+    "account": {
+      "x": 96,
+      "y": 189,
+      "w": 1152,
+      "h": 173
+    },
+    "kpi": {
+      "x": 96,
+      "y": 393,
+      "w": 218,
+      "h": 146
+    },
+    "attention": {
+      "x": 96,
+      "y": 571,
+      "w": 1152,
+      "h": 243
+    },
+    "system": {
+      "x": 96,
+      "y": 938,
+      "w": 568,
+      "h": 384
+    },
+    "trader": {
+      "x": 680,
+      "y": 938,
+      "w": 568,
+      "h": 384
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 32,
+      "attentionToPerformance": 124
+    },
+    "foldBottomOfPerformance": 522,
+    "documentHeight": 2232
+  },
+  "06-tablet-768-dark": {
+    "viewport": {
+      "w": 768,
+      "h": 1024
+    },
+    "overflow": {
+      "scrollWidth": 768,
+      "clientWidth": 768
+    },
+    "mainX": 0,
+    "mainW": 768,
+    "container": {
+      "x": 0,
+      "w": 768,
+      "padLeft": "24px",
+      "padRight": "24px",
+      "maxWidth": "1600px",
+      "innerW": 720
+    },
+    "h1": {
+      "x": 24,
+      "y": 93,
+      "w": 133,
+      "h": 35
+    },
+    "account": {
+      "x": 24,
+      "y": 190,
+      "w": 720,
+      "h": 173
+    },
+    "kpi": {
+      "x": 24,
+      "y": 395,
+      "w": 229,
+      "h": 146
+    },
+    "attention": {
+      "x": 24,
+      "y": 735,
+      "w": 720,
+      "h": 317
+    },
+    "system": {
+      "x": 24,
+      "y": 1220,
+      "w": 720,
+      "h": 384
+    },
+    "trader": {
+      "x": 24,
+      "y": 1620,
+      "w": 720,
+      "h": 384
+    },
+    "gaps": {
+      "headerToAccount": 62,
+      "accountToKpi": 32,
+      "kpiToAttention": 194,
+      "attentionToPerformance": 168
+    },
+    "foldBottomOfPerformance": 580,
+    "documentHeight": 2914
+  },
+  "07-mobile-390-dark": {
+    "viewport": {
+      "w": 390,
+      "h": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "mainX": 0,
+    "mainW": 390,
+    "container": {
+      "x": 0,
+      "w": 390,
+      "padLeft": "16px",
+      "padRight": "16px",
+      "maxWidth": "1600px",
+      "innerW": 358
+    },
+    "h1": {
+      "x": 16,
+      "y": 93,
+      "w": 115,
+      "h": 30
+    },
+    "account": {
+      "x": 16,
+      "y": 186,
+      "w": 358,
+      "h": 297
+    },
+    "kpi": {
+      "x": 16,
+      "y": 514,
+      "w": 173,
+      "h": 138
+    },
+    "attention": {
+      "x": 16,
+      "y": 984,
+      "w": 358,
+      "h": 402
+    },
+    "system": {
+      "x": 16,
+      "y": 1604,
+      "w": 358,
+      "h": 448
+    },
+    "trader": {
+      "x": 16,
+      "y": 2068,
+      "w": 358,
+      "h": 448
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 332,
+      "attentionToPerformance": 218
+    },
+    "foldBottomOfPerformance": 1208,
+    "documentHeight": 4145
+  },
+  "08-mobile-390-light": {
+    "viewport": {
+      "w": 390,
+      "h": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "mainX": 0,
+    "mainW": 390,
+    "container": {
+      "x": 0,
+      "w": 390,
+      "padLeft": "16px",
+      "padRight": "16px",
+      "maxWidth": "1600px",
+      "innerW": 358
+    },
+    "h1": {
+      "x": 16,
+      "y": 93,
+      "w": 115,
+      "h": 30
+    },
+    "account": {
+      "x": 16,
+      "y": 186,
+      "w": 358,
+      "h": 297
+    },
+    "kpi": {
+      "x": 16,
+      "y": 514,
+      "w": 173,
+      "h": 138
+    },
+    "attention": {
+      "x": 16,
+      "y": 984,
+      "w": 358,
+      "h": 402
+    },
+    "system": {
+      "x": 16,
+      "y": 1604,
+      "w": 358,
+      "h": 448
+    },
+    "trader": {
+      "x": 16,
+      "y": 2068,
+      "w": 358,
+      "h": 448
+    },
+    "gaps": {
+      "headerToAccount": 63,
+      "accountToKpi": 31,
+      "kpiToAttention": 332,
+      "attentionToPerformance": 218
+    },
+    "foldBottomOfPerformance": 1208,
+    "documentHeight": 4145
+  },
+  "09-mobile-320-dark": {
+    "viewport": {
+      "w": 320,
+      "h": 800
+    },
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320
+    },
+    "mainX": 0,
+    "mainW": 320,
+    "container": {
+      "x": 0,
+      "w": 320,
+      "padLeft": "16px",
+      "padRight": "16px",
+      "maxWidth": "1600px",
+      "innerW": 288
+    },
+    "h1": {
+      "x": 16,
+      "y": 93,
+      "w": 115,
+      "h": 30
+    },
+    "account": {
+      "x": 16,
+      "y": 208,
+      "w": 288,
+      "h": 297
+    },
+    "kpi": {
+      "x": 16,
+      "y": 537,
+      "w": 138,
+      "h": 143
+    },
+    "attention": {
+      "x": 16,
+      "y": 1037,
+      "w": 288,
+      "h": 402
+    },
+    "system": {
+      "x": 16,
+      "y": 1657,
+      "w": 288,
+      "h": 448
+    },
+    "trader": {
+      "x": 16,
+      "y": 2121,
+      "w": 288,
+      "h": 448
+    },
+    "gaps": {
+      "headerToAccount": 85,
+      "accountToKpi": 32,
+      "kpiToAttention": 357,
+      "attentionToPerformance": 218
+    },
+    "foldBottomOfPerformance": 1305,
+    "documentHeight": 4260
+  }
+}

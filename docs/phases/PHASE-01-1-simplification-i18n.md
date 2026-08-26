@@ -17,12 +17,12 @@ Simplifying a component and localizing it both require rewriting the component's
 The dashboard now answers "what is happening right now"; `/app/analytics` answers "why". Concretely, `DemoDashboard` (rendered identically on `/demo` and `/app`, unchanged from Phase 01) changed from eight top-level KPI cards and four comparison rows to:
 
 - **Exactly four headline KPI cards**: Net P&L, Actual Win Rate, Actual Average R, Discipline Score.
-- **A single "System vs trader" module** showing only Win Rate, Average R and Expectancy comparisons, with Edge Leakage folded into one insight sentence rather than its own card, and a "View detailed analytics" link to `/app/analytics`.
+- **A single "System vs trader" module** showing only Win Rate, Average R and Expectancy comparisons, with Execution Gap folded into one insight sentence rather than its own card, and a "View detailed analytics" link to `/app/analytics`.
 - **Exactly one chart** — Cumulative R. No second, competing chart.
 - **Common mistakes reduced to the top three by cost**, each showing name, frequency and R-impact, with its own link to the full breakdown.
 - **Recent trades unchanged** — the dual table/card presentation from Phase 01 was already correct for this.
 
-System Expectancy, Actual Expectancy, Profit Factor, Max Drawdown and Execution Efficiency did not disappear — they moved to `/app/analytics`, which keeps the full metric set Phase 01 already built, now under section headings (`System against actual`, `Cumulative R`, `Mistake cost`) rather than a single undifferentiated grid.
+System Expectancy, Actual Expectancy, Profit Factor, Max Drawdown and System Edge Captured did not disappear — they moved to `/app/analytics`, which keeps the full metric set Phase 01 already built, now under section headings (`System against actual`, `Cumulative R`, `Mistake cost`) rather than a single undifferentiated grid.
 
 Enforced directly by `src/components/dashboard/demo-dashboard.test.tsx`: exactly 4 `[data-kpi]` cards, exactly 1 `<figure>`, the moved metrics do not appear as `data-kpi` cards, the mistakes list renders exactly 3 items, and both the analytics-detail links resolve to `/app/analytics`.
 
@@ -32,7 +32,7 @@ One idea per section, in argument order: problem → why system/trader separatio
 
 - **Hero**: unchanged shape (one badge, one headline, one description, two CTAs, one trial note, one product preview) — Phase 01 had already reduced it to this; Phase 1.1 confirmed no regression and translated it.
 - **Product preview**: the three-stat grid above the chart (system total R / actual total R / edge leakage) is gone. One chart plus one summary sentence carries the message.
-- **Attribution section**: four mini KPI cards and four comparison rows reduced to two KPI cards (Edge Leakage, Discipline Score) and the three comparison rows the phase brief names (Win Rate, Average R, Expectancy) — the same trim applied to the dashboard, applied here for the same reason.
+- **Attribution section**: four mini KPI cards and four comparison rows reduced to two KPI cards (Execution Gap, Discipline Score) and the three comparison rows the phase brief names (Win Rate, Average R, Expectancy) — the same trim applied to the dashboard, applied here for the same reason.
 - **Features**: six features reduced to four (fast manual journal, strategy playbooks, system-vs-trader analytics, discipline/mistake tracking), with responsiveness and TradingView links demoted to one supporting sentence rather than their own cards.
 - **Pricing**: unchanged structurally from Phase 01 (three plans, provisional limits, no live payment) — copy simplified and translated.
 
@@ -47,7 +47,7 @@ Full architecture, URL strategy, and rationale in [ADR 0007](../decisions/0007-i
 - **Localized metadata**: every page emits a locale-prefixed, route-specific canonical URL, matching English/Thai hreflang alternatives, and valid `en_US`/`th_TH` Open Graph locale values through `src/i18n/metadata.ts`.
 - **Typography**: `Noto Sans Thai` replaces the Phase 01 "no web font" system stack, and Thai heading/label roles use script-appropriate line heights with no Latin-style tracking — see ADR 0007 Decision 4.
 - **Number/date/currency**: money formatting is unchanged and deliberately locale-independent (ADR 0007 Decision 5); date formatting reads the active locale and pins the Gregorian calendar explicitly, because `th` defaults to the Buddhist calendar under ICU otherwise.
-- **Terminology**: governed by the [localization glossary](../localization-glossary.md) — which technical terms stay in English inside Thai copy (Average R, Expectancy, Edge Leakage, TradingView, R, symbol names, currency codes, plan names) and which translate cleanly (System, Trader, Win Rate, Discipline Score).
+- **Terminology**: governed by the [localization glossary](../localization-glossary.md) — which technical terms stay in English inside Thai copy (Average R, Expectancy, Execution Gap, System Edge Captured, TradingView, R, symbol names, currency codes, plan names) and which translate cleanly (System, Trader, Win Rate, Discipline Score).
 - **Translation coverage**: every visible string on every public route and every mock app route, including nav, footer, empty states, table headers, filters, a11y labels, and the `not-found`/error/loading boundaries for the `(app)` group. `global-error.tsx` is the sole deliberate exception — see its inline comment; it stays hardcoded English because it is the fallback for when the locale layout itself fails to render, and a translation lookup inside that boundary could compound the original failure.
 - **User-authored-like demo fixture content stays untranslated** — trade symbols, strategy names, demo account nicknames, and the standalone `STRATEGIES` fixture on `/app/strategies` are treated like real user content. Fixed product taxonomy such as mistake labels is localized.
 

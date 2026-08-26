@@ -44,6 +44,7 @@ vi.mock('@/lib/auth/server', () => ({
 }));
 
 const {
+  DASHBOARD_MAJOR_PROJECTION_COUNT,
   getAnalyticsFilterOptions,
   getConditionAnalyticsRecords,
   getConditionSystemAnalyticsRecords,
@@ -51,6 +52,7 @@ const {
   getConfidenceSystemAnalyticsRecords,
   getEmotionAnalyticsRecords,
   getEmotionSystemAnalyticsRecords,
+  getDashboardRawData,
   getMistakeAnalyticsRecords,
   getPairedAnalyticsRecords,
   getRuleAnalyticsRecords,
@@ -622,7 +624,7 @@ describe('analytics DAL (real PostgreSQL)', () => {
     );
   });
 
-  it('selects exact same-Trade pairs and requires both bounded timestamps', async () => {
+  it('anchors bounded pairs to Actual exit while retaining System exit as metadata', async () => {
     const fixture = await createFixture();
     const result = await getPairedAnalyticsRecords({}, READ_OPTIONS);
     if (!result.ok) throw new Error(result.code);
@@ -634,8 +636,91 @@ describe('analytics DAL (real PostgreSQL)', () => {
           row.actualExitedAt === '2026-08-01T12:00:00.000Z' &&
           row.systemExitedAt === '2026-04-01T12:00:00.000Z',
       ),
-    ).toBe(false);
-    expect(result.data.every((row) => row.actualR !== '' && row.systemR !== '')).toBe(true);
+    ).toBe(true);
+    expect(
+      result.data.every(
+        (row) =>
+          row.status === 'closed' &&
+          row.deletedAt === null &&
+          row.actualR !== '' &&
+          row.traderOutcome !== null &&
+          row.actualExitedAt !== '' &&
+          row.systemStatus === 'resolved' &&
+          row.systemR !== '' &&
+          row.systemOutcome !== null &&
+          row.systemExitedAt !== '',
+      ),
+    ).toBe(true);
+  });
+
+  it('includes Actual-in/System-out, excludes Actual-out/System-in, and orders timestamp ties by Trade ID', async () => {
+    const fixture = await createFixture();
+    const actualInSystemOut = await createTradeRow(
+      fixture.workspaceId,
+      fixture.activeAccountId,
+      fixture.framework,
+      {
+        exitedAt: new Date('2026-08-06T10:00:00Z'),
+        systemExitedAt: new Date('2026-04-01T11:00:00Z'),
+      },
+    );
+    const actualOutSystemIn = await createTradeRow(
+      fixture.workspaceId,
+      fixture.activeAccountId,
+      fixture.framework,
+      {
+        exitedAt: new Date('2026-04-01T10:00:00Z'),
+        systemExitedAt: new Date('2026-08-06T11:00:00Z'),
+      },
+    );
+    const tiedAt = new Date('2026-08-09T10:00:00Z');
+    const tiedIds = await Promise.all([
+      createTradeRow(fixture.workspaceId, fixture.activeAccountId, fixture.framework, {
+        exitedAt: tiedAt,
+        systemExitedAt: new Date('2026-08-09T11:00:00Z'),
+      }),
+      createTradeRow(fixture.workspaceId, fixture.activeAccountId, fixture.framework, {
+        exitedAt: tiedAt,
+        systemExitedAt: new Date('2026-03-09T11:00:00Z'),
+      }),
+    ]);
+
+    const result = await getPairedAnalyticsRecords({}, READ_OPTIONS);
+    if (!result.ok) throw new Error(result.code);
+    const ids = result.data.map((row) => row.tradeId);
+    expect(ids).toContain(actualInSystemOut);
+    expect(ids).not.toContain(actualOutSystemIn);
+    expect(ids.filter((id) => tiedIds.includes(id))).toEqual([...tiedIds].sort());
+  });
+
+  it('D2 narrow Dashboard bundle preserves canonical A/B/C rows without deep projections', async () => {
+    await createFixture();
+    const [dashboard, trader, system, paired] = await Promise.all([
+      getDashboardRawData({}, READ_OPTIONS),
+      getTraderAnalyticsRecords({}, READ_OPTIONS),
+      getSystemAnalyticsRecords({}, READ_OPTIONS),
+      getPairedAnalyticsRecords({}, READ_OPTIONS),
+    ]);
+    if (!dashboard.ok) throw new Error(dashboard.code);
+    if (!trader.ok) throw new Error(trader.code);
+    if (!system.ok) throw new Error(system.code);
+    if (!paired.ok) throw new Error(paired.code);
+
+    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(5);
+    expect(dashboard.data.trader.map((row) => row.tradeId)).toEqual(
+      trader.data.map((row) => row.tradeId),
+    );
+    expect(dashboard.data.system.map((row) => row.tradeId)).toEqual(
+      system.data.map((row) => row.tradeId),
+    );
+    expect(dashboard.data.paired.map((row) => row.tradeId)).toEqual(
+      paired.data.map((row) => row.tradeId),
+    );
+    expect(dashboard.data).not.toHaveProperty('rules');
+    expect(dashboard.data).not.toHaveProperty('mistakes');
+    expect(dashboard.data).not.toHaveProperty('conditions');
+    expect(dashboard.data).not.toHaveProperty('confidence');
+    expect(dashboard.data).not.toHaveProperty('emotions');
   });
 
   it('retains all four Rule statuses on the closed-Trader axis without exposing Rule row IDs', async () => {

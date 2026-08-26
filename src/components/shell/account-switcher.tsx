@@ -77,10 +77,20 @@ export function AccountSwitcher({
           — even with its name/mode text already hidden — was enough on its
           own to push the header wider than the viewport.
         */}
+        {/*
+          NO BORDER. This used to be a bordered pill filled with `bg-muted/50`,
+          which was the source of the stray light edge in the header: the
+          header rebinds the semantic colour tokens to its own dark palette,
+          but `--muted` was not among them, so the fill resolved to the PAGE's
+          near-white muted and was painted at 50% over a dark navy bar. The
+          token is rebound now, and this control drops the outline entirely in
+          favour of a soft `secondary` chip — one shape, no ring, no hairline,
+          no competing edge next to the account menu beside it.
+        */}
         <Button
           variant="ghost"
           size="icon"
-          className="sm:border-border sm:bg-muted/50 size-11 gap-2 sm:h-11 sm:w-auto sm:justify-start sm:border sm:px-2.5"
+          className="sm:bg-secondary/60 sm:hover:bg-secondary size-11 gap-2 rounded-md sm:h-11 sm:w-auto sm:justify-start sm:px-2.5"
           aria-label={t('menuLabel')}
         >
           <Wallet className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />

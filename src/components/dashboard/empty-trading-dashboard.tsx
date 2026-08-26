@@ -1,8 +1,11 @@
 import { Rocket } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { formatStartingBalance } from '@/lib/trading-accounts/presentation';
+import { cn } from '@/lib/utils';
 import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MetricLabel } from '@/components/product/metric';
+import { Card, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
 /**
@@ -35,19 +38,50 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
   );
 }
 
+/**
+ * CONTEXT, NOT A WIDGET.
+ *
+ * This says which account the figures below belong to. Through D4 it said so
+ * in a 173px-tall card whose three facts were spread across the full page
+ * width by a `sm:grid-cols-3` — taller than a Basic KPI card, and the most
+ * visually prominent thing above the fold, for information nobody reads
+ * twice. D4.5 compresses it to a single ~74px bar: identity on the left,
+ * the three facts as a right-aligned cluster that stays clustered however
+ * wide the canvas gets.
+ *
+ * Nothing was dropped to get there. Name, subtitle, mode, base currency and
+ * starting balance are all still present and still labelled; only their
+ * geometry and type scale changed. The account name stays a heading so the
+ * labelled region still has a findable title.
+ *
+ * Below `sm` the bar becomes a stack, which is the one place this may take
+ * more than one line.
+ */
 export function ActiveTradingAccountSummaryCard({
   account,
+  className,
 }: {
   account: ActiveTradingAccountSummary;
+  className?: string;
 }) {
   const t = useTranslations('dashboard');
   return (
-    <Card role="region" aria-label={t('activeAccountRegionLabel')}>
-      <CardHeader>
-        <CardTitle>{account.name}</CardTitle>
-        <CardDescription>{t('activeAccountSubtitle')}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-5 sm:grid-cols-3">
+    <Card
+      role="region"
+      aria-label={t('activeAccountRegionLabel')}
+      data-dashboard-region="account-context"
+      className={cn(
+        'flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5',
+        className,
+      )}
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-muted-foreground text-xs leading-4">
+          {t('activeAccountSubtitle')}
+        </span>
+        <CardTitle className="truncate leading-6">{account.name}</CardTitle>
+      </div>
+      <dl className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 sm:gap-x-8">
         <SummaryStat
           label={t('accountModeLabel')}
           value={t(`accountModeValues.${account.accountMode}`)}
@@ -55,18 +89,20 @@ export function ActiveTradingAccountSummaryCard({
         <SummaryStat label={t('baseCurrencyLabel')} value={account.baseCurrency} />
         <SummaryStat
           label={t('startingBalanceLabel')}
-          value={`${account.startingBalance} ${account.baseCurrency}`}
+          value={formatStartingBalance(account.startingBalance, account.baseCurrency)}
         />
-      </CardContent>
+      </dl>
     </Card>
   );
 }
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-muted-foreground text-xs font-medium">{label}</span>
-      <span className="text-foreground text-lg font-semibold">{value}</span>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt>
+        <MetricLabel>{label}</MetricLabel>
+      </dt>
+      <dd className="text-foreground truncate text-sm leading-5 font-semibold">{value}</dd>
     </div>
   );
 }

@@ -43,6 +43,51 @@
   /* Product tokens — trading domain. */
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+
+  /*
+   * Shell surfaces — TWO, because the shell is a header plus one sidebar:
+   *
+   *   --shell-chrome   the global header, and on mobile the drawer that hangs
+   *                    off it. A cool NEUTRAL near-black, and deliberately the
+   *                    SAME value in both themes: the application always sits
+   *                    inside the same quiet frame rather than bleeding into
+   *                    the page. It used to be a branded navy in light mode,
+   *                    which read as "blue product bar" rather than as the
+   *                    deep frame a trading tool wants — and on mobile, where
+   *                    the drawer shares this surface, painted half the screen
+   *                    navy. It carries its own foreground/muted/accent/border
+   *                    set, plus a nav and ring set for the drawer, because it
+   *                    inverts against the light page. See the
+   *                    `[data-shell-chrome]` scope further down.
+   *
+   *   --sidebar        the DESKTOP sidebar. ONE flat surface across its whole
+   *                    width. The mobile drawer renders from this same token,
+   *                    but inside the chrome scope, where it resolves to the
+   *                    chrome surface instead.
+   *
+   * SINGLE SURFACE. There used to be a third token painting the icon column a
+   * different shade from the labels beside it, so the sidebar read as two
+   * panels bolted together rather than as one component. The icon column is
+   * still a fixed column — that is what keeps the icons from moving when the
+   * panel opens — but it is now a LAYOUT fact only, with nothing drawn to
+   * announce it.
+   *
+   * Reading order:
+   *
+   *   light   sidebar  <  workspace  <  card       (header: dark, inverted)
+   *   dark    workspace  <  sidebar  <  card       (header: deepest)
+   *
+   * The orders differ deliberately. In light the sidebar is the more tinted
+   * surface and the content is the brightest; in dark the page is the darkest
+   * and both the sidebar and the cards lift away from it.
+   */
+  --color-shell-chrome: var(--shell-chrome);
+  --color-shell-chrome-foreground: var(--shell-chrome-foreground);
+  --color-shell-chrome-muted: var(--shell-chrome-muted);
+  --color-shell-chrome-accent: var(--shell-chrome-accent);
+  --color-shell-chrome-border: var(--shell-chrome-border);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-border: var(--sidebar-border);
   --color-brand: var(--brand);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
@@ -116,6 +161,27 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /*
+   * Motion vocabulary. Normal-mode values preserve the existing product
+   * timings exactly; the reduced-motion media query below rebinds the same
+   * semantic tokens instead of overriding every element with `!important`.
+   *
+   * `--default-transition-*` is Tailwind's default transition contract, so
+   * ordinary colour/opacity feedback follows the feedback token without each
+   * button, field and row needing its own media-query class.
+   */
+  --motion-feedback-duration: 150ms;
+  --motion-overlay-duration: 180ms;
+  --motion-surface-enter-duration: 240ms;
+  --motion-surface-exit-duration: 180ms;
+  --motion-menu-enter-duration: 180ms;
+  --motion-menu-exit-duration: 120ms;
+  --motion-decorative-duration: 500ms;
+  --motion-ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --motion-ease-reduced: cubic-bezier(0.2, 0, 0, 1);
+  --default-transition-duration: var(--motion-feedback-duration);
+
+  /*
    * Typography scale. Roles, not sizes — a call site asks for `text-display`
    * or `text-metric`, so changing what a role looks like is one edit here
    * rather than a hunt through components.
@@ -158,9 +224,84 @@
    * Layout rhythm. The shell reads these so the sticky header offset and the
    * sidebar width are one decision rather than a magic number repeated in a
    * dozen `top-14` / `w-60` utilities.
+   *
+   * The mobile header is deliberately TALLER than the desktop one rather than
+   * the usual reverse. Desktop chrome should recede — it competes with a wide
+   * analytics workspace for attention. On a phone the same bar is the only
+   * persistent navigation affordance on screen and every control in it is a
+   * touch target, so it earns the extra height instead of being the desktop
+   * bar compressed.
+   *
+   * DESKTOP NAVIGATION IS TWO LAYERS, not one panel that resizes. An earlier
+   * pass had a single 72px rail that stretched to 240px; that made the whole
+   * spine morph, which is precisely what the reference does not do. The rail
+   * is now a fixed spine and the secondary panel is a separate width that
+   * reveals beside it.
+   *
+   * --shell-rail-width            the PERMANENT primary rail. 3rem (48px),
+   *                               and identical in both states — the rail's
+   *                               x-position and width never change, so its
+   *                               icons never move. Each nav row's icon cell
+   *                               is exactly this wide with NO container
+   *                               padding, which is what puts every glyph on
+   *                               the rail's centre line. Change one and you
+   *                               must change the other.
+   *
+   * --shell-secondary-nav-width   the labelled panel that reveals to the
+   *                               RIGHT of the rail. 10rem (160px), giving a
+   *                               208px total footprint when open. Measured
+   *                               off the reference at ~150px/~200px total;
+   *                               160 is the deliberate extra, because Thai
+   *                               route labels set wider than English and a
+   *                               clipped label is worse than 8px.
    */
   --shell-header-height: 3.5rem;
-  --shell-sidebar-width: 15rem;
+  --shell-header-height-mobile: 3.75rem;
+  --shell-rail-width: 4rem;
+  --shell-secondary-nav-width: 10rem;
+
+  /* The open footprint, named once so the workspace offset and the panel's
+     own width cannot disagree. */
+  --shell-nav-open-width: calc(var(--shell-rail-width) + var(--shell-secondary-nav-width));
+
+  /*
+   * Shell collapse/expand easing. Symmetric ease-in-out: the panel gathers
+   * pace, spends the middle of its time in the middle of its journey, and
+   * eases into rest. That symmetry is the point — the sidebar drives real
+   * layout, so opening and closing must read as one physical panel pushed in
+   * opposite directions rather than as two different effects.
+   *
+   * Deliberately NOT a heavy decelerate. This started as
+   * `cubic-bezier(0.2, 0, 0, 1)`, which was measurably correct — the panel
+   * really did travel, flush with the workspace, for the full duration — and
+   * still looked like a snap, because that curve spends its visible budget
+   * almost entirely up front: 61% of the distance was gone by 25% of the
+   * time, 88% by half. The eye only ever caught the tail. Measured at equal
+   * fractions of time, this curve travels 14% / 50% / 86% instead, so the
+   * movement is legible across the whole 220ms.
+   *
+   * Also deliberately NOT a spring: anything that overshoots would drag the
+   * entire workspace past its resting position and back.
+   *
+   * `--ease-*` is Tailwind v4's easing namespace. The runtime alias below is
+   * what lets reduced mode rebind the curve without Tailwind inlining it.
+   */
+  --ease-shell: cubic-bezier(0.4, 0, 0.6, 1);
+  --shell-motion-easing: var(--ease-shell);
+
+  /*
+   * How long every shell surface takes to travel: the desktop sidebar's
+   * transform, the workspace offset that has to stay flush against it, and
+   * the mobile drawer plus its backdrop.
+   *
+   * ONE token, because these four are not four decisions — they are one
+   * movement seen from four places. The sidebar and the workspace in
+   * particular must share it exactly: a panel translated by -x% has its right
+   * edge x% of the way out, so the offset only tracks the panel's edge while
+   * both run on the same clock. Two literals that happened to agree today
+   * would be one careless edit away from tearing a gap between them.
+   */
+  --shell-motion-duration: 220ms;
 }
 
 /*
@@ -195,13 +336,20 @@ html[lang='th'] .text-label {
 }
 
 /*
- * Theme precedence (docs/design-system.md §3):
- *   1. explicit user choice  -> .light / .dark set by next-themes
- *   2. OS preference         -> the prefers-color-scheme block below
- *   3. documented fallback   -> :root, which is DARK
+ * Theme precedence — TWO STATES, NO "SYSTEM".
  *
- * The :not() guards are what make this work without !important: when an
- * explicit class is present the OS block stops matching entirely.
+ *   1. explicit user choice  -> .light / .dark, set by next-themes
+ *   2. product default       -> :root, which is DARK
+ *
+ * There is deliberately no `prefers-color-scheme` block any more. The product
+ * used to offer a System mode that deferred to the OS, and this file carried
+ * the CSS half of it: a full light palette guarded by
+ * `:root:not(.dark):not(.light)`. That mode has been removed, so the block
+ * would now only fire for a visitor with JavaScript disabled — handing them a
+ * light theme the product no longer offers, and one no control on the page
+ * could take them back out of. Dark is the default at every layer instead:
+ * the `:root` values below, the pre-paint script, and next-themes'
+ * `defaultTheme`. See `ThemeProvider`.
  */
 
 /* 3. Fallback — dark. Also what the server renders before the theme script runs. */
@@ -210,28 +358,30 @@ html[lang='th'] .text-label {
 
   color-scheme: dark;
 
-  --background: #070b14;
-  --foreground: #e8edf7;
-  --card: #0d1424;
-  --card-foreground: #e8edf7;
-  --popover: #141d33;
-  --popover-foreground: #e8edf7;
+  --background: #0f0f11;
+  --foreground: #ececef;
+  --card: #18181c;
+  --card-foreground: #ececef;
+  --popover: #1e1e23;
+  --popover-foreground: #ececef;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --secondary: #141d33;
-  --secondary-foreground: #e8edf7;
-  --muted: #141d33;
-  --muted-foreground: #93a4c0;
-  --accent: #1a2540;
-  --accent-foreground: #e8edf7;
-  --destructive: #e11d48;
+  --secondary: #1e1e23;
+  --secondary-foreground: #ececef;
+  --muted: #1e1e23;
+  --muted-foreground: #a0a0a9;
+  --accent: #26262c;
+  --accent-foreground: #ececef;
+  --destructive: #f2607f;
   --destructive-foreground: #ffffff;
-  --border: #1e2a45;
-  --input: #1e2a45;
-  --ring: #38bdf8;
+  --border: #2a2a31;
+  --input: #2a2a31;
+  --ring: #60a5fa;
 
-  --surface: #0a1020;
-  --surface-raised: #141d33;
+  --surface: #101013;
+  --surface-raised: #1e1e23;
+  --sidebar: #151519;
+  --sidebar-border: #242429;
   --brand: #22d3ee;
   --positive: #10b981;
   --negative: #fb7185;
@@ -248,80 +398,73 @@ html[lang='th'] .text-label {
   --chart-2: #3b82f6;
   --chart-3: #c2650f;
   --chart-4: #b06ef0;
-}
+  /* Shell surfaces. The header is the deepest plane; the sidebar lifts off
+     the page toward the cards. */
+  --shell-nav-active-surface: #2e2e35;
 
-/* 2. OS preference — only when the user has made no explicit choice. */
-@media (prefers-color-scheme: light) {
-  :root:not(.dark):not(.light) {
-    color-scheme: light;
-
-    --background: #f6f8fc;
-    --foreground: #0b1220;
-    --card: #ffffff;
-    --card-foreground: #0b1220;
-    --popover: #ffffff;
-    --popover-foreground: #0b1220;
-    --primary: #1d5fd8;
-    --primary-foreground: #ffffff;
-    --secondary: #eef2f9;
-    --secondary-foreground: #0b1220;
-    --muted: #eef2f9;
-    --muted-foreground: #55657f;
-    --accent: #e8eef8;
-    --accent-foreground: #0b1220;
-    --destructive: #be123c;
-    --destructive-foreground: #ffffff;
-    --border: #dbe3f0;
-    --input: #dbe3f0;
-    --ring: #1d5fd8;
-
-    --surface: #eaf0f9;
-    --surface-raised: #ffffff;
-    --brand: #0e7490;
-    --positive: #047857;
-    --negative: #be123c;
-    --warning: #92400e;
-    --info: #0369a1;
-
-    --overlay: rgb(7 11 20 / 0.5);
-    --elevation-control: 0 1px 2px rgb(11 18 32 / 0.08);
-    --elevation-card: 0 1px 2px rgb(11 18 32 / 0.05), 0 8px 24px -12px rgb(11 18 32 / 0.24);
-    --elevation-elevated: 0 2px 4px rgb(11 18 32 / 0.06), 0 24px 48px -24px rgb(11 18 32 / 0.36);
-    --elevation-popover: 0 8px 24px -12px rgb(11 18 32 / 0.3);
-
-    --chart-1: #0891b2;
-    --chart-2: #1d4ed8;
-    --chart-3: #c2570f;
-    --chart-4: #7c3aed;
-  }
+  /*
+   * THE ACTIVE ROW: a neutral pill, a blue icon, a plain bright label.
+   *
+   * The pill above used to be `--primary` at 30%/16% over the sidebar — a
+   * large, unmistakably blue block behind whichever route you were on. It read
+   * as an admin template: the loudest thing on the surface was a background,
+   * and the accent was spent on AREA rather than on meaning. Blue now appears
+   * on the ICON alone — the smallest element that can carry it, and the one
+   * the eye lands on first — while the pill is a neutral step up from the
+   * surface and the label is simply brighter than its neighbours.
+   *
+   * Three tokens rather than one, because the row's parts no longer share a
+   * colour. Splitting them is the whole change: `-foreground` is now a plain
+   * high-contrast label, not an accent.
+   *
+   * Measured on this theme's pill (#2e2e35):
+   *
+   *   12.27:1 label
+   *   5.30:1 icon (needs 3:1 as non-text)
+   *   16.58:1 label on the bare sidebar, visible mid layout-spring
+   *   7.16:1 icon on the bare sidebar
+   */
+  --shell-nav-active-foreground: #f4f4f6;
+  --shell-nav-active-icon: #60a5fa;
+  --shell-chrome: #0b0c0e;
+  --shell-chrome-foreground: #ececef;
+  --shell-chrome-muted: #9a9aa3;
+  --shell-chrome-accent: #191a1d;
+  --shell-chrome-border: #212327;
+  --shell-chrome-nav-active-surface: #212227;
+  --shell-chrome-nav-active-foreground: #f4f4f6;
+  --shell-chrome-nav-active-icon: #60a5fa;
+  --shell-chrome-ring: #60a5fa;
 }
 
 /* 1. Explicit user choice — highest priority. Must come last. */
 .light {
   color-scheme: light;
 
-  --background: #f6f8fc;
+  --background: #f8fafd;
   --foreground: #0b1220;
   --card: #ffffff;
   --card-foreground: #0b1220;
   --popover: #ffffff;
   --popover-foreground: #0b1220;
-  --primary: #1d5fd8;
+  --primary: #1d4ed8;
   --primary-foreground: #ffffff;
-  --secondary: #eef2f9;
+  --secondary: #e9edf7;
   --secondary-foreground: #0b1220;
-  --muted: #eef2f9;
+  --muted: #e9edf7;
   --muted-foreground: #55657f;
-  --accent: #e8eef8;
+  --accent: #dfe6f4;
   --accent-foreground: #0b1220;
   --destructive: #be123c;
   --destructive-foreground: #ffffff;
-  --border: #dbe3f0;
-  --input: #dbe3f0;
-  --ring: #1d5fd8;
+  --border: #dde4f0;
+  --input: #dde4f0;
+  --ring: #1d4ed8;
 
-  --surface: #eaf0f9;
+  --surface: #e9edf7;
   --surface-raised: #ffffff;
+  --sidebar: #eef2f9;
+  --sidebar-border: #e2e8f3;
   --brand: #0e7490;
   --positive: #047857;
   --negative: #be123c;
@@ -338,33 +481,73 @@ html[lang='th'] .text-label {
   --chart-2: #1d4ed8;
   --chart-3: #c2570f;
   --chart-4: #7c3aed;
+  /* Shell surfaces. Only the HEADER inverts in light; the sidebar stays one
+     light neutral surface and takes its accent from the active row's icon
+     alone — never from the pill, which is neutral. */
+  --shell-nav-active-surface: #d5dbe7;
+
+  /*
+   * THE ACTIVE ROW: a neutral pill, a blue icon, a plain bright label.
+   *
+   * The pill above used to be `--primary` at 30%/16% over the sidebar — a
+   * large, unmistakably blue block behind whichever route you were on. It read
+   * as an admin template: the loudest thing on the surface was a background,
+   * and the accent was spent on AREA rather than on meaning. Blue now appears
+   * on the ICON alone — the smallest element that can carry it, and the one
+   * the eye lands on first — while the pill is a neutral step up from the
+   * surface and the label is simply brighter than its neighbours.
+   *
+   * Three tokens rather than one, because the row's parts no longer share a
+   * colour. Splitting them is the whole change: `-foreground` is now a plain
+   * high-contrast label, not an accent.
+   *
+   * Measured on this theme's pill (#d5dbe7):
+   *
+   *   13.48:1 label
+   *   4.82:1 icon (needs 3:1 as non-text)
+   *   16.68:1 label on the bare sidebar, visible mid layout-spring
+   *   5.97:1 icon on the bare sidebar
+   */
+  --shell-nav-active-foreground: #0b1220;
+  --shell-nav-active-icon: #1d4ed8;
+  --shell-chrome: #0b0c0e;
+  --shell-chrome-foreground: #ececef;
+  --shell-chrome-muted: #9a9aa3;
+  --shell-chrome-accent: #191a1d;
+  --shell-chrome-border: #212327;
+  --shell-chrome-nav-active-surface: #212227;
+  --shell-chrome-nav-active-foreground: #f4f4f6;
+  --shell-chrome-nav-active-icon: #60a5fa;
+  --shell-chrome-ring: #60a5fa;
 }
 
 .dark {
   color-scheme: dark;
 
-  --background: #070b14;
-  --foreground: #e8edf7;
-  --card: #0d1424;
-  --card-foreground: #e8edf7;
-  --popover: #141d33;
-  --popover-foreground: #e8edf7;
+  --background: #0f0f11;
+  --foreground: #ececef;
+  --card: #18181c;
+  --card-foreground: #ececef;
+  --popover: #1e1e23;
+  --popover-foreground: #ececef;
   --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --secondary: #141d33;
-  --secondary-foreground: #e8edf7;
-  --muted: #141d33;
-  --muted-foreground: #93a4c0;
-  --accent: #1a2540;
-  --accent-foreground: #e8edf7;
-  --destructive: #e11d48;
+  --secondary: #1e1e23;
+  --secondary-foreground: #ececef;
+  --muted: #1e1e23;
+  --muted-foreground: #a0a0a9;
+  --accent: #26262c;
+  --accent-foreground: #ececef;
+  --destructive: #f2607f;
   --destructive-foreground: #ffffff;
-  --border: #1e2a45;
-  --input: #1e2a45;
-  --ring: #38bdf8;
+  --border: #2a2a31;
+  --input: #2a2a31;
+  --ring: #60a5fa;
 
-  --surface: #0a1020;
-  --surface-raised: #141d33;
+  --surface: #101013;
+  --surface-raised: #1e1e23;
+  --sidebar: #151519;
+  --sidebar-border: #242429;
   --brand: #22d3ee;
   --positive: #10b981;
   --negative: #fb7185;
@@ -381,6 +564,43 @@ html[lang='th'] .text-label {
   --chart-2: #3b82f6;
   --chart-3: #c2650f;
   --chart-4: #b06ef0;
+  /* Shell surfaces. The header is the deepest plane; the sidebar lifts off
+     the page toward the cards. */
+  --shell-nav-active-surface: #2e2e35;
+
+  /*
+   * THE ACTIVE ROW: a neutral pill, a blue icon, a plain bright label.
+   *
+   * The pill above used to be `--primary` at 30%/16% over the sidebar — a
+   * large, unmistakably blue block behind whichever route you were on. It read
+   * as an admin template: the loudest thing on the surface was a background,
+   * and the accent was spent on AREA rather than on meaning. Blue now appears
+   * on the ICON alone — the smallest element that can carry it, and the one
+   * the eye lands on first — while the pill is a neutral step up from the
+   * surface and the label is simply brighter than its neighbours.
+   *
+   * Three tokens rather than one, because the row's parts no longer share a
+   * colour. Splitting them is the whole change: `-foreground` is now a plain
+   * high-contrast label, not an accent.
+   *
+   * Measured on this theme's pill (#2e2e35):
+   *
+   *   12.27:1 label
+   *   5.30:1 icon (needs 3:1 as non-text)
+   *   16.58:1 label on the bare sidebar, visible mid layout-spring
+   *   7.16:1 icon on the bare sidebar
+   */
+  --shell-nav-active-foreground: #f4f4f6;
+  --shell-nav-active-icon: #60a5fa;
+  --shell-chrome: #0b0c0e;
+  --shell-chrome-foreground: #ececef;
+  --shell-chrome-muted: #9a9aa3;
+  --shell-chrome-accent: #191a1d;
+  --shell-chrome-border: #212327;
+  --shell-chrome-nav-active-surface: #212227;
+  --shell-chrome-nav-active-foreground: #f4f4f6;
+  --shell-chrome-nav-active-icon: #60a5fa;
+  --shell-chrome-ring: #60a5fa;
 }
 
 @layer base {
@@ -404,10 +624,10 @@ html[lang='th'] .text-label {
 }
 
 /*
- * Motion. Every animation in the product passes through this guard, so a
- * component cannot forget to honour the preference.
- *
- * Durations and easing conventions live in src/lib/motion.ts.
+ * Motion. CSS primitives use semantic duration/easing tokens; components
+ * backed by Motion or Recharts additionally consult
+ * `usePrefersReducedMotion()` so springs, numeric decoration and chart
+ * drawing can be replaced with a static state.
  */
 
 @keyframes sheet-overlay-in {
@@ -469,11 +689,11 @@ html[lang='th'] .text-label {
 }
 
 [data-slot='sheet-overlay'][data-state='open'] {
-  animation: sheet-overlay-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sheet-overlay-in var(--motion-overlay-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='sheet-overlay'][data-state='closed'] {
-  animation: sheet-overlay-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: sheet-overlay-out var(--motion-overlay-duration) var(--motion-ease-exit) both;
 }
 
 [data-slot='sheet-content'][data-side='left'] {
@@ -493,21 +713,62 @@ html[lang='th'] .text-label {
 }
 
 [data-slot='sheet-content'][data-state='open'] {
-  animation: sheet-content-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sheet-content-in var(--motion-surface-enter-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='sheet-content'][data-state='closed'] {
-  animation: sheet-content-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: sheet-content-out var(--motion-surface-exit-duration) var(--motion-ease-exit) both;
+}
+
+/*
+ * The APP SHELL's navigation drawer (`SheetContent motion="shell"`), which is
+ * the mobile face of the same surface the desktop sidebar is.
+ *
+ * It therefore speaks the shell's motion, not the generic dialog's: one
+ * duration and one easing shared with the sidebar and the workspace offset,
+ * in both directions. A phone and a desktop are then two viewports onto one
+ * shell rather than two unrelated components that happen to hold the same
+ * links. Only the animation's timing is restated — the keyframes above are
+ * already the right shapes (slide from the panel's own edge, fade the
+ * backdrop). Reduced mode replaces that travel with the brief fade below.
+ *
+ * The backdrop is timed with the drawer deliberately: a scrim that lands
+ * before the panel has begun moving reads as the page being taken away, not
+ * as a panel arriving over it.
+ *
+ * Both also start BELOW the global header. The header is the one thing in
+ * this product that never moves and never yields — it stays lit, unscrimmed
+ * and visually on top while the drawer travels underneath it, which is the
+ * same promise the desktop sidebar keeps. `top` is set on the overlay too, so
+ * the header is not dimmed; the dialog is still modal, so the header is inert
+ * for as long as the drawer is open even though it is fully visible.
+ */
+[data-slot='sheet-overlay'][data-motion='shell'],
+[data-slot='sheet-content'][data-motion='shell'] {
+  top: var(--shell-header-height-mobile);
+}
+
+[data-slot='sheet-content'][data-motion='shell'] {
+  bottom: 0;
+  height: auto;
+}
+
+[data-slot='sheet-overlay'][data-motion='shell'][data-state='open'],
+[data-slot='sheet-overlay'][data-motion='shell'][data-state='closed'],
+[data-slot='sheet-content'][data-motion='shell'][data-state='open'],
+[data-slot='sheet-content'][data-motion='shell'][data-state='closed'] {
+  animation-duration: var(--shell-motion-duration);
+  animation-timing-function: var(--shell-motion-easing);
 }
 
 [data-slot='dropdown-menu-content'][data-state='open'],
 [data-slot='dropdown-menu-sub-content'][data-state='open'] {
-  animation: menu-content-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: menu-content-in var(--motion-menu-enter-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='dropdown-menu-content'][data-state='closed'],
 [data-slot='dropdown-menu-sub-content'][data-state='closed'] {
-  animation: menu-content-out 0.12s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: menu-content-out var(--motion-menu-exit-duration) var(--motion-ease-exit) both;
 }
 
 /* A centered modal (AlertDialog) reuses the sheet's plain opacity fade for
@@ -515,49 +776,106 @@ html[lang='th'] .text-label {
    already exist, and a third distinct animation shape here would be
    decoration, not a new comprehension need (CLAUDE.md §8). */
 [data-slot='alert-dialog-overlay'][data-state='open'] {
-  animation: sheet-overlay-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sheet-overlay-in var(--motion-overlay-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='alert-dialog-overlay'][data-state='closed'] {
-  animation: sheet-overlay-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: sheet-overlay-out var(--motion-overlay-duration) var(--motion-ease-exit) both;
 }
 
 [data-slot='alert-dialog-content'][data-state='open'] {
-  animation: menu-content-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: menu-content-in var(--motion-menu-enter-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='alert-dialog-content'][data-state='closed'] {
-  animation: menu-content-out 0.12s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: menu-content-out var(--motion-menu-exit-duration) var(--motion-ease-exit) both;
 }
 
 /* `Dialog` (forms) reuses the exact same centered-modal animation shape as
    `AlertDialog` — the only difference between the two primitives is
    dismissal behavior (outside click/Escape), not how they animate. */
 [data-slot='dialog-overlay'][data-state='open'] {
-  animation: sheet-overlay-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sheet-overlay-in var(--motion-overlay-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='dialog-overlay'][data-state='closed'] {
-  animation: sheet-overlay-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: sheet-overlay-out var(--motion-overlay-duration) var(--motion-ease-exit) both;
 }
 
 [data-slot='dialog-content'][data-state='open'] {
-  animation: menu-content-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: menu-content-in var(--motion-menu-enter-duration) var(--motion-ease-standard) both;
 }
 
 [data-slot='dialog-content'][data-state='closed'] {
-  animation: menu-content-out 0.12s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: menu-content-out var(--motion-menu-exit-duration) var(--motion-ease-exit) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/*
+ * The SHELL CHROME's colour scope — the global header, and on mobile the
+ * navigation drawer that hangs directly off it.
+ *
+ * In light mode the chrome is a deep branded surface while everything around
+ * it is near-white, so every control inside it has to invert: dark-on-light
+ * text would be invisible. Rather than hand-painting each one — and getting
+ * it wrong the next time a control is added — this REBINDS the semantic
+ * tokens locally. A `ghost` Button, a bordered account switcher and a piece
+ * of muted text inside this scope all resolve to the chrome palette without
+ * knowing anything about it.
+ *
+ * Only surface-level tokens are rebound. `--popover` deliberately is NOT:
+ * dropdown content is portalled to the body and must keep the page's own
+ * palette, or the account menu would render dark-on-dark in light mode.
+ *
+ * In dark mode the chrome values are near-black on a near-black page, so the
+ * rebinding is close to a no-op — which is correct. One scope, both themes,
+ * no branching in the component.
+ *
+ * WHY THE MOBILE DRAWER OPTS IN AND THE DESKTOP SIDEBAR DOES NOT. The drawer
+ * slides out from underneath the header and shares an edge with it for as
+ * long as it is open, so a pale panel hanging off a deep bar reads as two
+ * unrelated components bolted together. The desktop sidebar has no such
+ * relationship — it is a column beside the workspace, not an extension of the
+ * bar — and in light mode it deliberately stays a light surface. Same
+ * component, same tokens; only the mobile face carries `data-shell-chrome`.
+ */
+[data-shell-chrome] {
+  --background: var(--shell-chrome);
+  --foreground: var(--shell-chrome-foreground);
+  --muted: var(--shell-chrome-accent);
+  --muted-foreground: var(--shell-chrome-muted);
+  --accent: var(--shell-chrome-accent);
+  --accent-foreground: var(--shell-chrome-foreground);
+  --secondary: var(--shell-chrome-accent);
+  --secondary-foreground: var(--shell-chrome-foreground);
+  --border: var(--shell-chrome-border);
+  --input: var(--shell-chrome-border);
+
+  /*
+   * Navigation, rebound for the chrome surface.
+   *
+   * `SidebarNav` paints itself from `--sidebar` and the three nav tokens and
+   * is told nothing about which face it is on; pointing those at the chrome
+   * family here is what makes ONE component render correctly on both. The
+   * light theme is why they cannot simply be inherited: its page-level active
+   * label is #0b1220 and its icon #1d4ed8, both tuned for a near-white pill,
+   * and both would be all but invisible on this near-black one.
+   *
+   * The chrome variants are measured against the chrome pill (#212227)
+   * instead: 14.45:1 for the label and 6.24:1 for the icon, identical in both
+   * themes because the chrome surface itself is now identical in both.
+   *
+   * `--ring` too: the light-mode page ring is tuned against a near-white
+   * background and would all but vanish here.
+   */
+  --sidebar: var(--shell-chrome);
+  --sidebar-border: var(--shell-chrome-border);
+  --shell-nav-active-surface: var(--shell-chrome-nav-active-surface);
+  --shell-nav-active-foreground: var(--shell-chrome-nav-active-foreground);
+  --shell-nav-active-icon: var(--shell-chrome-nav-active-icon);
+  --ring: var(--shell-chrome-ring);
+
+  background-color: var(--shell-chrome);
+  color: var(--shell-chrome-foreground);
 }
 
 @keyframes rise {
@@ -572,7 +890,134 @@ html[lang='th'] .text-label {
 }
 
 @utility animate-rise {
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: rise var(--motion-decorative-duration) var(--motion-ease-standard) both;
+}
+
+/* Reduced motion is a different vocabulary, not a global off switch.
+ * Functional colour/opacity feedback remains short and legible; large
+ * spatial/decorative motion becomes a static state or a brief fade. */
+/*
+ * The collapsed rail's hover/focus flyout, growing rightward out of the icon.
+ *
+ * A CLIP reveal, not a width or transform animation: the flyout is laid out
+ * at its final size from the first frame, so the icon inside it is already
+ * sitting exactly over the rail icon it replaces and never slides into
+ * place. Animating width would reflow the label on every frame; animating
+ * transform would drag the icon across the rail. Neither is acceptable when
+ * the whole requirement is that the icon does not move.
+ *
+ * The start inset leaves exactly the compact icon pill visible — rail width
+ * less the 0.5rem inset on each side — so the first frame is indistinguishable
+ * from the resting rail and the label appears to unfurl from underneath it.
+ */
+@keyframes nav-flyout-reveal {
+  from {
+    clip-path: inset(0 calc(100% - (var(--shell-rail-width) - 1rem)) 0 0);
+    opacity: 0.6;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+@keyframes reduced-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes reduced-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-feedback-duration: 100ms;
+    --motion-overlay-duration: 100ms;
+    --motion-surface-enter-duration: 120ms;
+    --motion-surface-exit-duration: 100ms;
+    --motion-menu-enter-duration: 100ms;
+    --motion-menu-exit-duration: 80ms;
+    --shell-motion-duration: 120ms;
+    --shell-motion-easing: var(--motion-ease-reduced);
+    --default-transition-timing-function: var(--motion-ease-reduced);
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  [data-slot='sheet-overlay'][data-state='open'],
+  [data-slot='alert-dialog-overlay'][data-state='open'],
+  [data-slot='dialog-overlay'][data-state='open'] {
+    animation-name: reduced-fade-in;
+    animation-duration: var(--motion-overlay-duration);
+    animation-timing-function: var(--motion-ease-reduced);
+  }
+
+  /*
+   * The nav flyout keeps its reveal but drops the spatial part of it: a plain
+   * fade at the menu duration, which the token above has already shortened.
+   * The flyout still appears instantly-readable, which is the accessibility
+   * requirement — reduced motion must not cost a keyboard user the label.
+   */
+  [data-nav-flyout] {
+    animation-name: reduced-fade-in;
+  }
+
+  [data-slot='sheet-overlay'][data-state='closed'],
+  [data-slot='alert-dialog-overlay'][data-state='closed'],
+  [data-slot='dialog-overlay'][data-state='closed'] {
+    animation-name: reduced-fade-out;
+    animation-duration: var(--motion-overlay-duration);
+    animation-timing-function: var(--motion-ease-reduced);
+  }
+
+  [data-slot='sheet-content'][data-state='open'] {
+    animation-name: reduced-fade-in;
+    animation-duration: var(--motion-surface-enter-duration);
+    animation-timing-function: var(--motion-ease-reduced);
+  }
+
+  [data-slot='sheet-content'][data-state='closed'] {
+    animation-name: reduced-fade-out;
+    animation-duration: var(--motion-surface-exit-duration);
+    animation-timing-function: var(--motion-ease-reduced);
+  }
+
+  [data-slot='dropdown-menu-content'][data-state='open'],
+  [data-slot='dropdown-menu-sub-content'][data-state='open'],
+  [data-slot='alert-dialog-content'][data-state='open'],
+  [data-slot='dialog-content'][data-state='open'] {
+    animation-name: reduced-fade-in;
+    animation-duration: var(--motion-menu-enter-duration);
+    animation-timing-function: var(--motion-ease-reduced);
+  }
+
+  [data-slot='dropdown-menu-content'][data-state='closed'],
+  [data-slot='dropdown-menu-sub-content'][data-state='closed'],
+  [data-slot='alert-dialog-content'][data-state='closed'],
+  [data-slot='dialog-content'][data-state='closed'] {
+    animation-name: reduced-fade-out;
+    animation-duration: var(--motion-menu-exit-duration);
+    animation-timing-function: var(--motion-ease-reduced);
+  }
+
+  /* Entrance and pulse effects are decorative. Their settled/static shapes
+     still communicate content and loading without vestibular motion. */
+  .animate-rise,
+  .animate-pulse {
+    animation: none;
+  }
 }
 
 /*

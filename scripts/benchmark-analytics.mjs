@@ -81,11 +81,12 @@ try {
     await tx`
       insert into trades (
         id, workspace_id, mutation_key, trading_account_id, strategy_id,
-        strategy_version_id, setup_id, setup_version_id, symbol, direction,
+        strategy_version_id, setup_id, setup_version_id, strategy_assigned_at,
+        setup_assigned_at, symbol, direction,
         planned_entry, planned_stop, planned_target, planned_r,
-        actual_entry, actual_initial_stop, actual_exit, actual_initial_risk_minor,
+        actual_result_mode, actual_entry, actual_initial_stop, actual_exit, actual_initial_risk_minor,
         net_pnl_minor, entered_at, exited_at, actual_r, trader_outcome,
-        system_status, system_exit_price, system_exited_at, system_exit_reason,
+        system_status, system_resolution_kind, system_exit_price, system_exited_at, system_exit_reason,
         system_resolved_at, system_r, system_outcome, status, deleted_at,
         created_at, updated_at
       )
@@ -106,12 +107,15 @@ try {
         case n % 3 when 0 then ${versionIds[0]}::uuid when 1 then ${versionIds[1]}::uuid else ${versionIds[2]}::uuid end,
         case n % 3 when 0 then ${setupIds[0]}::uuid when 1 then ${setupIds[1]}::uuid else ${setupIds[2]}::uuid end,
         case n % 3 when 0 then ${setupVersionIds[0]}::uuid when 1 then ${setupVersionIds[1]}::uuid else ${setupVersionIds[2]}::uuid end,
+        now(),
+        now(),
         case n % 5 when 0 then 'EURUSD' when 1 then 'XAUUSD' when 2 then 'USDJPY' when 3 then 'NAS100' else 'BTCUSD' end,
         case n % 2 when 0 then 'long' else 'short' end,
         '100',
         case n % 2 when 0 then '99'::numeric else '101'::numeric end,
         case n % 2 when 0 then '102'::numeric else '98'::numeric end,
         '2.0000',
+        case when n % 10 < 8 then 'money' else null end,
         case when n % 10 < 8 then '100'::numeric else null end,
         case when n % 10 < 8 then case n % 2 when 0 then '99'::numeric else '101'::numeric end else null end,
         case when n % 10 < 7 then case n % 2 when 0 then '101'::numeric else '99'::numeric end else null end,
@@ -122,6 +126,7 @@ try {
         case when n % 10 < 7 then case n % 3 when 0 then '1.5000' when 1 then '-1.0000' else '0.0000' end::numeric else null end,
         case when n % 10 < 7 then case n % 3 when 0 then 'win' when 1 then 'loss' else 'break_even' end else null end,
         case when n % 20 < 12 then 'resolved' when n % 20 < 17 then 'pending' else 'no_trade' end,
+        case when n % 20 < 12 then 'price_exit' else null end,
         case when n % 20 < 12 then case n % 2 when 0 then '102'::numeric else '98'::numeric end else null end,
         case when n % 20 < 12 then ('2025-08-01T16:00:00Z'::timestamptz + (n % 365) * interval '1 day') else null end,
         case when n % 20 < 12 then 'target_hit' when n % 20 >= 17 then 'setup_invalidated' else null end,
@@ -132,6 +137,16 @@ try {
         case when n % 20 = 0 then now() else null end,
         now() - (5000 - n) * interval '1 minute', now()
       from generate_series(1, 5000) as series(n)
+    `;
+
+    await tx`
+      insert into trade_exits
+        (id, workspace_id, trade_id, mutation_key, sequence, closed_bps,
+         exit_price, realized_pnl_minor, exited_at, created_at, updated_at)
+      select gen_random_uuid(), t.workspace_id, t.id, gen_random_uuid(), 1, 10000,
+        t.actual_exit, t.net_pnl_minor, t.exited_at, now(), now()
+      from trades t
+      where t.workspace_id = ${workspaceId} and t.status = 'closed'
     `;
 
     await tx`
@@ -208,9 +223,9 @@ try {
         from trades
         where workspace_id = ${workspaceId} and trading_account_id = ${accountIds[0]}
           and deleted_at is null and status = 'closed' and system_status = 'resolved'
-          and actual_r is not null and system_r is not null
+          and actual_r is not null and trader_outcome is not null and exited_at is not null
+          and system_r is not null and system_outcome is not null and system_exited_at is not null
           and exited_at >= ${start} and exited_at < ${end}
-          and system_exited_at >= ${start} and system_exited_at < ${end}
         order by exited_at, id`,
     ),
   );
@@ -278,7 +293,19 @@ try {
     ),
   );
 
-  process.stdout.write(`${JSON.stringify({ fixtureTrades: 5000, plans }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        fixtureTrades: 5000,
+        queryScenarioCount: plans.length,
+        scenario:
+          'Current-schema Actual/System analytics projections over active/all/framework scopes',
+        plans,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 } finally {
   try {
     await sql`delete from workspaces where id = ${workspaceId}`;

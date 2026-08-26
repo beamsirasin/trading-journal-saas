@@ -71,7 +71,6 @@ export default async function AppLayout({
   return (
     <AppShell
       user={user}
-      workspaceName={workspace.workspaceName}
       dbTheme={preferences.theme}
       dbLocale={preferences.locale}
       activeAccount={activeAccount}

@@ -2,13 +2,9 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Suspense } from 'react';
 
-import { getActiveTradingAccount } from '@/server/auth/dal';
-import { getWorkspaceTradeAttentionCounts } from '@/server/dal/trades';
-import { getDashboardOverview } from '@/server/services/analytics';
-import {
-  ActiveTradingAccountSummaryCard,
-  NoActiveTradingAccountRecovery,
-} from '@/components/dashboard/empty-trading-dashboard';
+import { parseDashboardFilterState } from '@/lib/dashboard/filters';
+import { getDashboardPageData } from '@/server/services/dashboard';
+import { NoActiveTradingAccountRecovery } from '@/components/dashboard/empty-trading-dashboard';
 import {
   DashboardDataError,
   DashboardSkeleton,
@@ -16,12 +12,11 @@ import {
 } from '@/components/dashboard/real-dashboard';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
-import { formatTradeInstant } from '@/components/trades/trade-format';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
-type PageSearchParams = { range?: string | string[] };
+type PageSearchParams = Record<string, string | string[] | undefined>;
 const DATE_LOCALE: Record<string, string> = { en: 'en-GB', th: 'th' };
 
 export async function generateMetadata({
@@ -53,51 +48,46 @@ export default async function AppOverviewPage({
   params: Promise<PageParams>;
   searchParams: Promise<PageSearchParams>;
 }) {
-  const [{ locale }, { range }] = await Promise.all([params, searchParams]);
+  const [{ locale }, rawSearchParams] = await Promise.all([params, searchParams]);
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('dashboard');
 
   return (
-    <Container width="wide" className="flex min-w-0 flex-col gap-8 py-8">
+    /*
+      `canvas`, not `wide` (D4.5 §1): the Dashboard is the one surface where a
+      1728/1920-class monitor was showing a 1536px column with ~128px of dead
+      margin either side. The gutters are unchanged (16/24/32px) — only the
+      ceiling moved, so 1280 and 1440 are byte-for-byte what they were and
+      only the widths the old cap was actually clipping change.
+
+      `gap-5` puts 20px between the page header and the account context bar,
+      which is where the rest of the page's explicit rhythm starts.
+    */
+    <Container width="canvas" className="flex min-w-0 flex-col gap-5 py-6">
       <PageHeader title={t('title')} description={t('description')} />
       <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent locale={locale} range={range} />
+        <DashboardContent locale={locale} rawSearchParams={rawSearchParams} />
       </Suspense>
     </Container>
   );
 }
 
-async function DashboardContent({ locale, range }: { locale: string; range: unknown }) {
-  const [account, dashboard, attention] = await Promise.all([
-    getActiveTradingAccount(),
-    getDashboardOverview(range),
-    getWorkspaceTradeAttentionCounts(),
-  ]);
-  if (account === null || (!dashboard.ok && dashboard.code === 'no_active_trading_account')) {
+async function DashboardContent({
+  locale,
+  rawSearchParams,
+}: {
+  locale: string;
+  rawSearchParams: PageSearchParams;
+}) {
+  const parsed = parseDashboardFilterState(rawSearchParams);
+  if (!parsed.ok) return <DashboardDataError />;
+  const dashboard = await getDashboardPageData(parsed.state).catch(() => null);
+  if (dashboard === null) return <DashboardDataError />;
+  if (!dashboard.ok && dashboard.code === 'no_active_trading_account') {
     return <NoActiveTradingAccountRecovery />;
   }
-  if (!dashboard.ok || dashboard.data.overview.scope.accountScope.kind !== 'account') {
-    return (
-      <div className="flex flex-col gap-6">
-        <ActiveTradingAccountSummaryCard account={account} />
-        <DashboardDataError />
-      </div>
-    );
-  }
+  if (!dashboard.ok) return <DashboardDataError />;
 
   const dateLocale = DATE_LOCALE[locale] ?? 'en-GB';
-  const recentTrades = dashboard.data.recentTrades.map((trade) => ({
-    ...trade,
-    occurredAtDisplay:
-      formatTradeInstant(trade.occurredAt, dashboard.data.overview.scope.timezone, dateLocale) ??
-      '—',
-  }));
-  return (
-    <RealDashboard
-      account={account}
-      overview={dashboard.data.overview}
-      recentTrades={recentTrades}
-      attention={attention}
-    />
-  );
+  return <RealDashboard data={dashboard.data} dateLocale={dateLocale} />;
 }

@@ -1,4 +1,9 @@
-import type { RuleCheckStatus } from '@/lib/trades/constants';
+import type {
+  OutcomeValue,
+  RuleCheckStatus,
+  SystemStatus,
+  TradeStatus,
+} from '@/lib/trades/constants';
 
 import { CalcDecimal, parseCalcDecimal, toCanonicalR, type CalcDecimalValue } from './decimal';
 import { calcErr, calcOk, type CalcResult } from './types';
@@ -9,19 +14,35 @@ import { calcErr, calcOk, type CalcResult } from './types';
 
 /**
  * A Trade contributes to System-versus-Trader comparison only when BOTH
- * axes are independently resolved for that same Trade — `actualR` exists
- * AND `systemR` exists. This is deliberately a third, distinct eligibility
- * rule from `isTraderEligible`/`isSystemEligible` in `aggregate.ts`: a
+ * axes are independently complete for that same Trade. This is deliberately
+ * the intersection of the Population A and Population B contracts: a
  * closed Trader Trade with a still-`pending` System side is fully eligible
  * for Trader metrics but NOT for comparison.
  */
 export interface ComparisonEligibleTradeInput {
+  readonly status: TradeStatus | string;
+  readonly deletedAt: Date | null;
   readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+  readonly actualExitedAt: Date | string | null;
+  readonly systemStatus: SystemStatus | string;
   readonly systemR: string | null;
+  readonly systemOutcome: OutcomeValue | null;
+  readonly systemExitedAt: Date | string | null;
 }
 
 export function isComparisonEligible(trade: ComparisonEligibleTradeInput): boolean {
-  return trade.actualR !== null && trade.systemR !== null;
+  return (
+    trade.deletedAt === null &&
+    trade.status === 'closed' &&
+    trade.actualR !== null &&
+    trade.traderOutcome !== null &&
+    trade.actualExitedAt !== null &&
+    trade.systemStatus === 'resolved' &&
+    trade.systemR !== null &&
+    trade.systemOutcome !== null &&
+    trade.systemExitedAt !== null
+  );
 }
 
 /** Filters to the comparison-eligible subset, preserving each record's full original shape. */
@@ -132,11 +153,11 @@ export function averageExecutionGapR(pairs: readonly PairedRTrade[]): CalcResult
 }
 
 // ---------------------------------------------------------------------------
-// Execution efficiency
+// System Edge Captured
 // ---------------------------------------------------------------------------
 
 /**
- * `executionEfficiency = pairedActualTotalR / pairedSystemTotalR`, over
+ * `systemEdgeCaptured = pairedActualTotalR / pairedSystemTotalR`, over
  * exactly the same paired-Trade population in both the numerator and the
  * denominator — never a Trader total from one population divided by a
  * System total from a different one. Defined only when
@@ -149,7 +170,7 @@ export function averageExecutionGapR(pairs: readonly PairedRTrade[]): CalcResult
  * literal results. This metric describes execution against available
  * System edge; it is not an independent Strategy-quality metric.
  */
-export function executionEfficiency(pairs: readonly PairedRTrade[]): CalcResult<string> {
+export function systemEdgeCaptured(pairs: readonly PairedRTrade[]): CalcResult<string> {
   if (pairs.length === 0) return calcErr('no_comparable_trades');
   const parsedResult = parsePairedDecimals(pairs);
   if (!parsedResult.ok) return parsedResult;
@@ -202,4 +223,76 @@ export function ruleAdherenceRate(checks: readonly RuleCheckRecord[]): CalcResul
   const denominator = followed + violated;
   if (denominator === 0) return calcErr('no_rule_checks');
   return calcOk(toCanonicalR(new CalcDecimal(followed).dividedBy(denominator)));
+}
+
+export interface TradeRuleCheckRecord extends RuleCheckRecord {
+  readonly tradeId: string;
+  readonly isRequired: boolean;
+}
+
+export interface TradeRuleAdherenceSummary {
+  readonly evaluatedTradeCount: number;
+  readonly compliantTradeCount: number;
+  readonly nonCompliantTradeCount: number;
+  readonly incompleteTradeCount: number;
+  readonly notApplicableTradeCount: number;
+  readonly rate: CalcResult<string>;
+}
+
+/**
+ * Trade-level Rule Adherence is deliberately distinct from check-level
+ * {@link ruleAdherenceRate}. Only snapshotted required execution Rules govern
+ * whether a Trade is evaluated: optional checks are informational. A required
+ * `not_checked` (or unknown future status) leaves the Trade incomplete;
+ * `not_applicable` is resolved but does not create an applicable check. An
+ * evaluated Trade has at least one applicable required check and no unresolved
+ * required checks. It is compliant only when none of those checks is violated.
+ */
+export function tradeRuleAdherence(
+  checks: readonly TradeRuleCheckRecord[],
+): TradeRuleAdherenceSummary {
+  const byTrade = new Map<string, RuleCheckRecord[]>();
+  for (const check of checks) {
+    if (!check.isRequired) continue;
+    const existing = byTrade.get(check.tradeId);
+    if (existing === undefined) byTrade.set(check.tradeId, [check]);
+    else existing.push(check);
+  }
+
+  let evaluatedTradeCount = 0;
+  let compliantTradeCount = 0;
+  let nonCompliantTradeCount = 0;
+  let incompleteTradeCount = 0;
+  let notApplicableTradeCount = 0;
+  for (const tradeChecks of byTrade.values()) {
+    const unresolved = tradeChecks.some(
+      (check) => !['followed', 'violated', 'not_applicable'].includes(check.status),
+    );
+    if (unresolved) {
+      incompleteTradeCount += 1;
+      continue;
+    }
+    const applicable = tradeChecks.filter(
+      (check) => check.status === 'followed' || check.status === 'violated',
+    );
+    if (applicable.length === 0) {
+      notApplicableTradeCount += 1;
+      continue;
+    }
+    evaluatedTradeCount += 1;
+    if (applicable.some((check) => check.status === 'violated')) nonCompliantTradeCount += 1;
+    else compliantTradeCount += 1;
+  }
+
+  return {
+    evaluatedTradeCount,
+    compliantTradeCount,
+    nonCompliantTradeCount,
+    incompleteTradeCount,
+    notApplicableTradeCount,
+    rate:
+      evaluatedTradeCount === 0
+        ? calcErr('no_evaluated_trades')
+        : calcOk(toCanonicalR(new CalcDecimal(compliantTradeCount).dividedBy(evaluatedTradeCount))),
+  };
 }

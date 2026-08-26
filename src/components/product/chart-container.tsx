@@ -10,6 +10,14 @@ export interface ChartLegendItem {
   readonly label: string;
   /** Named so the legend explains the line style, not just the colour. */
   readonly lineStyle?: 'solid' | 'dashed';
+  /**
+   * Overrides the swatch colour when a chart deliberately paints its series
+   * differently from the product's System/Trader hues. The Execution Gap
+   * comparison is the case: it renders Actual as a neutral rather than the
+   * Trader hue, and a legend that kept the Trader colour would be describing
+   * a line that is not on screen.
+   */
+  readonly swatchClassName?: string | undefined;
 }
 
 /**
@@ -86,7 +94,7 @@ export function ChartContainer({
         <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {legend.map((item) => (
             <li key={item.label} className="text-muted-foreground flex items-center gap-2 text-xs">
-              <SeriesSwatch series={item.series} />
+              <SeriesSwatch series={item.series} className={item.swatchClassName} />
               <span>{item.label}</span>
               {item.lineStyle === undefined ? null : (
                 <span className="text-muted-foreground/70">

@@ -19,6 +19,15 @@ describe('Container', () => {
     expect(container.firstElementChild?.className).toContain('max-w-[100rem]');
   });
 
+  it('supports a widest variant for the Dashboard canvas, above the analytics width', () => {
+    const { container } = render(<Container width="canvas">content</Container>);
+    const className = container.firstElementChild?.className ?? '';
+    expect(className).toContain('max-w-[120rem]');
+    // Still a container, not a full bleed: the gutter survives the wider cap.
+    expect(className).toContain('px-4');
+    expect(className).toContain('lg:px-8');
+  });
+
   it('supports a narrower variant for reading', () => {
     const { container } = render(<Container width="prose">content</Container>);
     expect(container.firstElementChild?.className).toContain('max-w-3xl');

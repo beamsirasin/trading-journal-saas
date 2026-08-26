@@ -32,7 +32,7 @@ export function SeriesSwatch({
   className,
 }: {
   series: 'system' | 'trader';
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <span

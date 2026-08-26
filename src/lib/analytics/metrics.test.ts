@@ -46,6 +46,8 @@ function trader(
     actualR,
     traderOutcome,
     exitedAt: `2026-08-${String(day).padStart(2, '0')}T00:00:00.000Z`,
+    netPnlMinor: actualR.startsWith('-') ? '-100' : '100',
+    baseCurrency: 'USD',
   };
 }
 
@@ -62,6 +64,21 @@ function system(
     systemR,
     systemOutcome,
     systemExitedAt: `2026-08-${String(day).padStart(2, '0')}T00:00:00.000Z`,
+  };
+}
+
+function comparison(tradeId: string, systemR: string, actualR: string): ComparisonMetricRecord {
+  return {
+    tradeId,
+    status: 'closed',
+    deletedAt: null,
+    actualR,
+    traderOutcome: actualR.startsWith('-') ? 'loss' : 'win',
+    actualExitedAt: BASE_TIME,
+    systemStatus: 'resolved',
+    systemR,
+    systemOutcome: systemR.startsWith('-') ? 'loss' : 'win',
+    systemExitedAt: BASE_TIME,
   };
 }
 
@@ -203,42 +220,36 @@ describe('analytics metric composition', () => {
 });
 
 describe('comparison composition', () => {
-  const pair = (tradeId: string, systemR: string, actualR: string): ComparisonMetricRecord => ({
-    tradeId,
-    systemR,
-    actualR,
-  });
-
   it.each([
     ['3.0000', '2.0000', '-1.0000'],
     ['3.0000', '-1.0000', '-4.0000'],
     ['2.0000', '3.0000', '1.0000'],
   ])('calculates System %s / Actual %s gap as %s', (systemR, actualR, gap) => {
-    const result = composeComparisonAnalytics([pair('same-trade', systemR, actualR)]);
+    const result = composeComparisonAnalytics([comparison('same-trade', systemR, actualR)]);
     expect(result.executionGapR).toEqual({ status: 'available', value: gap });
     expect(result.averageExecutionGapR).toEqual({ status: 'available', value: gap });
   });
 
   it('calculates paired totals and efficiency from the exact same IDs', () => {
     const result = composeComparisonAnalytics([
-      pair('trade-a', '6.0000', '5.0000'),
-      pair('trade-b', '4.0000', '3.0000'),
-      { tradeId: 'incomplete', systemR: '100.0000', actualR: null },
+      comparison('trade-a', '6.0000', '5.0000'),
+      comparison('trade-b', '4.0000', '3.0000'),
+      { ...comparison('incomplete', '100.0000', '1.0000'), actualR: null },
     ]);
     expect(result.comparableCount).toBe(2);
     expect(result.pairedSystemTotalR).toEqual({ status: 'available', value: '10.0000' });
     expect(result.pairedActualTotalR).toEqual({ status: 'available', value: '8.0000' });
     expect(result.executionGapR).toEqual({ status: 'available', value: '-2.0000' });
     expect(result.averageExecutionGapR).toEqual({ status: 'available', value: '-1.0000' });
-    expect(result.executionEfficiency).toEqual({ status: 'available', value: '0.8000' });
+    expect(result.systemEdgeCaptured).toEqual({ status: 'available', value: '0.8000' });
   });
 
   it('preserves efficiency above one and below zero without clamping', () => {
     expect(
-      composeComparisonAnalytics([pair('above', '2.0000', '3.0000')]).executionEfficiency,
+      composeComparisonAnalytics([comparison('above', '2.0000', '3.0000')]).systemEdgeCaptured,
     ).toEqual({ status: 'available', value: '1.5000' });
     expect(
-      composeComparisonAnalytics([pair('negative', '2.0000', '-1.0000')]).executionEfficiency,
+      composeComparisonAnalytics([comparison('negative', '2.0000', '-1.0000')]).systemEdgeCaptured,
     ).toEqual({ status: 'available', value: '-0.5000' });
   });
 
@@ -250,15 +261,15 @@ describe('comparison composition', () => {
       empty.pairedActualTotalR,
       empty.executionGapR,
       empty.averageExecutionGapR,
-      empty.executionEfficiency,
+      empty.systemEdgeCaptured,
     ]) {
       expect(metric).toEqual({ status: 'unavailable', reason: 'no_comparable_trades' });
     }
     expect(
-      composeComparisonAnalytics([pair('zero', '0.0000', '1.0000')]).executionEfficiency,
+      composeComparisonAnalytics([comparison('zero', '0.0000', '1.0000')]).systemEdgeCaptured,
     ).toEqual({ status: 'unavailable', reason: 'system_has_no_edge' });
     expect(
-      composeComparisonAnalytics([pair('loss', '-1.0000', '1.0000')]).executionEfficiency,
+      composeComparisonAnalytics([comparison('loss', '-1.0000', '1.0000')]).systemEdgeCaptured,
     ).toEqual({ status: 'unavailable', reason: 'system_has_no_edge' });
   });
 });
@@ -266,10 +277,18 @@ describe('comparison composition', () => {
 describe('rule and mistake composition', () => {
   it('composes objective Rule counts and adherence from evaluated checks only', () => {
     const checks = [
-      ...Array.from({ length: 8 }, () => ({ checkStatus: 'followed' as const })),
-      ...Array.from({ length: 2 }, () => ({ checkStatus: 'violated' as const })),
-      { checkStatus: 'not_applicable' as const },
-      { checkStatus: 'not_checked' as const },
+      ...Array.from({ length: 8 }, () => ({
+        tradeId: 'trade-a',
+        isRequired: true,
+        checkStatus: 'followed' as const,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        tradeId: 'trade-a',
+        isRequired: true,
+        checkStatus: 'violated' as const,
+      })),
+      { tradeId: 'trade-a', isRequired: true, checkStatus: 'not_applicable' as const },
+      { tradeId: 'trade-b', isRequired: true, checkStatus: 'not_checked' as const },
     ];
     expect(composeRuleAnalytics(checks)).toEqual({
       followedCount: 8,
@@ -277,7 +296,13 @@ describe('rule and mistake composition', () => {
       notCheckedCount: 1,
       notApplicableCount: 1,
       evaluatedCount: 10,
-      adherenceRate: { status: 'available', value: '0.8000' },
+      checksFollowedRate: { status: 'available', value: '0.8000' },
+      tradeAdherenceRate: { status: 'available', value: '0.0000' },
+      evaluatedTradeCount: 1,
+      compliantTradeCount: 0,
+      nonCompliantTradeCount: 1,
+      incompleteTradeCount: 1,
+      notApplicableTradeCount: 0,
     });
   });
 
@@ -286,7 +311,9 @@ describe('rule and mistake composition', () => {
     ['all violated', ['violated', 'violated'], '0.0000'],
   ] as const)('%s has a defined adherence rate', (_name, statuses, expected) => {
     expect(
-      composeRuleAnalytics(statuses.map((checkStatus) => ({ checkStatus }))).adherenceRate,
+      composeRuleAnalytics(
+        statuses.map((checkStatus) => ({ tradeId: 'trade', isRequired: true, checkStatus })),
+      ).checksFollowedRate,
     ).toEqual({ status: 'available', value: expected });
   });
 
@@ -296,7 +323,9 @@ describe('rule and mistake composition', () => {
     ['not_checked', 'not_applicable', 'future_status'],
   ])('returns no_rule_checks for unevaluated statuses %s', (...statuses) => {
     expect(
-      composeRuleAnalytics(statuses.map((checkStatus) => ({ checkStatus }))).adherenceRate,
+      composeRuleAnalytics(
+        statuses.map((checkStatus) => ({ tradeId: 'trade', isRequired: true, checkStatus })),
+      ).checksFollowedRate,
     ).toEqual({
       status: 'unavailable',
       reason: 'no_rule_checks',
@@ -330,16 +359,18 @@ describe('failure mapping and full projections', () => {
   it('classifies every CalcFailureReason exhaustively and sanitizes integrity failures', () => {
     const expectedUnavailable = new Set([
       'no_trades',
+      'no_trading_days',
       'no_wins',
       'no_losses',
       'no_profit_or_loss',
       'no_comparable_trades',
       'system_has_no_edge',
       'no_rule_checks',
+      'no_evaluated_trades',
       'no_conditions_applicable',
       'no_confidence_recorded',
     ]);
-    expect(CALC_FAILURE_REASONS).toHaveLength(24);
+    expect(CALC_FAILURE_REASONS).toHaveLength(28);
     for (const reason of CALC_FAILURE_REASONS) {
       const mapped = toAnalyticsMetric(calcErr(reason));
       if (expectedUnavailable.has(reason)) {
@@ -356,7 +387,7 @@ describe('failure mapping and full projections', () => {
       trader: [trader('divergent', '-1.0000', 'loss')],
       system: [system('divergent', '3.0000', 'win')],
       systemPendingCount: 0,
-      comparison: [{ tradeId: 'divergent', actualR: '-1.0000', systemR: '3.0000' }],
+      comparison: [comparison('divergent', '3.0000', '-1.0000')],
       rules: [],
       mistakes: [],
       setupAdherence: [],
@@ -377,6 +408,15 @@ describe('failure mapping and full projections', () => {
     expect(snapshot.trader.winRate).toEqual({ status: 'available', value: '0.0000' });
     expect(snapshot.system.winRate).toEqual({ status: 'available', value: '1.0000' });
     expect(snapshot.comparison.executionGapR).toEqual({ status: 'available', value: '-4.0000' });
+    expect(snapshot.traderDayWin).toMatchObject({
+      status: 'available',
+      value: { eligibleDayCount: 1, rate: '0.0000' },
+    });
+    expect(snapshot.traderNetPnl).toEqual({
+      status: 'available',
+      currency: 'USD',
+      totalMinor: '-100',
+    });
     expect(() => JSON.stringify(snapshot)).not.toThrow();
   });
 
@@ -386,7 +426,7 @@ describe('failure mapping and full projections', () => {
       trader: [trader('t', '1.0000', 'win')],
       system: [system('t', '2.0000', 'win')],
       systemPendingCount: 3,
-      comparison: [{ tradeId: 't', actualR: '1.0000', systemR: '2.0000' }],
+      comparison: [comparison('t', '2.0000', '1.0000')],
       rules: [],
       mistakes: [],
       setupAdherence: [],

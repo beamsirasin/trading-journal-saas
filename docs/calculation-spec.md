@@ -65,13 +65,23 @@ short: riskPerUnit = initialStop − entry
 
 ### Net result
 
+`Trade.net_pnl_minor` is the authoritative stored Actual money result. `gross_pnl_minor`,
+`commission_minor`, `fees_minor`, and `swap_minor` are informational snapshots. Analytics
+must never reconstruct Net P&L by subtracting those fields again from an already-net result.
+The recording model may use cost inputs while producing the authoritative value, but the
+aggregate contract is only:
+
 ```
-netResult = grossPnL − commission − fees − swap                        [minor units]
+netPnl = Σ net_pnl_minor
 ```
 
-`Trade.gross_pnl_minor` is an optional persisted snapshot for transparency; `net_pnl_minor` (see above) is what `actualR` actually divides.
-
-Costs are always subtracted. A gross win can be a net loss, and the product must show that.
+The aggregate is available only for a non-empty, complete, single-currency eligible Actual
+population whose currency has a known minor-unit scale. A missing result (including a
+legitimate Price-mode Trade) is `incomplete`; multiple account currencies are
+`mixed_currency`; an unregistered scale is `unsupported_currency_scale`; an empty population
+is `empty`. No partial total, FX conversion, current FX rate, `NaN`, or `Infinity` is allowed.
+`src/lib/calc/net-pnl.ts` owns this typed availability contract. R analytics remain available
+when money is not.
 
 ### R-multiples
 
@@ -173,9 +183,24 @@ maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magni
 
 **Break-even remains in the Win Rate denominator** — never removed, exactly as CLAUDE.md §6 requires. `averageWinR`/`averageLossR` exclude break-even Trades from their own subsets (a break-even Trade is neither a win nor a loss for averaging purposes), but `winRate`'s denominator still counts it.
 
-**Eligible populations differ between the Trader and System axes** (Phase 07D locked rule): a Trader metric's eligible Trade requires `status = 'closed'`, not soft-deleted, `actualR` present, `traderOutcome` present — **System status does not matter**, so a closed Trader Trade with `system_status = 'pending'` is still eligible for Trader metrics. A System metric's eligible Trade requires `system_status = 'resolved'`, `systemR` present, `systemOutcome` present, not soft-deleted — `pending` and `no_trade` are both excluded, and neither is ever treated as a `0R` sample. `src/lib/calc/aggregate.ts`'s `isTraderEligible`/`isSystemEligible` (and their `select*Eligible` filter wrappers) are the one place this distinction is expressed, so a caller cannot accidentally mix the two populations.
+**Population A — Trader eligible.** A Trade requires `status = 'closed'`, no soft deletion,
+`actual_r`, `trader_outcome`, and `exited_at`. Strategy, Setup, and System resolution do not gate
+global eligibility (classification matters only when its corresponding filter is selected).
+The date axis and deterministic ordering are `exited_at`, then Trade ID.
 
-**These populations are independent, but not necessarily non-overlapping.** "Independent" means each is decided by its own predicate over its own required fields, never derived from the other. It does not mean disjoint: a fully-resolved Trade (`status = 'closed'`, `system_status = 'resolved'`) is simultaneously Trader-eligible and System-eligible — that overlap is the common case, not an edge case. The Comparison population (§5) is the paired intersection of the two: comparison-eligible is strictly narrower than either axis alone, since it additionally requires both sides resolved on the same Trade.
+**Population B — System eligible.** A Trade requires no soft deletion,
+`system_status = 'resolved'`, `system_r`, `system_outcome`, and `system_exited_at`. Actual status
+does not gate it. `pending` and `no_trade` are excluded, never zero-R records. Classification is
+not required globally unless a Strategy/Setup filter is selected. The date axis and ordering are
+`system_exited_at`, then Trade ID.
+
+**These populations are independent, but not necessarily non-overlapping.** "Independent" means each is decided by its own predicate over its own required fields, never derived from the other. It does not mean disjoint: a fully-resolved Trade (`status = 'closed'`, `system_status = 'resolved'`) is simultaneously Trader-eligible and System-eligible — that overlap is the common case, not an edge case. Population C (§5) is the paired intersection.
+
+**Day Win %.** Population A is bucketed by local calendar day using the persisted user analytics
+IANA timezone and Actual `exited_at`. A day is eligible when at least one Population-A Trade
+closes that day; open-only days are absent. Daily R is the full-precision sum: positive is a win,
+zero is break-even, negative is a loss. `dayWinRate = winningDays / eligibleDays`; break-even
+days remain in the denominator. `src/lib/calc/day-win-rate.ts` owns the DST-safe pure contract.
 
 **Open, soft-deleted, and `canceled` trades** are excluded from every closed-trade aggregate exactly as before — `canceled` exclusion is a query-level filter the caller applies before calling these functions, not a schema-shape constraint (`Trade.status = 'canceled'` deliberately leaves every other field unconstrained).
 
@@ -193,28 +218,56 @@ averageExecutionGapR  = AVG(actualR − systemR) over the SAME paired-Trade popu
                          Trade weighted equally; pairedExecutionGapR remains available
                          as the secondary summed/total figure)
                                                     [attribution.ts: averageExecutionGapR]
-executionEfficiency  = pairedActualTotalR / pairedSystemTotalR   (only when
-                        pairedSystemTotalR > 0, same paired population both sides)
-                                                    [attribution.ts: executionEfficiency]
-ruleAdherenceRate    = followed / (followed + violated)   (not_applicable/not_checked excluded)
-                                                    [attribution.ts: ruleAdherenceRate]
+systemEdgeCaptured    = pairedActualTotalR / pairedSystemTotalR   (only when
+                         pairedSystemTotalR > 0, same paired population both sides)
+                                                     [attribution.ts: systemEdgeCaptured]
+ruleChecksFollowedRate = followed / (followed + violated)   (check-level;
+                          not_applicable/not_checked excluded)
+                                                     [attribution.ts: ruleAdherenceRate]
+tradeRuleAdherenceRate = compliant evaluated Trades / evaluated Trades
+                                                     [attribution.ts: tradeRuleAdherence]
 ```
 
 **Implemented as of Phase 07D** — `src/lib/calc/attribution.ts`. **Sign corrected and renamed in Phase 13H:** this table supersedes the Phase 07D `edgeLeakageR = systemR − actualR` naming/sign (positive meant "less captured"). The retired `edgeLeakageR`/`pairedEdgeLeakageR` no longer exist in the codebase; every call site — analytics/dashboard UI, marketing pages, demo fixtures — was updated to the new sign/name together, and `averageExecutionGapR` was added as the new primary aggregate.
 
-**Comparison is paired by Trade, always.** A Trade contributes to System-vs-Trader comparison only when BOTH `actualR` and `systemR` exist for that same Trade (`isComparisonEligible`/`selectComparisonEligible`) — a third, distinct eligibility rule from the Trader/System rules above: a closed Trader Trade with a still-`pending` System side is Trader-eligible but not comparison-eligible. `PairedRTrade` couples one `tradeId` to both its own R values in a single record, so a caller cannot construct `systemTotal` over one population minus `actualTotal` over a different one — pairing is enforced by the type shape itself, not by a runtime cross-check.
+**Population C — paired comparison.** A Trade must satisfy both Population-A and Population-B
+completeness for the same Trade. For bounded analytics, inclusion is anchored only to Actual
+`exited_at`; `system_exited_at` remains required and returned as metadata but is not a second
+range gate. Therefore Actual-inside/System-outside is included, while Actual-outside/System-
+inside is excluded. Ordering is Actual `exited_at`, then Trade ID. `PairedRTrade` couples one
+`tradeId` to both values so independently filtered totals cannot be compared accidentally.
 
 **Execution Gap** negative means the trader captured less R than the System; zero means they matched; **positive means the trader captured MORE R than the counterfactual System** — never described as an error, never clamped to zero. Both are real, meaningful findings.
 
-**Execution efficiency** is undefined when `pairedSystemTotalR ≤ 0` (a non-positive System edge makes the ratio not merely undefined but actively misleading — capturing 50% of a losing system is not a 50% score) — returns `{ ok: false, reason: 'system_has_no_edge' }`, never `Infinity`, never a clamp. Values above `1.0000` (captured more than the System's own counterfactual) and below `0` (a net loss against a positive System edge) are both legitimate, literal results, never clamped to `[0, 1]`. This metric describes execution against available System edge; it is not an independent Strategy-quality metric.
+**System Edge Captured** is the product/domain name for the existing ratio mathematics. It is
+available only with at least one paired Trade and `pairedSystemTotalR > 0`; a non-positive System
+total returns `system_has_no_edge`. It is never clamped: System +10R / Actual +13R is 130%, and
+System +10R / Actual −2R is −20%. Neither is an integrity error. System-vs-Trader presentation
+uses neutral identity semantics rather than positive/negative verdict coloring.
 
-**Rule adherence is the objective primitive only.** `not_applicable` (the Rule did not apply) and `not_checked` (adherence state unknown) are both excluded from the denominator — the engine must never silently infer a violation from an unknown or inapplicable state. A caller may pre-filter by required/optional, pre-trade, category, or Setup scope before calling; none of those dimensions are baked into the formula.
+**Rule Checks Followed % is check-level.** The existing `ruleAdherenceRate` primitive remains
+`followed / (followed + violated)` with `not_applicable` and `not_checked` excluded. It must not
+be labeled Trade-level “Rule Adherence %”.
+
+**Rule Adherence % is trade-level.** Snapshotted `is_required` makes the current model sufficient
+without a migration. Optional checks are informational and do not classify the Trade. For each
+Trade, required `followed`, `violated`, and `not_applicable` are resolved; any required
+`not_checked` (or unknown future status) makes it incomplete and excludes it. A fully resolved
+Trade needs at least one applicable required check (`followed` or `violated`) to be evaluated.
+It is compliant only when zero applicable required checks are violated. All-`not_applicable`
+Trades are resolved but not evaluated. `src/lib/calc/attribution.ts` returns the explicit counts
+and `no_evaluated_trades` when a rate cannot be computed.
+
+**Partial closes remain unchanged.** Core Population-A analytics include a position only after
+its Exit legs total exactly 100%; Price mode sums direction-aware leg R weighted by closed
+fraction, while Money mode sums authoritative realized leg P&L once (never weights P&L again).
+The final parent `exited_at` is the chronologically latest Exit-leg timestamp.
 
 ### Discipline Score and mistake-cost attribution remain deliberately deferred
 
 **There is no approved Discipline Score formula.** Although Phase 07B seeds the nine canonical mistake types with a neutral `default_weight`/`severity_at_time` snapshot, that is future-proofing for a later, evidence-backed weighting decision — it is not permission to invent `100 × (1 − mean(perTradePenalty))` or any other 0–100 scoring formula now. `src/lib/calc/` contains no such function, and none should be added until an explicit product decision defines one.
 
-**Mistake-cost ranking (attributing lost R to individual mistake types) is also deferred.** A Trade may carry multiple mistake labels, so naively assigning its entire edge leakage to every mistake on it would double-count attribution. `pairedEdgeLeakageR`/general leakage calculations exist in Phase 07D; attributing that leakage to specific mistake types does not, and is left to a future phase's explicit attribution policy.
+**Mistake-cost ranking (attributing lost R to individual mistake types) is also deferred.** A Trade may carry multiple mistake labels, so naively assigning its entire Execution Gap to every mistake on it would double-count attribution. `pairedExecutionGapR` calculates the paired total, but attributing any part of that total to specific mistake types does not exist and is left to a future phase's explicit attribution policy.
 
 ## 6. Null-result discipline
 
@@ -232,20 +285,23 @@ The full closed `CalcFailureReason` set (`src/lib/calc/types.ts`) spans both Pha
 | `no_trades`                                                                                                                                                                                                               | 07D   | `totalR`, `averageR`, `expectancyR`, `winRate`, `profitFactor`, `equityCurveR`, `maximumDrawdownR` — an empty eligible population is never a legitimate `0R` sample |
 | `no_wins` / `no_losses`                                                                                                                                                                                                   | 07D   | `averageWinR`, `averageLossR`, `payoffRatio`                                                                                                                        |
 | `no_profit_or_loss`                                                                                                                                                                                                       | 07D   | `profitFactor`, when every R is exactly zero                                                                                                                        |
-| `system_has_no_edge`                                                                                                                                                                                                      | 07D   | `executionEfficiency`, when the paired System total is not strictly positive                                                                                        |
-| `no_comparable_trades`                                                                                                                                                                                                    | 07D   | `pairedEdgeLeakageR`, `executionEfficiency`, when the paired population is empty                                                                                    |
-| `no_rule_checks`                                                                                                                                                                                                          | 07D   | `ruleAdherenceRate`, when no `followed`/`violated` checks exist                                                                                                     |
+| `system_has_no_edge`                                                                                                                                                                                                      | D1    | `systemEdgeCaptured`, when paired System Total R is not strictly positive                                                                                           |
+| `no_comparable_trades`                                                                                                                                                                                                    | 07D   | paired Gap / System Edge Captured, when Population C is empty                                                                                                       |
+| `no_rule_checks`                                                                                                                                                                                                          | 07D   | check-level Rule Checks Followed, when no `followed`/`violated` checks exist                                                                                        |
+| `no_evaluated_trades`                                                                                                                                                                                                     | D1    | trade-level Rule Adherence, when no Trade is fully evaluated                                                                                                        |
+| `no_trading_days`                                                                                                                                                                                                         | D1    | Day Win %, when Population A has no eligible local day                                                                                                              |
+| `invalid_timezone` / `invalid_timestamp`                                                                                                                                                                                  | D1    | Day Win % input integrity failures                                                                                                                                  |
 
 `NaN`, `Infinity`, and "0 means no data" are all forbidden across both phases' functions.
 
 A dashboard showing `0%` win rate for a user with no trades is stating something false. Showing "no closed trades yet" is stating something true. The type system should make the false version hard to write.
 
-| Situation                                 | Result                                        |
-| ----------------------------------------- | --------------------------------------------- |
-| No closed trades                          | `{ ok: false, reason: 'no_trades' }`          |
-| No losing trades (profit factor)          | `{ ok: false, reason: 'no_losing_trades' }`   |
-| `systemTotalR ≤ 0` (execution efficiency) | `{ ok: false, reason: 'system_has_no_edge' }` |
-| Below the verdict sample threshold        | `{ ok: false, reason: 'insufficient_data' }`  |
+| Situation                                       | Result                                        |
+| ----------------------------------------------- | --------------------------------------------- |
+| No closed trades                                | `{ ok: false, reason: 'no_trades' }`          |
+| No losing trades (profit factor)                | `{ ok: false, reason: 'no_losses' }`          |
+| `pairedSystemTotalR ≤ 0` (System Edge Captured) | `{ ok: false, reason: 'system_has_no_edge' }` |
+| Below the verdict sample threshold              | `{ ok: false, reason: 'insufficient_data' }`  |
 
 ## 7. Required test coverage
 
@@ -281,7 +337,8 @@ actualR            = 35300 / 54000 = +0.6537R
 
 systemExit (target hit per rules) → systemR = +2.00R (less modelled costs)
 
-edgeLeakage on this trade = 2.00 − 0.65 = 1.35R
+Execution Gap on this trade = 0.65 − 2.00 = −1.35R
 ```
 
-The trade was profitable. The trader still gave up 1.35R against the system by exiting early — which a P&L-only journal would report as an unqualified win.
+The trade was profitable, while its −1.35R Execution Gap records that Actual captured less than
+the System counterfactual. The sign remains Actual minus System.

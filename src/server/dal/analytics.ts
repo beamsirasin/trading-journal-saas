@@ -10,6 +10,10 @@ import {
   type AnalyticsFilterInput,
   type AnalyticsFilters,
 } from '@/lib/analytics/filters';
+import type {
+  DashboardAccountContext,
+  DashboardRecentTradeRecord,
+} from '@/lib/dashboard/page-data';
 import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots';
 import { systemClock } from '@/lib/time';
 import type {
@@ -19,10 +23,11 @@ import type {
   TradeDirection,
   TradeStatus,
 } from '@/lib/trades/constants';
+import type { AccountMode } from '@/lib/trading-accounts/constants';
 import {
-  getActiveTradingAccount,
+  getActiveTradingAccountForResolvedContext,
   getActiveWorkspaceContext,
-  getCurrentUserPreferences,
+  getUserPreferencesForResolvedUser,
 } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
@@ -42,6 +47,11 @@ import {
 } from '@/server/db/schema';
 
 import { entryContextAnalyticsEligible } from './trade-recording-model';
+import {
+  occurredAtExpr,
+  selectWorkspaceTradeAttentionCounts,
+  type TradeAttentionCounts,
+} from './trades';
 
 export type AnalyticsFilterErrorCode =
   'invalid_filters' | 'invalid_timezone' | 'no_active_trading_account';
@@ -71,6 +81,7 @@ export interface ResolvedAnalyticsFilters {
 interface AnalyticsQueryContext {
   readonly workspaceId: string;
   readonly filters: ResolvedAnalyticsFilters;
+  readonly account: DashboardAccountContext;
 }
 
 export interface AnalyticsReadOptions {
@@ -91,28 +102,48 @@ async function resolveAnalyticsQueryContext(
   const parsed = parseAnalyticsFilters(input);
   if (!parsed.ok) return parsed;
 
-  const { workspaceId } = await getActiveWorkspaceContext();
-  const preferences = await getCurrentUserPreferences();
+  const { userId, workspaceId } = await getActiveWorkspaceContext();
+  const preferences = await getUserPreferencesForResolvedUser(userId);
   const db = getDb();
   const filters = parsed.filters;
 
   let accountScope: ResolvedAnalyticsAccountScope;
+  let account: DashboardAccountContext;
   if (filters.accountScope.kind === 'all') {
     accountScope = { kind: 'all' };
+    account = { kind: 'all' };
   } else if (filters.accountScope.kind === 'active') {
-    const active = await getActiveTradingAccount();
+    const active = await getActiveTradingAccountForResolvedContext(userId, workspaceId);
     if (active === null) return { ok: false, code: 'no_active_trading_account' };
     accountScope = { kind: 'account', accountId: active.id, source: 'active' };
+    account = { kind: 'account', source: 'active', account: active };
   } else {
-    const account = await db.query.tradingAccounts.findFirst({
-      columns: { id: true },
+    const accountRow = await db.query.tradingAccounts.findFirst({
+      columns: {
+        id: true,
+        name: true,
+        accountMode: true,
+        baseCurrency: true,
+        startingBalance: true,
+      },
       where: and(
         eq(tradingAccounts.id, filters.accountScope.accountId),
         eq(tradingAccounts.workspaceId, workspaceId),
       ),
     });
-    if (account === undefined) return { ok: false, code: 'invalid_filters' };
-    accountScope = { kind: 'account', accountId: account.id, source: 'explicit' };
+    if (accountRow === undefined) return { ok: false, code: 'invalid_filters' };
+    accountScope = { kind: 'account', accountId: accountRow.id, source: 'explicit' };
+    account = {
+      kind: 'account',
+      source: 'explicit',
+      account: {
+        id: accountRow.id,
+        name: accountRow.name,
+        accountMode: accountRow.accountMode as AccountMode,
+        baseCurrency: accountRow.baseCurrency,
+        startingBalance: accountRow.startingBalance,
+      },
+    };
   }
 
   const [strategy, setup, version] = await Promise.all([
@@ -166,6 +197,7 @@ async function resolveAnalyticsQueryContext(
     ok: true,
     data: {
       workspaceId,
+      account,
       filters: {
         datePreset: filters.datePreset,
         dateBounds: dateResult.bounds,
@@ -347,6 +379,9 @@ export interface TraderAnalyticsRecord {
   readonly traderOutcome: OutcomeValue;
   readonly exitedAt: string;
   readonly tradingAccountId: string;
+  /** Authoritative Actual money result; null is legitimate for Price-mode Trades. */
+  readonly netPnlMinor: string | null;
+  readonly baseCurrency: string;
   /** Phase 14B: `null` for an unclassified Trade — Trader eligibility never depends on classification (CLAUDE.md §1/§6). */
   readonly strategyId: string | null;
   readonly strategyVersionId: string | null;
@@ -378,6 +413,8 @@ async function selectTraderAnalyticsRecords(
       traderOutcome: trades.traderOutcome,
       exitedAt: trades.exitedAt,
       tradingAccountId: trades.tradingAccountId,
+      netPnlMinor: trades.netPnlMinor,
+      baseCurrency: tradingAccounts.baseCurrency,
       strategyId: trades.strategyId,
       strategyVersionId: trades.strategyVersionId,
       setupId: trades.setupId,
@@ -387,6 +424,7 @@ async function selectTraderAnalyticsRecords(
       timeframe: trades.timeframe,
     })
     .from(trades)
+    .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
     .where(
       and(
         ...frameworkConditions(context),
@@ -407,6 +445,7 @@ async function selectTraderAnalyticsRecords(
     actualR: row.actualR as string,
     traderOutcome: row.traderOutcome as OutcomeValue,
     exitedAt: (row.exitedAt as Date).toISOString(),
+    netPnlMinor: row.netPnlMinor?.toString() ?? null,
     direction: row.direction as TradeDirection,
   }));
 }
@@ -520,9 +559,15 @@ export async function getSystemPendingCount(
 
 export interface PairedAnalyticsRecord {
   readonly tradeId: string;
+  readonly status: 'closed';
+  readonly deletedAt: null;
   readonly actualR: string;
+  readonly traderOutcome: OutcomeValue;
   readonly systemR: string;
+  readonly systemStatus: 'resolved';
+  readonly systemOutcome: OutcomeValue;
   readonly actualExitedAt: string;
+  /** Metadata only: bounded Population-C filtering is anchored exclusively to `actualExitedAt`. */
   readonly systemExitedAt: string;
   readonly tradingAccountId: string;
   /** Phase 14B: `null` for an unclassified Trade — pairing/Execution Gap never depends on classification. */
@@ -547,18 +592,21 @@ async function selectPairedAnalyticsRecords(
     isNotNull(trades.systemOutcome),
     isNotNull(trades.systemExitedAt),
   ];
-  if (context.filters.dateBounds.kind === 'bounded') {
-    conditions.push(
-      ...dateConditions(trades.exitedAt, context.filters.dateBounds),
-      ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
-    );
-  }
+  // Population C is an execution-diagnosis population. A bounded range is
+  // therefore anchored to when the Trader's Actual execution completed.
+  // `system_exited_at` remains required for System-axis completeness and is
+  // returned as metadata, but it is deliberately NOT a second range gate.
+  conditions.push(...dateConditions(trades.exitedAt, context.filters.dateBounds));
 
   const rows = await db
     .select({
       tradeId: trades.id,
+      status: trades.status,
       actualR: trades.actualR,
+      traderOutcome: trades.traderOutcome,
+      systemStatus: trades.systemStatus,
       systemR: trades.systemR,
+      systemOutcome: trades.systemOutcome,
       actualExitedAt: trades.exitedAt,
       systemExitedAt: trades.systemExitedAt,
       tradingAccountId: trades.tradingAccountId,
@@ -572,8 +620,13 @@ async function selectPairedAnalyticsRecords(
 
   return rows.map((row) => ({
     ...row,
+    status: 'closed' as const,
+    deletedAt: null,
     actualR: row.actualR as string,
+    traderOutcome: row.traderOutcome as OutcomeValue,
+    systemStatus: 'resolved' as const,
     systemR: row.systemR as string,
+    systemOutcome: row.systemOutcome as OutcomeValue,
     actualExitedAt: (row.actualExitedAt as Date).toISOString(),
     systemExitedAt: (row.systemExitedAt as Date).toISOString(),
   }));
@@ -586,6 +639,62 @@ export async function getPairedAnalyticsRecords(
   const context = await resolveAnalyticsQueryContext(input, options);
   if (!context.ok) return context;
   return { ok: true, data: await selectPairedAnalyticsRecords(context.data) };
+}
+
+/**
+ * D2 Recent Trades is a narrow Dashboard projection, not the rich Journal
+ * list. It follows Dashboard account/framework filters and a documented
+ * lifecycle `occurred_at` range so unresolved Trades remain representable.
+ */
+async function selectDashboardRecentTrades(
+  context: AnalyticsQueryContext,
+): Promise<readonly DashboardRecentTradeRecord[]> {
+  const db = getDb();
+  const conditions = [...frameworkConditions(context), isNull(trades.deletedAt)];
+  if (context.filters.dateBounds.kind === 'bounded') {
+    conditions.push(
+      sql`${occurredAtExpr} >= ${context.filters.dateBounds.start}::timestamptz`,
+      sql`${occurredAtExpr} < ${context.filters.dateBounds.endExclusive}::timestamptz`,
+    );
+  }
+
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      occurredAt: occurredAtExpr,
+      symbol: trades.symbol,
+      direction: trades.direction,
+      tradingAccountName: tradingAccounts.name,
+      status: trades.status,
+      traderOutcome: trades.traderOutcome,
+      actualR: trades.actualR,
+      actualExitedAt: trades.exitedAt,
+      systemStatus: trades.systemStatus,
+      systemOutcome: trades.systemOutcome,
+      systemR: trades.systemR,
+      systemExitedAt: trades.systemExitedAt,
+      strategyName: strategyVersions.name,
+      setupName: strategySetupVersions.name,
+    })
+    .from(trades)
+    .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
+    .leftJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
+    .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .where(and(...conditions))
+    .orderBy(desc(occurredAtExpr), desc(trades.id))
+    .limit(5);
+
+  return rows.map((row) => ({
+    ...row,
+    occurredAt: new Date(row.occurredAt).toISOString(),
+    direction: row.direction as TradeDirection,
+    status: row.status as TradeStatus,
+    traderOutcome: row.traderOutcome as OutcomeValue | null,
+    actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
+    systemStatus: row.systemStatus as SystemStatus,
+    systemOutcome: row.systemOutcome as OutcomeValue | null,
+    systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
+  }));
 }
 
 export interface RuleAnalyticsRecord {
@@ -1292,6 +1401,57 @@ export async function getAnalyticsRawPopulations(
       confidenceSystem,
       emotions,
       emotionsSystem,
+    },
+  };
+}
+
+export const DASHBOARD_MAJOR_PROJECTIONS = [
+  'trader',
+  'system',
+  'paired',
+  'attention',
+  'recent_trades',
+] as const;
+export const DASHBOARD_MAJOR_PROJECTION_COUNT = DASHBOARD_MAJOR_PROJECTIONS.length;
+
+export interface DashboardRawData {
+  readonly filters: ResolvedAnalyticsFilters;
+  readonly account: DashboardAccountContext;
+  readonly trader: readonly TraderAnalyticsRecord[];
+  readonly system: readonly SystemAnalyticsRecord[];
+  readonly paired: readonly PairedAnalyticsRecord[];
+  readonly attention: TradeAttentionCounts;
+  readonly recentTrades: readonly DashboardRecentTradeRecord[];
+}
+
+/**
+ * D2's single route-level Dashboard read boundary. Scope and authorization
+ * resolve once, then exactly five major projections run in parallel. Deep
+ * Analytics rule/mistake/setup/condition/confidence/emotion reads are absent.
+ */
+export async function getDashboardRawData(
+  input: AnalyticsFilterInput | unknown,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<DashboardRawData>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  const [trader, system, paired, attention, recentTrades] = await Promise.all([
+    selectTraderAnalyticsRecords(context.data),
+    selectSystemAnalyticsRecords(context.data),
+    selectPairedAnalyticsRecords(context.data),
+    selectWorkspaceTradeAttentionCounts(context.data.workspaceId),
+    selectDashboardRecentTrades(context.data),
+  ]);
+  return {
+    ok: true,
+    data: {
+      filters: context.data.filters,
+      account: context.data.account,
+      trader,
+      system,
+      paired,
+      attention,
+      recentTrades,
     },
   };
 }

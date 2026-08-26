@@ -44,7 +44,7 @@ import { TradesTable } from './trades-table';
  * the dashboard answers "what is happening right now", not "why" — that is
  * `/app/analytics`'s job. Only four headline KPIs render as top-level cards;
  * System Expectancy, Actual Expectancy, Profit Factor, Max Drawdown and
- * Execution Efficiency are analytics-depth figures and live there instead.
+ * System Edge Captured are analytics-depth figures and live there instead.
  * The system-vs-trader module below shows only Win Rate / Average R /
  * Expectancy, with the Execution Gap folded into one insight sentence rather
  * than its own card, and a link out to the full breakdown.

@@ -195,8 +195,8 @@ test.describe('public calls to action', () => {
  * where the desktop nav first appears), the header's unwrapped content sits
  * within a fraction of a pixel of the available width. Flexbox assigns the
  * whole shrink deficit to whichever text node can still compress, and
- * without explicit protection that was the brand wordmark ("Trading OS"
- * wrapping to "Trading" / "OS") and then, once that was fixed, the first nav
+ * without explicit protection that was the brand wordmark ("TradeChemist"
+ * wrapping across two lines) and then, once that was fixed, the first nav
  * link long enough to wrap ("How it works" splitting mid-phrase). A plain
  * "no horizontal overflow" check does not catch this: wrapping shrinks the
  * element rather than overflowing the page, so the bug is invisible to that
@@ -207,7 +207,7 @@ test.describe('header layout at the navigation breakpoint', () => {
     await page.setViewportSize({ width: 1024, height: 900 });
     await page.goto('/en');
 
-    const wordmark = page.getByRole('banner').getByText('Trading OS', { exact: true });
+    const wordmark = page.getByRole('banner').getByText('TradeChemist', { exact: true });
     const wordmarkBox = await wordmark.boundingBox();
     // The wordmark span has no fixed height, so a wrapped two-line label
     // shows up directly as roughly double a single line's height. 30px
@@ -298,7 +298,7 @@ test.describe('marketing mobile menu', () => {
   test('closes after following the drawer wordmark', async ({ page }) => {
     await page.goto('/en/pricing');
     await page.getByRole('button', { name: /open navigation menu/i }).click();
-    await page.getByRole('dialog').getByRole('link', { name: 'Trading OS' }).click();
+    await page.getByRole('dialog').getByRole('link', { name: 'TradeChemist' }).click();
 
     await expect(page).toHaveURL(/\/en$/);
     await expect(page.getByRole('dialog')).toBeHidden();

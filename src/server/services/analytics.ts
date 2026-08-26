@@ -2,19 +2,22 @@ import 'server-only';
 
 import {
   composeAnalyticsSnapshot,
-  composeDashboardOverview,
   type AnalyticsSnapshot,
   type DashboardOverview,
 } from '@/lib/analytics/metrics';
 import { resolveDashboardDatePreset } from '@/lib/analytics/presentation';
+import { parseDashboardFilterState } from '@/lib/dashboard/filters';
+import type { DashboardRecentTrade } from '@/lib/dashboard/page-data';
 import {
   getAnalyticsFilterOptions,
   getAnalyticsRawPopulations,
+  getSystemPendingCount,
   type AnalyticsFilterErrorCode,
   type AnalyticsFilterOptions,
   type AnalyticsReadOptions,
 } from '@/server/dal/analytics';
-import { listWorkspaceTrades, type TradeListItem } from '@/server/dal/trades';
+
+import { getDashboardPageData } from './dashboard';
 
 export type AnalyticsServiceResult =
   | { readonly ok: true; readonly data: AnalyticsSnapshot }
@@ -184,7 +187,7 @@ export async function getAnalyticsPageData(
 
 export interface DashboardOverviewData {
   readonly overview: DashboardOverview;
-  readonly recentTrades: readonly TradeListItem[];
+  readonly recentTrades: readonly DashboardRecentTrade[];
 }
 
 export type DashboardOverviewServiceResult =
@@ -201,22 +204,30 @@ export async function getDashboardOverview(
   options: AnalyticsReadOptions = {},
 ): Promise<DashboardOverviewServiceResult> {
   const datePreset = resolveDashboardDatePreset(rangeInput);
-  const snapshot = await getAnalyticsSnapshot({ datePreset }, options);
-  if (!snapshot.ok) return snapshot;
-  const accountScope = snapshot.data.scope.accountScope;
-  if (accountScope.kind !== 'account' || accountScope.source !== 'active') {
-    return { ok: false, code: 'invalid_filters' };
-  }
-
-  const recent = await listWorkspaceTrades({
-    limit: 5,
-    tradingAccountId: accountScope.accountId,
-  });
+  const parsed = parseDashboardFilterState({ range: datePreset });
+  if (!parsed.ok) return parsed;
+  // Compatibility-only Phase 09 API. The live Dashboard route uses the D2
+  // service directly; retain this legacy field's original account-scoped,
+  // non-date-bounded semantics rather than substituting workspace attention.
+  const [dashboard, pending] = await Promise.all([
+    getDashboardPageData(parsed.state, options),
+    getSystemPendingCount({ datePreset }, options),
+  ]);
+  if (!dashboard.ok) return dashboard;
+  if (!pending.ok) return pending;
   return {
     ok: true,
     data: {
-      overview: composeDashboardOverview(snapshot.data),
-      recentTrades: recent.items,
+      overview: {
+        scope: dashboard.data.scope,
+        trader: dashboard.data.trader,
+        system: dashboard.data.system,
+        // Legacy Analytics overview keeps D2's ComparisonAnalyticsModel shape;
+        // D5A's series live on the Dashboard DTO and are not part of it.
+        comparison: dashboard.data.comparison.summary,
+        systemPendingCount: pending.data,
+      },
+      recentTrades: dashboard.data.recentTrades.items,
     },
   };
 }

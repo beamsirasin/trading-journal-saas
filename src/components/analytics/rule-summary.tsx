@@ -21,8 +21,8 @@ export function RuleSummary({ rules }: { rules: RuleAnalyticsModel }) {
         <dl className="grid gap-5 sm:grid-cols-3">
           <AnalyticsMetricDisplay
             className="border-b pb-5 sm:col-span-3"
-            label={t('rules.adherence')}
-            metric={rules.adherenceRate}
+            label={t('rules.checksFollowed')}
+            metric={rules.checksFollowedRate}
             style="percent"
             prominent
             forceNeutral
