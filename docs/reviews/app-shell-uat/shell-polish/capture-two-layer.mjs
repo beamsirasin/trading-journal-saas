@@ -58,7 +58,7 @@ for (const theme of ['light', 'dark']) {
   const sidebar = page.getByRole('complementary');
   const main = page.getByRole('main');
 
-  const icon = sidebar.getByRole('link', { name: 'Overview' }).locator('svg');
+  const icon = sidebar.getByRole('link', { name: 'Dashboard' }).locator('svg');
 
   // Collapsed: the rail alone.
   await setExpanded(page, false);

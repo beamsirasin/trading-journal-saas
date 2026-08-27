@@ -224,7 +224,7 @@ async function seedDashboardData(userId: string): Promise<void> {
   }
 }
 
-test.describe('real Dashboard overview', () => {
+test.describe('real Dashboard', () => {
   test('desktop renders canonical attribution, refreshes ranges, and links to real records', async ({
     page,
   }) => {
@@ -235,7 +235,7 @@ test.describe('real Dashboard overview', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
     await expect(page.getByText(/fictional demo data/i)).toHaveCount(0);
     await expect(page.getByText(/trade journaling is coming/i)).toHaveCount(0);
 

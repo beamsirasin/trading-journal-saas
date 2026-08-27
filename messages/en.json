@@ -24,7 +24,7 @@
   },
   "appNav": {
     "items": {
-      "overview": "Overview",
+      "overview": "Dashboard",
       "accounts": "Accounts",
       "trades": "Trades",
       "strategies": "Strategies",
@@ -319,7 +319,7 @@
     "chasedEntry": "Chased entry"
   },
   "dashboard": {
-    "title": "Overview",
+    "title": "Dashboard",
     "description": "What is happening with your trading right now.",
     "activeAccountSubtitle": "Your active trading account",
     "activeAccountRegionLabel": "Active trading account summary",

@@ -13,8 +13,8 @@ import { resolveE2eBetterAuthSecret } from './better-auth-secret';
  * just redirected to it" proof every `loginAs` call ends on.
  */
 const DASHBOARD_HEADING: Record<'en' | 'th', string> = {
-  en: 'Overview',
-  th: 'ภาพรวม',
+  en: 'Dashboard',
+  th: 'แดชบอร์ด',
 };
 
 /** Matches `session.expiresIn` in `src/lib/auth/server.ts` (7 days). */

@@ -28,11 +28,11 @@ The trial lasts 7 days, allows 1 active trading account, and unlocks every featu
 
 Every customer/public route lives under a locale prefix — `/en/...` or `/th/...` (`en` is the default fallback locale; there is no unprefixed customer route). See [ADR 0007](docs/decisions/0007-i18n-architecture.md). The sole exception is `/admin` (Phase 11): deliberately EN-only and non-locale-prefixed, outside `[locale]` entirely, since platform administration has no Thai audience and no per-locale concern.
 
-| Public                                                                               | Application                                                  |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `/en` landing · `/en/pricing` · `/en/demo` dashboard                                 | `/en/app` overview · `/en/app/trades` · `/en/app/strategies` |
-| `/en/login` · `/en/register`                                                         | `/en/app/analytics` · `/en/app/settings`                     |
-| `/en/verify-email` · `/en/forgot-password` · `/en/reset-password` · `/en/auth-error` |                                                              |
+| Public                                                                               | Application                                                   |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| `/en` landing · `/en/pricing` · `/en/demo` dashboard                                 | `/en/app` dashboard · `/en/app/trades` · `/en/app/strategies` |
+| `/en/login` · `/en/register`                                                         | `/en/app/analytics` · `/en/app/settings`                      |
+| `/en/verify-email` · `/en/forgot-password` · `/en/reset-password` · `/en/auth-error` |                                                               |
 
 An unauthenticated visitor to any `/en/app/*` route is redirected to `/en/login?callbackUrl=...`; an authenticated visitor to `/en/login` or `/en/register` is redirected to `/en/app`. Swap `/en` for `/th` for the Thai version of any route.
 

@@ -96,12 +96,15 @@ test.describe('locale rendering', () => {
     ).toBeVisible();
   });
 
-  test('/th/app localizes the real Dashboard overview', async ({ page }) => {
+  test('/th/app localizes the real Dashboard', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
 
     // E2E_USER_A is pre-onboarded so the localized real Dashboard is reached.
-    await expect(page.getByRole('heading', { level: 1, name: 'ภาพรวม' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'แดชบอร์ด' })).toBeVisible();
+    await expect(
+      page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'แดชบอร์ด' }),
+    ).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง')).toBeVisible();
     // Scoped to the dashboard's own labelled region rather than `.first()`:
     // `TradingAccountIndicator` in the header repeats the same account mode
@@ -113,7 +116,7 @@ test.describe('locale rendering', () => {
     await expect(
       page.getByRole('region', { name: 'เทรดล่าสุด' }).getByText('ยังไม่มีเทรดในบัญชีนี้'),
     ).toBeVisible();
-    await expect(page.getByText('Overview', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Dashboard', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
   });
 
@@ -368,10 +371,10 @@ test.describe('localized metadata', () => {
     await expect(page.locator('meta[property="og:locale"]')).toHaveAttribute('content', 'th_TH');
   });
 
-  test('localizes the app overview title', async ({ page }) => {
+  test('localizes the app Dashboard title', async ({ page }) => {
     test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
     await page.goto('/th/app');
-    await expect(page).toHaveTitle(/^ภาพรวม · TradeChemist$/);
+    await expect(page).toHaveTitle(/^แดชบอร์ด · TradeChemist$/);
   });
 });
 

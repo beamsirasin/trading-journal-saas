@@ -24,7 +24,7 @@
   },
   "appNav": {
     "items": {
-      "overview": "ภาพรวม",
+      "overview": "แดชบอร์ด",
       "accounts": "บัญชี",
       "trades": "ออเดอร์",
       "strategies": "กลยุทธ์",
@@ -319,7 +319,7 @@
     "chasedEntry": "ไล่ราคาเข้าออเดอร์"
   },
   "dashboard": {
-    "title": "ภาพรวม",
+    "title": "แดชบอร์ด",
     "description": "ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง",
     "activeAccountSubtitle": "บัญชีเทรดที่ใช้งานอยู่ของคุณ",
     "activeAccountRegionLabel": "สรุปบัญชีเทรดที่ใช้งานอยู่",

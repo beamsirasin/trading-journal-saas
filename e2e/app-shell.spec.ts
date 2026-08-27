@@ -48,7 +48,7 @@ async function railSidebar(page: Page) {
 async function navIconX(page: Page) {
   const box = await page
     .getByRole('complementary')
-    .getByRole('link', { name: 'Overview' })
+    .getByRole('link', { name: 'Dashboard' })
     .locator('svg')
     .first()
     .boundingBox();
@@ -68,16 +68,16 @@ async function centreX(locator: ReturnType<Page['locator']>) {
  * lives — see "Settings lives in the account menu" below.
  */
 const APP_ROUTES = [
-  { href: '/en/app', name: 'Overview' },
+  { href: '/en/app', name: 'Dashboard' },
   { href: '/en/app/trades', name: 'Trades' },
   { href: '/en/app/strategies', name: 'Strategies' },
   { href: '/en/app/analytics', name: 'Analytics' },
 ] as const;
 
 test.describe('application shell', () => {
-  test('renders the overview dashboard', async ({ page }) => {
+  test('renders the Dashboard destination', async ({ page }) => {
     await page.goto('/en/app');
-    await expect(page.getByRole('heading', { level: 1, name: 'Overview' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible();
   });
 
   test('exposes banner and main landmarks at every viewport', async ({ page }) => {
@@ -103,7 +103,12 @@ test.describe('application shell', () => {
     await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0);
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
-    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+    const navigation = page.getByRole('navigation', { name: 'Main' });
+    await expect(navigation).toBeVisible();
+    await expect(navigation.getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   test('has no horizontal overflow', async ({ page }) => {
@@ -214,7 +219,7 @@ test.describe('responsive navigation', () => {
 
     await page.getByRole('button', { name: /open navigation menu/i }).click();
     const dialog = page.getByRole('dialog');
-    const overviewLink = await dialog.getByRole('link', { name: /Overview/ }).boundingBox();
+    const overviewLink = await dialog.getByRole('link', { name: /Dashboard/ }).boundingBox();
     expect(round(overviewLink?.height)).toBeGreaterThanOrEqual(44);
 
     // The drawer's X is gone; the header's hamburger closes it now, and it is
@@ -379,7 +384,7 @@ test.describe('responsive navigation', () => {
       page.getByRole('button', { name: /(Collapse|Expand) sidebar/ }).locator('svg'),
     );
     const iconCentre = await centreX(
-      page.getByRole('complementary').getByRole('link', { name: 'Overview' }).locator('svg'),
+      page.getByRole('complementary').getByRole('link', { name: 'Dashboard' }).locator('svg'),
     );
 
     expect(Math.abs(toggleCentre - iconCentre)).toBeLessThanOrEqual(1);
@@ -402,8 +407,8 @@ test.describe('responsive navigation', () => {
       .boundingBox();
     const label = await page
       .getByRole('complementary')
-      .getByRole('link', { name: 'Overview' })
-      .getByText('Overview')
+      .getByRole('link', { name: 'Dashboard' })
+      .getByText('Dashboard')
       .boundingBox();
 
     // One column system: the header and the sidebar share a left edge.
@@ -779,7 +784,7 @@ test.describe('sidebar motion', () => {
     // the old six because Settings left navigation for the account menu.
     await expect(nav.getByRole('link')).toHaveCount(5);
 
-    for (const name of ['Overview', 'Trades', 'Analytics']) {
+    for (const name of ['Dashboard', 'Trades', 'Analytics']) {
       const link = nav.getByRole('link', { name });
       await expect(link).toBeVisible();
       await link.focus();
@@ -1180,10 +1185,10 @@ test.describe('Collapsed sidebar hover flyout', () => {
   test('aligns the flyout icon exactly over the rail icon it covers', async ({ page }) => {
     await railed(page);
 
-    const overview = page.getByRole('complementary').getByRole('link', { name: 'Overview' });
+    const overview = page.getByRole('complementary').getByRole('link', { name: 'Dashboard' });
     const railIcon = await overview.locator('svg').first().boundingBox();
 
-    await hoverRow(page, 'Overview');
+    await hoverRow(page, 'Dashboard');
     await expect(flyout(page)).toHaveCount(1);
     await page.waitForTimeout(300);
 
@@ -1519,7 +1524,7 @@ test.describe('shell polish — desktop hamburger', () => {
     // that icon's own centre rather than against its origin.
     const navIcon = (await page
       .getByRole('complementary')
-      .getByRole('link', { name: 'Overview' })
+      .getByRole('link', { name: 'Dashboard' })
       .locator('svg')
       .first()
       .boundingBox())!;
