@@ -36,7 +36,23 @@ export interface DashboardFilterState {
 }
 
 const URL_KEYS = ['range', 'account', 'strategy', 'setup', 'version', 'unit'] as const;
-const URL_KEY_SET = new Set<string>(URL_KEYS);
+
+/**
+ * Keys this parser tolerates but does NOT own.
+ *
+ * D6 puts the Calendar's month/mode/day/trade navigation in the same URL as
+ * the Dashboard filters, because a Day Review that loses the Account or the
+ * date range on the way in is showing the reader a different question from
+ * the one they asked. Two parsers therefore share one query string, each
+ * owning its own keys and each still failing closed on genuinely unknown
+ * ones — see `calendar-navigation.ts`.
+ *
+ * Listing them here rather than relaxing the unknown-key rule is deliberate:
+ * a typo'd filter key must still fail, and this set is the exact, reviewable
+ * record of what else is allowed to be present.
+ */
+const FOREIGN_URL_KEYS = ['month', 'mode', 'day', 'trade'] as const;
+const URL_KEY_SET = new Set<string>([...URL_KEYS, ...FOREIGN_URL_KEYS]);
 
 export type ParseDashboardFilterStateResult =
   | { readonly ok: true; readonly state: DashboardFilterState }

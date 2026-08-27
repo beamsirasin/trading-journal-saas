@@ -11,6 +11,12 @@ import {
   type AnalyticsFilters,
 } from '@/lib/analytics/filters';
 import type {
+  CalendarActualRecord,
+  CalendarPairedRecord,
+  CalendarSystemRecord,
+} from '@/lib/dashboard/calendar';
+import type { DayReviewRecord } from '@/lib/dashboard/day-review';
+import type {
   DashboardAccountContext,
   DashboardRecentTradeRecord,
 } from '@/lib/dashboard/page-data';
@@ -1453,5 +1459,315 @@ export async function getDashboardRawData(
       attention,
       recentTrades,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// D6A — Calendar and Day Review projections
+// ---------------------------------------------------------------------------
+
+/**
+ * The Calendar lives inside the ANALYTICS boundary rather than beside it.
+ *
+ * Everything below reuses `resolveAnalyticsQueryContext`,
+ * `frameworkConditions` and the frozen date axes unchanged, which is what
+ * makes a Calendar month obey the same Account/Strategy/Setup/Version scope
+ * and the same authorization as every other Dashboard figure. A separate
+ * calendar DAL would have had to restate all of that, and the first time the
+ * two restatements drifted the Calendar would quietly show Trades the KPI row
+ * above it had excluded.
+ *
+ * The Phase 14D `trade-calendar.ts` reads stay exactly as they are: they serve
+ * the Journal page's own workspace-wide calendar and are not Dashboard-scoped.
+ */
+
+/**
+ * MONTH ∩ DASHBOARD RANGE, and the intersection is deliberate.
+ *
+ * A Calendar showing August in full while the Dashboard is scoped to the last
+ * 30 days would put Trades on screen that every other number on the page has
+ * excluded — the reader would add up the squares and fail to reach the KPI
+ * total, with nothing on screen explaining why. So the month is intersected
+ * with the active range, and a month entirely outside it is legitimately
+ * empty rather than silently unfiltered.
+ *
+ * `null` means the two windows do not overlap at all.
+ */
+function intersectWithDateBounds(
+  range: { readonly start: Date; readonly end: Date },
+  bounds: AnalyticsDateBounds,
+): { readonly start: Date; readonly end: Date } | null {
+  if (bounds.kind === 'all') return range;
+  const filterStart = new Date(bounds.start);
+  const filterEnd = new Date(bounds.endExclusive);
+  const start = range.start > filterStart ? range.start : filterStart;
+  const end = range.end < filterEnd ? range.end : filterEnd;
+  return start < end ? { start, end } : null;
+}
+
+export type CalendarProjectionMode = 'actual' | 'system' | 'gap';
+
+export interface CalendarProjectionRecords {
+  readonly mode: CalendarProjectionMode;
+  /** The window actually queried after intersecting the month with the Dashboard range; `null` when they do not overlap. */
+  readonly effectiveRange: { readonly start: string; readonly end: string } | null;
+  readonly actual: readonly CalendarActualRecord[];
+  readonly system: readonly CalendarSystemRecord[];
+  readonly paired: readonly CalendarPairedRecord[];
+}
+
+export interface CalendarProjectionParams {
+  readonly mode: CalendarProjectionMode;
+  readonly monthRange: { readonly start: Date; readonly end: Date };
+}
+
+/**
+ * ONE bounded read for the requested mode — never one per day, never one per
+ * cell. A month's eligible rows are inherently few, so the day buckets are
+ * composed in memory by `src/lib/dashboard/calendar.ts` with the same
+ * decimal-safe primitives every other R aggregate uses, rather than by a raw
+ * SQL `date_trunc` that would bucket on the server's day boundary instead of
+ * the user's.
+ *
+ * Only the requested mode is fetched. Loading all three populations to render
+ * one would triple the cost of a view that shows one at a time.
+ */
+export async function getCalendarMonthRecords(
+  input: AnalyticsFilterInput | unknown,
+  params: CalendarProjectionParams,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<CalendarProjectionRecords>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  const db = getDb();
+  const scope = frameworkConditions(context.data);
+  const window = intersectWithDateBounds(params.monthRange, context.data.filters.dateBounds);
+
+  const emptyResult: CalendarProjectionRecords = {
+    mode: params.mode,
+    effectiveRange: null,
+    actual: [],
+    system: [],
+    paired: [],
+  };
+  if (window === null) return { ok: true, data: emptyResult };
+  const effectiveRange = { start: window.start.toISOString(), end: window.end.toISOString() };
+
+  if (params.mode === 'actual') {
+    const rows = await db
+      .select({
+        tradeId: trades.id,
+        exitedAt: trades.exitedAt,
+        actualR: trades.actualR,
+        traderOutcome: trades.traderOutcome,
+      })
+      .from(trades)
+      .where(
+        and(
+          ...scope,
+          isNull(trades.deletedAt),
+          eq(trades.status, 'closed'),
+          isNotNull(trades.actualR),
+          isNotNull(trades.traderOutcome),
+          gte(trades.exitedAt, window.start),
+          lt(trades.exitedAt, window.end),
+        ),
+      );
+    return {
+      ok: true,
+      data: {
+        ...emptyResult,
+        effectiveRange,
+        actual: rows.map((row) => ({
+          tradeId: row.tradeId,
+          exitedAt: (row.exitedAt as Date).toISOString(),
+          actualR: row.actualR as string,
+          traderOutcome: row.traderOutcome as OutcomeValue,
+        })),
+      },
+    };
+  }
+
+  if (params.mode === 'system') {
+    const rows = await db
+      .select({
+        tradeId: trades.id,
+        systemExitedAt: trades.systemExitedAt,
+        systemR: trades.systemR,
+        systemOutcome: trades.systemOutcome,
+      })
+      .from(trades)
+      .where(
+        and(
+          ...scope,
+          isNull(trades.deletedAt),
+          eq(trades.systemStatus, 'resolved'),
+          isNotNull(trades.systemR),
+          isNotNull(trades.systemOutcome),
+          gte(trades.systemExitedAt, window.start),
+          lt(trades.systemExitedAt, window.end),
+        ),
+      );
+    return {
+      ok: true,
+      data: {
+        ...emptyResult,
+        effectiveRange,
+        system: rows.map((row) => ({
+          tradeId: row.tradeId,
+          systemExitedAt: (row.systemExitedAt as Date).toISOString(),
+          systemR: row.systemR as string,
+          systemOutcome: row.systemOutcome as OutcomeValue,
+        })),
+      },
+    };
+  }
+
+  // Gap: Population C, anchored to Actual `exited_at` ONLY. `system_exited_at`
+  // is required for System-side completeness and returned as context, but it
+  // is never a second range gate — the same rule
+  // `selectPairedAnalyticsRecords` already follows.
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      exitedAt: trades.exitedAt,
+      systemExitedAt: trades.systemExitedAt,
+      actualR: trades.actualR,
+      systemR: trades.systemR,
+    })
+    .from(trades)
+    .where(
+      and(
+        ...scope,
+        isNull(trades.deletedAt),
+        eq(trades.status, 'closed'),
+        isNotNull(trades.actualR),
+        isNotNull(trades.traderOutcome),
+        isNotNull(trades.exitedAt),
+        eq(trades.systemStatus, 'resolved'),
+        isNotNull(trades.systemR),
+        isNotNull(trades.systemOutcome),
+        isNotNull(trades.systemExitedAt),
+        gte(trades.exitedAt, window.start),
+        lt(trades.exitedAt, window.end),
+      ),
+    );
+  return {
+    ok: true,
+    data: {
+      ...emptyResult,
+      effectiveRange,
+      paired: rows.map((row) => ({
+        tradeId: row.tradeId,
+        exitedAt: (row.exitedAt as Date).toISOString(),
+        systemExitedAt: (row.systemExitedAt as Date).toISOString(),
+        actualR: row.actualR as string,
+        systemR: row.systemR as string,
+      })),
+    },
+  };
+}
+
+export interface DayReviewProjectionParams {
+  readonly mode: CalendarProjectionMode;
+  readonly dayRange: { readonly start: Date; readonly end: Date };
+}
+
+/**
+ * ONE bounded read for a selected day's rows, on that mode's own axis and
+ * inside the same Dashboard scope as the Calendar above it.
+ *
+ * Trade-level, never leg-level: a partially closed position is one row here
+ * however many exits it has, because this selects Trades and joins no
+ * `trade_exits` at all. Quick Preview is where legs belong, and it gets them
+ * from the existing `getWorkspaceTradeDetail` rather than from a second copy
+ * of that logic here.
+ */
+export async function getDayReviewRecords(
+  input: AnalyticsFilterInput | unknown,
+  params: DayReviewProjectionParams,
+  options: AnalyticsReadOptions = {},
+): Promise<AnalyticsReadResult<readonly DayReviewRecord[]>> {
+  const context = await resolveAnalyticsQueryContext(input, options);
+  if (!context.ok) return context;
+  const db = getDb();
+  const scope = frameworkConditions(context.data);
+  const window = intersectWithDateBounds(params.dayRange, context.data.filters.dateBounds);
+  if (window === null) return { ok: true, data: [] };
+
+  const axisColumn = params.mode === 'system' ? trades.systemExitedAt : trades.exitedAt;
+  const populationConditions =
+    params.mode === 'system'
+      ? [
+          eq(trades.systemStatus, 'resolved'),
+          isNotNull(trades.systemR),
+          isNotNull(trades.systemOutcome),
+        ]
+      : params.mode === 'actual'
+        ? [eq(trades.status, 'closed'), isNotNull(trades.actualR), isNotNull(trades.traderOutcome)]
+        : [
+            eq(trades.status, 'closed'),
+            isNotNull(trades.actualR),
+            isNotNull(trades.traderOutcome),
+            eq(trades.systemStatus, 'resolved'),
+            isNotNull(trades.systemR),
+            isNotNull(trades.systemOutcome),
+            isNotNull(trades.systemExitedAt),
+          ];
+
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      occurredAt: occurredAtExpr,
+      axisAt: axisColumn,
+      symbol: trades.symbol,
+      direction: trades.direction,
+      tradingAccountName: tradingAccounts.name,
+      status: trades.status,
+      traderOutcome: trades.traderOutcome,
+      actualR: trades.actualR,
+      actualExitedAt: trades.exitedAt,
+      systemStatus: trades.systemStatus,
+      systemOutcome: trades.systemOutcome,
+      systemR: trades.systemR,
+      systemExitedAt: trades.systemExitedAt,
+      strategyName: strategyVersions.name,
+      setupName: strategySetupVersions.name,
+    })
+    .from(trades)
+    .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
+    .leftJoin(strategyVersions, eq(strategyVersions.id, trades.strategyVersionId))
+    .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
+    .where(
+      and(
+        ...scope,
+        isNull(trades.deletedAt),
+        ...populationConditions,
+        gte(axisColumn, window.start),
+        lt(axisColumn, window.end),
+      ),
+    )
+    .orderBy(asc(axisColumn), asc(trades.id));
+
+  return {
+    ok: true,
+    data: rows.map((row) => ({
+      tradeId: row.tradeId,
+      occurredAt: new Date(row.occurredAt).toISOString(),
+      axisAt: (row.axisAt as Date).toISOString(),
+      symbol: row.symbol,
+      direction: row.direction as TradeDirection,
+      tradingAccountName: row.tradingAccountName,
+      status: row.status as TradeStatus,
+      traderOutcome: row.traderOutcome as OutcomeValue | null,
+      actualR: row.actualR,
+      actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
+      systemStatus: row.systemStatus as SystemStatus,
+      systemOutcome: row.systemOutcome as OutcomeValue | null,
+      systemR: row.systemR,
+      systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
+      strategyName: row.strategyName,
+      setupName: row.setupName,
+    })),
   };
 }

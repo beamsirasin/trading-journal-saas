@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { reconcileDayReview } from '@/lib/dashboard/day-review';
 import { parseDashboardFilterState } from '@/lib/dashboard/filters';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import {
@@ -49,6 +50,8 @@ vi.mock('@/lib/auth/server', () => ({
 const { getAnalyticsPageData, getAnalyticsSnapshot, getDashboardOverview } =
   await import('./analytics');
 const { getDashboardPageData } = await import('./dashboard');
+const { getDashboardCalendarMonthInZone, getDashboardDayReview } =
+  await import('./dashboard-calendar');
 const { getAnalyticsRawPopulations } = await import('../dal/analytics');
 
 const db = getTestDb();
@@ -989,6 +992,297 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(comparison.dailySeries.reduce((total, point) => total + point.pairedTradeCount, 0)).toBe(
       comparison.summary.comparableCount,
     );
+  });
+
+  /**
+   * D6A against real PostgreSQL. The arithmetic is covered exhaustively in
+   * `calendar.test.ts`; what this proves is that the DAL's three population
+   * filters, its three date axes, and the Dashboard-range intersection all
+   * behave end to end — and that a month costs ONE read, not one per day.
+   */
+  it('D6A composes an Actual calendar month on the Actual exit axis alone', async () => {
+    const fixture = await createFixture();
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+
+    const result = await getDashboardCalendarMonthInZone(
+      parsed.state,
+      { mode: 'actual', year: 2026, month: 8 },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!result.ok) throw new Error(result.code);
+    expect(result.data.status).toBe('available');
+    if (result.data.status !== 'available') throw new Error('unreachable');
+
+    // The fixture's paired Trades exit 1-4 August plus a 7 August split.
+    expect(result.data.days.length).toBeGreaterThan(0);
+    expect(result.data.mode).toBe('actual');
+    for (const day of result.data.days) {
+      expect(day.mode).toBe('actual');
+      expect(day.date.startsWith('2026-08')).toBe(true);
+    }
+    // Days sum to the month total, and only populated dates appear.
+    const summed = result.data.days.reduce(
+      (total, day) => total + Number(day.mode === 'gap' ? day.gapR : day.totalR),
+      0,
+    );
+    expect(Number(result.data.totals.totalR)).toBeCloseTo(summed, 10);
+    expect(result.data.totals.populatedDayCount).toBe(result.data.days.length);
+    expect(
+      result.data.totals.classifiedDayCounts.positive +
+        result.data.totals.classifiedDayCounts.neutral +
+        result.data.totals.classifiedDayCounts.negative,
+    ).toBe(result.data.days.length);
+  });
+
+  it('D6A buckets the System calendar on system_exited_at, not the Actual exit', async () => {
+    const fixture = await createFixture();
+    // Actual exits 5 August; the System side resolves on 9 August. In Actual
+    // mode this Trade is a 5 August day, in System mode a 9 August one.
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.primary,
+      actualR: '1.0000',
+      traderOutcome: 'win',
+      systemR: '2.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-08-05T10:00:00Z'),
+      systemExitedAt: new Date('2026-08-09T10:00:00Z'),
+    });
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+
+    const [actualMonth, systemMonth] = await Promise.all([
+      getDashboardCalendarMonthInZone(
+        parsed.state,
+        { mode: 'actual', year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+      getDashboardCalendarMonthInZone(
+        parsed.state,
+        { mode: 'system', year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+    ]);
+    if (!actualMonth.ok || !systemMonth.ok) throw new Error('calendar read failed');
+    if (actualMonth.data.status !== 'available' || systemMonth.data.status !== 'available') {
+      throw new Error('unreachable');
+    }
+    const actualDates = actualMonth.data.days.map((day) => day.date);
+    const systemDates = systemMonth.data.days.map((day) => day.date);
+    expect(actualDates).toContain('2026-08-05');
+    expect(systemDates).toContain('2026-08-09');
+    // Nothing forces the two axes into alignment.
+    expect(actualDates).not.toEqual(systemDates);
+  });
+
+  it('D6A builds the Gap calendar from Population C, anchored on the Actual exit', async () => {
+    const fixture = await createFixture();
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+
+    const result = await getDashboardCalendarMonthInZone(
+      parsed.state,
+      { mode: 'gap', year: 2026, month: 8 },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!result.ok) throw new Error(result.code);
+    if (result.data.status !== 'available') throw new Error('unreachable');
+
+    for (const day of result.data.days) {
+      if (day.mode !== 'gap') throw new Error('expected a gap day');
+      // Every day's Gap is Actual minus System, never a second formula.
+      expect(Number(day.gapR)).toBeCloseTo(Number(day.actualR) - Number(day.systemR), 10);
+      expect(day.underperformedCount + day.matchedCount + day.outperformedCount).toBe(
+        day.pairedTradeCount,
+      );
+      expect(['outperformed', 'matched', 'underperformed']).toContain(day.classification);
+    }
+    // The paired population is a subset of the Actual one.
+    const actualMonth = await getDashboardCalendarMonthInZone(
+      parsed.state,
+      { mode: 'actual', year: 2026, month: 8 },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!actualMonth.ok || actualMonth.data.status !== 'available') throw new Error('unreachable');
+    expect(result.data.totals.eligibleTradeCount).toBeLessThanOrEqual(
+      actualMonth.data.totals.eligibleTradeCount,
+    );
+  });
+
+  /**
+   * §23 — the Calendar month is INTERSECTED with the active Dashboard range,
+   * so the squares can never show Trades every other figure on the page has
+   * excluded.
+   */
+  it('D6A intersects the Calendar month with the Dashboard date range', async () => {
+    const fixture = await createFixture();
+    // An April Trade the 30D window cannot reach but range=All can. Without
+    // it the "April is empty" assertion below would pass for the wrong
+    // reason — April is empty in the base fixture either way.
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.primary,
+      actualR: '1.0000',
+      traderOutcome: 'win',
+      systemR: '1.0000',
+      systemOutcome: 'win',
+      exitedAt: new Date('2026-04-15T10:00:00Z'),
+      systemExitedAt: new Date('2026-04-15T11:00:00Z'),
+    });
+    const all = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    const bounded = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: '30d',
+      unit: 'r',
+    });
+    if (!all.ok || !bounded.ok) throw new Error('filter parse failed');
+
+    // The fixture's Trades exit in early August; the reference instant is
+    // 2026-08-09, so a 30D window starts 2026-07-10 and still contains them.
+    const [allMonth, boundedMonth, aprilBounded] = await Promise.all([
+      getDashboardCalendarMonthInZone(
+        all.state,
+        { mode: 'actual', year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+      getDashboardCalendarMonthInZone(
+        bounded.state,
+        { mode: 'actual', year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+      // April is entirely outside the 30D window: legitimately empty, never
+      // silently unfiltered.
+      getDashboardCalendarMonthInZone(
+        bounded.state,
+        { mode: 'actual', year: 2026, month: 4 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+    ]);
+    if (!allMonth.ok || !boundedMonth.ok || !aprilBounded.ok) throw new Error('read failed');
+    expect(allMonth.data.status).toBe('available');
+    expect(boundedMonth.data.status).toBe('available');
+    expect(aprilBounded.data.status).toBe('empty');
+
+    const allApril = await getDashboardCalendarMonthInZone(
+      all.state,
+      { mode: 'actual', year: 2026, month: 4 },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!allApril.ok) throw new Error('read failed');
+    // With range=All the same April month IS populated — proving the
+    // emptiness above came from the intersection, not from an empty month.
+    expect(allApril.data.status).toBe('available');
+    if (allApril.data.status !== 'available') throw new Error('unreachable');
+    expect(allApril.data.days.map((day) => day.date)).toContain('2026-04-15');
+  });
+
+  it('D6A opens a Day Review whose rows reconcile with the Calendar day', async () => {
+    const fixture = await createFixture();
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+
+    const month = await getDashboardCalendarMonthInZone(
+      parsed.state,
+      { mode: 'actual', year: 2026, month: 8 },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!month.ok || month.data.status !== 'available') throw new Error('unreachable');
+    const firstDay = month.data.days[0];
+    if (firstDay === undefined) throw new Error('expected a populated day');
+
+    const review = await getDashboardDayReview(
+      parsed.state,
+      { mode: 'actual', date: firstDay.date },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!review.ok) throw new Error(review.code);
+    expect(review.data.status).toBe('available');
+    if (review.data.status !== 'available') throw new Error('unreachable');
+
+    expect(review.data.date).toBe(firstDay.date);
+    expect(review.data.mode).toBe('actual');
+    expect(reconcileDayReview(review.data)).toBe(true);
+    // Every row carries a stable Trade ID for the Quick Preview boundary.
+    for (const row of review.data.trades) {
+      expect(row.tradeId).toMatch(/^[0-9a-f-]{36}$/i);
+    }
+  });
+
+  it('D6A reports an empty Day Review for a day with nothing eligible', async () => {
+    const fixture = await createFixture();
+    const parsed = parseDashboardFilterState({
+      account: fixture.emptyAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+
+    const review = await getDashboardDayReview(
+      parsed.state,
+      { mode: 'actual', date: '2026-08-01' },
+      'UTC',
+      READ_OPTIONS,
+    );
+    if (!review.ok) throw new Error(review.code);
+    expect(review.data.status).toBe('empty');
+    if (review.data.status !== 'empty') throw new Error('unreachable');
+    expect(review.data.reason).toBe('no_eligible_trades');
+  });
+
+  it('D6A returns an empty Calendar, not an error, for an Account with no Trades', async () => {
+    const fixture = await createFixture();
+    const parsed = parseDashboardFilterState({
+      account: fixture.emptyAccountId,
+      range: 'all',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+
+    for (const mode of ['actual', 'system', 'gap'] as const) {
+      const result = await getDashboardCalendarMonthInZone(
+        parsed.state,
+        { mode, year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      );
+      if (!result.ok) throw new Error(result.code);
+      expect(result.data.status).toBe('empty');
+      if (result.data.status !== 'empty') throw new Error('unreachable');
+      expect(result.data.reason).toBe('no_eligible_trades');
+      expect(result.data.mode).toBe(mode);
+    }
   });
 
   it('D5A reports an empty comparison, not an error, when nothing is paired', async () => {

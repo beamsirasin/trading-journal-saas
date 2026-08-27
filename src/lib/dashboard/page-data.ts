@@ -182,7 +182,7 @@ const selectPerformance = (axis: PerformanceAnalyticsModel): DashboardPerformanc
   maximumDrawdownR: axis.maximumDrawdownR,
 });
 
-function composeRecentTrade(record: DashboardRecentTradeRecord): DashboardRecentTrade {
+export function composeRecentTrade(record: DashboardRecentTradeRecord): DashboardRecentTrade {
   const actualComplete =
     record.status === 'closed' &&
     record.actualR !== null &&

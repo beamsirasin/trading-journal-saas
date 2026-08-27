@@ -9,6 +9,7 @@ import en from '../../../messages/en.json';
 import { DashboardSkeleton, RealDashboard, type DashboardRecentTrade } from './real-dashboard';
 
 vi.mock('@/i18n/navigation', () => ({
+  getPathname: ({ href, locale }: { href: string; locale: string }) => `/${locale}${href}`,
   Link: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
       {children}
@@ -197,6 +198,9 @@ function renderDashboard(
   model = overview(),
   recentTrades: readonly DashboardRecentTrade[] = [RECENT],
   attention = ATTENTION,
+  // The Calendar is its own async server boundary (D6B); these tests cover the
+  // page composition around it, so the slot is stubbed rather than rendered.
+  calendarSlot: ReactNode = <div data-testid="calendar-slot" />,
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -207,6 +211,7 @@ function renderDashboard(
           recentTrades: { ...model.recentTrades, items: recentTrades },
         }}
         dateLocale="en-GB"
+        calendarSlot={calendarSlot}
       />
     </NextIntlClientProvider>,
   );
@@ -405,7 +410,7 @@ describe('RealDashboard', () => {
     expect(within(navigation).getAllByRole('link')).toHaveLength(3);
     expect(within(navigation).getByRole('link', { name: '30D' })).toHaveAttribute(
       'href',
-      '/app?range=30d&unit=r',
+      '/en/app?range=30d&unit=r',
     );
     expect(within(navigation).queryByText(/All accounts/i)).not.toBeInTheDocument();
   });
@@ -472,8 +477,9 @@ describe('RealDashboard', () => {
     renderDashboard();
     const account = screen.getByRole('region', { name: 'Active trading account summary' });
     expect(within(account).getByRole('heading', { name: ACCOUNT.name })).toBeVisible();
-    expect(screen.getByText('Pinned Breakout v1')).toBeVisible();
-    expect(screen.getByText('Pinned London Retest')).toBeVisible();
+    // D6B typesets Strategy and Setup as one supporting line beneath the
+    // Trade's identity; both pinned historical labels still appear verbatim.
+    expect(screen.getByText(/Pinned Breakout v1 · Pinned London Retest/)).toBeVisible();
     expect(screen.getByRole('link', { name: 'XAUUSD' })).toHaveAttribute(
       'href',
       '/app/trades?trade=trade-1',

@@ -22,6 +22,12 @@ const DESKTOP_SPAN_CLASS = {
   3: 'lg:col-span-3',
   4: 'lg:col-span-4',
   5: 'lg:col-span-5',
+  // D6B widened the span union for the twelve-column Recent/Calendar section.
+  // Those two widgets spell their own placement in their own section's grid,
+  // so these classes exist only to keep the map exhaustive rather than to be
+  // used — a partial map would hand `undefined` to `cn` at runtime.
+  7: 'lg:col-span-7',
+  12: 'lg:col-span-12',
 } as const satisfies Record<DashboardLayoutItem['desktopSpan'], string>;
 
 /**

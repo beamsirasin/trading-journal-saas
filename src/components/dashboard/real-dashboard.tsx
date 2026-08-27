@@ -2,25 +2,23 @@ import { ArrowRight, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
-import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
 import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
-import type { DashboardPageData, DashboardRecentTrade } from '@/lib/dashboard/page-data';
+import type { DashboardPageData } from '@/lib/dashboard/page-data';
 import { composePerformanceCards } from '@/lib/dashboard/performance-card';
 import {
   dashboardLayoutItem,
   dashboardWidgetAttributes,
   DEFAULT_DASHBOARD_LAYOUT,
-  type DashboardWidgetId,
 } from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
+import { DashboardStateLink } from '@/components/dashboard/dashboard-state-link';
 import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-trading-dashboard';
 import { ExecutionGapSection } from '@/components/dashboard/execution-gap/execution-gap-section';
 import { BasicKpiRow } from '@/components/dashboard/kpi/basic-kpi-row';
 import { BASIC_KPI_GRID_CLASS, kpiSpanClassName } from '@/components/dashboard/kpi/kpi-widget-card';
 import { PerformanceCard } from '@/components/dashboard/performance/performance-card';
+import { RecentTradesCard } from '@/components/dashboard/recent-trades/recent-trades-card';
 import { MetricLabel } from '@/components/product/metric';
-import { formatTradeInstant } from '@/components/trades/trade-format';
-import { TradeStatusBadge } from '@/components/trades/trade-status-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
@@ -36,9 +34,21 @@ const BASIC_KPI_LAYOUT = DEFAULT_DASHBOARD_LAYOUT.filter((item) =>
 export function RealDashboard({
   data,
   dateLocale,
+  calendarSlot,
 }: {
   data: DashboardPageData;
   dateLocale: string;
+  /**
+   * The Calendar's own server boundary, streamed in by the route.
+   *
+   * Passed as a node rather than as data because D6A deliberately kept the
+   * Calendar out of `DashboardPageData` — it is a separate read on a
+   * dimension (the month) the Dashboard bundle does not have. Handing the
+   * rendered subtree in lets it suspend on its own without the five core
+   * reads waiting for it, and keeps this component free of any knowledge of
+   * how a month is fetched.
+   */
+  calendarSlot: React.ReactNode;
 }) {
   const t = useTranslations('dashboard.real');
   const tFilters = useTranslations('dashboard.filters');
@@ -103,13 +113,36 @@ export function RealDashboard({
         baselines.
       */}
       <ExecutionGapSection comparison={data.comparison} dateLocale={dateLocale} className="mt-7" />
-      <WidgetSlot widgetId="trades.recent" className="mt-8">
-        <RecentTrades
-          trades={data.recentTrades.items}
-          timezone={data.scope.timezone}
-          dateLocale={dateLocale}
-        />
-      </WidgetSlot>
+
+      {/*
+        D6B — the one section whose two widgets are genuinely unequal (§30):
+        seven columns of Trade rows beside five of Calendar grid. The Basic KPI
+        band's five-column grid is deliberately NOT reused here; each section
+        owns its own, which is exactly what D4.5's section-aware metadata was
+        for.
+
+        `items-stretch`, so the section has one bottom edge rather than a
+        ragged one. This cannot damage the Calendar's geometry: the grid's
+        squares are fixed-height rows inside a `flex-col` card, so stretching
+        only ever adds room BELOW them — and in practice the Calendar is the
+        taller of the two, which makes this a rule about the Trade list. §23
+        forbids forcing equal height at the Calendar's expense, which is a
+        different thing from letting the shorter card fill its column.
+      */}
+      <section aria-labelledby="recent-and-calendar-heading" className="mt-8 min-w-0">
+        <h2 id="recent-and-calendar-heading" className="sr-only">
+          {t('recentAndCalendarSection')}
+        </h2>
+        <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-12">
+          <RecentTradesCard
+            trades={data.recentTrades.items}
+            timezone={data.scope.timezone}
+            dateLocale={dateLocale}
+            className="lg:col-span-7"
+          />
+          <div className="min-w-0 lg:col-span-5">{calendarSlot}</div>
+        </div>
+      </section>
 
       <div className="mt-6 flex justify-end">
         <Link
@@ -123,25 +156,6 @@ export function RealDashboard({
   );
 }
 
-function WidgetSlot({
-  widgetId,
-  className,
-  children,
-}: {
-  widgetId: DashboardWidgetId;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      {...dashboardWidgetAttributes(dashboardLayoutItem(widgetId))}
-      className={cn('min-w-0', className)}
-    >
-      {children}
-    </div>
-  );
-}
-
 function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
   const t = useTranslations('dashboard.real');
   return (
@@ -149,7 +163,7 @@ function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
       <span className="text-muted-foreground text-label uppercase">{t('dateRangeLabel')}</span>
       <div className="border-border bg-muted/50 inline-flex w-fit max-w-full flex-wrap rounded-lg border p-1">
         {RANGE_ORDER.map((range) => (
-          <Link
+          <DashboardStateLink
             key={range}
             href={buildDashboardHref({ ...filters, datePreset: range })}
             aria-current={range === filters.datePreset ? 'page' : undefined}
@@ -161,7 +175,7 @@ function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
             )}
           >
             {t(RANGE_KEY[range])}
-          </Link>
+          </DashboardStateLink>
         ))}
       </div>
     </nav>
@@ -267,106 +281,6 @@ function NeedsAttentionPanel({
   );
 }
 
-function RecentTrades({
-  trades,
-  timezone,
-  dateLocale,
-}: {
-  trades: readonly DashboardRecentTrade[];
-  timezone: string;
-  dateLocale: string;
-}) {
-  const t = useTranslations('dashboard.real');
-  const tTrades = useTranslations('trades');
-  return (
-    <section aria-labelledby="recent-trades-heading" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 id="recent-trades-heading" className="text-xl font-semibold tracking-tight">
-            {t('recent.title')}
-          </h2>
-          <p className="text-muted-foreground mt-1 text-sm">{t('recent.description')}</p>
-        </div>
-        <Link
-          href="/app/trades"
-          className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
-        >
-          {t('recent.viewAll')} <ArrowRight className="size-4" aria-hidden="true" />
-        </Link>
-      </div>
-
-      {trades.length === 0 ? (
-        <div className="border-border bg-card flex flex-col items-start gap-3 rounded-lg border p-5">
-          <p className="font-medium">{t('recent.emptyTitle')}</p>
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            {t('recent.emptyDescription')}
-          </p>
-          <Link
-            href="/app/trades/new"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md px-4 text-sm font-semibold outline-none focus-visible:ring-2"
-          >
-            {t('recent.logTrade')}
-          </Link>
-        </div>
-      ) : (
-        <ul className="grid gap-3" aria-label={t('recent.listLabel')}>
-          {trades.map((trade) => (
-            <li key={trade.tradeId} className="border-border bg-card rounded-lg border p-4">
-              <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1.25fr)_auto] sm:items-center">
-                <div className="min-w-0">
-                  <Link
-                    href={`/app/trades?trade=${trade.tradeId}`}
-                    className="focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-base font-semibold outline-none focus-visible:ring-2"
-                  >
-                    {trade.symbol}
-                  </Link>
-                  <p className="text-muted-foreground text-sm">
-                    {tTrades(`direction.${trade.direction}`)} ·{' '}
-                    {formatTradeInstant(trade.occurredAt, timezone, dateLocale) ?? '—'}
-                  </p>
-                </div>
-                <div className="min-w-0 text-sm">
-                  {trade.strategyName === null ? (
-                    <p className="text-muted-foreground break-words">
-                      {tTrades('common.notAssigned')}
-                    </p>
-                  ) : (
-                    <>
-                      <p className="font-medium break-words">{trade.strategyName}</p>
-                      {trade.setupName === null ? null : (
-                        <p className="text-muted-foreground break-words">{trade.setupName}</p>
-                      )}
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:justify-end">
-                  <TradeStatusBadge status={trade.status} />
-                  <RecentR label={t('recent.actualR')} value={trade.actualR} />
-                  <RecentR label={t('recent.systemR')} value={trade.systemR} />
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function RecentR({ label, value }: { label: string; value: string | null }) {
-  const t = useTranslations('dashboard.real');
-  const formatted =
-    value === null ? null : formatAnalyticsMetric({ status: 'available', value }, 'r');
-  return (
-    <span className="flex flex-col gap-0.5">
-      <span className="text-muted-foreground text-[11px] font-medium uppercase">{label}</span>
-      <span className="numeric text-sm font-semibold">
-        {formatted?.status === 'available' ? formatted.text : t('notAvailableShort')}
-      </span>
-    </span>
-  );
-}
-
 export function DashboardDataError() {
   const t = useTranslations('dashboard.real');
   return (
@@ -419,10 +333,16 @@ export function DashboardSkeleton() {
         <div className="border-border bg-card h-80 rounded-lg border" />
       </div>
       <div className="border-border bg-card mt-7 h-48 rounded-lg border" />
-      <div className="mt-8 space-y-3">
-        <div className="bg-muted h-7 w-40 rounded-md" />
-        <div className="border-border bg-card h-24 rounded-lg border" />
-        <div className="border-border bg-card h-24 rounded-lg border" />
+      {/*
+        D6B's 7 + 5 section, reserved at the geometry it actually renders at.
+        A skeleton that reserved two stacked full-width bands would visibly
+        reflow into two columns the moment the payload arrived, which is the
+        exact jump a skeleton exists to prevent. Both blocks are the same
+        height because the real section stretches to one bottom edge.
+      */}
+      <div className="mt-8 grid items-stretch gap-4 lg:grid-cols-12">
+        <div className="border-border bg-card h-96 rounded-lg border lg:col-span-7" />
+        <div className="border-border bg-card h-96 rounded-lg border lg:col-span-5" />
       </div>
     </div>
   );

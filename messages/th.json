@@ -403,7 +403,16 @@
         "viewAll": "ดูเทรดทั้งหมด",
         "emptyTitle": "ยังไม่มีเทรดในบัญชีนี้",
         "emptyDescription": "บันทึกเทรดแรกของคุณ การวิเคราะห์จะแสดงเมื่อผลของเทรดเดอร์และระบบเข้าเกณฑ์",
-        "logTrade": "บันทึกเทรด"
+        "logTrade": "บันทึกเทรด",
+        "gapR": "Gap",
+        "gapPending": "รอผล",
+        "gapUnavailable": {
+          "actual_incomplete": "ผล Actual ยังไม่สิ้นสุด จึงยังไม่มี Gap ให้แสดง",
+          "system_incomplete": "ผล System ยังไม่สรุป จึงยังไม่มี Gap ให้แสดง",
+          "both_incomplete": "ยังไม่สิ้นสุดทั้งสองฝั่ง จึงยังไม่มี Gap ให้แสดง"
+        },
+        "gapError": "ไม่สามารถอ่านค่า R ที่บันทึกไว้ของเทรดนี้ได้",
+        "gapErrorShort": "ผิดพลาด"
       },
       "notAvailableShort": "—",
       "viewFullAnalytics": "ดูการวิเคราะห์ทั้งหมด",
@@ -412,7 +421,8 @@
         "description": "เราไม่สามารถโหลดภาพรวมผลการทำงานนี้ได้อย่างปลอดภัย โปรดลองโหลดแดชบอร์ดอีกครั้ง",
         "retry": "โหลดแดชบอร์ดอีกครั้ง"
       },
-      "loading": "กำลังโหลดผลการทำงานและเทรดล่าสุดของแดชบอร์ด"
+      "loading": "กำลังโหลดผลการทำงานและเทรดล่าสุดของแดชบอร์ด",
+      "recentAndCalendarSection": "เทรดล่าสุดและปฏิทิน"
     },
     "basicKpi": {
       "regionLabel": "ตัวเลขสำคัญของการเทรด",
@@ -578,6 +588,177 @@
         "emptyDescription": "ออเดอร์จะเข้าสู่การเปรียบเทียบนี้ก็ต่อเมื่อมีทั้งผลการเทรดจริงที่ปิดแล้วและผลของระบบที่สรุปแล้ว ในช่วงนี้ยังไม่มีออเดอร์ใดครบทั้งสองอย่าง",
         "error": "ไม่สามารถเตรียมการเปรียบเทียบนี้จากตัวเลขที่บันทึกไว้ได้ ไม่ใช่เพราะออเดอร์ของคุณขาดหาย แต่ข้อมูลที่บันทึกไว้ต้องได้รับการตรวจสอบ"
       }
+    },
+    "calendar": {
+      "title": "ปฏิทิน",
+      "infoTrigger": "เกี่ยวกับปฏิทิน",
+      "help": "แต่ละโหมดอ่านประชากรคนละชุดบนแกนวันที่ของตัวเอง Actual จัดกลุ่มเทรดที่ปิดแล้วตามวันที่คุณออก System จัดกลุ่มผลลัพธ์ของระบบตามวันที่ระบบออก ซึ่งอาจเป็นคนละวันกับของคุณในเทรดเดียวกัน ส่วน Gap จัดกลุ่มเฉพาะเทรดที่สมบูรณ์ทั้งสองฝั่ง โดยยึดวันที่คุณออก ทั้งสามโหมดไม่ใช่ตัวกรองของชุดเทรดเดียวกัน",
+      "notAvailableShort": "—",
+      "today": "วันนี้",
+      "modeLegend": "โหมดปฏิทิน",
+      "mode": {
+        "actual": "Actual",
+        "system": "System",
+        "gap": "Gap"
+      },
+      "modeDescription": {
+        "actual": "เทรดที่ปิดแล้ว ตามวันที่คุณออก",
+        "system": "ผลลัพธ์ของระบบที่สรุปแล้ว ตามวันที่ระบบออก",
+        "gap": "เทรดที่สมบูรณ์ทั้งสองฝั่ง ตามวันที่คุณออก"
+      },
+      "monthNavLabel": "เดือนของปฏิทิน",
+      "previousMonth": "เดือนก่อนหน้า",
+      "nextMonth": "เดือนถัดไป",
+      "thisMonth": "เดือนนี้",
+      "weekday": {
+        "sun": "อา.",
+        "mon": "จ.",
+        "tue": "อ.",
+        "wed": "พ.",
+        "thu": "พฤ.",
+        "fri": "ศ.",
+        "sat": "ส."
+      },
+      "gridSummary": "มี {populated} จาก {total} วันในเดือนนี้ที่มีเทรดเข้าเกณฑ์ วันที่ไม่มีจะไม่ถูกแสดงรายการ",
+      "summary": {
+        "total": {
+          "actual": "Actual R",
+          "system": "System R",
+          "gap": "Execution Gap"
+        },
+        "days": "วัน",
+        "trades": {
+          "eligible": "เทรด",
+          "paired": "จับคู่แล้ว"
+        }
+      },
+      "cellSummary": {
+        "performance": "{date}: {total} จาก {trades} เทรด ชนะ {wins} เสมอ {breakEvens} แพ้ {losses}",
+        "gap": "{date}: Execution Gap {gap} จาก {paired} เทรดที่จับคู่"
+      },
+      "cellSecondary": {
+        "performance": "{wins}W {breakEvens}BE {losses}L",
+        "gap": "จับคู่ {paired}"
+      },
+      "classification": {
+        "performance": {
+          "winning": "เป็นวันที่กำไร",
+          "break_even": "เป็นวันที่เสมอตัว",
+          "losing": "เป็นวันที่ขาดทุน"
+        },
+        "gap": {
+          "outperformed": "คุณทำได้ดีกว่าระบบ",
+          "matched": "คุณทำได้เท่ากับระบบ",
+          "underperformed": "คุณทำได้ต่ำกว่าระบบ"
+        }
+      },
+      "states": {
+        "emptyTitle": "ไม่มีข้อมูลเข้าเกณฑ์ในเดือนนี้",
+        "emptyDescription": {
+          "actual": "ไม่มีเทรดที่ปิดในเดือนนี้ภายใต้ตัวกรองปัจจุบัน ลองเปลี่ยนเดือนหรือขยายช่วงวันที่",
+          "system": "ไม่มีผลลัพธ์ของระบบที่สรุปในเดือนนี้ภายใต้ตัวกรองปัจจุบัน ผลลัพธ์ของระบบถูกบันทึกแยกจากการออกของคุณ",
+          "gap": "ยังไม่มีเทรดในเดือนนี้ที่มีทั้งผล Actual และ System — Gap ต้องการทั้งสองฝั่ง"
+        },
+        "errorTitle": "สร้างปฏิทินไม่สำเร็จ",
+        "errorDescription": "ไม่สามารถอ่านผลลัพธ์ที่บันทึกไว้บางรายการในเดือนนี้ได้ ระบบไม่ได้เดาค่าหรือปัดเป็นศูนย์ กรุณาโหลดใหม่ หากยังพบปัญหา ข้อมูลเทรดของเดือนนี้ต้องได้รับการตรวจสอบ"
+      }
+    },
+    "dayReview": {
+      "modeDescription": {
+        "actual": "เทรดที่คุณปิดในวันนี้",
+        "system": "ผลลัพธ์ของระบบที่สรุปในวันนี้ วันที่ของระบบอาจต่างจากวันที่คุณออกในเทรดเดียวกัน",
+        "gap": "เทรดที่สมบูรณ์ทั้งสองฝั่ง ยึดตามวันที่คุณออก"
+      },
+      "rowsLabel": "เทรดในวันนี้",
+      "backToCalendar": "กลับไปที่ปฏิทิน",
+      "notAvailableShort": "—",
+      "headline": {
+        "total": {
+          "actual": "Actual Total R",
+          "system": "System Total R"
+        },
+        "count": {
+          "actual": "เทรดเข้าเกณฑ์",
+          "system": "ผลลัพธ์ที่สรุปแล้ว"
+        },
+        "totalGap": "Execution Gap รวม",
+        "pairedTrades": "เทรดที่จับคู่",
+        "systemR": "System R",
+        "actualR": "Actual R"
+      },
+      "outcome": {
+        "wins": "ชนะ",
+        "breakEvens": "เสมอตัว",
+        "losses": "แพ้"
+      },
+      "distribution": {
+        "underperformed": "ต่ำกว่าระบบ",
+        "matched": "เท่าระบบ",
+        "outperformed": "ดีกว่าระบบ"
+      },
+      "row": {
+        "actualR": "Actual R",
+        "systemR": "System R",
+        "gapR": "Gap",
+        "gapPending": "รอผล",
+        "gapError": "ผิดพลาด"
+      },
+      "states": {
+        "emptyTitle": "ไม่มีข้อมูลในวันนี้",
+        "emptyDescription": {
+          "actual": "ไม่มีเทรดที่ปิดในวันนี้ภายใต้ตัวกรองปัจจุบัน",
+          "system": "ไม่มีผลลัพธ์ของระบบที่สรุปในวันนี้ภายใต้ตัวกรองปัจจุบัน",
+          "gap": "ไม่มีเทรดในวันนี้ที่มีทั้งผล Actual และ System"
+        },
+        "errorTitle": "อ่านข้อมูลของวันนี้ไม่สำเร็จ",
+        "errorDescription": "ไม่สามารถอ่านผลลัพธ์ที่บันทึกไว้ของวันนี้ได้ ระบบไม่ได้เดาค่าหรือปัดเป็นศูนย์"
+      }
+    },
+    "tradePreview": {
+      "tabsLabel": "ส่วนต่าง ๆ ของเทรด",
+      "tabs": {
+        "overview": "ภาพรวม",
+        "strategy": "กลยุทธ์",
+        "review": "ทบทวน",
+        "executions": "การปิดสถานะ",
+        "chart": "กราฟ",
+        "notes": "บันทึก"
+      },
+      "openInJournal": "เปิดใน Journal",
+      "backToDay": "กลับไปที่วันนี้",
+      "notAvailableShort": "—",
+      "actualR": "Actual R",
+      "systemR": "System R",
+      "executionGapR": "Execution Gap",
+      "account": "บัญชี",
+      "status": "สถานะ",
+      "enteredAt": "เข้า",
+      "exitedAt": "ออก",
+      "systemExitedAt": "ระบบออก",
+      "timeframe": "ไทม์เฟรม",
+      "session": "ช่วงตลาด",
+      "strategy": "กลยุทธ์",
+      "setup": "Setup",
+      "plannedR": "Planned R",
+      "rules": "กฎ",
+      "mistakes": "ข้อผิดพลาด",
+      "emotions": "อารมณ์",
+      "ruleStatus": {
+        "followed": "ทำตาม",
+        "violated": "ไม่ทำตาม",
+        "not_applicable": "ไม่เกี่ยวข้อง",
+        "not_checked": "ยังไม่ตรวจ"
+      },
+      "closedPortion": "ปิดแล้ว {closed}% · เหลือ {remaining}%",
+      "legLabel": "การออกครั้งที่ {sequence}",
+      "exitPrice": "ราคาออก",
+      "realizedPnl": "กำไร/ขาดทุนที่รับรู้",
+      "exitReason": "เหตุผล",
+      "openTradingView": "เปิดกราฟ TradingView",
+      "chartAlt": "กราฟที่แนบกับเทรด {symbol}",
+      "confirmationNotes": "บันทึกการยืนยัน",
+      "notes": "บันทึก",
+      "reviewNotes": "บันทึกการทบทวน"
     }
   },
   "trades": {

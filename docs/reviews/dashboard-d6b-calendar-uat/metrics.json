@@ -1,0 +1,384 @@
+{
+  "01-desktop-1440-dark-actual": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20R\n1W 0BE 0L"
+  },
+  "02-desktop-1440-light-actual": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20R\n1W 0BE 0L"
+  },
+  "03-desktop-1440-dark-system": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 681
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 681
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+6.85R",
+    "emptyState": null,
+    "populatedCells": 16,
+    "emptyCells": 15,
+    "firstCellText": "2\n-0.90R\n0W 0BE 1L"
+  },
+  "04-desktop-1440-dark-gap": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+5.10R",
+    "emptyState": null,
+    "populatedCells": 12,
+    "emptyCells": 19,
+    "firstCellText": "2\n+3.10R\n1 paired"
+  },
+  "05-desktop-1920-dark-actual": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920
+    },
+    "calendar": {
+      "x": 1151,
+      "w": 737,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 1039,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20R\n1W 0BE 0L"
+  },
+  "06-desktop-1440-dark-day-review": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20R\n1W 0BE 0L"
+  },
+  "07-desktop-1440-dark-gap-day-review": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+5.10R",
+    "emptyState": null,
+    "populatedCells": 12,
+    "emptyCells": 19,
+    "firstCellText": "2\n+3.10R\n1 paired"
+  },
+  "08-desktop-1440-dark-quick-preview": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 656
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 656
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20R\n1W 0BE 0L"
+  },
+  "09-quick-preview-executions": {
+    "legs": "2",
+    "tabs": ["Overview", "Strategy", "Review", "Executions", "Notes"]
+  },
+  "10-mobile-390-dark-actual": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "calendar": {
+      "x": 16,
+      "w": 358,
+      "h": 610
+    },
+    "recent": {
+      "x": 16,
+      "w": 358,
+      "h": 802
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20"
+  },
+  "11-mobile-390-dark-day-review": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "calendar": {
+      "x": 16,
+      "w": 358,
+      "h": 610
+    },
+    "recent": {
+      "x": 16,
+      "w": 358,
+      "h": 802
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20"
+  },
+  "12-mobile-390-dark-quick-preview": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "calendar": {
+      "x": 16,
+      "w": 358,
+      "h": 610
+    },
+    "recent": {
+      "x": 16,
+      "w": 358,
+      "h": 802
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20"
+  },
+  "13-mobile-320-dark-actual": {
+    "viewport": {
+      "width": 320,
+      "height": 800
+    },
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320
+    },
+    "calendar": {
+      "x": 16,
+      "w": 288,
+      "h": 629
+    },
+    "recent": {
+      "x": 16,
+      "w": 288,
+      "h": 802
+    },
+    "calendarStatus": "available",
+    "monthLabel": "August 2026",
+    "monthTotal": "+12.60R",
+    "emptyState": null,
+    "populatedCells": 14,
+    "emptyCells": 17,
+    "firstCellText": "2\n+2.20"
+  },
+  "14-desktop-1440-dark-empty": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 329
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 329
+    },
+    "calendarStatus": "empty",
+    "monthLabel": "August 2026",
+    "monthTotal": null,
+    "emptyState": "Nothing eligible this month\n\nNo Trade closed in this month within the current filters. Page to another month, or widen the date range.",
+    "populatedCells": 0,
+    "emptyCells": 0,
+    "firstCellText": null
+  },
+  "15-desktop-1440-light-empty": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "calendar": {
+      "x": 871,
+      "w": 537,
+      "h": 329
+    },
+    "recent": {
+      "x": 96,
+      "w": 759,
+      "h": 329
+    },
+    "calendarStatus": "empty",
+    "monthLabel": "August 2026",
+    "monthTotal": null,
+    "emptyState": "Nothing eligible this month\n\nNo Trade closed in this month within the current filters. Page to another month, or widen the date range.",
+    "populatedCells": 0,
+    "emptyCells": 0,
+    "firstCellText": null
+  }
+}

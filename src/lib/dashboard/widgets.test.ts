@@ -39,7 +39,10 @@ describe('static Dashboard widget foundation', () => {
     );
     for (const item of DEFAULT_DASHBOARD_LAYOUT) {
       expect(item.desktopSpan).toBeGreaterThanOrEqual(1);
-      expect(item.desktopSpan).toBeLessThanOrEqual(5);
+      // A span is read against ITS OWN section's grid, never a page-wide one
+      // (D4.5). D6B's twelve-column Recent/Calendar section is why this is
+      // section-aware rather than a fixed ceiling of five.
+      expect(item.desktopSpan).toBeLessThanOrEqual(dashboardSection(item.section).desktopColumns);
       expect(item.mobileSpan === 1 || item.mobileSpan === 2).toBe(true);
       expect(dashboardLayoutItem(item.widgetId)).toBe(item);
     }

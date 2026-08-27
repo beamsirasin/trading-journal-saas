@@ -403,7 +403,16 @@
         "viewAll": "View all Trades",
         "emptyTitle": "No Trades in this account yet",
         "emptyDescription": "Log your first Trade. Analytics will appear as Trader and System results become eligible.",
-        "logTrade": "Log a Trade"
+        "logTrade": "Log a Trade",
+        "gapR": "Gap",
+        "gapPending": "Pending",
+        "gapUnavailable": {
+          "actual_incomplete": "The Actual result is not final yet, so there is no Gap to show.",
+          "system_incomplete": "The System outcome is not resolved yet, so there is no Gap to show.",
+          "both_incomplete": "Neither side is final yet, so there is no Gap to show."
+        },
+        "gapError": "A stored R value for this Trade could not be read.",
+        "gapErrorShort": "Error"
       },
       "notAvailableShort": "—",
       "viewFullAnalytics": "View full analytics",
@@ -412,7 +421,8 @@
         "description": "We could not load this performance overview safely. Try reloading the Dashboard.",
         "retry": "Reload Dashboard"
       },
-      "loading": "Loading Dashboard performance and recent Trades"
+      "loading": "Loading Dashboard performance and recent Trades",
+      "recentAndCalendarSection": "Recent Trades and Calendar"
     },
     "basicKpi": {
       "regionLabel": "Key trading figures",
@@ -578,6 +588,177 @@
         "emptyDescription": "A Trade joins this comparison only once it has both a completed Actual outcome and a resolved System outcome. Nothing in this range has both yet.",
         "error": "This comparison could not be prepared from the stored figures. Nothing here is missing because of your Trades — the recorded data needs review."
       }
+    },
+    "calendar": {
+      "title": "Calendar",
+      "infoTrigger": "About the Calendar",
+      "help": "Each mode reads a different population on its own date axis. Actual buckets closed Trades by your exit; System buckets resolved System outcomes by the System exit, which can fall on a different day for the same Trade; Gap buckets only Trades where both sides are complete, anchored to your exit. The three are not filters over one set of Trades.",
+      "notAvailableShort": "—",
+      "today": "Today.",
+      "modeLegend": "Calendar mode",
+      "mode": {
+        "actual": "Actual",
+        "system": "System",
+        "gap": "Gap"
+      },
+      "modeDescription": {
+        "actual": "Closed Trades, by the day you exited.",
+        "system": "Resolved System outcomes, by the day the System exit resolved.",
+        "gap": "Trades with both sides complete, by the day you exited."
+      },
+      "monthNavLabel": "Calendar month",
+      "previousMonth": "Previous month",
+      "nextMonth": "Next month",
+      "thisMonth": "This month",
+      "weekday": {
+        "sun": "Sun",
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat"
+      },
+      "gridSummary": "{populated} of {total} dates in this month have eligible Trades. Dates with none are not listed.",
+      "summary": {
+        "total": {
+          "actual": "Actual R",
+          "system": "System R",
+          "gap": "Execution Gap"
+        },
+        "days": "Days",
+        "trades": {
+          "eligible": "Trades",
+          "paired": "Paired"
+        }
+      },
+      "cellSummary": {
+        "performance": "{date}: {total} across {trades} Trades. {wins} won, {breakEvens} broke even, {losses} lost.",
+        "gap": "{date}: Execution Gap {gap} across {paired} paired Trades."
+      },
+      "cellSecondary": {
+        "performance": "{wins}W {breakEvens}BE {losses}L",
+        "gap": "{paired} paired"
+      },
+      "classification": {
+        "performance": {
+          "winning": "A winning day.",
+          "break_even": "A break-even day.",
+          "losing": "A losing day."
+        },
+        "gap": {
+          "outperformed": "You outperformed the System.",
+          "matched": "You matched the System.",
+          "underperformed": "You underperformed the System."
+        }
+      },
+      "states": {
+        "emptyTitle": "Nothing eligible this month",
+        "emptyDescription": {
+          "actual": "No Trade closed in this month within the current filters. Page to another month, or widen the date range.",
+          "system": "No System outcome resolved in this month within the current filters. A System outcome is recorded separately from your exit.",
+          "gap": "No Trade in this month has both an Actual and a System result yet. The Gap needs both sides."
+        },
+        "errorTitle": "The Calendar could not be built",
+        "errorDescription": "A stored result in this month could not be read. Nothing has been guessed or rounded to zero. Reload, and if it persists the Trade data for this month needs attention."
+      }
+    },
+    "dayReview": {
+      "modeDescription": {
+        "actual": "Closed Trades you exited on this day.",
+        "system": "System outcomes that resolved on this day. The System date can differ from your exit date for the same Trade.",
+        "gap": "Trades with both sides complete, anchored to the day you exited."
+      },
+      "rowsLabel": "Trades on this day",
+      "backToCalendar": "Back to the Calendar",
+      "notAvailableShort": "—",
+      "headline": {
+        "total": {
+          "actual": "Actual Total R",
+          "system": "System Total R"
+        },
+        "count": {
+          "actual": "Eligible Trades",
+          "system": "Resolved outcomes"
+        },
+        "totalGap": "Total Execution Gap",
+        "pairedTrades": "Paired Trades",
+        "systemR": "System R",
+        "actualR": "Actual R"
+      },
+      "outcome": {
+        "wins": "Won",
+        "breakEvens": "Break even",
+        "losses": "Lost"
+      },
+      "distribution": {
+        "underperformed": "Underperformed",
+        "matched": "Matched",
+        "outperformed": "Outperformed"
+      },
+      "row": {
+        "actualR": "Actual R",
+        "systemR": "System R",
+        "gapR": "Gap",
+        "gapPending": "Pending",
+        "gapError": "Error"
+      },
+      "states": {
+        "emptyTitle": "Nothing on this day",
+        "emptyDescription": {
+          "actual": "No Trade closed on this day within the current filters.",
+          "system": "No System outcome resolved on this day within the current filters.",
+          "gap": "No Trade on this day has both an Actual and a System result."
+        },
+        "errorTitle": "This day could not be read",
+        "errorDescription": "A stored result for this day could not be read. Nothing has been guessed or rounded to zero."
+      }
+    },
+    "tradePreview": {
+      "tabsLabel": "Trade sections",
+      "tabs": {
+        "overview": "Overview",
+        "strategy": "Strategy",
+        "review": "Review",
+        "executions": "Executions",
+        "chart": "Chart",
+        "notes": "Notes"
+      },
+      "openInJournal": "Open in the Journal",
+      "backToDay": "Back to the day",
+      "notAvailableShort": "—",
+      "actualR": "Actual R",
+      "systemR": "System R",
+      "executionGapR": "Execution Gap",
+      "account": "Account",
+      "status": "Status",
+      "enteredAt": "Entered",
+      "exitedAt": "Exited",
+      "systemExitedAt": "System exit",
+      "timeframe": "Timeframe",
+      "session": "Session",
+      "strategy": "Strategy",
+      "setup": "Setup",
+      "plannedR": "Planned R",
+      "rules": "Rules",
+      "mistakes": "Mistakes",
+      "emotions": "Emotions",
+      "ruleStatus": {
+        "followed": "Followed",
+        "violated": "Violated",
+        "not_applicable": "Not applicable",
+        "not_checked": "Not checked"
+      },
+      "closedPortion": "Closed {closed}% · remaining {remaining}%",
+      "legLabel": "Exit {sequence}",
+      "exitPrice": "Exit price",
+      "realizedPnl": "Realized P&L",
+      "exitReason": "Reason",
+      "openTradingView": "Open the TradingView chart",
+      "chartAlt": "Chart attached to the {symbol} Trade",
+      "confirmationNotes": "Confirmation notes",
+      "notes": "Notes",
+      "reviewNotes": "Review notes"
     }
   },
   "trades": {

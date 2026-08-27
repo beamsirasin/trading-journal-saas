@@ -44,7 +44,7 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
   { id: 'trader.performance', capability: 'trader', implementation: 'current' },
   { id: 'execution.gap', capability: 'comparison', implementation: 'current' },
   { id: 'trades.recent', capability: 'recent_trades', implementation: 'current' },
-  { id: 'calendar.performance', capability: 'calendar', implementation: 'later' },
+  { id: 'calendar.performance', capability: 'calendar', implementation: 'current' },
   { id: 'account.balance', capability: 'account_balance', implementation: 'later' },
   { id: 'risk.drawdown', capability: 'drawdown', implementation: 'later' },
 ];
@@ -54,7 +54,7 @@ export const DASHBOARD_SECTION_IDS = [
   'attention',
   'performance',
   'execution-gap',
-  'recent-trades',
+  'recent-and-calendar',
   'reserved',
 ] as const;
 
@@ -66,7 +66,7 @@ export interface DashboardSectionDefinition {
    * How many desktop columns THIS section's own grid has. A widget's
    * `desktopSpan` is read against this number and nothing else.
    */
-  readonly desktopColumns: 1 | 2 | 5;
+  readonly desktopColumns: 1 | 2 | 5 | 12;
 }
 
 /**
@@ -94,9 +94,21 @@ export const DASHBOARD_SECTIONS: readonly DashboardSectionDefinition[] = [
   { id: 'basic-kpi', desktopColumns: 5 },
   { id: 'attention', desktopColumns: 1 },
   { id: 'performance', desktopColumns: 2 },
-  // Full width, and reserved until D5 builds it.
   { id: 'execution-gap', desktopColumns: 1 },
-  { id: 'recent-trades', desktopColumns: 1 },
+  /*
+    D6B: the one section on the page whose two widgets are genuinely UNEQUAL.
+    Recent Trades is a list that wants horizontal room for symbol, Strategy
+    and three R figures; the Calendar is a seven-column grid that stops being
+    readable well before it stops fitting. Twelve columns is the smallest
+    integer grid that expresses 7 + 5 honestly — halves would starve the
+    Calendar's squares, and thirds would starve the Trade rows.
+
+    This is still not a layout engine: no persistence, no editor, no
+    drag/drop, no resize, and no runtime that turns these numbers into a grid.
+    The section's component spells its own `lg:grid-cols-12` and these numbers
+    record what it spells.
+  */
+  { id: 'recent-and-calendar', desktopColumns: 12 },
   // Widgets whose own section is genuinely undecided because they are not
   // built yet. Full width is the honest placeholder, not a prediction.
   { id: 'reserved', desktopColumns: 1 },
@@ -113,7 +125,7 @@ export interface DashboardLayoutItem {
   readonly section: DashboardSectionId;
   readonly order: number;
   /** Columns occupied inside `section`'s own grid — never a page-wide grid. */
-  readonly desktopSpan: 1 | 2 | 3 | 4 | 5;
+  readonly desktopSpan: 1 | 2 | 3 | 4 | 5 | 7 | 12;
   readonly mobileSpan: 1 | 2;
   readonly mobileOrder: number;
 }
@@ -201,19 +213,23 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileSpan: 2,
     mobileOrder: 90,
   },
+  // D6B — one section, twelve columns, 7 + 5. The two widgets are read
+  // together (which Trades happened, and when they happened), so they share a
+  // row rather than stacking into two full-width bands. Both go full width on
+  // mobile: a five-of-twelve calendar at 390px is unreadable.
   {
     widgetId: 'trades.recent',
-    section: 'recent-trades',
+    section: 'recent-and-calendar',
     order: 100,
-    desktopSpan: 1,
+    desktopSpan: 7,
     mobileSpan: 2,
     mobileOrder: 100,
   },
   {
     widgetId: 'calendar.performance',
-    section: 'reserved',
+    section: 'recent-and-calendar',
     order: 110,
-    desktopSpan: 1,
+    desktopSpan: 5,
     mobileSpan: 2,
     mobileOrder: 110,
   },

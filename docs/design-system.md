@@ -154,6 +154,8 @@ The shell's geometry lives in CSS variables rather than repeated `top-14` / `w-6
 
 **Dense data surfaces set their own vertical rhythm.** A `gap-6`–`gap-8` between every region reads as generous on a marketing page and as wasteful on a page whose job is figures. The Dashboard steps its margins up with the weight of the boundary instead — 20px into the KPI band, 24px into Needs Attention, 28px into the analytical sections, 32px before the record list — so hierarchy comes from contrast between boundaries rather than from one large gap repeated.
 
+**Each section owns its own grid.** The Dashboard is a stack of sections, not one page-wide grid: the KPI band is five columns, the System/Trader pair is two, and Recent Trades + Calendar is twelve, split 7 + 5. A widget's recorded `desktopSpan` is read against **its own section's** column count and nothing else. This is a record of what the components spell, not a layout engine — there is no persistence, editor, drag/drop or resize behind it.
+
 ## 6. Responsive
 
 Desktop-first for analytics, fully usable on tablet, quick-entry on mobile.
@@ -171,6 +173,8 @@ Desktop-first for analytics, fully usable on tablet, quick-entry on mobile.
 **Wide tables get two presentations, not one squeezed one.** A real `<table>` from `md` up, record cards below it. Both are in the DOM; the inactive one is `display:none`, which removes it from the accessibility tree so a screen reader is offered the trades once. Each carries `data-trades-view` so tests scope to the active one.
 
 Touch targets ≥ 44px, including inputs — `Input` is `h-11` rather than shadcn's `h-9` for exactly this reason. Numeric inputs use numeric keyboards. Native `<select>` is preferred over a custom listbox on forms, because it opens the platform picker on a phone.
+
+**A widget inside a partial-width column asks its own width, not the viewport's.** The Dashboard Calendar is five of twelve columns, so a 1280px page and a 1920px page give it very different room while reporting the same breakpoint. It declares `@container` and reduces itself against that: below 22rem the per-day W/BE/L line is dropped and the R value sheds its trailing unit, so the date and the figure itself never shrink into an ellipsis. Prefer a container query wherever a component's usable width is decided by its column rather than by the window.
 
 **Mobile navigation is a drawer, not a bottom bar.** The Phase 00b drawer is focus-trapping, Escape-handling and tested; five sections fit it comfortably. Replacing hardened, tested behaviour needs a better reason than fashion.
 

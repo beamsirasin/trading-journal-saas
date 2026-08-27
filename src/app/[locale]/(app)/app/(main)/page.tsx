@@ -2,8 +2,11 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Suspense } from 'react';
 
+import { parseCalendarNavigation } from '@/lib/dashboard/calendar-navigation';
 import { parseDashboardFilterState } from '@/lib/dashboard/filters';
+import { calendarDateIn } from '@/lib/time';
 import { getDashboardPageData } from '@/server/services/dashboard';
+import { DashboardCalendarSection } from '@/components/dashboard/calendar/dashboard-calendar-section';
 import { NoActiveTradingAccountRecovery } from '@/components/dashboard/empty-trading-dashboard';
 import {
   DashboardDataError,
@@ -79,8 +82,19 @@ async function DashboardContent({
   locale: string;
   rawSearchParams: PageSearchParams;
 }) {
+  /*
+    TWO PARSERS, ONE URL (D6A). The filter parser owns
+    `range`/`account`/`strategy`/`setup`/`version`/`unit`; the calendar parser
+    owns `mode`/`month`/`day`/`trade`. Each tolerates the other's keys and BOTH
+    still fail closed on anything neither recognises, so a typo'd parameter is
+    an error rather than a silently widened population or a silently moved
+    calendar.
+  */
   const parsed = parseDashboardFilterState(rawSearchParams);
   if (!parsed.ok) return <DashboardDataError />;
+  const navigation = parseCalendarNavigation(rawSearchParams);
+  if (!navigation.ok) return <DashboardDataError />;
+
   const dashboard = await getDashboardPageData(parsed.state).catch(() => null);
   if (dashboard === null) return <DashboardDataError />;
   if (!dashboard.ok && dashboard.code === 'no_active_trading_account') {
@@ -89,5 +103,41 @@ async function DashboardContent({
   if (!dashboard.ok) return <DashboardDataError />;
 
   const dateLocale = DATE_LOCALE[locale] ?? 'en-GB';
-  return <RealDashboard data={dashboard.data} dateLocale={dateLocale} />;
+  // The Calendar's own timezone comes from the analytics scope the five core
+  // reads already resolved — one source, so a Calendar month can never be cut
+  // on a different boundary from the KPIs beside it, and no extra preference
+  // probe is issued.
+  const timezone = dashboard.data.scope.timezone;
+  const today = calendarDateIn(new Date(), timezone);
+
+  return (
+    <RealDashboard
+      data={dashboard.data}
+      dateLocale={dateLocale}
+      calendarSlot={
+        // Its own Suspense boundary: the Calendar's month read must not hold
+        // the five core reads' output off the screen, and paging the month
+        // re-renders only this subtree.
+        <Suspense fallback={<DashboardCalendarSkeleton />}>
+          <DashboardCalendarSection
+            filters={parsed.state}
+            navigation={navigation.state}
+            timezone={timezone}
+            todayDate={today.ok ? today.value : '1970-01-01'}
+            dateLocale={dateLocale}
+          />
+        </Suspense>
+      }
+    />
+  );
+}
+
+/** Reserves the Calendar card's geometry — see `DashboardSkeleton`'s note. */
+function DashboardCalendarSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      className="border-border bg-card h-96 animate-pulse rounded-lg border"
+    />
+  );
 }
