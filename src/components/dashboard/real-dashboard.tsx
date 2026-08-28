@@ -198,7 +198,7 @@ function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
   return (
     <nav aria-label={t('dateRangeLabel')} className="flex flex-col gap-1.5">
       <span className="text-muted-foreground text-label uppercase">{t('dateRangeLabel')}</span>
-      <div className="border-border bg-muted/50 inline-flex w-fit max-w-full flex-wrap rounded-lg border p-1">
+      <div className="border-border bg-background inline-flex w-fit max-w-full flex-wrap rounded-lg border p-1">
         {RANGE_ORDER.map((range) => (
           <DashboardStateLink
             key={range}
@@ -207,7 +207,7 @@ function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-11 min-w-14 items-center justify-center rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2',
               range === filters.datePreset
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-surface-raised text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >

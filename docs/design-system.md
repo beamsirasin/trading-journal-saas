@@ -37,6 +37,7 @@ The vocabulary follows shadcn/ui's contract so vendored components work untouche
 | `secondary`          | Secondary surfaces                                 |
 | `muted`              | Muted **surface**                                  |
 | `muted-foreground`   | Secondary **text** and labels                      |
+| `subtle-foreground`  | Low-priority metadata and decorative labels        |
 | `accent`             | Subtle hover surface — **not** the identity accent |
 | `destructive`        | Destructive actions                                |
 | `border` / `input`   | Dividers, card borders, input borders              |
@@ -46,11 +47,12 @@ The vocabulary follows shadcn/ui's contract so vendored components work untouche
 
 | Token               | Purpose                                            |
 | ------------------- | -------------------------------------------------- |
-| `brand`             | Cyan identity accent                               |
+| `brand`             | Restrained identity accent                         |
 | `surface`           | Section band, one step off the canvas              |
 | `surface-raised`    | Elevated elements, inline code, chips              |
 | `positive`          | Gains, wins                                        |
 | `negative`          | Losses                                             |
+| `break-even`        | Break-even outcomes                                |
 | `warning`           | Caution, trial expiry, demo markers                |
 | `info`              | Neutral notices                                    |
 | `overlay`           | Dialog and drawer scrim                            |
@@ -58,7 +60,7 @@ The vocabulary follows shadcn/ui's contract so vendored components work untouche
 | `chart-1`…`chart-4` | Categorical chart series, fixed order — see §9     |
 | `system` / `trader` | Semantic aliases of `chart-1` / `chart-2`          |
 
-> **Trap.** `accent` is shadcn's subtle hover surface, not the cyan identity colour — that is `brand`. Mixing them produces components that look fine in isolation and wrong in context.
+> **Trap.** `accent` is shadcn's neutral hover surface, not the blue identity colour — that is `brand`. Mixing them produces components that look fine in isolation and wrong in context.
 
 `surface` moves away from the canvas in whichever direction reads as a distinct band for the theme: lifted in dark, tinted in light. That asymmetry is deliberate — in light mode "raised" is nearly white, which is already `card`.
 
@@ -66,35 +68,43 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 
 ### Palette
 
-| Token              | Dark      | Light     |
-| ------------------ | --------- | --------- |
-| `background`       | `#070b14` | `#f6f8fc` |
-| `foreground`       | `#e8edf7` | `#0b1220` |
-| `card`             | `#0d1424` | `#ffffff` |
-| `popover`          | `#141d33` | `#ffffff` |
-| `primary`          | `#2563eb` | `#1d5fd8` |
-| `secondary`        | `#141d33` | `#eef2f9` |
-| `muted`            | `#141d33` | `#eef2f9` |
-| `muted-foreground` | `#93a4c0` | `#55657f` |
-| `accent`           | `#1a2540` | `#e8eef8` |
-| `destructive`      | `#e11d48` | `#be123c` |
-| `border` / `input` | `#1e2a45` | `#dbe3f0` |
-| `ring`             | `#38bdf8` | `#1d5fd8` |
-| `brand`            | `#22d3ee` | `#0e7490` |
-| `surface`          | `#0a1020` | `#eaf0f9` |
-| `surface-raised`   | `#141d33` | `#ffffff` |
-| `positive`         | `#10b981` | `#047857` |
-| `negative`         | `#fb7185` | `#be123c` |
-| `warning`          | `#f59e0b` | `#92400e` |
-| `info`             | `#56b6f7` | `#0369a1` |
-| `chart-1`          | `#0f9e8e` | `#0891b2` |
-| `chart-2`          | `#3b82f6` | `#1d4ed8` |
-| `chart-3`          | `#c2650f` | `#c2570f` |
-| `chart-4`          | `#b06ef0` | `#7c3aed` |
+| Token               | Dark      | Light     |
+| ------------------- | --------- | --------- |
+| `background`        | `#0d0d0d` | `#f8fafd` |
+| `foreground`        | `#f6f6f6` | `#0b1220` |
+| `card`              | `#181818` | `#ffffff` |
+| `popover`           | `#181818` | `#ffffff` |
+| `primary`           | `#2877a2` | `#1d4ed8` |
+| `secondary`         | `#262626` | `#e9edf7` |
+| `muted`             | `#262626` | `#e9edf7` |
+| `muted-foreground`  | `#797979` | `#55657f` |
+| `subtle-foreground` | `#4d4d4d` | `#7b879b` |
+| `accent`            | `#262626` | `#dfe6f4` |
+| `destructive`       | `#ef6362` | `#be123c` |
+| `border`            | white 8%  | `#dde4f0` |
+| `input`             | white 12% | `#dde4f0` |
+| `ring`              | `#2877a2` | `#1d4ed8` |
+| `brand`             | `#2877a2` | `#0e7490` |
+| `surface`           | `#0d0d0d` | `#e9edf7` |
+| `surface-raised`    | `#262626` | `#ffffff` |
+| `positive`          | `#2fa97a` | `#047857` |
+| `negative`          | `#ef6362` | `#be123c` |
+| `break-even`        | `#2853e4` | `#1d4ed8` |
+| `warning`           | `#f59e0b` | `#92400e` |
+| `info`              | `#56b6f7` | `#0369a1` |
+| `chart-1`           | `#0f9e8e` | `#0891b2` |
+| `chart-2`           | `#3b82f6` | `#1d4ed8` |
+| `chart-3`           | `#c2650f` | `#c2570f` |
+| `chart-4`           | `#b06ef0` | `#7c3aed` |
 
 `positive` and `negative` are never the only signal for a value's direction — sign, arrow, or label must carry it too, for red-green colour blindness.
 
-Measured text contrast on the surfaces where each token is used, in both themes: every status and text token clears 4.5:1. Dark primary actions and light warning text are explicitly asserted by e2e. The one exception is light-mode `chart-1` at 3.68:1, which is why series colours never carry text (§9).
+Primary text, positive/negative values, and text on primary actions retain strong contrast. `muted-foreground` is reserved for supporting copy, while `subtle-foreground` and `break-even` are never used as the sole colour of essential body text: subtle is limited to tertiary/decorative metadata, and break-even uses a tint with foreground text. Chart-series colours likewise never carry text on their own (§9).
+
+Interactive shell navigation uses a dedicated rest foreground (`#818181` on
+the dark `#181818` chrome, 4.56:1) rather than promoting every secondary label.
+The general `muted-foreground` therefore remains the reference `#797979`, while
+route names and icons retain AA contrast before hover.
 
 ## 3. Theming
 

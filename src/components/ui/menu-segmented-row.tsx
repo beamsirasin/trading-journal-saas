@@ -99,7 +99,7 @@ export function MenuSegmentedRow<T extends string>({
         onValueChange={(next) => onValueChange(next as T)}
         // A hairline track, not a boxed control. The border and the fill were
         // doing the same job twice at a size where only one of them reads.
-        className="bg-muted ml-auto flex shrink-0 items-center rounded-md p-0.5"
+        className="bg-background ml-auto flex shrink-0 items-center rounded-md p-0.5"
       >
         {options.map((option) => {
           const selected = option.value === value;
@@ -123,12 +123,9 @@ export function MenuSegmentedRow<T extends string>({
                 'min-h-7 justify-center rounded-[0.25rem] px-2 py-0 text-xs font-medium',
                 'whitespace-nowrap transition-colors',
                 selected
-                  ? // The FILL is the selection, and it is the ONE place blue
-                    // is spent in this row — a micro-control, not an area. It
-                    // is `--primary`, the same blue as every other committed
-                    // choice in the shell, and its foreground is the token
-                    // chosen to clear AA against it.
-                    'bg-primary text-primary-foreground focus:bg-primary focus:text-primary-foreground'
+                  ? // Selection uses the neutral raised surface; blue remains
+                    // reserved for links, indicators and focus rings.
+                    'bg-surface-raised text-foreground focus:bg-surface-raised focus:text-foreground'
                   : 'text-muted-foreground focus:bg-accent focus:text-accent-foreground',
               )}
             >

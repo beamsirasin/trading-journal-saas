@@ -4,12 +4,13 @@ import { cn } from '@/lib/utils';
 
 const variantClasses = {
   neutral: 'bg-muted text-muted-foreground border-border',
-  /** Cyan identity accent — not shadcn's `accent`, which is a hover surface. */
+  /** Identity accent — not shadcn's `accent`, which is a hover surface. */
   brand: 'bg-brand/10 text-brand border-brand/25',
   positive: 'bg-positive/10 text-positive border-positive/25',
   negative: 'bg-negative/10 text-negative border-negative/25',
+  breakEven: 'bg-break-even/20 text-foreground border-break-even/40',
   warning: 'bg-warning/10 text-warning border-warning/25',
-  /** Blue — "active/in-progress" (Phase 15B status vocabulary), distinct from `brand`'s cyan identity accent. */
+  /** Brighter blue — "active/in-progress" (Phase 15B status vocabulary). */
   info: 'bg-info/10 text-info border-info/25',
 } as const;
 

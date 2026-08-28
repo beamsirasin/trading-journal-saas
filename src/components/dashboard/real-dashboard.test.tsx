@@ -324,6 +324,32 @@ describe('RealDashboard', () => {
     expect(within(panel).getByRole('link', { name: /Review/ })).toBeVisible();
   });
 
+  /**
+   * D9 — the one band on the page whose population is not the active Account
+   * and the selected range must SAY SO.
+   *
+   * `getWorkspaceTradeAttentionCounts` counts every Trade in the workspace
+   * with no account filter and no date filter, while the KPI band, both
+   * baselines, the Execution Gap, the three pillars, the Trade list, the
+   * Calendar and the Risk section are all scoped to one Account and one
+   * range. Measured on the shipping page, that produced two readings a
+   * trader cannot reconcile: an Account with no Trades at all showing
+   * "Reviews Pending 28", and a 30D range showing "14 Trades" in Net P&L
+   * beside the same unchanged 28. The counts are correct; the silence about
+   * which population they came from was the defect.
+   */
+  it('states that Needs Attention spans the workspace and ignores the date range', () => {
+    const { container } = renderDashboard(overview(), [RECENT], {
+      ...ATTENTION,
+      reviewsPending: 28,
+    });
+    const panel = container.querySelector(
+      '[data-dashboard-panel="needs-attention"]',
+    ) as HTMLElement;
+    expect(within(panel).getByText(/every Account in this workspace/i)).toBeVisible();
+    expect(within(panel).getByText(/whatever date range is selected/i)).toBeVisible();
+  });
+
   it('places the two performance cards side by side in one balanced grid', () => {
     const { container } = renderDashboard();
     const system = container.querySelector('[data-dashboard-widget="system.performance"]');

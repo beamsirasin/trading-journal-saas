@@ -12,8 +12,8 @@
  * ring) so that vendored components work untouched, PLUS product tokens the
  * trading domain needs (positive, negative, warning, brand, surface-raised).
  *
- * TRAP: `accent` is shadcn's subtle hover surface, NOT the cyan brand accent.
- * The cyan identity colour is `brand`. Mixing these up produces components
+ * TRAP: `accent` is shadcn's subtle hover surface, NOT the blue UI accent.
+ * The identity colour is `brand`. Mixing these up produces components
  * that look fine in isolation and wrong in context.
  */
 
@@ -32,6 +32,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -91,6 +92,7 @@
   --color-brand: var(--brand);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
+  --color-break-even: var(--break-even);
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-overlay: var(--overlay);
@@ -127,7 +129,7 @@
    * These are chrome aliases onto ALREADY-VALIDATED tokens, deliberately not
    * new hex values and deliberately not new chart-series slots: `results`
    * reuses `primary` (the existing generic action blue), `edge` reuses
-   * `brand` (the existing cyan identity accent — Edge includes Strategy
+   * `brand` (the existing restrained identity accent — Edge includes Strategy
    * Performance, where `brand` already marks a selected Strategy card), and
    * `behavior` reuses `chart-4` (violet), the one categorical chart slot the
    * product has never assigned to a live series (§9's "a fifth series folds
@@ -358,33 +360,35 @@ html[lang='th'] .text-label {
 
   color-scheme: dark;
 
-  --background: #0f0f11;
-  --foreground: #ececef;
-  --card: #18181c;
-  --card-foreground: #ececef;
-  --popover: #1e1e23;
-  --popover-foreground: #ececef;
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --secondary: #1e1e23;
-  --secondary-foreground: #ececef;
-  --muted: #1e1e23;
-  --muted-foreground: #a0a0a9;
-  --accent: #26262c;
-  --accent-foreground: #ececef;
-  --destructive: #f2607f;
-  --destructive-foreground: #ffffff;
-  --border: #2a2a31;
-  --input: #2a2a31;
-  --ring: #60a5fa;
+  --background: #0d0d0d;
+  --foreground: #f6f6f6;
+  --card: #181818;
+  --card-foreground: #f6f6f6;
+  --popover: #181818;
+  --popover-foreground: #f6f6f6;
+  --primary: #2877a2;
+  --primary-foreground: #f6f6f6;
+  --secondary: #262626;
+  --secondary-foreground: #f6f6f6;
+  --muted: #262626;
+  --muted-foreground: #797979;
+  --subtle-foreground: #4d4d4d;
+  --accent: #262626;
+  --accent-foreground: #f6f6f6;
+  --destructive: #ef6362;
+  --destructive-foreground: #f6f6f6;
+  --border: rgb(255 255 255 / 0.08);
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #2877a2;
 
-  --surface: #101013;
-  --surface-raised: #1e1e23;
-  --sidebar: #151519;
-  --sidebar-border: #242429;
-  --brand: #22d3ee;
-  --positive: #10b981;
-  --negative: #fb7185;
+  --surface: #0d0d0d;
+  --surface-raised: #262626;
+  --sidebar: #181818;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --brand: #2877a2;
+  --positive: #2fa97a;
+  --negative: #ef6362;
+  --break-even: #2853e4;
   --warning: #f59e0b;
   --info: #56b6f7;
 
@@ -398,9 +402,8 @@ html[lang='th'] .text-label {
   --chart-2: #3b82f6;
   --chart-3: #c2650f;
   --chart-4: #b06ef0;
-  /* Shell surfaces. The header is the deepest plane; the sidebar lifts off
-     the page toward the cards. */
-  --shell-nav-active-surface: #2e2e35;
+  /* Shell surfaces share the card plane and lift only for interaction. */
+  --shell-nav-active-surface: #262626;
 
   /*
    * THE ACTIVE ROW: a neutral pill, a blue icon, a plain bright label.
@@ -417,24 +420,25 @@ html[lang='th'] .text-label {
    * colour. Splitting them is the whole change: `-foreground` is now a plain
    * high-contrast label, not an accent.
    *
-   * Measured on this theme's pill (#2e2e35):
+   * Measured on this theme's pill (#262626):
    *
-   *   12.27:1 label
-   *   5.30:1 icon (needs 3:1 as non-text)
-   *   16.58:1 label on the bare sidebar, visible mid layout-spring
-   *   7.16:1 icon on the bare sidebar
+   *   13.99:1 label
+   *   3.11:1 icon (needs 3:1 as non-text)
+   *   16.43:1 label on the bare sidebar, visible mid layout-spring
+   *   3.59:1 icon on the bare sidebar
    */
-  --shell-nav-active-foreground: #f4f4f6;
-  --shell-nav-active-icon: #60a5fa;
-  --shell-chrome: #0b0c0e;
-  --shell-chrome-foreground: #ececef;
-  --shell-chrome-muted: #9a9aa3;
-  --shell-chrome-accent: #191a1d;
-  --shell-chrome-border: #212327;
-  --shell-chrome-nav-active-surface: #212227;
-  --shell-chrome-nav-active-foreground: #f4f4f6;
-  --shell-chrome-nav-active-icon: #60a5fa;
-  --shell-chrome-ring: #60a5fa;
+  --shell-nav-active-foreground: #f6f6f6;
+  --shell-nav-active-icon: #2877a2;
+  --shell-nav-rest-foreground: #818181;
+  --shell-chrome: #181818;
+  --shell-chrome-foreground: #f6f6f6;
+  --shell-chrome-muted: #818181;
+  --shell-chrome-accent: #262626;
+  --shell-chrome-border: rgb(255 255 255 / 0.08);
+  --shell-chrome-nav-active-surface: #262626;
+  --shell-chrome-nav-active-foreground: #f6f6f6;
+  --shell-chrome-nav-active-icon: #2877a2;
+  --shell-chrome-ring: #2877a2;
 }
 
 /* 1. Explicit user choice — highest priority. Must come last. */
@@ -453,6 +457,7 @@ html[lang='th'] .text-label {
   --secondary-foreground: #0b1220;
   --muted: #e9edf7;
   --muted-foreground: #55657f;
+  --subtle-foreground: #7b879b;
   --accent: #dfe6f4;
   --accent-foreground: #0b1220;
   --destructive: #be123c;
@@ -468,6 +473,7 @@ html[lang='th'] .text-label {
   --brand: #0e7490;
   --positive: #047857;
   --negative: #be123c;
+  --break-even: #1d4ed8;
   --warning: #92400e;
   --info: #0369a1;
 
@@ -510,47 +516,50 @@ html[lang='th'] .text-label {
    */
   --shell-nav-active-foreground: #0b1220;
   --shell-nav-active-icon: #1d4ed8;
-  --shell-chrome: #0b0c0e;
-  --shell-chrome-foreground: #ececef;
-  --shell-chrome-muted: #9a9aa3;
-  --shell-chrome-accent: #191a1d;
-  --shell-chrome-border: #212327;
-  --shell-chrome-nav-active-surface: #212227;
-  --shell-chrome-nav-active-foreground: #f4f4f6;
-  --shell-chrome-nav-active-icon: #60a5fa;
-  --shell-chrome-ring: #60a5fa;
+  --shell-nav-rest-foreground: #55657f;
+  --shell-chrome: #181818;
+  --shell-chrome-foreground: #f6f6f6;
+  --shell-chrome-muted: #818181;
+  --shell-chrome-accent: #262626;
+  --shell-chrome-border: rgb(255 255 255 / 0.08);
+  --shell-chrome-nav-active-surface: #262626;
+  --shell-chrome-nav-active-foreground: #f6f6f6;
+  --shell-chrome-nav-active-icon: #2877a2;
+  --shell-chrome-ring: #2877a2;
 }
 
 .dark {
   color-scheme: dark;
 
-  --background: #0f0f11;
-  --foreground: #ececef;
-  --card: #18181c;
-  --card-foreground: #ececef;
-  --popover: #1e1e23;
-  --popover-foreground: #ececef;
-  --primary: #2563eb;
-  --primary-foreground: #ffffff;
-  --secondary: #1e1e23;
-  --secondary-foreground: #ececef;
-  --muted: #1e1e23;
-  --muted-foreground: #a0a0a9;
-  --accent: #26262c;
-  --accent-foreground: #ececef;
-  --destructive: #f2607f;
-  --destructive-foreground: #ffffff;
-  --border: #2a2a31;
-  --input: #2a2a31;
-  --ring: #60a5fa;
+  --background: #0d0d0d;
+  --foreground: #f6f6f6;
+  --card: #181818;
+  --card-foreground: #f6f6f6;
+  --popover: #181818;
+  --popover-foreground: #f6f6f6;
+  --primary: #2877a2;
+  --primary-foreground: #f6f6f6;
+  --secondary: #262626;
+  --secondary-foreground: #f6f6f6;
+  --muted: #262626;
+  --muted-foreground: #797979;
+  --subtle-foreground: #4d4d4d;
+  --accent: #262626;
+  --accent-foreground: #f6f6f6;
+  --destructive: #ef6362;
+  --destructive-foreground: #f6f6f6;
+  --border: rgb(255 255 255 / 0.08);
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #2877a2;
 
-  --surface: #101013;
-  --surface-raised: #1e1e23;
-  --sidebar: #151519;
-  --sidebar-border: #242429;
-  --brand: #22d3ee;
-  --positive: #10b981;
-  --negative: #fb7185;
+  --surface: #0d0d0d;
+  --surface-raised: #262626;
+  --sidebar: #181818;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --brand: #2877a2;
+  --positive: #2fa97a;
+  --negative: #ef6362;
+  --break-even: #2853e4;
   --warning: #f59e0b;
   --info: #56b6f7;
 
@@ -564,9 +573,8 @@ html[lang='th'] .text-label {
   --chart-2: #3b82f6;
   --chart-3: #c2650f;
   --chart-4: #b06ef0;
-  /* Shell surfaces. The header is the deepest plane; the sidebar lifts off
-     the page toward the cards. */
-  --shell-nav-active-surface: #2e2e35;
+  /* Shell surfaces share the card plane and lift only for interaction. */
+  --shell-nav-active-surface: #262626;
 
   /*
    * THE ACTIVE ROW: a neutral pill, a blue icon, a plain bright label.
@@ -583,24 +591,25 @@ html[lang='th'] .text-label {
    * colour. Splitting them is the whole change: `-foreground` is now a plain
    * high-contrast label, not an accent.
    *
-   * Measured on this theme's pill (#2e2e35):
+   * Measured on this theme's pill (#262626):
    *
-   *   12.27:1 label
-   *   5.30:1 icon (needs 3:1 as non-text)
-   *   16.58:1 label on the bare sidebar, visible mid layout-spring
-   *   7.16:1 icon on the bare sidebar
+   *   13.99:1 label
+   *   3.11:1 icon (needs 3:1 as non-text)
+   *   16.43:1 label on the bare sidebar, visible mid layout-spring
+   *   3.59:1 icon on the bare sidebar
    */
-  --shell-nav-active-foreground: #f4f4f6;
-  --shell-nav-active-icon: #60a5fa;
-  --shell-chrome: #0b0c0e;
-  --shell-chrome-foreground: #ececef;
-  --shell-chrome-muted: #9a9aa3;
-  --shell-chrome-accent: #191a1d;
-  --shell-chrome-border: #212327;
-  --shell-chrome-nav-active-surface: #212227;
-  --shell-chrome-nav-active-foreground: #f4f4f6;
-  --shell-chrome-nav-active-icon: #60a5fa;
-  --shell-chrome-ring: #60a5fa;
+  --shell-nav-active-foreground: #f6f6f6;
+  --shell-nav-active-icon: #2877a2;
+  --shell-nav-rest-foreground: #818181;
+  --shell-chrome: #181818;
+  --shell-chrome-foreground: #f6f6f6;
+  --shell-chrome-muted: #818181;
+  --shell-chrome-accent: #262626;
+  --shell-chrome-border: rgb(255 255 255 / 0.08);
+  --shell-chrome-nav-active-surface: #262626;
+  --shell-chrome-nav-active-foreground: #f6f6f6;
+  --shell-chrome-nav-active-icon: #2877a2;
+  --shell-chrome-ring: #2877a2;
 }
 
 @layer base {
@@ -849,6 +858,7 @@ html[lang='th'] .text-label {
   --secondary-foreground: var(--shell-chrome-foreground);
   --border: var(--shell-chrome-border);
   --input: var(--shell-chrome-border);
+  --shell-nav-rest-foreground: var(--shell-chrome-muted);
 
   /*
    * Navigation, rebound for the chrome surface.

@@ -109,11 +109,13 @@ export function SidebarNav({
  * deliberately not `--primary`: on a dark pill that value is too dim to clear
  * the 3:1 a non-text mark needs.
  *
- * INACTIVE rows are untouched and stay neutral: `--muted-foreground` at rest,
- * `--foreground` on hover.
+ * INACTIVE rows stay neutral: the dedicated rest token is only a hair brighter
+ * than secondary copy in dark chrome so interactive labels retain AA contrast,
+ * then `--foreground` takes over on hover.
  */
 const ACTIVE_LABEL = 'text-[var(--shell-nav-active-foreground)]';
 const ACTIVE_ICON = 'text-[var(--shell-nav-active-icon)]';
+const REST_FOREGROUND = 'text-[var(--shell-nav-rest-foreground)]';
 
 function NavRow({
   item,
@@ -191,14 +193,14 @@ function NavRow({
             'group/nav relative flex min-h-[3.25rem] items-center gap-3 rounded-lg px-3 text-base transition-colors',
             isActive
               ? `${ACTIVE_LABEL} font-semibold`
-              : 'text-muted-foreground hover:text-foreground font-medium',
+              : `${REST_FOREGROUND} hover:text-foreground font-medium`,
           )}
         >
           <Pill active={isActive} variant={variant} prefersReducedMotion={prefersReducedMotion} />
           <Icon
             className={cn(
               'relative size-5 shrink-0 transition-colors',
-              isActive ? ACTIVE_ICON : 'text-muted-foreground group-hover/nav:text-foreground',
+              isActive ? ACTIVE_ICON : `${REST_FOREGROUND} group-hover/nav:text-foreground`,
             )}
             aria-hidden="true"
           />
@@ -249,7 +251,7 @@ function NavRow({
           'group/nav relative grid h-11 grid-cols-[var(--shell-rail-width)_var(--shell-secondary-nav-width)] items-center text-[0.9375rem] transition-colors',
           isActive
             ? `${ACTIVE_LABEL} font-semibold`
-            : 'text-muted-foreground hover:text-foreground font-medium',
+            : `${REST_FOREGROUND} hover:text-foreground font-medium`,
         )}
       >
         {/*
@@ -266,7 +268,7 @@ function NavRow({
           <Icon
             className={cn(
               'relative size-[1.15rem] shrink-0 transition-colors',
-              isActive ? ACTIVE_ICON : 'text-muted-foreground group-hover/nav:text-foreground',
+              isActive ? ACTIVE_ICON : `${REST_FOREGROUND} group-hover/nav:text-foreground`,
             )}
             aria-hidden="true"
           />

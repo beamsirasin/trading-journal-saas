@@ -127,7 +127,7 @@ function RecentTradeRow({
   return (
     <li
       data-recent-trade-row={trade.tradeId}
-      className="border-border bg-muted/25 hover:bg-muted/45 min-w-0 rounded-lg border transition-colors"
+      className="border-border bg-card hover:bg-surface-raised min-w-0 rounded-lg border transition-colors"
     >
       <div className="grid min-w-0 grid-cols-1 gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">

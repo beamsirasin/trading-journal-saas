@@ -37,7 +37,9 @@ export function TradesViewNav({ view }: { readonly view: TradesView }) {
             aria-current={view === item ? 'page' : undefined}
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2',
-              view === item ? 'bg-primary text-primary-foreground' : 'hover:bg-accent',
+              view === item
+                ? 'bg-surface-raised text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
             )}
           >
             <Icon className="size-4" aria-hidden="true" />

@@ -6,7 +6,7 @@ import { Badge, type BadgeVariant } from '@/components/ui/badge';
 const VARIANT: Record<OutcomeValue, BadgeVariant> = {
   win: 'positive',
   loss: 'negative',
-  break_even: 'neutral',
+  break_even: 'breakEven',
 };
 
 export function TradeOutcomeBadge({ outcome }: { outcome: OutcomeValue | null }) {

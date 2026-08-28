@@ -109,7 +109,7 @@ export const viewport: Viewport = {
    * ONE value, not a `prefers-color-scheme` pair. It used to be a pair, from
    * when the OS preference decided the theme; the product now defaults to dark
    * and the OS gets no vote, so keying this off a media query would colour the
-   * browser bar by a signal the page itself ignores. `#0b0c0e` is
+   * browser bar by a signal the page itself ignores. `#181818` is
    * `--shell-chrome`, which is the surface directly beneath this bar in BOTH
    * themes — the header is deep in light mode too — so it is the right answer
    * either way rather than a compromise.
@@ -118,7 +118,7 @@ export const viewport: Viewport = {
    * `#f6f8fc` has been a token since the shell polish pass replaced the
    * navy-cast blacks with neutral ones.
    */
-  themeColor: '#0b0c0e',
+  themeColor: '#181818',
 };
 
 /**

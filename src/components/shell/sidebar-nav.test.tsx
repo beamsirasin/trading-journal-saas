@@ -275,15 +275,18 @@ describe('SidebarNav — active route', () => {
   });
 
   it('keeps inactive rows neutral', () => {
-    // The accent is the current route's alone. An inactive row is muted at
-    // rest and rises only to plain foreground on hover.
+    // The accent is the current route's alone. An inactive row uses the
+    // neutral, AA-safe shell rest token and rises only to plain foreground on
+    // hover.
     pathname = '/app/trades';
     renderNav('sidebar');
 
     const inactive = screen.getByRole('link', { name: en.appNav.items.accounts });
     expect(inactive.className).not.toContain('shell-nav-active-foreground');
-    expect(inactive.className).toContain('text-muted-foreground');
-    expect(inactive.querySelector('svg')?.getAttribute('class')).toContain('text-muted-foreground');
+    expect(inactive.className).toContain('text-[var(--shell-nav-rest-foreground)]');
+    expect(inactive.querySelector('svg')?.getAttribute('class')).toContain(
+      'text-[var(--shell-nav-rest-foreground)]',
+    );
   });
 
   it('claims no current page while Settings is open, since it is not in the nav', () => {

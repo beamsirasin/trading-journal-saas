@@ -174,7 +174,7 @@ function CalendarModeControl({
   const t = useTranslations('dashboard.calendar');
   return (
     <nav aria-label={t('modeLegend')} data-calendar-mode-control="">
-      <div className="border-border bg-muted/50 flex min-w-0 rounded-lg border p-1">
+      <div className="border-border bg-background flex min-w-0 rounded-lg border p-1">
         {CALENDAR_MODE_ORDER.map((candidate) => (
           <DashboardStateLink
             key={candidate}
@@ -184,7 +184,7 @@ function CalendarModeControl({
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-10 min-w-0 flex-1 items-center justify-center truncate rounded-md px-2 text-sm font-medium outline-none focus-visible:ring-2',
               candidate === mode
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-surface-raised text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
@@ -326,7 +326,7 @@ function CalendarGridView({
           <div
             key={key}
             aria-hidden="true"
-            className="text-muted-foreground pb-1 text-center text-[11px] font-medium"
+            className="text-subtle-foreground pb-1 text-center text-[11px] font-medium"
           >
             {t(`weekday.${key}`)}
           </div>
@@ -380,7 +380,7 @@ function CalendarCell({
           cell.isToday && 'border-border border-dashed',
         )}
       >
-        <span className="numeric text-muted-foreground/70 text-[11px] leading-4">
+        <span className="numeric text-subtle-foreground text-[11px] leading-4">
           {cell.dayOfMonth}
         </span>
       </div>

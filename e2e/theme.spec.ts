@@ -160,7 +160,7 @@ test.describe('theme contrast', () => {
           // Visible mid layout-spring, while the pill is travelling.
           navActiveLabelOnSidebar: contrast('--shell-nav-active-foreground', '--sidebar'),
           navActiveIconOnSidebar: contrast('--shell-nav-active-icon', '--sidebar'),
-          navRestOnSidebar: contrast('--muted-foreground', '--sidebar'),
+          navRestOnSidebar: contrast('--shell-nav-rest-foreground', '--sidebar'),
           ringOnBackground: contrast('--ring', '--background'),
           // The mobile drawer's chrome scope, which rebinds all of them.
           chromeNavLabelOnPill: contrast(
@@ -329,12 +329,11 @@ test.describe('theme without JavaScript', () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/en');
     const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    // The dark canvas, #0f0f11 — a NEUTRAL near-black since the shell polish
-    // pass. It was #070b14, a navy-cast black, which is exactly what that pass
-    // set out to remove. What this case actually guards is unchanged: with no
+    // The dark canvas, #0d0d0d — a neutral near-black from the visual
+    // foundation pass. What this case actually guards is unchanged: with no
     // JavaScript at all, the page still paints a real theme rather than
     // unstyled content, so the literal is asserted rather than derived.
-    expect(background).toBe('rgb(15, 15, 17)');
+    expect(background).toBe('rgb(13, 13, 13)');
   });
 });
 

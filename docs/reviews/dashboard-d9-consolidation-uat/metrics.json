@@ -1,0 +1,3630 @@
+{
+  "01-1920-dark-populated": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "documentHeight": 3756,
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 169,
+        "bottom": 249,
+        "height": 80,
+        "width": 1792,
+        "scrollWidth": 1790,
+        "clientWidth": 1790,
+        "firstScreenVisiblePx": 80,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 269,
+        "bottom": 407,
+        "height": 138,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 138,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 431,
+        "bottom": 527,
+        "height": 96,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 96,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 555,
+        "bottom": 1031,
+        "height": 476,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 476,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 1059,
+        "bottom": 1828,
+        "height": 769,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 21,
+        "firstScreenVisiblePct": 3
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 1856,
+        "bottom": 2306,
+        "height": 450,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 2338,
+        "bottom": 3000,
+        "height": 662,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 3032,
+        "bottom": 3664,
+        "height": 632,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 3688,
+        "bottom": 3732,
+        "height": 44,
+        "width": 1792,
+        "scrollWidth": 1792,
+        "clientWidth": 1792,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 28
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (100%)",
+      "system+trader (100%)",
+      "execution-gap (3%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 3
+    },
+    "swatches": [
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+1.58R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.68R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-3.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "$500.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "$720.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 2046
+  },
+  "02-1440-dark-populated": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "documentHeight": 3756,
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 169,
+        "bottom": 249,
+        "height": 80,
+        "width": 1312,
+        "scrollWidth": 1310,
+        "clientWidth": 1310,
+        "firstScreenVisiblePx": 80,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 269,
+        "bottom": 407,
+        "height": 138,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 138,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 431,
+        "bottom": 527,
+        "height": 96,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 96,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 555,
+        "bottom": 1031,
+        "height": 476,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 345,
+        "firstScreenVisiblePct": 72
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 1059,
+        "bottom": 1828,
+        "height": 769,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 1856,
+        "bottom": 2306,
+        "height": 450,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 2338,
+        "bottom": 3000,
+        "height": 662,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 3032,
+        "bottom": 3664,
+        "height": 632,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 3688,
+        "bottom": 3732,
+        "height": 44,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 28
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (100%)",
+      "system+trader (72%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 3
+    },
+    "swatches": [
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+1.58R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.68R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-3.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "$500.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "$720.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1352
+  },
+  "03-1440-light-populated": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "documentHeight": 3756,
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 169,
+        "bottom": 249,
+        "height": 80,
+        "width": 1312,
+        "scrollWidth": 1310,
+        "clientWidth": 1310,
+        "firstScreenVisiblePx": 80,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 269,
+        "bottom": 407,
+        "height": 138,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 138,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 431,
+        "bottom": 527,
+        "height": 96,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 96,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 555,
+        "bottom": 1031,
+        "height": 476,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 345,
+        "firstScreenVisiblePct": 72
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 1059,
+        "bottom": 1828,
+        "height": 769,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 1856,
+        "bottom": 2306,
+        "height": 450,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 2338,
+        "bottom": 3000,
+        "height": 662,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 3032,
+        "bottom": 3664,
+        "height": 632,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 3688,
+        "bottom": 3732,
+        "height": 44,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 28
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (100%)",
+      "system+trader (72%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 132
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 4
+    },
+    "swatches": [
+      {
+        "text": "Accounts",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Trades",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Strategies",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Analytics",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "What is happening with your trading righ",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Your active trading account",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "USD · 28 Trades",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "16W · 0BE · 12L",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Calculated from R",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "16W · 0BE · 12L days",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.96R / -0.80R",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Every Account in this workspace, whateve",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(29, 78, 216)"
+      },
+      {
+        "text": "Active account: Dashboard — Populated. E",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Date range",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "30D",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "90D",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Strategy outcomes",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "24W · 0BE · 4L",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Your actual execution",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "16W · 0BE · 12L",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "How much of the System's paired edge you",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Actual R minus System R across paired Tr",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Execution Gap by day",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Underperformed System",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Matched System",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Outperformed System",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Which system produced the results.",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "System and Actual diverged",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "System expectancy",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Actual expectancy",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Strongest observed Setup",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Actual expectancy",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Avg Execution Gap",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Observed over 26 Trades",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "26 of 28 Trades classified",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(29, 78, 216)"
+      },
+      {
+        "text": "How recorded state lines up with results",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "This confidence level averaged below the",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Scoped baseline",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Avg Execution Gap",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "This confidence level averaged above the",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Scoped baseline",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Avg Execution Gap",
+        "sample": "blue rgb(85, 101, 127)"
+      }
+    ],
+    "pageSettledMs": 33707
+  },
+  "04-1280-dark-populated": {
+    "viewport": {
+      "width": 1280,
+      "height": 800
+    },
+    "documentHeight": 3828,
+    "overflow": {
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 169,
+        "bottom": 249,
+        "height": 80,
+        "width": 1152,
+        "scrollWidth": 1150,
+        "clientWidth": 1150,
+        "firstScreenVisiblePx": 80,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 269,
+        "bottom": 407,
+        "height": 138,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 138,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 431,
+        "bottom": 583,
+        "height": 152,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 152,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 611,
+        "bottom": 1087,
+        "height": 476,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 189,
+        "firstScreenVisiblePct": 40
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 1115,
+        "bottom": 1901,
+        "height": 786,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 1928,
+        "bottom": 2378,
+        "height": 450,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 2410,
+        "bottom": 3072,
+        "height": 662,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 3104,
+        "bottom": 3736,
+        "height": 632,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 3760,
+        "bottom": 3804,
+        "height": 44,
+        "width": 1152,
+        "scrollWidth": 1152,
+        "clientWidth": 1152,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 28
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 27
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (100%)",
+      "system+trader (40%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 3
+    },
+    "swatches": [
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+1.58R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.68R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-3.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "$500.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "$720.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1711
+  },
+  "05-768-dark-populated": {
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "documentHeight": 5547,
+    "overflow": {
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 170,
+        "bottom": 250,
+        "height": 80,
+        "width": 720,
+        "scrollWidth": 718,
+        "clientWidth": 718,
+        "firstScreenVisiblePx": 80,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 270,
+        "bottom": 562,
+        "height": 292,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 292,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 586,
+        "bottom": 741,
+        "height": 155,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 155,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 770,
+        "bottom": 1690,
+        "height": 920,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 254,
+        "firstScreenVisiblePct": 28
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 1718,
+        "bottom": 2546,
+        "height": 828,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 2574,
+        "bottom": 3467,
+        "height": 893,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 3499,
+        "bottom": 4671,
+        "height": 1172,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 4703,
+        "bottom": 5455,
+        "height": 752,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 5479,
+        "bottom": 5523,
+        "height": 44,
+        "width": 720,
+        "scrollWidth": 720,
+        "clientWidth": 720,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 29
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (100%)",
+      "system+trader (28%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 3
+    },
+    "swatches": [
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+1.58R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.68R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-3.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "$500.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "$720.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1375
+  },
+  "06-390-dark-populated": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "documentHeight": 6928,
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 166,
+        "bottom": 354,
+        "height": 188,
+        "width": 358,
+        "scrollWidth": 356,
+        "clientWidth": 356,
+        "firstScreenVisiblePx": 188,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 374,
+        "bottom": 812,
+        "height": 438,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 438,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 836,
+        "bottom": 1078,
+        "height": 242,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 8,
+        "firstScreenVisiblePct": 3
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 1105,
+        "bottom": 2203,
+        "height": 1098,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 2231,
+        "bottom": 3091,
+        "height": 860,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 3119,
+        "bottom": 4414,
+        "height": 1295,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 4446,
+        "bottom": 5874,
+        "height": 1428,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 5906,
+        "bottom": 6836,
+        "height": 930,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 6860,
+        "bottom": 6904,
+        "height": 44,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 27
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (3%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 3
+    },
+    "swatches": [
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+1.58R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.68R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-3.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.40",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.40",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "$500.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "$720.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1360
+  },
+  "07-390-light-populated": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "documentHeight": 6928,
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 166,
+        "bottom": 354,
+        "height": 188,
+        "width": 358,
+        "scrollWidth": 356,
+        "clientWidth": 356,
+        "firstScreenVisiblePx": 188,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 374,
+        "bottom": 812,
+        "height": 438,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 438,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 836,
+        "bottom": 1078,
+        "height": 242,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 8,
+        "firstScreenVisiblePct": 3
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 1105,
+        "bottom": 2203,
+        "height": 1098,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 2231,
+        "bottom": 3091,
+        "height": 860,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 3119,
+        "bottom": 4414,
+        "height": 1295,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 4446,
+        "bottom": 5874,
+        "height": 1428,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 5906,
+        "bottom": 6836,
+        "height": 930,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 6860,
+        "bottom": 6904,
+        "height": 44,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 27
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (3%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 115
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 4
+    },
+    "swatches": [
+      {
+        "text": "What is happening with your trading righ",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Your active trading account",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "USD · 28 Trades",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "16W · 0BE · 12L",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Calculated from R",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "16W · 0BE · 12L days",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.96R / -0.80R",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Every Account in this workspace, whateve",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(29, 78, 216)"
+      },
+      {
+        "text": "Active account: Dashboard — Populated. E",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Date range",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "30D",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "90D",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Strategy outcomes",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "24W · 0BE · 4L",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Your actual execution",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "16W · 0BE · 12L",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "How much of the System's paired edge you",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Actual R minus System R across paired Tr",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Execution Gap by day",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Underperformed System",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Matched System",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Outperformed System",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "Which system produced the results.",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "System and Actual diverged",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "System expectancy",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Actual expectancy",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Strongest observed Setup",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Actual expectancy",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Avg Execution Gap",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Observed over 26 Trades",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "26 of 28 Trades classified",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(29, 78, 216)"
+      },
+      {
+        "text": "How recorded state lines up with results",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "This confidence level averaged below the",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Scoped baseline",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Avg Execution Gap",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "This confidence level averaged above the",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Scoped baseline",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(4, 120, 87)"
+      },
+      {
+        "text": "Avg Execution Gap",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(190, 18, 60)"
+      },
+      {
+        "text": "Limited sample · 8 Trades",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "18 of 28 Trades tagged · 64.29%",
+        "sample": "blue rgb(85, 101, 127)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(29, 78, 216)"
+      }
+    ],
+    "pageSettledMs": 33315
+  },
+  "08-320-dark-populated": {
+    "viewport": {
+      "width": 320,
+      "height": 800
+    },
+    "documentHeight": 7465,
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Populated",
+        "top": 188,
+        "bottom": 376,
+        "height": 188,
+        "width": 288,
+        "scrollWidth": 286,
+        "clientWidth": 286,
+        "firstScreenVisiblePx": 188,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 396,
+        "bottom": 864,
+        "height": 468,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 404,
+        "firstScreenVisiblePct": 86
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 888,
+        "bottom": 1215,
+        "height": 327,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 1243,
+        "bottom": 2363,
+        "height": 1120,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 2392,
+        "bottom": 3359,
+        "height": 967,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 3387,
+        "bottom": 4828,
+        "height": 1441,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 4860,
+        "bottom": 6307,
+        "height": 1447,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 6339,
+        "bottom": 7373,
+        "height": 1034,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 7397,
+        "bottom": 7441,
+        "height": 44,
+        "width": 288,
+        "scrollWidth": 288,
+        "clientWidth": 288,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Populated -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 28
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 29
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Populated (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (86%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 22,
+      "green": 23,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 1,
+      "green": 1,
+      "blue": 3
+    },
+    "swatches": [
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+21.40R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+5.80R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-15.60R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.56R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.75R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.17R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+1.02R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.43R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.58R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.21R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.10R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "+1.58R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.68R",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.20R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "Closed",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-1.70R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-3.90R",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+1.10",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "-0.90",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "+0.40",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.40",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+0.70",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "+$580.00",
+        "sample": "green rgb(16, 185, 129)"
+      },
+      {
+        "text": "$500.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "$720.00",
+        "sample": "red rgb(251, 113, 133)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1633
+  },
+  "09-1440-dark-empty": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "documentHeight": 2293,
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Empty",
+        "top": 169,
+        "bottom": 249,
+        "height": 80,
+        "width": 1312,
+        "scrollWidth": 1310,
+        "clientWidth": 1310,
+        "firstScreenVisiblePx": 80,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 269,
+        "bottom": 407,
+        "height": 138,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 138,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 431,
+        "bottom": 527,
+        "height": 96,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 96,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 555,
+        "bottom": 907,
+        "height": 352,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 345,
+        "firstScreenVisiblePct": 98
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 934,
+        "bottom": 1205,
+        "height": 271,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 1233,
+        "bottom": 1451,
+        "height": 218,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 1483,
+        "bottom": 1812,
+        "height": 329,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 1844,
+        "bottom": 2201,
+        "height": 357,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 2225,
+        "bottom": 2269,
+        "height": 44,
+        "width": 1312,
+        "scrollWidth": 1312,
+        "clientWidth": 1312,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Empty -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 28
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 27
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 32
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 24
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Empty (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (100%)",
+      "system+trader (98%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 0,
+      "green": 0,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 0,
+      "green": 0,
+      "blue": 2
+    },
+    "swatches": [
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1271
+  },
+  "10-390-dark-empty": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "documentHeight": 4477,
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontal": false
+    },
+    "bandCount": 9,
+    "bands": [
+      {
+        "index": 0,
+        "label": "Dashboard — Empty",
+        "top": 166,
+        "bottom": 354,
+        "height": 188,
+        "width": 358,
+        "scrollWidth": 356,
+        "clientWidth": 356,
+        "firstScreenVisiblePx": 188,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 1,
+        "label": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "top": 374,
+        "bottom": 812,
+        "height": 438,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 438,
+        "firstScreenVisiblePct": 100
+      },
+      {
+        "index": 2,
+        "label": "needs-attention",
+        "top": 836,
+        "bottom": 1078,
+        "height": 242,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 8,
+        "firstScreenVisiblePct": 3
+      },
+      {
+        "index": 3,
+        "label": "system+trader",
+        "top": 1105,
+        "bottom": 1810,
+        "height": 705,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 4,
+        "label": "execution-gap",
+        "top": 1838,
+        "bottom": 2316,
+        "height": 478,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 5,
+        "label": "insight-strategy+insight-psychology+insight-discipline",
+        "top": 2344,
+        "bottom": 2986,
+        "height": 642,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 6,
+        "label": "recent-trades+calendar",
+        "top": 3018,
+        "bottom": 3698,
+        "height": 680,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 7,
+        "label": "risk-performance",
+        "top": 3731,
+        "bottom": 4386,
+        "height": 655,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      },
+      {
+        "index": 8,
+        "label": "div",
+        "top": 4409,
+        "bottom": 4453,
+        "height": 44,
+        "width": 358,
+        "scrollWidth": 358,
+        "clientWidth": 358,
+        "firstScreenVisiblePx": 0,
+        "firstScreenVisiblePct": 0
+      }
+    ],
+    "gaps": [
+      {
+        "between": "Dashboard — Empty -> basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss",
+        "px": 20
+      },
+      {
+        "between": "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss -> needs-attention",
+        "px": 24
+      },
+      {
+        "between": "needs-attention -> system+trader",
+        "px": 27
+      },
+      {
+        "between": "system+trader -> execution-gap",
+        "px": 28
+      },
+      {
+        "between": "execution-gap -> insight-strategy+insight-psychology+insight-discipline",
+        "px": 28
+      },
+      {
+        "between": "insight-strategy+insight-psychology+insight-discipline -> recent-trades+calendar",
+        "px": 32
+      },
+      {
+        "between": "recent-trades+calendar -> risk-performance",
+        "px": 33
+      },
+      {
+        "between": "risk-performance -> div",
+        "px": 23
+      }
+    ],
+    "firstScreen": [
+      "Dashboard — Empty (100%)",
+      "basic.net-pnl+basic.trade-win-rate+basic.profit-factor+basic.day-win-rate+basic.avg-win-loss (100%)",
+      "needs-attention (3%)"
+    ],
+    "panelOrder": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "colors": {
+      "red": 0,
+      "green": 0,
+      "blue": 6
+    },
+    "backgrounds": {
+      "red": 0,
+      "green": 0,
+      "blue": 2
+    },
+    "swatches": [
+      {
+        "text": "Review",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View Analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View all Trades",
+        "sample": "blue rgb(37, 99, 235)"
+      },
+      {
+        "text": "View full analytics",
+        "sample": "blue rgb(37, 99, 235)"
+      }
+    ],
+    "pageSettledMs": 1270
+  }
+}

@@ -369,7 +369,7 @@
       "systemEdgeCaptured": "System Edge Captured",
       "needsAttention": {
         "title": "Needs attention",
-        "description": "A few things worth a look — not a task list.",
+        "description": "Every Account in this workspace, whatever date range is selected — worth a look, not a task list.",
         "openTrades": "Open Trades",
         "pendingSystemOutcomes": "Pending System Outcomes",
         "unclassifiedTrades": "Unclassified Trades",
