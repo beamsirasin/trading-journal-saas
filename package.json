@@ -43,6 +43,7 @@
     "validate:visual-dashboard-d5": "tsx --conditions=react-server --env-file=.env.local scripts/validate-visual-dashboard-d5.ts",
     "validate:visual-dashboard-d6": "tsx --conditions=react-server --env-file=.env.local scripts/validate-visual-dashboard-d6.ts",
     "validate:visual-dashboard-d7": "tsx --conditions=react-server --env-file=.env.local scripts/validate-visual-dashboard-d7.ts",
+    "validate:visual-dashboard-d8": "tsx --conditions=react-server --env-file=.env.local scripts/validate-visual-dashboard-d8.ts",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm scan:client"
   },
   "dependencies": {

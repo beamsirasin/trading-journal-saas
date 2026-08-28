@@ -857,6 +857,107 @@
         "carried": "ช่วงนี้เปิดที่ {balance} ซึ่งยกมาจาก Trade ที่ปิดก่อนหน้าช่วงนี้",
         "at_starting_balance": "ช่วงนี้เปิดที่ยอดตั้งต้นที่ประกาศไว้ {balance} เนื่องจากไม่มี Trade ปิดก่อนหน้านี้"
       }
+    },
+    "insights": {
+      "regionLabel": "ข้อมูลเชิงลึกด้านผลงาน",
+      "strategy": {
+        "title": "ผลงานของ Strategy",
+        "description": "ระบบใดที่สร้างผลลัพธ์เหล่านี้"
+      },
+      "psychology": {
+        "title": "ผลงานด้านจิตวิทยา",
+        "description": "สภาวะที่บันทึกไว้สอดคล้องกับผลลัพธ์อย่างไร"
+      },
+      "discipline": {
+        "title": "ผลงานด้านวินัย",
+        "description": "ปฏิบัติตามกฎได้ใกล้เคียงเพียงใด"
+      },
+      "viewAnalytics": "ดู Analytics",
+      "viewAnalyticsLabel": "ดู{pillar}ใน Analytics",
+      "insight": {
+        "strongest_observed_strategy": "Strategy ที่สังเกตได้ว่าแข็งแกร่งที่สุด",
+        "strongest_observed_setup": "Setup ที่สังเกตได้ว่าแข็งแกร่งที่สุด",
+        "needs_attention_strategy": "ส่วนต่างที่สังเกตได้มากที่สุด",
+        "needs_attention_setup": "ส่วนต่างที่สังเกตได้มากที่สุด",
+        "system_actual_divergence": "System กับ Actual ต่างกัน",
+        "selected_strategy_health": "Strategy ที่เลือก",
+        "selected_setup_health": "Setup ที่เลือก",
+        "emotion_underperformance": "Trade ที่ติดแท็กนี้เฉลี่ยต่ำกว่าค่าฐาน",
+        "emotion_outperformance": "Trade ที่ติดแท็กนี้เฉลี่ยสูงกว่าค่าฐาน",
+        "confidence_underperformance": "ระดับความมั่นใจนี้เฉลี่ยต่ำกว่าค่าฐาน",
+        "confidence_outperformance": "ระดับความมั่นใจนี้เฉลี่ยสูงกว่าค่าฐาน",
+        "psychology_coverage_warning": "ยังมี Trade ที่ติดแท็กไม่มากพอ",
+        "no_material_pattern": "ยังไม่พบความแตกต่างที่มีนัยสำคัญเชิงการใช้งาน",
+        "rule_adherence_summary": "การทำตามกฎระดับ Trade",
+        "required_checks_incomplete": "ยังตรวจรายการที่จำเป็นไม่ครบ",
+        "majority_non_compliant": "Trade ที่ประเมินแล้วส่วนใหญ่ไม่เป็นไปตามกฎ",
+        "adherence_performance_difference": "Trade ที่เป็นไปตามกฎกับที่ไม่เป็นไปตามกฎต่างกัน",
+        "issue_associated_execution_gap": "Execution Gap ที่พบร่วมกัน"
+      },
+      "subject": {
+        "emotion": "Trade ที่ติดแท็ก {label}",
+        "confidence": "ความมั่นใจ {label}",
+        "issue": "Trade ที่ติดแท็ก “{label}”"
+      },
+      "comparison": {
+        "system_expectancy": "ค่าคาดหวังของ System",
+        "actual_expectancy": "ค่าคาดหวังจริง",
+        "average_execution_gap": "Execution Gap เฉลี่ย",
+        "cohort_average": "ค่าเฉลี่ยของกลุ่ม",
+        "scoped_baseline": "ค่าฐานในขอบเขตนี้",
+        "compliant_expectancy": "เป็นไปตามกฎ",
+        "non_compliant_expectancy": "ไม่เป็นไปตามกฎ",
+        "checks_followed": "รายการตรวจที่ทำตาม",
+        "rule_adherence": "การทำตามกฎระดับ Trade",
+        "associated_execution_gap": "Execution Gap ที่พบร่วมกัน"
+      },
+      "sample": {
+        "limited": "กลุ่มตัวอย่างจำกัด",
+        "supported": "สังเกตจาก",
+        "trades": "{count, plural, other {# Trade}}"
+      },
+      "coverage": {
+        "psychology": "ติดแท็กแล้ว {tagged} จาก {eligible} Trade · {rate}",
+        "discipline": "ประเมินแล้ว {evaluated} จาก {eligible} Trade",
+        "strategy": "ระบุ Strategy แล้ว {classified} จาก {eligible} Trade"
+      },
+      "nonAdditive": "หนึ่ง Trade ติดแท็กได้มากกว่าหนึ่งรายการ กลุ่มเหล่านี้จึงซ้อนทับกัน",
+      "states": {
+        "no_eligible_trades": {
+          "strategy": {
+            "title": "ยังไม่มี Trade ที่ปิด",
+            "description": "บันทึก Trade ที่ปิดแล้วเพื่อเปรียบเทียบ Strategy ที่นี่"
+          },
+          "psychology": {
+            "title": "ยังไม่มี Trade ที่เข้าเกณฑ์",
+            "description": "บันทึก Trade ที่ปิดพร้อมอารมณ์หรือความมั่นใจเพื่อเปรียบเทียบที่นี่"
+          },
+          "discipline": {
+            "title": "ยังไม่มี Trade ที่ประเมิน",
+            "description": "บันทึก Trade ที่ปิดพร้อมเช็กลิสต์เพื่อเปรียบเทียบที่นี่"
+          }
+        },
+        "sample_below_policy": {
+          "title": "ยังมี Trade ไม่มากพอ",
+          "description": "ต้องมีอย่างน้อย {minimum} Trade ในกลุ่มหนึ่งก่อนจึงจะแสดงการเปรียบเทียบที่นี่ ส่วน Analytics แสดงทุกอย่างที่บันทึกไว้แล้ว"
+        },
+        "strategy_attribution_missing": {
+          "title": "ยังไม่ได้บันทึก Strategy",
+          "description": "กำหนด Strategy ให้ Trade ของคุณเพื่อเปรียบเทียบระบบที่นี่"
+        },
+        "psychology_not_recorded": {
+          "title": "ยังมี Trade ที่ติดแท็กไม่มากพอ",
+          "description": "การเปรียบเทียบอารมณ์และความมั่นใจจะปรากฏเมื่อ Trade ที่เข้าเกณฑ์ส่วนใหญ่มีข้อมูลนี้ Trade ที่ไม่ได้ติดแท็กจะไม่ถูกนับว่าสงบหรือเป็นกลาง"
+        },
+        "required_checks_not_evaluated": {
+          "title": "ยังไม่มี Trade ที่ประเมิน",
+          "description": "ยังตรวจรายการที่จำเป็นไม่ครบพอที่จะอ่านค่าการทำตามกฎที่นี่"
+        },
+        "error": {
+          "title": "เตรียมข้อมูลเชิงลึกไม่สำเร็จ",
+          "description": "มีค่าที่บันทึกไว้เบื้องหลังส่วนนี้ที่อ่านไม่ได้ ระบบไม่ได้เดาค่าหรือปัดเป็นศูนย์"
+        }
+      }
     }
   },
   "trades": {

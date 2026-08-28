@@ -12,6 +12,9 @@ export const DASHBOARD_WIDGET_IDS = [
   'calendar.performance',
   'account.balance',
   'risk.drawdown',
+  'strategy.performance',
+  'psychology.performance',
+  'discipline.performance',
 ] as const;
 
 export type DashboardWidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
@@ -24,7 +27,10 @@ export type DashboardWidgetCapability =
   | 'recent_trades'
   | 'calendar'
   | 'account_balance'
-  | 'drawdown';
+  | 'drawdown'
+  | 'strategy_insight'
+  | 'psychology_insight'
+  | 'discipline_insight';
 
 export interface DashboardWidgetDefinition {
   readonly id: DashboardWidgetId;
@@ -53,6 +59,14 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
   // peak.
   { id: 'account.balance', capability: 'account_balance', implementation: 'current' },
   { id: 'risk.drawdown', capability: 'drawdown', implementation: 'current' },
+  // D8B — the three compact insight pillars now render, from ONE shared
+  // `DashboardInsightData` payload. Three IDs rather than one because they
+  // are three product pillars a reader scans separately; sub-dimensions
+  // (Emotion, Confidence, checklist, mistakes) deliberately receive none,
+  // because a widget ID is a layout slot and none of them owns one.
+  { id: 'strategy.performance', capability: 'strategy_insight', implementation: 'current' },
+  { id: 'psychology.performance', capability: 'psychology_insight', implementation: 'current' },
+  { id: 'discipline.performance', capability: 'discipline_insight', implementation: 'current' },
 ];
 
 export const DASHBOARD_SECTION_IDS = [
@@ -61,6 +75,7 @@ export const DASHBOARD_SECTION_IDS = [
   'performance',
   'execution-gap',
   'recent-and-calendar',
+  'insight-pillars',
   'risk-performance',
 ] as const;
 
@@ -72,7 +87,7 @@ export interface DashboardSectionDefinition {
    * How many desktop columns THIS section's own grid has. A widget's
    * `desktopSpan` is read against this number and nothing else.
    */
-  readonly desktopColumns: 1 | 2 | 5 | 12;
+  readonly desktopColumns: 1 | 2 | 3 | 5 | 12;
 }
 
 /**
@@ -124,6 +139,18 @@ export const DASHBOARD_SECTIONS: readonly DashboardSectionDefinition[] = [
     they are measured from. Twelve columns for the same reason D6B uses
     them — the split is deliberately unequal, and 7 + 5 says so exactly.
   */
+  /*
+    D8B: three EQUAL compact pillars, so three columns — the first section on
+    this page whose grid is neither halves, twelfths, nor the KPI band's five.
+    Equal because Strategy, Psychology and Discipline are peer product
+    pillars; compact because the Dashboard detects and Analytics diagnoses,
+    so none of them is allowed to grow into the D4/D5 analytical bands above.
+
+    D8A's provisional `reserved` holding section is retired here: its three
+    members are built, and an empty section would be a slot for a prediction
+    rather than a record of the page.
+  */
+  { id: 'insight-pillars', desktopColumns: 3 },
   { id: 'risk-performance', desktopColumns: 12 },
 ];
 
@@ -225,6 +252,44 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     desktopSpan: 1,
     mobileSpan: 2,
     mobileOrder: 90,
+  },
+  /*
+    D8B — the three insight pillars sit BETWEEN the Execution Gap and the
+    record list, at 92/94/96 rather than after D7's 130.
+
+    That is the product's reading order, not an append: the KPI band, the two
+    baselines and the Execution Gap establish WHAT happened, the pillars ask
+    WHERE it came from (the system, the trader's state, the trader's
+    discipline), and only then does the page hand over to the records. D8A
+    parked them at 140–160 in a holding section precisely so D8B could place
+    them once the presentation was known.
+
+    The existing D3–D7 orders are untouched — inserting into the gap the
+    original decade numbering left is what that numbering was for.
+  */
+  {
+    widgetId: 'strategy.performance',
+    section: 'insight-pillars',
+    order: 92,
+    desktopSpan: 1,
+    mobileSpan: 2,
+    mobileOrder: 92,
+  },
+  {
+    widgetId: 'psychology.performance',
+    section: 'insight-pillars',
+    order: 94,
+    desktopSpan: 1,
+    mobileSpan: 2,
+    mobileOrder: 94,
+  },
+  {
+    widgetId: 'discipline.performance',
+    section: 'insight-pillars',
+    order: 96,
+    desktopSpan: 1,
+    mobileSpan: 2,
+    mobileOrder: 96,
   },
   // D6B — one section, twelve columns, 7 + 5. The two widgets are read
   // together (which Trades happened, and when they happened), so they share a

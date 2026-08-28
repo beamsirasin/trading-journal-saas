@@ -8,6 +8,7 @@ import { calendarDateIn } from '@/lib/time';
 import { getDashboardPageData } from '@/server/services/dashboard';
 import { DashboardCalendarSection } from '@/components/dashboard/calendar/dashboard-calendar-section';
 import { NoActiveTradingAccountRecovery } from '@/components/dashboard/empty-trading-dashboard';
+import { InsightPillarsDataSection } from '@/components/dashboard/insights/insight-pillars-data-section';
 import {
   DashboardDataError,
   DashboardSkeleton,
@@ -130,6 +131,13 @@ async function DashboardContent({
           />
         </Suspense>
       }
+      insightSlot={
+        // D8's own streamed boundary: five bulk projections behind one
+        // service call, resolved after the five core reads have painted.
+        <Suspense fallback={<InsightPillarsSkeleton />}>
+          <InsightPillarsDataSection filters={parsed.state} />
+        </Suspense>
+      }
       riskSlot={
         // D7's boundary, streamed on its own for the same reason: the modeled
         // balance read spans the Account's whole authoritative money history
@@ -159,6 +167,17 @@ function DashboardCalendarSkeleton() {
       aria-hidden="true"
       className="border-border bg-card h-96 animate-pulse rounded-lg border"
     />
+  );
+}
+
+/** Reserves the three insight pillars' geometry — see `DashboardSkeleton`. */
+function InsightPillarsSkeleton() {
+  return (
+    <div aria-hidden="true" className="grid animate-pulse gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="border-border bg-card h-56 rounded-lg border" />
+      <div className="border-border bg-card h-56 rounded-lg border" />
+      <div className="border-border bg-card h-56 rounded-lg border md:col-span-2 xl:col-span-1" />
+    </div>
   );
 }
 

@@ -225,7 +225,7 @@ export async function normalizeAnalyticsFilters(
   return context.ok ? { ok: true, data: context.data.filters } : context;
 }
 
-function frameworkConditions(context: AnalyticsQueryContext): SQL[] {
+export function frameworkConditions(context: AnalyticsQueryContext): SQL[] {
   const conditions: SQL[] = [eq(trades.workspaceId, context.workspaceId)];
   const { filters } = context;
   if (filters.accountScope.kind === 'account') {
@@ -239,7 +239,7 @@ function frameworkConditions(context: AnalyticsQueryContext): SQL[] {
   return conditions;
 }
 
-function dateConditions(
+export function dateConditions(
   column: typeof trades.exitedAt | typeof trades.systemExitedAt,
   bounds: AnalyticsDateBounds,
 ): SQL[] {

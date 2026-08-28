@@ -203,6 +203,8 @@ function renderDashboard(
   calendarSlot: ReactNode = <div data-testid="calendar-slot" />,
   // D7B's Risk Performance section is its own async server boundary too.
   riskSlot: ReactNode = <div data-testid="risk-slot" />,
+  // D8B's insight pillars are their own async server boundary as well.
+  insightSlot: ReactNode = <div data-testid="insight-slot" />,
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -214,6 +216,7 @@ function renderDashboard(
         }}
         dateLocale="en-GB"
         calendarSlot={calendarSlot}
+        insightSlot={insightSlot}
         riskSlot={riskSlot}
       />
     </NextIntlClientProvider>,

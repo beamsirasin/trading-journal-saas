@@ -35,6 +35,7 @@ export function RealDashboard({
   data,
   dateLocale,
   calendarSlot,
+  insightSlot,
   riskSlot,
 }: {
   data: DashboardPageData;
@@ -50,6 +51,11 @@ export function RealDashboard({
    * how a month is fetched.
    */
   calendarSlot: React.ReactNode;
+  /**
+   * D8 insight pillars. Its own streamed boundary too: five more bulk
+   * projections must never hold the five core reads off the screen.
+   */
+  insightSlot: React.ReactNode;
   /**
    * D7's Risk Performance boundary, on exactly the same terms and for the
    * same reason: a modeled balance needs the Account's whole authoritative
@@ -121,6 +127,15 @@ export function RealDashboard({
         baselines.
       */}
       <ExecutionGapSection comparison={data.comparison} dateLocale={dateLocale} className="mt-7" />
+
+      {/*
+        D8B — the three insight pillars, between the Execution Gap they help
+        explain and the record list that follows. The Gap says HOW MUCH edge
+        the execution captured; these three ask where that came from — the
+        system, the trader state, the trader discipline — and only then does
+        the page hand over to individual records.
+      */}
+      <div className="mt-7 min-w-0">{insightSlot}</div>
 
       {/*
         D6B — the one section whose two widgets are genuinely unequal (§30):

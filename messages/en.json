@@ -857,6 +857,107 @@
         "carried": "This range opened at {balance}, carried in from Trades closed before it.",
         "at_starting_balance": "This range opened at the declared Starting Balance of {balance} — no Trade closed before it."
       }
+    },
+    "insights": {
+      "regionLabel": "Performance insights",
+      "strategy": {
+        "title": "Strategy Performance",
+        "description": "Which system produced the results."
+      },
+      "psychology": {
+        "title": "Psychology Performance",
+        "description": "How recorded state lines up with results."
+      },
+      "discipline": {
+        "title": "Discipline Performance",
+        "description": "How closely the rules were followed."
+      },
+      "viewAnalytics": "View Analytics",
+      "viewAnalyticsLabel": "View {pillar} in Analytics",
+      "insight": {
+        "strongest_observed_strategy": "Strongest observed Strategy",
+        "strongest_observed_setup": "Strongest observed Setup",
+        "needs_attention_strategy": "Widest observed shortfall",
+        "needs_attention_setup": "Widest observed shortfall",
+        "system_actual_divergence": "System and Actual diverged",
+        "selected_strategy_health": "Selected Strategy",
+        "selected_setup_health": "Selected Setup",
+        "emotion_underperformance": "Tagged Trades averaged below the baseline",
+        "emotion_outperformance": "Tagged Trades averaged above the baseline",
+        "confidence_underperformance": "This confidence level averaged below the baseline",
+        "confidence_outperformance": "This confidence level averaged above the baseline",
+        "psychology_coverage_warning": "Not enough tagged Trades yet",
+        "no_material_pattern": "No material difference observed",
+        "rule_adherence_summary": "Trade Rule Adherence",
+        "required_checks_incomplete": "Required checks not completed",
+        "majority_non_compliant": "Most evaluated Trades were non-compliant",
+        "adherence_performance_difference": "Compliant and non-compliant Trades differed",
+        "issue_associated_execution_gap": "Associated Execution Gap"
+      },
+      "subject": {
+        "emotion": "{label}-tagged Trades",
+        "confidence": "Confidence {label}",
+        "issue": "Trades tagged “{label}”"
+      },
+      "comparison": {
+        "system_expectancy": "System expectancy",
+        "actual_expectancy": "Actual expectancy",
+        "average_execution_gap": "Avg Execution Gap",
+        "cohort_average": "Cohort average",
+        "scoped_baseline": "Scoped baseline",
+        "compliant_expectancy": "Compliant",
+        "non_compliant_expectancy": "Non-compliant",
+        "checks_followed": "Rule Checks Followed",
+        "rule_adherence": "Trade Rule Adherence",
+        "associated_execution_gap": "Associated Execution Gap"
+      },
+      "sample": {
+        "limited": "Limited sample",
+        "supported": "Observed over",
+        "trades": "{count, plural, one {# Trade} other {# Trades}}"
+      },
+      "coverage": {
+        "psychology": "{tagged} of {eligible} Trades tagged · {rate}",
+        "discipline": "{evaluated} of {eligible} Trades evaluated",
+        "strategy": "{classified} of {eligible} Trades classified"
+      },
+      "nonAdditive": "Trades can carry more than one tag, so these groups overlap.",
+      "states": {
+        "no_eligible_trades": {
+          "strategy": {
+            "title": "No closed Trades yet",
+            "description": "Record a closed Trade to compare Strategies here."
+          },
+          "psychology": {
+            "title": "No eligible Trades yet",
+            "description": "Record a closed Trade with an Emotion or confidence to compare here."
+          },
+          "discipline": {
+            "title": "No evaluated Trades yet",
+            "description": "Record a closed Trade against a checklist to compare here."
+          }
+        },
+        "sample_below_policy": {
+          "title": "Not enough Trades yet",
+          "description": "{minimum} Trades are needed in a group before a comparison is surfaced here. Analytics shows everything recorded so far."
+        },
+        "strategy_attribution_missing": {
+          "title": "No Strategy recorded yet",
+          "description": "Assign a Strategy to your Trades to compare systems here."
+        },
+        "psychology_not_recorded": {
+          "title": "Not enough tagged Trades yet",
+          "description": "Emotion and confidence comparisons appear once a majority of eligible Trades carry them. Untagged Trades are not treated as calm or neutral."
+        },
+        "required_checks_not_evaluated": {
+          "title": "No evaluated Trades yet",
+          "description": "Required checks have not been completed on enough Trades to read adherence here."
+        },
+        "error": {
+          "title": "Insights could not be prepared",
+          "description": "A stored figure behind these pillars could not be read. Nothing has been guessed or rounded to zero."
+        }
+      }
     }
   },
   "trades": {

@@ -147,17 +147,56 @@ describe('section-aware Dashboard layout metadata', () => {
   });
 
   /**
-   * D7B retires the `reserved` holding section. Its two members were the last
-   * `implementation: 'later'` widgets on the page, and a section with no
-   * members left would be a prediction about a widget nobody has specified
-   * rather than a record of what the Dashboard renders. A future unbuilt
-   * widget reintroduces a holding section along with itself.
+   * D8B. The three pillars are exactly three peer widgets in one
+   * three-column section — no sub-metric ever earns a widget ID, because a
+   * widget ID is a layout slot and Emotion, Confidence, the checklist and
+   * mistakes do not own one. D8A's provisional holding section is retired
+   * along with the last `implementation: 'later'` widget on the page.
    */
-  it('leaves no unbuilt widget, and therefore no holding section', () => {
+  it('builds the three insight pillars as equal peers of one section', () => {
     expect(DASHBOARD_WIDGET_REGISTRY.filter((widget) => widget.implementation === 'later')).toEqual(
       [],
     );
     expect(DASHBOARD_SECTION_IDS).not.toContain('reserved');
+
+    const pillars = DEFAULT_DASHBOARD_LAYOUT.filter((item) => item.section === 'insight-pillars');
+    expect(pillars.map((item) => item.widgetId)).toEqual([
+      'strategy.performance',
+      'psychology.performance',
+      'discipline.performance',
+    ]);
+    const section = dashboardSection('insight-pillars');
+    expect(section.desktopColumns).toBe(3);
+    // Equal peers: identical spans that exactly fill the row.
+    expect(new Set(pillars.map((item) => item.desktopSpan))).toEqual(new Set([1]));
+    expect(pillars.reduce((total, item) => total + item.desktopSpan, 0)).toBe(
+      section.desktopColumns,
+    );
+    // Full width on mobile — three columns at 390px would be unreadable.
+    expect(new Set(pillars.map((item) => item.mobileSpan))).toEqual(new Set([2]));
+  });
+
+  /**
+   * §2 — reading order, not an append. The pillars ask where the Execution
+   * Gap came from, so they follow it and precede the record list; Risk
+   * Performance still closes the page.
+   */
+  it('places the pillars after the Execution Gap and before the record list', () => {
+    const gap = dashboardLayoutItem('execution.gap').order;
+    const recent = dashboardLayoutItem('trades.recent').order;
+    const risk = dashboardLayoutItem('account.balance').order;
+    for (const id of [
+      'strategy.performance',
+      'psychology.performance',
+      'discipline.performance',
+    ] as const) {
+      const pillar = dashboardLayoutItem(id).order;
+      expect(pillar).toBeGreaterThan(gap);
+      expect(pillar).toBeLessThan(recent);
+      expect(pillar).toBeLessThan(risk);
+    }
+    // The D3–D7 orders themselves are untouched by the insertion.
+    expect([gap, recent, risk]).toEqual([90, 100, 120]);
   });
 
   /**

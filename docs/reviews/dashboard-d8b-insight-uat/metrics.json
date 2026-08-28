@@ -1,0 +1,1023 @@
+{
+  "01-desktop-1920-dark-rich": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 96,
+          "w": 587,
+          "h": 450
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 699,
+          "w": 587,
+          "h": 450
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 1301,
+          "w": 587,
+          "h": 450
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3744,
+    "pageSettledMs": 2207
+  },
+  "02-desktop-1440-dark-rich": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3744,
+    "pageSettledMs": 1346
+  },
+  "02b-desktop-1440-dark-sparse": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "insufficient_sample",
+        "reason": "sample_below_policy",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-4baf-7890-8292-8cdc23725219",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 276
+        },
+        "text": "Strategy PerformanceWhich system produced the results.Not enough Trades yet5 Trades are needed in a group before a comparison is surfaced here. Analytics shows everything recorded so far.View Analytics"
+      },
+      "psychology": {
+        "status": "insufficient_sample",
+        "reason": "sample_below_policy",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-4baf-7890-8292-8cdc23725219",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 276
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.Not enough Trades yet5 Trades are needed in a group before a comparison is surfaced here. Analytics shows everything recorded so far.View Analytics"
+      },
+      "discipline": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["rule_adherence_summary"],
+        "headlines": ["100.00%"],
+        "comparisons": ["checks_followed"],
+        "sample": "Limited sample · 3 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-4baf-7890-8292-8cdc23725219",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 276
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Trade Rule AdherenceTrade Rule Adherence100.00%Rule Checks Followed100.00%Limited sample · 3 TradesView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3253,
+    "pageSettledMs": 1549
+  },
+  "02c-desktop-1440-dark-untagged": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["strongest_observed_strategy", "strongest_observed_setup"],
+        "headlines": ["+0.51R", "+0.58R"],
+        "comparisons": [
+          "actual_expectancy",
+          "average_execution_gap",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 20 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-4c13-7b34-91ed-5294b01312e8",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 430
+        },
+        "text": "Strategy PerformanceWhich system produced the results.Strongest observed StrategyElliott Wave v3System expectancy+0.51RActual expectancy+0.41RAvg Execution Gap-0.10RStrongest observed SetupWave 2 ReversalSystem expectancy+0.58RActual expectancy+0.48RAvg Execution Gap-0.10RObserved over 20 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "unevaluated",
+        "reason": "psychology_not_recorded",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-4c13-7b34-91ed-5294b01312e8",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 430
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.Not enough tagged Trades yetEmotion and confidence comparisons appear once a majority of eligible Trades carry them. Untagged Trades are not treated as calm or neutral.View Analytics"
+      },
+      "discipline": {
+        "status": "unevaluated",
+        "reason": "required_checks_not_evaluated",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-4c13-7b34-91ed-5294b01312e8",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 430
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.No evaluated Trades yetRequired checks have not been completed on enough Trades to read adherence here.View Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3718,
+    "pageSettledMs": 893
+  },
+  "02d-desktop-1440-dark-empty": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "no_eligible_trades",
+        "reason": "no_eligible_trades",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-4c90-7d2f-a6e0-e980072063b5",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 218
+        },
+        "text": "Strategy PerformanceWhich system produced the results.No closed Trades yetRecord a closed Trade to compare Strategies here.View Analytics"
+      },
+      "psychology": {
+        "status": "no_eligible_trades",
+        "reason": "no_eligible_trades",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-4c90-7d2f-a6e0-e980072063b5",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 218
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.No eligible Trades yetRecord a closed Trade with an Emotion or confidence to compare here.View Analytics"
+      },
+      "discipline": {
+        "status": "no_eligible_trades",
+        "reason": "no_eligible_trades",
+        "statements": [],
+        "headlines": [],
+        "comparisons": [],
+        "sample": null,
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-4c90-7d2f-a6e0-e980072063b5",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 218
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.No evaluated Trades yetRecord a closed Trade against a checklist to compare here.View Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 2293,
+    "pageSettledMs": 889
+  },
+  "02e-desktop-1440-dark-strategy-filtered": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df&strategy=01a04969-4ce7-7798-9b04-b78dbee37df4",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df&strategy=01a04969-4ce7-7798-9b04-b78dbee37df4",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df&strategy=01a04969-4ce7-7798-9b04-b78dbee37df4",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3809,
+    "pageSettledMs": 997
+  },
+  "02f-desktop-1440-dark-rich-30d": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["system_actual_divergence"],
+        "headlines": ["-1.28R"],
+        "comparisons": ["system_expectancy", "actual_expectancy"],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=30d&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 424
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-1.28RSystem expectancy+0.70RActual expectancy-0.58RLimited sample · 8 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance"],
+        "headlines": ["-0.90R"],
+        "comparisons": ["scoped_baseline", "average_execution_gap"],
+        "sample": "Limited sample · 6 Trades",
+        "coverage": "2 of 8 Trades tagged · 25.00%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=30d&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 424
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline-0.58RAvg Execution Gap-1.70RLimited sample · 6 Trades2 of 8 Trades tagged · 25.00%View Analytics"
+      },
+      "discipline": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "issue_associated_execution_gap"],
+        "headlines": ["0.00%", "-10.20R"],
+        "comparisons": ["checks_followed"],
+        "sample": "Limited sample · 6 Trades",
+        "coverage": "6 of 8 Trades evaluated",
+        "nonAdditive": true,
+        "analytics": "/en/app/analytics?view=results&range=30d&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 424
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence0.00%Rule Checks Followed0.00%Associated Execution GapTrades tagged “Moved stop”Associated Execution Gap-10.20RLimited sample · 6 Trades6 of 8 Trades evaluatedTrades can carry more than one tag, so these groups overlap.View Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3718,
+    "pageSettledMs": 896
+  },
+  "03-desktop-1440-light-rich": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 96,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 539,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 981,
+          "w": 427,
+          "h": 450
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 3744,
+    "pageSettledMs": 891
+  },
+  "04-tablet-768-dark-rich": {
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "overflow": {
+      "scrollWidth": 768,
+      "clientWidth": 768
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 24,
+          "w": 352,
+          "h": 470
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 392,
+          "w": 352,
+          "h": 470
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 24,
+          "w": 720,
+          "h": 387
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 5515,
+    "pageSettledMs": 820
+  },
+  "05-mobile-390-dark-rich": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 358,
+          "h": 422
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 358,
+          "h": 442
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 358,
+          "h": 379
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 6833,
+    "pageSettledMs": 998
+  },
+  "06-mobile-390-light-rich": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 358,
+          "h": 422
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 358,
+          "h": 442
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 358,
+          "h": 379
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 6833,
+    "pageSettledMs": 876
+  },
+  "07-mobile-320-dark-rich": {
+    "viewport": {
+      "width": 320,
+      "height": 800
+    },
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320
+    },
+    "pillarCount": 3,
+    "pillars": {
+      "strategy": {
+        "status": "available",
+        "reason": null,
+        "statements": ["system_actual_divergence", "strongest_observed_setup"],
+        "headlines": ["-0.63R", "+1.00R"],
+        "comparisons": [
+          "system_expectancy",
+          "actual_expectancy",
+          "actual_expectancy",
+          "average_execution_gap"
+        ],
+        "sample": "Observed over 24 Trades",
+        "coverage": null,
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=edge&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 288,
+          "h": 462
+        },
+        "text": "Strategy PerformanceWhich system produced the results.System and Actual divergedElliott Wave v3Avg Execution Gap-0.63RSystem expectancy+0.72RActual expectancy+0.09RStrongest observed SetupWave 2 ReversalSystem expectancy+1.00RActual expectancy+0.38RAvg Execution Gap-0.63RObserved over 24 TradesView Analytics"
+      },
+      "psychology": {
+        "status": "limited_sample",
+        "reason": null,
+        "statements": ["confidence_underperformance", "confidence_outperformance"],
+        "headlines": ["-0.90R", "+1.10R"],
+        "comparisons": [
+          "scoped_baseline",
+          "average_execution_gap",
+          "scoped_baseline",
+          "average_execution_gap"
+        ],
+        "sample": "Limited sample · 8 Trades",
+        "coverage": "16 of 24 Trades tagged · 66.67%",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=behavior&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 288,
+          "h": 531
+        },
+        "text": "Psychology PerformanceHow recorded state lines up with results.This confidence level averaged below the baselineConfidence 25Cohort average-0.90RScoped baseline+0.09RAvg Execution Gap-1.70RThis confidence level averaged above the baselineConfidence 100Cohort average+1.10RScoped baseline+0.09RAvg Execution Gap-0.10RLimited sample · 8 Trades16 of 24 Trades tagged · 66.67%View Analytics"
+      },
+      "discipline": {
+        "status": "available",
+        "reason": null,
+        "statements": ["required_checks_incomplete", "adherence_performance_difference"],
+        "headlines": ["63.64%", "+1.51R"],
+        "comparisons": ["checks_followed", "compliant_expectancy", "non_compliant_expectancy"],
+        "sample": "Observed over 22 Trades",
+        "coverage": "22 of 24 Trades evaluated",
+        "nonAdditive": false,
+        "analytics": "/en/app/analytics?view=results&range=all&account=01a04969-484d-7b11-b8a3-42486c5f39df",
+        "box": {
+          "x": 16,
+          "w": 288,
+          "h": 396
+        },
+        "text": "Discipline PerformanceHow closely the rules were followed.Required checks not completedTrade Rule Adherence63.64%Rule Checks Followed63.64%Compliant and non-compliant Trades differed+1.51RCompliant+0.61RNon-compliant-0.90RObserved over 22 Trades22 of 24 Trades evaluatedView Analytics"
+      }
+    },
+    "sections": [
+      "needs-attention",
+      "system",
+      "trader",
+      "execution-gap",
+      "insight-strategy",
+      "insight-psychology",
+      "insight-discipline",
+      "recent-trades",
+      "calendar",
+      "risk-performance"
+    ],
+    "documentHeight": 7262,
+    "pageSettledMs": 1201
+  }
+}

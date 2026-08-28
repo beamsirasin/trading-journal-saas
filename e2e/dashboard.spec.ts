@@ -5,11 +5,17 @@ import postgres from 'postgres';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
 import {
+  emotionTypes,
+  mistakeTypes,
   setups,
   strategies,
+  strategyRules,
   strategySetupVersions,
   strategyVersions,
+  tradeEmotions,
   tradeExits,
+  tradeMistakes,
+  tradeRuleChecks,
   trades,
   tradingAccounts,
   workspaces,
@@ -769,6 +775,448 @@ test.describe('Dashboard Risk Performance', () => {
         client: node.clientWidth,
       }));
       expect(inner.scroll).toBeLessThanOrEqual(inner.client + 1);
+
+      const document_ = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      expect(document_.scroll).toBeLessThanOrEqual(document_.client + 1);
+    }
+  });
+});
+
+/**
+ * D8B — the three compact insight pillars.
+ *
+ * This block seeds its OWN workspace rather than reusing
+ * `provisionDashboardUser`. The shared Dashboard seed has three closed
+ * Trades, which is below D8A's five-observation policy floor by design — good
+ * for asserting an insufficient sample, useless for asserting a real insight.
+ * Seeding separately also means none of D3–D7's existing assertions move.
+ *
+ * Two Accounts:
+ *   rich    24 closed Trades, Emotion tags, canonical confidence levels,
+ *           snapshotted required rule checks, and a mistake-tagged cohort
+ *   empty   no Trades at all
+ */
+test.describe('Dashboard insight pillars', () => {
+  interface InsightFixture {
+    readonly email: string;
+    readonly password: string;
+    readonly id: string;
+    readonly richAccountId: string;
+    readonly emptyAccountId: string;
+    readonly strategyId: string;
+    readonly setupId: string;
+  }
+
+  async function provisionInsightUser(prefix: string): Promise<InsightFixture> {
+    const { testUrl } = validateTestDatabaseEnvironment();
+    const email = `${prefix}-${test.info().project.name}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+    const user = await provisionVerifiedUser(
+      testUrl,
+      { email, password: 'Correct-Horse9!', name: 'E2E Insight Tester' },
+      { entitlement: { status: 'active', planKey: 'professional' } },
+    );
+
+    const client = postgres(testUrl, { max: 1 });
+    const db = drizzle(client, {
+      schema: {
+        workspaces,
+        tradingAccounts,
+        strategies,
+        strategyVersions,
+        strategyRules,
+        setups,
+        strategySetupVersions,
+        trades,
+        tradeExits,
+        tradeEmotions,
+        tradeRuleChecks,
+        tradeMistakes,
+        emotionTypes,
+        mistakeTypes,
+      },
+    });
+    try {
+      const [workspace] = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.personalOwnerUserId, user.id));
+      if (workspace === undefined) throw new Error('Insight E2E workspace missing');
+      const workspaceId = workspace.id;
+
+      const [rich] = await db
+        .select({ id: tradingAccounts.id })
+        .from(tradingAccounts)
+        .where(eq(tradingAccounts.workspaceId, workspaceId));
+      if (rich === undefined) throw new Error('Insight E2E Account missing');
+      await db
+        .update(tradingAccounts)
+        .set({ name: 'Insight Rich', timezone: 'UTC' })
+        .where(eq(tradingAccounts.id, rich.id));
+
+      const [empty] = await db
+        .insert(tradingAccounts)
+        .values({
+          workspaceId,
+          name: 'Insight Empty',
+          accountMode: 'live',
+          baseCurrency: 'USD',
+          startingBalance: '10000',
+          timezone: 'UTC',
+        })
+        .returning({ id: tradingAccounts.id });
+      if (empty === undefined) throw new Error('Insight E2E empty Account insert failed');
+
+      const [strategy] = await db
+        .insert(strategies)
+        .values({ workspaceId })
+        .returning({ id: strategies.id });
+      if (strategy === undefined) throw new Error('Insight E2E Strategy insert failed');
+      const [version] = await db
+        .insert(strategyVersions)
+        .values({
+          workspaceId,
+          strategyId: strategy.id,
+          versionNumber: 1,
+          name: 'Insight Momentum v1',
+        })
+        .returning({ id: strategyVersions.id });
+      if (version === undefined) throw new Error('Insight E2E Version insert failed');
+      await db
+        .update(strategies)
+        .set({ currentVersionId: version.id })
+        .where(eq(strategies.id, strategy.id));
+      const [setup] = await db
+        .insert(setups)
+        .values({ workspaceId, strategyId: strategy.id })
+        .returning({ id: setups.id });
+      if (setup === undefined) throw new Error('Insight E2E Setup insert failed');
+      const [setupVersion] = await db
+        .insert(strategySetupVersions)
+        .values({
+          workspaceId,
+          strategyId: strategy.id,
+          strategyVersionId: version.id,
+          setupId: setup.id,
+          name: 'Insight Opening Retest',
+        })
+        .returning({ id: strategySetupVersions.id });
+      if (setupVersion === undefined) throw new Error('Insight E2E Setup Version insert failed');
+
+      const [rule] = await db
+        .insert(strategyRules)
+        .values({
+          workspaceId,
+          strategyVersionId: version.id,
+          category: 'entry',
+          title: 'Wait for confirmation candle',
+          isRequired: true,
+          isPreTradeCheck: true,
+          sortOrder: 0,
+        })
+        .returning({ id: strategyRules.id, ruleKey: strategyRules.ruleKey });
+      if (rule === undefined) throw new Error('Insight E2E rule insert failed');
+      const ruleId = rule.id;
+      const ruleKey = rule.ruleKey;
+      const versionId = version.id;
+      const strategyId = strategy.id;
+      const setupId = setup.id;
+      const setupVersionId = setupVersion.id;
+
+      const emotionRows = await db
+        .select({ id: emotionTypes.id, key: emotionTypes.key })
+        .from(emotionTypes);
+      const emotionByKey = new Map(emotionRows.map((row) => [row.key, row.id]));
+      const [movedStop] = await db
+        .select({ id: mistakeTypes.id })
+        .from(mistakeTypes)
+        .where(eq(mistakeTypes.key, 'moved_stop'));
+
+      for (let index = 0; index < 24; index += 1) {
+        // 0–13 disciplined and calm; 14–21 fear-tagged rule violations that
+        // also carry a mistake tag; 22–23 with an incomplete required check.
+        const violating = index >= 14 && index < 22;
+        const incomplete = index >= 22;
+        const actualR = violating ? '-0.9000' : index % 4 === 0 ? '-0.6000' : '1.1000';
+        const systemR = violating ? '0.8000' : index % 4 === 0 ? '-0.5000' : '1.2000';
+        const exitedAt = daysAgo(60 - index * 2, 12);
+        await db.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(trades)
+            .values({
+              workspaceId,
+              tradingAccountId: rich.id,
+              strategyId,
+              strategyVersionId: versionId,
+              setupId,
+              setupVersionId,
+              symbol: ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100'][index % 4] as string,
+              direction: 'long',
+              plannedEntry: '100.0000000000',
+              plannedStop: '99.0000000000',
+              plannedTarget: '102.0000000000',
+              plannedR: '2.0000',
+              status: 'closed',
+              actualResultMode: 'money',
+              actualEntry: '100.0000000000',
+              actualInitialStop: '99.0000000000',
+              actualInitialRiskMinor: 10_000n,
+              actualExit: '101.0000000000',
+              enteredAt: new Date(exitedAt.getTime() - 3_600_000),
+              exitedAt,
+              netPnlMinor: BigInt(Math.round(Number(actualR) * 10_000)),
+              actualR,
+              traderOutcome: Number(actualR) >= 0 ? 'win' : 'loss',
+              confidence: violating ? 25 : 75,
+              systemStatus: 'resolved',
+              systemResolutionKind: 'price_exit',
+              systemExitPrice: '102.0000000000',
+              systemCostR: '0.0000',
+              systemExitedAt: new Date(exitedAt.getTime() + 1_800_000),
+              systemExitReason: 'target_hit',
+              systemResolvedAt: new Date(exitedAt.getTime() + 1_800_000),
+              systemR,
+              systemOutcome: Number(systemR) >= 0 ? 'win' : 'loss',
+            })
+            .returning({ id: trades.id });
+          if (row === undefined) throw new Error('Insight E2E Trade insert failed');
+          await tx.insert(tradeExits).values({
+            workspaceId,
+            tradeId: row.id,
+            mutationKey: crypto.randomUUID(),
+            sequence: 1,
+            closedBps: 10_000,
+            exitPrice: '101.0000000000',
+            realizedPnlMinor: BigInt(Math.round(Number(actualR) * 10_000)),
+            exitedAt,
+          });
+          const emotionTypeId = emotionByKey.get(violating ? 'fear' : 'calm');
+          if (emotionTypeId !== undefined) {
+            await tx.insert(tradeEmotions).values({ workspaceId, tradeId: row.id, emotionTypeId });
+          }
+          await tx.insert(tradeRuleChecks).values({
+            workspaceId,
+            tradeId: row.id,
+            strategyRuleId: ruleId,
+            strategyVersionId: versionId,
+            ruleKey,
+            checkStatus: incomplete ? 'not_checked' : violating ? 'violated' : 'followed',
+            title: 'Wait for confirmation candle',
+            category: 'entry',
+            isRequired: true,
+            isPreTradeCheck: true,
+            sortOrder: 0,
+          });
+          if (violating && movedStop !== undefined) {
+            await tx.insert(tradeMistakes).values({
+              workspaceId,
+              tradeId: row.id,
+              mistakeTypeId: movedStop.id,
+              severityAtTime: 'moderate',
+              weightAtTime: '1.0000',
+            });
+          }
+        });
+      }
+
+      return {
+        email: user.email,
+        password: user.password,
+        id: user.id,
+        richAccountId: rich.id,
+        emptyAccountId: empty.id,
+        strategyId,
+        setupId,
+      };
+    } finally {
+      await client.end();
+    }
+  }
+
+  /**
+   * Navigate, then wait for the pillars to settle at exactly three.
+   *
+   * D8 is a streamed Suspense boundary, so under load the streamed server
+   * tree and the hydrated one can both be attached for a frame — the same
+   * accommodation D7's Risk section makes. Polling the count settles that
+   * before any strict locator reads from it.
+   */
+  async function gotoInsights(page: Page, url: string) {
+    await page.goto(url);
+    await expect(page.locator('[data-insight-pillar]')).toHaveCount(3, { timeout: 20_000 });
+  }
+
+  const pillar = (page: Page, name: 'strategy' | 'psychology' | 'discipline') =>
+    page.locator(`[data-insight-pillar="${name}"]`);
+
+  test('desktop renders three pillars that follow Account and range but not Strategy', async ({
+    page,
+  }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
+    const user = await provisionInsightUser('e2e-insight-desktop');
+    await loginAs(page, 'en', user);
+    const rich = `account=${user.richAccountId}`;
+
+    await gotoInsights(page, `/en/app?range=all&unit=r&${rich}`);
+    await expect(
+      page.getByRole('heading', { level: 3, name: 'Strategy Performance' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 3, name: 'Psychology Performance' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 3, name: 'Discipline Performance' }),
+    ).toBeVisible();
+    await expect(pillar(page, 'strategy')).toHaveAttribute('data-insight-status', 'available');
+    await expect(pillar(page, 'discipline')).toHaveAttribute('data-insight-status', 'available');
+
+    // §5 — typography only. No chart, gauge, meter or ranking table anywhere
+    // in the section.
+    for (const name of ['strategy', 'psychology', 'discipline'] as const) {
+      await expect(pillar(page, name).locator('svg.recharts-surface')).toHaveCount(0);
+      await expect(
+        pillar(page, name).locator('table, [role="progressbar"], [role="meter"]'),
+      ).toHaveCount(0);
+    }
+    // §16/§17 — never causal, never a cost, never an unsupported score.
+    const section = page.locator('[data-insight-pillar]').first().locator('xpath=../..');
+    await expect(
+      section.getByText(/discipline score|trader grade|cost you|caused by/i),
+    ).toHaveCount(0);
+
+    // Each pillar routes into the EXISTING Analytics view contract.
+    await expect(
+      page.getByRole('link', { name: 'View Strategy Performance in Analytics' }),
+    ).toHaveAttribute('href', /\/analytics\?view=edge/);
+    await expect(
+      page.getByRole('link', { name: 'View Psychology Performance in Analytics' }),
+    ).toHaveAttribute('href', /view=behavior/);
+    await expect(
+      page.getByRole('link', { name: 'View Discipline Performance in Analytics' }),
+    ).toHaveAttribute('href', /view=results/);
+
+    // THE DATE RANGE MOVES THE INSIGHTS. 30D reaches only the most recent
+    // Trades, which is a genuinely smaller cohort than All.
+    await gotoInsights(page, `/en/app?range=30d&unit=r&${rich}`);
+    await expect(pillar(page, 'strategy')).toHaveAttribute(
+      'data-insight-status',
+      /limited_sample|insufficient_sample/,
+    );
+
+    /*
+      THE ACCOUNT MOVES THE INSIGHTS, AND AN EMPTY ACCOUNT KEEPS ALL THREE
+      PILLARS AS PRODUCT SURFACES (§25) — never a vanished section, never a
+      fabricated zero.
+    */
+    await gotoInsights(page, `/en/app?range=all&unit=r&account=${user.emptyAccountId}`);
+    for (const name of ['strategy', 'psychology', 'discipline'] as const) {
+      await expect(pillar(page, name)).toHaveAttribute('data-insight-status', 'no_eligible_trades');
+      await expect(pillar(page, name).locator('[data-insight-headline]')).toHaveCount(0);
+    }
+    /*
+      Scoped to the pillars on purpose. D7's Risk section also says "No closed
+      Trades yet." on an empty Account — both are true, each explains itself
+      differently underneath, and §25 specifies this exact Strategy wording, so
+      the assertion names WHICH section it means rather than the copy being
+      changed to dodge a strict-mode collision.
+    */
+    await expect(pillar(page, 'strategy').getByText('No closed Trades yet')).toBeVisible();
+    await expect(pillar(page, 'psychology').getByText('No eligible Trades yet')).toBeVisible();
+    await expect(pillar(page, 'discipline').getByText('No evaluated Trades yet')).toBeVisible();
+
+    /*
+      §7 — with a Strategy selected the Strategy card must not re-announce
+      that same Strategy as a winner. D8A answers with the selected
+      Strategy's health (or its Setup breakdown) instead.
+    */
+    await gotoInsights(page, `/en/app?range=all&unit=r&${rich}&strategy=${user.strategyId}`);
+    await expect(pillar(page, 'strategy').getByText('Strongest observed Strategy')).toHaveCount(0);
+    await expect(pillar(page, 'strategy')).toHaveAttribute(
+      'data-insight-status',
+      /available|limited_sample/,
+    );
+
+    // Strategy/Setup deliberately scope Psychology and Discipline too.
+    await expect(pillar(page, 'psychology').locator('[data-insight-statement]')).not.toHaveCount(0);
+    await expect(pillar(page, 'discipline').locator('[data-insight-statement]')).not.toHaveCount(0);
+  });
+
+  /**
+   * D7 Risk is an ACCOUNT-level metric. A Strategy or Setup filter narrows
+   * the three insight pillars and must leave the modeled balance untouched —
+   * the one cross-section invariant D8 could plausibly have broken.
+   */
+  test('leaves D7 Risk Performance unchanged under a Strategy or Setup filter', async ({
+    page,
+  }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
+    const user = await provisionInsightUser('e2e-insight-risk');
+    await loginAs(page, 'en', user);
+    const rich = `account=${user.richAccountId}`;
+    const riskFigures = async () => {
+      const risk = page.locator('[data-dashboard-panel="risk-performance"]');
+      return {
+        balance: await risk.locator('[data-risk-metric="modeledBalance"]').innerText(),
+        period: await risk.locator('[data-risk-metric="periodPnl"]').innerText(),
+        current: await risk.locator('[data-risk-metric="currentDrawdown"]').innerText(),
+        max: await risk.locator('[data-risk-metric="maxDrawdown"]').innerText(),
+      };
+    };
+
+    await gotoInsights(page, `/en/app?range=all&unit=r&${rich}`);
+    await expect(page.locator('[data-dashboard-panel="risk-performance"]')).toHaveCount(1);
+    const unfiltered = await riskFigures();
+
+    await gotoInsights(page, `/en/app?range=all&unit=r&${rich}&strategy=${user.strategyId}`);
+    expect(await riskFigures()).toEqual(unfiltered);
+
+    await gotoInsights(page, `/en/app?range=all&unit=r&${rich}&setup=${user.setupId}`);
+    expect(await riskFigures()).toEqual(unfiltered);
+    // And the section says why its figures did not move.
+    await expect(
+      page.getByText(
+        'Account-level metric. Strategy and Setup filters do not change modeled balance.',
+      ),
+    ).toBeVisible();
+  });
+
+  test('mobile stacks the three pillars with no horizontal overflow', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    test.setTimeout(300_000);
+    const user = await provisionInsightUser('e2e-insight-mobile');
+    await loginAs(page, 'en', user);
+
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await gotoInsights(page, `/en/app?range=all&unit=r&account=${user.richAccountId}`);
+
+      const boxes = await Promise.all(
+        (['strategy', 'psychology', 'discipline'] as const).map((name) =>
+          pillar(page, name).boundingBox(),
+        ),
+      );
+      // One column: each card is nearly the full width, and each starts below
+      // the previous one.
+      for (const box of boxes) {
+        expect(box?.width ?? 0).toBeGreaterThan(width * 0.7);
+      }
+      for (let i = 1; i < boxes.length; i += 1) {
+        const previous = boxes[i - 1];
+        const current = boxes[i];
+        expect(current?.y ?? 0).toBeGreaterThan((previous?.y ?? 0) + (previous?.height ?? 0) - 1);
+      }
+      // The primary insight is still readable, not squeezed into a third of
+      // the screen.
+      await expect(
+        pillar(page, 'strategy').locator('[data-insight-headline]').first(),
+      ).toBeVisible();
 
       const document_ = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,
