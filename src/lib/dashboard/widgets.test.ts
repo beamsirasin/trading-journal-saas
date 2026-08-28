@@ -146,14 +146,47 @@ describe('section-aware Dashboard layout metadata', () => {
     expect(gap.order).toBeGreaterThan(dashboardLayoutItem('trader.performance').order);
   });
 
-  it('parks every unbuilt widget in the reserved section rather than guessing one', () => {
-    const later = DASHBOARD_WIDGET_REGISTRY.filter(
-      (widget) => widget.implementation === 'later',
-    ).map((widget) => widget.id);
-    expect(later.length).toBeGreaterThan(0);
-    for (const id of later) {
-      expect(dashboardLayoutItem(id).section).toBe('reserved');
-    }
+  /**
+   * D7B retires the `reserved` holding section. Its two members were the last
+   * `implementation: 'later'` widgets on the page, and a section with no
+   * members left would be a prediction about a widget nobody has specified
+   * rather than a record of what the Dashboard renders. A future unbuilt
+   * widget reintroduces a holding section along with itself.
+   */
+  it('leaves no unbuilt widget, and therefore no holding section', () => {
+    expect(DASHBOARD_WIDGET_REGISTRY.filter((widget) => widget.implementation === 'later')).toEqual(
+      [],
+    );
+    expect(DASHBOARD_SECTION_IDS).not.toContain('reserved');
+  });
+
+  /**
+   * D7B §24. The two reserved IDs are mapped truthfully onto ONE shared
+   * presentation section rather than either being collapsed into a single ID
+   * or being invented as some third arbitrary widget. The section is unequal
+   * on purpose: the balance carries the hero figures and the curve, the
+   * drawdown carries two readings and the peak they are measured from.
+   */
+  it('maps both Risk Performance IDs onto one shared unequal section', () => {
+    const balance = dashboardLayoutItem('account.balance');
+    const drawdown = dashboardLayoutItem('risk.drawdown');
+    expect(balance.section).toBe('risk-performance');
+    expect(drawdown.section).toBe('risk-performance');
+    const section = dashboardSection('risk-performance');
+    expect(section.desktopColumns).toBe(12);
+    expect(balance.desktopSpan).toBe(7);
+    expect(drawdown.desktopSpan).toBe(5);
+    expect(balance.desktopSpan + drawdown.desktopSpan).toBe(section.desktopColumns);
+    expect(balance.order).toBeLessThan(drawdown.order);
+    // Both stack full width on mobile — a five-of-twelve drawdown column at
+    // 320px would be a pair of clipped currency figures.
+    expect(balance.mobileSpan).toBe(2);
+    expect(drawdown.mobileSpan).toBe(2);
+    // Nothing else shares the section, so "one Risk Performance section"
+    // cannot quietly become a widget shelf later.
+    expect(
+      DEFAULT_DASHBOARD_LAYOUT.filter((item) => item.section === 'risk-performance'),
+    ).toHaveLength(2);
   });
 
   it('publishes the section and its column count alongside the span', () => {

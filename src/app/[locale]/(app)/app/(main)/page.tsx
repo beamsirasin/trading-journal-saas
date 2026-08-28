@@ -13,6 +13,7 @@ import {
   DashboardSkeleton,
   RealDashboard,
 } from '@/components/dashboard/real-dashboard';
+import { RiskPerformanceSection } from '@/components/dashboard/risk/risk-performance-section';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
@@ -90,6 +91,7 @@ async function DashboardContent({
     an error rather than a silently widened population or a silently moved
     calendar.
   */
+  const tFilters = await getTranslations('dashboard.filters');
   const parsed = parseDashboardFilterState(rawSearchParams);
   if (!parsed.ok) return <DashboardDataError />;
   const navigation = parseCalendarNavigation(rawSearchParams);
@@ -128,6 +130,24 @@ async function DashboardContent({
           />
         </Suspense>
       }
+      riskSlot={
+        // D7's boundary, streamed on its own for the same reason: the modeled
+        // balance read spans the Account's whole authoritative money history
+        // rather than the selected range, and must never hold the five
+        // bounded core reads off the screen while it does.
+        <Suspense fallback={<RiskPerformanceSkeleton />}>
+          <RiskPerformanceSection
+            filters={parsed.state}
+            timezone={timezone}
+            dateLocale={dateLocale}
+            accountLabel={
+              dashboard.data.account.kind === 'account'
+                ? dashboard.data.account.account.name
+                : tFilters('allAccounts')
+            }
+          />
+        </Suspense>
+      }
     />
   );
 }
@@ -138,6 +158,16 @@ function DashboardCalendarSkeleton() {
     <div
       aria-hidden="true"
       className="border-border bg-card h-96 animate-pulse rounded-lg border"
+    />
+  );
+}
+
+/** Reserves the Risk Performance card's geometry — same note. */
+function RiskPerformanceSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      className="border-border bg-card h-[420px] animate-pulse rounded-lg border"
     />
   );
 }

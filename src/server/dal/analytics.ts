@@ -84,7 +84,7 @@ export interface ResolvedAnalyticsFilters {
   readonly strategyVersionId: string | null;
 }
 
-interface AnalyticsQueryContext {
+export interface AnalyticsQueryContext {
   readonly workspaceId: string;
   readonly filters: ResolvedAnalyticsFilters;
   readonly account: DashboardAccountContext;
@@ -101,7 +101,7 @@ export interface AnalyticsReadOptions {
  * verifies every explicit identity and dependency inside the active
  * workspace. Invalid and foreign IDs share the same closed result.
  */
-async function resolveAnalyticsQueryContext(
+export async function resolveAnalyticsQueryContext(
   input: unknown,
   options: AnalyticsReadOptions = {},
 ): Promise<AnalyticsReadResult<AnalyticsQueryContext>> {

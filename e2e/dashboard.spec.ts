@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -31,11 +31,18 @@ async function provisionDashboardUser(prefix: string) {
     password: 'Correct-Horse9!',
     name: 'E2E Dashboard Tester',
   });
-  await seedDashboardData(user.id);
-  return user;
+  const seeded = await seedDashboardData(user.id);
+  return { ...user, ...seeded };
 }
 
-async function seedDashboardData(userId: string): Promise<void> {
+interface SeededDashboardIds {
+  readonly workspaceId: string;
+  readonly accountId: string;
+  readonly strategyId: string;
+  readonly setupId: string;
+}
+
+async function seedDashboardData(userId: string): Promise<SeededDashboardIds> {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
   const db = drizzle(client, {
@@ -219,6 +226,13 @@ async function seedDashboardData(userId: string): Promise<void> {
       .update(strategies)
       .set({ currentVersionId: renamed.id })
       .where(eq(strategies.id, strategy.id));
+
+    return {
+      workspaceId,
+      accountId: account.id,
+      strategyId: strategy.id,
+      setupId: setup.id,
+    };
   } finally {
     await client.end();
   }
@@ -500,5 +514,267 @@ test.describe('real Dashboard', () => {
       client: document.documentElement.clientWidth,
     }));
     expect(tabletDimensions.scroll).toBeLessThanOrEqual(tabletDimensions.client + 1);
+  });
+});
+
+/**
+ * D7B — Risk Performance.
+ *
+ * The seeded Account starts at $10,000 and holds three closed Trades with
+ * authoritative money: GBPUSD +$1.00 (45 days ago), EURUSD +$1.00 (8 days
+ * ago) and XAUUSD -$1.00 (5 days ago). That makes every figure below exact
+ * and every range genuinely different from the others:
+ *
+ *   All  — opens at the Starting Balance, ends $10,001.00, +$1.00
+ *   90D  — the same three Trades, but a bounded opening of $10,000.00
+ *   30D  — opens at $10,001.00 with the 45-day Trade already carried in,
+ *          ends $10,001.00, and its period P&L is exactly $0.00
+ *
+ * The 30D case is the one that matters most: the balance reads $10,001.00
+ * while the period moved nothing at all, which is only readable because the
+ * carried opening is stated.
+ */
+test.describe('Dashboard Risk Performance', () => {
+  const RISK_HEADING = 'Risk Performance';
+
+  /**
+   * Navigate, then wait for the Risk section to settle at exactly one node.
+   *
+   * The section is its own streamed Suspense boundary, and under load the
+   * streamed server tree and the hydrated one can both be attached for a
+   * frame — the identical accommodation the Dashboard's own mobile case makes
+   * above. Polling the count settles that before any strict locator reads an
+   * attribute off it, while a section that genuinely rendered twice still
+   * fails here.
+   */
+  async function gotoRisk(page: Page, url: string) {
+    await page.goto(url);
+    // 20s, not the 5s default. This is a STREAMED Suspense boundary: the
+    // section's own server read resolves after the five core reads have
+    // already painted, so on a cold database it can arrive well after the
+    // rest of the page. The count is still exactly 1 — a section that
+    // genuinely rendered twice, or never, still fails here.
+    await expect(page.locator('[data-dashboard-panel="risk-performance"]')).toHaveCount(1, {
+      timeout: 20_000,
+    });
+  }
+
+  test('desktop follows the Account and the range, and ignores Strategy and Setup', async ({
+    page,
+  }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(300_000);
+    const user = await provisionDashboardUser('e2e-dashboard-risk');
+    await loginAs(page, 'en', user);
+
+    const section = page.locator('[data-dashboard-panel="risk-performance"]');
+    const metric = (key: string) => section.locator(`[data-risk-metric="${key}"]`);
+    const status = page.locator('[data-risk-status]');
+
+    // 90D is the Dashboard default range.
+    await gotoRisk(page, '/en/app');
+    await expect(page.getByRole('heading', { level: 2, name: RISK_HEADING })).toBeVisible();
+    await expect(status).toHaveAttribute('data-risk-status', 'available');
+    await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
+    await expect(metric('modeledBalance').getByText('Modeled Balance')).toBeVisible();
+    await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
+    await expect(metric('peakBalance').getByText('$10,002.00')).toBeVisible();
+    await expect(metric('currentDrawdown').getByText('$1.00')).toBeVisible();
+    await expect(metric('currentDrawdown').getByText('0.01%')).toBeVisible();
+    await expect(metric('maxDrawdown').getByText('$1.00')).toBeVisible();
+    /*
+      The 90D window reaches back past all three closed Trades, so it carried
+      NOTHING into itself and the copy says exactly that. This is the third
+      opening case, and it must never borrow the carried-history sentence:
+      claiming Trades closed before a range that contains all of them is
+      simply false.
+    */
+    await expect(
+      section.getByText(
+        'This range opened at the declared Starting Balance of $10,000.00 — no Trade closed before it.',
+      ),
+    ).toBeVisible();
+    await expect(section.getByText(/carried in from Trades closed before it/)).toHaveCount(0);
+    // The balance curve exists, is reachable by name, and is the section's
+    // only plot: no second underwater drawdown chart belongs on the Dashboard.
+    await expect(
+      section.getByRole('img', { name: /Modeled Balance after each closed Trade/i }),
+    ).toBeVisible();
+    // Modeled, never a broker statement.
+    await expect(section.getByText(/broker balance|live balance|equity/i)).toHaveCount(0);
+    // The section carries a LABEL for the active range and never a control:
+    // the one range control on the page belongs to the performance header.
+    await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', '90d');
+
+    // 30D — the same Account, a genuinely different window, and the reading
+    // that would be false without the carried opening.
+    await gotoRisk(page, '/en/app?range=30d&unit=r');
+    await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', '30d');
+    await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
+    await expect(metric('periodPnl').getByText('$0.00', { exact: true })).toBeVisible();
+    await expect(
+      section.getByText(
+        'This range opened at $10,001.00, carried in from Trades closed before it.',
+      ),
+    ).toBeVisible();
+    // It must be impossible to read this as "$10,000 became $10,001 in 30 days".
+    await expect(section.getByText(/opened at \$10,000\.00/)).toHaveCount(0);
+
+    // All — the only range with no bounded opening to carry, and the one
+    // place the Starting Balance is named. It still claims no inception date.
+    await gotoRisk(page, '/en/app?range=all&unit=r');
+    await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', 'all');
+    await expect(
+      section.getByText('Modeled from the declared Starting Balance of $10,000.00.'),
+    ).toBeVisible();
+    await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
+    await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
+    await expect(section.getByText(/Account opened on|since account creation/i)).toHaveCount(0);
+
+    /*
+      Strategy and Setup are authorized and validated but deliberately do not
+      filter an Account-level balance. Every figure must be IDENTICAL to the
+      unfiltered 90D read above, and the section must say why.
+    */
+    for (const query of [`strategy=${user.strategyId}`, `setup=${user.setupId}`]) {
+      await gotoRisk(page, `/en/app?range=90d&unit=r&${query}`);
+      await expect(status).toHaveAttribute('data-risk-status', 'available');
+      await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
+      await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
+      await expect(metric('peakBalance').getByText('$10,002.00')).toBeVisible();
+      await expect(metric('currentDrawdown').getByText('$1.00')).toBeVisible();
+      await expect(
+        section.getByText(
+          'Account-level metric. Strategy and Setup filters do not change modeled balance.',
+        ),
+      ).toBeVisible();
+    }
+    // And the note is absent when no analytical filter is applied.
+    await gotoRisk(page, '/en/app?range=90d&unit=r');
+    await expect(page.locator('[data-risk-scope-note]')).toHaveCount(0);
+
+    /*
+      All Accounts fails closed. A combined historical capital curve would
+      have to invent when capital entered each Account, so the section asks
+      for one Account instead of showing $0 and an empty axis.
+    */
+    await gotoRisk(page, '/en/app?range=90d&unit=r&account=all');
+    await expect(status).toHaveAttribute('data-risk-status', 'unavailable');
+    await expect(page.locator('[data-risk-reason]')).toHaveAttribute(
+      'data-risk-reason',
+      'select_single_account',
+    );
+    await expect(section.getByText('Select an Account to view modeled balance.')).toBeVisible();
+    await expect(section.getByText(/Balance history is calculated per Account/)).toBeVisible();
+    await expect(section.locator('[data-risk-metric]')).toHaveCount(0);
+    await expect(section.getByRole('img', { name: /Modeled Balance/i })).toHaveCount(0);
+
+    // The definition affordance is a real button, keyboard-operable.
+    await gotoRisk(page, '/en/app?range=90d&unit=r');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: 'About Modeled Balance' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(
+      page.getByText(/changes only when a Trade closes with an authoritative result/),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+  });
+
+  test('an Account with no closed Trades stays available at its starting balance', async ({
+    page,
+  }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(240_000);
+    const { testUrl } = validateTestDatabaseEnvironment();
+    const user = await provisionVerifiedUser(testUrl, {
+      email: `e2e-risk-empty-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`,
+      password: 'Correct-Horse9!',
+      name: 'E2E Empty Risk Tester',
+    });
+    await loginAs(page, 'en', user);
+    await gotoRisk(page, '/en/app');
+
+    const section = page.locator('[data-dashboard-panel="risk-performance"]');
+    const metric = (key: string) => section.locator(`[data-risk-metric="${key}"]`);
+
+    // AVAILABLE, not empty and not an error: every figure below is true.
+    await expect(page.locator('[data-risk-status]')).toHaveAttribute(
+      'data-risk-status',
+      'available',
+    );
+    await expect(metric('modeledBalance').getByText('$10,000.00')).toBeVisible();
+    await expect(metric('periodPnl').getByText('$0.00', { exact: true })).toBeVisible();
+    await expect(metric('currentDrawdown').getByText('$0.00')).toBeVisible();
+    await expect(metric('currentDrawdown').getByText('0.00%')).toBeVisible();
+    await expect(metric('maxDrawdown').getByText('0.00%')).toBeVisible();
+    // The opening sentence names the Starting Balance and claims no history:
+    // this Account has closed nothing, ever, so nothing was carried into the
+    // range. The D7B UAT caught this exact line asserting the opposite.
+    await expect(
+      section.getByText(
+        'This range opened at the declared Starting Balance of $10,000.00 — no Trade closed before it.',
+      ),
+    ).toBeVisible();
+    await expect(section.getByText('No closed Trades yet.')).toBeVisible();
+    await expect(
+      section.getByText('Your modeled balance remains at the starting balance.'),
+    ).toBeVisible();
+    // Not an error, and no meaningless flat plot.
+    await expect(section.getByRole('alert')).toHaveCount(0);
+    await expect(section.getByRole('img', { name: /Modeled Balance/i })).toHaveCount(0);
+  });
+
+  test('mobile keeps the figures legible and the section inside the viewport', async ({ page }) => {
+    test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Mobile Chrome coverage');
+    test.setTimeout(240_000);
+    const user = await provisionDashboardUser('e2e-dashboard-risk-mobile');
+    await loginAs(page, 'en', user);
+
+    const section = page.locator('[data-dashboard-panel="risk-performance"]');
+    const metric = (key: string) => section.locator(`[data-risk-metric="${key}"]`);
+
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await gotoRisk(page, '/en/app?range=90d&unit=r');
+      await expect(page.getByRole('heading', { level: 2, name: RISK_HEADING })).toBeVisible();
+      await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
+      await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
+      await expect(metric('currentDrawdown').getByText('$1.00')).toBeVisible();
+      await expect(metric('maxDrawdown').getByText('$1.00')).toBeVisible();
+
+      // The mobile priority order, read straight off the DOM: the two hero
+      // figures, then the two drawdown readings, then the supporting peak.
+      const order = await section.evaluate((node) =>
+        [...node.querySelectorAll('[data-risk-metric]')].map((child) =>
+          child.getAttribute('data-risk-metric'),
+        ),
+      );
+      expect(order).toEqual([
+        'modeledBalance',
+        'periodPnl',
+        'currentDrawdown',
+        'maxDrawdown',
+        'peakBalance',
+      ]);
+
+      // The section stacks full width and its plot fits: a chart the reader
+      // has to pan sideways is the failure this asserts against.
+      const box = await section.boundingBox();
+      expect(box?.width ?? 0).toBeGreaterThan(width * 0.7);
+      const inner = await section.evaluate((node) => ({
+        scroll: node.scrollWidth,
+        client: node.clientWidth,
+      }));
+      expect(inner.scroll).toBeLessThanOrEqual(inner.client + 1);
+
+      const document_ = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+      }));
+      expect(document_.scroll).toBeLessThanOrEqual(document_.client + 1);
+    }
   });
 });

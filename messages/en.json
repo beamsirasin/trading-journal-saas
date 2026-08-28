@@ -759,6 +759,104 @@
       "confirmationNotes": "Confirmation notes",
       "notes": "Notes",
       "reviewNotes": "Review notes"
+    },
+    "riskPerformance": {
+      "title": "Risk Performance",
+      "description": "Modeled balance and drawdown for {account}.",
+      "infoTrigger": "About Modeled Balance",
+      "help": "Modeled Balance starts from this Account's declared Starting Balance and changes only when a Trade closes with an authoritative result. It is not a broker balance and not live equity: deposits, withdrawals, transfers, broker adjustments, and unrealized P&L on open positions are not recorded anywhere in this product, so none of them are modeled here.",
+      "helpScope": "Account-level metric. Strategy and Setup filters do not change modeled balance — only the Account and the date range do.",
+      "scopeNote": "Account-level metric. Strategy and Setup filters do not change modeled balance.",
+      "rangeLabel": "Range",
+      "metrics": {
+        "modeledBalance": "Modeled Balance",
+        "periodPnl": "Period P&L",
+        "currentDrawdown": "Current Drawdown",
+        "maxDrawdown": "Max Drawdown",
+        "peakBalance": "Peak Balance"
+      },
+      "peakHint": "The high-water mark both drawdowns are measured from.",
+      "closedTrades": "{count, plural, one {# closed Trade in range} other {# closed Trades in range}}",
+      "chart": {
+        "ariaLabel": "Modeled Balance after each closed Trade in this range",
+        "caption": "The balance steps at each closed-Trade realization and holds flat between them. A partially closed position steps once, when the Trade itself closes.",
+        "tableCaption": "Modeled Balance at every point in this range",
+        "eventColumn": "Point",
+        "dateColumn": "Date",
+        "balanceColumn": "Modeled Balance",
+        "changeColumn": "Trade P&L",
+        "legendBalance": "Modeled Balance",
+        "legendPeak": "High-water mark"
+      },
+      "event": {
+        "opening": "Opening",
+        "trade_close": "Trade close",
+        "as_of": "As of now"
+      },
+      "tooltip": {
+        "opening": "Opening Modeled Balance",
+        "balance": "Modeled Balance",
+        "ending": "Ending Modeled Balance",
+        "change": "Trade P&L",
+        "groupedTrades": "{count} Trades closed at this instant"
+      },
+      "states": {
+        "noTradesTitle": "No closed Trades yet.",
+        "noTradesDescription": "Your modeled balance remains at the starting balance.",
+        "unavailable": {
+          "select_single_account": {
+            "title": "Select an Account to view modeled balance.",
+            "description": "Balance history is calculated per Account and is not combined across Accounts. Accounts can hold different currencies, and this product converts none of them."
+          },
+          "missing_starting_balance": {
+            "title": "Modeled balance unavailable",
+            "description": "This Account has no Starting Balance, so there is nothing for closed-Trade results to start from. Add one in Account settings."
+          },
+          "incomplete_money_history": {
+            "title": "Modeled balance unavailable",
+            "description": "One or more historical closed Trades are missing authoritative P&L, so the balance history cannot be reconstructed reliably. Those Trades have not been silently excluded."
+          },
+          "currency_mismatch": {
+            "title": "Modeled balance unavailable",
+            "description": "This Account's closed Trades do not all share one currency. Balances are never converted between currencies, so no single balance history can be stated."
+          },
+          "unsupported_currency_scale": {
+            "title": "Modeled balance unavailable",
+            "description": "This Account's currency is not in the supported currency registry, so its minor units cannot be interpreted safely."
+          }
+        },
+        "error": {
+          "service_error": {
+            "title": "Modeled balance could not be loaded",
+            "description": "The Risk Performance read failed. Nothing has been guessed or rounded to zero. Reload the Dashboard, and if it persists this is a defect rather than something your Trades can fix."
+          },
+          "invalid_starting_balance": {
+            "title": "Modeled balance could not be prepared",
+            "description": "This Account's stored Starting Balance could not be read as an exact amount in its currency. It has not been rounded to make it fit."
+          },
+          "invalid_money_data": {
+            "title": "Modeled balance could not be prepared",
+            "description": "A stored closed-Trade result could not be read as an exact amount. Nothing has been guessed, and no Trade has been dropped from the history."
+          },
+          "invalid_actual_exit_timestamp": {
+            "title": "Modeled balance could not be prepared",
+            "description": "A closed Trade carries an exit timestamp that could not be read, so its place in the balance history cannot be established."
+          },
+          "invalid_range": {
+            "title": "Modeled balance could not be prepared",
+            "description": "The selected date range could not be resolved. Choose a range again."
+          },
+          "invalid_money_display": {
+            "title": "Modeled balance could not be prepared",
+            "description": "A canonical balance figure fell outside the range this currency can represent, so it has not been displayed approximately."
+          }
+        }
+      },
+      "opening": {
+        "all": "Modeled from the declared Starting Balance of {balance}.",
+        "carried": "This range opened at {balance}, carried in from Trades closed before it.",
+        "at_starting_balance": "This range opened at the declared Starting Balance of {balance} — no Trade closed before it."
+      }
     }
   },
   "trades": {

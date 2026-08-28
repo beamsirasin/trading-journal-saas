@@ -1,0 +1,464 @@
+{
+  "01-desktop-1440-dark-30d": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 631.64
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "30d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$1,040.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$540.004.57%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $11,270.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,245.5L300.4,245.5L300.4,40.143L540.8,40.143L540.8,59.786",
+    "chartCurveCommands": false,
+    "seriesPoints": 6
+  },
+  "02-desktop-1440-dark-90d": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 631.64
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "90d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$2,200.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$890.008.09%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $10,110.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,230.321L193.556,230.321L193.556,78.536L327.111,78.536L32",
+    "chartCurveCommands": false,
+    "seriesPoints": 10
+  },
+  "03-desktop-1440-dark-all": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 631.64
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "all",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$2,310.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$890.008.09%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "Modeled from the declared Starting Balance of $10,000.00.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,240.143L152.462,240.143L152.462,150.857L244.923,150.857L",
+    "chartCurveCommands": false,
+    "seriesPoints": 14
+  },
+  "04-desktop-1440-dark-strategy-filtered": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 697.14
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "90d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$2,200.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$890.008.09%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $10,110.00, carried in from Trades closed before it.",
+    "scopeNote": "Account-level metric. Strategy and Setup filters do not change modeled balance.",
+    "noTrades": null,
+    "chartPathCommands": "M60,230.321L193.556,230.321L193.556,78.536L327.111,78.536L32",
+    "chartCurveCommands": false,
+    "seriesPoints": 10
+  },
+  "05-desktop-1440-dark-empty-account": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 356.89
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "90d",
+    "modeledBalance": "Modeled Balance$10,000.00",
+    "periodPnl": "Period P&L$0.00",
+    "currentDrawdown": "Current Drawdown$0.000.00%",
+    "maxDrawdown": "Max Drawdown$0.000.00%",
+    "peakBalance": "Peak Balance$10,000.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at the declared Starting Balance of $10,000.00 — no Trade closed before it.",
+    "scopeNote": null,
+    "noTrades": "No closed Trades yet.Your modeled balance remains at the starting balance.",
+    "chartPathCommands": null,
+    "chartCurveCommands": false,
+    "seriesPoints": 0
+  },
+  "06-desktop-1440-dark-all-accounts": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 178.39
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "unavailable",
+    "reason": "select_single_account",
+    "range": null,
+    "modeledBalance": null,
+    "periodPnl": null,
+    "currentDrawdown": null,
+    "maxDrawdown": null,
+    "peakBalance": null,
+    "opening": null,
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": null,
+    "chartCurveCommands": false,
+    "seriesPoints": 0
+  },
+  "07-desktop-1440-light-30d": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 631.64
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "30d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$1,040.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$540.004.57%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $11,270.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,245.5L300.4,245.5L300.4,40.143L540.8,40.143L540.8,59.786",
+    "chartCurveCommands": false,
+    "seriesPoints": 6
+  },
+  "08-desktop-1440-light-empty-account": {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "overflow": {
+      "scrollWidth": 1440,
+      "clientWidth": 1440
+    },
+    "section": {
+      "x": 96,
+      "w": 1312,
+      "h": 356.89
+    },
+    "sectionOverflow": {
+      "scroll": 1310,
+      "client": 1310
+    },
+    "status": "available",
+    "reason": null,
+    "range": "90d",
+    "modeledBalance": "Modeled Balance$10,000.00",
+    "periodPnl": "Period P&L$0.00",
+    "currentDrawdown": "Current Drawdown$0.000.00%",
+    "maxDrawdown": "Max Drawdown$0.000.00%",
+    "peakBalance": "Peak Balance$10,000.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at the declared Starting Balance of $10,000.00 — no Trade closed before it.",
+    "scopeNote": null,
+    "noTrades": "No closed Trades yet.Your modeled balance remains at the starting balance.",
+    "chartPathCommands": null,
+    "chartCurveCommands": false,
+    "seriesPoints": 0
+  },
+  "09-desktop-1920-dark-30d": {
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "overflow": {
+      "scrollWidth": 1920,
+      "clientWidth": 1920
+    },
+    "section": {
+      "x": 96,
+      "w": 1792,
+      "h": 631.64
+    },
+    "sectionOverflow": {
+      "scroll": 1790,
+      "client": 1790
+    },
+    "status": "available",
+    "reason": null,
+    "range": "30d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$1,040.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$540.004.57%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $11,270.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,245.5L396.4,245.5L396.4,40.143L732.8,40.143L732.8,59.786",
+    "chartCurveCommands": false,
+    "seriesPoints": 6
+  },
+  "10-mobile-390-dark-30d": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "section": {
+      "x": 16,
+      "w": 358,
+      "h": 929.64
+    },
+    "sectionOverflow": {
+      "scroll": 356,
+      "client": 356
+    },
+    "status": "available",
+    "reason": null,
+    "range": "30d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$1,040.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$540.004.57%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $11,270.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,184.7L111.2,184.7L111.2,31.914L162.4,31.914L162.4,46.529",
+    "chartCurveCommands": false,
+    "seriesPoints": 6
+  },
+  "11-mobile-390-dark-all-accounts": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "section": {
+      "x": 16,
+      "w": 358,
+      "h": 257.89
+    },
+    "sectionOverflow": {
+      "scroll": 356,
+      "client": 356
+    },
+    "status": "unavailable",
+    "reason": "select_single_account",
+    "range": null,
+    "modeledBalance": null,
+    "periodPnl": null,
+    "currentDrawdown": null,
+    "maxDrawdown": null,
+    "peakBalance": null,
+    "opening": null,
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": null,
+    "chartCurveCommands": false,
+    "seriesPoints": 0
+  },
+  "12-mobile-390-light-30d": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "overflow": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "section": {
+      "x": 16,
+      "w": 358,
+      "h": 929.64
+    },
+    "sectionOverflow": {
+      "scroll": 356,
+      "client": 356
+    },
+    "status": "available",
+    "reason": null,
+    "range": "30d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$1,040.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$540.004.57%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $11,270.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,184.7L111.2,184.7L111.2,31.914L162.4,31.914L162.4,46.529",
+    "chartCurveCommands": false,
+    "seriesPoints": 6
+  },
+  "13-mobile-320-dark-30d": {
+    "viewport": {
+      "width": 320,
+      "height": 800
+    },
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320
+    },
+    "section": {
+      "x": 16,
+      "w": 288,
+      "h": 1034.03
+    },
+    "sectionOverflow": {
+      "scroll": 286,
+      "client": 286
+    },
+    "status": "available",
+    "reason": null,
+    "range": "30d",
+    "modeledBalance": "Modeled Balance$12,310.00",
+    "periodPnl": "Period P&L+$1,040.00",
+    "currentDrawdown": "Current Drawdown$110.000.89%",
+    "maxDrawdown": "Max Drawdown$540.004.57%",
+    "peakBalance": "Peak Balance$12,420.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at $11,270.00, carried in from Trades closed before it.",
+    "scopeNote": null,
+    "noTrades": null,
+    "chartPathCommands": "M60,184.7L97.2,184.7L97.2,31.914L134.4,31.914L134.4,46.529L1",
+    "chartCurveCommands": false,
+    "seriesPoints": 6
+  },
+  "14-mobile-320-dark-empty-account": {
+    "viewport": {
+      "width": 320,
+      "height": 800
+    },
+    "overflow": {
+      "scrollWidth": 320,
+      "clientWidth": 320
+    },
+    "section": {
+      "x": 16,
+      "w": 288,
+      "h": 759.03
+    },
+    "sectionOverflow": {
+      "scroll": 286,
+      "client": 286
+    },
+    "status": "available",
+    "reason": null,
+    "range": "90d",
+    "modeledBalance": "Modeled Balance$10,000.00",
+    "periodPnl": "Period P&L$0.00",
+    "currentDrawdown": "Current Drawdown$0.000.00%",
+    "maxDrawdown": "Max Drawdown$0.000.00%",
+    "peakBalance": "Peak Balance$10,000.00The high-water mark both drawdowns are measured from.",
+    "opening": "This range opened at the declared Starting Balance of $10,000.00 — no Trade closed before it.",
+    "scopeNote": null,
+    "noTrades": "No closed Trades yet.Your modeled balance remains at the starting balance.",
+    "chartPathCommands": null,
+    "chartCurveCommands": false,
+    "seriesPoints": 0
+  }
+}

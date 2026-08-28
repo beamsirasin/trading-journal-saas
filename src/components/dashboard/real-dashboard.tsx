@@ -35,6 +35,7 @@ export function RealDashboard({
   data,
   dateLocale,
   calendarSlot,
+  riskSlot,
 }: {
   data: DashboardPageData;
   dateLocale: string;
@@ -49,6 +50,13 @@ export function RealDashboard({
    * how a month is fetched.
    */
   calendarSlot: React.ReactNode;
+  /**
+   * D7's Risk Performance boundary, on exactly the same terms and for the
+   * same reason: a modeled balance needs the Account's whole authoritative
+   * money history to know what the visible range opened at, which is a
+   * different horizon from the five bounded core reads.
+   */
+  riskSlot: React.ReactNode;
 }) {
   const t = useTranslations('dashboard.real');
   const tFilters = useTranslations('dashboard.filters');
@@ -143,6 +151,20 @@ export function RealDashboard({
           <div className="min-w-0 lg:col-span-5">{calendarSlot}</div>
         </div>
       </section>
+
+      {/*
+        D7B — the Risk Performance section, in the layout slot the registry
+        has recorded for `account.balance`/`risk.drawdown` since D2 (orders
+        120 and 130, after the record list). It is the page's last analytical
+        beat: the KPI band, the two baselines and the Execution Gap are all
+        expressed in R over the selected range, and this is the one section
+        that answers the money question those cannot — where the modeled
+        balance actually stands, and how far below its own high-water mark.
+
+        A node rather than data, for the same reason as `calendarSlot`: it is
+        its own server boundary and suspends on its own.
+      */}
+      <div className="mt-8 min-w-0">{riskSlot}</div>
 
       <div className="mt-6 flex justify-end">
         <Link
@@ -344,6 +366,9 @@ export function DashboardSkeleton() {
         <div className="border-border bg-card h-96 rounded-lg border lg:col-span-7" />
         <div className="border-border bg-card h-96 rounded-lg border lg:col-span-5" />
       </div>
+      {/* D7's Risk Performance section: one card, a summary strip over a
+          chart, at the height it actually renders at. */}
+      <div className="border-border bg-card mt-8 h-[420px] rounded-lg border" />
     </div>
   );
 }

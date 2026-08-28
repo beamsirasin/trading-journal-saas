@@ -201,6 +201,8 @@ function renderDashboard(
   // The Calendar is its own async server boundary (D6B); these tests cover the
   // page composition around it, so the slot is stubbed rather than rendered.
   calendarSlot: ReactNode = <div data-testid="calendar-slot" />,
+  // D7B's Risk Performance section is its own async server boundary too.
+  riskSlot: ReactNode = <div data-testid="risk-slot" />,
 ) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
@@ -212,6 +214,7 @@ function renderDashboard(
         }}
         dateLocale="en-GB"
         calendarSlot={calendarSlot}
+        riskSlot={riskSlot}
       />
     </NextIntlClientProvider>,
   );

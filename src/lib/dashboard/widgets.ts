@@ -45,8 +45,14 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
   { id: 'execution.gap', capability: 'comparison', implementation: 'current' },
   { id: 'trades.recent', capability: 'recent_trades', implementation: 'current' },
   { id: 'calendar.performance', capability: 'calendar', implementation: 'current' },
-  { id: 'account.balance', capability: 'account_balance', implementation: 'later' },
-  { id: 'risk.drawdown', capability: 'drawdown', implementation: 'later' },
+  // D7B — both now render, and both read the SAME `RiskPerformanceData`
+  // payload. Two IDs rather than one because they remain two distinct
+  // capabilities (a balance history and a drawdown reading); one section
+  // rather than two cards because splitting them would ask the reader to
+  // hold a balance in their head while looking at the distance below its
+  // peak.
+  { id: 'account.balance', capability: 'account_balance', implementation: 'current' },
+  { id: 'risk.drawdown', capability: 'drawdown', implementation: 'current' },
 ];
 
 export const DASHBOARD_SECTION_IDS = [
@@ -55,7 +61,7 @@ export const DASHBOARD_SECTION_IDS = [
   'performance',
   'execution-gap',
   'recent-and-calendar',
-  'reserved',
+  'risk-performance',
 ] as const;
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTION_IDS)[number];
@@ -109,9 +115,16 @@ export const DASHBOARD_SECTIONS: readonly DashboardSectionDefinition[] = [
     record what it spells.
   */
   { id: 'recent-and-calendar', desktopColumns: 12 },
-  // Widgets whose own section is genuinely undecided because they are not
-  // built yet. Full width is the honest placeholder, not a prediction.
-  { id: 'reserved', desktopColumns: 1 },
+  /*
+    D7B: the `reserved` holding section is retired — its two members are now
+    built, and an empty section is a slot for a prediction rather than a
+    record of the page. They share ONE section because they share one D7A
+    payload: `account.balance` owns the balance figures and the curve,
+    `risk.drawdown` owns the two drawdown readings and the high-water mark
+    they are measured from. Twelve columns for the same reason D6B uses
+    them — the split is deliberately unequal, and 7 + 5 says so exactly.
+  */
+  { id: 'risk-performance', desktopColumns: 12 },
 ];
 
 export function dashboardSection(sectionId: DashboardSectionId): DashboardSectionDefinition {
@@ -233,19 +246,25 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileSpan: 2,
     mobileOrder: 110,
   },
+  /*
+    D7B — 7 + 5 of one twelve-column section, in that order because the
+    balance is the subject and the drawdown is the reading taken against it.
+    Both go full width on mobile, where the priority is Modeled Balance,
+    Period P&L, the two drawdowns, then the curve.
+  */
   {
     widgetId: 'account.balance',
-    section: 'reserved',
+    section: 'risk-performance',
     order: 120,
-    desktopSpan: 1,
+    desktopSpan: 7,
     mobileSpan: 2,
     mobileOrder: 120,
   },
   {
     widgetId: 'risk.drawdown',
-    section: 'reserved',
+    section: 'risk-performance',
     order: 130,
-    desktopSpan: 1,
+    desktopSpan: 5,
     mobileSpan: 2,
     mobileOrder: 130,
   },
