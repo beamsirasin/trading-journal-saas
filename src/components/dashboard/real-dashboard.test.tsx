@@ -433,22 +433,21 @@ describe('RealDashboard', () => {
     expect(screen.getAllByText('No comparable Trades').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('marks the selected date preset and exposes only 30D, 90D, and All links', () => {
+  /**
+   * R2B removed the section-local 30D/90D/All control. The Dashboard has ONE
+   * visible Date Range owner — the sticky toolbar — and this asserts the
+   * duplicate is genuinely gone from the page rather than merely restyled.
+   * The underlying applied state is unchanged and is still exercised by the
+   * date-domain and toolbar suites.
+   */
+  it('renders no section-local date range control', () => {
     renderDashboard();
-    const navigation = screen.getByRole('navigation', { name: 'Date range' });
-    expect(within(navigation).getByRole('link', { name: '90D' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
-    expect(within(navigation).getAllByRole('link')).toHaveLength(3);
-    expect(within(navigation).getByRole('link', { name: '30D' })).toHaveAttribute(
-      'href',
-      '/en/app?range=30d&unit=r',
-    );
-    expect(within(navigation).queryByText(/All accounts/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Date range' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '30D' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '90D' })).not.toBeInTheDocument();
   });
 
-  it('replaces custom bounds when the temporary legacy range control selects a preset', () => {
+  it('keeps an applied custom range out of the performance section entirely', () => {
     const model = overview();
     renderDashboard({
       ...model,
@@ -458,11 +457,8 @@ describe('RealDashboard', () => {
         customDateRange: { from: '2026-07-10', to: '2026-08-12' },
       },
     });
-    const navigation = screen.getByRole('navigation', { name: 'Date range' });
-    expect(within(navigation).getByRole('link', { name: '30D' })).toHaveAttribute(
-      'href',
-      '/en/app?range=30d&unit=r',
-    );
+    expect(screen.getByRole('heading', { name: 'System vs Trader performance' })).toBeVisible();
+    expect(screen.queryByRole('navigation', { name: 'Date range' })).not.toBeInTheDocument();
   });
 
   it('exposes stable widget IDs and mobile span metadata without rendering Later widgets', () => {

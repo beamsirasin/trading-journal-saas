@@ -1,7 +1,6 @@
 import { ArrowRight, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
 import type { DashboardPageData } from '@/lib/dashboard/page-data';
 import { composePerformanceCards } from '@/lib/dashboard/performance-card';
 import {
@@ -10,7 +9,6 @@ import {
   DEFAULT_DASHBOARD_LAYOUT,
 } from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
-import { DashboardStateLink } from '@/components/dashboard/dashboard-state-link';
 import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-trading-dashboard';
 import { ExecutionGapSection } from '@/components/dashboard/execution-gap/execution-gap-section';
 import { BasicKpiRow } from '@/components/dashboard/kpi/basic-kpi-row';
@@ -22,9 +20,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Link } from '@/i18n/navigation';
 
 export type { DashboardRecentTrade } from '@/lib/dashboard/page-data';
-
-const RANGE_ORDER = ['30d', '90d', 'all'] as const;
-const RANGE_KEY = { '30d': 'range30', '90d': 'range90', all: 'rangeAll' } as const;
 
 const BASIC_KPI_LAYOUT = DEFAULT_DASHBOARD_LAYOUT.filter((item) =>
   item.widgetId.startsWith('basic.'),
@@ -90,16 +85,21 @@ export function RealDashboard({
       <NeedsAttentionPanel attention={data.attention.counts} className="mt-6" />
 
       <section aria-labelledby="performance-heading" className="mt-7 flex flex-col gap-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="max-w-2xl">
-            <h2 id="performance-heading" className="text-xl font-semibold tracking-tight">
-              {t('performanceTitle')}
-            </h2>
-            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-              {t('performanceDescription', { account: accountLabel })}
-            </p>
-          </div>
-          <DashboardRangeControl filters={data.filters} />
+        {/*
+          NO LOCAL RANGE CONTROL. Through R2A this heading row carried its own
+          30D/90D/All links — a second visible owner of a range that was always
+          global. It is gone: the sticky Dashboard toolbar is the one Date
+          Range control, and it offers the full canonical preset set plus
+          Custom rather than three of the nine. The underlying state is
+          unchanged; only its single visible owner moved.
+        */}
+        <div className="max-w-2xl">
+          <h2 id="performance-heading" className="text-xl font-semibold tracking-tight">
+            {t('performanceTitle')}
+          </h2>
+          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+            {t('performanceDescription', { account: accountLabel })}
+          </p>
         </div>
 
         {/*
@@ -189,32 +189,6 @@ export function RealDashboard({
         </Link>
       </div>
     </div>
-  );
-}
-
-function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
-  const t = useTranslations('dashboard.real');
-  return (
-    <nav aria-label={t('dateRangeLabel')} className="flex flex-col gap-1.5">
-      <span className="text-muted-foreground text-label uppercase">{t('dateRangeLabel')}</span>
-      <div className="border-border bg-background inline-flex w-fit max-w-full flex-wrap rounded-lg border p-1">
-        {RANGE_ORDER.map((range) => (
-          <DashboardStateLink
-            key={range}
-            href={buildDashboardHref({ ...filters, datePreset: range, customDateRange: null })}
-            aria-current={range === filters.datePreset ? 'page' : undefined}
-            className={cn(
-              'focus-visible:ring-ring inline-flex min-h-11 min-w-14 items-center justify-center rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2',
-              range === filters.datePreset
-                ? 'bg-surface-raised text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {t(RANGE_KEY[range])}
-          </DashboardStateLink>
-        ))}
-      </div>
-    </nav>
   );
 }
 

@@ -21,6 +21,7 @@ import {
   workspaces,
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
+import { applyToolbarRange } from './support/dashboard-toolbar';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
@@ -28,6 +29,9 @@ function daysAgo(days: number, hour: number): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days, hour));
 }
+
+/** The Dashboard with no applied filter parameters at all. */
+const RANGE_UNSET_URL = new RegExp('/en/app$');
 
 async function provisionDashboardUser(prefix: string) {
   const { testUrl } = validateTestDatabaseEnvironment();
@@ -370,7 +374,7 @@ test.describe('real Dashboard', () => {
     // Wait for the App Router client boundary before exercising its Link.
     // The server-rendered values are visible sooner than hydration completes.
     await page.waitForLoadState('networkidle');
-    await page.getByRole('link', { name: '30D' }).click();
+    await applyToolbarRange(page, 'Last 30 days');
     // 15s, not the 5s default. This is an App Router client transition: the
     // click issues an RSC request for the new range and React commits the URL
     // only once that resolves. Measured in isolation the whole round trip is
@@ -385,7 +389,15 @@ test.describe('real Dashboard', () => {
     // is rendered from the SERVER's resolved filter state, so it is only
     // 'page' once the new tree has actually committed — which is what makes
     // this the assertion that the transition settled, not merely started.
-    await expect(page.getByRole('link', { name: '30D' })).toHaveAttribute('aria-current', 'page');
+    // Rendered from the SERVER's resolved filter state, so the toolbar button
+    // only reads "Last 30 days" once the new tree has actually committed —
+    // which is what makes this the assertion that the transition settled
+    // rather than merely started.
+    await expect(page.locator('[data-dashboard-toolbar-control="date-range"]')).toContainText(
+      'Last 30 days',
+    );
+    // The retired section-local control must not have come back.
+    await expect(page.getByRole('link', { name: '30D' })).toHaveCount(0);
     await expect(metric(system, 'sampleCount').getByText('2')).toBeVisible();
     await expect(metric(trader, 'sampleCount').getByText('2')).toBeVisible();
     await expect(system.getByText('+2.00R')).toBeVisible();
@@ -491,18 +503,29 @@ test.describe('real Dashboard', () => {
     const traderBox = await trader.boundingBox();
     expect(traderBox?.y ?? 0).toBeGreaterThan((systemBox?.y ?? 0) + (systemBox?.height ?? 0));
 
-    const range = page.getByRole('link', { name: '30D' });
+    const range = page.locator('[data-dashboard-toolbar-control="date-range"]');
     const rangeBox = await range.boundingBox();
     expect(rangeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
     await page.waitForLoadState('networkidle');
+
+    // At this width the picker opens as a near-full-height sheet rather than a
+    // shrunken popover: two stacked months, and a Clear/Apply footer that stays
+    // put while the months scroll.
     await range.click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+    await expect(sheet.locator('[data-range-month]')).toHaveCount(2);
+    await sheet.getByRole('button', { name: 'Last 30 days', exact: true }).click();
+    // DRAFT ONLY — still the original URL, still the original applied range.
+    await expect(page).toHaveURL(RANGE_UNSET_URL);
+    await sheet.locator('[data-dashboard-toolbar-apply="date-range"]').click();
     // The mobile half of the very same App Router transition the desktop case
     // above describes, and load-sensitive for the identical reason — so it
     // carries the identical bounded allowance rather than the 5s default.
     await expect(page).toHaveURL(/range=30d/, { timeout: 15_000 });
     // Server-rendered from the resolved filter state, so it only reads 'page'
     // once the new tree has committed: the transition settled, not just started.
-    await expect(range).toHaveAttribute('aria-current', 'page');
+    await expect(range).toContainText('Last 30 days');
     await expect(page.getByRole('link', { name: 'XAUUSD' })).toBeVisible();
 
     const dimensions = await page.evaluate(() => ({

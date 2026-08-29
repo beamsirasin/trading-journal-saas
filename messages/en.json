@@ -515,6 +515,62 @@
       "rangeAllFull": "All recorded trades",
       "rangeCustom": "Custom"
     },
+    "toolbar": {
+      "dateRange": {
+        "title": "Date range",
+        "triggerLabel": "Date range: {range}. Open date range controls",
+        "presetsLabel": "Quick ranges",
+        "presets": {
+          "today": "Today",
+          "week": "This week",
+          "month": "This month",
+          "30d": "Last 30 days",
+          "90d": "Last 90 days",
+          "quarter": "This quarter",
+          "ytd": "YTD",
+          "all": "All time"
+        },
+        "startDate": "Start date",
+        "endDate": "End date",
+        "selectEndDate": "Select an end date",
+        "pendingEndDate": "Pick an end date to complete this custom range. The dashboard does not change until you apply.",
+        "monthNavLabel": "Calendar months",
+        "previousMonth": "Previous month",
+        "nextMonth": "Next month",
+        "cellState": {
+          "start": "range start",
+          "end": "range end",
+          "selected": "selected",
+          "inRange": "in selected range",
+          "today": "today",
+          "unavailable": "unavailable"
+        },
+        "clear": "Clear",
+        "apply": "Apply"
+      },
+      "filters": {
+        "title": "Filters",
+        "triggerLabelEmpty": "Filters. No filters applied",
+        "triggerLabelActive": "Filters. {count, plural, one {# filter applied} other {# filters applied}}",
+        "strategy": "Strategy",
+        "setup": "Setup",
+        "setupHint": "Choose a strategy to narrow the setups listed here.",
+        "allStrategies": "All strategies",
+        "allSetups": "All setups",
+        "archived": "Archived",
+        "versionPinned": "A strategy version override from the link is applied to {strategy}. Changing the strategy clears it.",
+        "clear": "Clear",
+        "apply": "Apply"
+      },
+      "account": {
+        "title": "Trading account",
+        "triggerLabel": "Trading account: {account}. Open account selection",
+        "allAccounts": "All accounts",
+        "allAccountsDescription": "Every account in this workspace",
+        "noAccount": "No account",
+        "current": "Current selection"
+      }
+    },
     "systemVsTrader": {
       "title": "System vs trader",
       "description": "The same trades, scored two ways.",

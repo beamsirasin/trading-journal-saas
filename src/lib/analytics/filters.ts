@@ -141,12 +141,63 @@ function addCalendarDays(date: string, days: number): string | null {
 }
 
 /**
+ * THE PRESET ARITHMETIC, AS LOCAL CALENDAR DATES AND NOTHING ELSE.
+ *
+ * Extracted so the Dashboard's Date Range picker can show a reader the exact
+ * inclusive dates a quick preset stands for WITHOUT reimplementing any of it.
+ * CLAUDE.md §6 forbids a second copy of a definition living in the UI; this is
+ * the one definition, and both the query bounds below and the picker summary
+ * read it.
+ *
+ * Rolling 30/90-day compatibility is today plus the preceding 29/89 dates.
+ * `week`, `month`, `quarter` and `ytd` are period-to-date through the user's
+ * local today; week starts Monday, which is a product contract and does not
+ * vary by browser locale. Calendar arithmetic happens on date fields, never by
+ * subtracting fixed hours.
+ *
+ * `localToday` is always a date the CALLER resolved in the user's persisted
+ * analytics timezone. Nothing here calls `new Date()` for "now".
+ */
+export function resolveLocalDatePresetRange(
+  preset: Exclude<AnalyticsDatePreset, 'all' | 'custom'>,
+  localToday: string,
+): { readonly ok: true; readonly from: string; readonly to: string } | { readonly ok: false } {
+  const todayParts = parseCalendarParts(localToday);
+  if (!todayParts.ok) return { ok: false };
+  const { year, month } = todayParts.value;
+
+  let startDate: string;
+  if (preset === 'today') {
+    startDate = localToday;
+  } else if (preset === '30d' || preset === '90d') {
+    const dayCount = preset === '30d' ? 30 : 90;
+    const rollingStart = addCalendarDays(localToday, -(dayCount - 1));
+    if (rollingStart === null) return { ok: false };
+    startDate = rollingStart;
+  } else if (preset === 'week') {
+    const utcDay = new Date(Date.UTC(year, month - 1, todayParts.value.day, 12)).getUTCDay();
+    const daysSinceMonday = (utcDay + 6) % 7;
+    const weekStart = addCalendarDays(localToday, -daysSinceMonday);
+    if (weekStart === null) return { ok: false };
+    startDate = weekStart;
+  } else if (preset === 'month') {
+    startDate = formatCalendarParts(year, month, 1);
+  } else if (preset === 'quarter') {
+    const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
+    startDate = formatCalendarParts(year, quarterStartMonth, 1);
+  } else {
+    startDate = formatCalendarParts(year, 1, 1);
+  }
+
+  return { ok: true, from: startDate, to: localToday };
+}
+
+/**
  * Resolves the canonical user-local calendar presets to half-open UTC bounds.
- * Rolling 30/90-day compatibility remains today plus the preceding 29/89
- * dates. `week`, `month`, `quarter`, and `ytd` are period-to-date through the
- * user's local today; week starts Monday. Calendar arithmetic happens on date
- * fields, never by subtracting fixed hours, and existing time primitives own
- * timezone/DST resolution.
+ *
+ * The preset arithmetic itself lives in `resolveLocalDatePresetRange` above;
+ * this function owns only the timezone resolution around it and the custom
+ * range's validation. Existing time primitives own timezone/DST resolution.
  */
 export function resolveAnalyticsDateBounds(
   preset: AnalyticsDatePreset,
@@ -178,33 +229,11 @@ export function resolveAnalyticsDateBounds(
 
     const localToday = calendarDateIn(referenceInstant, timeZone);
     if (!localToday.ok) return { ok: false, code: 'invalid_timezone' };
-    endDate = localToday.value;
 
-    const todayParts = parseCalendarParts(localToday.value);
-    if (!todayParts.ok) return { ok: false, code: 'invalid_reference_instant' };
-    const { year, month } = todayParts.value;
-
-    if (preset === 'today') {
-      startDate = localToday.value;
-    } else if (preset === '30d' || preset === '90d') {
-      const dayCount = preset === '30d' ? 30 : 90;
-      const rollingStart = addCalendarDays(localToday.value, -(dayCount - 1));
-      if (rollingStart === null) return { ok: false, code: 'invalid_reference_instant' };
-      startDate = rollingStart;
-    } else if (preset === 'week') {
-      const utcDay = new Date(Date.UTC(year, month - 1, todayParts.value.day, 12)).getUTCDay();
-      const daysSinceMonday = (utcDay + 6) % 7;
-      const weekStart = addCalendarDays(localToday.value, -daysSinceMonday);
-      if (weekStart === null) return { ok: false, code: 'invalid_reference_instant' };
-      startDate = weekStart;
-    } else if (preset === 'month') {
-      startDate = formatCalendarParts(year, month, 1);
-    } else if (preset === 'quarter') {
-      const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
-      startDate = formatCalendarParts(year, quarterStartMonth, 1);
-    } else {
-      startDate = formatCalendarParts(year, 1, 1);
-    }
+    const resolved = resolveLocalDatePresetRange(preset, localToday.value);
+    if (!resolved.ok) return { ok: false, code: 'invalid_reference_instant' };
+    startDate = resolved.from;
+    endDate = resolved.to;
   }
 
   const start = startOfDayIn(startDate, timeZone);

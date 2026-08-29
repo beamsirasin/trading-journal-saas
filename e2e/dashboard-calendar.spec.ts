@@ -15,6 +15,7 @@ import {
   workspaces,
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
+import { applyToolbarRange } from './support/dashboard-toolbar';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
@@ -329,19 +330,20 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
     await expect(cell(page, SYSTEM_ONLY_DAY)).toHaveAttribute('data-calendar-cell', 'empty');
 
     // The Dashboard range control uses the same document-navigation boundary.
-    // Each transition is one click, and the canonical filter serializer still
-    // owns which defaults are omitted.
-    await page.getByRole('link', { name: '30D' }).click();
+    // Since R2B it is the TOOLBAR picker rather than the retired section-local
+    // links: each applied change is one Apply, and the canonical filter
+    // serializer still owns which defaults are omitted.
+    await applyToolbarRange(page, 'Last 30 days');
     await expect(page).toHaveURL((url) => url.searchParams.get('range') === '30d', {
       timeout: 20_000,
     });
     await expect(page).toHaveURL((url) => url.searchParams.get('unit') === 'r');
-    await page.getByRole('link', { name: '90D' }).click();
+    await applyToolbarRange(page, 'Last 90 days');
     await expect(page).toHaveURL((url) => url.searchParams.get('range') === '90d', {
       timeout: 20_000,
     });
     await expect(page).toHaveURL((url) => url.searchParams.get('unit') === 'r');
-    await page.getByRole('link', { name: 'All', exact: true }).click();
+    await applyToolbarRange(page, 'All time');
     await expect(page).toHaveURL((url) => url.searchParams.get('range') === 'all', {
       timeout: 20_000,
     });
@@ -540,10 +542,26 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
     });
     const review = page.getByRole('dialog');
     await expect(review).toBeVisible();
+    /*
+      POLLED, BECAUSE `toBeVisible()` RESOLVES AT ANIMATION FRAME ZERO.
+
+      The Day Review is a `dialog-content`, and its open animation
+      (`menu-content-in`, globals.css) starts at `transform: scale(0.95)`. A
+      single `boundingBox()` taken the instant the element becomes visible can
+      therefore measure 95% of the real width — at a 390px viewport, exactly
+      370.5px — which is a measurement of the animation, not of the layout.
+      This showed up only under a loaded parallel run, which is the worst way
+      for a geometry assertion to fail. Polling asserts the SETTLED geometry
+      and keeps the threshold honest rather than lowering it to accommodate a
+      mid-animation frame.
+
+      Full-bleed to the viewport edges; the few pixels of slack are the
+      scrollbar gutter, not a narrow centred modal.
+    */
+    await expect
+      .poll(async () => (await review.boundingBox())?.width ?? 0, { timeout: 10_000 })
+      .toBeGreaterThanOrEqual(374);
     const reviewBox = await review.boundingBox();
-    // Full-bleed to the viewport edges; the few pixels of slack are the
-    // scrollbar gutter, not a narrow centred modal.
-    expect(reviewBox?.width ?? 0).toBeGreaterThanOrEqual(374);
     expect(reviewBox?.height ?? 0).toBeLessThan(800);
     await expect(calendar(page)).toBeAttached();
     await expectNoHorizontalOverflow(page);

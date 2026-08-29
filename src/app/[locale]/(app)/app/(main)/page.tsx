@@ -15,7 +15,11 @@ import {
   RealDashboard,
 } from '@/components/dashboard/real-dashboard';
 import { RiskPerformanceSection } from '@/components/dashboard/risk/risk-performance-section';
-import { PageHeader } from '@/components/product/page-header';
+import {
+  DashboardToolbar,
+  DashboardToolbarControlsSkeleton,
+} from '@/components/dashboard/toolbar/dashboard-toolbar';
+import { DashboardToolbarControls } from '@/components/dashboard/toolbar/dashboard-toolbar-controls';
 import { Container } from '@/components/shell/container';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import type { AppLocale } from '@/i18n/routing';
@@ -57,23 +61,56 @@ export default async function AppOverviewPage({
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('dashboard');
 
-  return (
-    /*
-      `canvas`, not `wide` (D4.5 §1): the Dashboard is the one surface where a
-      1728/1920-class monitor was showing a 1536px column with ~128px of dead
-      margin either side. The gutters are unchanged (16/24/32px) — only the
-      ceiling moved, so 1280 and 1440 are byte-for-byte what they were and
-      only the widths the old cap was actually clipping change.
+  /*
+    THE TOOLBAR PARSES THE URL FOR ITSELF, SYNCHRONOUSLY.
 
-      `gap-5` puts 20px between the page header and the account context bar,
-      which is where the rest of the page's explicit rhythm starts.
-    */
-    <Container width="canvas" className="flex min-w-0 flex-col gap-5 py-6">
-      <PageHeader title={t('title')} description={t('description')} />
-      <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent locale={locale} rawSearchParams={rawSearchParams} />
-      </Suspense>
-    </Container>
+    It needs the applied filter state to render its own labels, and it must
+    not wait on the five analytical reads to do it — the bar a reader uses to
+    CHANGE the range would then only appear once the current range had
+    finished computing. Parsing is pure and cheap, so both halves of the page
+    call the same canonical parser rather than one passing state to the other
+    across a Suspense boundary. On invalid filters the toolbar renders no
+    controls at all: the page body below is already showing the error, and
+    controls seeded from unparseable state would be lying about what is
+    applied.
+  */
+  const parsedFilters = parseDashboardFilterState(rawSearchParams);
+  const dateLocale = DATE_LOCALE[locale] ?? 'en-GB';
+
+  return (
+    <>
+      <DashboardToolbar
+        title={t('title')}
+        controls={
+          parsedFilters.ok ? (
+            <Suspense fallback={<DashboardToolbarControlsSkeleton />}>
+              <DashboardToolbarControls filters={parsedFilters.state} dateLocale={dateLocale} />
+            </Suspense>
+          ) : null
+        }
+      />
+      {/*
+        `canvas`, not `wide` (D4.5 §1): the Dashboard is the one surface where a
+        1728/1920-class monitor was showing a 1536px column with ~128px of dead
+        margin either side. The gutters are unchanged (16/24/32px) — only the
+        ceiling moved, so 1280 and 1440 are byte-for-byte what they were and
+        only the widths the old cap was actually clipping change.
+
+        The page's own `<h1>` now lives in the sticky toolbar above, which is
+        the frozen toolbar contract's composition — one Dashboard identity, one
+        set of global controls, on one line. The supporting sentence stays here,
+        in the scrolling content, where it belongs to the page rather than to
+        the persistent chrome.
+      */}
+      <Container width="canvas" className="flex min-w-0 flex-col gap-5 pt-5 pb-6">
+        <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed text-pretty">
+          {t('description')}
+        </p>
+        <Suspense fallback={<DashboardSkeleton />}>
+          <DashboardContent locale={locale} rawSearchParams={rawSearchParams} />
+        </Suspense>
+      </Container>
+    </>
   );
 }
 

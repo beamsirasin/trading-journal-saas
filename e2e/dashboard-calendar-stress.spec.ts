@@ -17,6 +17,7 @@ import {
   workspaces,
 } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
+import { dateRangeApply, draftToolbarRange } from './support/dashboard-toolbar';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
 
@@ -301,14 +302,23 @@ interface StepResult {
   readonly pending?: unknown;
 }
 
-/** One click, one expectation, NO retry. */
+/**
+ * One click, one expectation, NO retry.
+ *
+ * `prepare` runs BEFORE the clock starts. It exists for the R2B toolbar
+ * picker, whose applied change is reached by opening a panel and drafting a
+ * preset first — both of which are deliberately NOT transitions. Timing them
+ * would measure a popover opening and report it as routing latency.
+ */
 async function step(
   page: Page,
   probe: Probe,
   name: string,
   link: Locator,
   expected: (url: URL) => boolean,
+  prepare?: () => Promise<void>,
 ): Promise<StepResult> {
+  if (prepare !== undefined) await prepare();
   const from = page.url();
   const href = await link.getAttribute('href');
   const rscBefore = probe.rsc.length;
@@ -403,8 +413,9 @@ test('control: first navigation after a document load, Dashboard vs a plain rout
         page,
         probe,
         'dashboard:range->30d',
-        page.getByRole('link', { name: '30D' }),
+        dateRangeApply(page),
         (url) => url.searchParams.get('range') === '30d',
+        () => draftToolbarRange(page, 'Last 30 days'),
       ),
     );
 
@@ -497,8 +508,9 @@ test('D6B transition stress: 20 iterations, single click per transition, no retr
         page,
         probe,
         'range->30d',
-        page.getByRole('link', { name: '30D' }),
+        dateRangeApply(page),
         (url) => url.searchParams.get('range') === '30d',
+        () => draftToolbarRange(page, 'Last 30 days'),
       ),
     );
     results.push(
@@ -506,8 +518,9 @@ test('D6B transition stress: 20 iterations, single click per transition, no retr
         page,
         probe,
         'range->90d',
-        page.getByRole('link', { name: '90D' }),
+        dateRangeApply(page),
         (url) => url.searchParams.get('range') === '90d',
+        () => draftToolbarRange(page, 'Last 90 days'),
       ),
     );
     results.push(
@@ -515,8 +528,9 @@ test('D6B transition stress: 20 iterations, single click per transition, no retr
         page,
         probe,
         'range->all',
-        page.getByRole('link', { name: 'All', exact: true }),
+        dateRangeApply(page),
         (url) => url.searchParams.get('range') === 'all',
+        () => draftToolbarRange(page, 'All time'),
       ),
     );
 
