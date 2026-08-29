@@ -87,9 +87,9 @@ export function formatAnalyticsMetric(
 }
 
 /**
- * The Dashboard accepts one public query value only. Invalid strings and
- * arrays are rejected by the strict 09B contract, then safely fall back to
- * that same contract's default 90D scope.
+ * Compatibility adapter for the legacy range-only Dashboard service. Invalid
+ * strings, arrays, and `custom` without its required dates fall back to 90D.
+ * The live Dashboard route uses the full Dashboard parser instead.
  */
 export function resolveDashboardDatePreset(value: unknown): AnalyticsDatePreset {
   const candidate = value === undefined ? {} : { datePreset: value };

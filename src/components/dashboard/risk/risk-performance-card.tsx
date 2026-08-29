@@ -19,10 +19,27 @@ import { ModeledBalanceChart } from './modeled-balance-chart';
 const BALANCE_LAYOUT = dashboardLayoutItem('account.balance');
 const DRAWDOWN_LAYOUT = dashboardLayoutItem('risk.drawdown');
 
-const RANGE_KEY: Record<AnalyticsDatePreset, 'range30' | 'range90' | 'rangeAll'> = {
+const RANGE_KEY: Record<
+  AnalyticsDatePreset,
+  | 'rangeToday'
+  | 'rangeWeek'
+  | 'rangeMonth'
+  | 'range30'
+  | 'range90'
+  | 'rangeQuarter'
+  | 'rangeYtd'
+  | 'rangeAll'
+  | 'rangeCustom'
+> = {
+  today: 'rangeToday',
+  week: 'rangeWeek',
+  month: 'rangeMonth',
   '30d': 'range30',
   '90d': 'range90',
+  quarter: 'rangeQuarter',
+  ytd: 'rangeYtd',
   all: 'rangeAll',
+  custom: 'rangeCustom',
 };
 
 const TONE_CLASS: Record<RiskMoneyTone, string> = {

@@ -502,12 +502,18 @@
       "tradingAccount": "Trading account",
       "dateRange": "Date range",
       "allAccounts": "All accounts",
+      "rangeToday": "Today",
+      "rangeWeek": "This week",
+      "rangeMonth": "This month",
       "range30": "30 days",
       "range30Full": "Last 30 days",
       "range90": "90 days",
       "range90Full": "Last 90 days",
+      "rangeQuarter": "This quarter",
+      "rangeYtd": "Year to date",
       "rangeAll": "All time",
-      "rangeAllFull": "All recorded trades"
+      "rangeAllFull": "All recorded trades",
+      "rangeCustom": "Custom"
     },
     "systemVsTrader": {
       "title": "System vs trader",

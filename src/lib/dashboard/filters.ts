@@ -1,6 +1,7 @@
 import {
   parseAnalyticsFilters,
   type AnalyticsAccountScope,
+  type AnalyticsCustomDateRange,
   type AnalyticsDatePreset,
   type AnalyticsFilterInput,
 } from '@/lib/analytics/filters';
@@ -25,6 +26,7 @@ export interface DashboardDimensionFilterState {
 
 export interface DashboardFilterState {
   readonly datePreset: AnalyticsDatePreset;
+  readonly customDateRange: AnalyticsCustomDateRange | null;
   readonly accountScope: AnalyticsAccountScope;
   readonly strategyId: string | null;
   readonly setupId: string | null;
@@ -35,7 +37,16 @@ export interface DashboardFilterState {
   readonly dimensions: DashboardDimensionFilterState;
 }
 
-const URL_KEYS = ['range', 'account', 'strategy', 'setup', 'version', 'unit'] as const;
+const URL_KEYS = [
+  'range',
+  'from',
+  'to',
+  'account',
+  'strategy',
+  'setup',
+  'version',
+  'unit',
+] as const;
 
 /**
  * Keys this parser tolerates but does NOT own.
@@ -84,6 +95,8 @@ export function parseDashboardFilterState(value: unknown): ParseDashboardFilterS
 
   const input = {
     ...(raw.range === undefined ? {} : { datePreset: raw.range }),
+    ...(raw.from === undefined ? {} : { fromDate: raw.from }),
+    ...(raw.to === undefined ? {} : { toDate: raw.to }),
     ...(raw.account === undefined ? {} : { tradingAccountId: raw.account }),
     ...(raw.strategy === undefined ? {} : { strategyId: raw.strategy }),
     ...(raw.setup === undefined ? {} : { setupId: raw.setup }),
@@ -113,6 +126,10 @@ export function parseDashboardFilterState(value: unknown): ParseDashboardFilterS
 /** Canonical, stable URL serialization for Dashboard filter state. */
 export function serializeDashboardFilterState(state: DashboardFilterState): URLSearchParams {
   const params = new URLSearchParams({ range: state.datePreset, unit: state.unitMode });
+  if (state.customDateRange !== null) {
+    params.set('from', state.customDateRange.from);
+    params.set('to', state.customDateRange.to);
+  }
   if (state.accountScope.kind === 'all') params.set('account', 'all');
   else if (state.accountScope.kind === 'account') {
     params.set('account', state.accountScope.accountId);
@@ -131,6 +148,9 @@ export function buildDashboardHref(state: DashboardFilterState): string {
 export function dashboardAnalyticsInput(state: DashboardFilterState): AnalyticsFilterInput {
   return {
     datePreset: state.datePreset,
+    ...(state.customDateRange === null
+      ? {}
+      : { fromDate: state.customDateRange.from, toDate: state.customDateRange.to }),
     ...(state.accountScope.kind === 'all'
       ? { tradingAccountId: 'all' as const }
       : state.accountScope.kind === 'account'

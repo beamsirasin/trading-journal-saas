@@ -250,6 +250,8 @@ function base(
 function analyticsSelection(filters: DashboardFilterState): AnalyticsUrlSelection {
   return {
     range: filters.datePreset,
+    from: filters.customDateRange?.from ?? null,
+    to: filters.customDateRange?.to ?? null,
     account:
       filters.accountScope.kind === 'all'
         ? 'all'

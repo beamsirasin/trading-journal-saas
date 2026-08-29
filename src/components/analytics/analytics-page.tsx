@@ -313,6 +313,8 @@ export function AnalyticsFilterError({ options }: { options: AnalyticsFilterOpti
   const t = useTranslations('analytics.real');
   const defaultSelection: AnalyticsUrlSelection = {
     range: '90d',
+    from: null,
+    to: null,
     account: null,
     strategy: null,
     setup: null,

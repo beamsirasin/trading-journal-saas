@@ -216,11 +216,13 @@ async function createPriceModeTrade(params: {
 
 function filters(
   accountId: string | 'all' | undefined,
-  datePreset: '30d' | '90d' | 'all' = 'all',
+  datePreset: '30d' | '90d' | 'all' | 'custom' = 'all',
   analytical: { readonly strategyId?: string; readonly setupId?: string } = {},
+  customDateRange: { readonly from: string; readonly to: string } | null = null,
 ): DashboardFilterState {
   return {
     datePreset,
+    customDateRange,
     accountScope:
       accountId === undefined
         ? { kind: 'active' }
@@ -317,6 +319,12 @@ describe('Risk Performance PostgreSQL boundary', () => {
     const thirty = requireAvailable(
       await getRiskPerformanceData(filters(accountId, '30d'), READ_OPTIONS),
     );
+    const custom = requireAvailable(
+      await getRiskPerformanceData(
+        filters(accountId, 'custom', {}, { from: '2026-08-15', to: '2026-08-15' }),
+        READ_OPTIONS,
+      ),
+    );
     expect(all).toMatchObject({
       openingBalanceMinor: '1000000',
       endingBalanceMinor: '1160000',
@@ -335,7 +343,14 @@ describe('Risk Performance PostgreSQL boundary', () => {
       periodNetPnlMinor: '30000',
       closedTradeCount: 1,
     });
+    expect(custom).toMatchObject({
+      openingBalanceMinor: '1130000',
+      endingBalanceMinor: '1160000',
+      periodNetPnlMinor: '30000',
+      closedTradeCount: 1,
+    });
     expect(thirty.completeness.checkedClosedTradeCount).toBe(3);
+    expect(custom.completeness.checkedClosedTradeCount).toBe(3);
   });
 
   it('keeps Account A/B distinct, returns valid no-activity data, and fails All Accounts closed', async () => {

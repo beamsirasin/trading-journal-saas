@@ -4,7 +4,7 @@ import {
   type AnalyticsFilterInput,
 } from './filters';
 
-const URL_FILTER_KEYS = ['range', 'account', 'strategy', 'setup', 'version'] as const;
+const URL_FILTER_KEYS = ['range', 'from', 'to', 'account', 'strategy', 'setup', 'version'] as const;
 const URL_FILTER_KEY_SET = new Set<string>(URL_FILTER_KEYS);
 
 export const ANALYTICS_VIEWS = ['overview', 'results', 'edge', 'behavior'] as const;
@@ -18,6 +18,8 @@ export function parseAnalyticsView(value: unknown): AnalyticsView {
 
 export interface AnalyticsUrlSelection {
   readonly range: AnalyticsDatePreset;
+  readonly from: string | null;
+  readonly to: string | null;
   readonly account: string | null;
   readonly strategy: string | null;
   readonly setup: string | null;
@@ -29,6 +31,8 @@ export function buildAnalyticsViewHref(
   view: AnalyticsView,
 ): string {
   const params = new URLSearchParams({ view, range: selection.range });
+  if (selection.from !== null) params.set('from', selection.from);
+  if (selection.to !== null) params.set('to', selection.to);
   if (selection.account !== null) params.set('account', selection.account);
   if (selection.strategy !== null) params.set('strategy', selection.strategy);
   if (selection.setup !== null) params.set('setup', selection.setup);
@@ -76,6 +80,8 @@ export function parseAnalyticsUrlFilters(value: unknown): ParseAnalyticsUrlFilte
 
   const input = {
     ...(raw.range === undefined ? {} : { datePreset: raw.range as string }),
+    ...(raw.from === undefined ? {} : { fromDate: raw.from as string }),
+    ...(raw.to === undefined ? {} : { toDate: raw.to as string }),
     ...(raw.account === undefined ? {} : { tradingAccountId: raw.account as string }),
     ...(raw.strategy === undefined ? {} : { strategyId: raw.strategy as string }),
     ...(raw.setup === undefined ? {} : { setupId: raw.setup as string }),
@@ -89,6 +95,8 @@ export function parseAnalyticsUrlFilters(value: unknown): ParseAnalyticsUrlFilte
     input: input as AnalyticsFilterInput,
     selection: {
       range: parsed.filters.datePreset,
+      from: parsed.filters.customDateRange?.from ?? null,
+      to: parsed.filters.customDateRange?.to ?? null,
       account:
         parsed.filters.accountScope.kind === 'active'
           ? null

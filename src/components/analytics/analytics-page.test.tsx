@@ -264,7 +264,15 @@ function renderPage(
       <RealAnalyticsPage
         snapshot={model}
         filterOptions={options}
-        selection={{ range: '90d', account: null, strategy: null, setup: null, version: null }}
+        selection={{
+          range: '90d',
+          from: null,
+          to: null,
+          account: null,
+          strategy: null,
+          setup: null,
+          version: null,
+        }}
         equity={{ trader: display, system: systemDisplay }}
         view={view}
       />

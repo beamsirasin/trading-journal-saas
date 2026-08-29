@@ -94,11 +94,14 @@ describe('Dashboard analytics presentation formatting', () => {
 });
 
 describe('Dashboard date preset normalization', () => {
-  it.each(['30d', '90d', 'all'] as const)('accepts %s through the strict contract', (range) => {
-    expect(resolveDashboardDatePreset(range)).toBe(range);
-  });
+  it.each(['today', 'week', 'month', '30d', '90d', 'quarter', 'ytd', 'all'] as const)(
+    'accepts %s through the strict contract',
+    (range) => {
+      expect(resolveDashboardDatePreset(range)).toBe(range);
+    },
+  );
 
-  it.each([undefined, '7d', 'ytd', ['30d'], { datePreset: 'all' }])(
+  it.each([undefined, '7d', 'custom', ['30d'], { datePreset: 'all' }])(
     'falls invalid public value %j back to 90d',
     (range) => {
       expect(resolveDashboardDatePreset(range)).toBe('90d');

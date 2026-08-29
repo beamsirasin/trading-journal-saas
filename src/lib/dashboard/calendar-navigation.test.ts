@@ -16,6 +16,7 @@ const TRADE_ID = '019fd752-2c97-76e2-8af5-178c49d17ab9';
 
 const FILTERS: DashboardFilterState = {
   datePreset: '30d',
+  customDateRange: null,
   accountScope: { kind: 'account', accountId: '019c43dc-8c6c-7000-8000-000000000001' },
   strategyId: '019c43dc-8c6c-7000-8000-000000000002',
   setupId: null,
@@ -113,6 +114,23 @@ describe('calendar navigation serialization', () => {
     expect(params.get('unit')).toBe('r');
     expect(params.get('month')).toBe('2026-03');
     expect(params.get('day')).toBe('2026-03-05');
+  });
+
+  it('preserves custom Dashboard bounds while Calendar navigation remains local', () => {
+    const customFilters: DashboardFilterState = {
+      ...FILTERS,
+      datePreset: 'custom',
+      customDateRange: { from: '2026-03-02', to: '2026-03-20' },
+    };
+    const params = serializeCalendarState(customFilters, {
+      ...BASE,
+      selectedDate: '2026-03-05',
+    });
+    expect(params.get('range')).toBe('custom');
+    expect(params.get('from')).toBe('2026-03-02');
+    expect(params.get('to')).toBe('2026-03-20');
+    expect(parseDashboardFilterState(Object.fromEntries(params)).ok).toBe(true);
+    expect(parseCalendarNavigation(Object.fromEntries(params)).ok).toBe(true);
   });
 
   it('omits defaults so a closed Day Review and one never opened share a URL', () => {

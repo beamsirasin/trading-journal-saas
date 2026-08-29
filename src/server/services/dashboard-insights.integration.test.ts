@@ -346,6 +346,7 @@ function filters(
 ): DashboardFilterState {
   return {
     datePreset,
+    customDateRange: null,
     accountScope: { kind: 'account', accountId },
     strategyId: null,
     setupId: null,

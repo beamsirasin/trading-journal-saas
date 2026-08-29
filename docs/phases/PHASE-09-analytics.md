@@ -4,6 +4,11 @@
 
 **Status:** Complete. Phase 09A–09F delivered and verified the authenticated analytics read model, canonical composition, real Dashboard, deep Analytics experience, and full closeout. Phase 10 — Settings is next.
 
+> This file records the Phase 09 closeout state. The later
+> [Dashboard Global Controls & Date Range Foundation](../reviews/dashboard-global-controls-date-range-foundation.md)
+> extends its shared date vocabulary with period-to-date and custom ranges while preserving the
+> original 30D/90D/All meanings.
+
 ## Goal
 
 Answer three different questions without collapsing their populations:

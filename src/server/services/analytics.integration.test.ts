@@ -1157,7 +1157,23 @@ describe('analytics service (real PostgreSQL)', () => {
       range: '30d',
       unit: 'r',
     });
-    if (!all.ok || !bounded.ok) throw new Error('filter parse failed');
+    const customDay = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'custom',
+      from: '2026-04-15',
+      to: '2026-04-15',
+      unit: 'r',
+    });
+    const customAfter = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'custom',
+      from: '2026-04-16',
+      to: '2026-04-30',
+      unit: 'r',
+    });
+    if (!all.ok || !bounded.ok || !customDay.ok || !customAfter.ok) {
+      throw new Error('filter parse failed');
+    }
 
     // The fixture's Trades exit in early August; the reference instant is
     // 2026-08-09, so a 30D window starts 2026-07-10 and still contains them.
@@ -1200,6 +1216,26 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(allApril.data.status).toBe('available');
     if (allApril.data.status !== 'available') throw new Error('unreachable');
     expect(allApril.data.days.map((day) => day.date)).toContain('2026-04-15');
+
+    const [inclusiveCustom, outsideCustom] = await Promise.all([
+      getDashboardCalendarMonthInZone(
+        customDay.state,
+        { mode: 'actual', year: 2026, month: 4 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+      getDashboardCalendarMonthInZone(
+        customAfter.state,
+        { mode: 'actual', year: 2026, month: 4 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+    ]);
+    if (!inclusiveCustom.ok || !outsideCustom.ok) throw new Error('read failed');
+    expect(inclusiveCustom.data.status).toBe('available');
+    expect(outsideCustom.data.status).toBe('empty');
+    if (inclusiveCustom.data.status !== 'available') throw new Error('unreachable');
+    expect(inclusiveCustom.data.days.map((day) => day.date)).toContain('2026-04-15');
   });
 
   it('D6A opens a Day Review whose rows reconcile with the Calendar day', async () => {

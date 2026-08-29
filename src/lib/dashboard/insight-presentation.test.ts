@@ -154,6 +154,22 @@ describe('Insight pillars presentation — three cards, one payload', () => {
       expect(item.analyticsHref).toContain('range=all');
     }
   });
+
+  it('preserves canonical custom bounds in every Dashboard-to-Analytics link', () => {
+    const result = view(
+      TWENTY,
+      {},
+      filters({
+        datePreset: 'custom',
+        customDateRange: { from: '2026-07-10', to: '2026-08-12' },
+      }),
+    );
+    for (const item of result.cards) {
+      expect(item.analyticsHref).toContain('range=custom');
+      expect(item.analyticsHref).toContain('from=2026-07-10');
+      expect(item.analyticsHref).toContain('to=2026-08-12');
+    }
+  });
 });
 
 describe('Strategy pillar', () => {

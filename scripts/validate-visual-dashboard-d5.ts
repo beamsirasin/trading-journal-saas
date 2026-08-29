@@ -56,6 +56,7 @@ function accountScope(accountId: string, timezone: string) {
 function filters(accountId: string) {
   return {
     datePreset: 'all' as const,
+    customDateRange: null,
     accountScope: { kind: 'account' as const, accountId },
     strategyId: null,
     setupId: null,

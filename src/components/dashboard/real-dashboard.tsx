@@ -1,7 +1,6 @@
 import { ArrowRight, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
 import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
 import type { DashboardPageData } from '@/lib/dashboard/page-data';
 import { composePerformanceCards } from '@/lib/dashboard/performance-card';
@@ -24,7 +23,7 @@ import { Link } from '@/i18n/navigation';
 
 export type { DashboardRecentTrade } from '@/lib/dashboard/page-data';
 
-const RANGE_ORDER: readonly AnalyticsDatePreset[] = ['30d', '90d', 'all'];
+const RANGE_ORDER = ['30d', '90d', 'all'] as const;
 const RANGE_KEY = { '30d': 'range30', '90d': 'range90', all: 'rangeAll' } as const;
 
 const BASIC_KPI_LAYOUT = DEFAULT_DASHBOARD_LAYOUT.filter((item) =>
@@ -202,7 +201,7 @@ function DashboardRangeControl({ filters }: { filters: DashboardFilterState }) {
         {RANGE_ORDER.map((range) => (
           <DashboardStateLink
             key={range}
-            href={buildDashboardHref({ ...filters, datePreset: range })}
+            href={buildDashboardHref({ ...filters, datePreset: range, customDateRange: null })}
             aria-current={range === filters.datePreset ? 'page' : undefined}
             className={cn(
               'focus-visible:ring-ring inline-flex min-h-11 min-w-14 items-center justify-center rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2',

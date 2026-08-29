@@ -61,6 +61,7 @@ function overview(overrides: Partial<DashboardPageData> = {}): DashboardPageData
     },
     filters: {
       datePreset: '90d',
+      customDateRange: null,
       accountScope: { kind: 'active' },
       strategyId: null,
       setupId: null,
@@ -445,6 +446,23 @@ describe('RealDashboard', () => {
       '/en/app?range=30d&unit=r',
     );
     expect(within(navigation).queryByText(/All accounts/i)).not.toBeInTheDocument();
+  });
+
+  it('replaces custom bounds when the temporary legacy range control selects a preset', () => {
+    const model = overview();
+    renderDashboard({
+      ...model,
+      filters: {
+        ...model.filters,
+        datePreset: 'custom',
+        customDateRange: { from: '2026-07-10', to: '2026-08-12' },
+      },
+    });
+    const navigation = screen.getByRole('navigation', { name: 'Date range' });
+    expect(within(navigation).getByRole('link', { name: '30D' })).toHaveAttribute(
+      'href',
+      '/en/app?range=30d&unit=r',
+    );
   });
 
   it('exposes stable widget IDs and mobile span metadata without rendering Later widgets', () => {

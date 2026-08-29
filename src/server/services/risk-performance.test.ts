@@ -18,6 +18,7 @@ const REFERENCE = new Date('2026-09-01T12:00:00.000Z');
 
 const FILTERS: DashboardFilterState = {
   datePreset: '30d',
+  customDateRange: null,
   accountScope: { kind: 'account', accountId: ACCOUNT_ID },
   strategyId: STRATEGY_ID,
   setupId: SETUP_ID,

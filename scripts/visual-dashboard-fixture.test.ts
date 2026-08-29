@@ -110,6 +110,7 @@ function page() {
     },
     filters: {
       datePreset: 'all',
+      customDateRange: null,
       accountScope,
       strategyId: null,
       setupId: null,

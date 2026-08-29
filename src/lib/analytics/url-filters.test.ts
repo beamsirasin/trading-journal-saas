@@ -16,6 +16,8 @@ describe('Analytics URL filters', () => {
       buildAnalyticsViewHref(
         {
           range: 'all',
+          from: null,
+          to: null,
           account: 'all',
           strategy: STRATEGY_ID,
           setup: SETUP_ID,
@@ -43,7 +45,15 @@ describe('Analytics URL filters', () => {
     expect(parseAnalyticsUrlFilters({})).toEqual({
       ok: true,
       input: {},
-      selection: { range: '90d', account: null, strategy: null, setup: null, version: null },
+      selection: {
+        range: '90d',
+        from: null,
+        to: null,
+        account: null,
+        strategy: null,
+        setup: null,
+        version: null,
+      },
     });
   });
 
@@ -67,6 +77,8 @@ describe('Analytics URL filters', () => {
       },
       selection: {
         range: 'all',
+        from: null,
+        to: null,
         account: 'all',
         strategy: STRATEGY_ID,
         setup: SETUP_ID,
@@ -75,8 +87,40 @@ describe('Analytics URL filters', () => {
     });
   });
 
+  it('round-trips canonical custom dates without locale formatting', () => {
+    const parsed = parseAnalyticsUrlFilters({
+      range: 'custom',
+      from: '2026-07-10',
+      to: '2026-08-12',
+    });
+    expect(parsed).toEqual({
+      ok: true,
+      input: {
+        datePreset: 'custom',
+        fromDate: '2026-07-10',
+        toDate: '2026-08-12',
+      },
+      selection: {
+        range: 'custom',
+        from: '2026-07-10',
+        to: '2026-08-12',
+        account: null,
+        strategy: null,
+        setup: null,
+        version: null,
+      },
+    });
+    if (!parsed.ok) return;
+    expect(buildAnalyticsViewHref(parsed.selection, 'overview')).toBe(
+      '/app/analytics?view=overview&range=custom&from=2026-07-10&to=2026-08-12',
+    );
+  });
+
   it.each([
     { range: '7d' },
+    { range: 'custom' },
+    { range: 'custom', from: '2026-08-02', to: '2026-08-01' },
+    { range: 'all', from: '2026-08-01', to: '2026-08-02' },
     { account: 'not-a-uuid' },
     { strategy: [STRATEGY_ID] },
     { symbol: 'XAUUSD' },
@@ -89,7 +133,15 @@ describe('Analytics URL filters', () => {
     expect(parseAnalyticsUrlFilters({ range: '30d', view: 'edge' })).toEqual({
       ok: true,
       input: { datePreset: '30d' },
-      selection: { range: '30d', account: null, strategy: null, setup: null, version: null },
+      selection: {
+        range: '30d',
+        from: null,
+        to: null,
+        account: null,
+        strategy: null,
+        setup: null,
+        version: null,
+      },
     });
   });
 
@@ -97,7 +149,15 @@ describe('Analytics URL filters', () => {
     expect(parseAnalyticsUrlFilters({ view: 'behavior' })).toEqual({
       ok: true,
       input: {},
-      selection: { range: '90d', account: null, strategy: null, setup: null, version: null },
+      selection: {
+        range: '90d',
+        from: null,
+        to: null,
+        account: null,
+        strategy: null,
+        setup: null,
+        version: null,
+      },
     });
   });
 

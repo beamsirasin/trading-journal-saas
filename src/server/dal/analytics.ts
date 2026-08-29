@@ -76,6 +76,7 @@ export type ResolvedAnalyticsAccountScope =
 
 export interface ResolvedAnalyticsFilters {
   readonly datePreset: AnalyticsFilters['datePreset'];
+  readonly customDateRange: AnalyticsFilters['customDateRange'];
   readonly dateBounds: AnalyticsDateBounds;
   readonly timezone: string;
   readonly accountScope: ResolvedAnalyticsAccountScope;
@@ -196,8 +197,14 @@ export async function resolveAnalyticsQueryContext(
     filters.datePreset,
     preferences.timezone,
     options.referenceInstant ?? systemClock.now(),
+    filters.customDateRange,
   );
-  if (!dateResult.ok) return { ok: false, code: 'invalid_timezone' };
+  if (!dateResult.ok) {
+    return {
+      ok: false,
+      code: dateResult.code === 'invalid_date_range' ? 'invalid_filters' : 'invalid_timezone',
+    };
+  }
 
   return {
     ok: true,
@@ -206,6 +213,7 @@ export async function resolveAnalyticsQueryContext(
       account,
       filters: {
         datePreset: filters.datePreset,
+        customDateRange: filters.customDateRange,
         dateBounds: dateResult.bounds,
         timezone: preferences.timezone,
         accountScope,

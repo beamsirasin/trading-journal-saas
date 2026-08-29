@@ -50,6 +50,8 @@ const options: AnalyticsFilterOptions = {
 
 const selection: AnalyticsUrlSelection = {
   range: '90d',
+  from: null,
+  to: null,
   account: 'all',
   strategy: 'strategy-a',
   setup: 'setup-a',
@@ -104,6 +106,23 @@ describe('AnalyticsFilters', () => {
     expect(screen.getByRole('link', { name: /Reset filters/ })).toHaveAttribute(
       'href',
       '/app/analytics?view=overview',
+    );
+  });
+
+  it('preserves custom dates across identity edits and removes them when a preset is selected', () => {
+    renderFilters({
+      ...selection,
+      range: 'custom',
+      from: '2026-07-10',
+      to: '2026-08-12',
+    });
+    fireEvent.change(screen.getByLabelText('Account'), { target: { value: 'account-old' } });
+    expect(navigation.replace).toHaveBeenLastCalledWith(
+      '/app/analytics?view=overview&range=custom&from=2026-07-10&to=2026-08-12&account=account-old&strategy=strategy-a&setup=setup-a&version=version-a',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '30D' }));
+    expect(navigation.replace).toHaveBeenLastCalledWith(
+      '/app/analytics?view=overview&range=30d&account=all&strategy=strategy-a&setup=setup-a&version=version-a',
     );
   });
 

@@ -502,12 +502,18 @@
       "tradingAccount": "บัญชีเทรด",
       "dateRange": "ช่วงเวลา",
       "allAccounts": "ทุกบัญชี",
+      "rangeToday": "วันนี้",
+      "rangeWeek": "สัปดาห์นี้",
+      "rangeMonth": "เดือนนี้",
       "range30": "30 วัน",
       "range30Full": "30 วันล่าสุด",
       "range90": "90 วัน",
       "range90Full": "90 วันล่าสุด",
+      "rangeQuarter": "ไตรมาสนี้",
+      "rangeYtd": "ตั้งแต่ต้นปี",
       "rangeAll": "ทั้งหมด",
-      "rangeAllFull": "ออเดอร์ทั้งหมดที่บันทึกไว้"
+      "rangeAllFull": "ออเดอร์ทั้งหมดที่บันทึกไว้",
+      "rangeCustom": "กำหนดเอง"
     },
     "systemVsTrader": {
       "title": "ระบบเทียบกับเทรดเดอร์",

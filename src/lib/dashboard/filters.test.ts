@@ -18,6 +18,7 @@ describe('Dashboard filter contract', () => {
       ok: true,
       state: {
         datePreset: '90d',
+        customDateRange: null,
         accountScope: { kind: 'active' },
         strategyId: null,
         setupId: null,
@@ -69,9 +70,33 @@ describe('Dashboard filter contract', () => {
     expect(buildDashboardHref(parsed.state)).toBe('/app?range=all&unit=percentage&account=all');
   });
 
+  it('round-trips one canonical inclusive custom range into the Analytics input', () => {
+    const parsed = parseDashboardFilterState({
+      range: 'custom',
+      from: '2026-07-10',
+      to: '2026-08-12',
+      unit: 'r',
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(serializeDashboardFilterState(parsed.state).toString()).toBe(
+      'range=custom&unit=r&from=2026-07-10&to=2026-08-12',
+    );
+    expect(dashboardAnalyticsInput(parsed.state)).toEqual({
+      datePreset: 'custom',
+      fromDate: '2026-07-10',
+      toDate: '2026-08-12',
+    });
+  });
+
   it.each([
     null,
     { range: '7d' },
+    { range: 'custom' },
+    { range: 'custom', from: '2026-08-01' },
+    { range: 'custom', from: '2026-08-02', to: '2026-08-01' },
+    { range: 'custom', from: '2026-02-30', to: '2026-03-01' },
+    { range: '30d', from: '2026-08-01', to: '2026-08-02' },
     { account: 'not-a-uuid' },
     { strategy: [STRATEGY_ID] },
     { unit: 'pips' },

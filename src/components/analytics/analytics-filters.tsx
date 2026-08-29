@@ -4,14 +4,13 @@ import { RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useTransition } from 'react';
 
-import type { AnalyticsDatePreset } from '@/lib/analytics/filters';
 import type { AnalyticsUrlSelection, AnalyticsView } from '@/lib/analytics/url-filters';
 import { cn } from '@/lib/utils';
 import type { AnalyticsFilterOptions } from '@/server/dal/analytics';
 import { Label } from '@/components/ui/label';
 import { Link, useRouter } from '@/i18n/navigation';
 
-const RANGE_ORDER: readonly AnalyticsDatePreset[] = ['30d', '90d', 'all'];
+const RANGE_ORDER = ['30d', '90d', 'all'] as const;
 const RANGE_KEY = { '30d': 'range30', '90d': 'range90', all: 'rangeAll' } as const;
 
 function FilterSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
@@ -58,6 +57,8 @@ export function AnalyticsFilters({
     const params = new URLSearchParams();
     params.set('view', view);
     params.set('range', selection.range);
+    if (selection.from !== null) params.set('from', selection.from);
+    if (selection.to !== null) params.set('to', selection.to);
     if (selection.account !== null) params.set('account', selection.account);
     if (selection.strategy !== null) params.set('strategy', selection.strategy);
     if (selection.setup !== null) params.set('setup', selection.setup);
@@ -86,7 +87,13 @@ export function AnalyticsFilters({
                 type="button"
                 aria-pressed={selection.range === range}
                 disabled={isPending}
-                onClick={() => navigate((params) => params.set('range', range))}
+                onClick={() =>
+                  navigate((params) => {
+                    params.set('range', range);
+                    params.delete('from');
+                    params.delete('to');
+                  })
+                }
                 className={cn(
                   'focus-visible:ring-ring inline-flex min-h-11 min-w-16 items-center justify-center rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-2 disabled:opacity-60',
                   selection.range === range

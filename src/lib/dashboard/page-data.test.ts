@@ -78,6 +78,7 @@ function input(
     },
     filters: {
       datePreset: '90d',
+      customDateRange: null,
       accountScope: { kind: 'active' },
       strategyId: null,
       setupId: null,

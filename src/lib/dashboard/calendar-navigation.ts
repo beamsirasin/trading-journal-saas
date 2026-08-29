@@ -5,7 +5,7 @@ import { serializeDashboardFilterState, type DashboardFilterState } from './filt
  * THE CALENDAR'S OWN URL VOCABULARY, ORTHOGONAL TO THE DASHBOARD FILTERS.
  *
  * Two parsers share one URL. `parseDashboardFilterState` owns
- * `range`/`account`/`strategy`/`setup`/`version`/`unit`; this owns
+ * `range`/`from`/`to`/`account`/`strategy`/`setup`/`version`/`unit`; this owns
  * `month`/`mode`/`day`/`trade`. Neither reads the other's keys, and both fail
  * closed on anything they do not recognise — so a malformed calendar
  * parameter can never quietly widen an analytics population, and a malformed
@@ -28,7 +28,16 @@ export type CalendarUrlKey = (typeof CALENDAR_URL_KEYS)[number];
  * fail-closed: each rejects anything that is in neither list, so a typo'd
  * parameter is still an error rather than a silently ignored one.
  */
-const FOREIGN_URL_KEYS = ['range', 'account', 'strategy', 'setup', 'version', 'unit'] as const;
+const FOREIGN_URL_KEYS = [
+  'range',
+  'from',
+  'to',
+  'account',
+  'strategy',
+  'setup',
+  'version',
+  'unit',
+] as const;
 const ALLOWED_URL_KEYS = new Set<string>([...CALENDAR_URL_KEYS, ...FOREIGN_URL_KEYS]);
 
 export const DEFAULT_CALENDAR_MODE: CalendarMode = 'actual';

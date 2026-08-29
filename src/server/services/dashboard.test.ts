@@ -13,6 +13,7 @@ vi.mock('@/server/dal/analytics', () => ({ getDashboardRawData }));
 
 const FILTERS: DashboardFilterState = {
   datePreset: '30d',
+  customDateRange: null,
   accountScope: { kind: 'account', accountId: '019c43dc-8c6c-7000-8000-000000000001' },
   strategyId: '019c43dc-8c6c-7000-8000-000000000002',
   setupId: '019c43dc-8c6c-7000-8000-000000000003',
