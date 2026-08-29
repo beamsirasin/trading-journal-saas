@@ -138,8 +138,8 @@ Roles, not sizes. A call site asks for `text-display`, so changing what a role l
 | Dense label    | `MetricLabel` `plain` | 0.75rem, 500, normal case       | Metric grids, count strips  |
 | Table text     | `text-sm`             | 0.875rem                        | Table cells                 |
 | Numeric metric | `text-metric`         | clamp 1.5→1.875rem, 600         | Figures outside the KPI row |
-| KPI figure     | `kpi-figure`          | clamp 1.25→2rem, 600, `cqi`     | Four Basic KPI figures      |
-| KPI lead       | `kpi-figure-lead`     | clamp 1.25→2.25rem, 600, `cqi`  | Net P&L, the row's lead     |
+| KPI figure     | `text-kpi`            | clamp 1.25→2rem, 600, `cqi`     | Four Basic KPI figures      |
+| KPI lead       | `text-kpi-hero`       | clamp 1.25→2.25rem, 600, `cqi`  | Net P&L, the row's lead     |
 | Tabular number | `numeric` utility     | mono + `tabular-nums`           | Any figure in a column      |
 
 The three largest roles are **fluid** (`clamp`), so headings scale continuously between 320px and desktop instead of jumping at breakpoints. The lower bound is chosen to fit 320px without overflow.
@@ -148,7 +148,9 @@ Thai pages retain the same sizes and hierarchy but override the display, title, 
 
 **`MetricLabel` has two casings and the difference is density.** `caps` (the default) is the `text-label` role above: it reads as a heading, and on a surface carrying ONE label — a KPI tile, a form section — that is right. `plain` is the same size, colour and weight without the uppercase and tracking, for surfaces carrying six or twelve at once: a performance card's metric grid, an operational count strip, a table's column heads. Uppercase plus 0.06em costs roughly 15% extra width per label, and repeated a dozen times in one viewport it stops reading as hierarchy and starts reading as noise. The caps variant keeps its meaning precisely because it is no longer everywhere.
 
-**The two KPI figure roles are `@utility` rules, not `text-*` roles, and that is load-bearing.** `cn()` is `twMerge(clsx(...))`, and tailwind-merge resolves conflicts from its own default class map, which knows nothing about this project's custom `--text-*` roles. It classifies any unrecognised `text-<name>` as a text COLOUR — so `cn('text-kpi', 'text-positive')` treats the two as conflicting and keeps only the later one, silently dropping the font size and leaving the figure at its inherited 16px. Anything spelled `kpi-figure` carries no `text-` prefix and survives being toned. **This trap is not confined to the KPI row:** any call site that passes a custom `text-*` size role and a tone class through one `cn()` loses the size the same way.
+**`cn()` must be told about every custom `text-*` size role, and this is load-bearing.** `cn()` is tailwind-merge, which resolves conflicts from its own default class map and cannot discover a Tailwind v4 theme. Left to itself it classifies any unrecognised `text-<name>` as a text COLOUR — so `cn('text-metric', 'text-positive')` reads as a conflict, keeps only the later class, and silently drops the font size, leaving the figure at its inherited 16px. That was live for the whole KPI row until it was found by measuring the rendered font size rather than by reading the markup, which is the only way it shows up: the class simply never reaches the DOM.
+
+`src/lib/utils.ts` therefore extends the merge config with an explicit `font-size` group (`extendTailwindMerge`) naming `text-metric`, `text-kpi` and `text-kpi-hero`. Normal last-size-wins behaviour is preserved — `cn('text-kpi', 'text-sm')` still yields `text-sm`. **Any new `--text-*` role must be added to that list**, or it will be dropped wherever a tone class follows it.
 
 **Both KPI roles scale with the CARD (`cqi`), never with the viewport.** The row is five columns at `lg`, three at `md` and two below, so card width is not monotonic in viewport width: 1024px gives each card ~132px of content while 768px gives ~195px. A `vw`-based clamp is therefore largest exactly where the card is narrowest. The ceilings are fixed by the widest real figure in the tabular mono stack (~0.52em advance): a ten-character money total needs ~5.2× its font size in width, which is what the lead role's `18cqi` encodes.
 
