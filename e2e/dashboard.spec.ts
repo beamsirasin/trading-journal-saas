@@ -273,14 +273,26 @@ test.describe('real Dashboard', () => {
 
     await expect(netPnl).toHaveAttribute('data-kpi-status', 'available');
     await expect(netPnl.getByText('+$1.00')).toBeVisible();
-    await expect(netPnl.getByText('USD · 3 Trades')).toBeVisible();
+    // The currency left the card face — the account strip above already names
+    // it — and the population size is the one supporting line that stayed.
+    await expect(netPnl.getByText('3 Trades')).toBeVisible();
+    await expect(netPnl.getByText('USD · 3 Trades')).toHaveCount(0);
     await expect(tradeWin.getByText('66.67%')).toBeVisible();
-    await expect(tradeWin.getByText('2W · 0BE · 1L')).toBeVisible();
     await expect(kpiProfitFactor.getByText('3.00')).toBeVisible();
-    await expect(kpiProfitFactor.getByText('Calculated from R')).toBeVisible();
     await expect(dayWin.getByText('66.67%')).toBeVisible();
     await expect(avgWinLoss.getByText('1.50x')).toBeVisible();
-    await expect(avgWinLoss.getByText('+1.50R / -1.00R')).toBeVisible();
+
+    // Nothing is permanently printed under those four figures any more.
+    await expect(tradeWin.getByText('2W · 0BE · 1L')).toHaveCount(0);
+    await expect(kpiProfitFactor.getByText('Calculated from R')).toHaveCount(0);
+    await expect(avgWinLoss.getByText('+1.50R / -1.00R')).toHaveCount(0);
+
+    // Four cards carry an indicator; Net P&L has none, because no Population
+    // A money series is published to draw one from.
+    await expect(netPnl.locator('[data-kpi-indicator]')).toHaveCount(0);
+    for (const card of [tradeWin, kpiProfitFactor, dayWin, avgWinLoss]) {
+      await expect(card.locator('[data-kpi-indicator]')).toHaveCount(1);
+    }
 
     // One balanced desktop row: five cards, same top edge, equal widths.
     const kpiBoxes = await Promise.all(
@@ -295,13 +307,37 @@ test.describe('real Dashboard', () => {
     await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'About Profit Factor' }).focus();
     await page.keyboard.press('Enter');
+    await expect(page.getByText(/for every 1R your losing Trades gave up/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByText(/for every 1R your losing Trades gave up/)).toHaveCount(0);
+
+    // So is the indicator, and it is where the breakdowns went. Reached from
+    // the keyboard, read back in words, closed with Escape.
+    await page.getByRole('button', { name: 'Show Trade Win breakdown' }).focus();
+    await page.keyboard.press('Enter');
+    const breakdown = page.locator('[data-slot="kpi-indicator-content"]');
+    await expect(breakdown.getByText('Wins')).toBeVisible();
+    await expect(breakdown.locator('[data-kpi-detail-row="wins"]').getByText('2')).toBeVisible();
     await expect(
-      page.getByText(/Positive Actual R divided by absolute negative Actual R/),
+      breakdown.locator('[data-kpi-detail-row="breakEvens"]').getByText('0'),
+    ).toBeVisible();
+    await expect(breakdown.locator('[data-kpi-detail-row="losses"]').getByText('1')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(breakdown).toHaveCount(0);
+
+    // Tap, not hover: the same panel opens from a plain click, which is the
+    // only gesture a touch device has.
+    await page.getByRole('button', { name: 'Show average win and loss' }).click();
+    const payoff = page.locator('[data-slot="kpi-indicator-content"]');
+    await expect(payoff.locator('[data-kpi-detail-row="averageWin"]')).toContainText('+1.50R');
+    await expect(payoff.locator('[data-kpi-detail-row="averageLoss"]')).toContainText('-1.00R');
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('button', { name: 'Show Profit Factor detail' }).click();
+    await expect(
+      page.getByText('For every 1R lost, your winning Trades produced 3.00R.'),
     ).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(
-      page.getByText(/Positive Actual R divided by absolute negative Actual R/),
-    ).toHaveCount(0);
 
     const system = page.locator('[data-dashboard-panel="system"]');
     const trader = page.locator('[data-dashboard-panel="trader"]');

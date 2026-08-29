@@ -435,34 +435,41 @@
       "infoTrigger": "About {metric}",
       "empty": "No Trades yet",
       "compositionTrades": "{wins}W · {breakEvens}BE · {losses}L",
-      "compositionDays": "{wins}W · {breakEvens}BE · {losses}L days",
-      "currencyContext": "{currency} · {count, plural, one {# Trade} other {# Trades}}",
-      "calculatedFromR": "Calculated from R",
-      "micro": {
-        "outcomeSplitTrades": "Outcome split: {wins} wins, {breakEvens} break-even, {losses} losses",
-        "outcomeSplitDays": "Day outcome split: {wins} winning, {breakEvens} break-even, {losses} losing",
-        "winLossBalance": "Average win {win} against average loss {loss}"
+      "tradeCount": "{count, plural, one {# Trade} other {# Trades}}",
+      "detail": {
+        "wins": "Wins",
+        "breakEvens": "Break-even",
+        "losses": "Losses",
+        "winningDays": "Winning days",
+        "breakEvenDays": "Break-even days",
+        "losingDays": "Losing days",
+        "averageWin": "Average win",
+        "averageLoss": "Average loss",
+        "ratioSentence": "For every 1R lost, your winning Trades produced {factor}R."
       },
-      "averages": "{win} / {loss}",
       "netPnl": {
         "label": "Net P&L",
-        "info": "Recorded Net P&L for eligible closed Trades. Unavailable when monetary results are incomplete or currencies are mixed."
+        "info": "Your total profit or loss for the selected period."
       },
       "tradeWin": {
         "label": "Trade Win %",
-        "info": "Winning Trades divided by all eligible closed Actual Trades. Break-even remains in the denominator."
+        "info": "The percentage of closed Trades that finished in profit. Break-even Trades still count in the total.",
+        "indicatorTrigger": "Show Trade Win breakdown"
       },
       "profitFactor": {
         "label": "Profit Factor",
-        "info": "Positive Actual R divided by absolute negative Actual R. Calculated from R-multiples."
+        "info": "How much your winning Trades made for every 1R your losing Trades gave up.",
+        "indicatorTrigger": "Show Profit Factor detail"
       },
       "dayWin": {
         "label": "Day Win %",
-        "info": "Winning eligible trading days divided by all eligible trading days. Local days use the trading account's configured timezone. Break-even days remain in the denominator."
+        "info": "The percentage of trading days that ended profitable. Days follow your account's timezone.",
+        "indicatorTrigger": "Show Day Win breakdown"
       },
       "avgWinLoss": {
-        "label": "Avg Win/Loss Trade",
-        "info": "Average winning R divided by absolute average losing R. Break-even Trades excluded."
+        "label": "Avg Win / Loss",
+        "info": "How much larger your average winner is than your average loser.",
+        "indicatorTrigger": "Show average win and loss"
       }
     },
     "performance": {

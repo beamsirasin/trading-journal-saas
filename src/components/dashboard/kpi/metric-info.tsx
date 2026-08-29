@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
  *
  * Deliberately not a hover-only tooltip. The trigger is a real button, so it
  * is reachable by pointer, touch, and keyboard alike, and the definition it
- * reveals is text — never colour, never an icon shape. The 32px target clears
+ * reveals is text — never colour, never an icon shape. The 28px target clears
  * the WCAG 2.5.8 AA minimum (24px) without turning a quiet KPI card header
  * into a control strip.
  *
@@ -37,7 +37,7 @@ export function MetricInfo({
         type="button"
         data-slot="metric-info-trigger"
         aria-label={triggerLabel}
-        className="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring data-[state=open]:text-foreground data-[state=open]:bg-muted -mt-1 -mr-1 flex size-8 shrink-0 items-center justify-center rounded-md transition-colors outline-none focus-visible:ring-2"
+        className="text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:ring-ring data-[state=open]:text-foreground data-[state=open]:bg-muted -mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-md transition-colors outline-none focus-visible:ring-2"
       >
         <InfoIcon className="size-4" aria-hidden="true" />
       </PopoverTrigger>

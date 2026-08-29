@@ -137,7 +137,9 @@ Roles, not sizes. A call site asks for `text-display`, so changing what a role l
 | Label          | `text-label`          | 0.75rem, 500, 0.06em, uppercase | Metric names, field groups  |
 | Dense label    | `MetricLabel` `plain` | 0.75rem, 500, normal case       | Metric grids, count strips  |
 | Table text     | `text-sm`             | 0.875rem                        | Table cells                 |
-| Numeric metric | `text-metric`         | clamp 1.5→1.875rem, 600         | KPI figures                 |
+| Numeric metric | `text-metric`         | clamp 1.5→1.875rem, 600         | Figures outside the KPI row |
+| KPI figure     | `kpi-figure`          | clamp 1.25→2rem, 600, `cqi`     | Four Basic KPI figures      |
+| KPI lead       | `kpi-figure-lead`     | clamp 1.25→2.25rem, 600, `cqi`  | Net P&L, the row's lead     |
 | Tabular number | `numeric` utility     | mono + `tabular-nums`           | Any figure in a column      |
 
 The three largest roles are **fluid** (`clamp`), so headings scale continuously between 320px and desktop instead of jumping at breakpoints. The lower bound is chosen to fit 320px without overflow.
@@ -145,6 +147,10 @@ The three largest roles are **fluid** (`clamp`), so headings scale continuously 
 Thai pages retain the same sizes and hierarchy but override the display, title, card-title, and label rhythm in `globals.css`: line heights are at least `1.22` for display text and Latin-style tracking is removed. This prevents Thai combining marks from clipping or separating visually at narrow widths.
 
 **`MetricLabel` has two casings and the difference is density.** `caps` (the default) is the `text-label` role above: it reads as a heading, and on a surface carrying ONE label — a KPI tile, a form section — that is right. `plain` is the same size, colour and weight without the uppercase and tracking, for surfaces carrying six or twelve at once: a performance card's metric grid, an operational count strip, a table's column heads. Uppercase plus 0.06em costs roughly 15% extra width per label, and repeated a dozen times in one viewport it stops reading as hierarchy and starts reading as noise. The caps variant keeps its meaning precisely because it is no longer everywhere.
+
+**The two KPI figure roles are `@utility` rules, not `text-*` roles, and that is load-bearing.** `cn()` is `twMerge(clsx(...))`, and tailwind-merge resolves conflicts from its own default class map, which knows nothing about this project's custom `--text-*` roles. It classifies any unrecognised `text-<name>` as a text COLOUR — so `cn('text-kpi', 'text-positive')` treats the two as conflicting and keeps only the later one, silently dropping the font size and leaving the figure at its inherited 16px. Anything spelled `kpi-figure` carries no `text-` prefix and survives being toned. **This trap is not confined to the KPI row:** any call site that passes a custom `text-*` size role and a tone class through one `cn()` loses the size the same way.
+
+**Both KPI roles scale with the CARD (`cqi`), never with the viewport.** The row is five columns at `lg`, three at `md` and two below, so card width is not monotonic in viewport width: 1024px gives each card ~132px of content while 768px gives ~195px. A `vw`-based clamp is therefore largest exactly where the card is narrowest. The ceilings are fixed by the widest real figure in the tabular mono stack (~0.52em advance): a ten-character money total needs ~5.2× its font size in width, which is what the lead role's `18cqi` encodes.
 
 **Every financial figure uses `numeric`.** Tabular numerals keep digits on a fixed advance width, so a column of R-multiples aligns on the decimal point and an animating KPI does not jitter as digits change. Prose numerals stay proportional, which is why this is a utility and not a base rule.
 
@@ -261,11 +267,26 @@ Rules this treatment holds to: it invents **no progress** (nothing in a document
 
 The mark itself is a five-bar equalizer in the accent — never the `positive`/`negative` outcome palette, which means "this trade made or lost money" everywhere else in the product. Under `prefers-reduced-motion` the bars stop scaling and the group breathes on one slow opacity cycle: alive, because a frozen loader reads as a hung page, but with nothing travelling.
 
-### Micro-visuals
+### KPI indicators
 
-A KPI card may carry a **6px proportion bar** beside its figure — but only where canonical data already publishes the parts, and only as a picture of numbers the same card already prints in words. Trade Win % and Day Win % get a W/BE/L split (three counts that genuinely partition their population); Avg Win/Loss gets the two opposed averages that ARE the payoff ratio. Net P&L and Profit Factor get **nothing**: no per-Trade money series exists for that population and a ratio has no published components, so those two carry typography instead. A micro-visual that would need invented, borrowed or re-derived data is not built.
+A Basic KPI card may carry **one visual indicator beside its figure** — but only where canonical data already publishes what it draws, and never as a second analytic. The four that qualify, and what each encodes:
 
-Sizing is a correctness rule, not a preference. The bar shares a row with the figure, so it is gated and sized by the CARD's own width (`@container/kpi`: hidden under 11rem of content box, 48px from there, 80px past 15rem). The viewport cannot answer that question — the KPI row is five columns at `lg` and three at `md`, so a 1024px desktop gives each card _less_ room than a 768px tablet.
+| Card           | Shape              | Encodes                                                               |
+| -------------- | ------------------ | --------------------------------------------------------------------- |
+| Trade Win %    | ring (donut)       | W / BE / L Trade counts — three counts that partition the population  |
+| Profit Factor  | split track        | `PF / (PF + 1)`, the published ratio restated as a proportion         |
+| Day Win %      | semicircular gauge | winning / break-even / losing LOCAL DAYS, from the day-level summary  |
+| Avg Win / Loss | two magnitude bars | the two canonical averages, each scaled against the LARGER of the two |
+
+**Net P&L gets none.** It is a single signed money total and no per-Trade or per-day money series is published for that population; a sparkline would have to be invented or borrowed from the paired Execution-Gap population, which is a different Trade universe. That card is carried by typography, which is the right answer when the data is not there.
+
+**Profit Factor's bar is the one that needs justifying.** Gross positive R and absolute gross negative R are computed inside `lib/calc`'s `profitFactor` and never reach the Dashboard payload, so the bar cannot claim them — and does not. What it draws is `grossWin / (grossWin + grossLoss) = PF / (PF + 1)`, an algebraic restatement of the figure already on the card's face. No absolute gross-R amount is printed anywhere, because none is known.
+
+**The shapes differ on purpose.** Trade Win % and Day Win % frequently land within a point of each other, and on a data set holding one Trade per day they coincide exactly; two identical rings would invite a reader to treat them as one figure duplicated. A ring and a gauge keep "per Trade" and "per day" legible as different questions.
+
+**The indicator is a button, and the breakdown lives behind it.** Everything the cards stopped printing permanently — `27W · 5BE · 34L`, `+2.27R / -1.12R`, "Calculated from R" — opens from a click, a tap, or Enter, in plain words ("Wins 27", never `27W`). A hover-only tooltip would have made that data unreachable on touch and by keyboard. The drawing itself is `aria-hidden`; the button carries the name, the popover carries the figures, so a reader who sees no colour loses nothing.
+
+**Layout is a correctness rule, not a preference.** The indicator shares a row with the figure, so both size themselves against the CARD (`@container/kpi`), and the row wraps rather than hides when the card is too narrow — at 320px the indicator falls to its own line instead of disappearing. Losing the visual on the smallest screens made mobile the one place the row said least; a few pixels of height is the cheaper trade.
 
 ## 9. Charts
 

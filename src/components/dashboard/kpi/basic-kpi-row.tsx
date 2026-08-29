@@ -9,9 +9,8 @@ import {
 } from '@/lib/dashboard/basic-kpi';
 import type { DashboardPageData } from '@/lib/dashboard/page-data';
 import { cn } from '@/lib/utils';
-import { MetricValue } from '@/components/product/metric';
 
-import { KpiMicroVisual } from './kpi-micro-visual';
+import { KpiIndicator } from './kpi-indicator';
 import { BASIC_KPI_GRID_CLASS, KpiWidgetCard } from './kpi-widget-card';
 
 const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
@@ -64,15 +63,29 @@ function BasicKpiCard({ model }: { model: BasicKpiModel }) {
       label={label}
       status={model.value.status}
       {...(model.value.status === 'unavailable' ? { reason: model.value.reason } : {})}
+      // The header affordance still answers "what IS this metric" in one
+      // plain sentence. The indicator beside the figure answers "what is it
+      // made of" — two different questions, so two different affordances
+      // rather than one popover trying to be both.
       info={{
         triggerLabel: t('infoTrigger', { metric: label }),
         description: t(`${model.key}.info`),
       }}
-      value={<KpiValue value={model.value} />}
-      // Only where `composeBasicKpis` published one — Net P&L and Profit
-      // Factor pass `undefined` and the band is not rendered at all, rather
-      // than reserved empty.
-      {...(model.micro.kind === 'none' ? {} : { micro: <KpiMicroVisual micro={model.micro} /> })}
+      value={<KpiValue value={model.value} emphasis={model.emphasis} />}
+      // Only where `composeBasicKpis` published one — Net P&L passes
+      // `undefined` and the slot is not rendered at all, rather than reserved
+      // empty.
+      {...(model.indicator.kind === 'none'
+        ? {}
+        : {
+            indicator: (
+              <KpiIndicator
+                metricKey={model.key}
+                indicator={model.indicator}
+                detail={model.detail}
+              />
+            ),
+          })}
       context={<KpiContext context={model.context} />}
     />
   );
@@ -82,13 +95,35 @@ function BasicKpiCard({ model }: { model: BasicKpiModel }) {
  * Only Net P&L can be signed, so only Net P&L can arrive with a positive or
  * negative tone; the other four presenters compose their values as neutral in
  * `composeBasicKpis`. A high Win Rate is not a verdict.
+ *
+ * The figure is set here rather than through `MetricValue` because the KPI row
+ * carries its own two sizes — the lead card's and the other four's — while
+ * `MetricValue` speaks for every other figure in the product at one shared
+ * size.
+ *
+ * IT USES `kpi-figure`, NOT A `text-*` ROLE, AND THAT IS LOAD-BEARING. `cn()`
+ * is tailwind-merge, which classifies any `text-<name>` it does not recognise
+ * as a text COLOUR — so a size role and a tone class in the same call are
+ * treated as conflicting, and the size is dropped. See the utility's own note
+ * in `globals.css`; this is the sizing that survives being toned.
  */
-function KpiValue({ value }: { value: BasicKpiValue }) {
+function KpiValue({ value, emphasis }: { value: BasicKpiValue; emphasis: 'lead' | 'standard' }) {
   const t = useTranslations('dashboard.basicKpi');
   const tReal = useTranslations('dashboard.real');
 
   if (value.status === 'available') {
-    return <MetricValue value={value.text} className={cn(TONE_CLASS[value.tone], 'break-words')} />;
+    return (
+      <span
+        data-kpi-figure={emphasis}
+        className={cn(
+          'numeric inline-flex items-baseline break-words',
+          emphasis === 'lead' ? 'kpi-figure-lead' : 'kpi-figure',
+          TONE_CLASS[value.tone],
+        )}
+      >
+        {value.text}
+      </span>
+    );
   }
 
   const text =
@@ -101,34 +136,19 @@ function KpiValue({ value }: { value: BasicKpiValue }) {
   return <span className="text-muted-foreground text-sm leading-snug">{text}</span>;
 }
 
+/**
+ * The supporting line — which after this pass only Net P&L has.
+ *
+ * Everything the other four used to print here moved behind their indicator
+ * (see `BasicKpiContext`). What is left is the one fact a money total does not
+ * carry on its face: how many Trades produced it.
+ */
 function KpiContext({ context }: { context: BasicKpiContext }) {
   const t = useTranslations('dashboard.basicKpi');
 
   switch (context.kind) {
-    case 'composition':
-      return (
-        <span className="numeric">
-          {t(context.unit === 'days' ? 'compositionDays' : 'compositionTrades', {
-            wins: context.wins,
-            breakEvens: context.breakEvens,
-            losses: context.losses,
-          })}
-        </span>
-      );
-    case 'currency':
-      return (
-        <span>
-          {t('currencyContext', { currency: context.currency, count: context.tradeCount })}
-        </span>
-      );
-    case 'note':
-      return <span>{t('calculatedFromR')}</span>;
-    case 'averages':
-      return (
-        <span className="numeric">
-          {t('averages', { win: context.averageWinR, loss: context.averageLossR })}
-        </span>
-      );
+    case 'tradeCount':
+      return <span className="numeric">{t('tradeCount', { count: context.tradeCount })}</span>;
     case 'none':
       return null;
   }

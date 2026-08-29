@@ -183,24 +183,114 @@ describe('BasicKpiRow', () => {
     expect(value).toHaveClass('text-foreground');
   });
 
-  it('exposes the Trade Win and Day Win composition as secondary context', () => {
+  it('prints no permanent breakdown or jargon under any figure but Net P&L', () => {
     const { container } = renderRow();
-    expect(
-      within(widget(container, 'basic.trade-win-rate')).getByText('17W · 3BE · 11L'),
-    ).toBeVisible();
-    expect(
-      within(widget(container, 'basic.day-win-rate')).getByText('7W · 1BE · 4L days'),
-    ).toBeVisible();
+    // The four shorthand lines this pass removed, in the exact spelling they
+    // used to carry.
+    for (const removed of ['17W · 3BE · 11L', '7W · 1BE · 4L days', 'Calculated from R']) {
+      expect(within(container).queryByText(removed)).toBeNull();
+    }
+    expect(container.textContent).not.toContain('+2.12R / -0.90R');
+    // Net P&L keeps the one fact its figure cannot carry, and drops the
+    // currency the account strip above already names.
+    expect(within(widget(container, 'basic.net-pnl')).getByText('31 Trades')).toBeVisible();
+    expect(widget(container, 'basic.net-pnl').textContent).not.toContain('USD');
   });
 
-  it('labels Profit Factor as R-derived and shows both payoff averages', () => {
+  it('gives four of the five cards a truthful indicator and Net P&L none', () => {
     const { container } = renderRow();
-    expect(
-      within(widget(container, 'basic.profit-factor')).getByText('Calculated from R'),
-    ).toBeVisible();
-    expect(
-      within(widget(container, 'basic.avg-win-loss')).getByText('+2.12R / -0.90R'),
-    ).toBeVisible();
+    const indicatorFor = (id: string) =>
+      widget(container, id).querySelector('[data-kpi-indicator]');
+
+    expect(indicatorFor('basic.net-pnl')).toBeNull();
+    expect(indicatorFor('basic.trade-win-rate')).toHaveAttribute(
+      'data-kpi-indicator',
+      'outcomeSplit',
+    );
+    expect(indicatorFor('basic.profit-factor')).toHaveAttribute('data-kpi-indicator', 'ratioSplit');
+    expect(indicatorFor('basic.day-win-rate')).toHaveAttribute(
+      'data-kpi-indicator',
+      'outcomeSplit',
+    );
+    expect(indicatorFor('basic.avg-win-loss')).toHaveAttribute(
+      'data-kpi-indicator',
+      'magnitudePair',
+    );
+  });
+
+  it('draws each indicator from its own metric, not from a neighbour', () => {
+    const { container } = renderRow();
+    // A ring for Trades, a half arc for days: different shapes, and the day
+    // arcs carry DAY counts (7/1/4), never the Trade counts (17/3/11).
+    const tradeArcs = widget(container, 'basic.trade-win-rate').querySelectorAll(
+      'circle[data-kpi-arc]',
+    );
+    const dayArcs = widget(container, 'basic.day-win-rate').querySelectorAll('path[data-kpi-arc]');
+    expect(tradeArcs).toHaveLength(3);
+    expect(dayArcs).toHaveLength(3);
+    // 7 winning days of 12 -> 58.33 of the arc; 17 winning Trades of 31 ->
+    // 54.84 of the ring. Same three signs, two different populations.
+    expect(dayArcs[0]?.getAttribute('stroke-dasharray')).toMatch(/^58\.33/);
+    expect(tradeArcs[0]?.getAttribute('stroke-dasharray')).toMatch(/^54\.83/);
+  });
+
+  it('names every indicator as an action and hides the drawing from assistive tech', () => {
+    const { container } = renderRow();
+    for (const name of [
+      'Show Trade Win breakdown',
+      'Show Profit Factor detail',
+      'Show Day Win breakdown',
+      'Show average win and loss',
+    ]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+    for (const svg of container.querySelectorAll('svg')) {
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+    }
+  });
+
+  it.each([
+    ['Show Trade Win breakdown', ['Wins', '17', 'Break-even', '3', 'Losses', '11']],
+    ['Show Day Win breakdown', ['Winning days', '7', 'Break-even days', '1', 'Losing days', '4']],
+    ['Show average win and loss', ['Average win', '+2.12R', 'Average loss', '-0.90R']],
+  ])('reveals %s in plain words on click, not on hover alone', async (name, expected) => {
+    const user = userEvent.setup();
+    renderRow();
+    await user.click(screen.getByRole('button', { name }));
+    for (const text of expected) {
+      await waitFor(() => {
+        expect(screen.getByText(text)).toBeVisible();
+      });
+    }
+  });
+
+  it('explains Profit Factor as a sentence rather than as a formula', async () => {
+    const user = userEvent.setup();
+    renderRow();
+    await user.click(screen.getByRole('button', { name: 'Show Profit Factor detail' }));
+    await waitFor(() => {
+      expect(
+        screen.getByText('For every 1R lost, your winning Trades produced 3.64R.'),
+      ).toBeVisible();
+    });
+  });
+
+  it('opens an indicator from the keyboard and closes it with Escape', async () => {
+    const user = userEvent.setup();
+    renderRow();
+    const trigger = screen.getByRole('button', { name: 'Show Trade Win breakdown' });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(screen.getByText('Wins')).toBeVisible();
+    });
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByText('Wins')).toBeNull();
+    });
   });
 
   it.each([
@@ -325,16 +415,12 @@ describe('BasicKpiRow', () => {
 
     await user.keyboard('{Enter}');
     await waitFor(() => {
-      expect(
-        screen.getByText(/Positive Actual R divided by absolute negative Actual R/),
-      ).toBeVisible();
+      expect(screen.getByText(/for every 1R your losing Trades gave up/)).toBeVisible();
     });
 
     await user.keyboard('{Escape}');
     await waitFor(() => {
-      expect(
-        screen.queryByText(/Positive Actual R divided by absolute negative Actual R/),
-      ).toBeNull();
+      expect(screen.queryByText(/for every 1R your losing Trades gave up/)).toBeNull();
     });
   });
 
@@ -346,22 +432,54 @@ describe('BasicKpiRow', () => {
       'About Trade Win %',
       'About Profit Factor',
       'About Day Win %',
-      'About Avg Win/Loss Trade',
+      'About Avg Win / Loss',
     ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
     await user.click(screen.getByRole('button', { name: 'About Day Win %' }));
     await waitFor(() => {
-      expect(screen.getByText(/trading account's configured timezone/)).toBeVisible();
+      expect(screen.getByText(/Days follow your account's timezone/)).toBeVisible();
     });
   });
 
-  it('renders Thai copy for labels, context and definitions', () => {
+  it('explains every metric in everyday language, free of engine vocabulary', () => {
+    // Read from the message file rather than the DOM: this is a claim about
+    // the COPY, and every string here reaches a reader through one affordance
+    // or another.
+    const copy = Object.values(en.dashboard.basicKpi)
+      .flatMap((entry) => (typeof entry === 'object' ? Object.values(entry) : [entry]))
+      .filter((entry): entry is string => typeof entry === 'string')
+      .join(' ')
+      .toLowerCase();
+
+    for (const jargon of [
+      'eligible population',
+      'eligible closed',
+      'normalized',
+      'gross',
+      'canonical',
+      'denominator',
+      'absolute negative',
+      'r-multiple',
+      'population a',
+    ]) {
+      expect(copy).not.toContain(jargon);
+    }
+  });
+
+  it('renders Thai copy for labels, definitions and revealed detail', async () => {
+    const user = userEvent.setup();
     const { container } = renderRow({}, 'th');
     const tradeWin = widget(container, 'basic.trade-win-rate');
     expect(within(tradeWin).getByText('% เทรดที่ชนะ')).toBeVisible();
-    expect(within(tradeWin).getByText('ชนะ 17 · เสมอ 3 · แพ้ 11')).toBeVisible();
     expect(screen.getByRole('button', { name: 'เกี่ยวกับ % เทรดที่ชนะ' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'ดูรายละเอียด % เทรดที่ชนะ' }));
+    await waitFor(() => {
+      expect(screen.getByText('ชนะ')).toBeVisible();
+    });
+    expect(screen.getByText('เสมอทุน')).toBeVisible();
+    expect(screen.getByText('แพ้')).toBeVisible();
   });
 
   it('reads only the supplied payload — no card triggers a fetch of its own', () => {

@@ -217,6 +217,40 @@
   --text-metric--letter-spacing: -0.02em;
   --text-metric--font-weight: 600;
 
+  /*
+   * The Dashboard KPI row's two figure roles.
+   *
+   * SEPARATE FROM `--text-metric` ON PURPOSE. `text-metric` is the shared
+   * figure size used across analytics cards, performance grids and the
+   * marketing surfaces; the five Basic KPI cards are the page's headline and
+   * asked for a step up without dragging every other figure on the product up
+   * with them. Two roles rather than one because Net P&L is the row's lead
+   * (KPI §4) and earns the larger of the two.
+   *
+   * BOTH SCALE WITH THE CARD (`cqi`), NOT WITH THE VIEWPORT, AND THAT IS THE
+   * ONLY SIZING THAT WORKS HERE. The row is five columns at `lg`, three at
+   * `md` and two below, so card width is not monotonic in viewport width: a
+   * 1024px desktop gives each card ~132px of content while a 768px tablet
+   * gives ~195px. A `vw`-based clamp is therefore largest exactly where the
+   * card is narrowest, and a viewport-tuned ceiling overflowed the lead figure
+   * at 1024 while looking timid at 1920.
+   *
+   * The ceilings are fixed by the widest real figure, set in the tabular
+   * monospace stack whose advance is ~0.52em: a ten-character money total
+   * (`+$2,310.00`) needs ~5.2x its font size in width, which is what `18cqi`
+   * encodes for the lead role. Past that the figure wraps mid-number, which
+   * costs more legibility than the extra size buys.
+   */
+  --text-kpi: clamp(1.25rem, 0.794rem + 8.93cqi, 2rem);
+  --text-kpi--line-height: 1.05;
+  --text-kpi--letter-spacing: -0.025em;
+  --text-kpi--font-weight: 600;
+
+  --text-kpi-hero: clamp(1.25rem, 18cqi, 2.25rem);
+  --text-kpi-hero--line-height: 1.05;
+  --text-kpi-hero--letter-spacing: -0.03em;
+  --text-kpi-hero--font-weight: 600;
+
   --text-label: 0.75rem;
   --text-label--line-height: 1.35;
   --text-label--letter-spacing: 0.06em;
@@ -389,6 +423,13 @@ html[lang='th'] .text-label {
   --positive: #2fa97a;
   --negative: #ef6362;
   --break-even: #2853e4;
+  /*
+   * The unfilled part of a KPI indicator. Deliberately NOT `--muted`, which
+   * sits a hair off white on the light card: the empty half of a proportion
+   * bar would vanish there, and the empty half is exactly what makes a
+   * proportion readable.
+   */
+  --indicator-track: rgb(255 255 255 / 0.14);
   --warning: #f59e0b;
   --info: #56b6f7;
 
@@ -474,6 +515,7 @@ html[lang='th'] .text-label {
   --positive: #047857;
   --negative: #be123c;
   --break-even: #1d4ed8;
+  --indicator-track: rgb(11 18 32 / 0.13);
   --warning: #92400e;
   --info: #0369a1;
 
@@ -560,6 +602,7 @@ html[lang='th'] .text-label {
   --positive: #2fa97a;
   --negative: #ef6362;
   --break-even: #2853e4;
+  --indicator-track: rgb(255 255 255 / 0.14);
   --warning: #f59e0b;
   --info: #56b6f7;
 
@@ -1036,6 +1079,37 @@ html[lang='th'] .text-label {
  * does not jitter as its digits change. Applied via a utility rather than a
  * base rule because prose numerals should stay proportional.
  */
+/*
+ * The Dashboard KPI figure sizes, as utilities rather than as `text-*` roles.
+ *
+ * THIS IS A DELIBERATE WORKAROUND FOR A REAL TRAP, NOT A STYLE PREFERENCE.
+ *
+ * `cn()` is `twMerge(clsx(...))`, and tailwind-merge resolves conflicts from
+ * its OWN default class map, which knows nothing about this project's custom
+ * `--text-*` roles. It classifies any unrecognised `text-<name>` as a text
+ * COLOUR, so in a single `cn('text-kpi', 'text-positive')` call it treats the
+ * two as conflicting and keeps only the later one — silently dropping the
+ * font size and leaving the figure at its inherited 16px. The utility below
+ * carries no `text-` prefix, so nothing merges it away, and the size survives
+ * however a caller composes its tone classes.
+ *
+ * The values still live in the `--text-kpi*` theme roles above; this only
+ * changes how a component may safely spell them.
+ */
+@utility kpi-figure {
+  font-size: var(--text-kpi);
+  line-height: var(--text-kpi--line-height);
+  letter-spacing: var(--text-kpi--letter-spacing);
+  font-weight: var(--text-kpi--font-weight);
+}
+
+@utility kpi-figure-lead {
+  font-size: var(--text-kpi-hero);
+  line-height: var(--text-kpi-hero--line-height);
+  letter-spacing: var(--text-kpi-hero--letter-spacing);
+  font-weight: var(--text-kpi-hero--font-weight);
+}
+
 @utility numeric {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

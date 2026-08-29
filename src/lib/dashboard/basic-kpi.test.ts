@@ -149,26 +149,49 @@ describe('composeBasicKpis', () => {
       expect(card(models, 'netPnl').value).toEqual({ status: 'empty' });
     });
 
-    it('names the authoritative currency and monetary coverage as context', () => {
+    it('keeps the monetary coverage count as its one visible supporting line', () => {
       const models = composeBasicKpis(page({}, { monetaryResultCount: 29 }));
-      expect(card(models, 'netPnl').context).toEqual({
-        kind: 'currency',
-        currency: 'USD',
-        tradeCount: 29,
-      });
+      expect(card(models, 'netPnl').context).toEqual({ kind: 'tradeCount', tradeCount: 29 });
+    });
+
+    it('drops the currency from the card face, which the account strip already names', () => {
+      const context = card(composeBasicKpis(page()), 'netPnl').context;
+      expect(JSON.stringify(context)).not.toContain('USD');
+    });
+
+    it('draws no indicator, because no Population A money series is published', () => {
+      const model = card(composeBasicKpis(page()), 'netPnl');
+      expect(model.indicator).toEqual({ kind: 'none' });
+      expect(model.detail).toEqual({ kind: 'none' });
+      expect(model.emphasis).toBe('lead');
     });
   });
 
   describe('Trade Win %', () => {
-    it('presents the supplied canonical rate neutrally with its composition', () => {
+    it('presents the supplied canonical rate neutrally with no supporting line', () => {
       const models = composeBasicKpis(page());
       expect(card(models, 'tradeWin').value).toEqual({
         status: 'available',
         text: '54.84%',
         tone: 'neutral',
       });
-      expect(card(models, 'tradeWin').context).toEqual({
-        kind: 'composition',
+      // The composition moved behind the indicator; nothing is printed under
+      // the figure any more.
+      expect(card(models, 'tradeWin').context).toEqual({ kind: 'none' });
+    });
+
+    it('draws Trade outcomes as a ring and reveals them in words', () => {
+      const model = card(composeBasicKpis(page()), 'tradeWin');
+      expect(model.indicator).toEqual({
+        kind: 'outcomeSplit',
+        shape: 'donut',
+        unit: 'trades',
+        wins: 17,
+        breakEvens: 3,
+        losses: 11,
+      });
+      expect(model.detail).toEqual({
+        kind: 'outcome',
         unit: 'trades',
         wins: 17,
         breakEvens: 3,
@@ -177,17 +200,18 @@ describe('composeBasicKpis', () => {
     });
 
     it('reflects the break-even Trades D2 already counted in the denominator', () => {
-      // 17 / (17 + 3 + 11) = 0.5484 — the counts shown must be the same
+      // 17 / (17 + 3 + 11) = 0.5484 — the counts revealed must be the same
       // population the supplied rate was computed over.
-      const context = card(composeBasicKpis(page()), 'tradeWin').context;
-      if (context.kind !== 'composition') throw new Error('expected composition context');
-      expect(context.wins + context.breakEvens + context.losses).toBe(31);
+      const detail = card(composeBasicKpis(page()), 'tradeWin').detail;
+      if (detail.kind !== 'outcome') throw new Error('expected outcome detail');
+      expect(detail.wins + detail.breakEvens + detail.losses).toBe(31);
     });
 
     it('is empty when there is no eligible Trader population', () => {
       const models = composeBasicKpis(page({}, { traderEmpty: true }));
       expect(card(models, 'tradeWin').value).toEqual({ status: 'empty' });
       expect(card(models, 'tradeWin').context).toEqual({ kind: 'none' });
+      expect(card(models, 'tradeWin').indicator).toEqual({ kind: 'none' });
     });
   });
 
@@ -199,37 +223,79 @@ describe('composeBasicKpis', () => {
         text: '3.64',
         tone: 'neutral',
       });
-      expect(card(models, 'profitFactor').context).toEqual({
-        kind: 'note',
-        note: 'calculatedFromR',
+      // "Calculated from R" described the implementation, not the account.
+      expect(card(models, 'profitFactor').context).toEqual({ kind: 'none' });
+    });
+
+    it('splits the bar as PF / (PF + 1), the published ratio restated', () => {
+      // 3.64 / 4.64 = 0.7845 -> 78. Never a gross-R component, which this
+      // payload does not publish.
+      expect(card(composeBasicKpis(page()), 'profitFactor').indicator).toEqual({
+        kind: 'ratioSplit',
+        winSharePercent: 78,
       });
+    });
+
+    it.each([
+      ['1.0000', 50],
+      ['0.0000', 0],
+      ['9.0000', 90],
+    ])('splits %s as %i%% to the winning side', (factor, share) => {
+      expect(composeBasicKpis(page({ profitFactor: available(factor) }))).toContainEqual(
+        expect.objectContaining({
+          key: 'profitFactor',
+          indicator: { kind: 'ratioSplit', winSharePercent: share },
+        }),
+      );
+    });
+
+    it('states the ratio in words rather than naming gross components', () => {
+      const detail = card(composeBasicKpis(page()), 'profitFactor').detail;
+      expect(detail).toEqual({ kind: 'ratio', factor: '3.64' });
     });
 
     it('never renders Infinity or a fallback number when there are no losses', () => {
       const models = composeBasicKpis(
         page({ profitFactor: { status: 'unavailable', reason: 'no_losses' } }),
       );
-      const value = card(models, 'profitFactor').value;
-      expect(value).toEqual({ status: 'unavailable', reason: 'no_losses' });
-      expect(JSON.stringify(value)).not.toMatch(/Infinity|null|NaN/);
+      const model = card(models, 'profitFactor');
+      expect(model.value).toEqual({ status: 'unavailable', reason: 'no_losses' });
+      expect(JSON.stringify(model.value)).not.toMatch(/Infinity|null|NaN/);
+      // No factor means no proportion to draw — and no bar invented for one.
+      expect(model.indicator).toEqual({ kind: 'none' });
+      expect(model.detail).toEqual({ kind: 'none' });
     });
   });
 
   describe('Day Win %', () => {
-    it('presents the local-day rate neutrally with day counts as context', () => {
+    it('presents the local-day rate neutrally with no supporting line', () => {
       const models = composeBasicKpis(page());
       expect(card(models, 'dayWin').value).toEqual({
         status: 'available',
         text: '58.33%',
         tone: 'neutral',
       });
-      expect(card(models, 'dayWin').context).toEqual({
-        kind: 'composition',
+      expect(card(models, 'dayWin').context).toEqual({ kind: 'none' });
+    });
+
+    it('draws a gauge rather than a second ring, so it cannot be read as Trade Win', () => {
+      const models = composeBasicKpis(page());
+      expect(card(models, 'dayWin').indicator).toMatchObject({ shape: 'gauge', unit: 'days' });
+      expect(card(models, 'tradeWin').indicator).toMatchObject({ shape: 'donut', unit: 'trades' });
+    });
+
+    it('reads DAY counts from the day summary, never the Trade composition', () => {
+      // The fixture is deliberately divergent: 17/3/11 Trades over 7/1/4
+      // days. A card sourcing `tradeWin` here would show 17/3/11.
+      const models = composeBasicKpis(page());
+      expect(card(models, 'dayWin').detail).toEqual({
+        kind: 'outcome',
         unit: 'days',
         wins: 7,
         breakEvens: 1,
         losses: 4,
       });
+      expect(card(models, 'dayWin').indicator).toMatchObject({ wins: 7, breakEvens: 1, losses: 4 });
     });
 
     it('surfaces no eligible trading days without inventing a rate', () => {
@@ -241,6 +307,8 @@ describe('composeBasicKpis', () => {
         reason: 'no_trading_days',
       });
       expect(card(models, 'dayWin').context).toEqual({ kind: 'none' });
+      expect(card(models, 'dayWin').indicator).toEqual({ kind: 'none' });
+      expect(card(models, 'dayWin').detail).toEqual({ kind: 'none' });
     });
 
     it('is empty when there is no eligible Trader population', () => {
@@ -249,18 +317,46 @@ describe('composeBasicKpis', () => {
     });
   });
 
-  describe('Avg Win/Loss Trade', () => {
-    it('presents the payoff ratio as a multiple with both averages as context', () => {
+  describe('Avg Win / Loss', () => {
+    it('presents the payoff ratio as a multiple with no supporting line', () => {
       const models = composeBasicKpis(page());
       expect(card(models, 'avgWinLoss').value).toEqual({
         status: 'available',
         text: '2.36x',
         tone: 'neutral',
       });
-      expect(card(models, 'avgWinLoss').context).toEqual({
+      expect(card(models, 'avgWinLoss').context).toEqual({ kind: 'none' });
+      expect(card(models, 'avgWinLoss').detail).toEqual({
         kind: 'averages',
         averageWinR: '+2.12R',
         averageLossR: '-0.90R',
+      });
+    });
+
+    it('scales both bars against the LARGER magnitude, so the ratio is visible', () => {
+      // 2.12 against 0.90: the winner fills the track, the loser reaches 42%
+      // of it. A share-of-total split would have drawn 70/30 instead.
+      expect(card(composeBasicKpis(page()), 'avgWinLoss').indicator).toEqual({
+        kind: 'magnitudePair',
+        winPercent: 100,
+        lossPercent: 42,
+      });
+    });
+
+    it('lets the losing side be the longer bar when it genuinely is', () => {
+      const models = composeBasicKpis(
+        page({
+          averageWinLoss: {
+            averageWinR: available('0.5000'),
+            averageLossR: available('-2.0000'),
+            payoffRatio: available('0.2500'),
+          },
+        }),
+      );
+      expect(card(models, 'avgWinLoss').indicator).toEqual({
+        kind: 'magnitudePair',
+        winPercent: 25,
+        lossPercent: 100,
       });
     });
 
@@ -278,6 +374,8 @@ describe('composeBasicKpis', () => {
         reason: 'no_wins',
       });
       expect(card(models, 'avgWinLoss').context).toEqual({ kind: 'none' });
+      expect(card(models, 'avgWinLoss').indicator).toEqual({ kind: 'none' });
+      expect(card(models, 'avgWinLoss').detail).toEqual({ kind: 'none' });
     });
 
     it('is explicitly unavailable with no losers', () => {
@@ -294,6 +392,8 @@ describe('composeBasicKpis', () => {
         reason: 'no_losses',
       });
       expect(card(models, 'avgWinLoss').context).toEqual({ kind: 'none' });
+      expect(card(models, 'avgWinLoss').indicator).toEqual({ kind: 'none' });
+      expect(card(models, 'avgWinLoss').detail).toEqual({ kind: 'none' });
     });
   });
 
@@ -314,5 +414,7 @@ describe('composeBasicKpis', () => {
     const models = composeBasicKpis(page({ netPnl: { status: 'empty' } }, { traderEmpty: true }));
     expect(models.map((model) => model.value.status)).toEqual(Array(5).fill('empty'));
     expect(models.map((model) => model.context.kind)).toEqual(Array(5).fill('none'));
+    expect(models.map((model) => model.indicator.kind)).toEqual(Array(5).fill('none'));
+    expect(models.map((model) => model.detail.kind)).toEqual(Array(5).fill('none'));
   });
 });

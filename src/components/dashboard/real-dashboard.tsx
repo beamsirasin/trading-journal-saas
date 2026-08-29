@@ -397,7 +397,7 @@ export function DashboardSkeleton() {
             <div
               key={layout.widgetId}
               className={cn(
-                'border-border bg-card h-[110px] rounded-lg border',
+                'border-border bg-card h-[106px] rounded-lg border',
                 kpiSpanClassName(layout),
               )}
             />
