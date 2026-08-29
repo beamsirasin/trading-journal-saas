@@ -246,10 +246,10 @@ function PerformanceCell({ cell }: { cell: PerformanceMetricCell }) {
  * these cards read as the heavier analytical surface; the supporting cells
  * sit a step below it.
  *
- * Sizes are spelled here rather than layered onto `MetricValue`'s
- * `text-metric`: tailwind-merge does not recognise this project's custom text
- * scale as a font-size group, so both utilities would survive the merge and
- * stylesheet order — not the caller — would decide which one applied.
+ * Sizes are spelled here rather than layered onto `MetricValue` because this
+ * component owns a two-step hierarchy instead of the shared single metric
+ * role. The shared merger still guarantees last-size-wins behaviour if these
+ * figures later move onto the common abstraction.
  *
  * Colour is never the only channel: an unavailable metric says why in words,
  * and a signed hero keeps its `+`/`-` in the text as well as its tone.

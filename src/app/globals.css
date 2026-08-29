@@ -1079,37 +1079,6 @@ html[lang='th'] .text-label {
  * does not jitter as its digits change. Applied via a utility rather than a
  * base rule because prose numerals should stay proportional.
  */
-/*
- * The Dashboard KPI figure sizes, as utilities rather than as `text-*` roles.
- *
- * THIS IS A DELIBERATE WORKAROUND FOR A REAL TRAP, NOT A STYLE PREFERENCE.
- *
- * `cn()` is `twMerge(clsx(...))`, and tailwind-merge resolves conflicts from
- * its OWN default class map, which knows nothing about this project's custom
- * `--text-*` roles. It classifies any unrecognised `text-<name>` as a text
- * COLOUR, so in a single `cn('text-kpi', 'text-positive')` call it treats the
- * two as conflicting and keeps only the later one — silently dropping the
- * font size and leaving the figure at its inherited 16px. The utility below
- * carries no `text-` prefix, so nothing merges it away, and the size survives
- * however a caller composes its tone classes.
- *
- * The values still live in the `--text-kpi*` theme roles above; this only
- * changes how a component may safely spell them.
- */
-@utility kpi-figure {
-  font-size: var(--text-kpi);
-  line-height: var(--text-kpi--line-height);
-  letter-spacing: var(--text-kpi--letter-spacing);
-  font-weight: var(--text-kpi--font-weight);
-}
-
-@utility kpi-figure-lead {
-  font-size: var(--text-kpi-hero);
-  line-height: var(--text-kpi-hero--line-height);
-  letter-spacing: var(--text-kpi-hero--letter-spacing);
-  font-weight: var(--text-kpi-hero--font-weight);
-}
-
 @utility numeric {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

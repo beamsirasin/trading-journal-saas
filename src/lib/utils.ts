@@ -1,5 +1,19 @@
 import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+/**
+ * Tailwind v4 generates these font-size utilities from the project's
+ * `--text-*` metric tokens. tailwind-merge cannot discover that generated
+ * theme, so without this extension it guesses that an unknown `text-*` class
+ * is a colour and drops the size whenever a metric tone follows it.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': ['text-metric', 'text-kpi', 'text-kpi-hero'],
+    },
+  },
+});
 
 /**
  * Merge conditional class names, resolving conflicting Tailwind utilities so

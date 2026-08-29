@@ -101,11 +101,9 @@ function BasicKpiCard({ model }: { model: BasicKpiModel }) {
  * `MetricValue` speaks for every other figure in the product at one shared
  * size.
  *
- * IT USES `kpi-figure`, NOT A `text-*` ROLE, AND THAT IS LOAD-BEARING. `cn()`
- * is tailwind-merge, which classifies any `text-<name>` it does not recognise
- * as a text COLOUR — so a size role and a tone class in the same call are
- * treated as conflicting, and the size is dropped. See the utility's own note
- * in `globals.css`; this is the sizing that survives being toned.
+ * The KPI roles are registered as font-size utilities in the shared `cn()`
+ * configuration. That keeps the semantic size and its tone as independent
+ * classes while preserving normal last-size-wins behaviour for overrides.
  */
 function KpiValue({ value, emphasis }: { value: BasicKpiValue; emphasis: 'lead' | 'standard' }) {
   const t = useTranslations('dashboard.basicKpi');
@@ -117,7 +115,7 @@ function KpiValue({ value, emphasis }: { value: BasicKpiValue; emphasis: 'lead' 
         data-kpi-figure={emphasis}
         className={cn(
           'numeric inline-flex items-baseline break-words',
-          emphasis === 'lead' ? 'kpi-figure-lead' : 'kpi-figure',
+          emphasis === 'lead' ? 'text-kpi-hero' : 'text-kpi',
           TONE_CLASS[value.tone],
         )}
       >

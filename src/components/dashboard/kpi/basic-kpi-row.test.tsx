@@ -150,9 +150,8 @@ describe('BasicKpiRow', () => {
 
   it('colours only Net P&L by sign and keeps the other four neutral', () => {
     const { container } = renderRow();
-    expect(within(widget(container, 'basic.net-pnl')).getByText('+$1,243.50')).toHaveClass(
-      'text-positive',
-    );
+    const netPnl = within(widget(container, 'basic.net-pnl')).getByText('+$1,243.50');
+    expect(netPnl).toHaveClass('text-kpi-hero', 'text-positive');
     for (const [id, text] of [
       ['basic.trade-win-rate', '54.84%'],
       ['basic.profit-factor', '3.64'],
@@ -160,7 +159,7 @@ describe('BasicKpiRow', () => {
       ['basic.avg-win-loss', '2.36x'],
     ] as const) {
       const value = within(widget(container, id)).getByText(text);
-      expect(value).toHaveClass('text-foreground');
+      expect(value).toHaveClass('text-kpi', 'text-foreground');
       expect(value).not.toHaveClass('text-positive');
       expect(value).not.toHaveClass('text-negative');
     }
