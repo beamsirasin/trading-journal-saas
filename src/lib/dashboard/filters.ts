@@ -70,6 +70,24 @@ export type ParseDashboardFilterStateResult =
   | { readonly ok: false; readonly code: 'invalid_filters' };
 
 /**
+ * The Dashboard's default range when the URL names none.
+ *
+ * `all`, not the Analytics parser's `90d`. This is a DASHBOARD product
+ * decision, not a change to the date vocabulary: the Dashboard is the surface
+ * a trader opens to see where they stand, and opening it on a silent 90-day
+ * window means an account whose history is older shows an empty or partial
+ * page with nothing on screen saying a window was applied. Analytics is the
+ * surface for bounded interrogation and keeps its own `90d` default —
+ * `parseAnalyticsFilters` is deliberately untouched, so every other caller
+ * (and every explicit `?range=` on this page) behaves exactly as before.
+ *
+ * It is spelled as an EXPLICIT input to the shared parser rather than as a
+ * post-hoc override, so the one closed date vocabulary still validates it and
+ * `custom` still fails closed without its dates.
+ */
+const DASHBOARD_DEFAULT_DATE_PRESET = 'all' satisfies AnalyticsDatePreset;
+
+/**
  * Canonical Dashboard URL parser. It adapts the existing Analytics identity
  * and date vocabulary instead of introducing competing account/range rules.
  * Unknown keys and array values fail closed.
@@ -94,7 +112,7 @@ export function parseDashboardFilterState(value: unknown): ParseDashboardFilterS
   }
 
   const input = {
-    ...(raw.range === undefined ? {} : { datePreset: raw.range }),
+    datePreset: raw.range ?? DASHBOARD_DEFAULT_DATE_PRESET,
     ...(raw.from === undefined ? {} : { fromDate: raw.from }),
     ...(raw.to === undefined ? {} : { toDate: raw.to }),
     ...(raw.account === undefined ? {} : { tradingAccountId: raw.account }),

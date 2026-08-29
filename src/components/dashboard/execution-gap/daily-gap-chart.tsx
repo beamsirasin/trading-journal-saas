@@ -13,6 +13,15 @@ import {
 } from 'recharts';
 
 import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
+import {
+  CHART_CURSOR_FILL,
+  CHART_MARGIN,
+  CHART_X_AXIS_HIDDEN,
+  CHART_Y_AXIS,
+  CHART_ZERO_LINE,
+  formatAxisR,
+} from '@/components/dashboard/charts/chart-theme';
+import { ChartTooltip } from '@/components/dashboard/charts/chart-tooltip';
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 import type { ExecutionComparisonChartPoint } from './cumulative-comparison-chart';
@@ -42,32 +51,31 @@ function DailyTooltip({
   const point = payload[0]?.payload;
   if (point === undefined) return null;
 
-  const rows = [
-    { key: 'system', label: t('series.system'), value: point.systemSource },
-    { key: 'actual', label: t('series.actual'), value: point.actualSource },
-    { key: 'gap', label: t('daily.gapRow'), value: point.gapSource },
-  ] as const;
+  const cell = (value: string) => {
+    const formatted = formatAnalyticsMetric({ status: 'available', value }, 'r');
+    return formatted.status === 'available' ? formatted.text : t('notAvailableShort');
+  };
 
   return (
-    <div className="bg-popover text-popover-foreground border-border shadow-popover max-w-56 rounded-md border px-3 py-2">
-      <p className="text-muted-foreground mb-1.5 text-xs font-medium">{point.dateLabel}</p>
-      <ul className="flex flex-col gap-1">
-        {rows.map((row) => {
-          const formatted = formatAnalyticsMetric({ status: 'available', value: row.value }, 'r');
-          return (
-            <li key={row.key} className="flex items-center gap-3 text-xs">
-              <span className="text-muted-foreground">{row.label}</span>
-              <span className="numeric text-foreground ml-auto font-semibold">
-                {formatted.status === 'available' ? formatted.text : t('notAvailableShort')}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="text-muted-foreground border-border mt-1.5 border-t pt-1.5 text-xs">
-        {t('tooltip.pairedOnDate', { count: point.pairedTradeCount })}
-      </p>
-    </div>
+    <ChartTooltip
+      title={point.dateLabel}
+      footnote={t('tooltip.pairedOnDate', { count: point.pairedTradeCount })}
+      rows={[
+        {
+          key: 'system',
+          label: t('series.system'),
+          value: cell(point.systemSource),
+          swatchClassName: 'bg-primary',
+        },
+        {
+          key: 'actual',
+          label: t('series.actual'),
+          value: cell(point.actualSource),
+          swatchClassName: 'bg-foreground',
+        },
+        { key: 'gap', label: t('daily.gapRow'), value: cell(point.gapSource) },
+      ]}
+    />
   );
 }
 
@@ -109,33 +117,40 @@ export function DailyGapChart({ points }: { points: readonly ExecutionComparison
   });
 
   return (
-    <div className="h-24 w-full min-w-0 sm:h-28" role="img" aria-label={t('chart.dailyAriaLabel')}>
+    <div
+      // R2C §14 — a STRIP, at 56/64px rather than 96/112px. It sits directly
+      // beneath the cumulative plot, whose taller frame it was competing with
+      // at the old height while saying strictly less.
+      className="h-14 w-full min-w-0 sm:h-16"
+      role="img"
+      aria-label={t('chart.dailyAriaLabel')}
+    >
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
-          <XAxis
-            dataKey="dateLabel"
-            stroke="var(--border)"
-            tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
-            tickLine={false}
-            axisLine={false}
-            interval="preserveStartEnd"
-            minTickGap={40}
-          />
-          <YAxis
-            stroke="var(--border)"
-            tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
-            tickLine={false}
-            axisLine={false}
-            width={46}
-            tickFormatter={(value: number) => `${value}R`}
-          />
+        <BarChart data={data} margin={CHART_MARGIN}>
+          {/*
+            THE X AXIS IS HIDDEN, NOT ABSENT. It is the same categories, in the
+            same order, as the chart directly above — printing the dates twice
+            spent ~24px on a duplicate and made the pair read as two unrelated
+            charts. Recharts still needs the axis for its scale. Alignment is
+            what makes this safe: both charts share `CHART_MARGIN` and the
+            fixed `CHART_Y_AXIS` width, so a bar sits exactly under the day it
+            belongs to and the reader follows one column straight up.
+          */}
+          <XAxis dataKey="dateLabel" {...CHART_X_AXIS_HIDDEN} />
+          {/*
+            Three ticks, not Recharts' default five: on a 56px strip the
+            intermediate labels overlap each other, and the magnitude a reader
+            needs is the extreme rather than the interval.
+          */}
+          <YAxis {...CHART_Y_AXIS} tickCount={3} tickFormatter={formatAxisR} />
           {/* Zero is the axis this chart is about, so it is drawn rather than
               inferred from where the bars happen to meet. */}
-          <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeWidth={1} />
-          <Tooltip content={<DailyTooltip />} cursor={{ fill: 'var(--muted)', fillOpacity: 0.4 }} />
+          <ReferenceLine y={0} {...CHART_ZERO_LINE} />
+          <Tooltip content={<DailyTooltip />} cursor={CHART_CURSOR_FILL} />
           <Bar
             dataKey="gapCoordinate"
             radius={[2, 2, 2, 2]}
+            maxBarSize={10}
             isAnimationActive={!prefersReducedMotion}
           >
             {data.map((point) => (

@@ -16,6 +16,9 @@ const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
   neutral: 'text-foreground',
 };
 
+/** One raised metric cell. A surface step, deliberately not a border (§23). */
+const SUMMARY_CELL = 'bg-muted/50 flex min-w-0 flex-col gap-0.5 rounded-lg px-3 py-2';
+
 /**
  * The four figures that answer the section's question in text, before any
  * chart is read.
@@ -27,6 +30,20 @@ const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
  * particular is D5A's own `averageExecutionGapR` rather than
  * `total / count` re-derived in React, which would re-round an already
  * rounded figure.
+ *
+ * R2C §11/§22 — FOUR RAISED CELLS, NOT FOUR FLOATING TEXT BLOCKS. Spread
+ * across a full-width section these were four label/value pairs adrift in
+ * roughly 1300px of card, ~340px apart, with nothing but whitespace saying
+ * they belonged together. Each now sits on `--muted`, one surface step off
+ * the card, which groups them into a readable band and uses the horizontal
+ * space the section actually has. A step in SURFACE, never a border: outlining
+ * four cells inside a bordered card is precisely the nested-box treatment §23
+ * rules out.
+ *
+ * The `totalGapHint` line is gone from this layer. It restated the definition
+ * — "Actual R minus System R across paired Trades" — that the section's own
+ * info popover already gives more completely and more carefully, and it was
+ * the one thing making the first cell taller than the other three.
  */
 export function ExecutionGapSummary({
   comparison,
@@ -41,7 +58,7 @@ export function ExecutionGapSummary({
   return (
     <dl
       data-execution-gap-summary
-      className={cn('grid min-w-0 grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4', className)}
+      className={cn('grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4', className)}
     >
       {/*
         Total Gap keeps its signed tone: negative means the Trader captured
@@ -77,7 +94,7 @@ export function ExecutionGapSummary({
         style="percent"
         forceNeutral
       />
-      <div data-execution-gap-metric="pairedTrades" className="flex min-w-0 flex-col gap-0.5">
+      <div data-execution-gap-metric="pairedTrades" className={SUMMARY_CELL}>
         <dt>
           <MetricLabel variant="plain">{t('summary.pairedTrades')}</MetricLabel>
         </dt>
@@ -104,7 +121,6 @@ function SummaryMetric({
   prominent?: boolean;
   forceNeutral?: boolean;
 }) {
-  const t = useTranslations('dashboard.executionGap');
   const tReal = useTranslations('dashboard.real');
   const formatted = formatAnalyticsMetric(metric, style);
 
@@ -113,7 +129,7 @@ function SummaryMetric({
       data-execution-gap-metric={metricKey}
       data-metric-status={formatted.status}
       {...(formatted.status === 'unavailable' ? { 'data-metric-reason': formatted.reason } : {})}
-      className="flex min-w-0 flex-col gap-0.5"
+      className={SUMMARY_CELL}
     >
       <dt>
         <MetricLabel variant="plain" className="break-words">
@@ -142,9 +158,6 @@ function SummaryMetric({
           </span>
         )}
       </dd>
-      {metricKey === 'totalGap' ? (
-        <p className="text-muted-foreground text-xs leading-4">{t('summary.totalGapHint')}</p>
-      ) : null}
     </div>
   );
 }

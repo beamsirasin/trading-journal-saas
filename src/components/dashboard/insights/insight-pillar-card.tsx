@@ -112,28 +112,59 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
   );
 }
 
+/**
+ * R2C §17–§21 — THE CARD HAS A HERO INSIGHT AREA, AND IT IS A SURFACE.
+ *
+ * The three pillars used to render as two identical stacks of five lines
+ * (sentence, subject, role label, figure, comparisons) separated by a rule,
+ * with three more lines of caveat beneath. Everything was the same size and
+ * the same weight, so nothing was findable: a reader had to parse the whole
+ * card to learn which of the eight figures on it was the finding. That is a
+ * report, not an insight card.
+ *
+ * The primary statement now sits on `--muted`, one surface step off the card,
+ * exactly as the Execution Gap's summary cells do. The secondary sits on the
+ * card plane beneath it. One glance separates "the finding" from "and also",
+ * before a single label has been read — which is the two-second test §17 sets.
+ *
+ * The three cards share this frame even though their semantics differ, which
+ * is what §20 asks for: same heading position, same hero area, same secondary
+ * area, same footer baseline. Nothing about the CONTENT is forced into a
+ * common shape — a pillar with no secondary statement simply renders none.
+ */
 function InsightBody({ card, primary }: { card: InsightCardView; primary: InsightStatementView }) {
   const t = useTranslations('dashboard.insights');
 
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <Statement statement={primary} prominent />
+    <div className="flex min-w-0 flex-col gap-2.5">
+      <div className="bg-muted/50 min-w-0 rounded-lg px-3 py-2.5">
+        <Statement statement={primary} prominent />
+      </div>
 
       {/* AT MOST ONE supporting insight reaches the Dashboard (§1). */}
       {card.secondary === null ? null : (
-        <div className="border-border border-t pt-3">
+        <div className="min-w-0 px-3">
           <Statement statement={card.secondary} prominent={false} />
         </div>
       )}
 
-      <div className="flex min-w-0 flex-col gap-1">
+      {/*
+        §21 — the caveats leave the first visual layer. They are still here,
+        still complete and still never a warning box; they are simply at
+        11px, grouped, and below the two statements rather than interleaved
+        with them at the same size as the findings.
+      */}
+      <div className="flex min-w-0 flex-col gap-0.5 px-3">
         {card.sample === null ? null : (
           /*
             §22 — a limited sample is a CAVEAT, not an error. It is one quiet
             line of text, never a warning box across the card, and it never
             claims significance or confidence.
           */
-          <p data-insight-sample={card.sample.quality} className="text-muted-foreground text-xs">
+          <p
+            data-insight-sample={card.sample.quality}
+            className="text-muted-foreground text-[11px] leading-4"
+          >
             {card.sample.quality === 'supported'
               ? `${t('sample.supported')} ${t('sample.trades', { count: card.sample.tradeCount })}`
               : `${t('sample.limited')} · ${t('sample.trades', { count: card.sample.tradeCount })}`}
@@ -143,7 +174,10 @@ function InsightBody({ card, primary }: { card: InsightCardView; primary: Insigh
         {/* §12 — stated in words wherever cohorts overlap, so nothing on the
             card can be read as shares of a whole. */}
         {primary.nonAdditive || card.secondary?.nonAdditive === true ? (
-          <p data-insight-non-additive className="text-muted-foreground text-xs leading-snug">
+          <p
+            data-insight-non-additive
+            className="text-muted-foreground text-[11px] leading-4 text-pretty"
+          >
             {t('nonAdditive')}
           </p>
         ) : null}
@@ -182,13 +216,24 @@ function Statement({
             : label;
 
   return (
-    <div data-insight-statement={statement.type} className="flex min-w-0 flex-col gap-1">
-      <p className="text-muted-foreground text-xs leading-snug">{t(`insight.${statement.type}`)}</p>
+    <div data-insight-statement={statement.type} className="flex min-w-0 flex-col gap-0.5">
+      {/*
+        LABEL -> FINDING -> VALUE (§21), in that order and on three lines
+        rather than five. The eyebrow says what KIND of finding this is, the
+        subject says which cohort it is about, and the figure states it. The
+        role label used to own a fourth line of its own; it now sits on the
+        figure's baseline, to its right, where it names the number without
+        costing a row and without ever letting a bare `77.59%` be mistaken for
+        the other rate this pillar publishes.
+      */}
+      <p className="text-muted-foreground text-[11px] leading-4">
+        {t(`insight.${statement.type}`)}
+      </p>
       {subject === null ? null : (
         <p
           data-insight-subject
           className={cn(
-            'text-foreground min-w-0 leading-snug font-semibold break-words',
+            'text-foreground min-w-0 leading-tight font-semibold break-words',
             prominent ? 'text-sm' : 'text-xs',
           )}
         >
@@ -196,27 +241,29 @@ function Statement({
         </p>
       )}
       {statement.headline === null ? null : (
-        <div className="flex min-w-0 flex-col gap-0.5">
-          {statement.headlineRole === null ? null : (
-            // The hero is NAMED. A bare percentage cannot be attributed to
-            // Trade Rule Adherence over Rule Checks Followed, and a bare R
-            // cannot be told from an expectancy.
-            <MetricLabel variant="plain">{t(`comparison.${statement.headlineRole}`)}</MetricLabel>
-          )}
+        <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <p
             data-insight-headline
             className={cn(
               'numeric font-semibold tracking-tight',
-              prominent ? 'text-2xl' : 'text-base',
+              prominent ? 'text-[1.75rem] leading-8' : 'text-base leading-6',
               TONE_CLASS[statement.headline.tone],
             )}
           >
             {statement.headline.text}
           </p>
+          {statement.headlineRole === null ? null : (
+            // The hero is NAMED. A bare percentage cannot be attributed to
+            // Trade Rule Adherence over Rule Checks Followed, and a bare R
+            // cannot be told from an expectancy.
+            <MetricLabel variant="plain" className="min-w-0 break-words">
+              {t(`comparison.${statement.headlineRole}`)}
+            </MetricLabel>
+          )}
         </div>
       )}
       {statement.comparisons.length === 0 ? null : (
-        <dl className="mt-0.5 flex min-w-0 flex-wrap gap-x-4 gap-y-1">
+        <dl className="mt-1 flex min-w-0 flex-wrap gap-x-4 gap-y-0.5">
           {statement.comparisons.map((comparison) => (
             <div
               key={comparison.role}
@@ -226,11 +273,28 @@ function Statement({
               {/* Rule Checks Followed and Trade Rule Adherence are labelled
                   separately and completely — neither ever borrows the
                   other's name (§15). */}
-              <dt className="text-muted-foreground text-xs">
+              <dt className="text-muted-foreground text-[11px] leading-4">
                 {t(`comparison.${comparison.role}`)}
               </dt>
               <dd
-                className={cn('numeric text-xs font-semibold', TONE_CLASS[comparison.figure.tone])}
+                className={cn(
+                  'numeric text-[11px] leading-4 font-semibold',
+                  /*
+                    §28 — SUPPORTING FIGURES ARE NEUTRAL UNLESS THE SIGN IS
+                    THE POINT.
+
+                    Every comparison used to carry a tone, which put five and
+                    six coloured numbers on a single card and made green mean
+                    nothing more specific than "a number". An expectancy or a
+                    baseline is a level, not an outcome; only the two
+                    Execution Gap roles are the signed attribution figure this
+                    product exists to surface, so only they keep their colour.
+                    The hero above is unaffected — it stays toned.
+                  */
+                  SIGNED_COMPARISON_ROLES.has(comparison.role)
+                    ? TONE_CLASS[comparison.figure.tone]
+                    : 'text-foreground',
+                )}
               >
                 {comparison.figure.text}
               </dd>
@@ -241,6 +305,18 @@ function Statement({
     </div>
   );
 }
+
+/**
+ * The comparison roles whose SIGN is the finding rather than incidental.
+ *
+ * Both are Execution Gap figures: a negative one says the execution captured
+ * less than the System offered on that cohort, and that direction is the
+ * whole reason the figure is on the card.
+ */
+const SIGNED_COMPARISON_ROLES: ReadonlySet<string> = new Set([
+  'average_execution_gap',
+  'associated_execution_gap',
+]);
 
 /**
  * §11/§24 — coverage appears only where it changes how the card should be
@@ -263,7 +339,10 @@ function Coverage({ card }: { card: InsightCardView }) {
   if (coverage.eligibleTradeCount === 0) return null;
 
   return (
-    <p data-insight-coverage={coverage.kind} className="text-muted-foreground text-xs">
+    <p
+      data-insight-coverage={coverage.kind}
+      className="text-muted-foreground text-[11px] leading-4"
+    >
       {coverage.kind === 'psychology'
         ? t('coverage.psychology', {
             tagged: coverage.taggedTradeCount,

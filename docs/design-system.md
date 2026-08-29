@@ -167,6 +167,10 @@ The shell's geometry lives in CSS variables rather than repeated `top-14` / `w-6
 
 **Dense data surfaces set their own vertical rhythm.** A `gap-6`–`gap-8` between every region reads as generous on a marketing page and as wasteful on a page whose job is figures. The Dashboard uses exactly **two** boundaries: `mt-4` (16px) inside the opening context block — account strip, KPI band, Needs Attention, which are read as one continuous operational unit — and `mt-6` (24px) between analytical sections, which is also the `gap-4`+ rhythm those sections use between their own cards. An earlier pass ramped this 20/24/28/32; four margins nobody can perceive apart are not a hierarchy, they are four ways of being loose, so the ramp was collapsed to the two boundaries that genuinely exist.
 
+**The Dashboard opens on All time.** A Dashboard URL that names no `range` resolves to `all` (`DASHBOARD_DEFAULT_DATE_PRESET`, `src/lib/dashboard/filters.ts`), not to Analytics' `90d`. The Dashboard is where a trader looks to see where they stand; a silent 90-day window means an account whose history is older opens on an empty or partial page with nothing on screen saying a window was applied. Analytics is the surface for bounded interrogation and keeps its own default — `parseAnalyticsFilters` is untouched, and any explicit `?range=` on either surface still resolves to exactly itself.
+
+**The answer sits on a raised surface.** One rule builds the Dashboard's card hierarchy, and it is a step in PLANE rather than a new colour, a heavier border or a nested box: wherever a figure is _the answer_ rather than a supporting reading, it sits on `--muted` (`bg-muted/50`) inside its card. That is the Execution Gap's four summary cells, each insight pillar's primary statement, the System/Trader Total R, and Risk Performance's Modeled Balance + Period P&L. Everything else stays on the card plane. Before this every Dashboard card was one flat `#181818` field and a reader had to read all seven figures on a card to discover which one mattered.
+
 **A wide card is laid out wide.** The System/Trader cards split along their long axis — identity and hero on the left, the supporting metric grid on the right, one hairline between — rather than stacking a full-width hero band over a grid. The split is a **container query** (`@container/perf`, engaging at 34rem of card width), not a breakpoint: two such cards sit inside a two-column section, so the viewport says nothing useful about how wide either one actually is.
 
 **Each section owns its own grid.** The Dashboard is a stack of sections, not one page-wide grid: the KPI band is five columns, the System/Trader pair is two, and Recent Trades + Calendar is twelve, split **5 + 7** — the Calendar takes the wider share, because width is the only thing that makes a day cell legible while the Trade list reaches its natural width at about 500px and spends everything past that on padding. A widget's recorded `desktopSpan` is read against **its own section's** column count and nothing else. This is a record of what the components spell, not a layout engine — there is no persistence, editor, drag/drop or resize behind it.
@@ -236,6 +240,8 @@ Every surface that displays data ships four states: **loading, empty, error, suc
 
 Empty states teach the next action. "No data" is not an empty state — the `EmptyState` component makes `action` a required prop so the next step cannot be forgotten.
 
+**Semantic colour is spent on signs that are the finding, not on every good number.** `--positive` / `--negative` mean "this figure's direction is the point". A hero P&L or Total R earns them; a level does not. So a card's hero keeps its tone while its supporting cells stay `--foreground` — an expectancy, a baseline, a win rate and a profit factor are readings, not verdicts, and colouring all of them made green mean nothing more specific than "a number". The two Execution Gap comparison roles are the deliberate exception: a negative gap says execution captured less than the System offered, which is the attribution this product exists to surface.
+
 Numbers that cannot be computed render their reason, never `0` — a `0%` win rate for a user with no trades is a false statement. See [calculation-spec.md](calculation-spec.md) §6.
 
 Skeletons are `aria-hidden` and grouped under a single `role="status"`, so a screen reader hears one "Loading" rather than a dozen meaningless boxes.
@@ -255,9 +261,21 @@ Rules this treatment holds to: it invents **no progress** (nothing in a document
 
 The mark itself is a five-bar equalizer in the accent — never the `positive`/`negative` outcome palette, which means "this trade made or lost money" everywhere else in the product. Under `prefers-reduced-motion` the bars stop scaling and the group breathes on one slow opacity cycle: alive, because a frozen loader reads as a hung page, but with nothing travelling.
 
+### Micro-visuals
+
+A KPI card may carry a **6px proportion bar** beside its figure — but only where canonical data already publishes the parts, and only as a picture of numbers the same card already prints in words. Trade Win % and Day Win % get a W/BE/L split (three counts that genuinely partition their population); Avg Win/Loss gets the two opposed averages that ARE the payoff ratio. Net P&L and Profit Factor get **nothing**: no per-Trade money series exists for that population and a ratio has no published components, so those two carry typography instead. A micro-visual that would need invented, borrowed or re-derived data is not built.
+
+Sizing is a correctness rule, not a preference. The bar shares a row with the figure, so it is gated and sized by the CARD's own width (`@container/kpi`: hidden under 11rem of content box, 48px from there, 80px past 15rem). The viewport cannot answer that question — the KPI row is five columns at `lg` and three at `md`, so a 1024px desktop gives each card _less_ room than a 768px tablet.
+
 ## 9. Charts
 
 Full reasoning in [ADR 0006](decisions/0006-design-system-and-demo-data.md).
+
+**Chart chrome is one module, not a per-chart opinion.** [`chart-theme.ts`](../src/components/dashboard/charts/chart-theme.ts) owns the axes, grid, zero line, cursor and margins every Dashboard chart uses, and [`chart-tooltip.tsx`](../src/components/dashboard/charts/chart-tooltip.tsx) owns the one tooltip shell they all render into. Three charts had grown three near-identical copies of each, which looked alike only until someone edited one. The values there are chosen rather than inherited: a 2/6 dotted grid at 60% border (a gridline carries the eye to the axis; it must not compete with the series), 10.5px medium ticks, a 64px minimum tick gap (at 1792px the old 40px permitted ~40 date labels along one axis), and a zero line at `--subtle-foreground` because it is a datum, not a series.
+
+**Two stacked charts share one axis.** Where a strip sits directly beneath a plot over the same categories — the Execution Gap's daily bars under the cumulative lines — the strip hides its own X axis (`CHART_X_AXIS_HIDDEN`) and the pair share `CHART_MARGIN` and the fixed `CHART_Y_AXIS` width so their plot areas align column-for-column. Printing the dates twice spent height on a duplicate and made one figure read as two unrelated charts.
+
+**Lines are not equally loud, and which one is louder is a decision.** The counterfactual System line is the thinner, dashed, accent-coloured one; the Actual line — what execution did — is the solid, heavier, brightest mark. `dot={false}` everywhere: identity arrives on hover, so a 60-point series stays calm.
 
 **Series colours are computed and validated, never chosen.** The shipped four-slot palette passes all six checks in both themes — lightness band, chroma floor, CVD separation, normal-vision floor, contrast, documented provenance. Worst adjacent pair: ΔE 18.8 CVD / 19.6 normal (dark), 17.0 / 19.6 (light).
 

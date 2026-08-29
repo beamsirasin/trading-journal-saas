@@ -13,11 +13,21 @@ const SETUP_ID = '019c43dc-8c6c-7000-8000-000000000003';
 const VERSION_ID = '019c43dc-8c6c-7000-8000-000000000004';
 
 describe('Dashboard filter contract', () => {
-  it('defaults to active Account, 90D, no framework filter, and R display mode', () => {
+  /**
+   * R2C §2 — a Dashboard URL that names no range resolves to ALL TIME.
+   *
+   * The Dashboard is the surface a trader opens to see where they stand; a
+   * silent 90-day window means an account whose history is older opens on an
+   * empty or partial page with nothing on screen saying a window was applied.
+   * Analytics keeps its own `90d` default (`parseAnalyticsFilters`, untouched)
+   * — this is the Dashboard's own default, not a change to the shared date
+   * vocabulary.
+   */
+  it('defaults to active Account, ALL TIME, no framework filter, and R display mode', () => {
     expect(parseDashboardFilterState({})).toEqual({
       ok: true,
       state: {
-        datePreset: '90d',
+        datePreset: 'all',
         customDateRange: null,
         accountScope: { kind: 'active' },
         strategyId: null,
@@ -35,6 +45,55 @@ describe('Dashboard filter contract', () => {
         },
       },
     });
+  });
+
+  /**
+   * The new default must not leak into an EXPLICIT range. Every preset the
+   * URL actually names still resolves to itself, including the one that
+   * happens to be the Analytics default — a deep link to `?range=90d` is a
+   * deliberate 90-day window, not an un-set value to be replaced.
+   */
+  it('never overrides an explicitly named range, including 90d', () => {
+    for (const preset of [
+      'today',
+      'week',
+      'month',
+      '30d',
+      '90d',
+      'quarter',
+      'ytd',
+      'all',
+    ] as const) {
+      const parsed = parseDashboardFilterState({ range: preset });
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) continue;
+      expect(parsed.state.datePreset).toBe(preset);
+      expect(parsed.state.customDateRange).toBeNull();
+    }
+  });
+
+  /** The default is a real preset, so it still fails closed on a bad one. */
+  it('still rejects an unrecognised range rather than falling back to the default', () => {
+    expect(parseDashboardFilterState({ range: 'last-week' })).toEqual({
+      ok: false,
+      code: 'invalid_filters',
+    });
+  });
+
+  /** `custom` without dates is invalid whether or not a default exists. */
+  it('still requires both dates for an explicit custom range', () => {
+    expect(parseDashboardFilterState({ range: 'custom' })).toEqual({
+      ok: false,
+      code: 'invalid_filters',
+    });
+    const parsed = parseDashboardFilterState({
+      range: 'custom',
+      from: '2026-01-01',
+      to: '2026-01-31',
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.state.customDateRange).toEqual({ from: '2026-01-01', to: '2026-01-31' });
   });
 
   it('round-trips Account/date/Strategy/Setup, advanced Version, and unit mode', () => {

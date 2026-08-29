@@ -13,6 +13,14 @@ import {
 } from 'recharts';
 
 import type { RiskBalancePoint } from '@/lib/dashboard/risk-performance-presentation';
+import {
+  CHART_CURSOR_LINE,
+  CHART_GRID,
+  CHART_MARGIN,
+  CHART_X_AXIS,
+  CHART_Y_AXIS,
+} from '@/components/dashboard/charts/chart-theme';
+import { ChartTooltip } from '@/components/dashboard/charts/chart-tooltip';
 import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 /**
@@ -62,31 +70,21 @@ function BalanceTooltip({
         : t('tooltip.balance');
 
   return (
-    <div className="bg-popover text-popover-foreground border-border shadow-popover max-w-60 rounded-md border px-3 py-2">
-      <p className="text-muted-foreground mb-1.5 text-xs font-medium">
-        {/* An All-range opening has no instant at all: the schema records no
-            trustworthy financial inception date, so the anchor is named
-            rather than dated. */}
-        {point.dateTimeLabel ?? t(`event.${point.kind}`)}
-      </p>
-      <ul className="flex flex-col gap-1">
-        <li className="flex items-center gap-3 text-xs">
-          <span className="text-muted-foreground">{heading}</span>
-          <span className="numeric text-foreground ml-auto font-semibold">{point.balanceText}</span>
-        </li>
-        {point.deltaText === null ? null : (
-          <li className="flex items-center gap-3 text-xs">
-            <span className="text-muted-foreground">{t('tooltip.change')}</span>
-            <span className="numeric text-foreground ml-auto font-semibold">{point.deltaText}</span>
-          </li>
-        )}
-      </ul>
-      {point.tradeCount > 1 ? (
-        <p className="text-muted-foreground border-border mt-1.5 border-t pt-1.5 text-xs">
-          {t('tooltip.groupedTrades', { count: point.tradeCount })}
-        </p>
-      ) : null}
-    </div>
+    <ChartTooltip
+      // An All-range opening has no instant at all: the schema records no
+      // trustworthy financial inception date, so the anchor is named rather
+      // than dated.
+      title={point.dateTimeLabel ?? t(`event.${point.kind}`)}
+      {...(point.tradeCount > 1
+        ? { footnote: t('tooltip.groupedTrades', { count: point.tradeCount }) }
+        : {})}
+      rows={[
+        { key: 'balance', label: heading, value: point.balanceText },
+        ...(point.deltaText === null
+          ? []
+          : [{ key: 'change', label: t('tooltip.change'), value: point.deltaText }]),
+      ]}
+    />
   );
 }
 
@@ -124,26 +122,21 @@ export function ModeledBalanceChart({
       aria-label={t('chart.ariaLabel')}
     >
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={[...points]} margin={{ top: 8, right: 8, bottom: 0, left: -4 }}>
-          <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+        <LineChart data={[...points]} margin={{ ...CHART_MARGIN, left: -4 }}>
+          <CartesianGrid {...CHART_GRID} />
+          {/* Thinned rather than shrunk or rotated (see `CHART_X_AXIS`):
+              fewer readable dates beat many unreadable ones, and neither
+              costs the reader a horizontal pan. */}
           <XAxis
             dataKey="key"
-            stroke="var(--border)"
-            tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
-            tickLine={false}
-            axisLine={false}
-            // Thin the labels at narrow widths rather than shrinking or
-            // rotating them: fewer readable dates beat many unreadable ones,
-            // and neither costs the reader a horizontal pan.
-            interval="preserveStartEnd"
-            minTickGap={48}
+            {...CHART_X_AXIS}
             tickFormatter={(key: string) => labels.get(key) ?? ''}
           />
           <YAxis
-            stroke="var(--border)"
-            tick={{ fill: 'var(--muted-foreground)', fontSize: 11 }}
-            tickLine={false}
-            axisLine={false}
+            {...CHART_Y_AXIS}
+            // Wider than the shared gutter: a compacted balance ("12.6k")
+            // needs more room than an R value, and this chart has no stacked
+            // companion to stay in register with.
             width={64}
             /*
               `['auto', 'auto']` EXPLICITLY, because Recharts' default numeric
@@ -179,10 +172,7 @@ export function ModeledBalanceChart({
             strokeWidth={1}
             ifOverflow="extendDomain"
           />
-          <Tooltip
-            content={<BalanceTooltip />}
-            cursor={{ stroke: 'var(--muted-foreground)', strokeWidth: 1, strokeDasharray: '3 3' }}
-          />
+          <Tooltip content={<BalanceTooltip />} cursor={CHART_CURSOR_LINE} />
           <Line
             type="stepAfter"
             dataKey="balance"

@@ -185,35 +185,51 @@ function ExecutionGapBody({
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <figure className="flex min-w-0 flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
+      <figure className="flex min-w-0 flex-col gap-2">
         <figcaption className="sr-only">{t('chart.cumulativeCaption')}</figcaption>
-        {/* Legend before the plot: identity is never colour alone, and each
-            entry names its stroke style so the two lines stay separable in
-            greyscale and under any colour vision. */}
-        <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <LegendItem
-            label={t('series.system')}
-            note={t('series.systemNote')}
-            swatchClassName="bg-primary"
-          />
-          <LegendItem
-            label={t('series.actual')}
-            note={t('series.actualNote')}
-            swatchClassName="bg-foreground"
-          />
-        </ul>
-        <CumulativeComparisonChart points={chartPoints} />
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <p className="text-muted-foreground text-xs font-medium">{t('daily.title')}</p>
-          <DailyGapChart points={chartPoints} />
+        {/*
+          The legend and the daily strip's own caption share ONE row.
+
+          They used to occupy two separate full-width lines 300px apart, for a
+          total of ~44px of chrome around 340px of plot. Both are labels for
+          the same figure and neither needs a line of its own — the legend
+          sits left where the eye enters, the strip's caption right, where the
+          strip's own label used to be.
+
+          Identity is never colour alone: each entry names its stroke style, so
+          the two lines stay separable in greyscale and under any colour
+          vision.
+        */}
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-5 gap-y-1.5">
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <LegendItem
+              label={t('series.system')}
+              note={t('series.systemNote')}
+              swatchClassName="bg-primary"
+            />
+            <LegendItem
+              label={t('series.actual')}
+              note={t('series.actualNote')}
+              swatchClassName="bg-foreground"
+            />
+          </ul>
+          <p className="text-muted-foreground shrink-0 text-xs">{t('daily.title')}</p>
         </div>
+        <CumulativeComparisonChart points={chartPoints} />
+        {/*
+          No gap between the plot and the strip: they share an x-axis, they
+          are read as one figure, and the strip's own dates are hidden
+          precisely so a reader can follow one column down from the line to
+          the bar without a seam between them.
+        */}
+        <DailyGapChart points={chartPoints} />
         <ComparisonFallbackTable points={chartPoints} />
       </figure>
 
       <GapDistribution
         distribution={comparison.distribution}
-        className="border-border border-t pt-4"
+        className="border-border border-t pt-3"
       />
     </div>
   );

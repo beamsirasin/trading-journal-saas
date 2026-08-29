@@ -95,7 +95,10 @@ export function RecentTradesCard({
             </Link>
           </div>
         ) : (
-          <ul className="flex min-w-0 flex-col gap-2" aria-label={t('recent.listLabel')}>
+          <ul
+            className="divide-border border-border -mx-1 flex min-w-0 flex-col divide-y border-t"
+            aria-label={t('recent.listLabel')}
+          >
             {trades.map((trade) => (
               <RecentTradeRow
                 key={trade.tradeId}
@@ -127,9 +130,14 @@ function RecentTradeRow({
   return (
     <li
       data-recent-trade-row={trade.tradeId}
-      className="border-border bg-card hover:bg-surface-raised min-w-0 rounded-lg border transition-colors"
+      // A ROW, NOT A CARD (R2C §23/§31). Five individually bordered boxes
+      // inside a bordered card is the nested-box pattern this pass is
+      // removing everywhere; a divided list reads as a record list, which is
+      // what this is. The hover tint survives, so the row is still visibly a
+      // target — it just no longer carries an outline to prove it.
+      className="hover:bg-muted/40 min-w-0 rounded-md transition-colors"
     >
-      <div className="grid min-w-0 grid-cols-1 gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="grid min-w-0 grid-cols-1 gap-2 px-1 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <Link
@@ -173,7 +181,7 @@ function RecentR({ label, value }: { label: string; value: string | null }) {
   const formatted =
     value === null ? null : formatAnalyticsMetric({ status: 'available', value }, 'r');
   return (
-    <span className="flex min-w-14 flex-col gap-0.5">
+    <span className="flex min-w-16 flex-col gap-0.5 text-right">
       <span className="text-muted-foreground text-[11px] leading-4 font-medium">{label}</span>
       <span className="numeric text-sm font-semibold">
         {formatted?.status === 'available' ? formatted.text : t('notAvailableShort')}
@@ -200,7 +208,7 @@ function RecentGap({ gap }: { gap: DashboardRecentExecutionGap }) {
       : null;
 
   return (
-    <span className="flex min-w-14 flex-col gap-0.5" data-recent-gap-status={gap.status}>
+    <span className="flex min-w-16 flex-col gap-0.5 text-right" data-recent-gap-status={gap.status}>
       <span className="text-muted-foreground text-[11px] leading-4 font-medium">
         {t('recent.gapR')}
       </span>

@@ -438,6 +438,11 @@
       "compositionDays": "{wins}W · {breakEvens}BE · {losses}L days",
       "currencyContext": "{currency} · {count, plural, one {# Trade} other {# Trades}}",
       "calculatedFromR": "Calculated from R",
+      "micro": {
+        "outcomeSplitTrades": "Outcome split: {wins} wins, {breakEvens} break-even, {losses} losses",
+        "outcomeSplitDays": "Day outcome split: {wins} winning, {breakEvens} break-even, {losses} losing",
+        "winLossBalance": "Average win {win} against average loss {loss}"
+      },
       "averages": "{win} / {loss}",
       "netPnl": {
         "label": "Net P&L",

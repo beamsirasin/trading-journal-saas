@@ -438,6 +438,11 @@
       "compositionDays": "ชนะ {wins} · เสมอ {breakEvens} · แพ้ {losses} วัน",
       "currencyContext": "{currency} · {count, plural, other {# เทรด}}",
       "calculatedFromR": "คำนวณจากค่า R",
+      "micro": {
+        "outcomeSplitTrades": "สัดส่วนผลลัพธ์: ชนะ {wins} เสมอทุน {breakEvens} แพ้ {losses}",
+        "outcomeSplitDays": "สัดส่วนผลลัพธ์รายวัน: ชนะ {wins} เสมอทุน {breakEvens} แพ้ {losses}",
+        "winLossBalance": "กำไรเฉลี่ย {win} เทียบกับขาดทุนเฉลี่ย {loss}"
+      },
       "averages": "{win} / {loss}",
       "netPnl": {
         "label": "กำไร/ขาดทุนสุทธิ",

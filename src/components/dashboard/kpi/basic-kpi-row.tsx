@@ -11,6 +11,7 @@ import type { DashboardPageData } from '@/lib/dashboard/page-data';
 import { cn } from '@/lib/utils';
 import { MetricValue } from '@/components/product/metric';
 
+import { KpiMicroVisual } from './kpi-micro-visual';
 import { BASIC_KPI_GRID_CLASS, KpiWidgetCard } from './kpi-widget-card';
 
 const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
@@ -68,6 +69,10 @@ function BasicKpiCard({ model }: { model: BasicKpiModel }) {
         description: t(`${model.key}.info`),
       }}
       value={<KpiValue value={model.value} />}
+      // Only where `composeBasicKpis` published one — Net P&L and Profit
+      // Factor pass `undefined` and the band is not rendered at all, rather
+      // than reserved empty.
+      {...(model.micro.kind === 'none' ? {} : { micro: <KpiMicroVisual micro={model.micro} /> })}
       context={<KpiContext context={model.context} />}
     />
   );

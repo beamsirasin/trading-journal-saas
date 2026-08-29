@@ -410,11 +410,11 @@ export function DashboardSkeleton() {
         <div className="mt-6 flex flex-col gap-4">
           <div className="bg-card h-[38px] w-64 rounded-md" />
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="border-border bg-card h-[173px] rounded-lg border" />
-            <div className="border-border bg-card h-[173px] rounded-lg border" />
+            <div className="border-border bg-card h-[193px] rounded-lg border" />
+            <div className="border-border bg-card h-[193px] rounded-lg border" />
           </div>
         </div>
-        <div className="border-border bg-card mt-6 h-[660px] rounded-lg border" />
+        <div className="border-border bg-card mt-6 h-[493px] rounded-lg border" />
         {/*
           D6B's unequal section, reserved at the geometry it actually renders
           at — five columns of Trade rows beside seven of Calendar. A skeleton
@@ -424,7 +424,7 @@ export function DashboardSkeleton() {
           the real section stretches to one bottom edge.
         */}
         <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-12">
-          <div className="border-border bg-card h-[520px] rounded-lg border lg:col-span-5" />
+          <div className="border-border bg-card h-[489px] rounded-lg border lg:col-span-5" />
           <div className="border-border bg-card h-[640px] rounded-lg border lg:col-span-7" />
         </div>
         {/* D7's Risk Performance section: one card, a summary strip over a

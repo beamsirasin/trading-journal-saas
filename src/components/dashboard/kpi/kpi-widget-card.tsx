@@ -73,6 +73,7 @@ export function KpiWidgetCard({
   reason,
   info,
   value,
+  micro,
   context,
   className,
 }: {
@@ -84,6 +85,24 @@ export function KpiWidgetCard({
   reason?: string;
   info?: { readonly triggerLabel: string; readonly description: string };
   value: ReactNode;
+  /**
+   * The optional micro-visual, rendered on the FIGURE'S OWN ROW, right-aligned.
+   *
+   * WHY BESIDE THE FIGURE AND NOT UNDER IT. A full-width band under the hero
+   * was the first thing tried and it was wrong twice over: it added a row to
+   * a card this product has twice worked to shorten, and at 355px wide and
+   * full saturation it out-shouted the number it belongs to — inverting the
+   * hierarchy §7 sets, where the figure leads. Right-aligned on the figure's
+   * baseline it costs no height at all and fills the horizontal emptiness
+   * that was the actual complaint about these cards.
+   *
+   * Omitted — not blanked — on the two metrics whose data cannot support one
+   * (see `BasicKpiMicroVisual`). Because the slot it would occupy is empty
+   * space to the right rather than a reserved row, a card without one reads
+   * as quiet rather than as broken, and the row still scans as one system:
+   * label, figure and context line all sit on shared baselines regardless.
+   */
+  micro?: ReactNode;
   context: ReactNode;
   className?: string;
 }) {
@@ -98,7 +117,11 @@ export function KpiWidgetCard({
         // five-across analytical row can least afford it. The vertical step
         // is now smaller than the horizontal one: the card is wide and short,
         // so its scarce dimension is the one that should pay less padding.
-        'bg-card border-border flex min-w-0 flex-col rounded-lg border px-4 py-3 transition-colors',
+        // `@container/kpi` so the micro-visual can ask how wide THIS card is.
+        // The viewport cannot answer that: the row is five columns at `lg`,
+        // three at `md` and two below, so a 1024px desktop gives each card
+        // LESS room than a 768px tablet does.
+        'bg-card border-border @container/kpi flex min-w-0 flex-col rounded-lg border px-4 py-3 transition-colors',
         'hover:border-ring/40',
         kpiSpanClassName(layout),
         className,
@@ -122,7 +145,39 @@ export function KpiWidgetCard({
           context line below it stay aligned across all five cards even when a
           narrow viewport wraps one card's label onto a second line.
         */}
-        <div className="flex min-h-8 min-w-0 flex-1 items-end">{value}</div>
+        <div className="flex min-h-8 min-w-0 flex-1 items-end gap-3">
+          <div className="min-w-0 flex-1">{value}</div>
+          {micro === undefined ? null : (
+            /*
+              SIZED AND GATED BY THE CARD'S OWN WIDTH, AND THAT IS A
+              CORRECTNESS RULE RATHER THAN A PREFERENCE.
+
+              The figure and the bar share one row, so the bar must never be
+              wider than what the figure leaves. Measured against the widest
+              real figure on the row (a six-character percentage, ~108px at
+              this type scale): under 11rem of content box there is no room
+              at all and the bar is not rendered; from there it is 48px; and
+              only past 15rem — where a card has ~240px of content — does it
+              take its full 80px.
+
+              Without this the bar overlapped the numeral outright at a 320px
+              phone (106px of content) and, less obviously, at a 1024px
+              desktop, where the row is five columns and each card is NARROWER
+              than on a 768px tablet. That is also why this is a container
+              query and not a breakpoint.
+
+              Nothing is lost when it hides: the counts it pictures are
+              printed in words on the line directly below, on every card, at
+              every width.
+
+              `mb-1.5` sits the bar on the figure's optical baseline rather
+              than its box's, so a 30px numeral and a 6px bar look aligned.
+            */
+            <div className="mb-1.5 hidden w-12 shrink-0 @[11rem]/kpi:block @[15rem]/kpi:w-20">
+              {micro}
+            </div>
+          )}
+        </div>
         <div className="text-muted-foreground mt-1 min-h-4 min-w-0 text-xs leading-4">
           {context}
         </div>

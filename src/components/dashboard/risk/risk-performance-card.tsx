@@ -162,7 +162,15 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
           {...dashboardWidgetAttributes(BALANCE_LAYOUT)}
           className="flex min-w-0 flex-col gap-2 lg:col-span-7"
         >
-          <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-6">
+          {/*
+            R2C §32 — the account STATE is the answer this section leads with,
+            so it takes the page's raised-surface treatment (see
+            `PerformanceCard`): Modeled Balance and the Period P&L that
+            produced it sit one plane above the card, and the drawdown
+            readings beside them stay on the card as the supporting column
+            they are. The chart below remains secondary to both.
+          */}
+          <dl className="bg-muted/50 grid min-w-0 grid-cols-1 gap-3 rounded-lg px-3 py-2.5 sm:grid-cols-2 sm:gap-6">
             <HeroMetric
               metricKey="modeledBalance"
               label={t('metrics.modeledBalance')}

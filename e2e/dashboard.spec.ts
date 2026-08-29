@@ -601,8 +601,23 @@ test.describe('Dashboard Risk Performance', () => {
     const metric = (key: string) => section.locator(`[data-risk-metric="${key}"]`);
     const status = page.locator('[data-risk-status]');
 
-    // 90D is the Dashboard default range.
+    /*
+      R2C §2 — a Dashboard URL that names NO range resolves to All time.
+      Asserted here, on the one section that labels the applied range, so the
+      default cannot drift back to a silent bounded window unnoticed.
+    */
     await gotoRisk(page, '/en/app');
+    await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', 'all');
+    await expect(
+      section.getByText('Modeled from the declared Starting Balance of $10,000.00.'),
+    ).toBeVisible();
+
+    /*
+      90D — a BOUNDED window that happens to reach back past all three closed
+      Trades. It is no longer the default, so it is named explicitly; without
+      it this test would lose the third opening case entirely.
+    */
+    await gotoRisk(page, '/en/app?range=90d&unit=r');
     await expect(page.getByRole('heading', { level: 2, name: RISK_HEADING })).toBeVisible();
     await expect(status).toHaveAttribute('data-risk-status', 'available');
     await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
@@ -723,7 +738,14 @@ test.describe('Dashboard Risk Performance', () => {
       name: 'E2E Empty Risk Tester',
     });
     await loginAs(page, 'en', user);
-    await gotoRisk(page, '/en/app');
+    /*
+      A BOUNDED range, named explicitly. The opening sentence asserted below
+      is the bounded case — "nothing was carried into this range" — and since
+      R2C §2 the Dashboard's own default is All time, which has no "before the
+      range" to carry anything from and correctly says something else. Naming
+      the range here keeps this test on the case it was written for.
+    */
+    await gotoRisk(page, '/en/app?range=90d&unit=r');
 
     const section = page.locator('[data-dashboard-panel="risk-performance"]');
     const metric = (key: string) => section.locator(`[data-risk-metric="${key}"]`);
@@ -1069,6 +1091,24 @@ test.describe('Dashboard insight pillars', () => {
   async function gotoInsights(page: Page, url: string) {
     await page.goto(url);
     await expect(page.locator('[data-insight-pillar]')).toHaveCount(3, { timeout: 20_000 });
+    /*
+      COUNT IS NOT LAYOUT. The pillars are a streamed Suspense boundary, so
+      `toHaveCount(3)` resolves the instant their HTML lands — which can be
+      before the browser has laid the subtree out. A `boundingBox()` taken in
+      that window returns `null`, and any caller measuring geometry then reads
+      it as a zero-width card.
+
+      That is a race in the measurement, not in the product: it only surfaced
+      when this file ran alongside the other Dashboard specs against one
+      shared Neon test database, where the insight read queues behind them
+      (the same contention `dashboard-calendar.spec.ts` pins itself to serial
+      mode for). Waiting for visibility is Playwright's own answer and costs
+      the assertions nothing — every geometric expectation below still runs
+      against the real rendered card.
+    */
+    for (const name of ['strategy', 'psychology', 'discipline'] as const) {
+      await expect(pillar(page, name)).toBeVisible({ timeout: 20_000 });
+    }
   }
 
   const pillar = (page: Page, name: 'strategy' | 'psychology' | 'discipline') =>

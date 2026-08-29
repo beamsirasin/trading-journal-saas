@@ -134,13 +134,29 @@ export function PerformanceCard({ model }: { model: PerformanceCardModel }) {
               markClassName={SIDE_MARK[model.side]}
               Icon={Icon}
             />
-            <div className="mt-3 min-w-0">
+            {/*
+              THE ANSWER SITS ON A RAISED SURFACE (R2C §5/§22).
+
+              One rule, applied everywhere on this page a figure is the
+              answer rather than a supporting reading: the Execution Gap's
+              four summary cells, each insight pillar's primary statement,
+              and this — the Total R that the six metrics beside it explain.
+              A step in SURFACE rather than a border, so the hierarchy is
+              built from planes and never from a second box (§23), and it
+              costs no new colour: `--muted` is the frozen `#262626` in dark
+              and the light palette's own step in light.
+
+              Before this, every card on the Dashboard was one flat plane at
+              `#181818` and a reader had to read all seven figures to find
+              out which one mattered.
+            */}
+            <div className="bg-muted/50 mt-3 min-w-0 rounded-lg px-3 py-2.5">
               <MetricLabel variant="plain">{tPerf(`${model.side}.heroLabel`)}</MetricLabel>
               <p className="mt-0.5">
                 <PerformanceFigure value={model.hero} variant="hero" />
               </p>
               {model.composition === null ? null : (
-                <p className="text-muted-foreground numeric mt-1 text-xs leading-4">
+                <p className="text-muted-foreground numeric mt-1 text-[11px] leading-4">
                   {tKpi('compositionTrades', {
                     wins: model.composition.wins,
                     breakEvens: model.composition.breakEvens,

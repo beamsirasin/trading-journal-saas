@@ -218,9 +218,9 @@ function DashboardCalendarSkeleton() {
 function InsightPillarsSkeleton() {
   return (
     <div aria-hidden="true" className="grid animate-pulse gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <div className="border-border bg-card h-[455px] rounded-lg border" />
-      <div className="border-border bg-card h-[455px] rounded-lg border" />
-      <div className="border-border bg-card h-[455px] rounded-lg border md:col-span-2 xl:col-span-1" />
+      <div className="border-border bg-card h-[413px] rounded-lg border" />
+      <div className="border-border bg-card h-[413px] rounded-lg border" />
+      <div className="border-border bg-card h-[413px] rounded-lg border md:col-span-2 xl:col-span-1" />
     </div>
   );
 }
