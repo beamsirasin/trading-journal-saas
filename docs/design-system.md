@@ -126,22 +126,25 @@ contract. Neither control offers System.
 
 Roles, not sizes. A call site asks for `text-display`, so changing what a role looks like is one edit in `globals.css`.
 
-| Role           | Token                | Value                           | Used for                    |
-| -------------- | -------------------- | ------------------------------- | --------------------------- |
-| Display        | `text-display`       | clamp 2.125→3.5rem, 600         | Hero headline only          |
-| Page title     | `text-page-title`    | clamp 1.625→2rem, 600           | The single `<h1>` on a page |
-| Section title  | `text-section-title` | clamp 1.5→1.875rem, 600         | Landing-section `<h2>`      |
-| Card title     | `text-card-title`    | 1rem, 600                       | Card and panel headings     |
-| Body           | `text-base`          | 1rem                            | Prose                       |
-| Muted body     | `text-sm` + token    | 0.875rem, `muted-foreground`    | Supporting copy             |
-| Label          | `text-label`         | 0.75rem, 500, 0.06em, uppercase | Metric names, field groups  |
-| Table text     | `text-sm`            | 0.875rem                        | Table cells                 |
-| Numeric metric | `text-metric`        | clamp 1.5→1.875rem, 600         | KPI figures                 |
-| Tabular number | `numeric` utility    | mono + `tabular-nums`           | Any figure in a column      |
+| Role           | Token                 | Value                           | Used for                    |
+| -------------- | --------------------- | ------------------------------- | --------------------------- |
+| Display        | `text-display`        | clamp 2.125→3.5rem, 600         | Hero headline only          |
+| Page title     | `text-page-title`     | clamp 1.625→2rem, 600           | The single `<h1>` on a page |
+| Section title  | `text-section-title`  | clamp 1.5→1.875rem, 600         | Landing-section `<h2>`      |
+| Card title     | `text-card-title`     | 1rem, 600                       | Card and panel headings     |
+| Body           | `text-base`           | 1rem                            | Prose                       |
+| Muted body     | `text-sm` + token     | 0.875rem, `muted-foreground`    | Supporting copy             |
+| Label          | `text-label`          | 0.75rem, 500, 0.06em, uppercase | Metric names, field groups  |
+| Dense label    | `MetricLabel` `plain` | 0.75rem, 500, normal case       | Metric grids, count strips  |
+| Table text     | `text-sm`             | 0.875rem                        | Table cells                 |
+| Numeric metric | `text-metric`         | clamp 1.5→1.875rem, 600         | KPI figures                 |
+| Tabular number | `numeric` utility     | mono + `tabular-nums`           | Any figure in a column      |
 
 The three largest roles are **fluid** (`clamp`), so headings scale continuously between 320px and desktop instead of jumping at breakpoints. The lower bound is chosen to fit 320px without overflow.
 
 Thai pages retain the same sizes and hierarchy but override the display, title, card-title, and label rhythm in `globals.css`: line heights are at least `1.22` for display text and Latin-style tracking is removed. This prevents Thai combining marks from clipping or separating visually at narrow widths.
+
+**`MetricLabel` has two casings and the difference is density.** `caps` (the default) is the `text-label` role above: it reads as a heading, and on a surface carrying ONE label — a KPI tile, a form section — that is right. `plain` is the same size, colour and weight without the uppercase and tracking, for surfaces carrying six or twelve at once: a performance card's metric grid, an operational count strip, a table's column heads. Uppercase plus 0.06em costs roughly 15% extra width per label, and repeated a dozen times in one viewport it stops reading as hierarchy and starts reading as noise. The caps variant keeps its meaning precisely because it is no longer everywhere.
 
 **Every financial figure uses `numeric`.** Tabular numerals keep digits on a fixed advance width, so a column of R-multiples aligns on the decimal point and an animating KPI does not jitter as digits change. Prose numerals stay proportional, which is why this is a utility and not a base rule.
 
@@ -162,9 +165,11 @@ The shell's geometry lives in CSS variables rather than repeated `top-14` / `w-6
 
 `canvas` is the Dashboard's width and only the Dashboard's. `wide` leaves a 1728/1920-class monitor with roughly 128px of dead margin on each side of the workspace; the higher ceiling hands those pixels back without changing the gutters, and starts doing any clipping at all only on a genuine ultrawide. Widening the other analytics surfaces is a separate decision, taken separately.
 
-**Dense data surfaces set their own vertical rhythm.** A `gap-6`–`gap-8` between every region reads as generous on a marketing page and as wasteful on a page whose job is figures. The Dashboard steps its margins up with the weight of the boundary instead — 20px into the KPI band, 24px into Needs Attention, 28px into the analytical sections, 32px before the record list — so hierarchy comes from contrast between boundaries rather than from one large gap repeated.
+**Dense data surfaces set their own vertical rhythm.** A `gap-6`–`gap-8` between every region reads as generous on a marketing page and as wasteful on a page whose job is figures. The Dashboard uses exactly **two** boundaries: `mt-4` (16px) inside the opening context block — account strip, KPI band, Needs Attention, which are read as one continuous operational unit — and `mt-6` (24px) between analytical sections, which is also the `gap-4`+ rhythm those sections use between their own cards. An earlier pass ramped this 20/24/28/32; four margins nobody can perceive apart are not a hierarchy, they are four ways of being loose, so the ramp was collapsed to the two boundaries that genuinely exist.
 
-**Each section owns its own grid.** The Dashboard is a stack of sections, not one page-wide grid: the KPI band is five columns, the System/Trader pair is two, and Recent Trades + Calendar is twelve, split 7 + 5. A widget's recorded `desktopSpan` is read against **its own section's** column count and nothing else. This is a record of what the components spell, not a layout engine — there is no persistence, editor, drag/drop or resize behind it.
+**A wide card is laid out wide.** The System/Trader cards split along their long axis — identity and hero on the left, the supporting metric grid on the right, one hairline between — rather than stacking a full-width hero band over a grid. The split is a **container query** (`@container/perf`, engaging at 34rem of card width), not a breakpoint: two such cards sit inside a two-column section, so the viewport says nothing useful about how wide either one actually is.
+
+**Each section owns its own grid.** The Dashboard is a stack of sections, not one page-wide grid: the KPI band is five columns, the System/Trader pair is two, and Recent Trades + Calendar is twelve, split **5 + 7** — the Calendar takes the wider share, because width is the only thing that makes a day cell legible while the Trade list reaches its natural width at about 500px and spends everything past that on padding. A widget's recorded `desktopSpan` is read against **its own section's** column count and nothing else. This is a record of what the components spell, not a layout engine — there is no persistence, editor, drag/drop or resize behind it.
 
 ## 6. Responsive
 
@@ -234,6 +239,21 @@ Empty states teach the next action. "No data" is not an empty state — the `Emp
 Numbers that cannot be computed render their reason, never `0` — a `0%` win rate for a user with no trades is a false statement. See [calculation-spec.md](calculation-spec.md) §6.
 
 Skeletons are `aria-hidden` and grouped under a single `role="status"`, so a screen reader hears one "Loading" rather than a dozen meaningless boxes.
+
+**A skeleton reserves the geometry it actually stands in for.** Block heights are set from the measured height of the real section, not from a convenient `h-96`; a skeleton that is 200px short of its content pushes the whole page down the moment the payload arrives, which is the exact jump a skeleton exists to prevent.
+
+### The Dashboard's loading transition
+
+Every Dashboard state change — Date Range, Filters, Account, Calendar month/day — performs a **native document navigation** (`DashboardStateLink`; Next 16.2.12 cannot be trusted to commit search-param-only soft navigations on this route). A document navigation cannot keep anything mounted, so a "persistent shell with only the content swapping" is not available on this transport and nothing here pretends otherwise. What is true is shown in two honest halves, each carrying the same mark so the seam between two documents reads as one continuous state:
+
+| Half          | Component                    | Copy                  | What it actually is                                                                                                                     |
+| ------------- | ---------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Departure** | `DashboardTransitionOverlay` | "Updating dashboard…" | The outgoing document, still live and painted: header, sidebar and sticky toolbar stay at full contrast; only the analytical area dims. |
+| **Arrival**   | `DashboardSkeleton`          | "Loading dashboard…"  | The incoming document's server-rendered Suspense fallback — geometry blocks plus the mark.                                              |
+
+Rules this treatment holds to: it invents **no progress** (nothing in a document navigation knows how far along it is); it adds **no delay** and no minimum display time; it **hides no error** (errors are server-rendered on arrival); and it **never blocks input** — `pointer-events-none` throughout, cleared on `Escape` and on bfcache `pageshow`, because a native navigation fires no "cancelled" event and a veil that captured clicks could strand the reader under it. Exactly one `role="status"` exists per view, so three independently suspending boundaries never announce one user action three times.
+
+The mark itself is a five-bar equalizer in the accent — never the `positive`/`negative` outcome palette, which means "this trade made or lost money" everywhere else in the product. Under `prefers-reduced-motion` the bars stop scaling and the group breathes on one slow opacity cycle: alive, because a frozen loader reads as a hung page, but with nothing travelling.
 
 ## 9. Charts
 

@@ -55,6 +55,16 @@ export const BASIC_KPI_GRID_CLASS =
  * The three regions have their own minimum heights so that, across a row of
  * five, labels start on one line, values sit on one baseline, and the context
  * line occupies the same band even when a card has nothing to say there.
+ *
+ * THOSE BANDS ARE SIZED TO THEIR CONTENT, NOT ROUNDED UP. Through D4.5 the
+ * card stood 138px tall to carry a 16px label, a 33px figure and a 16px
+ * sentence — 49px of it was reserved air, five times across, at the very top
+ * of the page. Each band is now the smallest height its own content can
+ * occupy without moving: 28px for the label row (the definition button's own
+ * 32px target less the 4px it already pulls into the padding above it), 32px
+ * for the figure band, 16px for the context line. The type scale is
+ * untouched, the definition affordance still clears WCAG 2.5.8's 24px
+ * minimum, and the card is ~111px.
  */
 export function KpiWidgetCard({
   layout,
@@ -85,15 +95,19 @@ export function KpiWidgetCard({
       className={cn(
         // One padding step at every width (D4.5). The old `sm:p-5` bought
         // 8px of card height back on desktop, which is precisely where a
-        // five-across analytical row can least afford it.
-        'bg-card border-border flex min-w-0 flex-col rounded-lg border p-4 transition-colors',
+        // five-across analytical row can least afford it. The vertical step
+        // is now smaller than the horizontal one: the card is wide and short,
+        // so its scarce dimension is the one that should pay less padding.
+        'bg-card border-border flex min-w-0 flex-col rounded-lg border px-4 py-3 transition-colors',
         'hover:border-ring/40',
         kpiSpanClassName(layout),
         className,
       )}
     >
-      <dt className="flex min-h-8 items-start justify-between gap-2">
-        <MetricLabel className="min-w-0 pt-1 leading-snug break-words">{label}</MetricLabel>
+      <dt className="flex min-h-7 items-start justify-between gap-2">
+        <MetricLabel variant="plain" className="min-w-0 pt-1 leading-snug break-words">
+          {label}
+        </MetricLabel>
         {info === undefined ? null : (
           <MetricInfo
             triggerLabel={info.triggerLabel}
@@ -102,14 +116,14 @@ export function KpiWidgetCard({
           />
         )}
       </dt>
-      <dd className="mt-2 flex min-w-0 flex-1 flex-col">
+      <dd className="mt-1 flex min-w-0 flex-1 flex-col">
         {/*
           Bottom-anchored inside a stretched grid row, so the value band and the
           context line below it stay aligned across all five cards even when a
           narrow viewport wraps one card's label onto a second line.
         */}
-        <div className="flex min-h-9 min-w-0 flex-1 items-end">{value}</div>
-        <div className="text-muted-foreground mt-2 min-h-5 min-w-0 text-xs leading-5">
+        <div className="flex min-h-8 min-w-0 flex-1 items-end">{value}</div>
+        <div className="text-muted-foreground mt-1 min-h-4 min-w-0 text-xs leading-4">
           {context}
         </div>
       </dd>

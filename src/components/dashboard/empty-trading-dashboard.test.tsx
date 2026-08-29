@@ -75,9 +75,15 @@ describe('EmptyTradingDashboard', () => {
   });
 
   /**
-   * D4.5 §2. The account bar is context, so it is one compact row on desktop
-   * rather than the 173px card it used to be — but "compact" must never mean
-   * "fewer facts", which is what this asserts alongside the geometry.
+   * D4.5 §2, tightened again by the visual refinement pass. The account bar is
+   * context, so it is one compact strip on desktop rather than the 173px card
+   * it used to be — but "compact" must never mean "fewer facts", which is what
+   * this asserts alongside the geometry.
+   *
+   * Two of the five labels are now `sr-only` beside their chip, so this
+   * deliberately asserts PRESENCE rather than visibility: the compaction is
+   * allowed to take a caption off the screen, never out of the accessibility
+   * tree.
    */
   it('states every account fact on one labelled desktop row', () => {
     const { container } = renderDashboard();
@@ -88,10 +94,13 @@ describe('EmptyTradingDashboard', () => {
     expect(region.className).not.toContain('sm:grid-cols-3');
     expect(container.querySelector('[data-dashboard-region="account-context"]')).toBe(region);
 
-    for (const label of ['Your active trading account', 'Account mode', 'Base currency']) {
+    for (const label of ['Active account', 'Account mode', 'Base currency', 'Starting balance']) {
       expect(within(region).getByText(label)).toBeInTheDocument();
     }
-    expect(within(region).getByText('Starting balance')).toBeInTheDocument();
+    // Every value is still on screen, whatever happened to its caption.
+    for (const value of ['My First Account', 'Live', 'USD', '$10,000.00']) {
+      expect(within(region).getByText(value)).toBeVisible();
+    }
   });
 
   it('shows the honest no-trades explanation', () => {

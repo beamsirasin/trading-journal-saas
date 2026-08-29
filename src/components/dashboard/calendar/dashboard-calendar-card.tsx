@@ -266,7 +266,7 @@ function CalendarMonthSummary({
       className="text-muted-foreground flex min-w-0 flex-wrap gap-x-5 gap-y-2 text-xs"
     >
       <div className="flex min-w-0 flex-col gap-0.5">
-        <dt className="uppercase">{t(`summary.total.${mode}`)}</dt>
+        <dt>{t(`summary.total.${mode}`)}</dt>
         <dd
           data-calendar-summary-total=""
           className={cn(
@@ -280,15 +280,13 @@ function CalendarMonthSummary({
         </dd>
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <dt className="uppercase">{t('summary.days')}</dt>
+        <dt>{t('summary.days')}</dt>
         <dd className="numeric text-foreground text-base leading-6 font-semibold">
           {month.totals.populatedDayCount}
         </dd>
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <dt className="uppercase">
-          {t(`summary.trades.${mode === 'gap' ? 'paired' : 'eligible'}`)}
-        </dt>
+        <dt>{t(`summary.trades.${mode === 'gap' ? 'paired' : 'eligible'}`)}</dt>
         <dd className="numeric text-foreground text-base leading-6 font-semibold">
           {month.totals.eligibleTradeCount}
         </dd>

@@ -105,7 +105,14 @@ test.describe('locale rendering', () => {
     await expect(
       page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'แดชบอร์ด' }),
     ).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByText('ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง')).toBeVisible();
+    // The page's own supporting sentence was retired by the visual refinement
+    // pass (it restated what the figures below it already say, and cost the
+    // first viewport a full row); the localized section heading beneath the
+    // KPI band is the equivalent proof that real page copy — not just chrome —
+    // is translated.
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'ผลการทำงานของระบบเทียบกับเทรดเดอร์' }),
+    ).toBeVisible();
     // Scoped to the dashboard's own labelled region rather than `.first()`:
     // `TradingAccountIndicator` in the header repeats the same account mode
     // text and is hidden below the `sm` breakpoint (`hidden sm:flex`), so an

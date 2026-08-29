@@ -224,6 +224,15 @@ function renderDashboard(
   );
 }
 
+/** The skeleton reads its own copy, so it needs the same message context. */
+function renderSkeleton() {
+  return render(
+    <NextIntlClientProvider locale="en" messages={en}>
+      <DashboardSkeleton />
+    </NextIntlClientProvider>,
+  );
+}
+
 describe('RealDashboard', () => {
   it('renders System and Trader as distinct, independently counted panels', () => {
     const { container } = renderDashboard();
@@ -279,7 +288,18 @@ describe('RealDashboard', () => {
    * layout, and pinned here so a later edit cannot quietly restore the
    * uniform spacing that made the Dashboard read as a landing page.
    */
-  it('steps the section rhythm up with the weight of each boundary', () => {
+  /**
+   * TWO BOUNDARIES, NOT FIVE. D4.5 replaced one uniform 32px gap with a
+   * 20/24/28/32 ramp; this pass replaces the ramp, because four margins
+   * nobody can tell apart is just four ways of being loose. The page has
+   * exactly two kinds of boundary now — 16px inside the opening operational
+   * block (account strip, KPI band, Needs Attention) and 24px between
+   * analytical sections, which is also the gap those sections use between
+   * their own cards. Asserted as classes because the jsdom renderer has no
+   * layout, and pinned here so a later edit cannot quietly reintroduce the
+   * spacing that made the Dashboard read as a landing page.
+   */
+  it('separates the page on exactly two boundaries, context and section', () => {
     const { container } = renderDashboard(overview(), [RECENT], {
       ...ATTENTION,
       openTrades: 2,
@@ -295,11 +315,15 @@ describe('RealDashboard', () => {
       .querySelector('[data-dashboard-panel="system"]')
       ?.closest('section') as HTMLElement;
 
-    expect(kpiRow.className).toContain('mt-5');
+    expect(kpiRow.className).toContain('mt-4');
     // Absent an account context bar the KPI band is first and takes no margin.
     expect(kpiRow.className).toContain('first:mt-0');
-    expect(attention.className).toContain('mt-6');
-    expect(performance.className).toContain('mt-7');
+    expect(attention.className).toContain('mt-4');
+    expect(performance.className).toContain('mt-6');
+    // The retired ramp must not creep back in one step at a time.
+    for (const element of [kpiRow, attention, performance]) {
+      expect(element.className).not.toMatch(/\bmt-(5|7|8)\b/);
+    }
   });
 
   it('compresses Needs Attention into one bar rather than a header-and-grid card', () => {
@@ -611,12 +635,14 @@ describe('RealDashboard', () => {
   });
 
   it('reserves the five-card KPI geometry in the loading skeleton', () => {
-    const { container } = render(<DashboardSkeleton />);
+    const { container } = renderSkeleton();
     const band = container.querySelector('.lg\\:grid-cols-5');
     expect(band).not.toBeNull();
     expect(band?.children).toHaveLength(5);
     // Same span metadata as the real row, so the cards do not resize on arrival.
     expect((band?.lastElementChild as HTMLElement).className).toContain('col-span-2');
-    expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+    // The reserved geometry is decorative; the announcement and the branded
+    // mark beside it are not, so `aria-hidden` belongs on the blocks alone.
+    expect(band?.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 });

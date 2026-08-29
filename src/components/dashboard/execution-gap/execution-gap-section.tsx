@@ -83,27 +83,52 @@ export function ExecutionGapSection({
       data-execution-gap-status={comparison.status}
       className={cn('min-w-0', className)}
     >
-      <Card data-dashboard-panel="execution-gap" className="flex min-w-0 flex-col gap-5 p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="bg-primary/10 text-primary mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg">
-              <GitCompareArrows className="size-4.5" aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <h2 id={headingId} className="text-card-title">
-                {t('title')}
-              </h2>
-              <p className="text-muted-foreground mt-0.5 text-sm leading-snug text-pretty">
-                {t('description')}
-              </p>
+      <Card data-dashboard-panel="execution-gap" className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
+        {/*
+          The header and the four figures share ONE row from `lg` up.
+
+          They are the same beat — "here is the question, here is the answer" —
+          and the section is full width, so stacking them spent an entire 68px
+          band on a title and a sentence with 900px of nothing beside them
+          before the first number appeared. Below `lg` they stack, because four
+          metrics and a two-line header cannot both hold a tablet's width.
+          `lg:w-[19rem]` fixes the header's share rather than letting it
+          compete with the figures, which is what kept the metric row from
+          wrapping unevenly as the gap totals change width.
+        */}
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+          <div className="flex min-w-0 items-start justify-between gap-3 lg:w-[19rem] lg:shrink-0 xl:w-[22rem]">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+                <GitCompareArrows className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 id={headingId} className="text-card-title">
+                  {t('title')}
+                </h2>
+                <p className="text-muted-foreground mt-0.5 text-xs leading-4 text-pretty">
+                  {t('description')}
+                </p>
+              </div>
+            </div>
+            <div className="lg:hidden">
+              <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
+                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
+              </MetricInfo>
             </div>
           </div>
-          <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
-            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
-          </MetricInfo>
-        </div>
 
-        <ExecutionGapSummary comparison={comparison} />
+          <ExecutionGapSummary comparison={comparison} className="flex-1" />
+
+          {/* One affordance, rendered on whichever side the layout puts it —
+              never two in the DOM at once, which would give a screen reader
+              two identical "About Execution Gap" buttons. */}
+          <div className="hidden lg:block">
+            <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
+              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
+            </MetricInfo>
+          </div>
+        </div>
 
         <ExecutionGapBody comparison={comparison} dateLocale={dateLocale} />
       </Card>

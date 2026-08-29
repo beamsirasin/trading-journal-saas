@@ -321,7 +321,13 @@
   "dashboard": {
     "title": "Dashboard",
     "description": "What is happening with your trading right now.",
+    "loading": {
+      "updating": "Updating dashboard…",
+      "loading": "Loading dashboard…",
+      "detail": "Refreshing your performance data"
+    },
     "activeAccountSubtitle": "Your active trading account",
+    "activeAccountInlineLabel": "Active account",
     "activeAccountRegionLabel": "Active trading account summary",
     "accountModeLabel": "Account mode",
     "accountModeValues": {

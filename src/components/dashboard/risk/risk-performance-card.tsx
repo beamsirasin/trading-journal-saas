@@ -90,18 +90,18 @@ export function RiskPerformanceCard({
     >
       <Card
         data-dashboard-panel="risk-performance"
-        className="flex min-w-0 flex-col gap-5 p-4 sm:p-5"
+        className="flex min-w-0 flex-col gap-4 p-4 sm:p-5"
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="bg-primary/10 text-primary mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg">
-              <Wallet className="size-4.5" aria-hidden="true" />
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+              <Wallet className="size-4" aria-hidden="true" />
             </span>
             <div className="min-w-0">
               <h2 id={headingId} className="text-card-title">
                 {t('title')}
               </h2>
-              <p className="text-muted-foreground mt-0.5 text-sm leading-snug text-pretty">
+              <p className="text-muted-foreground mt-0.5 text-xs leading-4 text-pretty">
                 {t('description', { account: accountLabel })}
               </p>
             </div>
@@ -150,19 +150,19 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
   const t = useTranslations('dashboard.riskPerformance');
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-4">
       {/*
         7 + 5 of the section's twelve columns, exactly as the layout metadata
         records. Mobile source order is Modeled Balance, Period P&L, then the
         two drawdown readings and the peak they are measured from — the
         priority a 320px screen has to honour before anything else.
       */}
-      <div className="grid min-w-0 gap-5 lg:grid-cols-12 lg:gap-6">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-12 lg:gap-6">
         <div
           {...dashboardWidgetAttributes(BALANCE_LAYOUT)}
-          className="flex min-w-0 flex-col gap-3 lg:col-span-7"
+          className="flex min-w-0 flex-col gap-2 lg:col-span-7"
         >
-          <dl className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
+          <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-6">
             <HeroMetric
               metricKey="modeledBalance"
               label={t('metrics.modeledBalance')}
@@ -185,16 +185,16 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
             opening explicitly, which is the one sentence that makes the two
             hero figures reconcile.
           */}
-          <p className="text-muted-foreground text-xs leading-relaxed">
+          <p className="text-muted-foreground text-xs leading-4">
             {t(`opening.${view.opening.kind}`, { balance: view.opening.balanceText })}
           </p>
         </div>
 
         <div
           {...dashboardWidgetAttributes(DRAWDOWN_LAYOUT)}
-          className="border-border flex min-w-0 flex-col gap-3 border-t pt-5 lg:col-span-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
+          className="border-border flex min-w-0 flex-col gap-2 border-t pt-4 lg:col-span-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
         >
-          <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-4">
+          <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-3">
             <DrawdownMetric
               metricKey="currentDrawdown"
               label={t('metrics.currentDrawdown')}
@@ -215,12 +215,12 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
               className="col-span-2 flex min-w-0 flex-col gap-0.5"
             >
               <dt>
-                <MetricLabel className="leading-snug">{t('metrics.peakBalance')}</MetricLabel>
+                <MetricLabel variant="plain">{t('metrics.peakBalance')}</MetricLabel>
               </dt>
               <dd className="numeric text-foreground text-base font-semibold">
                 {view.peakBalanceText}
               </dd>
-              <p className="text-muted-foreground text-xs leading-snug">{t('peakHint')}</p>
+              <p className="text-muted-foreground text-xs leading-4">{t('peakHint')}</p>
             </div>
           </dl>
         </div>
@@ -389,7 +389,7 @@ function HeroMetric({
   return (
     <div data-risk-metric={metricKey} className="flex min-w-0 flex-col gap-1">
       <dt>
-        <MetricLabel className="leading-snug">{label}</MetricLabel>
+        <MetricLabel variant="plain">{label}</MetricLabel>
       </dt>
       <dd
         className={cn(
@@ -429,7 +429,9 @@ function DrawdownMetric({
       className="flex min-w-0 flex-col gap-1"
     >
       <dt>
-        <MetricLabel className="leading-snug break-words">{label}</MetricLabel>
+        <MetricLabel variant="plain" className="break-words">
+          {label}
+        </MetricLabel>
       </dt>
       <dd className="flex min-w-0 flex-col gap-0.5">
         <span

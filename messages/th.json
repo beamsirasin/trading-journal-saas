@@ -321,7 +321,13 @@
   "dashboard": {
     "title": "แดชบอร์ด",
     "description": "ตอนนี้เกิดอะไรขึ้นกับการเทรดของคุณบ้าง",
+    "loading": {
+      "updating": "กำลังอัปเดตแดชบอร์ด…",
+      "loading": "กำลังโหลดแดชบอร์ด…",
+      "detail": "กำลังรีเฟรชข้อมูลผลการเทรดของคุณ"
+    },
     "activeAccountSubtitle": "บัญชีเทรดที่ใช้งานอยู่ของคุณ",
+    "activeAccountInlineLabel": "บัญชีที่ใช้งาน",
     "activeAccountRegionLabel": "สรุปบัญชีเทรดที่ใช้งานอยู่",
     "accountModeLabel": "โหมดบัญชี",
     "accountModeValues": {

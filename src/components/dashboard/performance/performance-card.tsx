@@ -45,11 +45,32 @@ const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
 /**
  * One analytical performance card.
  *
- * More internal hierarchy than a D3 Basic KPI card, not a bigger one: a
- * header with an identity mark and a definition affordance, one hero Total R,
- * the W/BE/L composition behind it, and a compact supporting grid. Seven
- * equally sized figures would read as a spreadsheet and would tell a reader
- * nothing about which number matters.
+ * More internal hierarchy than a D3 Basic KPI card, not a bigger one: an
+ * identity mark, one hero Total R, the W/BE/L composition behind it, and a
+ * compact supporting grid. Seven equally sized figures would read as a
+ * spreadsheet and would tell a reader nothing about which number matters.
+ *
+ * THE CARD IS WIDE, SO IT IS LAID OUT WIDE. Everything used to stack: header,
+ * then a full-width hero band with a rule under it, then a three-column grid
+ * beneath that — around 250px of card to carry seven figures, with the hero's
+ * own row leaving two thirds of the width empty beside a single number. The
+ * card now splits along its long axis: identity and hero on the left, the six
+ * supporting metrics in a grid on the right, divided by one hairline. Same
+ * figures, same order, same states, same dominance (the hero is still 32px
+ * against the cells' 20px) — about 100px less height, with the width the card
+ * already had doing the work the height used to.
+ *
+ * THE SPLIT IS A CONTAINER QUERY, NOT A BREAKPOINT. Two of these sit side by
+ * side inside a two-column section, so the viewport says nothing useful about
+ * how wide either card actually is — a `lg:` split would fire at exactly the
+ * width where each card is at its narrowest. `@container/perf` asks the card
+ * itself, which also keeps the layout correct if the section is ever
+ * re-proportioned. Below 34rem of card width it stacks, unchanged.
+ *
+ * The definition affordance is positioned against the card rather than
+ * carried in a header row: it belongs to the whole card, and a row existing
+ * only to hold it at the far end of the left column would put it on the
+ * divider, where it would read as the metric grid's control instead.
  *
  * Both sides render through this single component, so their geometry, states,
  * and metric order cannot diverge.
@@ -69,69 +90,115 @@ export function PerformanceCard({ model }: { model: PerformanceCardModel }) {
       data-performance-status={model.populationEmpty ? 'empty' : 'available'}
       role="group"
       aria-labelledby={headingId}
-      className="flex min-w-0 flex-col p-5 sm:p-6"
+      className="@container/perf relative flex min-w-0 flex-col p-4 sm:p-5"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className={cn(
-              'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg',
-              SIDE_MARK[model.side],
-            )}
-          >
-            <Icon className="size-4.5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h3 id={headingId} className="text-base font-semibold tracking-tight">
-              {title}
-            </h3>
-            <p className="text-muted-foreground mt-0.5 text-sm">{tPerf(`${model.side}.tagline`)}</p>
-          </div>
-        </div>
+      {/*
+        Anchored to the card. The identity block reserves its lane with `pe-8`,
+        so the two can never collide however long a title becomes.
+      */}
+      <div className="absolute end-3 top-3 z-10">
         <MetricInfo triggerLabel={tKpi('infoTrigger', { metric: title })} title={title}>
           <PerformanceDefinitions side={model.side} />
         </MetricInfo>
       </div>
 
       {model.populationEmpty ? (
-        <div className="mt-5 flex flex-1 flex-col justify-center">
-          <p className="border-border bg-muted/40 text-muted-foreground rounded-md border p-3 text-sm leading-relaxed">
-            {t(`${model.side}.empty`)}
-          </p>
-          {/* The Trade count stays truthful and useful at zero, so it survives
-              the empty state while the rest of the grid would only repeat it. */}
-          <dl className="mt-4">
-            <PerformanceCell
-              cell={{ key: 'sampleCount', value: plainValue(String(model.sampleCount)) }}
-            />
-          </dl>
-        </div>
-      ) : (
         <>
-          <div className="border-border mt-5 border-b pb-5">
-            <MetricLabel>{tPerf(`${model.side}.heroLabel`)}</MetricLabel>
-            <p className="mt-1.5">
-              <PerformanceFigure value={model.hero} variant="hero" />
+          <PerformanceIdentity
+            headingId={headingId}
+            title={title}
+            tagline={tPerf(`${model.side}.tagline`)}
+            markClassName={SIDE_MARK[model.side]}
+            Icon={Icon}
+          />
+          <div className="mt-4 flex flex-1 flex-col justify-center">
+            <p className="border-border bg-muted/40 text-muted-foreground rounded-md border p-3 text-sm leading-relaxed">
+              {t(`${model.side}.empty`)}
             </p>
-            {model.composition === null ? null : (
-              <p className="text-muted-foreground numeric mt-2 text-xs leading-5">
-                {tKpi('compositionTrades', {
-                  wins: model.composition.wins,
-                  breakEvens: model.composition.breakEvens,
-                  losses: model.composition.losses,
-                })}
+            {/* The Trade count stays truthful and useful at zero, so it survives
+                the empty state while the rest of the grid would only repeat it. */}
+            <dl className="mt-4">
+              <PerformanceCell
+                cell={{ key: 'sampleCount', value: plainValue(String(model.sampleCount)) }}
+              />
+            </dl>
+          </div>
+        </>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-4 @[34rem]/perf:flex-row @[34rem]/perf:items-center @[34rem]/perf:gap-6">
+          <div className="flex min-w-0 flex-col @[34rem]/perf:w-[13.5rem] @[34rem]/perf:shrink-0">
+            <PerformanceIdentity
+              headingId={headingId}
+              title={title}
+              tagline={tPerf(`${model.side}.tagline`)}
+              markClassName={SIDE_MARK[model.side]}
+              Icon={Icon}
+            />
+            <div className="mt-3 min-w-0">
+              <MetricLabel variant="plain">{tPerf(`${model.side}.heroLabel`)}</MetricLabel>
+              <p className="mt-0.5">
+                <PerformanceFigure value={model.hero} variant="hero" />
               </p>
-            )}
+              {model.composition === null ? null : (
+                <p className="text-muted-foreground numeric mt-1 text-xs leading-4">
+                  {tKpi('compositionTrades', {
+                    wins: model.composition.wins,
+                    breakEvens: model.composition.breakEvens,
+                    losses: model.composition.losses,
+                  })}
+                </p>
+              )}
+            </div>
           </div>
 
-          <dl className="mt-5 grid min-w-0 grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3">
+          {/*
+            One hairline, running in the direction the split actually runs — on
+            top when stacked, on the leading edge when side by side. §14:
+            surface separation and spacing, never a second bordered box.
+          */}
+          <dl className="border-border grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-3.5 border-t pt-4 sm:grid-cols-3 @[34rem]/perf:gap-x-3 @[34rem]/perf:border-s @[34rem]/perf:border-t-0 @[34rem]/perf:ps-5 @[34rem]/perf:pe-6 @[34rem]/perf:pt-0">
             {model.metrics.map((cell) => (
               <PerformanceCell key={cell.key} cell={cell} />
             ))}
           </dl>
-        </>
+        </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * The identity block, shared by the populated and the empty composition so
+ * the two states cannot drift apart. `pe-8` is the lane the absolutely
+ * positioned definition button occupies.
+ */
+function PerformanceIdentity({
+  headingId,
+  title,
+  tagline,
+  markClassName,
+  Icon,
+}: {
+  headingId: string;
+  title: string;
+  tagline: string;
+  markClassName: string;
+  Icon: typeof MonitorCog;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-2.5 pe-8 @[34rem]/perf:pe-0">
+      <span
+        className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', markClassName)}
+      >
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <h3 id={headingId} className="text-card-title">
+          {title}
+        </h3>
+        <p className="text-muted-foreground mt-0.5 text-xs leading-4 text-pretty">{tagline}</p>
+      </div>
+    </div>
   );
 }
 
@@ -144,10 +211,10 @@ function PerformanceCell({ cell }: { cell: PerformanceMetricCell }) {
       {...(cell.value.status === 'unavailable'
         ? { 'data-performance-metric-reason': cell.value.reason }
         : {})}
-      className="flex min-w-0 flex-col gap-1"
+      className="flex min-w-0 flex-col gap-0.5"
     >
       <dt>
-        <MetricLabel className="leading-snug break-words">
+        <MetricLabel variant="plain" className="break-words">
           {tPerf(`metrics.${cell.key}`)}
         </MetricLabel>
       </dt>
@@ -187,8 +254,8 @@ function PerformanceFigure({
         className={cn(
           'numeric inline-flex items-baseline break-words',
           variant === 'hero'
-            ? 'text-[2rem] leading-none font-semibold tracking-tight sm:text-4xl'
-            : 'text-xl font-semibold tracking-tight',
+            ? 'text-[2rem] leading-none font-semibold tracking-tight'
+            : 'text-xl leading-7 font-semibold tracking-tight',
           TONE_CLASS[value.tone],
         )}
       >

@@ -100,11 +100,45 @@ export function TrendIndicator({
 }
 
 /**
- * A small uppercase field label. Used for metric names, table group headings
- * and form section titles so they read as one family.
+ * A small field label. Used for metric names, table group headings and form
+ * section titles so they read as one family.
+ *
+ * TWO CASINGS, ONE ROLE, AND THE DIFFERENCE IS DENSITY.
+ *
+ * `caps` is the original treatment and stays the default, so no existing call
+ * site changes: small, uppercase, 0.06em tracking. It reads as a heading, and
+ * on a card that carries ONE label — a KPI tile, a form section — that is
+ * exactly right.
+ *
+ * `plain` exists for the places that carry six or twelve of these at once: a
+ * performance card's metric grid, an operational count strip, a table's
+ * column heads. Uppercase plus letter-spacing costs roughly 15% extra width
+ * per label and, repeated a dozen times in one viewport, stops reading as
+ * hierarchy and starts reading as noise (CLAUDE.md §8: "not an admin
+ * template"). Same size, same colour, same weight — only the shouting is
+ * dropped, so the two remain one family and the caps version keeps its
+ * meaning precisely because it is no longer everywhere.
+ *
+ * Sizing/colour overrides still arrive through `className` as before.
  */
-export function MetricLabel({ children, className }: { children: ReactNode; className?: string }) {
+export function MetricLabel({
+  children,
+  variant = 'caps',
+  className,
+}: {
+  children: ReactNode;
+  variant?: 'caps' | 'plain';
+  className?: string;
+}) {
   return (
-    <span className={cn('text-muted-foreground text-label uppercase', className)}>{children}</span>
+    <span
+      className={cn(
+        'text-muted-foreground',
+        variant === 'caps' ? 'text-label uppercase' : 'text-xs leading-4 font-medium',
+        className,
+      )}
+    >
+      {children}
+    </span>
   );
 }

@@ -4,7 +4,6 @@ import { useTranslations } from 'next-intl';
 import { formatStartingBalance } from '@/lib/trading-accounts/presentation';
 import { cn } from '@/lib/utils';
 import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
-import { MetricLabel } from '@/components/product/metric';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
@@ -43,19 +42,31 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
  *
  * This says which account the figures below belong to. Through D4 it said so
  * in a 173px-tall card whose three facts were spread across the full page
- * width by a `sm:grid-cols-3` — taller than a Basic KPI card, and the most
- * visually prominent thing above the fold, for information nobody reads
- * twice. D4.5 compresses it to a single ~74px bar: identity on the left,
- * the three facts as a right-aligned cluster that stays clustered however
- * wide the canvas gets.
+ * width by a `sm:grid-cols-3`; D4.5 compressed that to a ~74px bar with a
+ * left identity block and a right-aligned label/value cluster.
  *
- * Nothing was dropped to get there. Name, subtitle, mode, base currency and
- * starting balance are all still present and still labelled; only their
- * geometry and type scale changed. The account name stays a heading so the
- * labelled region still has a findable title.
+ * THIS PASS MAKES IT A STRIP RATHER THAN A BAR. The D4.5 bar still spent two
+ * stacked lines on the left (a four-word caption over the account name) and
+ * three stacked label/value pairs on the right, which on a 1440 canvas left
+ * roughly 700px of nothing between them — the widest empty region in the
+ * first viewport, above the figures the page exists to show. Everything now
+ * sits on ONE baseline: the label and the name read as a sentence, mode and
+ * currency become chips (a chip IS its own label — "Live" and "USD" need no
+ * caption beside a named account), and only the starting balance keeps a
+ * visible label, because a bare "$10,000.00" beside an account name is
+ * genuinely ambiguous.
  *
- * Below `sm` the bar becomes a stack, which is the one place this may take
- * more than one line.
+ * NOTHING WAS DROPPED, AND NOTHING BECAME COLOUR-ONLY. Every fact and every
+ * label is still in the DOM and still associated with its value through the
+ * same `<dl>`; the two that lost a VISIBLE caption kept an `sr-only` one, so
+ * a screen reader still hears "Account mode: Live", not a loose "Live".
+ *
+ * It is deliberately NOT a second account selector. The toolbar owns
+ * switching; this is read-only context, so it carries no control, no
+ * chevron, and no affordance that would invite a click.
+ *
+ * Below `sm` it becomes a stack, which is the one place this may take more
+ * than one line.
  */
 export function ActiveTradingAccountSummaryCard({
   account,
@@ -71,38 +82,53 @@ export function ActiveTradingAccountSummaryCard({
       aria-label={t('activeAccountRegionLabel')}
       data-dashboard-region="account-context"
       className={cn(
-        'flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-5',
+        'flex min-w-0 flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6',
         className,
       )}
     >
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-muted-foreground text-xs leading-4">
-          {t('activeAccountSubtitle')}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span className="text-muted-foreground shrink-0 text-xs leading-5">
+          {t('activeAccountInlineLabel')}
         </span>
-        <CardTitle className="truncate leading-6">{account.name}</CardTitle>
+        <CardTitle className="min-w-0 truncate text-sm leading-5">{account.name}</CardTitle>
+        <dl className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <AccountChip
+            label={t('accountModeLabel')}
+            value={t(`accountModeValues.${account.accountMode}`)}
+          />
+          <AccountChip label={t('baseCurrencyLabel')} value={account.baseCurrency} />
+        </dl>
       </div>
-      <dl className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 sm:gap-x-8">
-        <SummaryStat
-          label={t('accountModeLabel')}
-          value={t(`accountModeValues.${account.accountMode}`)}
-        />
-        <SummaryStat label={t('baseCurrencyLabel')} value={account.baseCurrency} />
-        <SummaryStat
-          label={t('startingBalanceLabel')}
-          value={formatStartingBalance(account.startingBalance, account.baseCurrency)}
-        />
+      <dl className="flex min-w-0 shrink-0 items-baseline gap-2">
+        <dt className="text-muted-foreground text-xs leading-5">{t('startingBalanceLabel')}</dt>
+        <dd className="text-foreground numeric truncate text-sm leading-5 font-semibold">
+          {formatStartingBalance(account.startingBalance, account.baseCurrency)}
+        </dd>
       </dl>
     </Card>
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+/**
+ * One read-only metadata chip.
+ *
+ * The caption is `sr-only` rather than absent: a chip reading "Live" is
+ * unambiguous NEXT TO an account name and nowhere else, and a screen reader
+ * gets no such adjacency.
+ *
+ * `bg-muted`, not `bg-surface-raised`. Both resolve to the frozen `#262626`
+ * step in dark, so on the theme this pass is led by they are the same pixel —
+ * but in light `--surface-raised` is `#ffffff`, the card's own colour, and
+ * the chips vanished into it entirely. `--muted` is the token that is a step
+ * off the card in BOTH themes, which is the whole job here. No border either
+ * way: a row of bordered pills inside a bordered strip is precisely the
+ * nested boxes §14 rules out.
+ */
+function AccountChip({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <dt>
-        <MetricLabel>{label}</MetricLabel>
-      </dt>
-      <dd className="text-foreground truncate text-sm leading-5 font-semibold">{value}</dd>
+    <div className="bg-muted text-foreground flex shrink-0 items-baseline rounded-md px-1.5 py-0.5">
+      <dt className="sr-only">{label}</dt>
+      <dd className="text-xs leading-4 font-medium">{value}</dd>
     </div>
   );
 }

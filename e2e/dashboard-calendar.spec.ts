@@ -303,10 +303,13 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
       calendar(page).boundingBox(),
       recent(page).boundingBox(),
     ]);
-    // §23 — they share a top edge, and the Calendar is the narrower of the two
-    // (five of twelve columns beside seven).
+    // §23 — they share a top edge, and the Calendar is the WIDER of the two:
+    // seven of twelve columns beside five. The visual refinement pass reversed
+    // D6B's original 5 + 7, because width is the only thing that makes a day
+    // cell legible while the Trade list reaches its natural width at about
+    // 500px and spends everything past that on padding.
     expect(Math.round(calendarBox?.y ?? -1)).toBe(Math.round(recentBox?.y ?? -2));
-    expect(calendarBox?.width ?? 0).toBeLessThan(recentBox?.width ?? 0);
+    expect(calendarBox?.width ?? 0).toBeGreaterThan(recentBox?.width ?? 0);
     await expectNoHorizontalOverflow(page);
 
     // §2/§3 — the Recent Trades preview, with the Gap on the row and an

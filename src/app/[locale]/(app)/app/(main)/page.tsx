@@ -7,6 +7,7 @@ import { parseDashboardFilterState } from '@/lib/dashboard/filters';
 import { calendarDateIn } from '@/lib/time';
 import { getDashboardPageData } from '@/server/services/dashboard';
 import { DashboardCalendarSection } from '@/components/dashboard/calendar/dashboard-calendar-section';
+import { DashboardTransitionOverlay } from '@/components/dashboard/dashboard-transition-overlay';
 import { NoActiveTradingAccountRecovery } from '@/components/dashboard/empty-trading-dashboard';
 import { InsightPillarsDataSection } from '@/components/dashboard/insights/insight-pillars-data-section';
 import {
@@ -96,16 +97,22 @@ export default async function AppOverviewPage({
         ceiling moved, so 1280 and 1440 are byte-for-byte what they were and
         only the widths the old cap was actually clipping change.
 
-        The page's own `<h1>` now lives in the sticky toolbar above, which is
-        the frozen toolbar contract's composition — one Dashboard identity, one
-        set of global controls, on one line. The supporting sentence stays here,
-        in the scrolling content, where it belongs to the page rather than to
-        the persistent chrome.
+        The page's own `<h1>` lives in the sticky toolbar above, which is the
+        frozen toolbar contract's composition — one Dashboard identity, one set
+        of global controls, on one line. The supporting sentence that used to
+        sit beneath it is gone: a full row of chrome restating what the five
+        figures below it already say is exactly the vertical budget the first
+        viewport could least afford, and a data surface does not have to
+        introduce itself twice. The page description survives where it is
+        actually read — in `generateMetadata` above.
+
+        `relative`, so the transition veil can cover exactly the analytical
+        area and nothing above it. `DashboardTransitionOverlay` is the ONLY
+        client component in this subtree; everything beside it stays
+        server-rendered.
       */}
-      <Container width="canvas" className="flex min-w-0 flex-col gap-5 pt-5 pb-6">
-        <p className="text-muted-foreground max-w-2xl text-sm leading-relaxed text-pretty">
-          {t('description')}
-        </p>
+      <Container width="canvas" className="relative flex min-w-0 flex-col pt-4 pb-8">
+        <DashboardTransitionOverlay />
         <Suspense fallback={<DashboardSkeleton />}>
           <DashboardContent locale={locale} rawSearchParams={rawSearchParams} />
         </Suspense>
@@ -202,7 +209,7 @@ function DashboardCalendarSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="border-border bg-card h-96 animate-pulse rounded-lg border"
+      className="border-border bg-card h-[640px] animate-pulse rounded-lg border"
     />
   );
 }
@@ -211,9 +218,9 @@ function DashboardCalendarSkeleton() {
 function InsightPillarsSkeleton() {
   return (
     <div aria-hidden="true" className="grid animate-pulse gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <div className="border-border bg-card h-56 rounded-lg border" />
-      <div className="border-border bg-card h-56 rounded-lg border" />
-      <div className="border-border bg-card h-56 rounded-lg border md:col-span-2 xl:col-span-1" />
+      <div className="border-border bg-card h-[455px] rounded-lg border" />
+      <div className="border-border bg-card h-[455px] rounded-lg border" />
+      <div className="border-border bg-card h-[455px] rounded-lg border md:col-span-2 xl:col-span-1" />
     </div>
   );
 }
@@ -223,7 +230,7 @@ function RiskPerformanceSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="border-border bg-card h-[420px] animate-pulse rounded-lg border"
+      className="border-border bg-card h-[616px] animate-pulse rounded-lg border"
     />
   );
 }

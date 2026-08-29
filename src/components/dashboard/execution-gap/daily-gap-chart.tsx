@@ -109,7 +109,7 @@ export function DailyGapChart({ points }: { points: readonly ExecutionComparison
   });
 
   return (
-    <div className="h-28 w-full min-w-0 sm:h-32" role="img" aria-label={t('chart.dailyAriaLabel')}>
+    <div className="h-24 w-full min-w-0 sm:h-28" role="img" aria-label={t('chart.dailyAriaLabel')}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
           <XAxis

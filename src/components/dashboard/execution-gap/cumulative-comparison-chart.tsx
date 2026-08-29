@@ -156,7 +156,7 @@ export function CumulativeComparisonChart({
 
   return (
     <div
-      className="h-64 w-full min-w-0 sm:h-72 lg:h-80"
+      className="h-56 w-full min-w-0 sm:h-64 lg:h-72"
       role="img"
       aria-label={t('chart.cumulativeAriaLabel')}
     >

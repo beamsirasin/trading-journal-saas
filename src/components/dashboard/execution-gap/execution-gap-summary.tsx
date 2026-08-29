@@ -41,7 +41,7 @@ export function ExecutionGapSummary({
   return (
     <dl
       data-execution-gap-summary
-      className={cn('grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4', className)}
+      className={cn('grid min-w-0 grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-4', className)}
     >
       {/*
         Total Gap keeps its signed tone: negative means the Trader captured
@@ -77,11 +77,13 @@ export function ExecutionGapSummary({
         style="percent"
         forceNeutral
       />
-      <div data-execution-gap-metric="pairedTrades" className="flex min-w-0 flex-col gap-1">
+      <div data-execution-gap-metric="pairedTrades" className="flex min-w-0 flex-col gap-0.5">
         <dt>
-          <MetricLabel>{t('summary.pairedTrades')}</MetricLabel>
+          <MetricLabel variant="plain">{t('summary.pairedTrades')}</MetricLabel>
         </dt>
-        <dd className="numeric text-xl font-semibold tracking-tight">{summary.comparableCount}</dd>
+        <dd className="numeric text-xl leading-7 font-semibold tracking-tight">
+          {summary.comparableCount}
+        </dd>
       </div>
     </dl>
   );
@@ -111,17 +113,19 @@ function SummaryMetric({
       data-execution-gap-metric={metricKey}
       data-metric-status={formatted.status}
       {...(formatted.status === 'unavailable' ? { 'data-metric-reason': formatted.reason } : {})}
-      className="flex min-w-0 flex-col gap-1"
+      className="flex min-w-0 flex-col gap-0.5"
     >
       <dt>
-        <MetricLabel className="leading-snug break-words">{label}</MetricLabel>
+        <MetricLabel variant="plain" className="break-words">
+          {label}
+        </MetricLabel>
       </dt>
       <dd className="min-w-0">
         {formatted.status === 'available' ? (
           <span
             className={cn(
               'numeric font-semibold tracking-tight break-words',
-              prominent ? 'text-2xl' : 'text-xl',
+              prominent ? 'text-2xl leading-8' : 'text-xl leading-7',
               forceNeutral ? 'text-foreground' : TONE_CLASS[formatted.tone],
             )}
           >
@@ -139,7 +143,7 @@ function SummaryMetric({
         )}
       </dd>
       {metricKey === 'totalGap' ? (
-        <p className="text-muted-foreground text-xs leading-snug">{t('summary.totalGapHint')}</p>
+        <p className="text-muted-foreground text-xs leading-4">{t('summary.totalGapHint')}</p>
       ) : null}
     </div>
   );

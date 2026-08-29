@@ -174,7 +174,7 @@ function RecentR({ label, value }: { label: string; value: string | null }) {
     value === null ? null : formatAnalyticsMetric({ status: 'available', value }, 'r');
   return (
     <span className="flex min-w-14 flex-col gap-0.5">
-      <span className="text-muted-foreground text-[10px] font-medium uppercase">{label}</span>
+      <span className="text-muted-foreground text-[11px] leading-4 font-medium">{label}</span>
       <span className="numeric text-sm font-semibold">
         {formatted?.status === 'available' ? formatted.text : t('notAvailableShort')}
       </span>
@@ -201,7 +201,7 @@ function RecentGap({ gap }: { gap: DashboardRecentExecutionGap }) {
 
   return (
     <span className="flex min-w-14 flex-col gap-0.5" data-recent-gap-status={gap.status}>
-      <span className="text-muted-foreground text-[10px] font-medium uppercase">
+      <span className="text-muted-foreground text-[11px] leading-4 font-medium">
         {t('recent.gapR')}
       </span>
       {formatted !== null && formatted.status === 'available' ? (

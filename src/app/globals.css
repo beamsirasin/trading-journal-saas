@@ -1055,3 +1055,79 @@ html[lang='th'] .text-label {
   padding-left: max(env(safe-area-inset-left), 0px);
   padding-right: max(env(safe-area-inset-right), 0px);
 }
+
+/*
+ * THE DASHBOARD LOADING MARK.
+ *
+ * Five bars on one baseline, each scaling between a quarter and full height
+ * on a 1.05s loop, staggered 120ms apart so the group reads as one travelling
+ * wave rather than five independent blinks. `scaleY` off a `bottom` origin is
+ * the whole animation: it is compositor-only, it never touches layout, and
+ * the mark therefore costs nothing while a document navigation is in flight —
+ * which is precisely when the main thread is least able to spare anything.
+ *
+ * The bars carry no meaning. There is no progress, no phase and no estimate
+ * encoded here, because nothing in a native document navigation knows any of
+ * those things (see `DashboardTransitionOverlay`).
+ */
+[data-dashboard-loading-bars] > span {
+  height: 100%;
+  animation: dashboard-loading-bar 1.05s var(--motion-ease-standard) infinite;
+}
+
+[data-dashboard-loading-bars] > span:nth-child(1) {
+  animation-delay: 0ms;
+}
+[data-dashboard-loading-bars] > span:nth-child(2) {
+  animation-delay: 120ms;
+}
+[data-dashboard-loading-bars] > span:nth-child(3) {
+  animation-delay: 240ms;
+}
+[data-dashboard-loading-bars] > span:nth-child(4) {
+  animation-delay: 360ms;
+}
+[data-dashboard-loading-bars] > span:nth-child(5) {
+  animation-delay: 480ms;
+}
+
+@keyframes dashboard-loading-bar {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes dashboard-loading-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * Reduced motion is a different vocabulary, not an off switch (the rule
+   * this file already applies to the nav flyout and every overlay). A frozen
+   * loader reads as a hung page, which is strictly worse information than no
+   * loader at all — so the mark stays alive, but nothing travels: the five
+   * bars stop scaling, sit at a fixed height, and the GROUP breathes on one
+   * slow opacity cycle. One element changing one non-spatial property.
+   */
+  [data-dashboard-loading-bars] > span {
+    animation: none;
+    transform: scaleY(0.7);
+  }
+
+  [data-dashboard-loading-bars] {
+    animation: dashboard-loading-breathe 2s var(--motion-ease-reduced) infinite;
+  }
+}

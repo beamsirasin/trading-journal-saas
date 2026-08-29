@@ -9,6 +9,10 @@ import {
   DEFAULT_DASHBOARD_LAYOUT,
 } from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
+import {
+  DashboardLoadingIndicator,
+  DashboardLoadingStatus,
+} from '@/components/dashboard/dashboard-loading-indicator';
 import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-trading-dashboard';
 import { ExecutionGapSection } from '@/components/dashboard/execution-gap/execution-gap-section';
 import { BasicKpiRow } from '@/components/dashboard/kpi/basic-kpi-row';
@@ -71,20 +75,29 @@ export function RealDashboard({
       Through D4 every boundary on this page was the same `gap-8` (32px),
       which spends the same whitespace separating an account label from a KPI
       band as it does separating two analytical sections — and made the page
-      read like a marketing layout rather than a data product. The margins
-      below step up with the weight of the boundary they separate: 20px into
-      the KPI band, 24px into Needs Attention, 28px into the analytical
-      sections, 32px before the record list. `first:mt-0` keeps the top edge
-      correct when the account context bar is absent (all-accounts scope).
+      read like a marketing layout rather than a data product. D4.5 replaced
+      that with a five-step ramp (20/24/28/32px).
+
+      THIS PASS COLLAPSES THE RAMP TO TWO STEPS. Five distinct margins is a
+      rhythm no reader can perceive — 20px and 24px are not legibly different
+      boundaries, they are just four separate ways of being loose, and
+      together they spent ~40px of the first viewport saying nothing. There
+      are now exactly two kinds of boundary on this page, matching the two
+      that actually exist: 16px between the CONTEXT strips that open the page
+      (account, KPI band, Needs Attention — one continuous operational block)
+      and 24px between ANALYTICAL SECTIONS, which is also the gap those
+      sections use between their own cards, so a section boundary and a card
+      boundary read as one system. `first:mt-0` keeps the top edge correct
+      when the account context bar is absent (all-accounts scope).
     */
     <div className="flex min-w-0 flex-col">
       {data.account.kind === 'account' ? (
         <ActiveTradingAccountSummaryCard account={data.account.account} />
       ) : null}
-      <BasicKpiRow data={data} className="mt-5 first:mt-0" />
-      <NeedsAttentionPanel attention={data.attention.counts} className="mt-6" />
+      <BasicKpiRow data={data} className="mt-4 first:mt-0" />
+      <NeedsAttentionPanel attention={data.attention.counts} className="mt-4" />
 
-      <section aria-labelledby="performance-heading" className="mt-7 flex flex-col gap-4">
+      <section aria-labelledby="performance-heading" className="mt-6 flex flex-col gap-4">
         {/*
           NO LOCAL RANGE CONTROL. Through R2A this heading row carried its own
           30D/90D/All links — a second visible owner of a range that was always
@@ -92,12 +105,18 @@ export function RealDashboard({
           Range control, and it offers the full canonical preset set plus
           Custom rather than three of the nine. The underlying state is
           unchanged; only its single visible owner moved.
+
+          A SECTION HEADING, NOT A PAGE HEADER. It was `text-xl` over a
+          `leading-relaxed` sentence — 60px for two lines introducing two cards
+          whose own titles repeat the same thing 40px lower. `text-base` over a
+          `leading-snug` line is 38px and loses nothing; `max-w-3xl` keeps the
+          sentence off an ultrawide's full measure (§22).
         */}
-        <div className="max-w-2xl">
-          <h2 id="performance-heading" className="text-xl font-semibold tracking-tight">
+        <div className="max-w-3xl">
+          <h2 id="performance-heading" className="text-base font-semibold tracking-tight">
             {t('performanceTitle')}
           </h2>
-          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+          <p className="text-muted-foreground mt-0.5 text-sm leading-snug text-pretty">
             {t('performanceDescription', { account: accountLabel })}
           </p>
         </div>
@@ -125,7 +144,7 @@ export function RealDashboard({
         it explains rather than sitting between the KPI band and the
         baselines.
       */}
-      <ExecutionGapSection comparison={data.comparison} dateLocale={dateLocale} className="mt-7" />
+      <ExecutionGapSection comparison={data.comparison} dateLocale={dateLocale} className="mt-6" />
 
       {/*
         D8B — the three insight pillars, between the Execution Gap they help
@@ -134,35 +153,46 @@ export function RealDashboard({
         system, the trader state, the trader discipline — and only then does
         the page hand over to individual records.
       */}
-      <div className="mt-7 min-w-0">{insightSlot}</div>
+      <div className="mt-6 min-w-0">{insightSlot}</div>
 
       {/*
-        D6B — the one section whose two widgets are genuinely unequal (§30):
-        seven columns of Trade rows beside five of Calendar grid. The Basic KPI
-        band's five-column grid is deliberately NOT reused here; each section
-        owns its own, which is exactly what D4.5's section-aware metadata was
-        for.
+        D6B — the one section whose two widgets are genuinely unequal (§30).
+        The split is now FIVE columns of Trade rows beside SEVEN of Calendar
+        grid, reversed from D6B's original 7 + 5.
 
-        `items-stretch`, so the section has one bottom edge rather than a
-        ragged one. This cannot damage the Calendar's geometry: the grid's
-        squares are fixed-height rows inside a `flex-col` card, so stretching
-        only ever adds room BELOW them — and in practice the Calendar is the
-        taller of the two, which makes this a rule about the Trade list. §23
-        forbids forcing equal height at the Calendar's expense, which is a
-        different thing from letting the shorter card fill its column.
+        Measured, the old ratio was backwards. The Trade list carries an
+        instrument, a direction, a status chip, a strategy line and three
+        narrow R columns — it reaches its natural width at about 500px and
+        every pixel past that is padding between the strategy line and the
+        numbers. The Calendar is a seven-column grid of fixed-aspect day
+        cells: width is the ONLY thing that makes a day cell legible, and at
+        five of twelve its cells were dropping their secondary line through
+        the `@container` queries the card uses to stay honest at small sizes.
+        Wider goes to the widget that can spend it. The Basic KPI band's
+        five-column grid is deliberately NOT reused here; each section owns
+        its own, which is exactly what D4.5's section-aware metadata was for.
+
+        `items-start`, NOT `items-stretch`. D6B stretched the shorter card to
+        give the section one bottom edge, which was a fair trade when the two
+        were 7 + 5 and close in height. Reversed, it stopped being one: the
+        Calendar is now both the wider and much the taller card, so stretching
+        left roughly 150px of empty card below five Trade rows — the largest
+        blank surface on the page, created purely to align an edge nothing
+        reads across. A ragged bottom between two cards of genuinely different
+        length is the honest shape.
       */}
-      <section aria-labelledby="recent-and-calendar-heading" className="mt-8 min-w-0">
+      <section aria-labelledby="recent-and-calendar-heading" className="mt-6 min-w-0">
         <h2 id="recent-and-calendar-heading" className="sr-only">
           {t('recentAndCalendarSection')}
         </h2>
-        <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-12">
+        <div className="grid min-w-0 items-start gap-4 lg:grid-cols-12">
           <RecentTradesCard
             trades={data.recentTrades.items}
             timezone={data.scope.timezone}
             dateLocale={dateLocale}
-            className="lg:col-span-7"
+            className="lg:col-span-5"
           />
-          <div className="min-w-0 lg:col-span-5">{calendarSlot}</div>
+          <div className="min-w-0 lg:col-span-7">{calendarSlot}</div>
         </div>
       </section>
 
@@ -178,9 +208,9 @@ export function RealDashboard({
         A node rather than data, for the same reason as `calendarSlot`: it is
         its own server boundary and suspends on its own.
       */}
-      <div className="mt-8 min-w-0">{riskSlot}</div>
+      <div className="mt-6 min-w-0">{riskSlot}</div>
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-4 flex justify-end">
         <Link
           href="/app/analytics"
           className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
@@ -206,11 +236,22 @@ export function RealDashboard({
  * D4.5 geometry: one bar, not a card with a header block and a four-column
  * grid under it. Through D4 this stood 243px tall — taller than the five KPI
  * cards it sits beneath — to say three numbers, and spread them across the
- * full page width. It is now header-plus-counts-plus-action on one desktop
- * row at roughly 88px. Every count, its label, the title, the supporting
- * sentence and the Review action survive that unchanged; the D2 scope
- * (`workspace_operational`) and the "no score, no invented category" rule
- * are untouched.
+ * full page width.
+ *
+ * THIS PASS MAKES IT A STRIP AND MAKES IT HOLD ONE ROW AT 1440. D4.5's bar
+ * was ~88px at 1920 but WRAPPED at 1440 — the fifth count fell to a second
+ * line and dragged the Review action onto a third, which put it back at
+ * 215px with a 500px void on the left. The header now has a fixed
+ * `lg:w-[17.5rem]` share rather than competing with the counts for width, the
+ * counts sit in a `flex-1` row that distributes what is left, the labels drop
+ * their uppercase tracking (`MetricLabel`'s `plain` variant — five long
+ * labels shouting at once is exactly the case it exists for), and the
+ * figures step from `text-xl` to `text-lg`. All five counts plus the action
+ * now hold one row from 1024 up, at ~62px.
+ *
+ * Every count, its label, the title, the supporting sentence and the Review
+ * action survive unchanged; the D2 scope (`workspace_operational`) and the
+ * "no score, no invented category" rule are untouched.
  *
  * It owns its own layout slot rather than being wrapped in one, because it
  * renders nothing at all when every count is zero — a wrapper would leave a
@@ -251,37 +292,37 @@ function NeedsAttentionPanel({
     >
       <Card
         data-dashboard-panel="needs-attention"
-        className="flex min-w-0 flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between lg:gap-8"
+        className="flex min-w-0 flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6"
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
-            <ListChecks className="size-4.5" aria-hidden="true" />
+        <div className="flex min-w-0 items-center gap-2.5 lg:w-[19rem] lg:shrink-0 xl:w-[22rem] 2xl:w-[24rem]">
+          <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+            <ListChecks className="size-4" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <CardTitle id="needs-attention-heading">{t('needsAttention.title')}</CardTitle>
-            <CardDescription className="leading-snug text-pretty">
+            <CardTitle id="needs-attention-heading" className="text-sm leading-5">
+              {t('needsAttention.title')}
+            </CardTitle>
+            <CardDescription className="text-xs leading-4 text-pretty">
               {t('needsAttention.description')}
             </CardDescription>
           </div>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3 sm:gap-x-8">
-          <dl className="flex min-w-0 flex-wrap gap-x-6 gap-y-3 sm:gap-x-8">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <dl className="flex min-w-0 flex-wrap gap-x-5 gap-y-2 2xl:gap-x-7">
             {items
               .filter((item) => item.count > 0)
               .map((item) => (
-                <div key={item.key} className="flex min-w-0 flex-col gap-0.5">
+                <div key={item.key} className="flex min-w-0 flex-col">
                   <dt>
-                    <MetricLabel className="leading-4">
-                      {t(`needsAttention.${item.key}`)}
-                    </MetricLabel>
+                    <MetricLabel variant="plain">{t(`needsAttention.${item.key}`)}</MetricLabel>
                   </dt>
-                  <dd className="numeric text-xl leading-7 font-semibold">{item.count}</dd>
+                  <dd className="numeric text-lg leading-6 font-semibold">{item.count}</dd>
                 </div>
               ))}
           </dl>
           <Link
             href="/app/trades"
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary hover:bg-primary/10 focus-visible:ring-ring -mr-2 inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {t('needsAttention.review')} <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
@@ -312,51 +353,93 @@ export function DashboardDataError() {
 }
 
 /**
- * Reserves the real Dashboard's geometry while the server payload resolves.
- * The Basic KPI band mirrors the row's own grid and span metadata, and its
- * fixed card height matches the card anatomy's three minimum-height regions,
- * so the five cards do not resize when the figures arrive.
+ * Reserves the real Dashboard's geometry while the server payload resolves,
+ * and says so.
  *
- * The block heights and the margins between them track D4.5's compressed
- * bars, not the pre-D4.5 ones — a skeleton that reserves the old 173px
- * account card and 243px attention panel would visibly collapse the moment
- * the real page arrived, which is the exact jump a skeleton exists to avoid.
+ * TWO JOBS, TWO LAYERS, DELIBERATELY NOT ONE. The blocks are the geometry
+ * contract: the Basic KPI band mirrors the row's own grid and span metadata,
+ * every other block is the measured height of the section it stands in for,
+ * and the margins between them are the page's own rhythm — so nothing on the
+ * page moves when the figures arrive. Over them sits the branded mark, which
+ * is the ANSWER to "is this broken or is it working": a wall of grey blocks
+ * alone reads as a failed render for the first second or so, and it is
+ * exactly that second this mark is for.
+ *
+ * IT IS THE ARRIVAL HALF OF ONE TRANSITION. `DashboardTransitionOverlay`
+ * shows the same mark, in the same place, on the OUTGOING document while a
+ * Dashboard state navigation is in flight; this shows it on the incoming one.
+ * Because the transport is a native document navigation
+ * (`DashboardStateLink`), those really are two different documents — the mark
+ * is what makes the seam between them read as one continuous state instead of
+ * two unrelated flashes. Neither half invents progress, and neither delays
+ * anything.
+ *
+ * THE COPY IS THE ONE THAT IS TRUE HERE. The overlay says "Updating" because
+ * a state change is what put it on screen; this says "Loading", because a
+ * fresh document reaching this fallback may equally be a cold first visit,
+ * and a cold visit is not an update.
+ *
+ * ONE ANNOUNCEMENT. `DashboardLoadingStatus` is rendered here and NOT in the
+ * Calendar / insight / Risk sub-skeletons, which suspend separately: three
+ * live regions resolving at three different moments would announce one user
+ * action three times.
  */
 export function DashboardSkeleton() {
+  const t = useTranslations('dashboard.loading');
+
   return (
-    <div className="flex animate-pulse flex-col" aria-hidden="true">
-      <div className="border-border bg-card h-[74px] rounded-lg border" />
-      <div className={cn('mt-5', BASIC_KPI_GRID_CLASS)}>
-        {BASIC_KPI_LAYOUT.map((layout) => (
-          <div
-            key={layout.widgetId}
-            className={cn(
-              'border-border bg-card h-[138px] rounded-lg border',
-              kpiSpanClassName(layout),
-            )}
-          />
-        ))}
+    <div className="flex min-w-0 flex-col">
+      <DashboardLoadingStatus message={t('loading')} />
+      <div className="flex animate-pulse flex-col" aria-hidden="true">
+        <div className="border-border bg-card h-[42px] rounded-lg border" />
+        <div className={cn('mt-4', BASIC_KPI_GRID_CLASS)}>
+          {BASIC_KPI_LAYOUT.map((layout) => (
+            <div
+              key={layout.widgetId}
+              className={cn(
+                'border-border bg-card h-[110px] rounded-lg border',
+                kpiSpanClassName(layout),
+              )}
+            />
+          ))}
+        </div>
+        <div className="border-border bg-card mt-4 h-[78px] rounded-lg border" />
+        {/* The section heading above the two baselines is real text on
+            arrival, so the skeleton reserves its two lines rather than
+            letting the cards below jump 38px down when it appears. */}
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="bg-card h-[38px] w-64 rounded-md" />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="border-border bg-card h-[173px] rounded-lg border" />
+            <div className="border-border bg-card h-[173px] rounded-lg border" />
+          </div>
+        </div>
+        <div className="border-border bg-card mt-6 h-[660px] rounded-lg border" />
+        {/*
+          D6B's unequal section, reserved at the geometry it actually renders
+          at — five columns of Trade rows beside seven of Calendar. A skeleton
+          that reserved two stacked full-width bands would visibly reflow into
+          two columns the moment the payload arrived, which is the exact jump a
+          skeleton exists to prevent. Both blocks are the same height because
+          the real section stretches to one bottom edge.
+        */}
+        <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-12">
+          <div className="border-border bg-card h-[520px] rounded-lg border lg:col-span-5" />
+          <div className="border-border bg-card h-[640px] rounded-lg border lg:col-span-7" />
+        </div>
+        {/* D7's Risk Performance section: one card, a summary strip over a
+            chart, at the height it actually renders at. */}
+        <div className="border-border bg-card mt-6 h-[616px] rounded-lg border" />
       </div>
-      <div className="border-border bg-card mt-6 h-[88px] rounded-lg border" />
-      <div className="mt-7 grid gap-4 lg:grid-cols-2">
-        <div className="border-border bg-card h-80 rounded-lg border" />
-        <div className="border-border bg-card h-80 rounded-lg border" />
-      </div>
-      <div className="border-border bg-card mt-7 h-48 rounded-lg border" />
       {/*
-        D6B's 7 + 5 section, reserved at the geometry it actually renders at.
-        A skeleton that reserved two stacked full-width bands would visibly
-        reflow into two columns the moment the payload arrived, which is the
-        exact jump a skeleton exists to prevent. Both blocks are the same
-        height because the real section stretches to one bottom edge.
+        Fixed and centred in the VIEWPORT, offset past the sidebar by the
+        shell's own inherited variable. The skeleton is several viewports
+        tall; a mark centred inside it would be off-screen for anyone who has
+        scrolled, and dead weight for everyone else.
       */}
-      <div className="mt-8 grid items-stretch gap-4 lg:grid-cols-12">
-        <div className="border-border bg-card h-96 rounded-lg border lg:col-span-7" />
-        <div className="border-border bg-card h-96 rounded-lg border lg:col-span-5" />
+      <div className="pointer-events-none fixed inset-0 z-20 grid place-items-center px-4 lg:pl-[var(--shell-workspace-offset)]">
+        <DashboardLoadingIndicator tone="overlay" message={t('loading')} detail={t('detail')} />
       </div>
-      {/* D7's Risk Performance section: one card, a summary strip over a
-          chart, at the height it actually renders at. */}
-      <div className="border-border bg-card mt-8 h-[420px] rounded-lg border" />
     </div>
   );
 }

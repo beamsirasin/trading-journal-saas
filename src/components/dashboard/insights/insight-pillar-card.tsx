@@ -67,7 +67,7 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
         // `h-full` so three cards in one row share an outer height whatever
         // each pillar's state contains; `flex-col` + `mt-auto` on the footer
         // keeps the Analytics affordance on one baseline across all three.
-        className="flex h-full min-w-0 flex-col gap-3 p-4 sm:p-5"
+        className="flex h-full min-w-0 flex-col gap-3 p-4"
       >
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="bg-primary/10 text-primary mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg">
@@ -95,14 +95,14 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
           <InsightBody card={card} primary={card.primary} />
         )}
 
-        <div className="mt-auto pt-1">
+        <div className="mt-auto pt-0.5">
           <Link
             href={card.analyticsHref}
             // Named, not "click here": five identical "View Analytics" links on
             // one page would be indistinguishable in a screen reader's link list.
             aria-label={t('viewAnalyticsLabel', { pillar: t(`${card.pillar}.title`) })}
             data-insight-analytics={card.analyticsView}
-            className="text-primary hover:bg-primary/10 focus-visible:ring-ring -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-primary hover:bg-primary/10 focus-visible:ring-ring -ml-2 inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {t('viewAnalytics')} <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
@@ -201,9 +201,7 @@ function Statement({
             // The hero is NAMED. A bare percentage cannot be attributed to
             // Trade Rule Adherence over Rule Checks Followed, and a bare R
             // cannot be told from an expectancy.
-            <MetricLabel className="leading-snug">
-              {t(`comparison.${statement.headlineRole}`)}
-            </MetricLabel>
+            <MetricLabel variant="plain">{t(`comparison.${statement.headlineRole}`)}</MetricLabel>
           )}
           <p
             data-insight-headline
