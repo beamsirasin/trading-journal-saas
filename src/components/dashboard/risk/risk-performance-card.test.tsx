@@ -99,6 +99,17 @@ const POPULATED: readonly ModeledBalanceTradeInput[] = [
   trade('a', '2026-08-10T10:00:00Z', 1_150_00n),
   trade('b', '2026-08-20T10:00:00Z', -110_00n),
 ];
+/**
+ * A balance that dips and then partially recovers, so the historical maximum
+ * drawdown is materially larger than the drawdown standing at the end of the
+ * range. See the binding test below for why a fixture with this shape is
+ * required rather than optional.
+ */
+const RECOVERED: readonly ModeledBalanceTradeInput[] = [
+  trade('up', '2026-06-01T10:00:00Z', 1_000_00n),
+  trade('down', '2026-06-10T10:00:00Z', -800_00n),
+  trade('back', '2026-06-20T10:00:00Z', 700_00n),
+];
 const BOUNDED_30D = scope('30d', {
   kind: 'bounded',
   start: '2026-08-02T00:00:00.000Z',
@@ -184,6 +195,58 @@ describe('Risk Performance section — populated available state', () => {
     expect(await screen.findByText(/Peak Balance \$12,420\.00/)).toBeVisible();
     expect(screen.getByText(/Max Drawdown in this range \$110\.00/)).toBeVisible();
     expect(screen.getByText(/closed Trades? in range/)).toBeVisible();
+  });
+
+  /**
+   * THE TWO DRAWDOWNS MUST NOT SHARE A BINDING, AND THIS IS THE FIXTURE THAT
+   * CAN PROVE IT.
+   *
+   * `POPULATED` + `BOUNDED_30D` — used by both assertions above — happens to
+   * produce `maxDrawdown === currentDrawdown === $110.00`, so a component that
+   * rendered `currentDrawdown` under the Max Drawdown label would pass every
+   * one of them. That is a fixture that cannot fail for the bug it guards.
+   *
+   * `RECOVERED` dips deeply and then recovers, so the historical worst is
+   * eight times the present one:
+   *
+   *   10,000 -> +1,000 -> 11,000   (peak)
+   *          -> -800   -> 10,200   (drawdown $800 / 7.27%  <- the maximum)
+   *          -> +700   -> 10,900   (drawdown $100 / 0.91%  <- the current)
+   *
+   * Every assertion below is written so that swapping one field for the other
+   * fails, in both directions.
+   */
+  it('binds Current and Max Drawdown to different fields when they differ', async () => {
+    const user = userEvent.setup();
+    const view = buildView(RECOVERED);
+    if (view.status !== 'available') throw new Error('Expected available');
+
+    // The domain genuinely separates them — the fixture is doing its job.
+    expect(view.currentDrawdown.amountText).toBe('$100.00');
+    expect(view.currentDrawdown.percentageText).toBe('0.91%');
+    expect(view.maxDrawdown.amountText).toBe('$800.00');
+    expect(view.maxDrawdown.percentageText).toBe('7.27%');
+    expect(view.peakBalanceText).toBe('$11,000.00');
+
+    const { container } = renderCard(view);
+
+    // The FACE carries the current drawdown, and never the maximum.
+    const face = metric(container, 'currentDrawdown');
+    expect(within(face).getByText('0.91%')).toBeVisible();
+    expect(within(face).getByText('$100.00 below peak')).toBeVisible();
+    expect(face.textContent ?? '').not.toContain('$800.00');
+    expect(face.textContent ?? '').not.toContain('7.27%');
+
+    // The POPOVER carries the maximum, and never the current.
+    await user.click(screen.getByRole('button', { name: 'About Modeled Balance' }));
+    const info = await screen.findByText(/Max Drawdown in this range/);
+    expect(info.textContent ?? '').toContain('$800.00');
+    expect(info.textContent ?? '').toContain('7.27%');
+    expect(info.textContent ?? '').not.toContain('$100.00');
+    expect(info.textContent ?? '').not.toContain('0.91%');
+
+    // And the peak the maximum was measured from is its own figure too.
+    expect(screen.getByText(/Peak Balance \$11,000\.00/)).toBeVisible();
   });
 
   /**
