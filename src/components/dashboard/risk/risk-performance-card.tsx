@@ -114,14 +114,23 @@ export function RiskPerformanceCard({
             <MetricInfo triggerLabel={t('infoTrigger')} title={t('metrics.modeledBalance')}>
               <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
               <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{t('helpScope')}</p>
-              {/* The two definitions that used to be printed on the card
-                  itself: what the Peak figure is, and how the balance line
-                  steps. Same wording, one tap away instead of permanently
-                  occupying two lines of a card that carries seven figures. */}
+              {/* The definitions that used to be printed on the card itself.
+                  Same wording, one tap away instead of permanently occupying
+                  lines of a card that led with five figures. */}
               <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{t('peakHint')}</p>
               <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
                 {t('chart.caption')}
               </p>
+              {/*
+                THE FIGURES THAT LEFT THE FACE, STATED HERE WITH THEIR VALUES.
+
+                Peak Balance, Max Drawdown and the closed-Trade count are all
+                still canonical D7 payload; this is where a reader who wants
+                them finds them, and there is no money-Risk Analytics view to
+                send them to yet. Only rendered on the available state — an
+                unavailable card has no figures to state.
+              */}
+              {view.status === 'available' ? <RiskInfoFigures view={view} /> : null}
             </MetricInfo>
           </div>
         </div>
@@ -163,85 +172,74 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
         two drawdown readings and the peak they are measured from — the
         priority a 320px screen has to honour before anything else.
       */}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-12 lg:gap-6">
+      {/*
+        TWO FIGURES, AND THEY ANSWER THE SECTION'S ONE QUESTION: where is my
+        modeled capital now, and how far is it below its high-water mark?
+
+        PERIOD P&L LEFT THE FACE BECAUSE IT IS INDISTINGUISHABLE FROM THE KPI
+        ROW'S NET P&L WITHOUT A SENTENCE. Both sum the SAME authoritative
+        `net_pnl_minor` over closed, non-deleted Trades in the same date
+        range, so on a default Dashboard they are the same number printed
+        twice — the populated fixture shows +$2,310.00 in both. They are not
+        the same metric: the KPI additionally requires `actual_r` and
+        `trader_outcome` and DOES follow the Strategy/Setup/Version filters,
+        while Risk requires neither and deliberately ignores those filters
+        (`analyticalFilters.effect: 'not_applied_to_account_balance'`). So the
+        two silently diverge the moment a framework filter is applied, and
+        nothing short of a paragraph can tell a reader when that has happened.
+        A number that is usually a duplicate and occasionally a different
+        thing, with no visible cue for which, is worse than no number.
+        `periodNetPnlMinor` is untouched on the payload.
+
+        PEAK BALANCE LEFT TOO: the chart's dashed reference line already IS
+        the high-water mark, so the figure restated a line the reader can see.
+        MAX DRAWDOWN left because it answers "what was the worst stretch in
+        this window" — diagnosis, and range-dependent besides ($790 over All
+        time, $455 over 30D on the same fixture). Both remain on the payload
+        and are stated in the info popover.
+      */}
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:gap-6">
         <div
           {...dashboardWidgetAttributes(BALANCE_LAYOUT)}
-          className="flex min-w-0 flex-col gap-2 lg:col-span-7"
+          className="bg-muted/50 flex min-w-0 flex-col rounded-lg px-3 py-2.5"
         >
-          {/*
-            R2C §32 — the account STATE is the answer this section leads with,
-            so it takes the page's raised-surface treatment (see
-            `PerformanceCard`): Modeled Balance and the Period P&L that
-            produced it sit one plane above the card, and the drawdown
-            readings beside them stay on the card as the supporting column
-            they are. The chart below remains secondary to both.
-          */}
-          <dl className="bg-muted/50 grid min-w-0 grid-cols-1 gap-3 rounded-lg px-3 py-2.5 sm:grid-cols-2 sm:gap-6">
-            <HeroMetric
-              metricKey="modeledBalance"
-              label={t('metrics.modeledBalance')}
-              value={view.modeledBalanceText}
-              tone="neutral"
-            />
-            <HeroMetric
-              metricKey="periodPnl"
-              label={t('metrics.periodPnl')}
-              value={view.periodNetPnl.text}
-              tone={view.periodNetPnl.tone}
-            />
-          </dl>
-          {/*
-            §5 — THE ENDING BALANCE IS NOT "STARTING BALANCE + WHAT YOU SEE".
-
-            A bounded window carries real history into its opening state, so
-            30D showing $12,310 beside +$1,040 must never be read as a period
-            that began at the Starting Balance. This line states the carried
-            opening explicitly, which is the one sentence that makes the two
-            hero figures reconcile.
-          */}
-          <p className="text-muted-foreground text-xs leading-4">
-            {t(`opening.${view.opening.kind}`, { balance: view.opening.balanceText })}
-          </p>
+          <HeroMetric
+            metricKey="modeledBalance"
+            label={t('metrics.modeledBalance')}
+            value={view.modeledBalanceText}
+            tone="neutral"
+          />
         </div>
-
         <div
           {...dashboardWidgetAttributes(DRAWDOWN_LAYOUT)}
-          className="border-border flex min-w-0 flex-col gap-2 border-t pt-4 lg:col-span-5 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6"
+          className="bg-muted/50 flex min-w-0 flex-col rounded-lg px-3 py-2.5"
         >
-          <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-3">
-            <DrawdownMetric
-              metricKey="currentDrawdown"
-              label={t('metrics.currentDrawdown')}
-              drawdown={view.currentDrawdown}
-            />
-            <DrawdownMetric
-              metricKey="maxDrawdown"
-              label={t('metrics.maxDrawdown')}
-              drawdown={view.maxDrawdown}
-            />
-            {/*
-              Peak is SUPPORTING CONTEXT, not a fifth hero and not a card of
-              its own: it is the high-water mark the two figures above are
-              measured from, so it sits with them, smaller.
-            */}
-            <div
-              data-risk-metric="peakBalance"
-              className="col-span-2 flex min-w-0 flex-col gap-0.5"
-            >
-              <dt>
-                <MetricLabel variant="plain">{t('metrics.peakBalance')}</MetricLabel>
-              </dt>
-              <dd className="numeric text-foreground text-base font-semibold">
-                {view.peakBalanceText}
-              </dd>
-              {/* `peakHint` — "the high-water mark both drawdowns are measured
-                  from" — is a definition of the figure above it, sitting
-                  permanently beside two figures that already say Drawdown. It
-                  is now the third paragraph of this card's info popover. */}
-            </div>
-          </dl>
+          <CurrentDrawdownMetric drawdown={view.currentDrawdown} />
         </div>
       </div>
+
+      {/*
+        THE CARRIED-OPENING GUARD, AND ONLY WHEN IT IS LOAD-BEARING.
+
+        A bounded window carries real history into its opening state, so a
+        30D card reading $12,310 must never be taken for a period that began
+        at the Starting Balance — and the high-water mark the drawdown is
+        measured against may have been set before the window opens. That is
+        the one sentence a reader cannot reconstruct from the card.
+
+        `kind: 'all'` needs no such warning: nothing was carried, the opening
+        IS the declared Starting Balance, and that fact is in the info
+        popover. Printing it permanently spent a line saying "this is the
+        normal case".
+      */}
+      {view.opening.kind === 'all' ? null : (
+        <p
+          data-risk-opening={view.opening.kind}
+          className="text-muted-foreground text-xs leading-4"
+        >
+          {t(`opening.${view.opening.kind}`, { balance: view.opening.balanceText })}
+        </p>
+      )}
 
       {/*
         §13 — the note appears only when a Strategy/Setup/Version filter is
@@ -286,9 +284,19 @@ function BalanceFigure({ view }: { view: RiskPerformanceAvailableView }) {
   return (
     <figure className="flex min-w-0 flex-col gap-3">
       <figcaption className="sr-only">{t('chart.ariaLabel')}</figcaption>
-      {/* Identity is never colour alone: each entry names its series AND its
-          stroke style, so the balance and its high-water reference stay
-          separable in greyscale, in print, and under any colour vision. */}
+      {/*
+        THE LEGEND STAYS; THE COUNT BESIDE IT DOES NOT.
+
+        Identity is never colour alone: each entry names its series AND its
+        stroke style, so the balance and its high-water reference stay
+        separable in greyscale, in print, and under any colour vision. A
+        reader must never have to memorise which line is which, so this is
+        the one piece of chart chrome that earns permanent space.
+
+        The closed-Trade count rode along in the same row and is not chart
+        identity — it is sample context, which now sits in the info popover
+        with the other figures the face stopped printing.
+      */}
       <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <LegendItem
           label={t('chart.legendBalance')}
@@ -300,9 +308,6 @@ function BalanceFigure({ view }: { view: RiskPerformanceAvailableView }) {
           style="dashed"
           swatchClassName="border-muted-foreground border-t-2 border-dashed"
         />
-        <li className="text-muted-foreground text-xs">
-          {t('closedTrades', { count: view.closedTradeCount })}
-        </li>
       </ul>
       <ModeledBalanceChart points={view.points} peakBalance={view.peakBalance} />
       {/* The caption moved into the card's info popover. It explained how the
@@ -424,51 +429,88 @@ function HeroMetric({
 }
 
 /**
+ * The three figures the simplified face no longer prints, with their values.
+ *
+ * Deliberately values and not just definitions: "Max Drawdown answers a
+ * different question" is only half an answer if the reader then cannot see
+ * what it was. There is no money-Risk Analytics destination today (Analytics'
+ * `maximumDrawdownR` is R over a different population, not this), so this
+ * popover is the only home these have — recorded as product debt rather than
+ * quietly dropped.
+ */
+function RiskInfoFigures({ view }: { view: RiskPerformanceAvailableView }) {
+  const t = useTranslations('dashboard.riskPerformance');
+  const tReal = useTranslations('dashboard.real');
+
+  return (
+    <dl className="mt-3 flex flex-col gap-1.5">
+      <div data-risk-info="peakBalance" className="text-muted-foreground text-xs leading-relaxed">
+        {t('infoPeak', { balance: view.peakBalanceText })}
+      </div>
+      <div data-risk-info="maxDrawdown" className="text-muted-foreground text-xs leading-relaxed">
+        {t('infoMaxDrawdown', {
+          amount: view.maxDrawdown.amountText,
+          percentage: view.maxDrawdown.percentageText ?? tReal('notAvailableShort'),
+        })}
+      </div>
+      <div data-risk-info="closedTrades" className="text-muted-foreground text-xs leading-relaxed">
+        {t('infoClosedTrades', { count: view.closedTradeCount })}
+      </div>
+    </dl>
+  );
+}
+
+/**
  * §11 — colour is never the only cue and never the whole card.
+ *
+ * THE PERCENTAGE LEADS AND THE MONEY SUPPORTS IT, which reverses how this
+ * rendered before. A drawdown percentage is scale-independent — 0.89% means
+ * the same thing on a small account and a large one — while the amount alone
+ * means nothing without the balance it came off. The amount stays, named as
+ * what it is (how far below the peak), so neither figure has to be inferred.
  *
  * A drawdown that exists is tinted with the restrained negative foreground;
  * a drawdown of exactly zero is neutral, because "you are at your high-water
- * mark" is not bad news. Either way the amount and the percentage are read as
- * text, there is no red panel, no gauge, and no score.
+ * mark" is not bad news. There is no red panel, no gauge, and no score.
+ *
+ * ZERO IS A STATED STATUS, NOT A BARE ZERO. A card reading 0.00% above
+ * $0.00 looks like missing data, especially on a section whose other states
+ * genuinely ARE unavailable — so the zero case says so in words. It
+ * deliberately does not say "no risk", "safe" or "perfect": standing at the
+ * high-water mark says nothing whatever about the risk of the next Trade.
  */
-function DrawdownMetric({
-  metricKey,
-  label,
-  drawdown,
-}: {
-  metricKey: string;
-  label: string;
-  drawdown: RiskDrawdownView;
-}) {
+function CurrentDrawdownMetric({ drawdown }: { drawdown: RiskDrawdownView }) {
+  const t = useTranslations('dashboard.riskPerformance');
   const tReal = useTranslations('dashboard.real');
 
   return (
     <div
-      data-risk-metric={metricKey}
+      data-risk-metric="currentDrawdown"
       data-risk-drawdown={drawdown.isZero ? 'zero' : 'active'}
       className="flex min-w-0 flex-col gap-1"
     >
       <dt>
         <MetricLabel variant="plain" className="break-words">
-          {label}
+          {t('metrics.currentDrawdown')}
         </MetricLabel>
       </dt>
       <dd className="flex min-w-0 flex-col gap-0.5">
         <span
           className={cn(
-            'numeric text-xl font-semibold tracking-tight break-words',
+            'numeric text-2xl font-semibold tracking-tight break-words',
             drawdown.isZero ? 'text-foreground' : 'text-negative',
           )}
         >
-          {drawdown.amountText}
-        </span>
-        {/*
-          D7A returns a typed unavailable percentage when the reference peak
-          is not positive. Rendering `0%` there would state a ratio that was
-          deliberately not published.
-        */}
-        <span className="text-muted-foreground numeric text-xs">
+          {/*
+            D7A returns a typed unavailable percentage when the reference peak
+            is not positive. Rendering `0%` there would state a ratio that was
+            deliberately not published — the amount below still carries the
+            fact.
+          */}
           {drawdown.percentageText ?? tReal('notAvailableShort')}
+        </span>
+        <span data-risk-drawdown-detail className="text-muted-foreground text-xs leading-4">
+          {drawdown.isZero ? t('atHighWaterMark') : t('belowPeak', { amount: drawdown.amountText })}
         </span>
       </dd>
     </div>

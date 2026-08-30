@@ -220,5 +220,5 @@ function InsightPillarsSkeleton() {
 
 /** Reserves the Risk Performance card's geometry — same note. */
 function RiskPerformanceSkeleton() {
-  return <div aria-hidden="true" className="bg-card h-[526px] animate-pulse rounded-lg" />;
+  return <div aria-hidden="true" className="bg-card h-[488px] animate-pulse rounded-lg" />;
 }

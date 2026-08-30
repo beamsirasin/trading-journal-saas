@@ -238,3 +238,7 @@ Not yet done: production email delivery, a real payment provider, accessibility 
 ## Out of scope for the MVP
 
 Broker API integration · MT4/MT5 sync · CSV import · OCR · TradingView API · real payment processing · AI API integration · native mobile apps.
+
+## Known product debt
+
+**A money-Risk Analytics view does not exist.** `ANALYTICS_VIEWS` is `overview | results | edge | behavior`, and none of them renders modeled-balance material: Analytics' `maximumDrawdownR` is an **R** metric over a different population and is not a home for D7's money drawdown. When the Dashboard's Risk snapshot was reduced to Modeled Balance + Current Drawdown + the balance chart, the figures it stopped showing — **money Max Drawdown, Peak Balance, peak history, deeper drawdown/underwater analysis and modeled-balance diagnostics** — were moved into that card's info popover _with their values_ rather than to Analytics, because there was nowhere to send them. That is deliberate temporary progressive disclosure, not a resting place. A future Risk Analytics view should give them a real home, after which the popover can shrink back to definitions.

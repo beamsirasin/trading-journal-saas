@@ -699,9 +699,12 @@ test.describe('Dashboard Risk Performance', () => {
     */
     await gotoRisk(page, '/en/app');
     await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', 'all');
+    // The All range carries nothing in, so its opening sentence moved to the
+    // info popover — only the carried (bounded) case keeps it on the face.
+    await expect(page.locator('[data-risk-opening]')).toHaveCount(0);
     await expect(
       section.getByText('Modeled from the declared Starting Balance of $10,000.00.'),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     /*
       90D — a BOUNDED window that happens to reach back past all three closed
@@ -713,11 +716,14 @@ test.describe('Dashboard Risk Performance', () => {
     await expect(status).toHaveAttribute('data-risk-status', 'available');
     await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
     await expect(metric('modeledBalance').getByText('Modeled Balance')).toBeVisible();
-    await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
-    await expect(metric('peakBalance').getByText('$10,002.00')).toBeVisible();
-    await expect(metric('currentDrawdown').getByText('$1.00')).toBeVisible();
+    // The face is exactly two figures. Current Drawdown leads with its
+    // percentage and names the money amount as the distance below the peak.
     await expect(metric('currentDrawdown').getByText('0.01%')).toBeVisible();
-    await expect(metric('maxDrawdown').getByText('$1.00')).toBeVisible();
+    await expect(metric('currentDrawdown').getByText('$1.00 below peak')).toBeVisible();
+    await expect(section.locator('[data-risk-metric]')).toHaveCount(2);
+    for (const retired of ['periodPnl', 'peakBalance', 'maxDrawdown']) {
+      await expect(section.locator(`[data-risk-metric="${retired}"]`)).toHaveCount(0);
+    }
     /*
       The 90D window reaches back past all three closed Trades, so it carried
       NOTHING into itself and the copy says exactly that. This is the third
@@ -747,7 +753,12 @@ test.describe('Dashboard Risk Performance', () => {
     await gotoRisk(page, '/en/app?range=30d&unit=r');
     await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', '30d');
     await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
-    await expect(metric('periodPnl').getByText('$0.00', { exact: true })).toBeVisible();
+    // The carried-opening guard is REQUIRED here: a bounded window inherits a
+    // balance and a high-water mark from before it opened.
+    await expect(page.locator('[data-risk-opening]')).toHaveAttribute(
+      'data-risk-opening',
+      'carried',
+    );
     await expect(
       section.getByText(
         'This range opened at $10,001.00, carried in from Trades closed before it.',
@@ -760,11 +771,8 @@ test.describe('Dashboard Risk Performance', () => {
     // place the Starting Balance is named. It still claims no inception date.
     await gotoRisk(page, '/en/app?range=all&unit=r');
     await expect(page.locator('[data-risk-range]')).toHaveAttribute('data-risk-range', 'all');
-    await expect(
-      section.getByText('Modeled from the declared Starting Balance of $10,000.00.'),
-    ).toBeVisible();
+    await expect(page.locator('[data-risk-opening]')).toHaveCount(0);
     await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
-    await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
     await expect(section.getByText(/Account opened on|since account creation/i)).toHaveCount(0);
 
     /*
@@ -776,9 +784,8 @@ test.describe('Dashboard Risk Performance', () => {
       await gotoRisk(page, `/en/app?range=90d&unit=r&${query}`);
       await expect(status).toHaveAttribute('data-risk-status', 'available');
       await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
-      await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
-      await expect(metric('peakBalance').getByText('$10,002.00')).toBeVisible();
-      await expect(metric('currentDrawdown').getByText('$1.00')).toBeVisible();
+      await expect(metric('currentDrawdown').getByText('0.01%')).toBeVisible();
+      await expect(metric('currentDrawdown').getByText('$1.00 below peak')).toBeVisible();
       await expect(
         section.getByText(
           'Account-level metric. Strategy and Setup filters do not change modeled balance.',
@@ -847,10 +854,12 @@ test.describe('Dashboard Risk Performance', () => {
       'available',
     );
     await expect(metric('modeledBalance').getByText('$10,000.00')).toBeVisible();
-    await expect(metric('periodPnl').getByText('$0.00', { exact: true })).toBeVisible();
-    await expect(metric('currentDrawdown').getByText('$0.00')).toBeVisible();
+    // §8 — the zero case states its status in words instead of leaving a
+    // bare $0.00 that reads as missing data. The percentage still leads.
     await expect(metric('currentDrawdown').getByText('0.00%')).toBeVisible();
-    await expect(metric('maxDrawdown').getByText('0.00%')).toBeVisible();
+    await expect(metric('currentDrawdown').getByText('At high-water mark')).toBeVisible();
+    await expect(metric('currentDrawdown').getByText(/no risk|risk.free|safe/i)).toHaveCount(0);
+    await expect(metric('currentDrawdown')).toHaveAttribute('data-risk-drawdown', 'zero');
     // The opening sentence names the Starting Balance and claims no history:
     // this Account has closed nothing, ever, so nothing was carried into the
     // range. The D7B UAT caught this exact line asserting the opposite.
@@ -883,24 +892,17 @@ test.describe('Dashboard Risk Performance', () => {
       await gotoRisk(page, '/en/app?range=90d&unit=r');
       await expect(page.getByRole('heading', { level: 2, name: RISK_HEADING })).toBeVisible();
       await expect(metric('modeledBalance').getByText('$10,001.00')).toBeVisible();
-      await expect(metric('periodPnl').getByText('+$1.00')).toBeVisible();
-      await expect(metric('currentDrawdown').getByText('$1.00')).toBeVisible();
-      await expect(metric('maxDrawdown').getByText('$1.00')).toBeVisible();
+      await expect(metric('currentDrawdown').getByText('$1.00 below peak')).toBeVisible();
+      await expect(section.locator('[data-risk-metric]')).toHaveCount(2);
 
-      // The mobile priority order, read straight off the DOM: the two hero
-      // figures, then the two drawdown readings, then the supporting peak.
+      // The mobile priority order, read straight off the DOM: capital state
+      // first, then how far below the peak it stands.
       const order = await section.evaluate((node) =>
         [...node.querySelectorAll('[data-risk-metric]')].map((child) =>
           child.getAttribute('data-risk-metric'),
         ),
       );
-      expect(order).toEqual([
-        'modeledBalance',
-        'periodPnl',
-        'currentDrawdown',
-        'maxDrawdown',
-        'peakBalance',
-      ]);
+      expect(order).toEqual(['modeledBalance', 'currentDrawdown']);
 
       // The section stacks full width and its plot fits: a chart the reader
       // has to pan sideways is the failure this asserts against.
@@ -1317,9 +1319,7 @@ test.describe('Dashboard insight pillars', () => {
       const risk = page.locator('[data-dashboard-panel="risk-performance"]');
       return {
         balance: await risk.locator('[data-risk-metric="modeledBalance"]').innerText(),
-        period: await risk.locator('[data-risk-metric="periodPnl"]').innerText(),
         current: await risk.locator('[data-risk-metric="currentDrawdown"]').innerText(),
-        max: await risk.locator('[data-risk-metric="maxDrawdown"]').innerText(),
       };
     };
 

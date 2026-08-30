@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -111,7 +112,7 @@ function metric(container: HTMLElement, key: string): HTMLElement {
 }
 
 describe('Risk Performance section — populated available state', () => {
-  it('leads with Modeled Balance and Period P&L and supports them with drawdown and peak', () => {
+  it('leads with Modeled Balance and Current Drawdown, and nothing else', () => {
     const { container } = renderCard(buildView(POPULATED, BOUNDED_30D));
 
     expect(screen.getByRole('heading', { name: 'Risk Performance' })).toBeInTheDocument();
@@ -121,11 +122,68 @@ describe('Risk Performance section — populated available state', () => {
     );
     expect(within(metric(container, 'modeledBalance')).getByText('$12,310.00')).toBeVisible();
     expect(within(metric(container, 'modeledBalance')).getByText('Modeled Balance')).toBeVisible();
-    expect(within(metric(container, 'periodPnl')).getByText('+$1,040.00')).toBeVisible();
-    expect(within(metric(container, 'currentDrawdown')).getByText('$110.00')).toBeVisible();
+    // The percentage leads; the money amount names itself as the distance
+    // below the peak rather than sitting bare beside it.
     expect(within(metric(container, 'currentDrawdown')).getByText('0.89%')).toBeVisible();
-    expect(within(metric(container, 'maxDrawdown')).getByText('$110.00')).toBeVisible();
-    expect(within(metric(container, 'peakBalance')).getByText('$12,420.00')).toBeVisible();
+    expect(
+      within(metric(container, 'currentDrawdown')).getByText('$110.00 below peak'),
+    ).toBeVisible();
+
+    // EXACTLY these two on the face.
+    const keys = [...container.querySelectorAll('[data-risk-metric]')].map((node) =>
+      node.getAttribute('data-risk-metric'),
+    );
+    expect(keys).toEqual(['modeledBalance', 'currentDrawdown']);
+  });
+
+  /**
+   * §1/§2 — PERIOD P&L IS NOT ON THE RISK FACE.
+   *
+   * It sums the SAME authoritative `net_pnl_minor` over the same closed,
+   * non-deleted, date-bounded population as the KPI row's Net P&L, so on a
+   * default Dashboard the two are the same number twice. They are not the
+   * same metric — the KPI also requires `actual_r`/`trader_outcome` and DOES
+   * follow Strategy/Setup/Version filters, which Risk deliberately ignores —
+   * but that divergence is invisible without a sentence, so the figure is off
+   * the first layer. `periodNetPnlMinor` remains on the payload, asserted
+   * here so a regression cannot quietly drop the DATA as well as the display.
+   */
+  it('keeps Period P&L on the payload while never rendering it on the face', () => {
+    const view = buildView(POPULATED, BOUNDED_30D);
+    if (view.status !== 'available') throw new Error('Expected available');
+    expect(view.periodNetPnl.text).toBe('+$1,040.00');
+
+    const { container } = renderCard(view);
+    expect(container.querySelector('[data-risk-metric="periodPnl"]')).toBeNull();
+    expect(container.textContent ?? '').not.toContain('Period P&L');
+    expect(container.textContent ?? '').not.toContain('+$1,040.00');
+  });
+
+  /**
+   * §9/§10 — Max Drawdown and Peak Balance stay computed and stay reachable,
+   * but neither is a permanent Dashboard figure any more. Max Drawdown is
+   * range-dependent diagnosis; the peak is already drawn as the chart's
+   * dashed reference line.
+   */
+  it('keeps Max Drawdown and Peak Balance computed but off the face', () => {
+    const view = buildView(POPULATED, BOUNDED_30D);
+    if (view.status !== 'available') throw new Error('Expected available');
+    expect(view.maxDrawdown.amountText).toBe('$110.00');
+    expect(view.peakBalanceText).toBe('$12,420.00');
+
+    const { container } = renderCard(view);
+    expect(container.querySelector('[data-risk-metric="maxDrawdown"]')).toBeNull();
+    expect(container.querySelector('[data-risk-metric="peakBalance"]')).toBeNull();
+  });
+
+  it('states the displaced figures with their values in the info popover', async () => {
+    const user = userEvent.setup();
+    renderCard(buildView(POPULATED, BOUNDED_30D));
+    await user.click(screen.getByRole('button', { name: 'About Modeled Balance' }));
+
+    expect(await screen.findByText(/Peak Balance \$12,420\.00/)).toBeVisible();
+    expect(screen.getByText(/Max Drawdown in this range \$110\.00/)).toBeVisible();
+    expect(screen.getByText(/closed Trades? in range/)).toBeVisible();
   });
 
   /**
@@ -154,11 +212,15 @@ describe('Risk Performance section — populated available state', () => {
     expect(screen.queryByText(/opened at \$10,000\.00/)).toBeNull();
   });
 
-  it('describes the All range from the declared Starting Balance without claiming an inception date', () => {
+  /**
+   * §13 — the All range carries nothing in, so the opening sentence is the
+   * normal case and states what the ⓘ already explains. It leaves the face;
+   * the carried case (asserted above) does not.
+   */
+  it('drops the opening sentence on the All range and never claims an inception date', () => {
     const { container } = renderCard(buildView(POPULATED));
-    expect(
-      screen.getByText('Modeled from the declared Starting Balance of $10,000.00.'),
-    ).toBeVisible();
+    expect(container.querySelector('[data-risk-opening]')).toBeNull();
+    expect(screen.queryByText(/Modeled from the declared Starting Balance/)).toBeNull();
     expect(container.textContent ?? '').not.toMatch(/account opened on|since account creation/i);
   });
 
@@ -191,22 +253,16 @@ describe('Risk Performance section — populated available state', () => {
    * peak, then the curve. Peak is deliberately last of the figures because it
    * is supporting context for the drawdowns rather than a fifth headline.
    */
-  it('orders the mobile stack by priority: balance, P&L, drawdowns, peak, chart', () => {
+  it('orders the stack by priority: balance, drawdown, then the chart', () => {
     const { container } = renderCard(buildView(POPULATED, BOUNDED_30D));
     const keys = [...container.querySelectorAll('[data-risk-metric]')].map((node) =>
       node.getAttribute('data-risk-metric'),
     );
-    expect(keys).toEqual([
-      'modeledBalance',
-      'periodPnl',
-      'currentDrawdown',
-      'maxDrawdown',
-      'peakBalance',
-    ]);
+    expect(keys).toEqual(['modeledBalance', 'currentDrawdown']);
     const chart = container.querySelector('figure');
-    const peak = container.querySelector('[data-risk-metric="peakBalance"]');
+    const drawdown = container.querySelector('[data-risk-metric="currentDrawdown"]');
     expect(chart).not.toBeNull();
-    expect(peak?.compareDocumentPosition(chart as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(drawdown?.compareDocumentPosition(chart as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
 
@@ -312,10 +368,16 @@ describe('Risk Performance section — availability states', () => {
       'available',
     );
     expect(within(metric(container, 'modeledBalance')).getByText('$10,000.00')).toBeVisible();
-    expect(within(metric(container, 'periodPnl')).getByText('$0.00')).toBeVisible();
-    expect(within(metric(container, 'currentDrawdown')).getByText('$0.00')).toBeVisible();
+    // §8 — a zero drawdown states its status in words rather than leaving a
+    // bare $0.00/0.00% that reads as missing data on a card whose other
+    // states genuinely are unavailable.
     expect(within(metric(container, 'currentDrawdown')).getByText('0.00%')).toBeVisible();
-    expect(within(metric(container, 'maxDrawdown')).getByText('0.00%')).toBeVisible();
+    expect(
+      within(metric(container, 'currentDrawdown')).getByText('At high-water mark'),
+    ).toBeVisible();
+    expect(metric(container, 'currentDrawdown')).toHaveAttribute('data-risk-drawdown', 'zero');
+    // Never a reassurance the data does not support.
+    expect(container.textContent ?? '').not.toMatch(/no risk|risk[- ]free|safe|perfect/i);
     expect(screen.getByText('No closed Trades yet.')).toBeVisible();
     expect(screen.getByText('Your modeled balance remains at the starting balance.')).toBeVisible();
     // Not an error, and no meaningless empty plot.
@@ -405,11 +467,13 @@ describe('Risk Performance section — scope and accessibility', () => {
         'Account-level metric. Strategy and Setup filters do not change modeled balance.',
       ),
     ).toBeVisible();
-    // Identical figures — the filter genuinely changed nothing.
+    // Identical figures — the filter genuinely changed nothing. Asserted on
+    // the two metrics the face now carries; the same holds for the payload's
+    // Period P&L, which the filter also leaves untouched.
     expect(
       within(metric(filtered.container, 'modeledBalance')).getByText('$12,310.00'),
     ).toBeVisible();
-    expect(within(metric(filtered.container, 'periodPnl')).getByText('+$1,040.00')).toBeVisible();
+    expect(within(metric(filtered.container, 'currentDrawdown')).getByText('0.89%')).toBeVisible();
   });
 
   it('exposes the limitations through a keyboard-reachable button, not a hover tooltip', () => {
@@ -424,13 +488,11 @@ describe('Risk Performance section — scope and accessibility', () => {
     const section = container.querySelector('section');
     expect(section).toHaveAttribute('aria-labelledby', 'risk-performance-heading');
     expect(screen.getByRole('img', { name: /Modeled Balance/i })).toBeVisible();
-    // Both drawdown readings state an amount AND a percentage in text, so the
-    // negative tint is never the only carrier.
-    for (const key of ['currentDrawdown', 'maxDrawdown']) {
-      const node = metric(container, key);
-      expect(node.textContent ?? '').toMatch(/\$[\d,]+\.\d{2}/);
-      expect(node.textContent ?? '').toMatch(/\d+\.\d{2}%/);
-    }
+    // The drawdown states an amount AND a percentage in text, so the negative
+    // tint is never the only carrier.
+    const node = metric(container, 'currentDrawdown');
+    expect(node.textContent ?? '').toMatch(/\$[\d,]+\.\d{2}/);
+    expect(node.textContent ?? '').toMatch(/\d+\.\d{2}%/);
     // A zero drawdown is marked neutral rather than tinted as a loss.
     const zero = renderCard(buildView([]));
     expect(metric(zero.container, 'currentDrawdown')).toHaveAttribute('data-risk-drawdown', 'zero');

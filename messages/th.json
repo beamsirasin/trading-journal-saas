@@ -905,7 +905,12 @@
         "all": "คำนวณจากยอดตั้งต้นที่ประกาศไว้ {balance}",
         "carried": "ช่วงนี้เปิดที่ {balance} ซึ่งยกมาจาก Trade ที่ปิดก่อนหน้าช่วงนี้",
         "at_starting_balance": "ช่วงนี้เปิดที่ยอดตั้งต้นที่ประกาศไว้ {balance} เนื่องจากไม่มี Trade ปิดก่อนหน้านี้"
-      }
+      },
+      "atHighWaterMark": "อยู่ที่จุดสูงสุด",
+      "belowPeak": "ต่ำกว่าจุดสูงสุด {amount}",
+      "infoPeak": "ยอดสูงสุด {balance} — จุดอ้างอิงที่ใช้วัด Drawdown",
+      "infoMaxDrawdown": "Drawdown สูงสุดในช่วงนี้ {amount} ({percentage})",
+      "infoClosedTrades": "ออเดอร์ที่ปิดแล้วในช่วงนี้ {count} รายการ"
     },
     "insights": {
       "regionLabel": "ข้อมูลเชิงลึกด้านผลงาน",

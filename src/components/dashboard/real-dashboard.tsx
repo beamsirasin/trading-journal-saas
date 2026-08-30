@@ -430,8 +430,7 @@ export function DashboardSkeleton() {
         KPI 120 (the row's padding pass), Needs Attention 74 and the section
         heading 24 (both lost a description line), the System/Trader pair 165
         (three metrics a side, laid out beside the hero), Execution Gap 416
-        (two headline figures and one chart, down from four and three), Risk
-        526 (the shared plot ramp), Recent Trades 413 (three fields, seven
+        (two headline figures and one chart, down from four and three), Risk 488, Recent Trades 413 (three fields, seven
         44px rows) and Calendar 630 (one value per cell). A skeleton carrying
         stale numbers is worse than no skeleton: it reserves a geometry the
         page no longer has and guarantees the jump it exists to prevent.
@@ -486,7 +485,10 @@ export function DashboardSkeleton() {
         </div>
         {/* D7's Risk Performance section: one card, a summary strip over a
             chart, at the height it actually renders at. */}
-        <div className="bg-card mt-6 h-[526px] rounded-lg" />
+        {/* Risk, 526 -> 488: two headline figures instead of five, and
+            the opening sentence now renders only on a carried (bounded)
+            range. The chart is unchanged at the shared plot ramp. */}
+        <div className="bg-card mt-6 h-[488px] rounded-lg" />
       </div>
       {/*
         Fixed and centred in the VIEWPORT, offset past the sidebar by the

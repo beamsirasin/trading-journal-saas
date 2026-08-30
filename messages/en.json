@@ -905,7 +905,12 @@
         "all": "Modeled from the declared Starting Balance of {balance}.",
         "carried": "This range opened at {balance}, carried in from Trades closed before it.",
         "at_starting_balance": "This range opened at the declared Starting Balance of {balance} — no Trade closed before it."
-      }
+      },
+      "atHighWaterMark": "At high-water mark",
+      "belowPeak": "{amount} below peak",
+      "infoPeak": "Peak Balance {balance} — the high-water mark drawdown is measured from.",
+      "infoMaxDrawdown": "Max Drawdown in this range {amount} ({percentage}).",
+      "infoClosedTrades": "{count, plural, one {# closed Trade} other {# closed Trades}} in range."
     },
     "insights": {
       "regionLabel": "Performance insights",
