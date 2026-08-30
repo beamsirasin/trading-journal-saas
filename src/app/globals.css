@@ -417,29 +417,29 @@ html[lang='th'] .text-label {
   --card-foreground: #f6f6f6;
   --popover: #181818;
   --popover-foreground: #f6f6f6;
-  --primary: #2877a2;
-  --primary-foreground: #f6f6f6;
+  --primary: #3498b8;
+  --primary-foreground: #0d0d0d;
   --secondary: #262626;
   --secondary-foreground: #f6f6f6;
   --muted: #262626;
-  --muted-foreground: #797979;
-  --subtle-foreground: #4d4d4d;
+  --muted-foreground: #a1a1a1;
+  --subtle-foreground: #8a8a8a;
   --accent: #262626;
   --accent-foreground: #f6f6f6;
   --destructive: #ef6362;
   --destructive-foreground: #f6f6f6;
   --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.12);
-  --ring: #2877a2;
+  --ring: #3498b8;
 
   --surface: #0d0d0d;
   --surface-raised: #262626;
   --sidebar: #181818;
   --sidebar-border: rgb(255 255 255 / 0.08);
-  --brand: #2877a2;
+  --brand: #3498b8;
   --positive: #2fa97a;
   --negative: #ef6362;
-  --break-even: #2853e4;
+  --break-even: #5b7ef7;
   /*
    * The unfilled part of a KPI indicator. Deliberately NOT `--muted`, which
    * sits a hair off white on the light card: the empty half of a proportion
@@ -481,22 +481,22 @@ html[lang='th'] .text-label {
    * Measured on this theme's pill (#262626):
    *
    *   13.99:1 label
-   *   3.11:1 icon (needs 3:1 as non-text)
+   *   4.56:1 icon (needs 3:1 as non-text)
    *   16.43:1 label on the bare sidebar, visible mid layout-spring
-   *   3.59:1 icon on the bare sidebar
+   *   5.35:1 icon on the bare sidebar
    */
   --shell-nav-active-foreground: #f6f6f6;
-  --shell-nav-active-icon: #2877a2;
-  --shell-nav-rest-foreground: #818181;
+  --shell-nav-active-icon: #3498b8;
+  --shell-nav-rest-foreground: #a1a1a1;
   --shell-chrome: #181818;
   --shell-chrome-foreground: #f6f6f6;
-  --shell-chrome-muted: #818181;
+  --shell-chrome-muted: #a1a1a1;
   --shell-chrome-accent: #262626;
   --shell-chrome-border: rgb(255 255 255 / 0.08);
   --shell-chrome-nav-active-surface: #262626;
   --shell-chrome-nav-active-foreground: #f6f6f6;
-  --shell-chrome-nav-active-icon: #2877a2;
-  --shell-chrome-ring: #2877a2;
+  --shell-chrome-nav-active-icon: #3498b8;
+  --shell-chrome-ring: #3498b8;
 }
 
 /* 1. Explicit user choice — highest priority. Must come last. */
@@ -578,13 +578,13 @@ html[lang='th'] .text-label {
   --shell-nav-rest-foreground: #55657f;
   --shell-chrome: #181818;
   --shell-chrome-foreground: #f6f6f6;
-  --shell-chrome-muted: #818181;
+  --shell-chrome-muted: #a1a1a1;
   --shell-chrome-accent: #262626;
   --shell-chrome-border: rgb(255 255 255 / 0.08);
   --shell-chrome-nav-active-surface: #262626;
   --shell-chrome-nav-active-foreground: #f6f6f6;
-  --shell-chrome-nav-active-icon: #2877a2;
-  --shell-chrome-ring: #2877a2;
+  --shell-chrome-nav-active-icon: #3498b8;
+  --shell-chrome-ring: #3498b8;
 }
 
 .dark {
@@ -596,29 +596,29 @@ html[lang='th'] .text-label {
   --card-foreground: #f6f6f6;
   --popover: #181818;
   --popover-foreground: #f6f6f6;
-  --primary: #2877a2;
-  --primary-foreground: #f6f6f6;
+  --primary: #3498b8;
+  --primary-foreground: #0d0d0d;
   --secondary: #262626;
   --secondary-foreground: #f6f6f6;
   --muted: #262626;
-  --muted-foreground: #797979;
-  --subtle-foreground: #4d4d4d;
+  --muted-foreground: #a1a1a1;
+  --subtle-foreground: #8a8a8a;
   --accent: #262626;
   --accent-foreground: #f6f6f6;
   --destructive: #ef6362;
   --destructive-foreground: #f6f6f6;
   --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.12);
-  --ring: #2877a2;
+  --ring: #3498b8;
 
   --surface: #0d0d0d;
   --surface-raised: #262626;
   --sidebar: #181818;
   --sidebar-border: rgb(255 255 255 / 0.08);
-  --brand: #2877a2;
+  --brand: #3498b8;
   --positive: #2fa97a;
   --negative: #ef6362;
-  --break-even: #2853e4;
+  --break-even: #5b7ef7;
   --indicator-track: rgb(255 255 255 / 0.14);
   --warning: #f59e0b;
   --info: #56b6f7;
@@ -654,22 +654,22 @@ html[lang='th'] .text-label {
    * Measured on this theme's pill (#262626):
    *
    *   13.99:1 label
-   *   3.11:1 icon (needs 3:1 as non-text)
+   *   4.56:1 icon (needs 3:1 as non-text)
    *   16.43:1 label on the bare sidebar, visible mid layout-spring
-   *   3.59:1 icon on the bare sidebar
+   *   5.35:1 icon on the bare sidebar
    */
   --shell-nav-active-foreground: #f6f6f6;
-  --shell-nav-active-icon: #2877a2;
-  --shell-nav-rest-foreground: #818181;
+  --shell-nav-active-icon: #3498b8;
+  --shell-nav-rest-foreground: #a1a1a1;
   --shell-chrome: #181818;
   --shell-chrome-foreground: #f6f6f6;
-  --shell-chrome-muted: #818181;
+  --shell-chrome-muted: #a1a1a1;
   --shell-chrome-accent: #262626;
   --shell-chrome-border: rgb(255 255 255 / 0.08);
   --shell-chrome-nav-active-surface: #262626;
   --shell-chrome-nav-active-foreground: #f6f6f6;
-  --shell-chrome-nav-active-icon: #2877a2;
-  --shell-chrome-ring: #2877a2;
+  --shell-chrome-nav-active-icon: #3498b8;
+  --shell-chrome-ring: #3498b8;
 }
 
 @layer base {
@@ -689,6 +689,23 @@ html[lang='th'] .text-label {
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+
+  /*
+   * Tailwind v4 dropped Preflight's `cursor: pointer` on `button`, deferring
+   * to the UA default of `cursor: default`. Every actionable control in this
+   * product lost its pointer affordance in that one framework bump. Restored
+   * globally rather than per-component, so no future button can ship without
+   * it and the ~18 scattered `cursor-pointer` utilities stop being the only
+   * thing standing between the design and a default arrow.
+   *
+   * `:not(:disabled)` because a disabled control is not actionable; the
+   * `[role='button']` half also excludes `aria-disabled`, which is how a
+   * non-native control announces the same state.
+   */
+  button:not(:disabled),
+  [role='button']:not(:disabled):not([aria-disabled='true']) {
+    cursor: pointer;
   }
 }
 
@@ -931,7 +948,7 @@ html[lang='th'] .text-label {
    * and both would be all but invisible on this near-black one.
    *
    * The chrome variants are measured against the chrome pill (#212227)
-   * instead: 14.45:1 for the label and 6.24:1 for the icon, identical in both
+   * instead: 14.45:1 for the label and 4.78:1 for the icon, identical in both
    * themes because the chrome surface itself is now identical in both.
    *
    * `--ring` too: the light-mode page ring is tuned against a near-white

@@ -74,22 +74,22 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `foreground`        | `#f6f6f6` | `#0b1220` |
 | `card`              | `#181818` | `#ffffff` |
 | `popover`           | `#181818` | `#ffffff` |
-| `primary`           | `#2877a2` | `#1d4ed8` |
+| `primary`           | `#3498b8` | `#1d4ed8` |
 | `secondary`         | `#262626` | `#e9edf7` |
 | `muted`             | `#262626` | `#e9edf7` |
-| `muted-foreground`  | `#797979` | `#55657f` |
-| `subtle-foreground` | `#4d4d4d` | `#7b879b` |
+| `muted-foreground`  | `#a1a1a1` | `#55657f` |
+| `subtle-foreground` | `#8a8a8a` | `#7b879b` |
 | `accent`            | `#262626` | `#dfe6f4` |
 | `destructive`       | `#ef6362` | `#be123c` |
 | `border`            | white 8%  | `#dde4f0` |
 | `input`             | white 12% | `#dde4f0` |
-| `ring`              | `#2877a2` | `#1d4ed8` |
-| `brand`             | `#2877a2` | `#0e7490` |
+| `ring`              | `#3498b8` | `#1d4ed8` |
+| `brand`             | `#3498b8` | `#0e7490` |
 | `surface`           | `#0d0d0d` | `#e9edf7` |
 | `surface-raised`    | `#262626` | `#ffffff` |
 | `positive`          | `#2fa97a` | `#047857` |
 | `negative`          | `#ef6362` | `#be123c` |
-| `break-even`        | `#2853e4` | `#1d4ed8` |
+| `break-even`        | `#5b7ef7` | `#1d4ed8` |
 | `warning`           | `#f59e0b` | `#92400e` |
 | `info`              | `#56b6f7` | `#0369a1` |
 | `chart-1`           | `#0f9e8e` | `#0891b2` |
@@ -101,10 +101,28 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 
 Primary text, positive/negative values, and text on primary actions retain strong contrast. `muted-foreground` is reserved for supporting copy, while `subtle-foreground` and `break-even` are never used as the sole colour of essential body text: subtle is limited to tertiary/decorative metadata, and break-even uses a tint with foreground text. Chart-series colours likewise never carry text on their own (§9).
 
-Interactive shell navigation uses a dedicated rest foreground (`#818181` on
-the dark `#181818` chrome, 4.56:1) rather than promoting every secondary label.
-The general `muted-foreground` therefore remains the reference `#797979`, while
-route names and icons retain AA contrast before hover.
+Interactive shell navigation uses a dedicated rest foreground (`#a1a1a1` on
+the dark `#181818` chrome, 6.87:1) rather than promoting every secondary label.
+It is kept as its own token rather than aliased to `muted-foreground` because
+the header chrome stays dark in BOTH themes: in light mode `muted-foreground`
+is `#55657f`, which on the dark chrome would fall to roughly 2.6:1. The two
+tokens now hold the same dark-theme value and must still be edited separately.
+
+Contrast on the `card` plane (`#181818`), which is the tightest surface the
+dark palette has to clear:
+
+| Token               | Ratio on `#181818` | Verdict        |
+| ------------------- | ------------------ | -------------- |
+| `muted-foreground`  | 6.87:1             | AA normal text |
+| `subtle-foreground` | 5.14:1             | AA normal text |
+| `primary`           | 5.35:1             | AA normal text |
+| `break-even`        | 4.88:1             | AA normal text |
+
+`primary-foreground` is DARK ink (`#0d0d0d`) in the dark theme, not the page
+foreground. Raising `primary` to clear AA as text made it too light to carry
+`#f6f6f6` as a button label (3.07:1); the filled `primary` button therefore
+reads as dark-on-cyan, at 5.86:1. Light mode is unaffected — `#ffffff` on
+`#1d4ed8` is 6.70:1.
 
 ## 3. Theming
 
