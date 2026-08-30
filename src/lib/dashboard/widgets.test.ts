@@ -106,6 +106,33 @@ describe('section-aware Dashboard layout metadata', () => {
   });
 
   /**
+   * A SWAP IS NOT A SUM, WHICH IS WHY THE TEST ABOVE MISSED ONE.
+   *
+   * `recent-and-calendar` carried 7 + 5 for a long stretch while the page
+   * rendered 5 + 7. Every structural assertion passed throughout, because
+   * every one of them is symmetric: both orderings are two members, both
+   * stay within twelve columns, and both sum to exactly twelve. Nothing
+   * caught it, and nothing in the page could, because for these two widgets
+   * `desktopSpan` is metadata that no grid is built from.
+   *
+   * So the direction of the inequality is asserted directly. It is the part
+   * that carries the design decision — a day cell needs width to stay
+   * legible, a three-field Trade row stops using it at about 500px — and it
+   * is the only part a symmetric check cannot see.
+   */
+  it('gives the Calendar the wider half of the record section', () => {
+    const recent = dashboardLayoutItem('trades.recent');
+    const calendar = dashboardLayoutItem('calendar.performance');
+
+    expect(recent.desktopSpan).toBe(5);
+    expect(calendar.desktopSpan).toBe(7);
+    expect(calendar.desktopSpan).toBeGreaterThan(recent.desktopSpan);
+    expect(recent.desktopSpan + calendar.desktopSpan).toBe(
+      dashboardSection('recent-and-calendar').desktopColumns,
+    );
+  });
+
+  /**
    * The D4.5 §7 reconciliation itself. D2 recorded 2 and 3 of an implied
    * five-column page grid — a 40/60 split D4 already refused to render. The
    * pair is now a section of its own with one column each, so the metadata

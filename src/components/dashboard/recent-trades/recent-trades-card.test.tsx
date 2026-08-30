@@ -41,12 +41,12 @@ function renderCard(trades: readonly DashboardRecentTrade[]) {
 }
 
 describe('Recent Trades card', () => {
-  it('publishes its registry identity and its seven-of-twelve span', () => {
+  it('publishes its registry identity and its five-of-twelve span', () => {
     const { container } = renderCard([trade()]);
     const widget = container.querySelector('[data-dashboard-widget="trades.recent"]');
     expect(widget).toHaveAttribute('data-dashboard-section', 'recent-and-calendar');
     expect(widget).toHaveAttribute('data-dashboard-section-columns', '12');
-    expect(widget).toHaveAttribute('data-dashboard-desktop-span', '7');
+    expect(widget).toHaveAttribute('data-dashboard-desktop-span', '5');
   });
 
   it('renders every supplied Trade as one row', () => {

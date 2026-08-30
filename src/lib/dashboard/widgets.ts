@@ -118,11 +118,27 @@ export const DASHBOARD_SECTIONS: readonly DashboardSectionDefinition[] = [
   { id: 'execution-gap', desktopColumns: 1 },
   /*
     D6B: the one section on the page whose two widgets are genuinely UNEQUAL.
-    Recent Trades is a list that wants horizontal room for symbol, Strategy
-    and three R figures; the Calendar is a seven-column grid that stops being
-    readable well before it stops fitting. Twelve columns is the smallest
-    integer grid that expresses 7 + 5 honestly — halves would starve the
-    Calendar's squares, and thirds would starve the Trade rows.
+    Twelve columns is the smallest integer grid that expresses the split
+    honestly — halves would starve the Calendar's squares, and thirds would
+    starve the Trade rows.
+
+    THE SPLIT IS 5 + 7, CALENDAR WIDER. It was recorded here as 7 + 5 with
+    the reasoning that the Trade list wants horizontal room; measured, that
+    was backwards. The row carries a date, a symbol and one R figure and
+    reaches its natural width at about 500px, after which every pixel is
+    padding. Width is the ONLY thing that makes a Calendar day cell legible,
+    and at five of twelve its cells were dropping their secondary line
+    through the card's own container queries. Wider goes to the widget that
+    can spend it.
+
+    THESE TWO NUMBERS WERE STALE. The page was reversed to 5 + 7 without this
+    record following, and nothing caught it because — unlike the Basic KPI
+    band, which builds its grid classes from `desktopSpan` — this section's
+    component spells `lg:col-span-5` / `lg:col-span-7` literally. For these
+    two widgets the field is pure metadata: it is emitted as
+    `data-dashboard-desktop-span` and read by nothing that draws. That is
+    exactly the failure mode this registry exists to prevent, so the record
+    is corrected to match what the page has been rendering.
 
     This is still not a layout engine: no persistence, no editor, no
     drag/drop, no resize, and no runtime that turns these numbers into a grid.
@@ -299,7 +315,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     widgetId: 'trades.recent',
     section: 'recent-and-calendar',
     order: 100,
-    desktopSpan: 7,
+    desktopSpan: 5,
     mobileSpan: 2,
     mobileOrder: 100,
   },
@@ -307,7 +323,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     widgetId: 'calendar.performance',
     section: 'recent-and-calendar',
     order: 110,
-    desktopSpan: 5,
+    desktopSpan: 7,
     mobileSpan: 2,
     mobileOrder: 110,
   },

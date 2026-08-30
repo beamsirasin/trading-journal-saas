@@ -110,7 +110,7 @@ describe('Dashboard Calendar card', () => {
     const widget = container.querySelector('[data-dashboard-widget="calendar.performance"]');
     expect(widget).toHaveAttribute('data-dashboard-section', 'recent-and-calendar');
     expect(widget).toHaveAttribute('data-dashboard-section-columns', '12');
-    expect(widget).toHaveAttribute('data-dashboard-desktop-span', '5');
+    expect(widget).toHaveAttribute('data-dashboard-desktop-span', '7');
   });
 
   it('renders one grid for a populated month with a link per populated date', () => {
