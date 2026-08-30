@@ -144,7 +144,7 @@ function OutcomeDonut({
   const segments = arcSegments(wins, breakEvens, losses);
 
   return (
-    <svg viewBox="0 0 36 36" className="size-9 shrink-0" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 36 36" className="size-10 shrink-0" aria-hidden="true" focusable="false">
       <circle
         cx="18"
         cy="18"
@@ -197,7 +197,7 @@ function OutcomeGauge({
   const arc = 'M 4 21 A 17 17 0 0 1 38 21';
 
   return (
-    <svg viewBox="0 0 42 24" className="h-6 w-10 shrink-0" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 42 24" className="h-7 w-12 shrink-0" aria-hidden="true" focusable="false">
       <path d={arc} pathLength={100} fill="none" stroke="var(--indicator-track)" strokeWidth="5" />
       {segments.map((segment) => (
         <path
@@ -227,9 +227,13 @@ function OutcomeGauge({
 function RatioSplit({ winSharePercent }: { winSharePercent: number }) {
   return (
     <span
-      // Container-sized, like the figure beside it: 48px on a cramped
-      // five-across desktop card, 64px once the card can spare it.
-      className="flex h-2.5 w-12 shrink-0 overflow-hidden rounded-full bg-(--indicator-track) @[11rem]/kpi:w-16"
+      // Container-sized, like the figure beside it: 56px on a cramped
+      // five-across desktop card, 80px once the card can spare it. Both steps
+      // grew with the card's new vertical padding, so the indicator keeps
+      // reading as a data element rather than as decoration — the benchmark's
+      // KPI indicators (donut, partial ring, ratio bar) all carry real mass
+      // against their 120px card, and a hairline would not.
+      className="flex h-3 w-14 shrink-0 overflow-hidden rounded-full bg-(--indicator-track) @[11rem]/kpi:w-20"
       aria-hidden="true"
     >
       <span
@@ -252,15 +256,15 @@ function RatioSplit({ winSharePercent }: { winSharePercent: number }) {
  */
 function MagnitudePair({ winPercent, lossPercent }: { winPercent: number; lossPercent: number }) {
   return (
-    <span className="flex w-12 shrink-0 flex-col gap-1.5 @[11rem]/kpi:w-16" aria-hidden="true">
-      <span className="flex h-1.5 overflow-hidden rounded-full bg-(--indicator-track)">
+    <span className="flex w-14 shrink-0 flex-col gap-2 @[11rem]/kpi:w-20" aria-hidden="true">
+      <span className="flex h-2 overflow-hidden rounded-full bg-(--indicator-track)">
         <span
           data-kpi-bar="averageWin"
           className="bg-positive/85 rounded-full"
           style={{ width: `${winPercent}%` }}
         />
       </span>
-      <span className="flex h-1.5 overflow-hidden rounded-full bg-(--indicator-track)">
+      <span className="flex h-2 overflow-hidden rounded-full bg-(--indicator-track)">
         <span
           data-kpi-bar="averageLoss"
           className="bg-negative/85 rounded-full"

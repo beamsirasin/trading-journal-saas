@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -225,9 +226,17 @@ describe('Dashboard Calendar modes', () => {
    * not a display toggle over one set of Trades. The card says which question
    * it is answering rather than letting the grid imply they share a universe.
    */
-  it('states each mode population and axis rather than implying one Trade universe', () => {
+  it('states each mode population and axis rather than implying one Trade universe', async () => {
+    const user = userEvent.setup();
     const { rerender } = renderCard(availableMonth('actual', [performanceDay()]));
-    expect(screen.getByText('Closed Trades, by the day you exited.')).toBeInTheDocument();
+
+    // The sentence is no longer printed permanently under the title — the
+    // benchmark's Dashboard headers are a title plus an ⓘ — but it is still
+    // mode-specific and still one activation away, which is what §5 requires.
+    expect(screen.queryByText('Closed Trades, by the day you exited.')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'About the Calendar' }));
+    expect(await screen.findByText('Closed Trades, by the day you exited.')).toBeVisible();
+    await user.keyboard('{Escape}');
 
     rerender(
       <NextIntlClientProvider locale="en" messages={en}>
@@ -243,9 +252,24 @@ describe('Dashboard Calendar modes', () => {
         />
       </NextIntlClientProvider>,
     );
+    await user.click(screen.getByRole('button', { name: 'About the Calendar' }));
     expect(
-      screen.getByText('Resolved System outcomes, by the day the System exit resolved.'),
-    ).toBeInTheDocument();
+      await screen.findByText('Resolved System outcomes, by the day the System exit resolved.'),
+    ).toBeVisible();
+  });
+
+  /**
+   * §18/§21 — a day cell carries the date, ONE primary value and a semantic
+   * surface. The W/BE/L breakdown that used to print inside every square is
+   * still in the cell's accessible name and still in Day Review; it is no
+   * longer a second visible line in a ~95px box.
+   */
+  it('shows one primary value per day cell and keeps the breakdown accessible', () => {
+    const { container } = renderCard(availableMonth('actual', [performanceDay()]));
+    const cell = container.querySelector('[data-calendar-cell="populated"]') as HTMLElement;
+
+    expect(cell.textContent).not.toMatch(/\dW\s*\d*BE/);
+    expect(cell).toHaveAccessibleName(expect.stringContaining('won') as unknown as string);
   });
 
   /**

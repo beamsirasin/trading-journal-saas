@@ -403,9 +403,16 @@ test.describe('real Dashboard', () => {
     ).toBeVisible();
     await expect(comparison.getByRole('img', { name: /Execution Gap per day/i })).toBeVisible();
     await expect(comparison.getByText('Underperformed System')).toBeVisible();
-    await expect(page.getByText('Pinned Momentum v1').first()).toBeVisible();
-    await expect(page.getByText('Pinned Opening Retest').first()).toBeVisible();
-    await expect(page.getByText('Current Momentum Name')).toHaveCount(0);
+    // §14 — the Recent Trades preview is three fields (day, symbol, Actual R),
+    // so the Strategy and Setup names no longer render anywhere on the
+    // Dashboard. The pinned-vs-renamed version-name invariant they used to
+    // prove has NOT lost its coverage: it is asserted at the end of this test
+    // on the Trade record the row links to, which is where those names live
+    // now. Both are checked here so a regression that quietly reintroduces
+    // EITHER name on the preview row fails.
+    const recentRow = page.locator('[data-recent-trade-row]').first();
+    await expect(recentRow).not.toContainText('Pinned Momentum v1');
+    await expect(recentRow).not.toContainText('Current Momentum Name');
 
     // Wait for the App Router client boundary before exercising its Link.
     // The server-rendered values are visible sooner than hydration completes.
@@ -444,9 +451,30 @@ test.describe('real Dashboard', () => {
     // 30D Net P&L is -100 + 100 = exactly zero: unsigned and neutral, never "+$0.00".
     await expect(netPnl.getByText('$0.00', { exact: true })).toBeVisible();
 
-    await page.getByRole('link', { name: 'XAUUSD' }).click();
+    /*
+      §16 — the row's navigation contract, unchanged in destination and now
+      exercised on the whole row rather than on the symbol alone: since the
+      preview carries three fields the row itself is the link, so its
+      accessible name is "<day> <symbol> <Actual R>" rather than the bare
+      symbol.
+
+      This is also where the pinned-version-name invariant is now asserted.
+      The Trade shows the Strategy and Setup names PINNED when it was
+      recorded, never the renamed current version — the guarantee the Recent
+      Trades row used to carry before §14 reduced it to three fields.
+    */
+    await page.locator('[data-recent-trade-row] a').filter({ hasText: 'XAUUSD' }).first().click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
+    await expect(page.getByText('Pinned Momentum v1').first()).toBeVisible();
+    await expect(page.getByText('Current Momentum Name')).toHaveCount(0);
+    // The Setup snapshot name lives in the preview's own Strategy & Setup
+    // section rather than on its overview, so it is opened rather than
+    // assumed — this is the surface that now owns both pinned names.
+    await page.getByRole('link', { name: /Strategy & Setup Recorded/i }).click();
+    await expect(page).toHaveURL(/section=strategy/, { timeout: 20_000 });
+    await expect(page.getByText('Pinned Opening Retest').first()).toBeVisible();
+    await expect(page.getByText('Current Momentum Name')).toHaveCount(0);
     await page.goto('/en/app');
     await page.getByRole('link', { name: /View full analytics/i }).click();
     await expect(page).toHaveURL(/\/en\/app\/analytics$/);

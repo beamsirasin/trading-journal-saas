@@ -97,18 +97,29 @@ export function ExecutionGapSection({
           wrapping unevenly as the gap totals change width.
         */}
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
-          <div className="flex min-w-0 items-start justify-between gap-3 lg:w-[19rem] lg:shrink-0 xl:w-[22rem]">
+          {/* The header's fixed share shrank with the sentence it carried —
+              a mark and a two-word title, not a mark and a wrapped
+              paragraph — and the width returns to the four figures. */}
+          <div className="flex min-w-0 items-center justify-between gap-3 lg:w-[13rem] lg:shrink-0 xl:w-[14rem]">
             <div className="flex min-w-0 items-start gap-2.5">
               <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
                 <GitCompareArrows className="size-4" aria-hidden="true" />
               </span>
+              {/*
+                THE DESCRIPTION IS GONE FROM THE FIRST LAYER, AND NOTHING WAS
+                LOST WITH IT. `description` read "How much of the System's
+                paired edge your execution captured, and how that difference
+                developed" — a strictly weaker restatement of `help`, which is
+                already one tap away on the ⓘ this header has always carried
+                and which says the same thing plus the sign convention and the
+                pairing rule. Two texts for one definition, one of them
+                permanently occupying card space, is exactly the duplication
+                the benchmark's zero-paragraph Dashboard avoids.
+              */}
               <div className="min-w-0">
                 <h2 id={headingId} className="text-card-title">
                   {t('title')}
                 </h2>
-                <p className="text-muted-foreground mt-0.5 text-xs leading-4 text-pretty">
-                  {t('description')}
-                </p>
               </div>
             </div>
             <div className="lg:hidden">

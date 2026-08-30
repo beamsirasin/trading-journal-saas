@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -338,10 +339,12 @@ describe('RealDashboard', () => {
     // One row on desktop, stacked below it — never the old four-column grid.
     expect(panel.className).toContain('lg:flex-row');
     expect(panel.className).not.toContain('lg:grid-cols-4');
-    // Nothing was traded away for the height: title, meaning, every non-zero
-    // count with its label, and the Review action are all still here.
+    // Nothing was traded away for the height: title, every non-zero count with
+    // its label, and the Review action are all still here. The scope sentence
+    // moved behind the ⓘ in this pass and is asserted there instead.
     expect(within(panel).getByText('Needs attention')).toBeVisible();
-    expect(within(panel).getByText(/not a task list/i)).toBeVisible();
+    expect(within(panel).queryByText(/not a task list/i)).toBeNull();
+    expect(within(panel).getByRole('button', { name: 'About Needs attention' })).toBeVisible();
     expect(within(panel).getByText('Open Trades')).toBeVisible();
     expect(within(panel).getByText('2')).toBeVisible();
     expect(within(panel).getByText('Unclassified Trades')).toBeVisible();
@@ -363,7 +366,8 @@ describe('RealDashboard', () => {
    * beside the same unchanged 28. The counts are correct; the silence about
    * which population they came from was the defect.
    */
-  it('states that Needs Attention spans the workspace and ignores the date range', () => {
+  it('states that Needs Attention spans the workspace and ignores the date range', async () => {
+    const user = userEvent.setup();
     const { container } = renderDashboard(overview(), [RECENT], {
       ...ATTENTION,
       reviewsPending: 28,
@@ -371,8 +375,15 @@ describe('RealDashboard', () => {
     const panel = container.querySelector(
       '[data-dashboard-panel="needs-attention"]',
     ) as HTMLElement;
-    expect(within(panel).getByText(/every Account in this workspace/i)).toBeVisible();
-    expect(within(panel).getByText(/whatever date range is selected/i)).toBeVisible();
+
+    // The sentence is no longer printed permanently beside the counts — the
+    // benchmark's Dashboard carries no such copy — but it is still on the
+    // page and still reachable by a real button, which is the whole point of
+    // moving it rather than deleting it. The D9 guarantee is unchanged: a
+    // reader can always find out which population these counts came from.
+    await user.click(within(panel).getByRole('button', { name: 'About Needs attention' }));
+    expect(await screen.findByText(/every Account in this workspace/i)).toBeVisible();
+    expect(screen.getByText(/whatever date range is selected/i)).toBeVisible();
   });
 
   it('places the two performance cards side by side in one balanced grid', () => {
@@ -547,10 +558,13 @@ describe('RealDashboard', () => {
     renderDashboard();
     const account = screen.getByRole('region', { name: 'Active trading account summary' });
     expect(within(account).getByRole('heading', { name: ACCOUNT.name })).toBeVisible();
-    // D6B typesets Strategy and Setup as one supporting line beneath the
-    // Trade's identity; both pinned historical labels still appear verbatim.
-    expect(screen.getByText(/Pinned Breakout v1 · Pinned London Retest/)).toBeVisible();
-    expect(screen.getByRole('link', { name: 'XAUUSD' })).toHaveAttribute(
+    // The Recent Trades preview is three fields now (date, symbol, Actual R),
+    // so the pinned Strategy/Setup line is no longer printed on the row — it
+    // belongs to the Trade record the row links to. The link itself is
+    // unchanged in destination and now spans the whole row, so its accessible
+    // name is the row's three fields rather than the symbol alone.
+    expect(screen.queryByText(/Pinned Breakout v1 · Pinned London Retest/)).toBeNull();
+    expect(screen.getByRole('link', { name: /XAUUSD/ })).toHaveAttribute(
       'href',
       '/app/trades?trade=trade-1',
     );

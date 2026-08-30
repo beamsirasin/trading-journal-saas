@@ -235,18 +235,35 @@
    * card is narrowest, and a viewport-tuned ceiling overflowed the lead figure
    * at 1024 while looking timid at 1920.
    *
-   * The ceilings are fixed by the widest real figure, set in the tabular
-   * monospace stack whose advance is ~0.52em: a ten-character money total
-   * (`+$2,310.00`) needs ~5.2x its font size in width, which is what `18cqi`
-   * encodes for the lead role. Past that the figure wraps mid-number, which
-   * costs more legibility than the extra size buys.
+   * The lower bounds and the `cqi` slopes are fixed by the widest real figure,
+   * set in the tabular monospace stack whose advance is ~0.52em: a
+   * ten-character money total (`+$2,310.00`) needs ~5.2x its font size in
+   * width, which is what `18cqi` encodes for the lead role. Past that the
+   * figure wraps mid-number, which costs more legibility than the extra size
+   * buys.
+   *
+   * THE CEILINGS ARE CALIBRATED AGAINST A MEASURED BENCHMARK, AND THEY CAME
+   * DOWN. They were 2rem/2.25rem, which rendered 32px and 36px at 1440. The
+   * TradeZella Dashboard benchmark (§4/§11: KPI value 26px/600, label
+   * 14px/400, in a 401px-wide card) shows that a professional KPI band does
+   * NOT get its authority from the size of the numeral — it gets it from
+   * breathing room, and its figure is smaller than ours was in a card 60%
+   * wider than ours. Growing these further was the wrong instinct.
+   *
+   * `--text-kpi` now lands exactly on the benchmark's 26px at every width
+   * where the card can hold it. `--text-kpi-hero` stops at 28px rather than
+   * 26px: the benchmark sets all five of its cards at one size, but Net P&L
+   * being the row's LEAD is an existing TradeChemist contract (KPI §4), and
+   * one 2px step is the smallest legible way to keep it. The height freed by
+   * the smaller ceilings is spent on the card's vertical padding instead —
+   * see `KpiWidgetCard`.
    */
-  --text-kpi: clamp(1.25rem, 0.794rem + 8.93cqi, 2rem);
+  --text-kpi: clamp(1.25rem, 0.794rem + 8.93cqi, 1.625rem);
   --text-kpi--line-height: 1.05;
   --text-kpi--letter-spacing: -0.025em;
   --text-kpi--font-weight: 600;
 
-  --text-kpi-hero: clamp(1.25rem, 18cqi, 2.25rem);
+  --text-kpi-hero: clamp(1.25rem, 18cqi, 1.75rem);
   --text-kpi-hero--line-height: 1.05;
   --text-kpi-hero--letter-spacing: -0.03em;
   --text-kpi-hero--font-weight: 600;
@@ -929,6 +946,44 @@ html[lang='th'] .text-label {
 
   background-color: var(--shell-chrome);
   color: var(--shell-chrome-foreground);
+}
+
+/*
+ * DASHBOARD CARD CHROME — the outline comes off, the plane stays.
+ *
+ * Measured benchmark (TradeZella Dashboard §12, "Border & divider analysis"):
+ * card outline `none`, radius 12px, no box-shadow. Cards separate from the
+ * page on SURFACE CONTRAST alone — page rgb(13,13,13) against card
+ * rgb(24,24,24). TradeChemist's dark palette is already exactly that pair
+ * (`--background: #0d0d0d`, `--card: #181818`), so the contrast that does the
+ * work is present and the 1px `rgba(255,255,255,0.08)` hairline on top of it
+ * was pure noise: eleven outlined rectangles stacked down a page, several of
+ * them containing further outlined rectangles.
+ *
+ * SCOPED TO THE DASHBOARD, DELIBERATELY. Every widget on this page already
+ * carries `data-dashboard-panel` (or `data-kpi-status`, for the five Basic
+ * KPI cards, which are not `Card`s), so this is one selector rather than a
+ * prop threaded through nine components — and, critically, it cannot leak.
+ * The shared `Card` keeps its border everywhere else in the product; Trades,
+ * Analytics, Settings and Admin are untouched.
+ *
+ * `border-color: transparent`, NOT `border: 0`. The border box is what every
+ * one of these cards was measured and laid out against, and the Dashboard
+ * skeleton reserves those exact heights. Removing the width would shift every
+ * card by 2px and put the skeleton 2px out per block; making it invisible
+ * changes what is seen and nothing that is measured.
+ *
+ * THE SHADOW STAYS, AND THAT IS A DELIBERATE DEPARTURE FROM THE BENCHMARK.
+ * The benchmark product is dark-only. TradeChemist ships a complete light
+ * theme where the same two planes are `#f8fafd` and `#ffffff` — a contrast
+ * far too slight to carry a card edge on its own. `--elevation-card` is what
+ * separates them there, so dropping the shadow to match a dark-only reference
+ * would have traded a tidy dark mode for an unreadable light one.
+ */
+[data-dashboard-panel],
+[data-dashboard-region='account-context'],
+[data-kpi-status] {
+  border-color: transparent;
 }
 
 @keyframes rise {

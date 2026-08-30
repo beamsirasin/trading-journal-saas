@@ -54,15 +54,23 @@ export const BASIC_KPI_GRID_CLASS =
  *
  * THE FIGURE IS THE CARD. It carries its own type role (`text-kpi`, and
  * `text-kpi-hero` for the row's lead) rather than the shared `text-metric`,
- * because these five are the page's headline and needed a step up without
- * dragging every other figure in the product up with them.
+ * because these five are the page's headline and are sized independently of
+ * every other figure in the product.
  *
- * THE CARD DID NOT GET TALLER TO PAY FOR IT. The larger figure was funded
- * from the space around it: the definition button shrank to a 28px target
- * (still past WCAG 2.5.8's 24px minimum) so the label band could drop from
- * 28px to 24px, the vertical padding lost 2px a side, and four of the five
- * cards gave up their permanent supporting line entirely. Measured at 1440
- * the row is the same height it was before the figure grew by a third.
+ * THE PROPORTIONS ARE CALIBRATED AGAINST A MEASURED BENCHMARK, AND THE TRADE
+ * RAN THE OTHER WAY THIS TIME. Measured, the TradeZella KPI row is a 120px
+ * card with 36px of vertical padding carrying a 26px/600 figure and a
+ * 14px/400 label. Ours was a 105.8px card with 10px of vertical padding
+ * carrying a 36px figure — a bigger numeral in a tighter, shorter box. The
+ * benchmark's authority is not in the numeral; it is in the air around it,
+ * and chasing the numeral was the wrong instinct.
+ *
+ * So the figure ceilings came down (see `--text-kpi`/`--text-kpi-hero` in
+ * `globals.css`) and the height they freed was handed to the padding, which
+ * goes 10px -> 16px a side. The figure band also steps 36px -> 40px, which is
+ * what gives the indicator beside it the mass the benchmark's donuts and
+ * ratio bars have (§10) instead of reading as a decorative icon. Measured at
+ * 1440 the card lands at ~122px against the benchmark's 120px.
  *
  * The three bands keep their own minimum heights so that, across a row of
  * five, labels start on one line, figures sit on one baseline, and the
@@ -115,14 +123,17 @@ export function KpiWidgetCard({
       data-kpi-status={status}
       data-kpi-reason={reason}
       className={cn(
-        // One padding step at every width. The vertical step is smaller than
-        // the horizontal one: the card is wide and short, so its scarce
-        // dimension is the one that should pay less padding.
+        // One padding step at every width, and it is now SQUARE rather than
+        // vertically pinched. The benchmark spends 36px top and bottom
+        // against 20px left and right precisely because a KPI card's scarce
+        // resource is attention, not pixels; 10px of vertical padding is what
+        // made this row read as a strip of data rather than a band of
+        // headline figures.
         // `@container/kpi` so the figure and the indicator can both size
         // themselves against THIS card. The viewport cannot answer that: five
         // columns at `lg`, three at `md`, two below, so a 1024px desktop
         // gives each card less room than a 768px tablet does.
-        'bg-card border-border @container/kpi flex min-w-0 flex-col rounded-lg border px-4 py-2.5 transition-colors',
+        'bg-card border-border @container/kpi flex min-w-0 flex-col rounded-lg border px-4 py-4 transition-colors',
         'hover:border-ring/40',
         kpiSpanClassName(layout),
         className,
@@ -153,7 +164,7 @@ export function KpiWidgetCard({
           LESS room than a 768px tablet does. Only the card's own width can
           answer that, and flex wrapping reads it directly.
         */}
-        <div className="flex min-h-9 min-w-0 flex-1 flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div className="flex min-h-10 min-w-0 flex-1 flex-wrap items-end justify-between gap-x-3 gap-y-2">
           <div className="min-w-0">{value}</div>
           {indicator === undefined ? null : <div className="shrink-0">{indicator}</div>}
         </div>

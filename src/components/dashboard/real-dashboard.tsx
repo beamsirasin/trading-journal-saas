@@ -17,6 +17,7 @@ import { ActiveTradingAccountSummaryCard } from '@/components/dashboard/empty-tr
 import { ExecutionGapSection } from '@/components/dashboard/execution-gap/execution-gap-section';
 import { BasicKpiRow } from '@/components/dashboard/kpi/basic-kpi-row';
 import { BASIC_KPI_GRID_CLASS, kpiSpanClassName } from '@/components/dashboard/kpi/kpi-widget-card';
+import { MetricInfo } from '@/components/dashboard/kpi/metric-info';
 import { PerformanceCard } from '@/components/dashboard/performance/performance-card';
 import { RecentTradesCard } from '@/components/dashboard/recent-trades/recent-trades-card';
 import { MetricLabel } from '@/components/product/metric';
@@ -108,17 +109,35 @@ export function RealDashboard({
 
           A SECTION HEADING, NOT A PAGE HEADER. It was `text-xl` over a
           `leading-relaxed` sentence — 60px for two lines introducing two cards
-          whose own titles repeat the same thing 40px lower. `text-base` over a
-          `leading-snug` line is 38px and loses nothing; `max-w-3xl` keeps the
-          sentence off an ultrawide's full measure (§22).
+          whose own titles repeat the same thing 40px lower. `text-base` is
+          also what the benchmark uses for a section title (16px/500).
         */}
-        <div className="max-w-3xl">
+        {/*
+          A TITLE AND AN AFFORDANCE, NOT A TITLE AND A PARAGRAPH.
+
+          Measured, the benchmark Dashboard carries ZERO explanatory
+          paragraphs (§16, "Text paragraphs: 0"); its card headers are a
+          16px/500 title plus an ⓘ, and every definition lives behind that
+          icon. The sentence that used to sit here — "Active account: {name}.
+          Each side uses its own eligible Trade population." — said one thing
+          the toolbar and the account strip 100px above already say (which
+          account), and one thing that is genuine methodology (the two sides
+          do not share a Trade population). The first was redundant; the
+          second is exactly what an ⓘ is for, and it is now the first line of
+          this popover rather than a permanent second line under the heading.
+
+          Nothing was deleted: both facts are in `performanceHelp`, reachable
+          by pointer, touch and keyboard through `MetricInfo`'s real button.
+        */}
+        <div className="flex min-w-0 items-center gap-1">
           <h2 id="performance-heading" className="text-base font-semibold tracking-tight">
             {t('performanceTitle')}
           </h2>
-          <p className="text-muted-foreground mt-0.5 text-sm leading-snug text-pretty">
-            {t('performanceDescription', { account: accountLabel })}
-          </p>
+          <MetricInfo
+            triggerLabel={t('performanceInfoTrigger')}
+            title={t('performanceTitle')}
+            description={t('performanceHelp', { account: accountLabel })}
+          />
         </div>
 
         {/*
@@ -294,17 +313,32 @@ function NeedsAttentionPanel({
         data-dashboard-panel="needs-attention"
         className="flex min-w-0 flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6"
       >
-        <div className="flex min-w-0 items-center gap-2.5 lg:w-[19rem] lg:shrink-0 xl:w-[22rem] 2xl:w-[24rem]">
+        {/* The header's fixed share came down with the sentence it used to
+            carry: a mark plus a three-word title needs ~11rem, not 19, and
+            every rem it gives back goes to the counts row beside it. */}
+        <div className="flex min-w-0 items-center gap-2.5 lg:w-[12rem] lg:shrink-0 xl:w-[13rem]">
           <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
             <ListChecks className="size-4" aria-hidden="true" />
           </span>
-          <div className="min-w-0">
+          {/*
+            THE SENTENCE MOVED BEHIND THE ⓘ. It was two wrapped lines of pure
+            explanation — what the counts are scoped to, and that the strip is
+            not a task list — sitting permanently beside five numbers that are
+            each already labelled. The benchmark carries no such copy anywhere
+            on its Dashboard, and the scope caveat is real methodology rather
+            than something a reader needs on every visit, which is precisely
+            the split the info affordance exists to make. The text itself is
+            unchanged and is now `needsAttention.help`.
+          */}
+          <div className="flex min-w-0 items-center gap-1">
             <CardTitle id="needs-attention-heading" className="text-sm leading-5">
               {t('needsAttention.title')}
             </CardTitle>
-            <CardDescription className="text-xs leading-4 text-pretty">
-              {t('needsAttention.description')}
-            </CardDescription>
+            <MetricInfo
+              triggerLabel={t('needsAttention.infoTrigger')}
+              title={t('needsAttention.title')}
+              description={t('needsAttention.help')}
+            />
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-3">
@@ -390,46 +424,59 @@ export function DashboardSkeleton() {
   return (
     <div className="flex min-w-0 flex-col">
       <DashboardLoadingStatus message={t('loading')} />
+      {/*
+        EVERY HEIGHT HERE IS A MEASUREMENT, AND THEY ALL MOVED IN THIS PASS.
+        Re-measured on the populated fixture at 1440 after the density work:
+        KPI 106 -> 120 (the row's new padding), Needs Attention 78 -> 74 and
+        the section heading 38 -> 24 (both lost a description line), Execution
+        Gap 493 -> 525 and Risk 616 -> 526 (the two major charts moved to one
+        shared plot height), Recent Trades 489 -> 413 (three fields, seven
+        44px rows) and Calendar 640 -> 630 (one value per cell). A skeleton
+        carrying the old numbers is worse than no skeleton: it reserves a
+        geometry the page no longer has and guarantees the jump it exists to
+        prevent.
+
+        The blocks are borderless for the same reason the real cards now are —
+        they stand in for those cards, and an outlined placeholder resolving
+        into an unoutlined card is a visible flicker at the seam.
+      */}
       <div className="flex animate-pulse flex-col" aria-hidden="true">
-        <div className="border-border bg-card h-[42px] rounded-lg border" />
+        <div className="bg-card h-[42px] rounded-lg" />
         <div className={cn('mt-4', BASIC_KPI_GRID_CLASS)}>
           {BASIC_KPI_LAYOUT.map((layout) => (
             <div
               key={layout.widgetId}
-              className={cn(
-                'border-border bg-card h-[106px] rounded-lg border',
-                kpiSpanClassName(layout),
-              )}
+              className={cn('bg-card h-[120px] rounded-lg', kpiSpanClassName(layout))}
             />
           ))}
         </div>
-        <div className="border-border bg-card mt-4 h-[78px] rounded-lg border" />
+        <div className="bg-card mt-4 h-[74px] rounded-lg" />
         {/* The section heading above the two baselines is real text on
-            arrival, so the skeleton reserves its two lines rather than
-            letting the cards below jump 38px down when it appears. */}
+            arrival, so the skeleton reserves its single line rather than
+            letting the cards below jump 24px down when it appears. */}
         <div className="mt-6 flex flex-col gap-4">
-          <div className="bg-card h-[38px] w-64 rounded-md" />
+          <div className="bg-card h-[24px] w-64 rounded-md" />
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="border-border bg-card h-[193px] rounded-lg border" />
-            <div className="border-border bg-card h-[193px] rounded-lg border" />
+            <div className="bg-card h-[193px] rounded-lg" />
+            <div className="bg-card h-[193px] rounded-lg" />
           </div>
         </div>
-        <div className="border-border bg-card mt-6 h-[493px] rounded-lg border" />
+        <div className="bg-card mt-6 h-[525px] rounded-lg" />
         {/*
           D6B's unequal section, reserved at the geometry it actually renders
           at — five columns of Trade rows beside seven of Calendar. A skeleton
           that reserved two stacked full-width bands would visibly reflow into
           two columns the moment the payload arrived, which is the exact jump a
-          skeleton exists to prevent. Both blocks are the same height because
-          the real section stretches to one bottom edge.
+          skeleton exists to prevent. The two blocks are different heights
+          because the real section is `items-start` and genuinely ragged.
         */}
-        <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-12">
-          <div className="border-border bg-card h-[489px] rounded-lg border lg:col-span-5" />
-          <div className="border-border bg-card h-[640px] rounded-lg border lg:col-span-7" />
+        <div className="mt-6 grid items-start gap-4 lg:grid-cols-12">
+          <div className="bg-card h-[413px] rounded-lg lg:col-span-5" />
+          <div className="bg-card h-[630px] rounded-lg lg:col-span-7" />
         </div>
         {/* D7's Risk Performance section: one card, a summary strip over a
             chart, at the height it actually renders at. */}
-        <div className="border-border bg-card mt-6 h-[616px] rounded-lg border" />
+        <div className="bg-card mt-6 h-[526px] rounded-lg" />
       </div>
       {/*
         Fixed and centred in the VIEWPORT, offset past the sidebar by the

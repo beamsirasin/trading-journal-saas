@@ -696,7 +696,11 @@ async function selectDashboardRecentTrades(
     .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
     .where(and(...conditions))
     .orderBy(desc(occurredAtExpr), desc(trades.id))
-    .limit(5);
+    // Seven, matching the measured benchmark's Dashboard trade preview and the
+    // 5-7 band the Dashboard card is designed for. It was five when each row
+    // was a two-line ~67px block; the row is now a single 44px line, so seven
+    // fit in less height than five used to take.
+    .limit(7);
 
   return rows.map((row) => ({
     ...row,

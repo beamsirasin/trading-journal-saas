@@ -138,8 +138,8 @@ Roles, not sizes. A call site asks for `text-display`, so changing what a role l
 | Dense label    | `MetricLabel` `plain` | 0.75rem, 500, normal case       | Metric grids, count strips  |
 | Table text     | `text-sm`             | 0.875rem                        | Table cells                 |
 | Numeric metric | `text-metric`         | clamp 1.5→1.875rem, 600         | Figures outside the KPI row |
-| KPI figure     | `text-kpi`            | clamp 1.25→2rem, 600, `cqi`     | Four Basic KPI figures      |
-| KPI lead       | `text-kpi-hero`       | clamp 1.25→2.25rem, 600, `cqi`  | Net P&L, the row's lead     |
+| KPI figure     | `text-kpi`            | clamp 1.25→1.625rem, 600, `cqi` | Four Basic KPI figures      |
+| KPI lead       | `text-kpi-hero`       | clamp 1.25→1.75rem, 600, `cqi`  | Net P&L, the row's lead     |
 | Tabular number | `numeric` utility     | mono + `tabular-nums`           | Any figure in a column      |
 
 The three largest roles are **fluid** (`clamp`), so headings scale continuously between 320px and desktop instead of jumping at breakpoints. The lower bound is chosen to fit 320px without overflow.
@@ -152,7 +152,9 @@ Thai pages retain the same sizes and hierarchy but override the display, title, 
 
 `src/lib/utils.ts` therefore extends the merge config with an explicit `font-size` group (`extendTailwindMerge`) naming `text-metric`, `text-kpi` and `text-kpi-hero`. Normal last-size-wins behaviour is preserved — `cn('text-kpi', 'text-sm')` still yields `text-sm`. **Any new `--text-*` role must be added to that list**, or it will be dropped wherever a tone class follows it.
 
-**Both KPI roles scale with the CARD (`cqi`), never with the viewport.** The row is five columns at `lg`, three at `md` and two below, so card width is not monotonic in viewport width: 1024px gives each card ~132px of content while 768px gives ~195px. A `vw`-based clamp is therefore largest exactly where the card is narrowest. The ceilings are fixed by the widest real figure in the tabular mono stack (~0.52em advance): a ten-character money total needs ~5.2× its font size in width, which is what the lead role's `18cqi` encodes.
+**Both KPI roles scale with the CARD (`cqi`), never with the viewport.** The row is five columns at `lg`, three at `md` and two below, so card width is not monotonic in viewport width: 1024px gives each card ~132px of content while 768px gives ~195px. A `vw`-based clamp is therefore largest exactly where the card is narrowest. The lower bounds and `cqi` slopes are fixed by the widest real figure in the tabular mono stack (~0.52em advance): a ten-character money total needs ~5.2× its font size in width, which is what the lead role's `18cqi` encodes.
+
+**The ceilings came DOWN, and that is the finding.** They were `2rem`/`2.25rem` — 32px and 36px at 1440. A measured competitive benchmark (TradeZella Dashboard, observed August 2026) sets its KPI value at **26px/600** with a 14px/400 label inside a card 60% wider than ours, and reads as more authoritative rather than less. A KPI band's weight does not come from the size of the numeral; it comes from the air around it. `text-kpi` now lands on that same 26px ceiling and `text-kpi-hero` on 28px — Net P&L stays the row's lead by one legible step, which is an existing product contract the benchmark's five-equal-cards treatment does not override. The height freed went into the card's vertical padding (10px → 16px a side), taking the card from 105.8px to **120px**, which is the benchmark's row height exactly. Do not grow these roles again without a measurement that says the current pair is too small.
 
 **Every financial figure uses `numeric`.** Tabular numerals keep digits on a fixed advance width, so a column of R-multiples aligns on the decimal point and an animating KPI does not jitter as digits change. Prose numerals stay proportional, which is why this is a utility and not a base rule.
 
@@ -183,6 +185,18 @@ The shell's geometry lives in CSS variables rather than repeated `top-14` / `w-6
 
 **Each section owns its own grid.** The Dashboard is a stack of sections, not one page-wide grid: the KPI band is five columns, the System/Trader pair is two, and Recent Trades + Calendar is twelve, split **5 + 7** — the Calendar takes the wider share, because width is the only thing that makes a day cell legible while the Trade list reaches its natural width at about 500px and spends everything past that on padding. A widget's recorded `desktopSpan` is read against **its own section's** column count and nothing else. This is a record of what the components spell, not a layout engine — there is no persistence, editor, drag/drop or resize behind it.
 
+### Dashboard density rules
+
+Four rules, each traced to a measurement rather than to taste. They apply to the **Dashboard only** — Trades, Analytics, Settings and Admin are unaffected.
+
+**Dashboard cards carry no visible outline.** `[data-dashboard-panel]`, `[data-dashboard-region='account-context']` and `[data-kpi-status]` set `border-color: transparent` in `globals.css`. Cards separate from the page on surface contrast alone: `--background` `#0d0d0d` against `--card` `#181818`, which is the same pair the benchmark uses (page `rgb(13,13,13)`, card `rgb(24,24,24)`, no border, no shadow, 12px radius). Eleven outlined rectangles down one page, several containing further outlined rectangles, was noise the contrast already did without. Two deliberate details: the rule sets the border's **colour**, not its width, so every measured height and every skeleton block stays valid to the pixel; and `--shadow-card` is **kept**, unlike the benchmark, because that reference is dark-only and light mode's `#f8fafd`/`#ffffff` pair is far too close to carry a card edge on contrast alone. Internal separators stay wherever they do structural work — table rows, Calendar cells, the System/Trader hairline.
+
+**The Dashboard carries no explanatory paragraphs.** The benchmark's Dashboard has exactly zero, and every definition on it lives behind an ⓘ. Every Dashboard header is therefore **title + optional ⓘ + optional action**, and methodology moved into `MetricInfo` popovers rather than being deleted: the section heading's population note, Needs Attention's scope sentence, the Execution Gap description, the three insight-pillar descriptions, the Calendar's per-mode axis line, and Risk Performance's description, peak hint and chart caption. What stays visible is data or a truthfulness guard, never a definition — the non-additive cohort caveat and Risk's carried-opening line are both load-bearing and stay on the card. Measured on the populated fixture at 1440 this took the visible paragraph count from 27 to 11, all 11 of them data or caveat.
+
+**A Dashboard record list is a preview, not a table.** Recent Trades shows **three fields** — day, symbol, Actual R — over seven ~45px rows with a "View all Trades" escape hatch, against the benchmark's three columns and seven ~45px rows. Strategy, Setup, direction, status, System R and the per-Trade Execution Gap left the row; each is still reachable, on the Trade the row links to or in the Execution Gap section above it. The Calendar cell follows the same rule: **date + one primary value + a semantic surface**, with the W/BE/L breakdown living in the cell's accessible name and in Day Review. Adding a fourth field to either is a product decision, not a styling one.
+
+**Comparable charts share one plot ramp.** The Dashboard's two major charts — the Execution Gap's cumulative comparison and Risk Performance's modeled balance — are both `h-52 sm:h-56 lg:h-64`, where they were `h-44/48/56` and `h-56/64/72`. The benchmark's uniform 679×392 (1.73:1) card cannot be copied directly: TradeChemist has no one-of-three-column chart cards, its charts sit inside full-width analytical sections, and 1.73:1 there would mean a ~730px-tall plot. What transfers is the discipline — one height, so the eye reads the two as one system. Two documented exceptions: the Execution Gap's 64px daily strip, which is a companion to the chart above it and deliberately shares its x-axis, and the distribution bar, which is not a plot.
+
 ## 6. Responsive
 
 Desktop-first for analytics, fully usable on tablet, quick-entry on mobile.
@@ -201,7 +215,7 @@ Desktop-first for analytics, fully usable on tablet, quick-entry on mobile.
 
 Touch targets ≥ 44px, including inputs — `Input` is `h-11` rather than shadcn's `h-9` for exactly this reason. Numeric inputs use numeric keyboards. Native `<select>` is preferred over a custom listbox on forms, because it opens the platform picker on a phone.
 
-**A widget inside a partial-width column asks its own width, not the viewport's.** The Dashboard Calendar is five of twelve columns, so a 1280px page and a 1920px page give it very different room while reporting the same breakpoint. It declares `@container` and reduces itself against that: below 22rem the per-day W/BE/L line is dropped and the R value sheds its trailing unit, so the date and the figure itself never shrink into an ellipsis. Prefer a container query wherever a component's usable width is decided by its column rather than by the window.
+**A widget inside a partial-width column asks its own width, not the viewport's.** The Dashboard Calendar is seven of twelve columns, so a 1280px page and a 1920px page give it very different room while reporting the same breakpoint. It declares `@container` and reduces itself against that: below 22rem the R value sheds its trailing unit, so the date and the figure itself never shrink into an ellipsis. (The per-day W/BE/L line that used to be the first thing dropped here is gone from the cell entirely — see the Dashboard density rules above.) Prefer a container query wherever a component's usable width is decided by its column rather than by the window.
 
 **Mobile navigation is a drawer, not a bottom bar.** The Phase 00b drawer is focus-trapping, Escape-handling and tested; five sections fit it comfortably. Replacing hardened, tested behaviour needs a better reason than fashion.
 
@@ -289,6 +303,8 @@ A Basic KPI card may carry **one visual indicator beside its figure** — but on
 **The indicator is a button, and the breakdown lives behind it.** Everything the cards stopped printing permanently — `27W · 5BE · 34L`, `+2.27R / -1.12R`, "Calculated from R" — opens from a click, a tap, or Enter, in plain words ("Wins 27", never `27W`). A hover-only tooltip would have made that data unreachable on touch and by keyboard. The drawing itself is `aria-hidden`; the button carries the name, the popover carries the figures, so a reader who sees no colour loses nothing.
 
 **Layout is a correctness rule, not a preference.** The indicator shares a row with the figure, so both size themselves against the CARD (`@container/kpi`), and the row wraps rather than hides when the card is too narrow — at 320px the indicator falls to its own line instead of disappearing. Losing the visual on the smallest screens made mobile the one place the row said least; a few pixels of height is the cheaper trade.
+
+**The indicator must read as data, not as decoration.** The benchmark's KPI cards carry donuts, a partial ring and a ratio bar with real mass against their 120px card; an indicator small enough to be mistaken for an icon is worse than none, because it implies a reading it is too small to give. Sized against our own 120px card: ring 40px, gauge 28×48, split track 12px tall over 56/80px, magnitude bars 8px each over 56/80px. These moved up with the card's padding and should move with it again if the card's height ever changes.
 
 ## 9. Charts
 

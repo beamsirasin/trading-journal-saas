@@ -136,7 +136,6 @@ async function DashboardContent({
     an error rather than a silently widened population or a silently moved
     calendar.
   */
-  const tFilters = await getTranslations('dashboard.filters');
   const parsed = parseDashboardFilterState(rawSearchParams);
   if (!parsed.ok) return <DashboardDataError />;
   const navigation = parseCalendarNavigation(rawSearchParams);
@@ -192,11 +191,6 @@ async function DashboardContent({
             filters={parsed.state}
             timezone={timezone}
             dateLocale={dateLocale}
-            accountLabel={
-              dashboard.data.account.kind === 'account'
-                ? dashboard.data.account.account.name
-                : tFilters('allAccounts')
-            }
           />
         </Suspense>
       }
@@ -206,31 +200,21 @@ async function DashboardContent({
 
 /** Reserves the Calendar card's geometry — see `DashboardSkeleton`'s note. */
 function DashboardCalendarSkeleton() {
-  return (
-    <div
-      aria-hidden="true"
-      className="border-border bg-card h-[640px] animate-pulse rounded-lg border"
-    />
-  );
+  return <div aria-hidden="true" className="bg-card h-[630px] animate-pulse rounded-lg" />;
 }
 
 /** Reserves the three insight pillars' geometry — see `DashboardSkeleton`. */
 function InsightPillarsSkeleton() {
   return (
     <div aria-hidden="true" className="grid animate-pulse gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <div className="border-border bg-card h-[413px] rounded-lg border" />
-      <div className="border-border bg-card h-[413px] rounded-lg border" />
-      <div className="border-border bg-card h-[413px] rounded-lg border md:col-span-2 xl:col-span-1" />
+      <div className="bg-card h-[404px] rounded-lg" />
+      <div className="bg-card h-[404px] rounded-lg" />
+      <div className="bg-card h-[404px] rounded-lg md:col-span-2 xl:col-span-1" />
     </div>
   );
 }
 
 /** Reserves the Risk Performance card's geometry — same note. */
 function RiskPerformanceSkeleton() {
-  return (
-    <div
-      aria-hidden="true"
-      className="border-border bg-card h-[616px] animate-pulse rounded-lg border"
-    />
-  );
+  return <div aria-hidden="true" className="bg-card h-[526px] animate-pulse rounded-lg" />;
 }

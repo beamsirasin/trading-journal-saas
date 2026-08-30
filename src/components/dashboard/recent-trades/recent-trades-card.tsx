@@ -2,11 +2,10 @@ import { ArrowRight, History } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
-import type { DashboardRecentExecutionGap, DashboardRecentTrade } from '@/lib/dashboard/page-data';
+import type { DashboardRecentTrade } from '@/lib/dashboard/page-data';
 import { dashboardLayoutItem, dashboardWidgetAttributes } from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
-import { formatTradeInstant } from '@/components/trades/trade-format';
-import { TradeStatusBadge } from '@/components/trades/trade-status-badge';
+import { formatTradeDay } from '@/components/trades/trade-format';
 import { Card } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
@@ -22,19 +21,23 @@ export interface RecentTradesCardProps {
 /**
  * D6B — Recent Trades.
  *
- * D2's scope is untouched: the same five Trades, the same `occurred_at`
- * ordering, the same Account/date/Strategy/Setup filters. What changes is the
- * shape. Through D5 this was a full-bleed three-column band that gave symbol,
- * Strategy and two R values equal weight and left the Execution Gap off the
- * row entirely, so the one number the product exists to surface was the one
- * number a reader had to open a Trade to find.
+ * D2's scope is untouched — the same `occurred_at` ordering and the same
+ * Account/date/Strategy/Setup filters. Two things change in this pass.
  *
- * The hierarchy is now explicit: identity first, then the three results as a
- * fixed triple — Actual, System, Gap — reading left to right in the order the
- * attribution argument is made. Strategy, Setup and the occurred time are
- * supporting context and are typeset as such. It is a compact record list,
- * deliberately not an enterprise data table: no column headers, no sorting, no
- * pagination. The Journal is one link away and owns all three.
+ * THE ROW IS THREE FIELDS. See `RecentTradeRow` for the full reasoning; in
+ * short, the measured benchmark's Dashboard trade preview shows three columns
+ * against its own Trade View's ten, and this card had drifted to eight.
+ *
+ * THE LIST IS SEVEN ROWS, NOT FIVE. The benchmark shows seven and so does
+ * this now (the projection's `limit`, `selectDashboardRecentTrades`). Five was
+ * chosen when each row was a two-line block ~67px tall; at 44px the card holds
+ * seven in less total height than it used to spend on five, and this card
+ * sits beside a Calendar half again as tall, so the extra rows close a ragged
+ * edge rather than opening one.
+ *
+ * It is a compact record list, deliberately not an enterprise data table: no
+ * column headers, no sorting, no pagination. The Journal is one link away and
+ * owns all three.
  */
 export function RecentTradesCard({
   trades,
@@ -56,19 +59,21 @@ export function RecentTradesCard({
         data-dashboard-panel="recent-trades"
         className="flex h-full min-w-0 flex-col gap-4 p-4 sm:p-5"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="bg-primary/10 text-primary mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg">
+        {/*
+          TITLE · ACTION. The description said "The five most recent Trades in
+          the active account" — a sentence restating the card's own title, the
+          row count a reader can see, and the account named twice above. The
+          benchmark's equivalent card carries a title, a tab and a "View More"
+          link and no prose at all.
+        */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
               <History className="size-4.5" aria-hidden="true" />
             </span>
-            <div className="min-w-0">
-              <h2 id={headingId} className="text-card-title">
-                {t('recent.title')}
-              </h2>
-              <p className="text-muted-foreground mt-0.5 text-sm leading-snug text-pretty">
-                {t('recent.description')}
-              </p>
-            </div>
+            <h2 id={headingId} className="text-card-title min-w-0 truncate">
+              {t('recent.title')}
+            </h2>
           </div>
           <Link
             href="/app/trades"
@@ -114,6 +119,41 @@ export function RecentTradesCard({
   );
 }
 
+/**
+ * One row: DATE · SYMBOL · ACTUAL R. Three fields, and deliberately no
+ * fourth.
+ *
+ * THIS IS THE PASS'S LARGEST CUT, AND IT IS A DELIBERATE ONE. The row used to
+ * carry eight visible fields — symbol, direction, a status chip, the Strategy
+ * and Setup names, the occurred timestamp, Actual R, System R and the
+ * Execution Gap — inside a card that is a PREVIEW. The measured benchmark
+ * shows exactly the opposite discipline: its Dashboard table renders three
+ * columns (Close Date, Symbol, Net P&L) while the same product's full Trade
+ * View renders ten. The Dashboard list is a teaser that answers "what
+ * happened lately"; everything else is one click away.
+ *
+ * WHICH THREE, FOR THIS PRODUCT. Date and Symbol map straight across. The
+ * benchmark's third column is Net P&L, which TradeChemist's Recent Trades
+ * projection does not carry and must not invent (§35) — the canonical
+ * per-Trade result on this payload is `actualR`, the Trader-performance
+ * figure, so that is the one primary value the row shows.
+ *
+ * WHAT LEFT, AND WHERE IT WENT. System R and the per-Trade Execution Gap are
+ * still on the Dashboard — the Execution Gap section directly above this one
+ * publishes both as totals and averages over the paired population, with the
+ * daily series and the distribution. Strategy, Setup, direction and status
+ * belong to the Trade record and are on the Trade itself, which is where this
+ * row goes. Nothing is unreachable; it is reached in one action instead of
+ * being printed five times over.
+ *
+ * THE WHOLE ROW IS THE TARGET. It was a text-sized link on the symbol inside
+ * a hover-tinted list item, which is a hover affordance promising a click
+ * area it did not have. With the row reduced to three fields there is no
+ * other interactive element left in it to nest against, so the row itself is
+ * the link — same destination as before (`/app/trades?trade=<id>`, the Trade
+ * quick preview), a real 44px touch target, and one tab stop instead of one
+ * per row plus a decoy.
+ */
 function RecentTradeRow({
   trade,
   timezone,
@@ -124,119 +164,50 @@ function RecentTradeRow({
   dateLocale: string;
 }) {
   const t = useTranslations('dashboard.real');
-  const tTrades = useTranslations('trades');
-  const occurred = formatTradeInstant(trade.occurredAt, timezone, dateLocale) ?? '—';
+  const occurredDay = formatTradeDay(trade.occurredAt, timezone, dateLocale);
+  const formatted =
+    trade.actualR === null
+      ? null
+      : formatAnalyticsMetric({ status: 'available', value: trade.actualR }, 'r');
+  const resultText =
+    formatted !== null && formatted.status === 'available'
+      ? formatted.text
+      : t('notAvailableShort');
 
   return (
-    <li
-      data-recent-trade-row={trade.tradeId}
-      // A ROW, NOT A CARD (R2C §23/§31). Five individually bordered boxes
-      // inside a bordered card is the nested-box pattern this pass is
-      // removing everywhere; a divided list reads as a record list, which is
-      // what this is. The hover tint survives, so the row is still visibly a
-      // target — it just no longer carries an outline to prove it.
-      className="hover:bg-muted/40 min-w-0 rounded-md transition-colors"
-    >
-      <div className="grid min-w-0 grid-cols-1 gap-2 px-1 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <Link
-              href={`/app/trades?trade=${trade.tradeId}`}
-              className="focus-visible:ring-ring rounded-md text-sm font-semibold outline-none focus-visible:ring-2"
-            >
-              {trade.symbol}
-            </Link>
-            <span className="text-muted-foreground text-xs">
-              {tTrades(`direction.${trade.direction}`)}
-            </span>
-            <TradeStatusBadge status={trade.status} />
-          </div>
-          {/*
-            Supporting context, typeset as supporting context. An unclassified
-            Trade says so rather than borrowing a neighbour's Strategy name.
-          */}
-          <p className="text-muted-foreground mt-1 truncate text-xs">
-            {trade.strategyName === null
-              ? tTrades('common.notAssigned')
-              : trade.setupName === null
-                ? trade.strategyName
-                : `${trade.strategyName} · ${trade.setupName}`}
-            {' · '}
-            {occurred}
-          </p>
-        </div>
-
-        <div className="flex min-w-0 shrink-0 items-start gap-4 sm:justify-end">
-          <RecentR label={t('recent.actualR')} value={trade.actualR} />
-          <RecentR label={t('recent.systemR')} value={trade.systemR} />
-          <RecentGap gap={trade.executionGapR} />
-        </div>
-      </div>
+    <li data-recent-trade-row={trade.tradeId} className="min-w-0">
+      <Link
+        href={`/app/trades?trade=${trade.tradeId}`}
+        // `min-h-11` (44px), not the benchmark's measured ~45px by
+        // coincidence: 44px is the WCAG 2.5.8 AA touch target, and this row is
+        // now the whole click target rather than a word inside it. The two
+        // happen to agree, which is why the benchmark's rhythm is reachable
+        // here without trading away the accessible minimum.
+        className="hover:bg-muted/40 focus-visible:ring-ring grid min-h-11 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-1 py-1.5 transition-colors outline-none focus-visible:ring-2"
+      >
+        <span className="numeric text-muted-foreground shrink-0 text-xs tabular-nums">
+          {occurredDay ?? '—'}
+        </span>
+        <span className="min-w-0 truncate text-sm font-semibold">{trade.symbol}</span>
+        {/*
+          Right-aligned and tone-coloured, which is the one place on this row
+          colour is allowed to do work — and it never does it alone, because
+          the sign is in the text. A Trade with no final Actual result prints
+          the neutral unavailable marker rather than a 0.00R that would claim
+          a flat outcome that has not happened.
+        */}
+        <span
+          data-recent-trade-result={formatted?.status === 'available' ? 'available' : 'unavailable'}
+          className={cn(
+            'numeric shrink-0 text-right text-sm font-semibold',
+            formatted?.status === 'available' && formatted.tone === 'positive' && 'text-positive',
+            formatted?.status === 'available' && formatted.tone === 'negative' && 'text-negative',
+            formatted?.status !== 'available' && 'text-muted-foreground',
+          )}
+        >
+          {resultText}
+        </span>
+      </Link>
     </li>
-  );
-}
-
-function RecentR({ label, value }: { label: string; value: string | null }) {
-  const t = useTranslations('dashboard.real');
-  const formatted =
-    value === null ? null : formatAnalyticsMetric({ status: 'available', value }, 'r');
-  return (
-    <span className="flex min-w-16 flex-col gap-0.5 text-right">
-      <span className="text-muted-foreground text-[11px] leading-4 font-medium">{label}</span>
-      <span className="numeric text-sm font-semibold">
-        {formatted?.status === 'available' ? formatted.text : t('notAvailableShort')}
-      </span>
-    </span>
-  );
-}
-
-/**
- * The Execution Gap, from the state D5A already resolved.
- *
- * `Actual R − System R` is NOT re-derived here — not from the two values on
- * this very row, not anywhere in React. The three states are the composer's:
- * an available signed R, a truthful unresolved reason (which side is missing),
- * or an explicit integrity error. A Trade whose System side is still pending
- * keeps its row and says so; it never renders a 0.00R Gap, which would assert
- * perfect execution on a comparison that has not happened yet.
- */
-function RecentGap({ gap }: { gap: DashboardRecentExecutionGap }) {
-  const t = useTranslations('dashboard.real');
-  const formatted =
-    gap.status === 'available'
-      ? formatAnalyticsMetric({ status: 'available', value: gap.value }, 'r')
-      : null;
-
-  return (
-    <span className="flex min-w-16 flex-col gap-0.5 text-right" data-recent-gap-status={gap.status}>
-      <span className="text-muted-foreground text-[11px] leading-4 font-medium">
-        {t('recent.gapR')}
-      </span>
-      {formatted !== null && formatted.status === 'available' ? (
-        <span
-          className={cn(
-            'numeric text-sm font-semibold',
-            formatted.tone === 'positive' && 'text-positive',
-            formatted.tone === 'negative' && 'text-negative',
-          )}
-        >
-          {formatted.text}
-        </span>
-      ) : (
-        <span
-          className={cn(
-            'text-xs leading-5 font-medium',
-            gap.status === 'error' ? 'text-destructive' : 'text-muted-foreground',
-          )}
-          title={
-            gap.status === 'unavailable'
-              ? t(`recent.gapUnavailable.${gap.reason}`)
-              : t('recent.gapError')
-          }
-        >
-          {gap.status === 'unavailable' ? t('recent.gapPending') : t('recent.gapErrorShort')}
-        </span>
-      )}
-    </span>
   );
 }

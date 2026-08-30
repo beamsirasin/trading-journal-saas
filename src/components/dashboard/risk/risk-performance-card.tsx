@@ -70,11 +70,9 @@ const TONE_CLASS: Record<RiskMoneyTone, string> = {
  */
 export function RiskPerformanceCard({
   view,
-  accountLabel,
   className,
 }: {
   view: RiskPerformanceView;
-  accountLabel: string;
   className?: string;
 }) {
   const t = useTranslations('dashboard.riskPerformance');
@@ -97,14 +95,14 @@ export function RiskPerformanceCard({
             <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
               <Wallet className="size-4" aria-hidden="true" />
             </span>
-            <div className="min-w-0">
-              <h2 id={headingId} className="text-card-title">
-                {t('title')}
-              </h2>
-              <p className="text-muted-foreground mt-0.5 text-xs leading-4 text-pretty">
-                {t('description', { account: accountLabel })}
-              </p>
-            </div>
+            {/* "Modeled balance and drawdown for {account}" named the two
+                metrics the card's own labels name 40px below, and the account
+                the toolbar, the context strip and the range chip beside it all
+                name already. Title and affordance, per the benchmark's header
+                composition. */}
+            <h2 id={headingId} className="text-card-title min-w-0 truncate">
+              {t('title')}
+            </h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {view.status === 'available' ? <RangeChip preset={view.datePreset} /> : null}
@@ -116,6 +114,14 @@ export function RiskPerformanceCard({
             <MetricInfo triggerLabel={t('infoTrigger')} title={t('metrics.modeledBalance')}>
               <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
               <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{t('helpScope')}</p>
+              {/* The two definitions that used to be printed on the card
+                  itself: what the Peak figure is, and how the balance line
+                  steps. Same wording, one tap away instead of permanently
+                  occupying two lines of a card that carries seven figures. */}
+              <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{t('peakHint')}</p>
+              <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+                {t('chart.caption')}
+              </p>
             </MetricInfo>
           </div>
         </div>
@@ -228,7 +234,10 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
               <dd className="numeric text-foreground text-base font-semibold">
                 {view.peakBalanceText}
               </dd>
-              <p className="text-muted-foreground text-xs leading-4">{t('peakHint')}</p>
+              {/* `peakHint` — "the high-water mark both drawdowns are measured
+                  from" — is a definition of the figure above it, sitting
+                  permanently beside two figures that already say Drawdown. It
+                  is now the third paragraph of this card's info popover. */}
             </div>
           </dl>
         </div>
@@ -296,7 +305,10 @@ function BalanceFigure({ view }: { view: RiskPerformanceAvailableView }) {
         </li>
       </ul>
       <ModeledBalanceChart points={view.points} peakBalance={view.peakBalance} />
-      <p className="text-muted-foreground text-xs leading-relaxed">{t('chart.caption')}</p>
+      {/* The caption moved into the card's info popover. It explained how the
+          line is CONSTRUCTED — a methodology note, not a reading of the
+          chart — and the benchmark's charts carry no standing prose at all,
+          only an ⓘ and a hover tooltip. */}
       <BalanceFallbackTable view={view} />
     </figure>
   );

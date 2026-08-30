@@ -85,10 +85,10 @@ function buildView(
   });
 }
 
-function renderCard(view: RiskPerformanceView, accountLabel = 'Main Account') {
+function renderCard(view: RiskPerformanceView) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <RiskPerformanceCard view={view} accountLabel={accountLabel} />
+      <RiskPerformanceCard view={view} />
     </NextIntlClientProvider>,
   );
 }
@@ -287,10 +287,7 @@ describe('Risk Performance section — the balance curve', () => {
 
 describe('Risk Performance section — availability states', () => {
   it('asks for a single Account instead of showing a fabricated aggregate', () => {
-    const { container } = renderCard(
-      buildView([], { ...scope(), account: { kind: 'all' } }),
-      'All accounts',
-    );
+    const { container } = renderCard(buildView([], { ...scope(), account: { kind: 'all' } }));
     expect(container.querySelector('[data-risk-status]')).toHaveAttribute(
       'data-risk-status',
       'unavailable',

@@ -9,6 +9,7 @@ import type {
 } from '@/lib/dashboard/insight-presentation';
 import { dashboardWidgetAttributes } from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
+import { MetricInfo } from '@/components/dashboard/kpi/metric-info';
 import { MetricLabel } from '@/components/product/metric';
 import { Card } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
@@ -69,17 +70,35 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
         // keeps the Analytics affordance on one baseline across all three.
         className="flex h-full min-w-0 flex-col gap-3 p-4"
       >
+        {/*
+          TITLE + ⓘ, matching every other header on this page.
+
+          Each pillar carried a one-line description ("Which system produced
+          the results", "How recorded state lines up with results", "How
+          closely the rules were followed") that explained the card's subject
+          and nothing about the figures under it. Three of them, side by side,
+          were three permanent lines of definition in the row that is supposed
+          to be read for its findings. The wording is unchanged and now opens
+          from the ⓘ — the same affordance the KPI row, the Execution Gap, the
+          Calendar and Risk Performance all use, so the page has one help
+          pattern rather than two.
+
+          NO METRIC IS TOUCHED. Which figures each pillar publishes is a
+          separate product decision and is deliberately left exactly as it is.
+        */}
         <div className="flex min-w-0 items-start gap-2.5">
-          <span className="bg-primary/10 text-primary mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg">
+          <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
             <Icon className="size-4" aria-hidden="true" />
           </span>
-          <div className="min-w-0">
-            <h3 id={headingId} className="text-card-title">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <h3 id={headingId} className="text-card-title truncate">
               {t(`${card.pillar}.title`)}
             </h3>
-            <p className="text-muted-foreground mt-0.5 text-xs leading-snug text-pretty">
-              {t(`${card.pillar}.description`)}
-            </p>
+            <MetricInfo
+              triggerLabel={t('infoTrigger', { pillar: t(`${card.pillar}.title`) })}
+              title={t(`${card.pillar}.title`)}
+              description={t(`${card.pillar}.description`)}
+            />
           </div>
         </div>
 

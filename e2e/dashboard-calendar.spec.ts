@@ -312,13 +312,17 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
     expect(calendarBox?.width ?? 0).toBeGreaterThan(recentBox?.width ?? 0);
     await expectNoHorizontalOverflow(page);
 
-    // §2/§3 — the Recent Trades preview, with the Gap on the row and an
-    // unresolved System side kept unresolved rather than shown as 0.00R.
-    await expect(recent(page).getByText('Actual R').first()).toBeVisible();
-    await expect(recent(page).getByText('Gap').first()).toBeVisible();
-    await expect(
-      recent(page).locator('[data-recent-gap-status="unavailable"]').first(),
-    ).toContainText('Pending');
+    // §14 — the Recent Trades preview is three fields (day, symbol, Actual R).
+    // System R and the per-Trade Execution Gap moved off the row in the
+    // benchmark density pass; the Execution Gap section above still publishes
+    // both, over the paired population.
+    await expect(recent(page).getByText('System R')).toHaveCount(0);
+    await expect(recent(page).getByText('Gap', { exact: true })).toHaveCount(0);
+    const firstRow = recent(page).locator('[data-recent-trade-row]').first();
+    // Exactly one result per row, and this fixture's Trades all have a final
+    // Actual side, so it resolves to a real signed R rather than the marker.
+    await expect(firstRow.locator('[data-recent-trade-result]')).toHaveCount(1);
+    await expect(firstRow.locator('[data-recent-trade-result="available"]')).toBeVisible();
 
     // §7/§8 — Actual mode: a positive day, a negative day, and a genuinely
     // flat-but-eligible day that is NOT the same thing as an empty date.

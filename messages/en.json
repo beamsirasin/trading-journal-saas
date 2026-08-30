@@ -345,7 +345,8 @@
     "noActiveAccountCta": "Manage trading accounts",
     "real": {
       "performanceTitle": "System vs Trader performance",
-      "performanceDescription": "Active account: {account}. Each side uses its own eligible Trade population.",
+      "performanceHelp": "Active account: {account}. Each side uses its own eligible Trade population.",
+      "performanceInfoTrigger": "About System vs Trader performance",
       "dateRangeLabel": "Date range",
       "range30": "30D",
       "range90": "90D",
@@ -375,7 +376,8 @@
       "systemEdgeCaptured": "System Edge Captured",
       "needsAttention": {
         "title": "Needs attention",
-        "description": "Every Account in this workspace, whatever date range is selected — worth a look, not a task list.",
+        "help": "Every Account in this workspace, whatever date range is selected — worth a look, not a task list.",
+        "infoTrigger": "About Needs attention",
         "openTrades": "Open Trades",
         "pendingSystemOutcomes": "Pending System Outcomes",
         "unclassifiedTrades": "Unclassified Trades",
@@ -402,23 +404,11 @@
       },
       "recent": {
         "title": "Recent Trades",
-        "description": "The five most recent Trades in the active account.",
         "listLabel": "Recent Trades in the active account",
-        "actualR": "Actual R",
-        "systemR": "System R",
         "viewAll": "View all Trades",
         "emptyTitle": "No Trades in this account yet",
         "emptyDescription": "Log your first Trade. Analytics will appear as Trader and System results become eligible.",
-        "logTrade": "Log a Trade",
-        "gapR": "Gap",
-        "gapPending": "Pending",
-        "gapUnavailable": {
-          "actual_incomplete": "The Actual result is not final yet, so there is no Gap to show.",
-          "system_incomplete": "The System outcome is not resolved yet, so there is no Gap to show.",
-          "both_incomplete": "Neither side is final yet, so there is no Gap to show."
-        },
-        "gapError": "A stored R value for this Trade could not be read.",
-        "gapErrorShort": "Error"
+        "logTrade": "Log a Trade"
       },
       "notAvailableShort": "—",
       "viewFullAnalytics": "View full analytics",
@@ -621,7 +611,6 @@
     },
     "executionGap": {
       "title": "Execution Gap",
-      "description": "How much of the System's paired edge your execution captured, and how that difference developed.",
       "infoTrigger": "About Execution Gap",
       "help": "Execution Gap is Actual R minus System R, measured only on Trades where both the Actual and the System outcome are complete. Negative means you captured less R than the System offered; positive means you captured more. It is a measurement of execution against available System edge, not a verdict on you.",
       "notAvailableShort": "n/a",
@@ -715,10 +704,6 @@
       "cellSummary": {
         "performance": "{date}: {total} across {trades} Trades. {wins} won, {breakEvens} broke even, {losses} lost.",
         "gap": "{date}: Execution Gap {gap} across {paired} paired Trades."
-      },
-      "cellSecondary": {
-        "performance": "{wins}W {breakEvens}BE {losses}L",
-        "gap": "{paired} paired"
       },
       "classification": {
         "performance": {
@@ -842,7 +827,6 @@
     },
     "riskPerformance": {
       "title": "Risk Performance",
-      "description": "Modeled balance and drawdown for {account}.",
       "infoTrigger": "About Modeled Balance",
       "help": "Modeled Balance starts from this Account's declared Starting Balance and changes only when a Trade closes with an authoritative result. It is not a broker balance and not live equity: deposits, withdrawals, transfers, broker adjustments, and unrealized P&L on open positions are not recorded anywhere in this product, so none of them are modeled here.",
       "helpScope": "Account-level metric. Strategy and Setup filters do not change modeled balance — only the Account and the date range do.",
@@ -954,6 +938,7 @@
       },
       "viewAnalytics": "View Analytics",
       "viewAnalyticsLabel": "View {pillar} in Analytics",
+      "infoTrigger": "About {pillar}",
       "insight": {
         "strongest_observed_strategy": "Strongest observed Strategy",
         "strongest_observed_setup": "Strongest observed Setup",

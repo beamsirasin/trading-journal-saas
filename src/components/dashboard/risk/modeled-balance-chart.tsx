@@ -117,7 +117,10 @@ export function ModeledBalanceChart({
 
   return (
     <div
-      className="h-56 w-full min-w-0 sm:h-64 lg:h-72"
+      // The shared Dashboard plot ramp — see the same class list and the full
+      // reasoning on `CumulativeComparisonChart`. Down from `h-56/64/72`, so
+      // the page's two major charts are one height instead of two.
+      className="h-52 w-full min-w-0 sm:h-56 lg:h-64"
       role="img"
       aria-label={t('chart.ariaLabel')}
     >

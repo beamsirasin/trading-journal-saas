@@ -103,22 +103,35 @@ export function DashboardCalendarCard({
         data-dashboard-panel="calendar"
         className="@container/calendar flex h-full min-w-0 flex-col gap-4 p-3 sm:p-5"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="bg-primary/10 text-primary mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg">
+        {/*
+          THE PER-MODE SENTENCE MOVED INTO THE ⓘ, WHERE ITS OWN SUPERSET
+          ALREADY LIVED. `modeDescription.actual` said "Closed Trades, by the
+          day you exited"; `help` — one tap away on the icon this header has
+          always carried — says that for all three modes, plus the fact that
+          they are three populations on three date axes rather than filters
+          over one. Printing the narrower of the two permanently, directly
+          above a control whose three labels already name the mode, was the
+          duplication the benchmark's zero-paragraph header avoids.
+
+          It is now the FIRST line of the popover rather than a footnote, so
+          the mode-specific wording is the first thing a reader who asks the
+          question sees, and it still changes with the mode.
+        */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
               <CalendarRange className="size-4.5" aria-hidden="true" />
             </span>
-            <div className="min-w-0">
-              <h2 id={headingId} className="text-card-title">
-                {t('title')}
-              </h2>
-              <p className="text-muted-foreground mt-0.5 text-sm leading-snug text-pretty">
-                {t(`modeDescription.${mode}`)}
-              </p>
-            </div>
+            <h2 id={headingId} className="text-card-title min-w-0 truncate">
+              {t('title')}
+            </h2>
           </div>
-          <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
-            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
+          <MetricInfo
+            triggerLabel={t('infoTrigger')}
+            title={t('title')}
+            description={t(`modeDescription.${mode}`)}
+          >
+            <p className="text-muted-foreground mt-2 text-sm leading-relaxed">{t('help')}</p>
           </MetricInfo>
         </div>
 
@@ -456,23 +469,21 @@ function CalendarCell({
         <span className="hidden @[22rem]/calendar:inline">{rText}</span>
       </span>
       {/*
-        Secondary detail appears on the WIDGET's own width, not the viewport's:
-        this card is five of twelve columns, so a 1280px page and a 1920px page
-        give it very different room. Below the threshold the W/BE/L line is the
-        first thing dropped — the date and the R value never shrink.
+        NO SECOND VISIBLE LINE. A day cell now carries exactly what the
+        measured benchmark's does: the date, ONE primary value, and a semantic
+        surface. The W/BE/L breakdown (and, in Gap mode, the paired count) used
+        to print inside every populated square, which put three numbers in a
+        cell that is ~95px wide and turned a pattern-recognition surface into a
+        grid of tiny tables — the reader was being asked to read where they
+        should have been able to scan.
+
+        IT IS NOT GONE, IT MOVED WHERE IT CAN BE READ. The full breakdown is
+        still in this cell's own accessible name above (`cellSummary`, which
+        already carried wins, break-evens and losses for a screen reader), and
+        Day Review — the dialog this very link opens — is the surface that
+        exists to answer "what happened on this day" in full. Detail behind one
+        click, not printed thirty-one times.
       */}
-      <span
-        aria-hidden="true"
-        className="text-muted-foreground hidden truncate text-[10px] leading-4 @[23rem]/calendar:block"
-      >
-        {day.mode === 'gap'
-          ? t('cellSecondary.gap', { paired: count })
-          : t('cellSecondary.performance', {
-              wins: day.wins,
-              breakEvens: day.breakEvens,
-              losses: day.losses,
-            })}
-      </span>
     </DashboardStateLink>
   );
 }

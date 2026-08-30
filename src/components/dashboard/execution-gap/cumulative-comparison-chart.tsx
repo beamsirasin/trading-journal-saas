@@ -168,12 +168,22 @@ export function CumulativeComparisonChart({
 
   return (
     <div
-      // R2C §13 — down from `h-56/64/72`. The old height made this one chart
-      // taller than the entire System-vs-Trader section above it, which is
-      // not the rank it holds: it explains a difference the four summary
-      // figures have already stated. 176/192/224px is still ample to read the
-      // divergence between two lines, which is the only thing being read here.
-      className="h-44 w-full min-w-0 sm:h-48 lg:h-56"
+      // ONE SHARED PLOT RAMP FOR THE DASHBOARD'S TWO MAJOR CHARTS.
+      //
+      // The measured benchmark's strongest density lesson is uniformity: every
+      // one of its chart cards is exactly 679x392 (1.73:1), and it says so
+      // explicitly — "this uniformity creates visual rhythm and makes scanning
+      // effortless". TradeChemist cannot copy the RATIO, because it has no
+      // one-of-three-columns chart cards to apply it to: its charts live
+      // inside full-width analytical sections, where 1.73:1 would mean a
+      // ~730px-tall plot. What it can copy is the DISCIPLINE — two comparable
+      // charts on one page should not be two different heights for no reason.
+      //
+      // This was `h-44/48/56` and the modeled balance chart was `h-56/64/72`;
+      // both are now `h-52/56/64` (208/224/256px). The two move toward each
+      // other rather than one being dragged to the other, so neither is
+      // crushed and the page loses nothing overall.
+      className="h-52 w-full min-w-0 sm:h-56 lg:h-64"
       role="img"
       aria-label={t('chart.cumulativeAriaLabel')}
     >

@@ -12,7 +12,6 @@ export interface RiskPerformanceSectionProps {
   /** The workspace analytics timezone the five core reads already resolved. */
   readonly timezone: string;
   readonly dateLocale: string;
-  readonly accountLabel: string;
   readonly className?: string;
 }
 
@@ -42,7 +41,6 @@ export async function RiskPerformanceSection({
   filters,
   timezone,
   dateLocale,
-  accountLabel,
   className,
 }: RiskPerformanceSectionProps) {
   const result = await getRiskPerformanceData(filters).catch(() => null);
@@ -51,11 +49,5 @@ export async function RiskPerformanceSection({
       ? riskPerformanceServiceError()
       : composeRiskPerformanceView({ data: result.data, timezone, dateLocale });
 
-  return (
-    <RiskPerformanceCard
-      view={view}
-      accountLabel={accountLabel}
-      {...(className === undefined ? {} : { className })}
-    />
-  );
+  return <RiskPerformanceCard view={view} {...(className === undefined ? {} : { className })} />;
 }

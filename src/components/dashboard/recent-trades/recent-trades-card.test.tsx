@@ -58,80 +58,87 @@ describe('Recent Trades card', () => {
   });
 
   /**
-   * §2 — identity, then the three results. Strategy, Setup and the occurred
-   * time are supporting context and are typeset as one quiet line.
+   * §14 — THE DASHBOARD PREVIEW IS THREE FIELDS.
+   *
+   * The measured benchmark renders three columns here (Close Date, Symbol,
+   * Net P&L) against ten on its own full Trade View. This row is the same
+   * shape in this product's terms: the local day, the symbol, and the one
+   * canonical per-Trade result the projection carries (`actualR`).
    */
-  it('leads with Trade identity and the three results, with Strategy as context', () => {
+  it('shows the day, the symbol and one primary result, and nothing else', () => {
     const { container } = renderCard([trade()]);
     const row = container.querySelector('[data-recent-trade-row]') as HTMLElement;
-    expect(within(row).getByRole('link', { name: 'XAUUSD' })).toHaveAttribute(
-      'href',
-      '/app/trades?trade=trade-1',
-    );
-    expect(row).toHaveTextContent('Momentum v1 · London Retest');
-    expect(within(row).getByText('Actual R')).toBeInTheDocument();
-    expect(within(row).getByText('System R')).toBeInTheDocument();
-    expect(within(row).getByText('Gap')).toBeInTheDocument();
+
+    expect(row).toHaveTextContent('XAUUSD');
     expect(row).toHaveTextContent('+2.00R');
-    expect(row).toHaveTextContent('+3.00R');
-    expect(row).toHaveTextContent('-1.00R');
+    // The local day in the workspace timezone — 06:00Z on 5 March is still
+    // 5 March in Bangkok, and the clock time itself is not printed.
+    expect(row).toHaveTextContent('05 Mar 2026');
+    expect(row).not.toHaveTextContent(':');
   });
 
-  it('names an unclassified Trade rather than borrowing a Strategy', () => {
-    const { container } = renderCard([trade({ strategyName: null, setupName: null })]);
-    expect(container.querySelector('[data-recent-trade-row]')).toHaveTextContent('Not assigned');
-  });
-});
-
-describe('Recent Trades Execution Gap states', () => {
   /**
-   * §3 — the Gap comes from the supplied typed state. It is never
-   * `actualR - systemR` derived in React, which is why a row with a complete
-   * Actual side and a pending System side shows a truthful unresolved state
-   * rather than a fabricated 0.00R.
+   * §14's explicit exclusion list. These belong to the Trade record, on the
+   * Trade — not repeated on a preview row seven times over.
    */
-  it('keeps an unresolved System side unresolved instead of inventing a zero Gap', () => {
+  it('keeps Strategy, Setup, direction, status and the other R values off the row', () => {
+    const { container } = renderCard([trade()]);
+    const row = container.querySelector('[data-recent-trade-row]') as HTMLElement;
+
+    expect(row).not.toHaveTextContent('Momentum v1');
+    expect(row).not.toHaveTextContent('London Retest');
+    expect(row).not.toHaveTextContent(/long/i);
+    expect(row).not.toHaveTextContent(/closed/i);
+    // System R (+3.00R) and the Gap (-1.00R) are supplied on the payload and
+    // deliberately not rendered here; the Execution Gap section owns both.
+    expect(row).not.toHaveTextContent('+3.00R');
+    expect(row).not.toHaveTextContent('-1.00R');
+  });
+
+  /**
+   * §16 — the row opens the same Trade quick preview it always did. What
+   * changed is that the whole row is the target rather than the symbol alone.
+   */
+  it('makes the whole row one link to the Trade preview', () => {
+    const { container } = renderCard([trade()]);
+    const row = container.querySelector('[data-recent-trade-row]') as HTMLElement;
+    const links = within(row).getAllByRole('link');
+
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/app/trades?trade=trade-1');
+    expect(links[0]?.textContent).toContain('XAUUSD');
+  });
+
+  /**
+   * The truthfulness rule the retired Gap column used to carry, which applies
+   * just as much to the single result this row now shows: a Trade whose
+   * Actual side is not final must never render a 0.00R that would assert a
+   * flat outcome that has not happened.
+   */
+  it('marks an unfinished Actual result rather than printing a fabricated zero', () => {
     const { container } = renderCard([
       trade({
+        status: 'open',
+        actualR: null,
         systemStatus: 'pending',
         systemR: null,
-        executionGapR: { status: 'unavailable', reason: 'system_incomplete' },
+        executionGapR: { status: 'unavailable', reason: 'both_incomplete' },
       }),
     ]);
-    const gap = container.querySelector('[data-recent-gap-status]');
-    expect(gap).toHaveAttribute('data-recent-gap-status', 'unavailable');
-    expect(gap).toHaveTextContent('Pending');
-    expect(container.querySelector('[data-recent-trade-row]')).not.toHaveTextContent('0.00R');
-  });
+    const row = container.querySelector('[data-recent-trade-row]') as HTMLElement;
 
-  it('renders the row at all when the System side is unresolved', () => {
-    const { container } = renderCard([
-      trade({
-        systemStatus: 'pending',
-        systemR: null,
-        executionGapR: { status: 'unavailable', reason: 'system_incomplete' },
-      }),
-    ]);
-    expect(container.querySelectorAll('[data-recent-trade-row]')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: 'XAUUSD' })).toBeInTheDocument();
-  });
-
-  it('shows an explicit integrity state rather than a value it could not read', () => {
-    const { container } = renderCard([
-      trade({ executionGapR: { status: 'error', reason: 'data_integrity_error' } }),
-    ]);
-    const gap = container.querySelector('[data-recent-gap-status]');
-    expect(gap).toHaveAttribute('data-recent-gap-status', 'error');
-    expect(gap).toHaveTextContent('Error');
-  });
-
-  it('signs the Gap in text, not only in colour', () => {
-    const { container } = renderCard([
-      trade({ executionGapR: { status: 'available', value: '0.7500' } }),
-    ]);
-    expect(container.querySelector('[data-recent-gap-status="available"]')).toHaveTextContent(
-      '+0.75R',
+    expect(row.querySelector('[data-recent-trade-result]')).toHaveAttribute(
+      'data-recent-trade-result',
+      'unavailable',
     );
+    expect(row).not.toHaveTextContent('0.00R');
+    // The row is still rendered — an unresolved Trade is recent activity too.
+    expect(container.querySelectorAll('[data-recent-trade-row]')).toHaveLength(1);
+  });
+
+  it('signs the result in text, not only in colour', () => {
+    const { container } = renderCard([trade({ actualR: '-0.7500' })]);
+    expect(container.querySelector('[data-recent-trade-result]')).toHaveTextContent('-0.75R');
   });
 });
 
