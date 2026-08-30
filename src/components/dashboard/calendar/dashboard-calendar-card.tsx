@@ -137,12 +137,35 @@ export function DashboardCalendarCard({
 
         <CalendarModeControl mode={mode} hrefs={hrefs} />
 
-        <CalendarMonthNav
-          monthLabel={monthLabel}
-          previousHref={hrefs.previousMonth}
-          nextHref={hrefs.nextMonth}
-          currentHref={hrefs.currentMonth}
-        />
+        {/*
+          THE MONTH AND ITS TOTALS ARE ONE ROW.
+
+          They were two full-width bands stacked: `‹ August 2026 ›` spread
+          edge to edge with the label floating in the middle, then Actual R /
+          Days / Trades packed hard against the left with roughly 900px of
+          nothing to their right. Both are small groups of a fixed size that
+          were being asked to span a 1038px card, which is the same mistake
+          in two places.
+
+          Paired instead: the month control sizes to its own content on the
+          left, the three totals sit as a group on the right, and the width
+          between them is empty because nothing needs it — not because
+          something was stretched across it. Below the container breakpoint
+          they stack, which is the honest shape when the card is narrow.
+
+          The summary is conditional and the nav is not, so the branch moved
+          into this row rather than the row into the branch — paging months
+          must keep working on a month with nothing in it.
+        */}
+        <div className="flex min-w-0 flex-col gap-3 @[38rem]/calendar:flex-row @[38rem]/calendar:items-center @[38rem]/calendar:justify-between @[38rem]/calendar:gap-6">
+          <CalendarMonthNav
+            monthLabel={monthLabel}
+            previousHref={hrefs.previousMonth}
+            nextHref={hrefs.nextMonth}
+            currentHref={hrefs.currentMonth}
+          />
+          {month.status === 'available' ? <CalendarMonthSummary month={month} mode={mode} /> : null}
+        </div>
 
         {month.status === 'error' ? (
           <CalendarStateBlock tone="error" title={t('states.errorTitle')}>
@@ -153,15 +176,12 @@ export function DashboardCalendarCard({
             {t(`states.emptyDescription.${mode}`)}
           </CalendarStateBlock>
         ) : (
-          <>
-            <CalendarMonthSummary month={month} mode={mode} />
-            <CalendarGridView
-              cells={grid.cells}
-              dateLocale={dateLocale}
-              hrefs={hrefs}
-              populatedDayCount={days.length}
-            />
-          </>
+          <CalendarGridView
+            cells={grid.cells}
+            dateLocale={dateLocale}
+            hrefs={hrefs}
+            populatedDayCount={days.length}
+          />
         )}
       </Card>
     </section>
@@ -187,7 +207,21 @@ function CalendarModeControl({
   const t = useTranslations('dashboard.calendar');
   return (
     <nav aria-label={t('modeLegend')} data-calendar-mode-control="">
-      <div className="border-border bg-background flex min-w-0 rounded-lg border p-1">
+      {/*
+        A CONTROL SIZED TO ITS LABELS, NOT TO THE CARD.
+
+        This bar ran the full width of the widget, so on a 1038px Calendar
+        each of the three options was a ~345px slab holding about 45px of
+        text — 13% filled, and three of the largest interactive surfaces on
+        the Dashboard spent on a three-way toggle.
+
+        `max-w-[26rem]` (416px) caps it while `flex-1` inside keeps the three
+        options EQUAL rather than sized to their own labels. Equal is the
+        point of a segmented control: the targets do not move when the mode
+        changes, and Thai labels — which are not the same length as the
+        English ones — cannot reshuffle the control between locales.
+      */}
+      <div className="border-border bg-background flex max-w-[26rem] min-w-0 rounded-lg border p-1">
         {CALENDAR_MODE_ORDER.map((candidate) => (
           <DashboardStateLink
             key={candidate}
@@ -221,11 +255,14 @@ function CalendarMonthNav({
   currentHref: string | null;
 }) {
   const t = useTranslations('dashboard.calendar');
+  /*
+   * Sized to its own content since the totals moved alongside it. It used to
+   * be `justify-between` across the whole card, which is what pushed the two
+   * chevrons to opposite edges and left the month label adrift in the middle
+   * with no relationship to either.
+   */
   return (
-    <nav
-      aria-label={t('monthNavLabel')}
-      className="flex min-w-0 items-center justify-between gap-2"
-    >
+    <nav aria-label={t('monthNavLabel')} className="flex min-w-0 items-center gap-1">
       <DashboardStateLink
         href={previousHref}
         data-calendar-nav="previous"
@@ -236,12 +273,12 @@ function CalendarMonthNav({
       </DashboardStateLink>
       <span
         data-calendar-month-label=""
-        className="numeric min-w-0 truncate text-center text-sm font-semibold"
+        className="numeric min-w-0 truncate px-1 text-sm font-semibold"
         aria-live="polite"
       >
         {monthLabel}
       </span>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="ms-1 flex shrink-0 items-center gap-1">
         {currentHref === null ? null : (
           <DashboardStateLink
             href={currentHref}
@@ -276,7 +313,7 @@ function CalendarMonthSummary({
   return (
     <dl
       data-calendar-summary=""
-      className="text-muted-foreground flex min-w-0 flex-wrap gap-x-5 gap-y-2 text-xs"
+      className="text-muted-foreground flex min-w-0 flex-wrap gap-x-5 gap-y-2 text-xs @[38rem]/calendar:shrink-0 @[38rem]/calendar:flex-nowrap @[38rem]/calendar:justify-end"
     >
       <div className="flex min-w-0 flex-col gap-0.5">
         <dt>{t(`summary.total.${mode}`)}</dt>
