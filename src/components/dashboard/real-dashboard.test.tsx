@@ -41,6 +41,7 @@ function axis(
     winRate: available('0.6667'),
     profitFactor: available('5.0000'),
     maximumDrawdownR: available('1.0000'),
+    payoffRatio: available('2.4000'),
     ...overrides,
   };
 }
@@ -247,20 +248,20 @@ describe('RealDashboard', () => {
     expect(
       within(trader as HTMLElement).getByRole('heading', { name: 'Trader Performance' }),
     ).toBeVisible();
-    // D4 shows each side's Trade count as its own supporting metric. The two
-    // counts differ because Population B and Population A are independent.
-    expect(
-      within(system as HTMLElement).getByText('3', {
-        selector: '[data-performance-metric="sampleCount"] span',
-      }),
-    ).toBeVisible();
-    expect(
-      within(trader as HTMLElement).getByText('5', {
-        selector: '[data-performance-metric="sampleCount"] span',
-      }),
-    ).toBeVisible();
+    // The two sides are INDEPENDENT populations, and the page proves it with
+    // their Total R rather than with a Trade count — the count stopped being a
+    // rendered metric when the section was cut to three per side. The fixture
+    // still gives the two axes different sample counts (3 and 5), so nothing
+    // here reconciles them.
     expect(within(system as HTMLElement).getByText('+4.00R')).toBeVisible();
     expect(within(trader as HTMLElement).getByText('-1.00R')).toBeVisible();
+    // Each side renders exactly the two approved secondary metrics.
+    for (const side of [system, trader]) {
+      const keys = [...(side as HTMLElement).querySelectorAll('[data-performance-metric]')].map(
+        (node) => node.getAttribute('data-performance-metric'),
+      );
+      expect(keys).toEqual(['winRate', 'payoffRatio']);
+    }
   });
 
   it('shows Trader metrics while System is empty', () => {

@@ -1,6 +1,6 @@
 import type { AnalyticsUnavailableReason } from '@/lib/analytics/metrics';
 
-import { neutralMetric, plainValue, signedMetric, type MetricDisplayValue } from './metric-display';
+import { neutralMetric, signedMetric, type MetricDisplayValue } from './metric-display';
 import type { DashboardPageData, DashboardPerformanceData } from './page-data';
 import { dashboardLayoutItem, type DashboardLayoutItem, type DashboardWidgetId } from './widgets';
 
@@ -25,17 +25,30 @@ export type PerformanceSide = (typeof PERFORMANCE_SIDES)[number];
 export type PerformanceValue = MetricDisplayValue<AnalyticsUnavailableReason>;
 
 /**
- * The supporting grid, in reading order. Identical keys and identical order
- * on both sides, so a reader compares like with like by position alone.
+ * The two secondary metrics, in reading order. Identical keys and identical
+ * order on both sides, so a reader compares like with like by position alone.
+ *
+ * THREE VISIBLE METRICS PER SIDE, AND THAT IS THE WHOLE BUDGET. This was six
+ * supporting cells under a hero — with the outcome composition, seven values
+ * a side and FOURTEEN across the section, in a surface whose job is to answer
+ * one question at a glance: did the System produce more than the execution
+ * did? The Dashboard is the DETECT layer; a reader who needs Expectancy
+ * beside Avg R beside Profit Factor beside Max Drawdown is diagnosing, and
+ * Analytics is where diagnosis lives.
+ *
+ * `averageR`, `expectancyR`, `profitFactor`, `maximumDrawdownR` and
+ * `sampleCount` are NOT deleted anywhere — they remain canonical on
+ * `PerformanceAnalyticsModel` and on this Dashboard's own
+ * `DashboardPerformanceData` projection. They simply stop being rendered
+ * here.
+ *
+ * Avg Win / Loss is the one addition, and it is not a new calculation: it is
+ * `lib/calc`'s `payoffRatio`, already computed for both axes by
+ * `composePerformanceAxis`. It earns its slot because Total R and Win Rate
+ * cannot be read without it — a 40% win rate is excellent at 3x and ruinous
+ * at 0.5x, and nothing else on this card says which.
  */
-export const PERFORMANCE_METRIC_KEYS = [
-  'winRate',
-  'averageR',
-  'expectancyR',
-  'profitFactor',
-  'maximumDrawdownR',
-  'sampleCount',
-] as const;
+export const PERFORMANCE_METRIC_KEYS = ['winRate', 'payoffRatio'] as const;
 
 export type PerformanceMetricKey = (typeof PERFORMANCE_METRIC_KEYS)[number];
 
@@ -75,14 +88,12 @@ function composeSide(side: PerformanceSide, axis: DashboardPerformanceData): Per
 
   const metrics: readonly PerformanceMetricCell[] = [
     { key: 'winRate', value: cell(populationEmpty, axis.winRate, 'percent') },
-    { key: 'averageR', value: cell(populationEmpty, axis.averageR, 'r') },
-    { key: 'expectancyR', value: cell(populationEmpty, axis.expectancyR, 'r') },
-    { key: 'profitFactor', value: cell(populationEmpty, axis.profitFactor, 'factor') },
-    // Maximum Drawdown is an unsigned distance, not a signed outcome: the
-    // `magnitude` style renders `2.00R`, never `+2.00R`, and never tones it.
-    { key: 'maximumDrawdownR', value: cell(populationEmpty, axis.maximumDrawdownR, 'magnitude') },
-    // Always a truthful figure, including the zero of an empty population.
-    { key: 'sampleCount', value: plainValue(String(axis.sampleCount)) },
+    // `multiple` renders `2.02x` — the same style and the same canonical
+    // `payoffRatio` the Basic KPI row's Avg Win / Loss card uses, so the two
+    // surfaces can never disagree about what the figure means or how it
+    // reads. Its unavailable reasons (`no_wins`, `no_losses`) arrive from
+    // `lib/calc` already; nothing here can turn one into an Infinity or a 0x.
+    { key: 'payoffRatio', value: cell(populationEmpty, axis.payoffRatio, 'multiple') },
   ];
 
   return {

@@ -346,29 +346,41 @@ test.describe('real Dashboard', () => {
     await expect(trader.getByRole('heading', { name: 'Trader Performance' })).toBeVisible();
     const metric = (side: typeof system, key: string) =>
       side.locator(`[data-performance-metric="${key}"]`);
-    await expect(metric(system, 'sampleCount').getByText('3')).toBeVisible();
-    await expect(metric(trader, 'sampleCount').getByText('3')).toBeVisible();
+    /*
+      THREE VISIBLE METRICS A SIDE, AND EXACTLY THESE THREE.
+
+      The section was cut from seven values a side to Total R, Win Rate and
+      Avg Win / Loss. The retired figures are still computed and still on the
+      Dashboard payload; the assertion below is that none of them RENDER.
+    */
     await expect(system.getByText('+4.00R')).toBeVisible();
     await expect(trader.getByText('+2.00R')).toBeVisible();
-    await expect(metric(system, 'averageR').getByText('+1.33R')).toBeVisible();
-    await expect(metric(system, 'expectancyR').getByText('+1.33R')).toBeVisible();
-    await expect(metric(trader, 'averageR').getByText('+0.67R')).toBeVisible();
-    await expect(metric(trader, 'expectancyR').getByText('+0.67R')).toBeVisible();
-    await expect(metric(system, 'winRate').getByText('66.67%')).toBeVisible();
-    await expect(metric(trader, 'winRate').getByText('66.67%')).toBeVisible();
-    await expect(metric(system, 'profitFactor').getByText('5.00')).toBeVisible();
-    await expect(metric(trader, 'profitFactor').getByText('3.00')).toBeVisible();
-
-    // D4 card anatomy: taglines, a labelled hero Total R, and the composition.
-    await expect(system.getByText('Strategy outcomes')).toBeVisible();
-    await expect(trader.getByText('Your actual execution')).toBeVisible();
     await expect(system.getByText('System Total R')).toBeVisible();
     await expect(trader.getByText('Actual Total R')).toBeVisible();
-    await expect(system.getByText('2W · 0BE · 1L')).toBeVisible();
-    await expect(trader.getByText('2W · 0BE · 1L')).toBeVisible();
-    // Maximum Drawdown reads as an unsigned magnitude, never as a gain.
-    await expect(metric(trader, 'maximumDrawdownR').getByText('1.00R')).toBeVisible();
-    await expect(metric(trader, 'maximumDrawdownR').getByText('+1.00R')).toHaveCount(0);
+    await expect(metric(system, 'winRate').getByText('66.67%')).toBeVisible();
+    await expect(metric(trader, 'winRate').getByText('66.67%')).toBeVisible();
+    // Avg Win / Loss, from the canonical `payoffRatio` on each side's own
+    // population. System wins +3R/+3R avg +3R against a -1R loss -> 3.00x;
+    // Trader wins +2R/+1R avg +1.5R against a -1R loss -> 1.50x.
+    await expect(metric(system, 'payoffRatio').getByText('Avg Win / Loss')).toBeVisible();
+    await expect(metric(trader, 'payoffRatio').getByText('Avg Win / Loss')).toBeVisible();
+    for (const side of [system, trader]) {
+      await expect(side.locator('[data-performance-metric]')).toHaveCount(2);
+      for (const retired of [
+        'averageR',
+        'expectancyR',
+        'profitFactor',
+        'maximumDrawdownR',
+        'sampleCount',
+      ]) {
+        await expect(side.locator(`[data-performance-metric="${retired}"]`)).toHaveCount(0);
+      }
+      // The taglines and the W/BE/L composition went with them.
+      await expect(side.getByText('2W · 0BE · 1L')).toHaveCount(0);
+      await expect(side.getByText(/Avg R|Expectancy|Profit Factor|Max Drawdown/)).toHaveCount(0);
+    }
+    await expect(system.getByText('Strategy outcomes')).toHaveCount(0);
+    await expect(trader.getByText('Your actual execution')).toHaveCount(0);
     // D5 material stays out of both cards.
     for (const side of [system, trader]) {
       await expect(side.getByText(/Execution Gap|System Edge Captured/)).toHaveCount(0);
@@ -441,8 +453,9 @@ test.describe('real Dashboard', () => {
     );
     // The retired section-local control must not have come back.
     await expect(page.getByRole('link', { name: '30D' })).toHaveCount(0);
-    await expect(metric(system, 'sampleCount').getByText('2')).toBeVisible();
-    await expect(metric(trader, 'sampleCount').getByText('2')).toBeVisible();
+    // The range change reaches both independent baselines. Asserted on the
+    // hero Total R rather than on a Trade count, which is no longer one of
+    // this section's rendered metrics.
     await expect(system.getByText('+2.00R')).toBeVisible();
     await expect(trader.getByText('+1.00R')).toBeVisible();
     // The one 30D pair is Actual -1R minus System +3R = -4R.

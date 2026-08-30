@@ -17,6 +17,7 @@ const AXIS: DashboardPerformanceData = {
   expectancyR: available('0.2903'),
   profitFactor: available('3.6400'),
   maximumDrawdownR: available('2.0000'),
+  payoffRatio: available('2.4000'),
 };
 
 interface BasicOverrides {

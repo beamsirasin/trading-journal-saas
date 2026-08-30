@@ -456,9 +456,15 @@ export function DashboardSkeleton() {
             letting the cards below jump 24px down when it appears. */}
         <div className="mt-6 flex flex-col gap-4">
           <div className="bg-card h-[24px] w-64 rounded-md" />
+          {/* 193 -> 165: the System/Trader cards went from a hero plus six
+              supporting cells to a hero plus two. Measured at 1440, where each
+              card is 648px and wide enough to lay its qualifiers beside the
+              hero; at 1024 each card is 440px, stacks, and stands at 231px —
+              the same width-dependent reservation this block has always made
+              for its primary desktop case. */}
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="bg-card h-[193px] rounded-lg" />
-            <div className="bg-card h-[193px] rounded-lg" />
+            <div className="bg-card h-[165px] rounded-lg" />
+            <div className="bg-card h-[165px] rounded-lg" />
           </div>
         </div>
         <div className="bg-card mt-6 h-[525px] rounded-lg" />

@@ -136,6 +136,85 @@ describe('analytics metric composition', () => {
     expect(result.averageR).toEqual(result.expectancyR);
   });
 
+  /**
+   * Avg Win / Loss is symmetric by construction — both axes reach `lib/calc`'s
+   * one `payoffRatio` through `composePerformanceAxis`, so there is no second
+   * definition to drift. These cases pin the SYSTEM side's semantics
+   * explicitly, because the Dashboard's System vs Trader card now renders it
+   * and Population B is the frozen population it must read.
+   */
+  describe('System Avg Win / Loss (payoffRatio)', () => {
+    it('divides the average System winner by the magnitude of the average System loser', () => {
+      // Wins +3R and +2R -> +2.5R. Losses -1R and -2R -> -1.5R. 2.5 / 1.5.
+      const result = composeSystemAnalytics([
+        system('w1', '3.0000', 'win', 1),
+        system('w2', '2.0000', 'win', 2),
+        system('l1', '-1.0000', 'loss', 3),
+        system('l2', '-2.0000', 'loss', 4),
+      ]);
+      expect(result.averageWinR).toEqual({ status: 'available', value: '2.5000' });
+      expect(result.averageLossR).toEqual({ status: 'available', value: '-1.5000' });
+      expect(result.payoffRatio).toEqual({ status: 'available', value: '1.6667' });
+    });
+
+    it('excludes break-even System outcomes from BOTH magnitude averages', () => {
+      const withoutBreakEven = composeSystemAnalytics([
+        system('w1', '4.0000', 'win', 1),
+        system('l1', '-2.0000', 'loss', 2),
+      ]);
+      const withBreakEven = composeSystemAnalytics([
+        system('w1', '4.0000', 'win', 1),
+        system('l1', '-2.0000', 'loss', 2),
+        // A break-even row with a non-zero R: if it leaked into either average
+        // it would move the ratio, so an identical result proves exclusion.
+        system('be', '0.0300', 'break_even', 3),
+      ]);
+      expect(withoutBreakEven.payoffRatio).toEqual({ status: 'available', value: '2.0000' });
+      expect(withBreakEven.payoffRatio).toEqual(withoutBreakEven.payoffRatio);
+      expect(withBreakEven.sampleCount).toBe(3);
+    });
+
+    it('reads Population B only — pending, no_trade and deleted rows never reach the ratio', () => {
+      const result = composeSystemAnalytics([
+        system('w1', '4.0000', 'win', 1),
+        system('l1', '-2.0000', 'loss', 2),
+        { ...system('pending', '99.0000', 'win', 3), systemStatus: 'pending' },
+        { ...system('no-trade', '99.0000', 'win', 4), systemStatus: 'no_trade' },
+        { ...system('deleted', '99.0000', 'win', 5), deletedAt: new Date(BASE_TIME) },
+      ]);
+      expect(result.sampleCount).toBe(2);
+      expect(result.payoffRatio).toEqual({ status: 'available', value: '2.0000' });
+    });
+
+    it('states a missing denominator rather than dividing by zero', () => {
+      const noLosses = composeSystemAnalytics([system('w1', '4.0000', 'win', 1)]);
+      expect(noLosses.payoffRatio).toEqual({ status: 'unavailable', reason: 'no_losses' });
+
+      const noWins = composeSystemAnalytics([system('l1', '-4.0000', 'loss', 1)]);
+      expect(noWins.payoffRatio).toEqual({ status: 'unavailable', reason: 'no_wins' });
+
+      const empty = composeSystemAnalytics([]);
+      expect(empty.payoffRatio).toEqual({ status: 'unavailable', reason: 'no_wins' });
+
+      for (const model of [noLosses, noWins, empty]) {
+        expect(JSON.stringify(model)).not.toMatch(/Infinity|NaN/);
+      }
+    });
+
+    it('lets the System and Trader ratios differ, because the populations do', () => {
+      const systemResult = composeSystemAnalytics([
+        system('a', '4.0000', 'win', 1),
+        system('b', '-2.0000', 'loss', 2),
+      ]);
+      const traderResult = composeTraderAnalytics([
+        trader('a', '1.0000', 'win', 1),
+        trader('b', '-2.0000', 'loss', 2),
+      ]);
+      expect(systemResult.payoffRatio).toEqual({ status: 'available', value: '2.0000' });
+      expect(traderResult.payoffRatio).toEqual({ status: 'available', value: '0.5000' });
+    });
+  });
+
   it('defensively applies Trader and System eligibility without coercing excluded rows to zero', () => {
     const traderResult = composeTraderAnalytics([
       trader('eligible', '1.0000', 'win'),

@@ -32,6 +32,7 @@ function axis(overrides: Partial<DashboardPerformanceData> = {}): DashboardPerfo
     expectancyR: available('0.2903'),
     profitFactor: available('3.6400'),
     maximumDrawdownR: available('2.0000'),
+    payoffRatio: available('2.4000'),
     ...overrides,
   };
 }
@@ -45,6 +46,7 @@ const EMPTY_AXIS = axis({
   expectancyR: unavailable('no_trades'),
   profitFactor: unavailable('no_trades'),
   maximumDrawdownR: unavailable('no_trades'),
+  payoffRatio: unavailable('no_trades'),
 });
 
 function renderCard(
@@ -88,26 +90,23 @@ const SIDES: readonly {
   side: PerformanceSide;
   widgetId: string;
   title: string;
-  tagline: string;
   heroLabel: string;
 }[] = [
   {
     side: 'system',
     widgetId: 'system.performance',
     title: 'System Performance',
-    tagline: 'Strategy outcomes',
     heroLabel: 'System Total R',
   },
   {
     side: 'trader',
     widgetId: 'trader.performance',
     title: 'Trader Performance',
-    tagline: 'Your actual execution',
     heroLabel: 'Actual Total R',
   },
 ];
 
-describe.each(SIDES)('PerformanceCard — $side', ({ side, widgetId, title, tagline, heroLabel }) => {
+describe.each(SIDES)('PerformanceCard — $side', ({ side, widgetId, title, heroLabel }) => {
   it('renders under its registered widget ID with a named accessible group', () => {
     const { container } = renderCard(side);
     const card = container.querySelector(`[data-dashboard-widget="${widgetId}"]`);
@@ -115,17 +114,59 @@ describe.each(SIDES)('PerformanceCard — $side', ({ side, widgetId, title, tagl
     expect(DASHBOARD_WIDGET_IDS).toContain(widgetId);
     expect(screen.getByRole('group', { name: title })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: title })).toBeVisible();
-    expect(screen.getByText(tagline)).toBeVisible();
+    // The tagline was retired with the density pass — its wording lives in the
+    // card's own info popover as `purpose` and nowhere on the visible card.
+    expect(
+      screen.queryByText(side === 'system' ? 'Strategy outcomes' : 'Your actual execution'),
+    ).toBeNull();
   });
 
-  it('leads with one hero Total R above the supporting grid', () => {
+  it('shows exactly three metrics: a hero Total R over Win Rate and Avg Win / Loss', () => {
     const { container } = renderCard(side);
     expect(screen.getByText(heroLabel)).toBeVisible();
     expect(screen.getByText('+9.00R')).toBeVisible();
-    expect(screen.getByText('17W · 3BE · 11L')).toBeVisible();
-    for (const key of PERFORMANCE_METRIC_KEYS) {
-      expect(cell(container, key)).toBeInTheDocument();
+
+    const rendered = [...container.querySelectorAll('[data-performance-metric]')].map((node) =>
+      node.getAttribute('data-performance-metric'),
+    );
+    expect(rendered).toEqual(['winRate', 'payoffRatio']);
+    expect(within(cell(container, 'winRate')).getByText('Win Rate')).toBeVisible();
+    expect(within(cell(container, 'payoffRatio')).getByText('Avg Win / Loss')).toBeVisible();
+    expect(within(cell(container, 'payoffRatio')).getByText('2.40x')).toBeVisible();
+  });
+
+  /**
+   * The Dashboard content budget for this section, asserted as an exclusion.
+   * Each of these is still computed and still on the Dashboard payload; none
+   * of them may be permanently rendered here.
+   */
+  it('renders none of the retired metrics or the outcome composition', () => {
+    const { container } = renderCard(side);
+    for (const key of [
+      'averageR',
+      'expectancyR',
+      'profitFactor',
+      'maximumDrawdownR',
+      'sampleCount',
+    ]) {
+      expect(container.querySelector(`[data-performance-metric="${key}"]`)).toBeNull();
     }
+    for (const label of ['Avg R', 'Expectancy', 'Profit Factor', 'Max Drawdown', 'Trades']) {
+      expect(within(container).queryByText(label)).toBeNull();
+    }
+    // The W/BE/L composition line goes with them.
+    expect(screen.queryByText('17W · 3BE · 11L')).toBeNull();
+  });
+
+  /**
+   * §7 terminology. The visible label is "Avg Win / Loss" — never "Average
+   * RR", "Risk Reward" or "Avg R", each of which names a different thing
+   * (planned SL/TP geometry, or the mean R per Trade).
+   */
+  it('names the ratio Avg Win / Loss and never uses risk-reward wording', () => {
+    const { container } = renderCard(side);
+    expect(within(cell(container, 'payoffRatio')).getByText('Avg Win / Loss')).toBeVisible();
+    expect(container.textContent ?? '').not.toMatch(/risk.?reward|\bRR\b|Average R\b/i);
   });
 
   it('gives the hero more visual weight than any supporting figure', () => {
@@ -150,9 +191,7 @@ describe.each(SIDES)('PerformanceCard — $side', ({ side, widgetId, title, tagl
   it('keeps every supporting metric neutral however strong it reads', () => {
     const { container } = renderCard(side, {
       winRate: available('0.9800'),
-      profitFactor: available('14.0000'),
-      averageR: available('3.0000'),
-      expectancyR: available('3.0000'),
+      payoffRatio: available('14.0000'),
     });
     for (const key of PERFORMANCE_METRIC_KEYS) {
       const value = cell(container, key).querySelector('dd span');
@@ -161,43 +200,50 @@ describe.each(SIDES)('PerformanceCard — $side', ({ side, widgetId, title, tagl
     }
   });
 
-  it('renders Maximum Drawdown as an unsigned, unalarming magnitude', () => {
-    const { container } = renderCard(side, { maximumDrawdownR: available('2.0000') });
-    const drawdown = cell(container, 'maximumDrawdownR');
-    expect(within(drawdown).getByText('2.00R')).toBeVisible();
-    expect(within(drawdown).queryByText('+2.00R')).toBeNull();
-    expect(within(drawdown).getByText('2.00R')).not.toHaveClass('text-negative');
-    expect(within(drawdown).getByText('2.00R')).not.toHaveClass('text-positive');
+  it('renders Avg Win / Loss as a neutral multiple, never as a signed R', () => {
+    const { container } = renderCard(side, { payoffRatio: available('2.4000') });
+    const ratio = cell(container, 'payoffRatio');
+    expect(within(ratio).getByText('2.40x')).toBeVisible();
+    expect(within(ratio).queryByText('+2.40R')).toBeNull();
+    expect(within(ratio).getByText('2.40x')).not.toHaveClass('text-negative');
+    expect(within(ratio).getByText('2.40x')).not.toHaveClass('text-positive');
   });
 
-  it('keeps the rest of the card when Profit Factor has no losses to divide by', () => {
-    const { container } = renderCard(side, { profitFactor: unavailable('no_losses') });
-    const pf = cell(container, 'profitFactor');
-    expect(within(pf).getByText('No losing Trades')).toBeVisible();
-    expect(pf).toHaveAttribute('data-performance-metric-reason', 'no_losses');
+  /**
+   * §23 — an undefined denominator is stated in words. Never 0x, never ∞,
+   * never a misleading 100%.
+   */
+  it('states an unavailable Avg Win / Loss rather than fabricating a ratio', () => {
+    const { container } = renderCard(side, { payoffRatio: unavailable('no_losses') });
+    const ratio = cell(container, 'payoffRatio');
+    expect(within(ratio).getByText('No losing Trades')).toBeVisible();
+    expect(ratio).toHaveAttribute('data-performance-metric-reason', 'no_losses');
     // The neighbours are untouched.
     expect(screen.getByText('+9.00R')).toBeVisible();
     expect(within(cell(container, 'winRate')).getByText('54.84%')).toBeVisible();
-    expect(within(cell(container, 'sampleCount')).getByText('31')).toBeVisible();
-    expect(container.textContent).not.toMatch(/Infinity|NaN/);
+    expect(container.textContent).not.toMatch(/Infinity|NaN|∞/);
+    expect(within(ratio).queryByText('0x')).toBeNull();
   });
 
   it('surfaces a supplied integrity error without blanking its neighbours', () => {
     const { container } = renderCard(side, {
-      maximumDrawdownR: { status: 'error', reason: 'data_integrity_error' },
+      payoffRatio: { status: 'error', reason: 'data_integrity_error' },
     });
-    const drawdown = cell(container, 'maximumDrawdownR');
-    expect(within(drawdown).getByText('Metric temporarily unavailable')).toBeVisible();
-    expect(drawdown).toHaveAttribute('data-performance-metric-status', 'error');
-    expect(within(cell(container, 'expectancyR')).getByText('+0.29R')).toBeVisible();
+    const ratio = cell(container, 'payoffRatio');
+    expect(within(ratio).getByText('Metric temporarily unavailable')).toBeVisible();
+    expect(ratio).toHaveAttribute('data-performance-metric-status', 'error');
+    expect(within(cell(container, 'winRate')).getByText('54.84%')).toBeVisible();
   });
 
-  it('shows one empty notice and a truthful zero count, not a blank card', () => {
+  it('shows one empty notice and no metric cells at all, not a blank card', () => {
     const { container } = renderEmpty(side);
     const card = container.querySelector(`[data-dashboard-widget="${widgetId}"]`) as HTMLElement;
     expect(card).toHaveAttribute('data-performance-status', 'empty');
     expect(screen.getByRole('heading', { name: title })).toBeVisible();
-    expect(within(cell(container, 'sampleCount')).getByText('0')).toBeVisible();
+    // The `Trades: 0` cell went with the metric budget — the sentence below
+    // already says the population is empty, and a metric slot restating it was
+    // the only thing this state used it for.
+    expect(container.querySelector('[data-performance-metric]')).toBeNull();
     // No hero, no composition, and the reason is stated once.
     expect(within(card).queryByText(heroLabel)).toBeNull();
     expect(within(card).queryAllByText('No eligible Trades')).toHaveLength(0);
@@ -234,13 +280,12 @@ describe.each(SIDES)('PerformanceCard — $side', ({ side, widgetId, title, tagl
     });
   });
 
-  it('renders Thai copy for the title, tagline and metric labels', () => {
+  it('renders Thai copy for both metric labels', () => {
     const { container } = renderCard(side, {}, 'th');
-    expect(
-      screen.getByText(side === 'system' ? 'ผลลัพธ์ตามกลยุทธ์' : 'การเทรดจริงของคุณ'),
-    ).toBeVisible();
     expect(within(cell(container, 'winRate')).getByText('อัตราชนะ')).toBeVisible();
-    expect(within(cell(container, 'sampleCount')).getByText('จำนวนเทรด')).toBeVisible();
+    expect(
+      within(cell(container, 'payoffRatio')).getByText('กำไรเฉลี่ย / ขาดทุนเฉลี่ย'),
+    ).toBeVisible();
   });
 
   it('reads only its supplied model — the card never fetches', () => {

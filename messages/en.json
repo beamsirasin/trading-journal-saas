@@ -465,36 +465,24 @@
     "performance": {
       "metrics": {
         "winRate": "Win Rate",
-        "averageR": "Avg R",
-        "expectancyR": "Expectancy",
-        "profitFactor": "Profit Factor",
-        "maximumDrawdownR": "Max Drawdown",
-        "sampleCount": "Trades"
+        "payoffRatio": "Avg Win / Loss"
       },
       "system": {
-        "tagline": "Strategy outcomes",
         "heroLabel": "System Total R",
         "purpose": "What the Strategy rules would have produced when resolved.",
         "definitions": {
           "totalR": "Total R from eligible resolved System outcomes.",
           "winRate": "Winning System outcomes divided by all eligible resolved System outcomes. Break-even stays in the denominator.",
-          "averageR": "Average System R per eligible System Trade.",
-          "expectancyR": "Canonical System expectancy, in R.",
-          "profitFactor": "Positive System R divided by absolute negative System R.",
-          "maximumDrawdownR": "Largest peak-to-trough decline in cumulative System R."
+          "payoffRatio": "Average winning System R divided by the magnitude of the average losing System R. Break-even outcomes are in neither average."
         }
       },
       "trader": {
-        "tagline": "Your actual execution",
         "heroLabel": "Actual Total R",
         "purpose": "What your actual entries, management, exits and costs produced.",
         "definitions": {
           "totalR": "Total R from eligible closed Actual Trades.",
           "winRate": "Winning Actual Trades divided by all eligible closed Actual Trades. Break-even stays in the denominator.",
-          "averageR": "Average Actual R per eligible closed Trade.",
-          "expectancyR": "Canonical Trader expectancy, in R.",
-          "profitFactor": "Positive Actual R divided by absolute negative Actual R.",
-          "maximumDrawdownR": "Largest peak-to-trough decline in cumulative Actual R."
+          "payoffRatio": "Average winning Actual R divided by the magnitude of the average losing Actual R. Break-even Trades are in neither average."
         }
       }
     },

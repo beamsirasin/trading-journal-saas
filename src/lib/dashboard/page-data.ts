@@ -92,6 +92,23 @@ export interface DashboardRecentTrade {
   readonly executionGapR: DashboardRecentExecutionGap;
 }
 
+/**
+ * The Dashboard's slice of a performance axis.
+ *
+ * WIDER THAN WHAT THE CARD NOW RENDERS, DELIBERATELY. The System vs Trader
+ * card was reduced to three visible metrics (Total R, Win Rate, Avg Win /
+ * Loss), but `averageR`, `expectancyR`, `profitFactor`, `maximumDrawdownR`
+ * and the outcome composition stay on this projection: they are canonical
+ * figures the analytics model already computes for both axes, several other
+ * readers consume this type, and pruning a DTO because one presentation
+ * stopped rendering a field is exactly the kind of coupling that makes the
+ * next surface re-plumb work that was already done. Presentation decides what
+ * is SHOWN; this decides what is available.
+ *
+ * `payoffRatio` joins the slice here because the card now shows it — it is
+ * `lib/calc`'s own primitive, computed identically for both axes by
+ * `composePerformanceAxis`, never re-derived downstream.
+ */
 export type DashboardPerformanceData = Pick<
   PerformanceAnalyticsModel,
   | 'sampleCount'
@@ -102,6 +119,7 @@ export type DashboardPerformanceData = Pick<
   | 'expectancyR'
   | 'profitFactor'
   | 'maximumDrawdownR'
+  | 'payoffRatio'
 >;
 
 export interface DashboardPageData {
@@ -180,6 +198,7 @@ const selectPerformance = (axis: PerformanceAnalyticsModel): DashboardPerformanc
   expectancyR: axis.expectancyR,
   profitFactor: axis.profitFactor,
   maximumDrawdownR: axis.maximumDrawdownR,
+  payoffRatio: axis.payoffRatio,
 });
 
 export function composeRecentTrade(record: DashboardRecentTradeRecord): DashboardRecentTrade {

@@ -2,7 +2,6 @@ import { MonitorCog, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { AnalyticsDisplayTone } from '@/lib/analytics/presentation';
-import { plainValue } from '@/lib/dashboard/metric-display';
 import {
   PERFORMANCE_METRIC_KEYS,
   type PerformanceCardModel,
@@ -45,32 +44,32 @@ const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
 /**
  * One analytical performance card.
  *
- * More internal hierarchy than a D3 Basic KPI card, not a bigger one: an
- * identity mark, one hero Total R, the W/BE/L composition behind it, and a
- * compact supporting grid. Seven equally sized figures would read as a
- * spreadsheet and would tell a reader nothing about which number matters.
+ * THREE METRICS, NOT SEVEN. An identity mark, one hero Total R, and the two
+ * readings that qualify it — Win Rate and Avg Win / Loss. The card used to
+ * carry a hero, a W/BE/L composition line and six supporting cells: seven
+ * values a side, fourteen across the section, on the surface that exists to
+ * answer one comparison at a glance. Avg R, Expectancy, Profit Factor, Max
+ * Drawdown and the Trade count are all still computed and still on the
+ * Dashboard's own payload; they are simply no longer rendered here, because
+ * reading them is diagnosis and diagnosis is Analytics' job.
  *
- * THE CARD IS WIDE, SO IT IS LAID OUT WIDE. Everything used to stack: header,
- * then a full-width hero band with a rule under it, then a three-column grid
- * beneath that — around 250px of card to carry seven figures, with the hero's
- * own row leaving two thirds of the width empty beside a single number. The
- * card now splits along its long axis: identity and hero on the left, the six
- * supporting metrics in a grid on the right, divided by one hairline. Same
- * figures, same order, same states, same dominance (the hero is still 32px
- * against the cells' 20px) — about 100px less height, with the width the card
- * already had doing the work the height used to.
+ * WHY THESE THREE. Total R answers "how much did this side produce". Win Rate
+ * and Avg Win / Loss are the two independent factors that produced it — how
+ * often, and how big — and neither is interpretable without the other: a 40%
+ * win rate is excellent at 3x and ruinous at 0.5x. Any fourth metric on this
+ * card is a recombination of the same three.
  *
- * THE SPLIT IS A CONTAINER QUERY, NOT A BREAKPOINT. Two of these sit side by
- * side inside a two-column section, so the viewport says nothing useful about
- * how wide either card actually is — a `lg:` split would fire at exactly the
- * width where each card is at its narrowest. `@container/perf` asks the card
- * itself, which also keeps the layout correct if the section is ever
- * re-proportioned. Below 34rem of card width it stacks, unchanged.
+ * THE LAYOUT STILL SPLITS ON THE CARD'S OWN WIDTH, AND THE MEASUREMENT IS
+ * WHY. A purely stacked card reads beautifully but is 231px at every width —
+ * 38px TALLER at 1440 than the seven-metric card it replaced, because a wide
+ * card then carries a 200px column with 400px of empty lane beside it. With
+ * the two qualifiers beside the hero it is 156px. Below 34rem of card width
+ * it stacks, and even there it is 231px against the old card's 348px.
+ * Shorter at every tested width, which is the whole point of the cut.
  *
  * The definition affordance is positioned against the card rather than
- * carried in a header row: it belongs to the whole card, and a row existing
- * only to hold it at the far end of the left column would put it on the
- * divider, where it would read as the metric grid's control instead.
+ * carried in a header row: it belongs to the whole card, and it is now the
+ * only place the per-side purpose copy lives.
  *
  * Both sides render through this single component, so their geometry, states,
  * and metric order cannot diverge.
@@ -107,76 +106,106 @@ export function PerformanceCard({ model }: { model: PerformanceCardModel }) {
           <PerformanceIdentity
             headingId={headingId}
             title={title}
-            tagline={tPerf(`${model.side}.tagline`)}
             markClassName={SIDE_MARK[model.side]}
             Icon={Icon}
           />
+          {/*
+            The honest empty state, and nothing beside it. It used to be
+            followed by a `Trades: 0` cell, which restated in a metric slot
+            exactly what the sentence above it already says — and `Trades` is
+            no longer one of this card's visible metrics in any state.
+          */}
           <div className="mt-4 flex flex-1 flex-col justify-center">
             <p className="border-border bg-muted/40 text-muted-foreground rounded-md border p-3 text-sm leading-relaxed">
               {t(`${model.side}.empty`)}
             </p>
-            {/* The Trade count stays truthful and useful at zero, so it survives
-                the empty state while the rest of the grid would only repeat it. */}
-            <dl className="mt-4">
-              <PerformanceCell
-                cell={{ key: 'sampleCount', value: plainValue(String(model.sampleCount)) }}
-              />
-            </dl>
           </div>
         </>
       ) : (
-        <div className="flex min-w-0 flex-col gap-4 @[34rem]/perf:flex-row @[34rem]/perf:items-center @[34rem]/perf:gap-6">
-          <div className="flex min-w-0 flex-col @[34rem]/perf:w-[13.5rem] @[34rem]/perf:shrink-0">
-            <PerformanceIdentity
-              headingId={headingId}
-              title={title}
-              tagline={tPerf(`${model.side}.tagline`)}
-              markClassName={SIDE_MARK[model.side]}
-              Icon={Icon}
-            />
+        /*
+          THREE METRICS, ONE HIERARCHY, TWO PLANES.
+
+          The card reads top to bottom: whose result this is, then the one
+          figure that answers the section's question, then the two readings
+          that qualify it. Total R stays the hero on its raised surface;
+          Win Rate and Avg Win / Loss sit side by side beneath it on the card
+          plane, deliberately NOT in raised cells of their own — six little
+          boxes across the section would be the nested-box repetition this
+          card has spent three passes removing, and would flatten the very
+          hierarchy that makes the comparison readable.
+
+          THE HAIRLINE IS GONE WITH THE GRID IT DIVIDED. Six cells beside a
+          hero needed a rule to say where one group ended; two qualifiers under
+          a label do not, and the surface step on the hero already carries the
+          hierarchy. Spacing separates them now — §15's "restrained divider or
+          spacing boundary", resolved in favour of spacing.
+
+          Both cards render this identical shape, so the System hero and the
+          Trader hero sit at the same offset and the two qualifier pairs sit on
+          one baseline. That alignment is what makes the left-to-right
+          comparison instant, and it is why neither side may ever grow a
+          metric the other does not have.
+        */
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          {/*
+            THE IDENTITY ROW SPANS THE CARD, and it has to. Inside the 13rem
+            hero column "System Performance" truncated to "System Perfor…" at
+            1440 — the column is sized for a Total R figure, not for a
+            two-word title plus a mark plus the ⓘ's reserved lane. A truncated
+            side name in a comparison of exactly two sides is the one label
+            that can never be allowed to clip.
+          */}
+          <PerformanceIdentity
+            headingId={headingId}
+            title={title}
+            markClassName={SIDE_MARK[model.side]}
+            Icon={Icon}
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-3 @[34rem]/perf:flex-row @[34rem]/perf:items-center @[34rem]/perf:gap-5">
             {/*
-              THE ANSWER SITS ON A RAISED SURFACE (R2C §5/§22).
+            THE ANSWER SITS ON A RAISED SURFACE (R2C §5/§22).
 
-              One rule, applied everywhere on this page a figure is the
-              answer rather than a supporting reading: the Execution Gap's
-              four summary cells, each insight pillar's primary statement,
-              and this — the Total R that the six metrics beside it explain.
-              A step in SURFACE rather than a border, so the hierarchy is
-              built from planes and never from a second box (§23), and it
-              costs no new colour: `--muted` is the frozen `#262626` in dark
-              and the light palette's own step in light.
-
-              Before this, every card on the Dashboard was one flat plane at
-              `#181818` and a reader had to read all seven figures to find
-              out which one mattered.
-            */}
-            <div className="bg-muted/50 mt-3 min-w-0 rounded-lg px-3 py-2.5">
+            One rule, applied everywhere on this page a figure is the answer
+            rather than a supporting reading: the Execution Gap's four summary
+            cells, each insight pillar's primary statement, and this — the
+            Total R the two metrics beneath it qualify. A step in SURFACE
+            rather than a border, so the hierarchy is built from planes and
+            never from a second box (§23), and it costs no new colour:
+            `--muted` is the frozen `#262626` in dark and the light palette's
+            own step in light.
+          */}
+            <div className="bg-muted/50 min-w-0 rounded-lg px-3 py-2.5 @[34rem]/perf:w-[13rem] @[34rem]/perf:shrink-0">
               <MetricLabel variant="plain">{tPerf(`${model.side}.heroLabel`)}</MetricLabel>
               <p className="mt-0.5">
                 <PerformanceFigure value={model.hero} variant="hero" />
               </p>
-              {model.composition === null ? null : (
-                <p className="text-muted-foreground numeric mt-1 text-[11px] leading-4">
-                  {tKpi('compositionTrades', {
-                    wins: model.composition.wins,
-                    breakEvens: model.composition.breakEvens,
-                    losses: model.composition.losses,
-                  })}
-                </p>
-              )}
             </div>
-          </div>
 
-          {/*
-            One hairline, running in the direction the split actually runs — on
-            top when stacked, on the leading edge when side by side. §14:
-            surface separation and spacing, never a second bordered box.
-          */}
-          <dl className="border-border grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-3.5 border-t pt-4 sm:grid-cols-3 @[34rem]/perf:gap-x-3 @[34rem]/perf:border-s @[34rem]/perf:border-t-0 @[34rem]/perf:ps-5 @[34rem]/perf:pe-6 @[34rem]/perf:pt-0">
-            {model.metrics.map((cell) => (
-              <PerformanceCell key={cell.key} cell={cell} />
-            ))}
-          </dl>
+            {/*
+              The two qualifiers, on one row at every width — they are a PAIR
+              ("how often" beside "how big"), and splitting them onto separate
+              lines would break the one relationship they exist to express.
+              Two short figures fit a 320px card comfortably.
+
+              BESIDE THE HERO ONCE THE CARD IS WIDE ENOUGH, STACKED BELOW IT
+              OTHERWISE. Measured, a purely stacked card is 231px at every
+              width — 38px TALLER at 1440 than the seven-metric card it
+              replaced, because a wide card then leaves ~400px of empty lane
+              beside a 200px column. Beside the hero it is ~165px, shorter
+              than both. Below 34rem of CARD width (a 1280px page gives each
+              card 568px, a 1024px page only 440px) it stacks, and even there
+              it is 231px against the old card's 348px.
+
+              The threshold is a container query, not a breakpoint: two of
+              these sit inside a two-column section, so the viewport does not
+              say how wide either card actually is.
+            */}
+            <dl className="grid min-w-0 grid-cols-2 gap-x-4 px-3 @[34rem]/perf:flex-1 @[34rem]/perf:px-0">
+              {model.metrics.map((cell) => (
+                <PerformanceCell key={cell.key} cell={cell} />
+              ))}
+            </dl>
+          </div>
         </div>
       )}
     </Card>
@@ -191,29 +220,29 @@ export function PerformanceCard({ model }: { model: PerformanceCardModel }) {
 function PerformanceIdentity({
   headingId,
   title,
-  tagline,
   markClassName,
   Icon,
 }: {
   headingId: string;
   title: string;
-  tagline: string;
   markClassName: string;
   Icon: typeof MonitorCog;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-2.5 pe-8 @[34rem]/perf:pe-0">
+    // The tagline is gone from this block. "Strategy outcomes" / "Your actual
+    // execution" restated, in four words, exactly what this card's info
+    // popover already says at length under `purpose` — and the visible copy
+    // budget for this section is the three metric labels plus the two side
+    // names. `pe-8` still reserves the absolutely-positioned ⓘ's lane.
+    <div className="flex min-w-0 items-center gap-2.5 pe-8">
       <span
         className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', markClassName)}
       >
         <Icon className="size-4" aria-hidden="true" />
       </span>
-      <div className="min-w-0">
-        <h3 id={headingId} className="text-card-title">
-          {title}
-        </h3>
-        <p className="text-muted-foreground mt-0.5 text-xs leading-4 text-pretty">{tagline}</p>
-      </div>
+      <h3 id={headingId} className="text-card-title min-w-0 truncate">
+        {title}
+      </h3>
     </div>
   );
 }
@@ -307,18 +336,16 @@ function PerformanceDefinitions({ side }: { side: PerformanceSide }) {
         {tPerf(`${side}.purpose`)}
       </p>
       <dl className="mt-3 flex flex-col gap-2.5">
-        {(['totalR', ...PERFORMANCE_METRIC_KEYS] as const)
-          .filter((key) => key !== 'sampleCount')
-          .map((key) => (
-            <div key={key}>
-              <dt className="text-foreground text-xs font-semibold">
-                {tPerf(key === 'totalR' ? `${side}.heroLabel` : `metrics.${key}`)}
-              </dt>
-              <dd className="text-muted-foreground text-xs leading-relaxed">
-                {tPerf(`${side}.definitions.${key}`)}
-              </dd>
-            </div>
-          ))}
+        {(['totalR', ...PERFORMANCE_METRIC_KEYS] as const).map((key) => (
+          <div key={key}>
+            <dt className="text-foreground text-xs font-semibold">
+              {tPerf(key === 'totalR' ? `${side}.heroLabel` : `metrics.${key}`)}
+            </dt>
+            <dd className="text-muted-foreground text-xs leading-relaxed">
+              {tPerf(`${side}.definitions.${key}`)}
+            </dd>
+          </div>
+        ))}
       </dl>
     </>
   );

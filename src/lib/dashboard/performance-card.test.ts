@@ -26,6 +26,7 @@ function axis(overrides: Partial<DashboardPerformanceData> = {}): DashboardPerfo
     expectancyR: available('0.2903'),
     profitFactor: available('3.6400'),
     maximumDrawdownR: available('2.0000'),
+    payoffRatio: available('2.4000'),
     ...overrides,
   };
 }
@@ -39,6 +40,7 @@ const EMPTY_AXIS = axis({
   expectancyR: unavailable('no_trades'),
   profitFactor: unavailable('no_trades'),
   maximumDrawdownR: unavailable('no_trades'),
+  payoffRatio: unavailable('no_trades'),
 });
 
 function page(
@@ -86,18 +88,12 @@ describe('composePerformanceCards', () => {
     const [system, trader] = composePerformanceCards(
       page(axis({ sampleCount: 19, totalR: available('30.0000') }), axis({ sampleCount: 31 })),
     );
+    // The count stays on the MODEL — it is still a truthful canonical figure
+    // and other readers use it — but it is no longer one of the card's two
+    // rendered cells, so it is asserted here and nowhere in the DOM.
     expect(system.sampleCount).toBe(19);
     expect(trader.sampleCount).toBe(31);
-    expect(cellOf(system, 'sampleCount')).toEqual({
-      status: 'available',
-      text: '19',
-      tone: 'neutral',
-    });
-    expect(cellOf(trader, 'sampleCount')).toEqual({
-      status: 'available',
-      text: '31',
-      tone: 'neutral',
-    });
+    expect(system.metrics.map((c) => c.key)).not.toContain('sampleCount');
     expect(system.hero).toMatchObject({ text: '+30.00R' });
     expect(trader.hero).toMatchObject({ text: '+9.00R' });
   });
@@ -148,41 +144,63 @@ describe('composePerformanceCards', () => {
     it('keeps every supporting metric neutral however strong it reads', () => {
       const model = build({
         winRate: available('0.9800'),
-        profitFactor: available('14.0000'),
-        averageR: available('3.0000'),
-        expectancyR: available('3.0000'),
+        payoffRatio: available('14.0000'),
       });
       for (const key of PERFORMANCE_METRIC_KEYS) {
         expect(cellOf(model, key)).toMatchObject({ tone: 'neutral' });
       }
     });
 
-    it('renders Maximum Drawdown as an unsigned magnitude, not a gain', () => {
-      const value = cellOf(build({ maximumDrawdownR: available('2.0000') }), 'maximumDrawdownR');
-      // `+2.00R` would read as a 2R profit, and green would compound the lie.
-      expect(value).toEqual({ status: 'available', text: '2.00R', tone: 'neutral' });
+    it('renders Avg Win / Loss as a neutral multiple, never as an R value', () => {
+      // `2.40x`, not `+2.40R`: this is a ratio of two magnitudes, so it carries
+      // no sign and no R unit, and it is a reading rather than a verdict.
+      expect(cellOf(build({ payoffRatio: available('2.4000') }), 'payoffRatio')).toEqual({
+        status: 'available',
+        text: '2.40x',
+        tone: 'neutral',
+      });
     });
 
-    it('keeps the rest of the card when Profit Factor has no losses to divide by', () => {
-      const model = build({ profitFactor: unavailable('no_losses') });
-      expect(cellOf(model, 'profitFactor')).toEqual({
+    it('never renders a retired metric as a card cell', () => {
+      const keys = build({}).metrics.map((c) => c.key);
+      expect(keys).toEqual(['winRate', 'payoffRatio']);
+      for (const retired of [
+        'averageR',
+        'expectancyR',
+        'profitFactor',
+        'maximumDrawdownR',
+        'sampleCount',
+      ]) {
+        expect(keys).not.toContain(retired);
+      }
+    });
+
+    it('keeps the rest of the card when Avg Win / Loss has no losses to divide by', () => {
+      const model = build({ payoffRatio: unavailable('no_losses') });
+      expect(cellOf(model, 'payoffRatio')).toEqual({
         status: 'unavailable',
         reason: 'no_losses',
       });
       expect(model.hero).toMatchObject({ status: 'available' });
       expect(cellOf(model, 'winRate')).toMatchObject({ status: 'available' });
-      expect(cellOf(model, 'sampleCount')).toMatchObject({ status: 'available', text: '31' });
+      // The one rule that matters most here: an undefined denominator is a
+      // stated reason, never a fabricated 0x and never an Infinity.
+      expect(JSON.stringify(model)).not.toMatch(/Infinity|NaN/);
+      expect(JSON.stringify(model)).not.toContain('0x');
+    });
+
+    it('states a no-wins Avg Win / Loss rather than inventing a zero', () => {
+      const model = build({ payoffRatio: unavailable('no_wins') });
+      expect(cellOf(model, 'payoffRatio')).toEqual({ status: 'unavailable', reason: 'no_wins' });
       expect(JSON.stringify(model)).not.toMatch(/Infinity|NaN/);
     });
 
     it('preserves per-metric availability rather than blanking the card', () => {
       const model = build({
-        profitFactor: unavailable('no_losses'),
-        maximumDrawdownR: { status: 'error', reason: 'data_integrity_error' },
+        payoffRatio: { status: 'error', reason: 'data_integrity_error' },
       });
-      expect(cellOf(model, 'profitFactor')).toEqual({ status: 'unavailable', reason: 'no_losses' });
-      expect(cellOf(model, 'maximumDrawdownR')).toEqual({ status: 'error' });
-      expect(cellOf(model, 'expectancyR')).toMatchObject({ status: 'available' });
+      expect(cellOf(model, 'payoffRatio')).toEqual({ status: 'error' });
+      expect(cellOf(model, 'winRate')).toMatchObject({ status: 'available' });
       expect(model.populationEmpty).toBe(false);
     });
 
@@ -200,12 +218,8 @@ describe('composePerformanceCards', () => {
       expect(model.populationEmpty).toBe(true);
       expect(model.hero).toEqual({ status: 'empty' });
       expect(model.composition).toBeNull();
-      expect(cellOf(model, 'sampleCount')).toEqual({
-        status: 'available',
-        text: '0',
-        tone: 'neutral',
-      });
-      for (const key of PERFORMANCE_METRIC_KEYS.filter((k) => k !== 'sampleCount')) {
+      expect(model.sampleCount).toBe(0);
+      for (const key of PERFORMANCE_METRIC_KEYS) {
         expect(cellOf(model, key)).toEqual({ status: 'empty' });
       }
     });
