@@ -198,82 +198,114 @@ function AvailableBody({ view }: { view: RiskPerformanceAvailableView }) {
         time, $455 over 30D on the same fixture). Both remain on the payload
         and are stated in the info popover.
       */}
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:gap-6">
-        <div
-          {...dashboardWidgetAttributes(BALANCE_LAYOUT)}
-          className="bg-muted/50 flex min-w-0 flex-col rounded-lg px-3 py-2.5"
-        >
-          <HeroMetric
-            metricKey="modeledBalance"
-            label={t('metrics.modeledBalance')}
-            value={view.modeledBalanceText}
-            tone="neutral"
-          />
+      {/*
+        A STAT RAIL BESIDE THE PLOT, NOT TWO HALVES OF A FULL-WIDTH CARD.
+
+        The two figures used to be a `sm:grid-cols-2` inside a card that runs
+        the full width of the page. Measured at 1920, that gave each of them
+        a ~900px box to hold a label and a nine-character figure — about 14%
+        filled — while the chart sat underneath in a separate band. The
+        proportion got worse the wider the viewport, which is the signature
+        of stretching content instead of sizing it.
+
+        The rail is a FIXED 19rem rather than a fraction, for the same reason
+        the Execution Gap header rail is fixed: `$12,310.00` and `0.89%` need
+        a particular amount of room and not one pixel more, so a share of the
+        card would hand them the extra space all over again at 2560. Below
+        `lg` the rail and the plot stack, and the two figures return to being
+        a full-width pair — that IS the right shape when the column is narrow.
+      */}
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <div className="flex min-w-0 flex-col gap-3 lg:w-[19rem] lg:shrink-0">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div
+              {...dashboardWidgetAttributes(BALANCE_LAYOUT)}
+              className="bg-muted/50 flex min-w-0 flex-col rounded-lg px-3 py-2.5"
+            >
+              <HeroMetric
+                metricKey="modeledBalance"
+                label={t('metrics.modeledBalance')}
+                value={view.modeledBalanceText}
+                tone="neutral"
+              />
+            </div>
+            <div
+              {...dashboardWidgetAttributes(DRAWDOWN_LAYOUT)}
+              className="bg-muted/50 flex min-w-0 flex-col rounded-lg px-3 py-2.5"
+            >
+              <CurrentDrawdownMetric drawdown={view.currentDrawdown} />
+            </div>
+          </div>
+
+          {/*
+            THE CARRIED-OPENING GUARD, AND ONLY WHEN IT IS LOAD-BEARING.
+
+            A bounded window carries real history into its opening state, so
+            a 30D card reading $12,310 must never be taken for a period that
+            began at the Starting Balance — and the high-water mark the
+            drawdown is measured against may have been set before the window
+            opens. That is the one sentence a reader cannot reconstruct from
+            the card.
+
+            `kind: 'all'` needs no such warning: nothing was carried, the
+            opening IS the declared Starting Balance, and that fact is in the
+            info popover. Printing it permanently spent a line saying "this
+            is the normal case".
+
+            IT SITS IN THE RAIL, UNDER THE FIGURES IT QUALIFIES. It is a
+            caveat about what `$12,310.00` and `0.89%` mean, not about the
+            chart, so it belongs with them — and at 19rem it wraps to two or
+            three short lines directly beneath the number it is about,
+            instead of running 1750px across the card as a lone sentence.
+          */}
+          {view.opening.kind === 'all' ? null : (
+            <p
+              data-risk-opening={view.opening.kind}
+              className="text-muted-foreground text-xs leading-4"
+            >
+              {t(`opening.${view.opening.kind}`, { balance: view.opening.balanceText })}
+            </p>
+          )}
         </div>
-        <div
-          {...dashboardWidgetAttributes(DRAWDOWN_LAYOUT)}
-          className="bg-muted/50 flex min-w-0 flex-col rounded-lg px-3 py-2.5"
-        >
-          <CurrentDrawdownMetric drawdown={view.currentDrawdown} />
+
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {/*
+            §13 — the note appears only when a Strategy/Setup/Version filter
+            is actually active. Standing copy that explains a filter nobody
+            applied is clutter; the same fact is always available in the info
+            popover. It qualifies the SERIES rather than the two figures, so
+            unlike the opening guard it stays on the plot's side.
+          */}
+          {view.showsAnalyticalScopeNote ? (
+            <p
+              data-risk-scope-note
+              className="border-border bg-muted/40 text-muted-foreground rounded-md border p-3 text-xs leading-relaxed"
+            >
+              {t('scopeNote')}
+            </p>
+          ) : null}
+
+          {view.hasClosedTrades ? (
+            <BalanceFigure view={view} />
+          ) : (
+            /*
+              §16 — an Account with a Starting Balance and no closed Trades is
+              AVAILABLE, not empty and certainly not an error: every figure in
+              the rail is true. A full-height chart of one flat line carries
+              no information the sentence below does not, so it is not drawn.
+            */
+            <div
+              data-risk-state="no-trades"
+              className="border-border bg-muted/40 flex flex-col gap-1 rounded-md border p-3"
+            >
+              <p className="text-foreground text-sm font-medium">{t('states.noTradesTitle')}</p>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                {t('states.noTradesDescription')}
+              </p>
+            </div>
+          )}
         </div>
       </div>
-
-      {/*
-        THE CARRIED-OPENING GUARD, AND ONLY WHEN IT IS LOAD-BEARING.
-
-        A bounded window carries real history into its opening state, so a
-        30D card reading $12,310 must never be taken for a period that began
-        at the Starting Balance — and the high-water mark the drawdown is
-        measured against may have been set before the window opens. That is
-        the one sentence a reader cannot reconstruct from the card.
-
-        `kind: 'all'` needs no such warning: nothing was carried, the opening
-        IS the declared Starting Balance, and that fact is in the info
-        popover. Printing it permanently spent a line saying "this is the
-        normal case".
-      */}
-      {view.opening.kind === 'all' ? null : (
-        <p
-          data-risk-opening={view.opening.kind}
-          className="text-muted-foreground text-xs leading-4"
-        >
-          {t(`opening.${view.opening.kind}`, { balance: view.opening.balanceText })}
-        </p>
-      )}
-
-      {/*
-        §13 — the note appears only when a Strategy/Setup/Version filter is
-        actually active. Standing copy that explains a filter nobody applied
-        is clutter; the same fact is always available in the info popover.
-      */}
-      {view.showsAnalyticalScopeNote ? (
-        <p
-          data-risk-scope-note
-          className="border-border bg-muted/40 text-muted-foreground rounded-md border p-3 text-xs leading-relaxed"
-        >
-          {t('scopeNote')}
-        </p>
-      ) : null}
-
-      {view.hasClosedTrades ? (
-        <BalanceFigure view={view} />
-      ) : (
-        /*
-          §16 — an Account with a Starting Balance and no closed Trades is
-          AVAILABLE, not empty and certainly not an error: every figure above
-          is true. A full-height chart of one flat line carries no information
-          the sentence below does not, so it is not drawn.
-        */
-        <div
-          data-risk-state="no-trades"
-          className="border-border bg-muted/40 flex flex-col gap-1 rounded-md border p-3"
-        >
-          <p className="text-foreground text-sm font-medium">{t('states.noTradesTitle')}</p>
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            {t('states.noTradesDescription')}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
