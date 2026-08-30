@@ -126,14 +126,66 @@ describe('ExecutionGapSection — summary strip', () => {
     const strip = section(container).querySelector('[data-execution-gap-summary]') as HTMLElement;
     // The paired figures.
     expect(within(strip).getByText('-13.80R')).toBeVisible();
-    expect(within(strip).getByText('-0.22R')).toBeVisible();
     expect(within(strip).getByText('61.45%')).toBeVisible();
-    expect(within(strip).getByText('64')).toBeVisible();
     // The independent Population A/B totals must not appear here.
     expect(strip.textContent).not.toContain('36.25');
     expect(strip.textContent).not.toContain('23.10');
     expect(strip.textContent).not.toContain('68');
     expect(strip.textContent).not.toContain('66');
+  });
+
+  /**
+   * The Dashboard content budget for this section: EXACTLY two headline
+   * figures, and these two. Average Execution Gap and the paired Trade count
+   * are still composed and still on the payload — asserted below — they are
+   * simply not headlines any more.
+   */
+  it('renders exactly two headline metrics and neither retired figure', () => {
+    const { container } = renderSection();
+    const strip = section(container).querySelector('[data-execution-gap-summary]') as HTMLElement;
+    const keys = [...strip.querySelectorAll('[data-execution-gap-metric]')].map((node) =>
+      node.getAttribute('data-execution-gap-metric'),
+    );
+    expect(keys).toEqual(['totalGap', 'systemEdgeCaptured']);
+    expect(within(strip).getByText('Execution Gap')).toBeVisible();
+    expect(within(strip).getByText('System Edge Captured')).toBeVisible();
+    // The average (-0.22R) and the paired count (64) are gone from the strip.
+    expect(strip.textContent).not.toContain('-0.22R');
+    expect(strip.textContent).not.toContain('Average');
+    expect(strip.textContent).not.toContain('Paired');
+    expect(strip.textContent).not.toContain('64');
+  });
+
+  /**
+   * §8 — the Gap is the answer and outranks the ratio that qualifies it. Two
+   * equal figures would read as another KPI row.
+   */
+  it('gives the Gap a stronger type step than System Edge Captured', () => {
+    const { container } = renderSection();
+    const strip = section(container).querySelector('[data-execution-gap-summary]') as HTMLElement;
+    const gap = strip.querySelector('[data-execution-gap-metric="totalGap"] dd span');
+    const ratio = strip.querySelector('[data-execution-gap-metric="systemEdgeCaptured"] dd span');
+    // 24px on a phone, 30px from `sm` up — see the component for why the
+    // headline steps down at 320. Either way it outranks the ratio.
+    expect(gap?.className).toContain('text-2xl');
+    expect(gap?.className).toContain('sm:text-3xl');
+    expect(ratio?.className).toContain('text-xl');
+    expect(ratio?.className).not.toContain('text-2xl');
+    expect(ratio?.className).not.toContain('text-3xl');
+  });
+
+  /**
+   * §18 — System Edge Captured is unbounded, so it carries no meter of any
+   * kind. A clamped bar would make 137% indistinguishable from 100%.
+   */
+  it('renders System Edge Captured as a number with no progress visual', () => {
+    const { container } = renderSection();
+    const cell = section(container).querySelector(
+      '[data-execution-gap-metric="systemEdgeCaptured"]',
+    ) as HTMLElement;
+    expect(cell.querySelector('svg')).toBeNull();
+    expect(cell.querySelector('progress')).toBeNull();
+    expect(cell.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it('keeps the Total Gap sign and its negative tone', () => {
@@ -222,14 +274,36 @@ describe('ExecutionGapSection — charts', () => {
     expect(within(strip).getByText('-13.80R')).toBeVisible();
   });
 
-  it('renders both plots with accessible labels rather than bare SVG', () => {
+  it('renders exactly one plot, with an accessible label rather than bare SVG', () => {
     const { container } = renderSection();
+    const panel = section(container);
     expect(
-      within(section(container)).getByRole('img', { name: /Cumulative paired System R/i }),
+      within(panel).getByRole('img', { name: /Cumulative paired System R/i }),
     ).toBeInTheDocument();
-    expect(
-      within(section(container)).getByRole('img', { name: /Execution Gap per day/i }),
-    ).toBeInTheDocument();
+    // §15/§16 — the daily strip and the distribution bar are no longer
+    // mounted on the Dashboard. One visualisation, which answers the one
+    // question a chart answers better than a number: when did the two curves
+    // diverge?
+    expect(within(panel).queryByRole('img', { name: /Execution Gap per day/i })).toBeNull();
+    expect(panel.querySelectorAll('[role="img"]')).toHaveLength(1);
+    expect(panel.querySelector('[data-execution-gap-distribution]')).toBeNull();
+  });
+
+  /**
+   * §29 — no permanent explanatory prose survives on this card. The chart's
+   * own `figcaption` and the fallback table stay, but both are screen-reader
+   * only, so they are asserted as PRESENT rather than counted as visible copy.
+   */
+  it('carries no visible explanatory paragraph while keeping its accessible text', () => {
+    const { container } = renderSection();
+    const panel = section(container);
+    const visibleProse = [...panel.querySelectorAll('p, figcaption')].filter(
+      (node) => !node.classList.contains('sr-only') && !node.closest('.sr-only'),
+    );
+    expect(visibleProse).toHaveLength(0);
+    // Still there for assistive technology.
+    expect(panel.querySelector('figcaption.sr-only')).not.toBeNull();
+    expect(panel.querySelector('table')).not.toBeNull();
   });
 
   it('names both series in text so identity is never colour alone', () => {
@@ -260,20 +334,24 @@ describe('ExecutionGapSection — charts', () => {
 });
 
 describe('ExecutionGapSection — distribution', () => {
-  it('shows the three relative counts without grading the trader', () => {
-    const { container } = renderSection();
-    const distribution = section(container).querySelector(
-      '[data-execution-gap-distribution]',
-    ) as HTMLElement;
-    expect(within(distribution).getByText('Underperformed System')).toBeVisible();
-    expect(within(distribution).getByText('45')).toBeVisible();
-    expect(within(distribution).getByText('Matched System')).toBeVisible();
-    expect(within(distribution).getByText('2')).toBeVisible();
-    expect(within(distribution).getByText('Outperformed System')).toBeVisible();
-    expect(within(distribution).getByText('17')).toBeVisible();
-    for (const forbidden of ['Bad', 'Good', 'Grade', 'Score']) {
-      expect(distribution.textContent).not.toContain(forbidden);
+  /**
+   * §16 — the distribution leaves the DASHBOARD presentation only. Its data is
+   * still composed and still handed to this component; `gap-distribution.tsx`
+   * still exists and still renders it. Nothing about the population changed.
+   */
+  it('no longer renders the distribution while its data is still supplied', () => {
+    const model = comparison();
+    const { container } = renderSection(model);
+    expect(section(container).querySelector('[data-execution-gap-distribution]')).toBeNull();
+    for (const label of ['Underperformed System', 'Matched System', 'Outperformed System']) {
+      expect(section(container).textContent).not.toContain(label);
     }
+    // The payload the Dashboard stopped rendering is unchanged.
+    expect(model.status === 'available' && model.distribution).toMatchObject({
+      underperformedCount: 45,
+      matchedCount: 2,
+      outperformedCount: 17,
+    });
   });
 });
 
@@ -300,7 +378,6 @@ describe('ExecutionGapSection — availability', () => {
     expect(within(panel).getByRole('img', { name: /Cumulative paired System R/i })).toBeVisible();
     const strip = panel.querySelector('[data-execution-gap-summary]') as HTMLElement;
     expect(within(strip).getByText('-13.80R')).toBeVisible();
-    expect(within(panel).getByText('45')).toBeVisible();
     expect(panel.querySelector('[data-execution-gap-state="empty"]')).toBeNull();
   });
 
@@ -329,7 +406,11 @@ describe('ExecutionGapSection — availability', () => {
     // No plot frame, no axes, no legend — an empty chart still reads as a chart.
     expect(panel.querySelector('[role="img"]')).toBeNull();
     expect(panel.querySelector('table')).toBeNull();
-    expect(within(panel).getByText('0')).toBeVisible();
+    // Both headline metrics state the same canonical reason rather than
+    // falling back to 0R / 0% / n/a (§20).
+    const strip = panel.querySelector('[data-execution-gap-summary]') as HTMLElement;
+    expect(strip.querySelectorAll('[data-metric-status="unavailable"]')).toHaveLength(2);
+    expect(strip.textContent).not.toMatch(/Infinity|NaN|0\.00R|100%/);
   });
 
   it('distinguishes an integrity error from an empty population', () => {

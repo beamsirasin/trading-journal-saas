@@ -401,20 +401,33 @@ test.describe('real Dashboard', () => {
     // D5B — the Execution Gap section, reading Population C only.
     const gapSummary = comparison.locator('[data-execution-gap-summary]');
     const gapMetric = (key: string) => gapSummary.locator(`[data-execution-gap-metric="${key}"]`);
-    // Average Execution Gap is Actual - System: (-4R + -1R) / 2 = -2.5R.
-    await expect(gapMetric('averageGap').getByText('-2.50R')).toBeVisible();
+    /*
+      TWO HEADLINE FIGURES AND ONE CHART.
+
+      The Execution Gap headline is the SUM over the paired population —
+      -4R + -1R = -5R — by explicit product decision; Average Execution Gap
+      is still computed but is no longer a Dashboard headline, and the paired
+      count is no longer a third KPI. Population C itself is untouched: the
+      -5R total is still the same two paired Trades it always was.
+    */
+    await expect(gapMetric('totalGap').getByText('-5.00R')).toBeVisible();
+    await expect(gapSummary.getByText('Execution Gap')).toBeVisible();
     await expect(gapMetric('systemEdgeCaptured').getByText('0.00%')).toBeVisible();
     await expect(gapSummary.getByText('System Edge Captured')).toBeVisible();
-    // Total Gap is the SUM over the two paired Trades: -4R + -1R = -5R.
-    await expect(gapMetric('totalGap').getByText('-5.00R')).toBeVisible();
-    // Paired count is Population C and is allowed to differ from D4's counts.
-    await expect(gapMetric('pairedTrades').getByText('2', { exact: true })).toBeVisible();
-    // Both plots exist and are reachable by name, not as bare SVG.
+    await expect(gapSummary.locator('[data-execution-gap-metric]')).toHaveCount(2);
+    for (const retired of ['averageGap', 'pairedTrades']) {
+      await expect(gapSummary.locator(`[data-execution-gap-metric="${retired}"]`)).toHaveCount(0);
+    }
+    // Exactly one plot, reachable by name rather than as bare SVG. The daily
+    // strip and the distribution bar left the Dashboard presentation; their
+    // data and their components are untouched.
     await expect(
       comparison.getByRole('img', { name: /Cumulative paired System R/i }),
     ).toBeVisible();
-    await expect(comparison.getByRole('img', { name: /Execution Gap per day/i })).toBeVisible();
-    await expect(comparison.getByText('Underperformed System')).toBeVisible();
+    await expect(comparison.getByRole('img')).toHaveCount(1);
+    await expect(comparison.getByRole('img', { name: /Execution Gap per day/i })).toHaveCount(0);
+    await expect(comparison.locator('[data-execution-gap-distribution]')).toHaveCount(0);
+    await expect(comparison.getByText('Underperformed System')).toHaveCount(0);
     // §14 — the Recent Trades preview is three fields (day, symbol, Actual R),
     // so the Strategy and Setup names no longer render anywhere on the
     // Dashboard. The pinned-vs-renamed version-name invariant they used to
@@ -458,8 +471,9 @@ test.describe('real Dashboard', () => {
     // this section's rendered metrics.
     await expect(system.getByText('+2.00R')).toBeVisible();
     await expect(trader.getByText('+1.00R')).toBeVisible();
-    // The one 30D pair is Actual -1R minus System +3R = -4R.
-    await expect(gapMetric('averageGap').getByText('-4.00R')).toBeVisible();
+    // The one 30D pair is Actual -1R minus System +3R = -4R, and with a
+    // single pair the summed headline equals that pair's own gap.
+    await expect(gapMetric('totalGap').getByText('-4.00R')).toBeVisible();
     await expect(gapMetric('systemEdgeCaptured').getByText('-33.33%')).toBeVisible();
     // 30D Net P&L is -100 + 100 = exactly zero: unsigned and neutral, never "+$0.00".
     await expect(netPnl.getByText('$0.00', { exact: true })).toBeVisible();
@@ -564,7 +578,7 @@ test.describe('real Dashboard', () => {
         client: node.clientWidth,
       }));
       expect(gapInner.scroll).toBeLessThanOrEqual(gapInner.client + 1);
-      await expect(comparison.getByText('Total Execution Gap')).toBeVisible();
+      await expect(comparison.getByText('Execution Gap', { exact: true }).first()).toBeVisible();
       await expect(
         comparison.getByRole('img', { name: /Cumulative paired System R/i }),
       ).toBeVisible();

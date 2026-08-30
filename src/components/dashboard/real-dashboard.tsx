@@ -425,16 +425,16 @@ export function DashboardSkeleton() {
     <div className="flex min-w-0 flex-col">
       <DashboardLoadingStatus message={t('loading')} />
       {/*
-        EVERY HEIGHT HERE IS A MEASUREMENT, AND THEY ALL MOVED IN THIS PASS.
-        Re-measured on the populated fixture at 1440 after the density work:
-        KPI 106 -> 120 (the row's new padding), Needs Attention 78 -> 74 and
-        the section heading 38 -> 24 (both lost a description line), Execution
-        Gap 493 -> 525 and Risk 616 -> 526 (the two major charts moved to one
-        shared plot height), Recent Trades 489 -> 413 (three fields, seven
-        44px rows) and Calendar 640 -> 630 (one value per cell). A skeleton
-        carrying the old numbers is worse than no skeleton: it reserves a
-        geometry the page no longer has and guarantees the jump it exists to
-        prevent.
+        EVERY HEIGHT HERE IS A MEASUREMENT, AND EACH ONE IS RE-TAKEN WHENEVER
+        ITS SECTION CHANGES SHAPE. Measured on the populated fixture at 1440:
+        KPI 120 (the row's padding pass), Needs Attention 74 and the section
+        heading 24 (both lost a description line), the System/Trader pair 165
+        (three metrics a side, laid out beside the hero), Execution Gap 416
+        (two headline figures and one chart, down from four and three), Risk
+        526 (the shared plot ramp), Recent Trades 413 (three fields, seven
+        44px rows) and Calendar 630 (one value per cell). A skeleton carrying
+        stale numbers is worse than no skeleton: it reserves a geometry the
+        page no longer has and guarantees the jump it exists to prevent.
 
         The blocks are borderless for the same reason the real cards now are —
         they stand in for those cards, and an outlined placeholder resolving
@@ -467,7 +467,11 @@ export function DashboardSkeleton() {
             <div className="bg-card h-[165px] rounded-lg" />
           </div>
         </div>
-        <div className="bg-card mt-6 h-[525px] rounded-lg" />
+        {/* Execution Gap, 525 -> 416: two headline figures instead of four,
+            and one cumulative chart instead of a chart plus a daily strip
+            plus a distribution bar. Measured at 1440 on the populated
+            fixture, and stable from 1024 up. */}
+        <div className="bg-card mt-6 h-[416px] rounded-lg" />
         {/*
           D6B's unequal section, reserved at the geometry it actually renders
           at — five columns of Trade rows beside seven of Calendar. A skeleton

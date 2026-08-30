@@ -12,9 +12,7 @@ import {
   CumulativeComparisonChart,
   type ExecutionComparisonChartPoint,
 } from './cumulative-comparison-chart';
-import { DailyGapChart } from './daily-gap-chart';
 import { ExecutionGapSummary } from './execution-gap-summary';
-import { GapDistribution } from './gap-distribution';
 
 const LAYOUT = dashboardLayoutItem('execution.gap');
 
@@ -59,10 +57,12 @@ function buildDateLabeller(locale: string): (date: string) => string {
  * while these 64 paired Trades total +35.80R and +22.00R. Reconciling them
  * would destroy the distinction the product exists to make.
  *
- * The section is one story told in five beats — header, summary, cumulative
- * comparison, the daily strip beneath it, then the distribution — inside a
- * single card rather than five competing ones, so the eye travels down it
- * once.
+ * THREE BEATS, DOWN FROM FIVE. Header, the two headline figures, one
+ * cumulative comparison chart. The daily strip and the distribution bar that
+ * used to follow are diagnosis rather than detection and are no longer
+ * mounted here; see `ExecutionGapBody` for what that did and did not remove.
+ * The section still tells one story inside one card, so the eye travels down
+ * it once.
  */
 export function ExecutionGapSection({
   comparison,
@@ -85,21 +85,22 @@ export function ExecutionGapSection({
     >
       <Card data-dashboard-panel="execution-gap" className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
         {/*
-          The header and the four figures share ONE row from `lg` up.
+          The header and the two figures share ONE row from `lg` up.
 
           They are the same beat — "here is the question, here is the answer" —
           and the section is full width, so stacking them spent an entire 68px
-          band on a title and a sentence with 900px of nothing beside them
-          before the first number appeared. Below `lg` they stack, because four
-          metrics and a two-line header cannot both hold a tablet's width.
-          `lg:w-[19rem]` fixes the header's share rather than letting it
-          compete with the figures, which is what kept the metric row from
-          wrapping unevenly as the gap totals change width.
+          band on a title with 900px of nothing beside it before the first
+          number appeared. Below `lg` they stack.
+
+          With two content-sized cells rather than four stretched ones the row
+          is header · figures · ⓘ, and `me-auto` on the figures is what keeps
+          the affordance on the far edge without giving either cell width it
+          does not need.
         */}
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
           {/* The header's fixed share shrank with the sentence it carried —
               a mark and a two-word title, not a mark and a wrapped
-              paragraph — and the width returns to the four figures. */}
+              paragraph. */}
           <div className="flex min-w-0 items-center justify-between gap-3 lg:w-[13rem] lg:shrink-0 xl:w-[14rem]">
             <div className="flex min-w-0 items-start gap-2.5">
               <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
@@ -129,7 +130,7 @@ export function ExecutionGapSection({
             </div>
           </div>
 
-          <ExecutionGapSummary comparison={comparison} className="flex-1" />
+          <ExecutionGapSummary comparison={comparison} className="lg:me-auto" />
 
           {/* One affordance, rendered on whichever side the layout puts it —
               never two in the DOM at once, which would give a screen reader
@@ -195,54 +196,53 @@ function ExecutionGapBody({
     (point) => ({ ...point, dateLabel: labelFor(point.date) }),
   );
 
+  /*
+    ONE VISUALISATION, DOWN FROM THREE.
+
+    The Daily Gap strip and the Gap Distribution bar are no longer rendered on
+    the Dashboard. Both are day-by-day / shape-of-the-population diagnostics —
+    DIAGNOSE material — and this section's job is the two headline figures
+    above plus the one question a chart answers better than a number can:
+    WHEN did the two curves start to diverge?
+
+    NOTHING WAS DELETED. `comparison.dailySeries` and
+    `comparison.distribution` are still composed by D5A and still on the
+    payload; `daily-gap-chart.tsx` and `gap-distribution.tsx` are still in the
+    tree, still typed, still translated, and still correct — they are simply
+    not mounted here. That is deliberate: the eventual Analytics
+    execution-gap view is where they belong, and deleting working components
+    now would only mean rewriting them then. No DTO field was pruned to match
+    the UI (§27).
+
+    The screen-reader fallback table keeps every column it had, including the
+    per-day gap and the paired count, so removing two visuals removes no
+    information from assistive technology.
+  */
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <figure className="flex min-w-0 flex-col gap-2">
-        <figcaption className="sr-only">{t('chart.cumulativeCaption')}</figcaption>
-        {/*
-          The legend and the daily strip's own caption share ONE row.
+    <figure className="flex min-w-0 flex-col gap-2">
+      <figcaption className="sr-only">{t('chart.cumulativeCaption')}</figcaption>
+      {/*
+        The legend is the whole of this row now — the daily strip's caption
+        that used to sit opposite it went with the strip.
 
-          They used to occupy two separate full-width lines 300px apart, for a
-          total of ~44px of chrome around 340px of plot. Both are labels for
-          the same figure and neither needs a line of its own — the legend
-          sits left where the eye enters, the strip's caption right, where the
-          strip's own label used to be.
-
-          Identity is never colour alone: each entry names its stroke style, so
-          the two lines stay separable in greyscale and under any colour
-          vision.
-        */}
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-5 gap-y-1.5">
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            <LegendItem
-              label={t('series.system')}
-              note={t('series.systemNote')}
-              swatchClassName="bg-primary"
-            />
-            <LegendItem
-              label={t('series.actual')}
-              note={t('series.actualNote')}
-              swatchClassName="bg-foreground"
-            />
-          </ul>
-          <p className="text-muted-foreground shrink-0 text-xs">{t('daily.title')}</p>
-        </div>
-        <CumulativeComparisonChart points={chartPoints} />
-        {/*
-          No gap between the plot and the strip: they share an x-axis, they
-          are read as one figure, and the strip's own dates are hidden
-          precisely so a reader can follow one column down from the line to
-          the bar without a seam between them.
-        */}
-        <DailyGapChart points={chartPoints} />
-        <ComparisonFallbackTable points={chartPoints} />
-      </figure>
-
-      <GapDistribution
-        distribution={comparison.distribution}
-        className="border-border border-t pt-3"
-      />
-    </div>
+        Identity is never colour alone: each entry names its stroke style, so
+        the two lines stay separable in greyscale and under any colour vision.
+      */}
+      <ul className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+        <LegendItem
+          label={t('series.system')}
+          note={t('series.systemNote')}
+          swatchClassName="bg-primary"
+        />
+        <LegendItem
+          label={t('series.actual')}
+          note={t('series.actualNote')}
+          swatchClassName="bg-foreground"
+        />
+      </ul>
+      <CumulativeComparisonChart points={chartPoints} />
+      <ComparisonFallbackTable points={chartPoints} />
+    </figure>
   );
 }
 

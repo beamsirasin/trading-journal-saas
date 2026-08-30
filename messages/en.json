@@ -603,11 +603,8 @@
       "help": "Execution Gap is Actual R minus System R, measured only on Trades where both the Actual and the System outcome are complete. Negative means you captured less R than the System offered; positive means you captured more. It is a measurement of execution against available System edge, not a verdict on you.",
       "notAvailableShort": "n/a",
       "summary": {
-        "totalGap": "Total Execution Gap",
-        "totalGapHint": "Actual R minus System R across paired Trades.",
-        "averageGap": "Average Execution Gap",
-        "systemEdgeCaptured": "System Edge Captured",
-        "pairedTrades": "Paired Trades"
+        "totalGap": "Execution Gap",
+        "systemEdgeCaptured": "System Edge Captured"
       },
       "series": {
         "system": "System",

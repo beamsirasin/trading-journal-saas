@@ -426,12 +426,18 @@ describe('RealDashboard', () => {
     expect(within(system).getByText('+4.00R')).toBeVisible();
   });
 
+  /**
+   * The section's headline R figure is the SUMMED `executionGapR`, by explicit
+   * product decision — Average Execution Gap remains a canonical computed
+   * diagnostic on the payload but is no longer a Dashboard headline. Signed
+   * tone is unchanged: the sign is the data.
+   */
   it.each([
     ['2.0000', '+2.00R'],
     ['-1.0000', '-1.00R'],
-  ] as const)('renders the Average Execution Gap %s as %s with its sign', (value, display) => {
+  ] as const)('renders the Execution Gap %s as %s with its sign', (value, display) => {
     const model = overview({
-      comparison: withSummary(overview().comparison, { averageExecutionGapR: available(value) }),
+      comparison: withSummary(overview().comparison, { executionGapR: available(value) }),
     });
     const { container } = renderDashboard(model);
     const comparison = container.querySelector(
@@ -439,8 +445,27 @@ describe('RealDashboard', () => {
     ) as HTMLElement;
     const metric = within(comparison).getByText(display);
     expect(metric).toBeVisible();
-    // Signed tone is the D5B contract for Gap figures: the sign is the data.
     expect(metric.className).toContain(value.startsWith('-') ? 'text-negative' : 'text-positive');
+  });
+
+  it('keeps Average Execution Gap on the payload while never rendering it', () => {
+    const model = overview({
+      comparison: withSummary(overview().comparison, {
+        executionGapR: available('-5.0000'),
+        averageExecutionGapR: available('-2.5000'),
+      }),
+    });
+    const { container } = renderDashboard(model);
+    const comparison = container.querySelector(
+      '[data-dashboard-panel="execution-gap"]',
+    ) as HTMLElement;
+    expect(within(comparison).getByText('-5.00R')).toBeVisible();
+    expect(comparison.textContent).not.toContain('-2.50R');
+    // The data itself is untouched — only the presentation dropped it.
+    expect(model.comparison.summary.averageExecutionGapR).toEqual({
+      status: 'available',
+      value: '-2.5000',
+    });
   });
 
   it('shows canonical unavailable semantics for efficiency and no comparable Trades', () => {
@@ -465,7 +490,8 @@ describe('RealDashboard', () => {
         }),
       }),
     );
-    expect(screen.getByText('0', { exact: true })).toBeVisible();
+    // The paired count is no longer a headline, so the empty population is
+    // stated in words on both remaining metrics rather than as a bare "0".
     expect(screen.getAllByText('No comparable Trades').length).toBeGreaterThanOrEqual(1);
   });
 

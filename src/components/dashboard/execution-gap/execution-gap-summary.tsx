@@ -16,34 +16,49 @@ const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
   neutral: 'text-foreground',
 };
 
-/** One raised metric cell. A surface step, deliberately not a border (§23). */
-const SUMMARY_CELL = 'bg-muted/50 flex min-w-0 flex-col gap-0.5 rounded-lg px-3 py-2';
+/**
+ * One raised metric cell. A surface step, deliberately not a border (§23).
+ *
+ * `sm:w-52` fixes the pair's footprint so neither cell grows with the card:
+ * the Gap's widest real value is a signed four-character R and the ratio's is
+ * a signed percentage, both of which fit comfortably, and an unavailable
+ * state's sentence wraps inside the same box rather than reflowing the row.
+ */
+const SUMMARY_CELL =
+  'bg-muted/50 flex min-w-0 flex-col gap-0.5 rounded-lg px-3 py-2 sm:w-52 sm:shrink-0';
 
 /**
- * The four figures that answer the section's question in text, before any
+ * The two figures that answer the section's question in text, before any
  * chart is read.
  *
  * They exist as much for accessibility as for scanning: a chart must never be
  * the sole carrier of critical information, and these are the critical
- * information. Every one of them is a canonical D5A metric formatted once
- * here — no ratio is divided, no total is summed, and Average Gap in
- * particular is D5A's own `averageExecutionGapR` rather than
- * `total / count` re-derived in React, which would re-round an already
- * rounded figure.
+ * information. Both are canonical D5A metrics formatted once here — no ratio
+ * is divided and no total is summed in React.
  *
- * R2C §11/§22 — FOUR RAISED CELLS, NOT FOUR FLOATING TEXT BLOCKS. Spread
- * across a full-width section these were four label/value pairs adrift in
- * roughly 1300px of card, ~340px apart, with nothing but whitespace saying
- * they belonged together. Each now sits on `--muted`, one surface step off
- * the card, which groups them into a readable band and uses the horizontal
- * space the section actually has. A step in SURFACE, never a border: outlining
- * four cells inside a bordered card is precisely the nested-box treatment §23
- * rules out.
+ * TWO, DOWN FROM FOUR, BY EXPLICIT PRODUCT DECISION. Average Execution Gap
+ * and the paired Trade count left the first layer. The Dashboard is the
+ * DETECT surface and this section answers exactly two questions — how much R
+ * the execution gave up or gained against the paired System, and how much of
+ * that System's edge it captured. Both retired figures remain computed and
+ * remain on `DashboardExecutionComparison`; `averageExecutionGapR` in
+ * particular is untouched as a diagnostic, and the paired count is still
+ * carried by the chart's own tooltip and by its screen-reader table, so
+ * sample size never becomes unknowable — it simply stops being a third
+ * headline (§17).
  *
- * The `totalGapHint` line is gone from this layer. It restated the definition
- * — "Actual R minus System R across paired Trades" — that the section's own
- * info popover already gives more completely and more carefully, and it was
- * the one thing making the first cell taller than the other three.
+ * WHICH R FIGURE IS THE HEADLINE IS A RECORDED DECISION, NOT A DEFAULT.
+ * `CLAUDE.md` §6 and the Phase 13H freeze name `averageExecutionGapR` the
+ * primary ANALYTICAL aggregate. For the Dashboard's headline the product
+ * decision is the summed `executionGapR`: "you captured 13.80R less than the
+ * paired System offered" is the magnitude a trader acts on, where a -0.22R
+ * per-Trade average reads as noise at a glance. The average is not
+ * demoted anywhere else and no formula changed.
+ *
+ * HIERARCHY IS TWO STEPS, NOT TWO EQUAL BOXES (§8). The Gap is the answer and
+ * is set a full step above System Edge Captured, which qualifies it. Two
+ * equal cells stretched across a full-width card would read as a second KPI
+ * row, which is precisely what this section is not.
  */
 export function ExecutionGapSummary({
   comparison,
@@ -58,14 +73,19 @@ export function ExecutionGapSummary({
   return (
     <dl
       data-execution-gap-summary
-      className={cn('grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4', className)}
+      // Content-sized, never stretched. With four cells this was a
+      // `flex-1 sm:grid-cols-4` band that used the card's whole width; two
+      // cells given the same treatment would each be ~640px of surface
+      // holding one number. Fixed minimums keep them a readable PAIR and let
+      // the header keep the width it no longer has to compete for.
+      className={cn('grid min-w-0 grid-cols-2 gap-1.5 sm:flex sm:flex-none', className)}
     >
       {/*
-        Total Gap keeps its signed tone: negative means the Trader captured
-        less R than the paired System, positive means more. The formula is
-        never reversed to make a negative read as a friendly positive — a
-        chart whose sign flips between the axis and the summary is worse than
-        one that says an uncomfortable thing plainly.
+        The Gap keeps its signed tone: negative means the Trader captured less
+        R than the paired System, positive means more. The formula is never
+        reversed to make a negative read as a friendly positive — a chart
+        whose sign flips between the axis and the summary is worse than one
+        that says an uncomfortable thing plainly.
       */}
       <SummaryMetric
         metricKey="totalGap"
@@ -74,18 +94,13 @@ export function ExecutionGapSummary({
         style="r"
         prominent
       />
-      <SummaryMetric
-        metricKey="averageGap"
-        label={t('summary.averageGap')}
-        metric={summary.averageExecutionGapR}
-        style="r"
-      />
       {/*
         System Edge Captured is a NUMBER, never a progress bar or a gauge.
         `137%` and `-22%` are both canonical results, and every bar or radial
         meter would have to clamp them — turning a real "captured more than
         the System offered" into a full bar indistinguishable from exactly
-        100%. A clamped chart of an unclamped metric is a lie.
+        100%. A clamped chart of an unclamped metric is a lie, which is why
+        this metric has no visual indicator at all.
       */}
       <SummaryMetric
         metricKey="systemEdgeCaptured"
@@ -94,14 +109,6 @@ export function ExecutionGapSummary({
         style="percent"
         forceNeutral
       />
-      <div data-execution-gap-metric="pairedTrades" className={SUMMARY_CELL}>
-        <dt>
-          <MetricLabel variant="plain">{t('summary.pairedTrades')}</MetricLabel>
-        </dt>
-        <dd className="numeric text-xl leading-7 font-semibold tracking-tight">
-          {summary.comparableCount}
-        </dd>
-      </div>
     </dl>
   );
 }
@@ -141,7 +148,18 @@ function SummaryMetric({
           <span
             className={cn(
               'numeric font-semibold tracking-tight break-words',
-              prominent ? 'text-2xl leading-8' : 'text-xl leading-7',
+              // A full step, not a nudge: the Gap is the section's answer and
+              // System Edge Captured qualifies it. At `text-2xl` against
+              // `text-xl` the two read as siblings, which is the "second KPI
+              // row" reading §8 rules out.
+              //
+              // 24px below `sm`, though. At 320 the two cells share 256px of
+              // card, leaving ~101px of content each, and `-13.80R` set at
+              // 30px in the tabular mono stack needs ~109px — it broke mid
+              // numeral, onto a second line ending in a lone "R". A figure
+              // that wraps is worse than a figure one step smaller, and the
+              // step against `text-xl` survives either way.
+              prominent ? 'text-2xl leading-8 sm:text-3xl sm:leading-9' : 'text-xl leading-7',
               forceNeutral ? 'text-foreground' : TONE_CLASS[formatted.tone],
             )}
           >
