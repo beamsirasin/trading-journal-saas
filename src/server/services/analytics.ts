@@ -46,7 +46,7 @@ export async function getAnalyticsSnapshot(
       trader: raw.data.trader,
       system: raw.data.system,
       systemPendingCount: raw.data.systemPendingCount,
-      comparison: raw.data.paired,
+      comparison: raw.data.comparisonCandidates,
       rules: raw.data.rules,
       mistakes: raw.data.mistakes,
       setupAdherence: raw.data.setupAdherence.map((record) => ({

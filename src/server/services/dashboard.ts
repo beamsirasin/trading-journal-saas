@@ -35,7 +35,7 @@ export async function getDashboardPageData(
       account: raw.data.account,
       trader: raw.data.trader,
       system: raw.data.system,
-      comparison: raw.data.paired,
+      comparison: raw.data.comparisonCandidates,
       attention: raw.data.attention,
       recentTrades: raw.data.recentTrades,
     }),

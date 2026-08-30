@@ -243,6 +243,26 @@ export interface ComparisonMetricRecord {
 
 export interface ComparisonAnalyticsModel {
   readonly comparableCount: number;
+  /**
+   * The full System axis over the PAIRED population, not over Population B.
+   *
+   * This is what makes a System figure and an Actual figure comparable at
+   * all. The System card reads Population B and the Trader card reads
+   * Population A, and the two legitimately differ — a closed Trade whose
+   * System side is still pending is a Trader Trade and not a System one, and
+   * each axis is additionally date-anchored to its own exit column. Set side
+   * by side without saying so, `System Win Rate 42.65%` against
+   * `Actual Win Rate 40.91%` invites a subtraction of two numbers that were
+   * never counted over the same Trades.
+   *
+   * Both of these are composed from Population C by the SAME
+   * `composePerformanceAxis` the two cards use, so every figure keeps its
+   * approved definition and only the population is pinned. Nothing here is a
+   * new formula.
+   */
+  readonly pairedSystemAxis: PerformanceAnalyticsModel;
+  /** The Actual axis over the same paired population. See `pairedSystemAxis`. */
+  readonly pairedActualAxis: PerformanceAnalyticsModel;
   readonly pairedSystemTotalR: AnalyticsMetric;
   readonly pairedActualTotalR: AnalyticsMetric;
   /** `actualR - systemR`, summed over the paired population (Phase 13H §6's "cumulative/total gap"). */
@@ -256,11 +276,34 @@ export interface ComparisonAnalyticsModel {
 export function composeComparisonAnalytics(
   records: readonly ComparisonMetricRecord[],
 ): ComparisonAnalyticsModel {
-  const eligible = selectComparisonEligible(records).map((record) => ({
+  const eligibleRecords = selectComparisonEligible(records);
+  const eligible = eligibleRecords.map((record) => ({
     tradeId: record.tradeId,
     actualR: record.actualR as string,
     systemR: record.systemR as string,
   }));
+
+  // Eligibility already proved every field below non-null on both axes — it
+  // is the intersection of the two completeness contracts. The two axes are
+  // built from the SAME eligible rows, which is the guarantee that makes
+  // their figures comparable.
+  const pairedSystemAxis = composePerformanceAxis(
+    eligibleRecords.map((record) => ({
+      tradeId: record.tradeId,
+      r: record.systemR as string,
+      outcome: record.systemOutcome as OutcomeValue,
+      occurredAt: record.systemExitedAt as string,
+    })),
+  );
+  const pairedActualAxis = composePerformanceAxis(
+    eligibleRecords.map((record) => ({
+      tradeId: record.tradeId,
+      r: record.actualR as string,
+      outcome: record.traderOutcome as OutcomeValue,
+      occurredAt: record.actualExitedAt as string,
+    })),
+  );
+
   if (eligible.length === 0) {
     const unavailable = {
       status: 'unavailable',
@@ -268,6 +311,8 @@ export function composeComparisonAnalytics(
     } as const;
     return {
       comparableCount: 0,
+      pairedSystemAxis,
+      pairedActualAxis,
       pairedSystemTotalR: unavailable,
       pairedActualTotalR: unavailable,
       executionGapR: unavailable,
@@ -278,6 +323,8 @@ export function composeComparisonAnalytics(
 
   return {
     comparableCount: eligible.length,
+    pairedSystemAxis,
+    pairedActualAxis,
     pairedSystemTotalR: toAnalyticsMetric(totalR(eligible.map((record) => record.systemR))),
     pairedActualTotalR: toAnalyticsMetric(totalR(eligible.map((record) => record.actualR))),
     executionGapR: toAnalyticsMetric(pairedExecutionGapR(eligible)),

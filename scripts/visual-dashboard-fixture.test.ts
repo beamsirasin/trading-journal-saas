@@ -317,13 +317,62 @@ describe('deterministic visual Dashboard fixture', () => {
      * 23.1000 / 36.2500 (which would be 0.6372). Making the two sets of
      * numbers agree would destroy the fixture's whole purpose.
      */
-    expect(result.comparison.summary).toEqual({
+    expect(result.comparison.summary).toMatchObject({
       comparableCount: 64,
       pairedSystemTotalR: { status: 'available', value: '35.8000' },
       pairedActualTotalR: { status: 'available', value: '22.0000' },
       executionGapR: { status: 'available', value: '-13.8000' },
       averageExecutionGapR: { status: 'available', value: '-0.2156' },
       systemEdgeCaptured: { status: 'available', value: '0.6145' },
+    });
+
+    /*
+     * THE TWO AXES OVER THE PAIRED POPULATION — the reason they exist.
+     *
+     * The System card counts Population B and the Trader card counts
+     * Population A, so `System Win Rate` and `Actual Win Rate` are today
+     * computed over 68 and 66 Trades respectively. Printed side by side that
+     * invites a subtraction of two figures that were never counted over the
+     * same Trades. These two axes pin BOTH sides to the same 64, which is
+     * what makes a row-by-row comparison honest.
+     *
+     * Every figure is still produced by `composePerformanceAxis`, the same
+     * function both cards use. Only the population is pinned.
+     */
+    expect(result.comparison.summary.pairedSystemAxis.sampleCount).toBe(64);
+    expect(result.comparison.summary.pairedActualAxis.sampleCount).toBe(64);
+    expect(result.comparison.summary.pairedSystemAxis.totalR).toEqual({
+      status: 'available',
+      value: '35.8000',
+    });
+    expect(result.comparison.summary.pairedActualAxis.totalR).toEqual({
+      status: 'available',
+      value: '22.0000',
+    });
+    // The axis totals are the same numbers the dedicated total fields carry.
+    // If these ever diverge, two formulas are computing one quantity.
+    expect(result.comparison.summary.pairedSystemAxis.totalR).toEqual(
+      result.comparison.summary.pairedSystemTotalR,
+    );
+    expect(result.comparison.summary.pairedActualAxis.totalR).toEqual(
+      result.comparison.summary.pairedActualTotalR,
+    );
+
+    /*
+     * WHY 68 AND 66 BECOME 64. The Dashboard now says so on the card, and
+     * "excluding 6 Trades" alone cannot: the reader is watching System Total
+     * R read 35.80R where the System card reads 36.25R, and needs the reason
+     * rather than the count.
+     */
+    expect(result.comparison.exclusions).toEqual({
+      total: 6,
+      byReason: {
+        awaiting_system_result: 2,
+        trade_open: 2,
+        trade_planned: 2,
+        trade_canceled: 0,
+        incomplete_record: 0,
+      },
     });
     expect(result.basic.dayWinRate.status).toBe('available');
     if (result.basic.dayWinRate.status === 'available') {

@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { selectComparisonEligible } from '@/lib/calc/attribution';
 import {
   emotionTypes,
   mistakeTypes,
@@ -713,9 +714,18 @@ describe('analytics DAL (real PostgreSQL)', () => {
     expect(dashboard.data.system.map((row) => row.tradeId)).toEqual(
       system.data.map((row) => row.tradeId),
     );
-    expect(dashboard.data.paired.map((row) => row.tradeId)).toEqual(
-      paired.data.map((row) => row.tradeId),
-    );
+    // The bundle now carries CANDIDATES (Population A union B) and
+    // `isComparisonEligible` narrows them, so the equality that matters is
+    // between the narrowed set and the focused reader — not between two
+    // pre-filtered lists, which is what this asserted while the predicate
+    // was written twice.
+    expect(
+      selectComparisonEligible(dashboard.data.comparisonCandidates).map((row) => row.tradeId),
+    ).toEqual(paired.data.map((row) => row.tradeId));
+    // And the superset really is one: the System-resolved open Trade is a
+    // candidate the focused reader excludes, which is exactly the row the
+    // Dashboard needs in order to say why a total differs.
+    expect(dashboard.data.comparisonCandidates.length).toBeGreaterThan(paired.data.length);
     expect(dashboard.data).not.toHaveProperty('rules');
     expect(dashboard.data).not.toHaveProperty('mistakes');
     expect(dashboard.data).not.toHaveProperty('conditions');

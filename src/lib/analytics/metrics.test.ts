@@ -323,6 +323,74 @@ describe('comparison composition', () => {
     expect(result.systemEdgeCaptured).toEqual({ status: 'available', value: '0.8000' });
   });
 
+  /**
+   * THE TWO AXES ARE COUNTED OVER ONE POPULATION, AND THAT IS THE POINT.
+   *
+   * `composeSystemAnalytics` reads Population B and `composeTraderAnalytics`
+   * reads Population A: different completeness contracts, and each
+   * date-anchored to its own exit column. A card that prints one figure from
+   * each and invites the reader to compare them is comparing counts taken
+   * over different Trades. These two axes pin both sides to the paired
+   * population, so the denominators are identical by construction.
+   */
+  it('counts both paired axes over the same Trades', () => {
+    const result = composeComparisonAnalytics([
+      comparison('paired-a', '2.0000', '1.0000'),
+      comparison('paired-b', '1.0000', '2.0000'),
+      // Actual side complete, System still pending — a Trader Trade, not a pair.
+      { ...comparison('system-pending', '5.0000', '4.0000'), systemR: null },
+      // System side complete, Trade never closed — a System Trade, not a pair.
+      { ...comparison('still-open', '3.0000', '9.0000'), status: 'open', actualR: null },
+    ]);
+
+    expect(result.comparableCount).toBe(2);
+    expect(result.pairedSystemAxis.sampleCount).toBe(2);
+    expect(result.pairedActualAxis.sampleCount).toBe(2);
+    // Neither axis absorbed the one-sided Trades: 5.0000 and 3.0000 are absent
+    // from the System side, 4.0000 and 9.0000 from the Actual side.
+    expect(result.pairedSystemAxis.totalR).toEqual({ status: 'available', value: '3.0000' });
+    expect(result.pairedActualAxis.totalR).toEqual({ status: 'available', value: '3.0000' });
+  });
+
+  it('never lets an axis total disagree with the dedicated paired total', () => {
+    const result = composeComparisonAnalytics([
+      comparison('trade-a', '6.0000', '5.0000'),
+      comparison('trade-b', '4.0000', '-3.0000'),
+    ]);
+    expect(result.pairedSystemAxis.totalR).toEqual(result.pairedSystemTotalR);
+    expect(result.pairedActualAxis.totalR).toEqual(result.pairedActualTotalR);
+  });
+
+  /**
+   * The three cases a difference column has to survive. `systemEdgeCaptured`
+   * refuses a non-positive denominator (`system_has_no_edge`) because a ratio
+   * against it inverts meaning — System -5R with Actual -2R would read 40%
+   * while the Trader in fact did better than the System. The paired totals and
+   * the Gap stay available throughout, which is what lets a caller fall back
+   * to the signed difference rather than hiding the row.
+   */
+  it.each([
+    ['negative System total', '-5.0000', '-2.0000', '-5.0000', '-2.0000', '3.0000'],
+    ['zero System total', '0.0000', '2.0000', '0.0000', '2.0000', '2.0000'],
+  ])('reports %s as a Gap with no captured ratio', (_label, systemR, actualR, sysT, actT, gap) => {
+    const result = composeComparisonAnalytics([comparison('t1', systemR, actualR)]);
+
+    expect(result.systemEdgeCaptured).toEqual({
+      status: 'unavailable',
+      reason: 'system_has_no_edge',
+    });
+    expect(result.pairedSystemTotalR).toEqual({ status: 'available', value: sysT });
+    expect(result.pairedActualTotalR).toEqual({ status: 'available', value: actT });
+    expect(result.executionGapR).toEqual({ status: 'available', value: gap });
+    expect(result.pairedSystemAxis.totalR).toEqual({ status: 'available', value: sysT });
+  });
+
+  it('keeps the captured ratio when the Trader beat a positive System edge', () => {
+    const result = composeComparisonAnalytics([comparison('t1', '4.0000', '6.0000')]);
+    expect(result.systemEdgeCaptured).toEqual({ status: 'available', value: '1.5000' });
+    expect(result.executionGapR).toEqual({ status: 'available', value: '2.0000' });
+  });
+
   it('preserves efficiency above one and below zero without clamping', () => {
     expect(
       composeComparisonAnalytics([comparison('above', '2.0000', '3.0000')]).systemEdgeCaptured,

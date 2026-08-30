@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
+import { selectComparisonEligible } from '@/lib/calc/attribution';
 import { reconcileDayReview } from '@/lib/dashboard/day-review';
 import { parseDashboardFilterState } from '@/lib/dashboard/filters';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
@@ -1716,7 +1717,7 @@ describe('analytics service (real PostgreSQL)', () => {
         ...liveConfidenceIds,
       ].sort(),
     );
-    expect(affectedTradeIds(raw.data.paired)).toEqual(
+    expect(affectedTradeIds(selectComparisonEligible(raw.data.comparisonCandidates))).toEqual(
       [
         liveTradeId,
         noChecklistId,
@@ -1911,7 +1912,14 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(ids(raw.data.system)).toEqual(
       [equalMillisecondId, liveId, openId, retrospectiveId].sort(),
     );
-    expect(ids(raw.data.paired)).toEqual([equalMillisecondId, liveId, retrospectiveId].sort());
+    expect(ids(selectComparisonEligible(raw.data.comparisonCandidates))).toEqual(
+      [equalMillisecondId, liveId, retrospectiveId].sort(),
+    );
+    // The System-resolved open Trade is a CANDIDATE but not a pair: it is
+    // complete on the System axis and has no Actual exit at all, which is
+    // precisely the row that makes the System total and the paired total
+    // disagree.
+    expect(ids(raw.data.comparisonCandidates)).toContain(openId);
   });
 
   it('Phase 14B: unclassified Trades participate in global Trader/System/paired analytics but never in a Strategy/Setup breakdown', async () => {

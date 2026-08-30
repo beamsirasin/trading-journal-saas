@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { emptyPerformanceAxis } from '@/test/analytics-model-fixtures';
+
 import type {
   AnalyticsMetric,
   ComparisonAnalyticsModel,
@@ -142,6 +144,8 @@ describe('selectExecutionGapObservation', () => {
   function comparison(overrides: Partial<ComparisonAnalyticsModel>): ComparisonAnalyticsModel {
     return {
       comparableCount: 0,
+      pairedSystemAxis: emptyPerformanceAxis(),
+      pairedActualAxis: emptyPerformanceAxis(),
       pairedSystemTotalR: unavailable,
       pairedActualTotalR: unavailable,
       executionGapR: unavailable,

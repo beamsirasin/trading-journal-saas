@@ -5,7 +5,7 @@ import {
   type ComparisonAnalyticsModel,
   type ComparisonMetricRecord,
 } from '@/lib/analytics/metrics';
-import { selectComparisonEligible } from '@/lib/calc/attribution';
+import { isComparisonEligible, selectComparisonEligible } from '@/lib/calc/attribution';
 import {
   CalcDecimal,
   parseCalcDecimal,
@@ -102,6 +102,43 @@ export interface ExecutionComparisonDistribution {
 }
 
 /**
+ * WHY a Trade that reached this composer is not in the paired population.
+ *
+ * A count on its own cannot carry this. The paired System total is 35.80R
+ * against the System card's 36.25R on the reference fixture, and "excluding
+ * 6 Trades" does not explain a number moving in a direction the reader did
+ * not ask for — "2 awaiting a System result, 2 still open, 2 not entered"
+ * does. Each reason names a state the reader can act on, and each maps to a
+ * lifecycle field rather than to an inference.
+ *
+ * The order is the order they are reported in.
+ */
+export const COMPARISON_EXCLUSION_REASONS = [
+  /** Actual side complete; the System verdict has not been recorded yet. */
+  'awaiting_system_result',
+  /** System side complete; the Trade is entered but not yet closed. */
+  'trade_open',
+  /** System side complete; the Trade was planned and never entered. */
+  'trade_planned',
+  /** System side complete; the Trade was abandoned before entry. */
+  'trade_canceled',
+  /**
+   * Neither of the above fits — a closed Trade missing its own Actual R, or
+   * any other partial record. Deliberately last and deliberately vague: it
+   * is a data gap, not a lifecycle state, and naming it as one would be a
+   * reassurance the record does not support.
+   */
+  'incomplete_record',
+] as const;
+
+export type ComparisonExclusionReason = (typeof COMPARISON_EXCLUSION_REASONS)[number];
+
+export interface ComparisonExclusions {
+  readonly total: number;
+  readonly byReason: Readonly<Record<ComparisonExclusionReason, number>>;
+}
+
+/**
  * The D5A comparison contract.
  *
  * Availability is a discriminated status rather than an empty array, because
@@ -121,6 +158,7 @@ export type DashboardExecutionComparison =
   | {
       readonly status: 'available';
       readonly summary: ComparisonAnalyticsModel;
+      readonly exclusions: ComparisonExclusions;
       readonly tradeSeries: readonly ExecutionComparisonTradePoint[];
       readonly dailySeries: readonly ExecutionComparisonDailyPoint[];
       readonly distribution: ExecutionComparisonDistribution;
@@ -129,12 +167,58 @@ export type DashboardExecutionComparison =
       readonly status: 'empty';
       readonly reason: 'no_comparable_trades';
       readonly summary: ComparisonAnalyticsModel;
+      readonly exclusions: ComparisonExclusions;
     }
   | {
       readonly status: 'error';
       readonly reason: 'data_integrity_error';
       readonly summary: ComparisonAnalyticsModel;
+      readonly exclusions: ComparisonExclusions;
     };
+
+/**
+ * Classifies the candidates this composer was handed but could not pair.
+ *
+ * It counts what it was GIVEN, which is why it belongs here rather than on
+ * the shared `ComparisonAnalyticsModel`: the Dashboard hands over Population
+ * A ∪ B and gets a truthful answer, while callers that synthesise their own
+ * already-filtered records (the insight pillars, for one) would get a
+ * meaningless zero from the same code and are not offered it.
+ */
+export function composeComparisonExclusions(
+  records: readonly ComparisonMetricRecord[],
+): ComparisonExclusions {
+  const byReason: Record<ComparisonExclusionReason, number> = {
+    awaiting_system_result: 0,
+    trade_open: 0,
+    trade_planned: 0,
+    trade_canceled: 0,
+    incomplete_record: 0,
+  };
+
+  let total = 0;
+  for (const record of records) {
+    if (isComparisonEligible(record)) continue;
+    total += 1;
+
+    const actualComplete =
+      record.status === 'closed' &&
+      record.actualR !== null &&
+      record.traderOutcome !== null &&
+      record.actualExitedAt !== null;
+
+    if (actualComplete) {
+      byReason.awaiting_system_result += 1;
+      continue;
+    }
+    if (record.status === 'open') byReason.trade_open += 1;
+    else if (record.status === 'planned') byReason.trade_planned += 1;
+    else if (record.status === 'canceled') byReason.trade_canceled += 1;
+    else byReason.incomplete_record += 1;
+  }
+
+  return { total, byReason };
+}
 
 interface PreparedPair {
   readonly tradeId: string;
@@ -145,8 +229,11 @@ interface PreparedPair {
   readonly actualR: string;
 }
 
-function integrity(summary: ComparisonAnalyticsModel): DashboardExecutionComparison {
-  return { status: 'error', reason: 'data_integrity_error', summary };
+function integrity(
+  summary: ComparisonAnalyticsModel,
+  exclusions: ComparisonExclusions,
+): DashboardExecutionComparison {
+  return { status: 'error', reason: 'data_integrity_error', summary, exclusions };
 }
 
 /**
@@ -176,10 +263,11 @@ export function composeExecutionComparison(
   // `composeComparisonAnalytics` applies the same eligibility filter itself,
   // so summary and series can never disagree about who is paired.
   const summary = composeComparisonAnalytics(records);
+  const exclusions = composeComparisonExclusions(records);
   const eligible = selectComparisonEligible(records);
 
   if (eligible.length === 0) {
-    return { status: 'empty', reason: 'no_comparable_trades', summary };
+    return { status: 'empty', reason: 'no_comparable_trades', summary, exclusions };
   }
 
   const prepared: PreparedPair[] = [];
@@ -187,12 +275,12 @@ export function composeExecutionComparison(
     // Eligibility already proved these non-null; the checks keep that fact
     // local rather than asserting it with a cast.
     const { actualExitedAt, systemExitedAt, actualR, systemR } = record;
-    if (actualExitedAt === null || systemExitedAt === null) return integrity(summary);
-    if (actualR === null || systemR === null) return integrity(summary);
+    if (actualExitedAt === null || systemExitedAt === null) return integrity(summary, exclusions);
+    if (actualR === null || systemR === null) return integrity(summary, exclusions);
     const instant = new Date(actualExitedAt);
-    if (Number.isNaN(instant.getTime())) return integrity(summary);
+    if (Number.isNaN(instant.getTime())) return integrity(summary, exclusions);
     if (parseCalcDecimal(actualR) === null || parseCalcDecimal(systemR) === null) {
-      return integrity(summary);
+      return integrity(summary, exclusions);
     }
     prepared.push({
       tradeId: record.tradeId,
@@ -236,7 +324,7 @@ export function composeExecutionComparison(
   for (const pair of ordered) {
     const systemDecimal = parseCalcDecimal(pair.systemR);
     const actualDecimal = parseCalcDecimal(pair.actualR);
-    if (systemDecimal === null || actualDecimal === null) return integrity(summary);
+    if (systemDecimal === null || actualDecimal === null) return integrity(summary, exclusions);
     const gap = actualDecimal.minus(systemDecimal);
 
     if (gap.lessThan(0)) underperformedCount += 1;
@@ -261,7 +349,7 @@ export function composeExecutionComparison(
     });
 
     const date = calendarDateIn(pair.exitedAtInstant, timeZone);
-    if (!date.ok) return integrity(summary);
+    if (!date.ok) return integrity(summary, exclusions);
     const bucket = dailyTotals.get(date.value);
     if (bucket === undefined) {
       dailyTotals.set(date.value, { count: 1, system: systemDecimal, actual: actualDecimal });
@@ -282,7 +370,7 @@ export function composeExecutionComparison(
   const dailySeries: ExecutionComparisonDailyPoint[] = [];
   for (const date of dailyDates) {
     const bucket = dailyTotals.get(date);
-    if (bucket === undefined) return integrity(summary);
+    if (bucket === undefined) return integrity(summary, exclusions);
     dailyCumulativeSystem = dailyCumulativeSystem.plus(bucket.system);
     dailyCumulativeActual = dailyCumulativeActual.plus(bucket.actual);
     dailySeries.push({
@@ -300,6 +388,7 @@ export function composeExecutionComparison(
   return {
     status: 'available',
     summary,
+    exclusions,
     tradeSeries,
     dailySeries,
     distribution: {

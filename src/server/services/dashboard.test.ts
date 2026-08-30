@@ -66,7 +66,7 @@ describe('Dashboard service orchestration', () => {
         },
         trader: [],
         system: [],
-        paired: [],
+        comparisonCandidates: [],
         attention: {
           openTrades: 0,
           pendingSystemOutcomes: 0,

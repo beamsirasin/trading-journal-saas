@@ -1,6 +1,19 @@
 import 'server-only';
 
-import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  isNotNull,
+  isNull,
+  lt,
+  not,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import {
@@ -10,6 +23,7 @@ import {
   type AnalyticsFilterInput,
   type AnalyticsFilters,
 } from '@/lib/analytics/filters';
+import { selectComparisonEligible } from '@/lib/calc/attribution';
 import type {
   CalendarActualRecord,
   CalendarPairedRecord,
@@ -590,27 +604,87 @@ export interface PairedAnalyticsRecord {
   readonly setupId: string | null;
 }
 
-async function selectPairedAnalyticsRecords(
-  context: AnalyticsQueryContext,
-): Promise<readonly PairedAnalyticsRecord[]> {
-  const db = getDb();
-  const conditions = [
-    ...frameworkConditions(context),
-    isNull(trades.deletedAt),
+/**
+ * A Trade that COULD have been paired — Population A ∪ Population B — with
+ * every field pairing needs and no promise that it has one.
+ *
+ * The nullable fields are the difference from `PairedAnalyticsRecord`, and
+ * they are the point: a candidate is complete on at least one axis, so
+ * whichever axis is not complete is exactly what is null. The shape is
+ * assignable to `ComparisonMetricRecord`, which is what lets
+ * `isComparisonEligible` be the single decision-maker.
+ */
+export interface ComparisonCandidateRecord {
+  readonly tradeId: string;
+  readonly status: TradeStatus;
+  readonly deletedAt: null;
+  readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+  readonly systemStatus: SystemStatus;
+  readonly systemR: string | null;
+  readonly systemOutcome: OutcomeValue | null;
+  readonly actualExitedAt: string | null;
+  readonly systemExitedAt: string | null;
+  readonly tradingAccountId: string;
+  readonly strategyId: string | null;
+  readonly strategyVersionId: string | null;
+  readonly setupId: string | null;
+}
+
+/** Population A's completeness contract, as SQL. */
+function actualCompleteCondition(): SQL {
+  return and(
     eq(trades.status, 'closed'),
     isNotNull(trades.actualR),
     isNotNull(trades.traderOutcome),
     isNotNull(trades.exitedAt),
+  ) as SQL;
+}
+
+/** Population B's completeness contract, as SQL. */
+function systemCompleteCondition(): SQL {
+  return and(
     eq(trades.systemStatus, 'resolved'),
     isNotNull(trades.systemR),
     isNotNull(trades.systemOutcome),
     isNotNull(trades.systemExitedAt),
-  ];
-  // Population C is an execution-diagnosis population. A bounded range is
-  // therefore anchored to when the Trader's Actual execution completed.
-  // `system_exited_at` remains required for System-axis completeness and is
-  // returned as metadata, but it is deliberately NOT a second range gate.
-  conditions.push(...dateConditions(trades.exitedAt, context.filters.dateBounds));
+  ) as SQL;
+}
+
+/**
+ * Population A ∪ Population B — every Trade that is complete on at least one
+ * axis. `isComparisonEligible` narrows this to Population C in TypeScript.
+ *
+ * WHY THE SUPERSET. The eligibility rule used to live twice: once as this
+ * query's WHERE clause and once as `isComparisonEligible`, which every
+ * consumer dutifully called on an already-filtered list. The TS filter was a
+ * no-op that read like a safeguard, and two copies of a predicate is one
+ * edit away from two different predicates. Returning candidates makes the TS
+ * filter the only decision, and hands the Dashboard the one thing the narrow
+ * query could not: WHICH Trades were left out, and why.
+ *
+ * THE DATE GATE IS PER-AXIS, AND THAT IS LOAD-BEARING. Population C is an
+ * execution-diagnosis population, so a bounded range is anchored to when the
+ * Trader's Actual execution completed — `system_exited_at` is required for
+ * System-axis completeness but is deliberately not a second gate on a pair.
+ * A candidate that is complete on the SYSTEM side only has no `exited_at` to
+ * be anchored by, and it is precisely the Trade that makes the System card
+ * and the paired total disagree, so it is gated by `system_exited_at`
+ * instead — the same anchor Population B itself uses.
+ *
+ * The second clause therefore carries `not(actualComplete)`, and dropping it
+ * would be a correctness bug rather than a redundancy: a fully paired Trade
+ * whose `exited_at` falls outside the range but whose `system_exited_at`
+ * falls inside would enter this result set, and `isComparisonEligible` — which
+ * knows nothing about dates — would then admit it to Population C. Every row
+ * that survives eligibility here is in range by C's own anchor.
+ */
+async function selectComparisonCandidateRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly ComparisonCandidateRecord[]> {
+  const db = getDb();
+  const actualComplete = actualCompleteCondition();
+  const systemComplete = systemCompleteCondition();
 
   const rows = await db
     .select({
@@ -629,20 +703,61 @@ async function selectPairedAnalyticsRecords(
       setupId: trades.setupId,
     })
     .from(trades)
-    .where(and(...conditions))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        or(
+          and(actualComplete, ...dateConditions(trades.exitedAt, context.filters.dateBounds)),
+          and(
+            systemComplete,
+            not(actualComplete),
+            ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
+          ),
+        ),
+      ),
+    )
+    // Population C's own ordering, applied here so the eligible subset comes
+    // out in it. `exited_at` is null for a System-only candidate, which sorts
+    // last under Postgres' default and is harmless: those rows never reach a
+    // cumulative path.
     .orderBy(asc(trades.exitedAt), asc(trades.id));
 
   return rows.map((row) => ({
     ...row,
+    status: row.status as TradeStatus,
+    deletedAt: null,
+    systemStatus: row.systemStatus as SystemStatus,
+    traderOutcome: row.traderOutcome as OutcomeValue | null,
+    systemOutcome: row.systemOutcome as OutcomeValue | null,
+    actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
+    systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
+  }));
+}
+
+/**
+ * Population C, unchanged in contract: the same rows, in the same order,
+ * with the same non-null guarantees this reader has always promised. Only
+ * where the narrowing happens has moved — from a WHERE clause to
+ * `isComparisonEligible`, which is now the one place the rule is written.
+ *
+ * The casts mirror the ones this function has always carried; what proves
+ * them has simply become readable.
+ */
+function selectEligibleFromCandidates(
+  candidates: readonly ComparisonCandidateRecord[],
+): readonly PairedAnalyticsRecord[] {
+  return selectComparisonEligible(candidates).map((record) => ({
+    ...record,
     status: 'closed' as const,
     deletedAt: null,
-    actualR: row.actualR as string,
-    traderOutcome: row.traderOutcome as OutcomeValue,
+    actualR: record.actualR as string,
+    traderOutcome: record.traderOutcome as OutcomeValue,
     systemStatus: 'resolved' as const,
-    systemR: row.systemR as string,
-    systemOutcome: row.systemOutcome as OutcomeValue,
-    actualExitedAt: (row.actualExitedAt as Date).toISOString(),
-    systemExitedAt: (row.systemExitedAt as Date).toISOString(),
+    systemR: record.systemR as string,
+    systemOutcome: record.systemOutcome as OutcomeValue,
+    actualExitedAt: record.actualExitedAt as string,
+    systemExitedAt: record.systemExitedAt as string,
   }));
 }
 
@@ -652,7 +767,10 @@ export async function getPairedAnalyticsRecords(
 ): Promise<AnalyticsReadResult<readonly PairedAnalyticsRecord[]>> {
   const context = await resolveAnalyticsQueryContext(input, options);
   if (!context.ok) return context;
-  return { ok: true, data: await selectPairedAnalyticsRecords(context.data) };
+  return {
+    ok: true,
+    data: selectEligibleFromCandidates(await selectComparisonCandidateRecords(context.data)),
+  };
 }
 
 /**
@@ -875,7 +993,7 @@ export async function getMistakeAnalyticsRecords(
 // System side appears only in the System-side rows; a closed Trade with a
 // still-pending System side appears only in the Trader-side rows. Nothing
 // here ever intersects the two populations — that intersection exists only
-// for the paired Execution Gap (`selectPairedAnalyticsRecords`, unrelated to
+// for the paired Execution Gap (`selectComparisonCandidateRecords`, unrelated to
 // this section).
 // ---------------------------------------------------------------------------
 
@@ -1364,7 +1482,7 @@ export interface AnalyticsRawPopulations {
   readonly system: readonly SystemAnalyticsRecord[];
   /** Phase 14C §19 — account/framework-scoped, deliberately NOT date-bounded. See `selectSystemPendingCount`. */
   readonly systemPendingCount: number;
-  readonly paired: readonly PairedAnalyticsRecord[];
+  readonly comparisonCandidates: readonly ComparisonCandidateRecord[];
   readonly rules: readonly RuleAnalyticsRecord[];
   readonly mistakes: readonly MistakeAnalyticsRecord[];
   readonly setupAdherence: readonly SetupAdherenceAnalyticsRecord[];
@@ -1392,7 +1510,7 @@ export async function getAnalyticsRawPopulations(
     trader,
     system,
     systemPendingCount,
-    paired,
+    comparisonCandidates,
     rules,
     mistakes,
     setupAdherence,
@@ -1407,7 +1525,7 @@ export async function getAnalyticsRawPopulations(
     selectTraderAnalyticsRecords(context.data),
     selectSystemAnalyticsRecords(context.data),
     selectSystemPendingCount(context.data),
-    selectPairedAnalyticsRecords(context.data),
+    selectComparisonCandidateRecords(context.data),
     selectRuleAnalyticsRecords(context.data),
     selectMistakeAnalyticsRecords(context.data),
     selectSetupAdherenceAnalyticsRecords(context.data),
@@ -1426,7 +1544,7 @@ export async function getAnalyticsRawPopulations(
       trader,
       system,
       systemPendingCount,
-      paired,
+      comparisonCandidates,
       rules,
       mistakes,
       setupAdherence,
@@ -1455,7 +1573,7 @@ export interface DashboardRawData {
   readonly account: DashboardAccountContext;
   readonly trader: readonly TraderAnalyticsRecord[];
   readonly system: readonly SystemAnalyticsRecord[];
-  readonly paired: readonly PairedAnalyticsRecord[];
+  readonly comparisonCandidates: readonly ComparisonCandidateRecord[];
   readonly attention: TradeAttentionCounts;
   readonly recentTrades: readonly DashboardRecentTradeRecord[];
 }
@@ -1471,10 +1589,10 @@ export async function getDashboardRawData(
 ): Promise<AnalyticsReadResult<DashboardRawData>> {
   const context = await resolveAnalyticsQueryContext(input, options);
   if (!context.ok) return context;
-  const [trader, system, paired, attention, recentTrades] = await Promise.all([
+  const [trader, system, comparisonCandidates, attention, recentTrades] = await Promise.all([
     selectTraderAnalyticsRecords(context.data),
     selectSystemAnalyticsRecords(context.data),
-    selectPairedAnalyticsRecords(context.data),
+    selectComparisonCandidateRecords(context.data),
     selectWorkspaceTradeAttentionCounts(context.data.workspaceId),
     selectDashboardRecentTrades(context.data),
   ]);
@@ -1485,7 +1603,7 @@ export async function getDashboardRawData(
       account: context.data.account,
       trader,
       system,
-      paired,
+      comparisonCandidates,
       attention,
       recentTrades,
     },
@@ -1656,7 +1774,7 @@ export async function getCalendarMonthRecords(
   // Gap: Population C, anchored to Actual `exited_at` ONLY. `system_exited_at`
   // is required for System-side completeness and returned as context, but it
   // is never a second range gate — the same rule
-  // `selectPairedAnalyticsRecords` already follows.
+  // `selectComparisonCandidateRecords` already follows.
   const rows = await db
     .select({
       tradeId: trades.id,

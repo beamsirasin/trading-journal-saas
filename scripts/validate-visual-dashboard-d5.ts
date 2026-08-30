@@ -148,12 +148,33 @@ async function main(): Promise<void> {
           and system_status = 'resolved' and deleted_at is null
           and system_r is not null and system_outcome is not null and system_exited_at is not null
       `;
+      /*
+        POPULATION A ∪ B, mirroring `selectComparisonCandidateRecords`.
+
+        This query used to spell the eligibility rule itself
+        (`status = 'closed' and system_status = 'resolved'`), which made it a
+        THIRD copy of a predicate that already existed in the DAL and in
+        `isComparisonEligible`. It also meant this validator could never see
+        an excluded Trade, so the one number it exists to check — why the
+        paired totals differ from the card totals — was structurally always
+        zero here. It now hands the composer candidates and lets
+        `isComparisonEligible` do the narrowing, exactly as production does.
+
+        No date bounds: this validator reads the fixture over all time, so the
+        per-axis anchoring the DAL applies has nothing to gate.
+      */
       const comparisonRaw = await sql`
         select id as trade_id, status, actual_r, trader_outcome, exited_at,
                system_status, system_r, system_outcome, system_exited_at
         from trades
         where workspace_id = ${workspaceId} and trading_account_id = ${accountId}
-          and status = 'closed' and system_status = 'resolved' and deleted_at is null
+          and deleted_at is null
+          and (
+            (status = 'closed' and actual_r is not null
+              and trader_outcome is not null and exited_at is not null)
+            or (system_status = 'resolved' and system_r is not null
+              and system_outcome is not null and system_exited_at is not null)
+          )
       `;
 
       const trader: TraderMetricRecord[] = traderRaw.map((row) => ({
@@ -174,17 +195,19 @@ async function main(): Promise<void> {
         systemOutcome: row.system_outcome as OutcomeValue,
         systemExitedAt: (row.system_exited_at as Date).toISOString(),
       }));
+      // Nullable throughout: a candidate is complete on at least one axis, so
+      // whichever axis is incomplete is exactly what comes back null.
       const comparison: ComparisonMetricRecord[] = comparisonRaw.map((row) => ({
         tradeId: row.trade_id as string,
         status: row.status as TradeStatus,
         deletedAt: null,
-        actualR: row.actual_r as string,
-        traderOutcome: row.trader_outcome as OutcomeValue,
-        actualExitedAt: (row.exited_at as Date).toISOString(),
+        actualR: (row.actual_r as string | null) ?? null,
+        traderOutcome: (row.trader_outcome as OutcomeValue | null) ?? null,
+        actualExitedAt: (row.exited_at as Date | null)?.toISOString() ?? null,
         systemStatus: row.system_status as SystemStatus,
-        systemR: row.system_r as string,
-        systemOutcome: row.system_outcome as OutcomeValue,
-        systemExitedAt: (row.system_exited_at as Date).toISOString(),
+        systemR: (row.system_r as string | null) ?? null,
+        systemOutcome: (row.system_outcome as OutcomeValue | null) ?? null,
+        systemExitedAt: (row.system_exited_at as Date | null)?.toISOString() ?? null,
       }));
       const recentTrades: readonly DashboardRecentTradeRecord[] = [];
       const account = accountId === (populated.id as string) ? populated : empty;
@@ -291,6 +314,35 @@ async function main(): Promise<void> {
                 comparison.summary.systemEdgeCaptured.status === 'available'
                   ? `${(Number(comparison.summary.systemEdgeCaptured.value) * 100).toFixed(2)}%`
                   : comparison.summary.systemEdgeCaptured,
+              /*
+                THE TWO AXES OVER ONE POPULATION, AND WHAT WAS LEFT OUT.
+
+                Printed side by side with the System and Trader cards' own
+                figures, these are the numbers that show why a merged card
+                cannot simply reuse them: the cards count Populations B and A,
+                these count the intersection, and the difference is the six
+                Trades the exclusions block names.
+              */
+              pairedAxes: {
+                system: {
+                  sampleCount: comparison.summary.pairedSystemAxis.sampleCount,
+                  totalR: metricValue(comparison.summary.pairedSystemAxis.totalR),
+                  winRate: metricValue(comparison.summary.pairedSystemAxis.winRate),
+                  payoffRatio: metricValue(comparison.summary.pairedSystemAxis.payoffRatio),
+                  outcomeCounts: comparison.summary.pairedSystemAxis.outcomeCounts,
+                },
+                actual: {
+                  sampleCount: comparison.summary.pairedActualAxis.sampleCount,
+                  totalR: metricValue(comparison.summary.pairedActualAxis.totalR),
+                  winRate: metricValue(comparison.summary.pairedActualAxis.winRate),
+                  payoffRatio: metricValue(comparison.summary.pairedActualAxis.payoffRatio),
+                  outcomeCounts: comparison.summary.pairedActualAxis.outcomeCounts,
+                },
+                denominatorsMatch:
+                  comparison.summary.pairedSystemAxis.sampleCount ===
+                  comparison.summary.pairedActualAxis.sampleCount,
+              },
+              exclusions: comparison.exclusions,
               distribution: {
                 underperformed: comparison.distribution.underperformedCount,
                 matched: comparison.distribution.matchedCount,

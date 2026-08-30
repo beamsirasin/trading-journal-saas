@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { DashboardPageData, DashboardPerformanceData } from '@/lib/dashboard/page-data';
+import { NO_COMPARISON_EXCLUSIONS, performanceAxis } from '@/test/analytics-model-fixtures';
 
 import en from '../../../messages/en.json';
 import { DashboardSkeleton, RealDashboard, type DashboardRecentTrade } from './real-dashboard';
@@ -117,6 +118,8 @@ function overview(overrides: Partial<DashboardPageData> = {}): DashboardPageData
     trader: axis(5, { totalR: available('-1.0000') }),
     comparison: comparisonFixture({
       comparableCount: 2,
+      pairedSystemAxis: performanceAxis(),
+      pairedActualAxis: performanceAxis(),
       pairedSystemTotalR: available('3.0000'),
       pairedActualTotalR: available('1.0000'),
       executionGapR: available('-2.0000'),
@@ -163,6 +166,7 @@ type ComparisonSummary = DashboardPageData['comparison']['summary'];
  */
 const comparisonFixture = (summary: ComparisonSummary): DashboardPageData['comparison'] => ({
   status: 'available',
+  exclusions: NO_COMPARISON_EXCLUSIONS,
   summary,
   tradeSeries: [],
   dailySeries: [],
@@ -178,6 +182,7 @@ const comparisonFixture = (summary: ComparisonSummary): DashboardPageData['compa
 const emptyComparisonFixture = (summary: ComparisonSummary): DashboardPageData['comparison'] => ({
   status: 'empty',
   reason: 'no_comparable_trades',
+  exclusions: NO_COMPARISON_EXCLUSIONS,
   summary,
 });
 
@@ -482,6 +487,8 @@ describe('RealDashboard', () => {
       overview({
         comparison: emptyComparisonFixture({
           comparableCount: 0,
+          pairedSystemAxis: performanceAxis(),
+          pairedActualAxis: performanceAxis(),
           pairedSystemTotalR: unavailable('no_comparable_trades'),
           pairedActualTotalR: unavailable('no_comparable_trades'),
           executionGapR: unavailable('no_comparable_trades'),

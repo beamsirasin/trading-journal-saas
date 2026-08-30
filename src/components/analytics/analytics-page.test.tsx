@@ -10,6 +10,7 @@ import type {
   PerformanceAnalyticsModel,
 } from '@/lib/analytics/metrics';
 import type { AnalyticsFilterOptions } from '@/server/dal/analytics';
+import { performanceAxis } from '@/test/analytics-model-fixtures';
 
 import en from '../../../messages/en.json';
 import { RealAnalyticsPage } from './analytics-page';
@@ -105,6 +106,8 @@ function snapshot(overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnapshot
     traderNetPnl: { status: 'available', currency: 'USD', totalMinor: '-100' },
     comparison: {
       comparableCount: 2,
+      pairedSystemAxis: performanceAxis(),
+      pairedActualAxis: performanceAxis(),
       pairedSystemTotalR: available('3.0000'),
       pairedActualTotalR: available('-1.0000'),
       executionGapR: available('-4.0000'),
@@ -428,6 +431,8 @@ describe('RealAnalyticsPage', () => {
         trader: emptyAxis,
         comparison: {
           comparableCount: 0,
+          pairedSystemAxis: performanceAxis(),
+          pairedActualAxis: performanceAxis(),
           pairedSystemTotalR: { status: 'unavailable', reason: 'no_comparable_trades' },
           pairedActualTotalR: { status: 'unavailable', reason: 'no_comparable_trades' },
           executionGapR: { status: 'unavailable', reason: 'no_comparable_trades' },

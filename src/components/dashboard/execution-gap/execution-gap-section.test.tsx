@@ -6,6 +6,7 @@ import type {
   DashboardExecutionComparison,
   ExecutionComparisonDailyPoint,
 } from '@/lib/dashboard/execution-comparison';
+import { NO_COMPARISON_EXCLUSIONS, performanceAxis } from '@/test/analytics-model-fixtures';
 
 import en from '../../../../messages/en.json';
 import { ExecutionGapSection } from './execution-gap-section';
@@ -68,8 +69,11 @@ function comparison(
 ): DashboardExecutionComparison {
   return {
     status: 'available',
+    exclusions: NO_COMPARISON_EXCLUSIONS,
     summary: {
       comparableCount: 64,
+      pairedSystemAxis: performanceAxis(),
+      pairedActualAxis: performanceAxis(),
       pairedSystemTotalR: available('35.8000'),
       pairedActualTotalR: available('22.0000'),
       executionGapR: available('-13.8000'),
@@ -364,6 +368,7 @@ describe('ExecutionGapSection — availability', () => {
   it('keeps the charts when System Edge Captured is unavailable', () => {
     const { container } = renderSection(
       comparison({
+        exclusions: NO_COMPARISON_EXCLUSIONS,
         summary: {
           ...comparison().summary,
           pairedSystemTotalR: available('-1.0000'),
@@ -385,8 +390,11 @@ describe('ExecutionGapSection — availability', () => {
     const { container } = renderSection({
       status: 'empty',
       reason: 'no_comparable_trades',
+      exclusions: NO_COMPARISON_EXCLUSIONS,
       summary: {
         comparableCount: 0,
+        pairedSystemAxis: performanceAxis(),
+        pairedActualAxis: performanceAxis(),
         pairedSystemTotalR: unavailable('no_comparable_trades'),
         pairedActualTotalR: unavailable('no_comparable_trades'),
         executionGapR: unavailable('no_comparable_trades'),
@@ -417,8 +425,11 @@ describe('ExecutionGapSection — availability', () => {
     const { container } = renderSection({
       status: 'error',
       reason: 'data_integrity_error',
+      exclusions: NO_COMPARISON_EXCLUSIONS,
       summary: {
         comparableCount: 2,
+        pairedSystemAxis: performanceAxis(),
+        pairedActualAxis: performanceAxis(),
         pairedSystemTotalR: { status: 'error', reason: 'data_integrity_error' },
         pairedActualTotalR: { status: 'error', reason: 'data_integrity_error' },
         executionGapR: { status: 'error', reason: 'data_integrity_error' },

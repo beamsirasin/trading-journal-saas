@@ -8,6 +8,7 @@ import type {
   ComparisonAnalyticsModel,
   PerformanceAnalyticsModel,
 } from '@/lib/analytics/metrics';
+import { performanceAxis } from '@/test/analytics-model-fixtures';
 
 import en from '../../../messages/en.json';
 import { ResultsZone } from './analytics-overview-results';
@@ -44,6 +45,8 @@ function axis(overrides: Partial<PerformanceAnalyticsModel> = {}): PerformanceAn
 function comparison(overrides: Partial<ComparisonAnalyticsModel> = {}): ComparisonAnalyticsModel {
   return {
     comparableCount: 0,
+    pairedSystemAxis: performanceAxis(),
+    pairedActualAxis: performanceAxis(),
     pairedSystemTotalR: unavailable,
     pairedActualTotalR: unavailable,
     executionGapR: unavailable,
