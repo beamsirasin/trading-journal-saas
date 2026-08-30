@@ -136,6 +136,52 @@ describe('Recent Trades card', () => {
     expect(container.querySelectorAll('[data-recent-trade-row]')).toHaveLength(1);
   });
 
+  /**
+   * "No result yet" is not one thing. Each execution state that legitimately
+   * has no Actual R says which one it is, using the Journal's own label, so
+   * the reader does not have to open the Trade to find out why the number is
+   * missing.
+   */
+  it.each([
+    ['open', 'Open'],
+    ['planned', 'Needs details'],
+    ['canceled', 'Canceled'],
+  ] as const)('names the %s state instead of an anonymous dash', (status, label) => {
+    const { container } = renderCard([
+      trade({
+        status,
+        actualR: null,
+        executionGapR: { status: 'unavailable', reason: 'actual_incomplete' },
+      }),
+    ]);
+    const result = container.querySelector('[data-recent-trade-result]') as HTMLElement;
+
+    expect(result).toHaveAttribute('data-recent-trade-state', status);
+    expect(result).toHaveTextContent(label);
+    expect(result).not.toHaveTextContent('—');
+    // A state is not an outcome, so it never borrows the result tones.
+    expect(result.className).not.toMatch(/text-(positive|negative)/);
+  });
+
+  /**
+   * The one case that keeps the dash: there is no state to name, only an
+   * incomplete record. Labelling it would be the same fabrication as
+   * printing a zero.
+   */
+  it('keeps the dash for a closed Trade whose Actual R is missing', () => {
+    const { container } = renderCard([
+      trade({
+        status: 'closed',
+        actualR: null,
+        executionGapR: { status: 'unavailable', reason: 'actual_incomplete' },
+      }),
+    ]);
+    const result = container.querySelector('[data-recent-trade-result]') as HTMLElement;
+
+    expect(result).not.toHaveAttribute('data-recent-trade-state');
+    expect(result).toHaveTextContent('—');
+  });
+
   it('signs the result in text, not only in colour', () => {
     const { container } = renderCard([trade({ actualR: '-0.7500' })]);
     expect(container.querySelector('[data-recent-trade-result]')).toHaveTextContent('-0.75R');

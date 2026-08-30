@@ -28,14 +28,14 @@ export interface RecentTradesCardProps {
  * short, the measured benchmark's Dashboard trade preview shows three columns
  * against its own Trade View's ten, and this card had drifted to eight.
  *
- * THE LIST IS TWELVE ROWS, AND IT SCROLLS. Five, then seven, were each
- * chosen against the row height of the day (67px, then 44px). Twelve is
- * chosen against the Calendar beside it: that widget is a fixed six-week
- * grid at 630px, this card was 413px, and the 217px of empty column between
- * them was the largest blank surface on the page. Twelve rows bring the two
- * columns to within 8px (`selectDashboardRecentTrades` carries the
- * arithmetic), and the capped, scrolling list keeps that from becoming a new
- * kind of wrong if either side's height changes.
+ * THE LIST IS ELEVEN ROWS, AND IT SCROLLS. Five, then seven, were each
+ * chosen against the row height of the day (67px, then 44px). Eleven is
+ * chosen against the Calendar beside it, which is a fixed six-week grid this
+ * card cannot influence: at seven rows this card was 413px against 630px and
+ * the 217px of empty column between them was the largest blank surface on
+ * the page. `selectDashboardRecentTrades` carries the arithmetic and the
+ * reason the count moved from twelve. The capped, scrolling list is what
+ * keeps a future height change on either side from reopening the gap.
  *
  * It is a compact record list, deliberately not an enterprise data table: no
  * column headers, no sorting, no pagination. The Journal is one link away and
@@ -106,20 +106,20 @@ export function RecentTradesCard({
             /*
               A CAPPED, SCROLLING LIST — the benchmark's own pattern for this
               card, and the thing that decouples it from the Calendar beside
-              it. The projection returns twelve rows, which is sized to land
-              this column within 8px of the Calendar's fixed six-week grid
-              (see `selectDashboardRecentTrades`). The cap is what keeps that
-              true in the other direction: a month that renders five weeks
-              instead of six, or a future header change, shortens the
-              Calendar without leaving this card standing proud of it.
+              it. The projection returns eleven rows, sized to land this
+              column beside the Calendar's fixed six-week grid (see
+              `selectDashboardRecentTrades`). The cap is what keeps that true
+              in the other direction: a month that renders five weeks instead
+              of six shortens the Calendar without leaving this card standing
+              proud of it.
 
-              `max-h-[33.75rem]` is twelve 45px rows exactly, so at the
+              `max-h-[30.9375rem]` is eleven 45px rows exactly, so at the
               designed count nothing scrolls and no scrollbar appears; it
               only engages if the row height or the count later grows.
               `overscroll-contain` so reaching the end does not start
               scrolling the page underneath.
             */
-            className="divide-border border-border -mx-1 flex max-h-[33.75rem] min-w-0 flex-col divide-y overflow-y-auto overscroll-contain border-t"
+            className="divide-border border-border -mx-1 flex max-h-[30.9375rem] min-w-0 flex-col divide-y overflow-y-auto overscroll-contain border-t"
             aria-label={t('recent.listLabel')}
           >
             {trades.map((trade) => (
@@ -182,15 +182,35 @@ function RecentTradeRow({
   dateLocale: string;
 }) {
   const t = useTranslations('dashboard.real');
+  const tExecution = useTranslations('trades.status.execution');
   const occurredDay = formatTradeDay(trade.occurredAt, timezone, dateLocale);
   const formatted =
     trade.actualR === null
       ? null
       : formatAnalyticsMetric({ status: 'available', value: trade.actualR }, 'r');
-  const resultText =
-    formatted !== null && formatted.status === 'available'
-      ? formatted.text
-      : t('notAvailableShort');
+  const hasResult = formatted !== null && formatted.status === 'available';
+
+  /*
+   * "NO RESULT YET" IS NOT ONE THING, AND THE ROW USED TO SAY IT WAS.
+   *
+   * Every row without an Actual R printed the same em dash. On a
+   * twelve-row list that was a third of the card saying nothing at all —
+   * and it was saying nothing about three genuinely different situations:
+   * a `planned` Trade has no entry recorded, an `open` one is still
+   * running, a `canceled` one never happened. Each of those is a real
+   * answer to "why is there no number here", and the reader had to open
+   * the Trade to get any of them.
+   *
+   * The labels are the Journal's own (`trades.status.execution`), not new
+   * copy, so a row says exactly what the Trade page says about the same
+   * Trade.
+   *
+   * A `closed` Trade with no Actual R keeps the dash, deliberately. There
+   * is no state to name there — it is an incomplete record, and inventing
+   * a reassuring label for a data gap would be the same fabrication as
+   * printing 0.00R.
+   */
+  const pendingState = hasResult || trade.status === 'closed' ? null : trade.status;
 
   return (
     <li data-recent-trade-row={trade.tradeId} className="min-w-0">
@@ -213,23 +233,50 @@ function RecentTradeRow({
         </span>
         <span className="min-w-0 truncate text-sm font-semibold">{trade.symbol}</span>
         {/*
-          Right-aligned and tone-coloured, which is the one place on this row
-          colour is allowed to do work — and it never does it alone, because
-          the sign is in the text. A Trade with no final Actual result prints
-          the neutral unavailable marker rather than a 0.00R that would claim
-          a flat outcome that has not happened.
+          THE THIRD FIELD, IN THREE SHAPES — one slot, so the column still
+          scans as a column.
+
+          A finished Trade prints its R, right-aligned and tone-coloured;
+          this is the one place on the row colour does work, and it never
+          does it alone, because the sign is in the text. An unfinished one
+          names its state. A closed Trade with no R prints the dash. What
+          none of them do is print a 0.00R that would claim a flat outcome
+          that has not happened.
         */}
-        <span
-          data-recent-trade-result={formatted?.status === 'available' ? 'available' : 'unavailable'}
-          className={cn(
-            'numeric shrink-0 text-right text-sm font-semibold',
-            formatted?.status === 'available' && formatted.tone === 'positive' && 'text-positive',
-            formatted?.status === 'available' && formatted.tone === 'negative' && 'text-negative',
-            formatted?.status !== 'available' && 'text-muted-foreground',
-          )}
-        >
-          {resultText}
-        </span>
+        {hasResult ? (
+          <span
+            data-recent-trade-result="available"
+            className={cn(
+              'numeric shrink-0 text-right text-sm font-semibold',
+              formatted.tone === 'positive' && 'text-positive',
+              formatted.tone === 'negative' && 'text-negative',
+            )}
+          >
+            {formatted.text}
+          </span>
+        ) : pendingState !== null ? (
+          /*
+            A LABEL, NOT A RESULT — so it must not look like one.
+            Deliberately no positive/negative tone and no `numeric` face: an
+            outcome has not happened, and borrowing the result colours would
+            put a Trade that is still running into the same visual class as
+            one that finished flat. A quiet outlined pill reads as state.
+          */
+          <span
+            data-recent-trade-result="unavailable"
+            data-recent-trade-state={pendingState}
+            className="border-border text-muted-foreground shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap"
+          >
+            {tExecution(pendingState)}
+          </span>
+        ) : (
+          <span
+            data-recent-trade-result="unavailable"
+            className="numeric text-muted-foreground shrink-0 text-right text-sm font-semibold"
+          >
+            {t('notAvailableShort')}
+          </span>
+        )}
       </Link>
     </li>
   );

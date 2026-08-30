@@ -696,25 +696,29 @@ async function selectDashboardRecentTrades(
     .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
     .where(and(...conditions))
     .orderBy(desc(occurredAtExpr), desc(trades.id))
-    // TWELVE, AND THE NUMBER IS A LAYOUT MEASUREMENT, NOT A PREFERENCE.
+    // ELEVEN, AND THE NUMBER IS A LAYOUT MEASUREMENT, NOT A PREFERENCE.
     //
     // This card shares a row with the Calendar, which is a fixed six-week
-    // grid and therefore has a height the Trade list cannot influence:
-    // measured, 630px. At seven rows this card came to 413px and left 217px
-    // of dead column under it — the largest blank surface on the Dashboard.
+    // grid and therefore has a height the Trade list cannot influence. At
+    // seven rows this card came to 413px against a 630px Calendar and left
+    // 217px of dead column under it — the largest blank surface on the
+    // Dashboard.
     //
-    // The card's own height is `98px of header and padding + rows x 45px`,
-    // so twelve rows lands it at 638px against the Calendar's 630px: the two
-    // columns now end within 8px of each other without stretching an empty
-    // card to fake it. Five and then seven were chosen against row heights
-    // (67px, then 44px) that have since changed; twelve is chosen against
-    // the thing that actually constrains it.
+    // The card's own height is `98px of header and padding + rows x 45px`.
+    // Twelve rows matched the Calendar at 630px; the Calendar then lost 55px
+    // when its month control and its three totals were folded into one row,
+    // so eleven is what matches 575px. That the number moved when a
+    // different widget was reshaped is the honest cost of tuning one card
+    // against another, and it is why the list also scrolls: the cap below is
+    // what keeps a future Calendar height change from reopening the gap
+    // instead of merely narrowing it.
     //
-    // `RecentTradesCard` caps its list height and scrolls, so a future
-    // Calendar of a different height degrades into a scroll rather than
-    // re-opening the gap. One caller (`getDashboardRawData`), so this stays
-    // a constant rather than becoming a parameter with a single argument.
-    .limit(12);
+    // Five and then seven were chosen against row heights (67px, then 44px)
+    // that have since changed. Eleven is chosen against the thing that
+    // actually constrains this card. One caller (`getDashboardRawData`), so
+    // it stays a constant rather than becoming a parameter with a single
+    // argument.
+    .limit(11);
 
   return rows.map((row) => ({
     ...row,
