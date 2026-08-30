@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
@@ -144,10 +145,10 @@ function pillar(container: HTMLElement, name: 'strategy' | 'psychology' | 'disci
 }
 
 /**
- * The card's PRIMARY statement. A card may also carry one supporting
- * statement, and the two legitimately share labels (both compare against a
- * baseline, both name a cohort) — so an assertion about the lead insight has
- * to say which statement it means.
+ * The card's one statement. Cards used to render a second, so this helper
+ * existed to disambiguate; it now also serves as the assertion that exactly
+ * one exists — `querySelector` returning the first of several would silently
+ * hide a regression, so the one-finding rule is checked structurally above.
  */
 function primaryStatement(pillarNode: HTMLElement): HTMLElement {
   const node = pillarNode.querySelector<HTMLElement>('[data-insight-statement]');
@@ -176,19 +177,48 @@ describe('Insight pillars section — composition', () => {
     expect(container.querySelector('[role="meter"]')).toBeNull();
   });
 
-  it('gives each pillar exactly one hero figure', () => {
+  /**
+   * THE ONE-FINDING RULE, asserted structurally rather than by copy. Each card
+   * renders exactly one statement and exactly one hero inside it. A second
+   * finding cannot creep back in without this failing.
+   */
+  it('gives each pillar exactly one statement and one hero figure', () => {
     const { container } = renderPillars(
       buildView(TWENTY, { ruleChecks: checksFor(TWENTY, 'followed') }),
     );
     for (const name of ['strategy', 'psychology', 'discipline'] as const) {
-      expect(
-        pillar(container, name).querySelectorAll('[data-insight-headline]').length,
-      ).toBeLessThanOrEqual(2); // primary + at most one supporting statement
+      const node = pillar(container, name);
+      expect(node.querySelectorAll('[data-insight-statement]')).toHaveLength(1);
+      expect(node.querySelectorAll('[data-insight-headline]')).toHaveLength(1);
+      // At most ONE supporting figure beneath that hero.
+      expect(node.querySelectorAll('[data-insight-comparison]').length).toBeLessThanOrEqual(1);
     }
-    // The primary statement never carries two competing heroes of its own.
-    const strategy = pillar(container, 'strategy');
-    const primary = strategy.querySelector('[data-insight-statement]');
-    expect(primary?.querySelectorAll('[data-insight-headline]')).toHaveLength(1);
+  });
+
+  /**
+   * §18 — the three cards deliberately do NOT share an internal composition.
+   * Strategy and Psychology name an observation above their figure; Discipline
+   * answers with a rate and has no observation to name.
+   */
+  it('gives Strategy and Psychology a finding eyebrow and Discipline none', () => {
+    const { container } = renderPillars(
+      buildView(TWENTY, { ruleChecks: checksFor(TWENTY, 'followed') }),
+    );
+    expect(
+      within(primaryStatement(pillar(container, 'strategy'))).getByText(
+        'Strongest observed Strategy',
+      ),
+    ).toBeVisible();
+    const discipline = primaryStatement(pillar(container, 'discipline'));
+    // Its hero is the rate, named beside the number, with no sentence above.
+    expect(within(discipline).getByText('Trade Rule Adherence')).toBeVisible();
+    for (const eyebrow of [
+      'Required checks not completed',
+      'Most evaluated Trades were non-compliant',
+      'Compliant and non-compliant Trades differed',
+    ]) {
+      expect(within(discipline).queryByText(eyebrow)).toBeNull();
+    }
   });
 
   it('publishes the registry identity of each pillar on its own node', () => {
@@ -228,11 +258,14 @@ describe('Strategy pillar copy', () => {
     const lead = primaryStatement(strategy);
     expect(within(lead).getByText('Strongest observed Strategy')).toBeVisible();
     expect(within(lead).getByText('Elliott Wave v3')).toBeVisible();
-    // The hero is NAMED, and the supporting row carries the other figures
-    // rather than repeating it.
+    // The hero is NAMED, and exactly one supporting figure sits beneath it.
+    // Actual expectancy is no longer rendered on the Dashboard — it is a
+    // third way of saying what the Gap already says, and it lives in
+    // Analytics.
     expect(within(lead).getByText('System expectancy')).toBeVisible();
-    expect(within(lead).getByText('Actual expectancy')).toBeVisible();
     expect(within(lead).getAllByText('System expectancy')).toHaveLength(1);
+    expect(within(lead).queryByText('Actual expectancy')).toBeNull();
+    expect(lead.querySelectorAll('[data-insight-comparison]')).toHaveLength(1);
     // §8 — never a significance or confidence claim.
     expect(strategy.textContent ?? '').not.toMatch(
       /statistically significant|high confidence|proven edge/i,
@@ -296,10 +329,30 @@ describe('Psychology pillar copy', () => {
       }),
     );
     const psychology = pillar(container, 'psychology');
-    expect(psychology.querySelector('[data-insight-non-additive]')).not.toBeNull();
-    expect(within(psychology).getByText(/Trades can carry more than one tag/)).toBeVisible();
+    // The note moved behind the ⓘ once the card stopped rendering a SECOND
+    // cohort: with one cohort on the face there is no visible partition left
+    // to misread. It is still present, still in the same words, and still
+    // reachable by keyboard — asserted in the next test.
+    expect(psychology.querySelector('[data-insight-non-additive]')).toBeNull();
     // No percentage-of-total presentation that would imply a partition.
     expect(psychology.textContent ?? '').not.toMatch(/\d+% Fear/);
+  });
+
+  it('keeps the overlapping-cohort note reachable from the info popover', async () => {
+    const user = userEvent.setup();
+    const fearful = Array.from({ length: 8 }, (_, index) => actual(index, { actualR: '-0.4400' }));
+    const rest = Array.from({ length: 12 }, (_, index) => actual(index + 8, { actualR: '0.8000' }));
+    renderPillars(
+      buildView([...fearful, ...rest], {
+        emotions: [
+          ...emotionsFor(fearful, 'fear', 'Fear'),
+          ...emotionsFor(rest, 'calm', 'Calm'),
+          ...emotionsFor(fearful, 'fomo', 'FOMO'),
+        ],
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'About Psychology Performance' }));
+    expect(await screen.findByText(/Trades can carry more than one tag/)).toBeVisible();
   });
 
   it('prints a canonical confidence level rather than a High/Medium/Low band', () => {
@@ -427,5 +480,121 @@ describe('Localization', () => {
     const { container } = renderPillars(buildView([]), 'th');
     expect(within(pillar(container, 'strategy')).getByText('ยังไม่มี Trade ที่ปิด')).toBeVisible();
     expect(container.textContent ?? '').not.toMatch(/No closed Trades|No eligible Trades/);
+  });
+});
+
+/**
+ * The Dashboard content budget for these three cards, asserted as exclusions.
+ * Every figure named below is still composed by D8A, still on the payload, and
+ * still rendered at the Analytics destination each card links to — it simply
+ * has no permanent place on the Dashboard.
+ */
+describe('Insight pillars — Dashboard content budget', () => {
+  it('keeps the runner-up Strategy Setup off the Dashboard', () => {
+    const { container } = renderPillars(buildView(TWENTY));
+    const strategy = pillar(container, 'strategy');
+    expect(within(strategy).queryByText('Strongest observed Setup')).toBeNull();
+    expect(within(strategy).queryByText('Wave 3 Continuation')).toBeNull();
+    expect(within(strategy).queryByText('Actual expectancy')).toBeNull();
+  });
+
+  it('keeps the runner-up Psychology cohort and its Gap off the Dashboard', () => {
+    const low = Array.from({ length: 10 }, (_, index) =>
+      actual(index, { actualR: '-0.6000', confidence: 25 }),
+    );
+    const high = Array.from({ length: 10 }, (_, index) =>
+      actual(index + 10, { actualR: '0.9000', confidence: 75 }),
+    );
+    const { container } = renderPillars(
+      buildView([...low, ...high], {
+        emotions: emotionsFor(low, 'fear', 'Fear'),
+      }),
+    );
+    const psychology = pillar(container, 'psychology');
+    expect(psychology.querySelectorAll('[data-insight-statement]')).toHaveLength(1);
+    // The baseline is mandatory; the cohort's Execution Gap is not rendered.
+    expect(within(psychology).getByText('Scoped baseline')).toBeVisible();
+    expect(within(psychology).queryByText('Avg Execution Gap')).toBeNull();
+  });
+
+  it('leads Discipline with Trade Rule Adherence even when checks are incomplete', () => {
+    const compliant = TWENTY.slice(0, 12);
+    const violating = TWENTY.slice(12, 18);
+    const unresolved = TWENTY.slice(18);
+    const { container } = renderPillars(
+      buildView(TWENTY, {
+        ruleChecks: [
+          ...checksFor(compliant, 'followed'),
+          ...checksFor(violating, 'violated'),
+          ...unresolved.map((trade) => ({
+            tradeId: trade.tradeId,
+            ruleKey: 'rule-1',
+            title: 'Wait for confirmation',
+            checkStatus: 'not_checked',
+            isRequired: true,
+            occurredAt: trade.actualExitedAt,
+          })),
+        ],
+      }),
+    );
+    const discipline = pillar(container, 'discipline');
+    const statement = primaryStatement(discipline);
+
+    // The hero is the Trade-level rate, named — never the completeness
+    // warning, and never the check-level rate under the Trade-level label.
+    expect(within(statement).getByText('Trade Rule Adherence')).toBeVisible();
+    expect(within(statement).getByText('Rule Checks Followed')).toBeVisible();
+
+    // Incompleteness survives as a compact caveat with a real count, outside
+    // the statement block, and never as the headline.
+    const notice = discipline.querySelector('[data-insight-incomplete-checks]');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent ?? '').toContain('Required checks not completed');
+    expect(statement.contains(notice)).toBe(false);
+
+    // The retired second finding is gone in every form.
+    expect(
+      within(discipline).queryByText('Compliant and non-compliant Trades differed'),
+    ).toBeNull();
+    expect(discipline.querySelector('[data-insight-comparison="compliant_expectancy"]')).toBeNull();
+    expect(
+      discipline.querySelector('[data-insight-comparison="associated_execution_gap"]'),
+    ).toBeNull();
+  });
+
+  it('omits the incomplete-checks caveat when every required check resolved', () => {
+    const { container } = renderPillars(
+      buildView(TWENTY, { ruleChecks: checksFor(TWENTY, 'followed') }),
+    );
+    expect(
+      pillar(container, 'discipline').querySelector('[data-insight-incomplete-checks]'),
+    ).toBeNull();
+  });
+
+  /**
+   * §10 — a caveat that is always on screen stops being read. It appears
+   * below the policy's supported floor and moves into the info popover at or
+   * above it, where the count is still reachable.
+   */
+  it('shows the limited-sample caveat only below the supported floor', () => {
+    const limited = renderPillars(
+      buildView(Array.from({ length: 9 }, (_, index) => actual(index))),
+    );
+    expect(
+      pillar(limited.container, 'strategy').querySelector('[data-insight-sample="limited"]'),
+    ).not.toBeNull();
+    limited.unmount();
+
+    const supported = renderPillars(buildView(TWENTY));
+    const strategy = pillar(supported.container, 'strategy');
+    expect(strategy.querySelector('[data-insight-sample]')).toBeNull();
+    expect(within(strategy).queryByText(/Observed over/)).toBeNull();
+  });
+
+  it('keeps the sample count and coverage reachable from the info popover', async () => {
+    const user = userEvent.setup();
+    renderPillars(buildView(TWENTY));
+    await user.click(screen.getByRole('button', { name: 'About Strategy Performance' }));
+    expect(await screen.findByText(/Observed over/)).toBeVisible();
   });
 });

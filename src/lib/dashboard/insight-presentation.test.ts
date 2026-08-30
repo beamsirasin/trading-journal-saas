@@ -190,16 +190,24 @@ describe('Strategy pillar', () => {
    * selection leads on System expectancy, and the supporting row therefore
    * carries the OTHER two figures rather than saying System expectancy twice.
    */
-  it('never repeats the hero figure among its supporting comparisons', () => {
+  it('carries exactly one supporting figure, and never repeats the hero', () => {
     const statement = statementOf(card(view(TWENTY), 'strategy'));
     expect(statement.headlineRole).toBe('system_expectancy');
-    expect(statement.comparisons.map((item) => item.role)).toEqual([
-      'actual_expectancy',
-      'average_execution_gap',
-    ]);
+    // The Gap, and only the Gap. Actual expectancy left the Dashboard: the
+    // card ranks on System expectancy and the Gap already answers "how much
+    // of it am I taking?", which is the only follow-up the hero raises.
+    expect(statement.comparisons.map((item) => item.role)).toEqual(['average_execution_gap']);
     expect(statement.comparisons.map((item) => item.role)).not.toContain(statement.headlineRole);
-    // A compact card never grows into a metric table.
-    expect(statement.comparisons.length).toBeLessThanOrEqual(2);
+    expect(statement.comparisons.map((item) => item.role)).not.toContain('actual_expectancy');
+  });
+
+  it('falls back to System expectancy when the Gap is itself the hero', () => {
+    // The divergence branch promotes the Gap to the hero; the supporting
+    // figure must then become the ranking basis rather than disappearing.
+    const statement = statementOf(card(view(TWENTY), 'strategy'));
+    const roles = [statement.headlineRole, ...statement.comparisons.map((item) => item.role)];
+    expect(new Set(roles).size).toBe(roles.length);
+    expect(roles).toContain('system_expectancy');
   });
 
   /**
@@ -238,7 +246,6 @@ describe('Strategy pillar', () => {
     expect(strategy.status).toBe('insufficient_sample');
     expect(strategy.reason).toBe('sample_below_policy');
     expect(strategy.primary).toBeNull();
-    expect(strategy.secondary).toBeNull();
     expect(strategy.minimumCohortTradeCount).toBe(5);
   });
 

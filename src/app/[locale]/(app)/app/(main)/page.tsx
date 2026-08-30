@@ -207,9 +207,13 @@ function DashboardCalendarSkeleton() {
 function InsightPillarsSkeleton() {
   return (
     <div aria-hidden="true" className="grid animate-pulse gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <div className="bg-card h-[404px] rounded-lg" />
-      <div className="bg-card h-[404px] rounded-lg" />
-      <div className="bg-card h-[404px] rounded-lg md:col-span-2 xl:col-span-1" />
+      {/* 404 -> 272: one finding per card instead of two, and the coverage /
+          overlap / supported-sample lines moved behind each card's ⓘ.
+          Measured at 1440 on the populated fixture; the three stretch to one
+          row height, so a single value reserves all three correctly. */}
+      <div className="bg-card h-[272px] rounded-lg" />
+      <div className="bg-card h-[272px] rounded-lg" />
+      <div className="bg-card h-[272px] rounded-lg md:col-span-2 xl:col-span-1" />
     </div>
   );
 }

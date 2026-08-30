@@ -83,6 +83,18 @@ export interface InsightComparison {
 export interface InsightStatementView {
   /** D8A's own insight `type`. The card selects copy from this, never from a value. */
   readonly type: string;
+  /**
+   * HOW this statement should read, which is not the same for all three
+   * pillars and must not be forced to be.
+   *
+   * `finding` leads with a named observation ("Strongest observed Strategy",
+   * "Tagged Trades averaged below the baseline") and the figure is that
+   * observation's evidence. `status` has no observation to name: Discipline
+   * answers "am I following my rules?", and its answer IS the rate, so an
+   * eyebrow above it could only restate the label already sitting beside the
+   * number.
+   */
+  readonly presentation: 'finding' | 'status';
   readonly subjectLabel: string | null;
   readonly subjectKind: InsightSubject['kind'] | null;
   /** The one figure the statement leads with; `null` when the claim is not numeric. */
@@ -122,6 +134,13 @@ export type InsightCoverageView =
       readonly kind: 'discipline';
       readonly evaluatedTradeCount: number;
       readonly eligibleTradeCount: number;
+      /**
+       * Trades carrying an unresolved required check, which are EXCLUDED from
+       * the Trade Rule Adherence denominator. Surfaced so the card can say
+       * that the headline rate does not describe every Trade — the scope
+       * caveat, not a second finding.
+       */
+      readonly incompleteTradeCount: number;
     };
 
 /** D8A's own reason vocabulary, plus this layer's two failure modes. */
@@ -154,9 +173,18 @@ export interface InsightCardView {
     | 'unavailable'
     | 'integrity_error';
   readonly reason: InsightCardReason | null;
+  /**
+   * EXACTLY ONE finding reaches the Dashboard, and there is deliberately no
+   * `secondary` field to put a second one in.
+   *
+   * D8A still selects and publishes `secondaryInsight` for all three pillars
+   * — the domain is untouched — but a second full statement, with its own
+   * subject, its own hero figure and its own comparisons, is a second
+   * independent analysis. Three of those on one row is the miniature report
+   * the Dashboard is not. Each pillar's runner-up now lives at its Analytics
+   * destination, which already renders it.
+   */
   readonly primary: InsightStatementView | null;
-  /** At most ONE supporting insight reaches the Dashboard (§1). */
-  readonly secondary: InsightStatementView | null;
   readonly sample: InsightSampleView | null;
   readonly coverage: InsightCoverageView | null;
   /** The policy floor, so an insufficient card can state the real threshold. */
@@ -274,7 +302,6 @@ function errorCard(
     status: 'integrity_error',
     reason,
     primary: null,
-    secondary: null,
     sample: null,
     coverage: null,
     minimumCohortTradeCount: 0,
@@ -297,7 +324,6 @@ function strategyCard(
       status: pillar.status,
       reason: pillar.reason,
       primary: null,
-      secondary: null,
       sample: null,
       coverage,
       minimumCohortTradeCount: policy.minimumCohortTradeCount,
@@ -309,7 +335,6 @@ function strategyCard(
     status: pillar.status,
     reason: null,
     primary: strategyStatement(pillar.primaryInsight),
-    secondary: pillar.secondaryInsight === null ? null : strategyStatement(pillar.secondaryInsight),
     sample: {
       quality: pillar.primaryInsight.sampleQuality,
       // The Actual population the claim was observed over.
@@ -342,20 +367,32 @@ function strategyStatement(insight: StrategyInsight): InsightStatementView {
         ? signed(metrics.actualExpectancyR, 'r')
         : signed(metrics.systemExpectancyR, 'r');
 
+  /*
+    ONE SUPPORTING FIGURE, AND IT IS THE PAIR THE HEADLINE DOES NOT COVER.
+
+    Actual expectancy is gone from this list. The card ranks on SYSTEM
+    expectancy — "what is this Strategy offering?" — and the Execution Gap
+    already answers "and how much of it am I taking?", which is the only
+    follow-up question the headline raises. Actual expectancy is that same
+    answer stated a third way, and on the populated fixture it rendered the
+    same +0.35R the Psychology card prints two columns to the right under a
+    different label. It is still on the payload and still in Analytics.
+
+    Both roles are offered and `supporting` drops whichever one the headline
+    already is, so the divergence branch (headline = Gap) falls back to
+    System expectancy without a second code path.
+  */
   const comparisons: InsightComparison[] = [];
   push(comparisons, 'system_expectancy', signed(metrics.systemExpectancyR, 'r'));
-  push(comparisons, 'actual_expectancy', signed(metrics.actualExpectancyR, 'r'));
-  if (insight.basis !== 'paired_execution_gap') {
-    push(comparisons, 'average_execution_gap', signed(metrics.averageExecutionGapR, 'r'));
-  }
+  push(comparisons, 'average_execution_gap', signed(metrics.averageExecutionGapR, 'r'));
 
   return {
     type: insight.type,
+    presentation: 'finding',
     subjectLabel: subjectLabel(insight.subject),
     subjectKind: insight.subject.kind,
     headline,
     headlineRole,
-    // Two supporting figures at most: a compact card is not a metric table.
     comparisons: supporting(comparisons, headlineRole),
     tradeCount: metrics.actualTradeCount,
     nonAdditive: false,
@@ -379,7 +416,6 @@ function psychologyCard(
       status: pillar.status,
       reason: pillar.reason,
       primary: null,
-      secondary: null,
       sample: null,
       coverage,
       minimumCohortTradeCount: policy.minimumCohortTradeCount,
@@ -391,8 +427,6 @@ function psychologyCard(
     status: pillar.status,
     reason: null,
     primary: psychologyStatement(pillar.primaryInsight),
-    secondary:
-      pillar.secondaryInsight === null ? null : psychologyStatement(pillar.secondaryInsight),
     sample: {
       quality: sampleQualityFor(pillar.primaryInsight.sampleTradeCount, policy),
       tradeCount: pillar.primaryInsight.sampleTradeCount,
@@ -410,12 +444,21 @@ function psychologyCard(
  * several Emotions, so these groups never partition the population.
  */
 function psychologyStatement(insight: PsychologyInsight): InsightStatementView {
+  /*
+    THE BASELINE IS THE ONLY SUPPORTING FIGURE, AND IT IS MANDATORY.
+
+    This card's claim is inherently comparative — "-0.13R" says nothing
+    without "+0.35R" beside it — so the baseline is the one number that must
+    never leave. The cohort's Average Execution Gap did leave: it is a
+    fourth Gap figure on a page that already has a section devoted to the
+    Gap, and it answers a different question from the one this card asks.
+  */
   const comparisons: InsightComparison[] = [];
   push(comparisons, 'scoped_baseline', signed(insight.scopedBaselineActualR, 'r'));
-  push(comparisons, 'average_execution_gap', signed(insight.averageExecutionGapR, 'r'));
 
   return {
     type: insight.type,
+    presentation: 'finding',
     subjectLabel: subjectLabel(insight.subject),
     subjectKind: insight.subject?.kind ?? null,
     headline: signed(insight.averageActualR, 'r'),
@@ -435,6 +478,11 @@ function disciplineCard(
     kind: 'discipline',
     evaluatedTradeCount: pillar.coverage.evaluatedTradeCount,
     eligibleTradeCount: pillar.coverage.eligibleTradeCount,
+    // Both domain counts, summed the same way `composeDisciplinePillar` sums
+    // them when it decides whether the checklist is incomplete. Nothing is
+    // recomputed and no count is invented.
+    incompleteTradeCount:
+      pillar.coverage.incompleteTradeCount + pillar.coverage.unrecordedRequiredCheckTradeCount,
   };
   if (pillar.primaryInsight === null) {
     return {
@@ -442,7 +490,6 @@ function disciplineCard(
       status: pillar.status,
       reason: pillar.reason,
       primary: null,
-      secondary: null,
       sample: null,
       coverage,
       minimumCohortTradeCount: policy.minimumCohortTradeCount,
@@ -454,10 +501,6 @@ function disciplineCard(
     status: pillar.status,
     reason: null,
     primary: disciplineStatement(pillar.primaryInsight, pillar.supportingMetrics),
-    secondary:
-      pillar.secondaryInsight === null
-        ? null
-        : disciplineStatement(pillar.secondaryInsight, pillar.supportingMetrics),
     sample: {
       quality: sampleQualityFor(pillar.coverage.evaluatedTradeCount, policy),
       tradeCount: pillar.coverage.evaluatedTradeCount,
@@ -468,53 +511,45 @@ function disciplineCard(
 }
 
 /**
- * Rule Adherence leads, because it is the Trade-level reading a trader acts
- * on. Rule Checks Followed rides alongside it as a separately named
- * comparison — the two are different denominators and D8A keeps them
- * distinct, so neither is ever printed under the other's label.
+ * TRADE RULE ADHERENCE LEADS THIS CARD, ALWAYS — A DASHBOARD PRESENTATION
+ * OVERRIDE, NOT A DOMAIN CHANGE.
  *
- * An `issue_associated_execution_gap` statement carries the association only:
- * the affected cohort, its associated Gap, and the non-additive flag. It is
- * never a cost, and never "because of".
+ * D8A's own precedence lets `required_checks_incomplete` become the primary
+ * statement whenever a single unresolved required check exists, and lets
+ * `adherence_performance_difference` or `issue_associated_execution_gap`
+ * take the hero when they qualify. That precedence is correct for the domain
+ * and is untouched — `composeDisciplinePillar` still selects exactly what it
+ * selected before, and Analytics still reads it.
+ *
+ * What changed is what the DASHBOARD asks. This card answers one question,
+ * "am I following my rules?", and the answer to that is a rate. A card whose
+ * hero figure changes identity between visits — a percentage one day, a
+ * signed R difference the next — cannot be scanned, and a data-completeness
+ * warning is a caveat on the answer rather than the answer itself. So the
+ * hero is Trade Rule Adherence in every branch, Rule Checks Followed rides
+ * beside it, and incompleteness becomes the scope caveat it always was (see
+ * `InsightCoverageView`'s `incompleteTradeCount`).
+ *
+ * THE TWO RATES ARE NEVER MERGED. Rule Checks Followed is check-level
+ * (`followed / (followed + violated)`); Trade Rule Adherence is Trade-level
+ * (fully compliant evaluated Trades / all fully evaluated Trades, with any
+ * Trade holding an unresolved required check excluded from the denominator).
+ * They keep separate roles so neither is ever printed under the other's name.
+ *
+ * The insight's own `type` still rides along, so the DOM records which branch
+ * D8A chose even though the card no longer renders that branch's own shape.
  */
 function disciplineStatement(
   insight: DisciplineInsight,
   rates: DisciplinePerformanceInsightData['supportingMetrics'],
 ): InsightStatementView {
   const comparisons: InsightComparison[] = [];
-
-  if (insight.type === 'issue_associated_execution_gap') {
-    push(comparisons, 'associated_execution_gap', signed(insight.associatedExecutionGapR, 'r'));
-    return {
-      type: insight.type,
-      subjectLabel: subjectLabel(insight.subject),
-      subjectKind: insight.subject.kind,
-      headline: signed(insight.associatedExecutionGapR, 'r'),
-      headlineRole: 'associated_execution_gap',
-      comparisons: supporting(comparisons, 'associated_execution_gap'),
-      tradeCount: insight.affectedTradeCount,
-      nonAdditive: insight.nonAdditiveCohort,
-    };
-  }
-
-  if (insight.type === 'adherence_performance_difference') {
-    push(comparisons, 'compliant_expectancy', signed(insight.compliantExpectancyR, 'r'));
-    push(comparisons, 'non_compliant_expectancy', signed(insight.nonCompliantExpectancyR, 'r'));
-    return {
-      type: insight.type,
-      subjectLabel: null,
-      subjectKind: 'discipline',
-      headline: signed(insight.differenceR, 'r'),
-      headlineRole: null,
-      comparisons: supporting(comparisons, null),
-      tradeCount: null,
-      nonAdditive: false,
-    };
-  }
-
   push(comparisons, 'checks_followed', neutral(rates.ruleChecksFollowedRate, 'percent'));
   return {
     type: insight.type,
+    // Status, not finding: there is no observation to name above a rate whose
+    // own label already sits beside it.
+    presentation: 'status',
     subjectLabel: null,
     subjectKind: 'discipline',
     headline: neutral(rates.tradeRuleAdherenceRate, 'percent'),
@@ -523,7 +558,12 @@ function disciplineStatement(
     // check, so an unlabelled hero would be genuinely unreadable.
     headlineRole: 'rule_adherence',
     comparisons: supporting(comparisons, 'rule_adherence'),
-    tradeCount: insight.sampleTradeCount,
+    tradeCount:
+      insight.type === 'issue_associated_execution_gap'
+        ? insight.affectedTradeCount
+        : insight.type === 'adherence_performance_difference'
+          ? null
+          : insight.sampleTradeCount,
     nonAdditive: false,
   };
 }

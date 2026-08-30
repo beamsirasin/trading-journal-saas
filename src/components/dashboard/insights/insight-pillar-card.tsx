@@ -98,7 +98,9 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
               triggerLabel={t('infoTrigger', { pillar: t(`${card.pillar}.title`) })}
               title={t(`${card.pillar}.title`)}
               description={t(`${card.pillar}.description`)}
-            />
+            >
+              <InsightContext card={card} />
+            </MetricInfo>
           </div>
         </div>
 
@@ -141,15 +143,19 @@ export function InsightPillarCard({ card }: { card: InsightCardView }) {
  * card to learn which of the eight figures on it was the finding. That is a
  * report, not an insight card.
  *
- * The primary statement now sits on `--muted`, one surface step off the card,
- * exactly as the Execution Gap's summary cells do. The secondary sits on the
- * card plane beneath it. One glance separates "the finding" from "and also",
- * before a single label has been read — which is the two-second test §17 sets.
+ * The one statement sits on `--muted`, one surface step off the card, exactly
+ * as the Execution Gap's summary cells do, with at most one labelled
+ * supporting figure beneath its hero.
  *
- * The three cards share this frame even though their semantics differ, which
- * is what §20 asks for: same heading position, same hero area, same secondary
- * area, same footer baseline. Nothing about the CONTENT is forced into a
- * common shape — a pillar with no secondary statement simply renders none.
+ * ONE STATEMENT, AND THE SECOND IS GONE RATHER THAN DEMOTED. Each pillar used
+ * to render its runner-up as a full second finding on the card plane, which
+ * is two independent analyses in a space meant to say one thing.
+ *
+ * The three cards share this frame even though their semantics differ: same
+ * heading position, same hero area, same footer baseline. Nothing about the
+ * CONTENT is forced into a common shape — Strategy leads with a ranked
+ * subject, Psychology with an associative sentence, and Discipline with a
+ * bare rate and no sentence at all (`presentation: 'status'`).
  */
 function InsightBody({ card, primary }: { card: InsightCardView; primary: InsightStatementView }) {
   const t = useTranslations('dashboard.insights');
@@ -157,47 +163,64 @@ function InsightBody({ card, primary }: { card: InsightCardView; primary: Insigh
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <div className="bg-muted/50 min-w-0 rounded-lg px-3 py-2.5">
-        <Statement statement={primary} prominent />
+        <Statement statement={primary} />
       </div>
 
-      {/* AT MOST ONE supporting insight reaches the Dashboard (§1). */}
-      {card.secondary === null ? null : (
-        <div className="min-w-0 px-3">
-          <Statement statement={card.secondary} prominent={false} />
-        </div>
-      )}
+      {/*
+        THERE IS NO SECOND STATEMENT HERE ANY MORE, AND NO SLOT FOR ONE.
+
+        Each pillar used to render its runner-up as a full second finding —
+        its own subject, its own hero figure, its own comparisons — which is
+        two independent analyses on a card meant to say one thing. The
+        Strategy Setup, the second Psychology cohort and the
+        compliant-vs-non-compliant difference all still exist in D8A and are
+        all rendered at the Analytics destination this card links to.
+      */}
 
       {/*
-        §21 — the caveats leave the first visual layer. They are still here,
-        still complete and still never a warning box; they are simply at
-        11px, grouped, and below the two statements rather than interleaved
-        with them at the same size as the findings.
+        WHAT STAYS ON THE FACE IS ONLY WHAT WOULD MAKE THE FINDING MISLEADING
+        IF IT WERE HIDDEN. Everything else — full coverage, the overlapping-
+        cohort note, the trade count of a well-supported sample — moved into
+        this card's own info popover, which is a real button reachable by
+        pointer, touch and keyboard.
       */}
       <div className="flex min-w-0 flex-col gap-0.5 px-3">
-        {card.sample === null ? null : (
+        {card.sample === null || card.sample.quality === 'supported' ? null : (
           /*
-            §22 — a limited sample is a CAVEAT, not an error. It is one quiet
-            line of text, never a warning box across the card, and it never
-            claims significance or confidence.
+            A limited sample is a CAVEAT, not an error: one quiet line, never
+            a warning box, never a claim about significance or confidence.
+
+            IT IS CONDITIONAL NOW, AND THAT IS THE POINT. A supported sample
+            printed "Observed over 66 Trades" on every card on every visit —
+            a line that only ever said "this is fine". A reader learns nothing
+            from a caveat that is always present, and stops reading the one
+            that matters. Below the policy floor it appears; at or above it,
+            the count is in the popover instead.
           */
           <p
             data-insight-sample={card.sample.quality}
             className="text-muted-foreground text-[11px] leading-4"
           >
-            {card.sample.quality === 'supported'
-              ? `${t('sample.supported')} ${t('sample.trades', { count: card.sample.tradeCount })}`
-              : `${t('sample.limited')} · ${t('sample.trades', { count: card.sample.tradeCount })}`}
+            {`${t('sample.limited')} · ${t('sample.trades', { count: card.sample.tradeCount })}`}
           </p>
         )}
-        <Coverage card={card} />
-        {/* §12 — stated in words wherever cohorts overlap, so nothing on the
-            card can be read as shares of a whole. */}
-        {primary.nonAdditive || card.secondary?.nonAdditive === true ? (
+        {/*
+          THE ONE SCOPE CAVEAT THAT CANNOT MOVE. Trade Rule Adherence counts
+          only fully evaluated Trades — a Trade holding an unresolved required
+          check is excluded from its denominator, not counted as compliant.
+          When such Trades exist the headline rate describes a subset, and
+          saying so is the difference between a rate and a misleading rate.
+          It is deliberately NOT the headline: it qualifies the answer rather
+          than replacing it.
+        */}
+        {card.coverage?.kind === 'discipline' && card.coverage.incompleteTradeCount > 0 ? (
           <p
-            data-insight-non-additive
+            data-insight-incomplete-checks={card.coverage.incompleteTradeCount}
             className="text-muted-foreground text-[11px] leading-4 text-pretty"
           >
-            {t('nonAdditive')}
+            {`${t('insight.required_checks_incomplete')} · ${t('sample.trades', {
+              count: card.coverage.incompleteTradeCount,
+            })}`}
           </p>
         ) : null}
       </div>
@@ -214,13 +237,7 @@ function InsightBody({ card, primary }: { card: InsightCardView; primary: Insigh
  * 'Moved Stop'" — because a bare label would read as a property of the
  * Trades rather than as the cohort those Trades were grouped into.
  */
-function Statement({
-  statement,
-  prominent,
-}: {
-  statement: InsightStatementView;
-  prominent: boolean;
-}) {
+function Statement({ statement }: { statement: InsightStatementView }) {
   const t = useTranslations('dashboard.insights');
   const label = statement.subjectLabel;
   const subject =
@@ -245,16 +262,23 @@ function Statement({
         costing a row and without ever letting a bare `77.59%` be mistaken for
         the other rate this pillar publishes.
       */}
-      <p className="text-muted-foreground text-[11px] leading-4">
-        {t(`insight.${statement.type}`)}
-      </p>
+      {/*
+        THE EYEBROW IS A FINDING'S LABEL, SO A STATUS CARD DOES NOT GET ONE.
+        Strategy and Psychology name an observation ("Strongest observed
+        Strategy", "Tagged Trades averaged below the baseline") and the figure
+        below is that observation's evidence. Discipline has no observation to
+        name — its answer IS the rate — and an eyebrow there could only repeat
+        the role label already sitting beside the number.
+      */}
+      {statement.presentation === 'status' ? null : (
+        <p className="text-muted-foreground text-[11px] leading-4">
+          {t(`insight.${statement.type}`)}
+        </p>
+      )}
       {subject === null ? null : (
         <p
           data-insight-subject
-          className={cn(
-            'text-foreground min-w-0 leading-tight font-semibold break-words',
-            prominent ? 'text-sm' : 'text-xs',
-          )}
+          className="text-foreground min-w-0 text-sm leading-tight font-semibold break-words"
         >
           {subject}
         </p>
@@ -264,8 +288,7 @@ function Statement({
           <p
             data-insight-headline
             className={cn(
-              'numeric font-semibold tracking-tight',
-              prominent ? 'text-[1.75rem] leading-8' : 'text-base leading-6',
+              'numeric text-[1.75rem] leading-8 font-semibold tracking-tight',
               TONE_CLASS[statement.headline.tone],
             )}
           >
@@ -343,44 +366,63 @@ const SIGNED_COMPARISON_ROLES: ReadonlySet<string> = new Set([
  * remains between what was recorded and what was eligible. A pillar with
  * complete coverage says nothing, rather than printing a reassuring 100%.
  */
-function Coverage({ card }: { card: InsightCardView }) {
+/**
+ * The context that left the card's face, gathered behind its ⓘ.
+ *
+ * Every string here already existed and is unchanged — this is a relocation,
+ * not new methodology copy. Three things arrive: how many observations the
+ * finding rests on (whatever the quality, so a supported sample is still
+ * knowable), the pillar's coverage of its eligible population, and the
+ * overlapping-cohort note wherever the subject is a cohort a Trade can belong
+ * to more than one of.
+ *
+ * The overlap note can safely live here NOW, and could not before: with two
+ * cohorts on the face a reader could read them as shares of a whole, so the
+ * note had to sit beside them. With exactly one cohort rendered there is no
+ * visible partition to misread.
+ */
+function InsightContext({ card }: { card: InsightCardView }) {
   const t = useTranslations('dashboard.insights');
   const coverage = card.coverage;
-  if (coverage === null) return null;
-
-  const complete =
-    coverage.kind === 'psychology'
-      ? coverage.taggedTradeCount >= coverage.eligibleTradeCount
-      : coverage.kind === 'discipline'
-        ? coverage.evaluatedTradeCount >= coverage.eligibleTradeCount
-        : coverage.classifiedTradeCount >= coverage.eligibleTradeCount;
-  if (complete && card.status !== 'low_coverage') return null;
-  if (coverage.eligibleTradeCount === 0) return null;
+  const showOverlap = card.primary?.nonAdditive === true;
+  if (card.sample === null && coverage === null && !showOverlap) return null;
 
   return (
-    <p
-      data-insight-coverage={coverage.kind}
-      className="text-muted-foreground text-[11px] leading-4"
-    >
-      {coverage.kind === 'psychology'
-        ? t('coverage.psychology', {
-            tagged: coverage.taggedTradeCount,
-            eligible: coverage.eligibleTradeCount,
-            rate: coverage.ratePercent,
-          })
-        : coverage.kind === 'discipline'
-          ? t('coverage.discipline', {
-              evaluated: coverage.evaluatedTradeCount,
-              eligible: coverage.eligibleTradeCount,
-            })
-          : t('coverage.strategy', {
-              classified: coverage.classifiedTradeCount,
-              eligible: coverage.eligibleTradeCount,
-            })}
-    </p>
+    <dl className="mt-3 flex flex-col gap-1.5">
+      {card.sample === null ? null : (
+        <div data-insight-info-sample className="text-muted-foreground text-xs leading-relaxed">
+          {card.sample.quality === 'supported'
+            ? `${t('sample.supported')} ${t('sample.trades', { count: card.sample.tradeCount })}`
+            : `${t('sample.limited')} · ${t('sample.trades', { count: card.sample.tradeCount })}`}
+        </div>
+      )}
+      {coverage === null || coverage.eligibleTradeCount === 0 ? null : (
+        <div data-insight-info-coverage className="text-muted-foreground text-xs leading-relaxed">
+          {coverage.kind === 'psychology'
+            ? t('coverage.psychology', {
+                tagged: coverage.taggedTradeCount,
+                eligible: coverage.eligibleTradeCount,
+                rate: coverage.ratePercent,
+              })
+            : coverage.kind === 'discipline'
+              ? t('coverage.discipline', {
+                  evaluated: coverage.evaluatedTradeCount,
+                  eligible: coverage.eligibleTradeCount,
+                })
+              : t('coverage.strategy', {
+                  classified: coverage.classifiedTradeCount,
+                  eligible: coverage.eligibleTradeCount,
+                })}
+        </div>
+      )}
+      {showOverlap ? (
+        <div data-insight-info-overlap className="text-muted-foreground text-xs leading-relaxed">
+          {t('nonAdditive')}
+        </div>
+      ) : null}
+    </dl>
   );
 }
-
 /**
  * Every D8A reason gets its own words. "No data" would collapse four
  * genuinely different facts — nothing closed yet, a cohort under the policy
