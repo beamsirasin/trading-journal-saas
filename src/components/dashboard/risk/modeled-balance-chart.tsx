@@ -118,9 +118,16 @@ export function ModeledBalanceChart({
   return (
     <div
       // The shared Dashboard plot ramp — see the same class list and the full
-      // reasoning on `CumulativeComparisonChart`. Down from `h-56/64/72`, so
-      // the page's two major charts are one height instead of two.
-      className="h-52 w-full min-w-0 sm:h-56 lg:h-64"
+      // reasoning on `CumulativeComparisonChart`: a ratio with a floor and a
+      // ceiling rather than a fixed height, because what went wrong was the
+      // relationship between width and height and only width varies.
+      //
+      // This plot now sits beside a 19rem stat rail rather than under a
+      // full-width band, so it resolves narrower than the Execution Gap's and
+      // therefore shorter — which is the ratio doing its job, not a second
+      // opinion about height. The two charts still share one rule; they no
+      // longer have to share one number to stay consistent.
+      className="aspect-[5/1] max-h-[22rem] min-h-52 w-full min-w-0 sm:min-h-56"
       role="img"
       aria-label={t('chart.ariaLabel')}
     >

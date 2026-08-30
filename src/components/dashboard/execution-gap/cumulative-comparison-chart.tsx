@@ -180,10 +180,27 @@ export function CumulativeComparisonChart({
       // charts on one page should not be two different heights for no reason.
       //
       // This was `h-44/48/56` and the modeled balance chart was `h-56/64/72`;
-      // both are now `h-52/56/64` (208/224/256px). The two move toward each
-      // other rather than one being dragged to the other, so neither is
+      // both were then `h-52/56/64` (208/224/256px). The two moved toward
+      // each other rather than one being dragged to the other, so neither is
       // crushed and the page loses nothing overall.
-      className="h-52 w-full min-w-0 sm:h-56 lg:h-64"
+      //
+      // THE RAMP IS NOW A RATIO WITH A FLOOR AND A CEILING, BECAUSE A FIXED
+      // HEIGHT IS NOT A SHAPE. At 256px inside a full-width section this plot
+      // measured 1750x256 — very nearly 7:1, and the reader is being asked to
+      // judge the vertical distance between two cumulative lines across
+      // fourteen points in a band barely taller than the legend above it. A
+      // fixed height cannot express that, because the thing that went wrong
+      // was the RELATIONSHIP between width and height, and only width varies.
+      //
+      // `aspect-[5/1]` states the actual rule: never flatter than five to
+      // one. `min-h-52 sm:min-h-56` keeps the previous heights as a floor so
+      // narrow viewports do not collapse the plot into a strip (at 390px the
+      // ratio alone would ask for 78px). `max-h-[22rem]` (352px) is the
+      // ceiling, and it is chosen rather than inherited: 352px is exactly 5:1
+      // at the ~1750px this section occupies on a 1920 viewport, so the rule
+      // holds precisely through the widest common desktop and only relaxes
+      // beyond it, where an uncapped ratio would demand a 600px-tall plot.
+      className="aspect-[5/1] max-h-[22rem] min-h-52 w-full min-w-0 sm:min-h-56"
       role="img"
       aria-label={t('chart.cumulativeAriaLabel')}
     >
