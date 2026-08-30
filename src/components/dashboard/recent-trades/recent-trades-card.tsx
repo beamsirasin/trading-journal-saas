@@ -28,12 +28,14 @@ export interface RecentTradesCardProps {
  * short, the measured benchmark's Dashboard trade preview shows three columns
  * against its own Trade View's ten, and this card had drifted to eight.
  *
- * THE LIST IS SEVEN ROWS, NOT FIVE. The benchmark shows seven and so does
- * this now (the projection's `limit`, `selectDashboardRecentTrades`). Five was
- * chosen when each row was a two-line block ~67px tall; at 44px the card holds
- * seven in less total height than it used to spend on five, and this card
- * sits beside a Calendar half again as tall, so the extra rows close a ragged
- * edge rather than opening one.
+ * THE LIST IS TWELVE ROWS, AND IT SCROLLS. Five, then seven, were each
+ * chosen against the row height of the day (67px, then 44px). Twelve is
+ * chosen against the Calendar beside it: that widget is a fixed six-week
+ * grid at 630px, this card was 413px, and the 217px of empty column between
+ * them was the largest blank surface on the page. Twelve rows bring the two
+ * columns to within 8px (`selectDashboardRecentTrades` carries the
+ * arithmetic), and the capped, scrolling list keeps that from becoming a new
+ * kind of wrong if either side's height changes.
  *
  * It is a compact record list, deliberately not an enterprise data table: no
  * column headers, no sorting, no pagination. The Journal is one link away and
@@ -101,7 +103,23 @@ export function RecentTradesCard({
           </div>
         ) : (
           <ul
-            className="divide-border border-border -mx-1 flex min-w-0 flex-col divide-y border-t"
+            /*
+              A CAPPED, SCROLLING LIST — the benchmark's own pattern for this
+              card, and the thing that decouples it from the Calendar beside
+              it. The projection returns twelve rows, which is sized to land
+              this column within 8px of the Calendar's fixed six-week grid
+              (see `selectDashboardRecentTrades`). The cap is what keeps that
+              true in the other direction: a month that renders five weeks
+              instead of six, or a future header change, shortens the
+              Calendar without leaving this card standing proud of it.
+
+              `max-h-[33.75rem]` is twelve 45px rows exactly, so at the
+              designed count nothing scrolls and no scrollbar appears; it
+              only engages if the row height or the count later grows.
+              `overscroll-contain` so reaching the end does not start
+              scrolling the page underneath.
+            */
+            className="divide-border border-border -mx-1 flex max-h-[33.75rem] min-w-0 flex-col divide-y overflow-y-auto overscroll-contain border-t"
             aria-label={t('recent.listLabel')}
           >
             {trades.map((trade) => (
@@ -179,10 +197,15 @@ function RecentTradeRow({
       <Link
         href={`/app/trades?trade=${trade.tradeId}`}
         // `min-h-11` (44px), not the benchmark's measured ~45px by
-        // coincidence: 44px is the WCAG 2.5.8 AA touch target, and this row is
-        // now the whole click target rather than a word inside it. The two
-        // happen to agree, which is why the benchmark's rhythm is reachable
-        // here without trading away the accessible minimum.
+        // coincidence. To be accurate about the standard, since this comment
+        // previously was not: WCAG 2.5.8 Target Size (Minimum) is Level AA at
+        // 24x24 CSS px, and 44x44 is 2.5.5 Target Size (Enhanced), Level AAA.
+        // So 44px is not the AA floor — it is the AAA target, and it is also
+        // this codebase's convention for every interactive row and control
+        // (147 call sites). The row is the whole click target rather than a
+        // word inside it, which is exactly the case where the enhanced size
+        // is worth keeping. It happens to agree with the benchmark's rhythm,
+        // so nothing is traded either way.
         className="hover:bg-muted/40 focus-visible:ring-ring grid min-h-11 min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-1 py-1.5 transition-colors outline-none focus-visible:ring-2"
       >
         <span className="numeric text-muted-foreground shrink-0 text-xs tabular-nums">

@@ -696,11 +696,25 @@ async function selectDashboardRecentTrades(
     .leftJoin(strategySetupVersions, eq(strategySetupVersions.id, trades.setupVersionId))
     .where(and(...conditions))
     .orderBy(desc(occurredAtExpr), desc(trades.id))
-    // Seven, matching the measured benchmark's Dashboard trade preview and the
-    // 5-7 band the Dashboard card is designed for. It was five when each row
-    // was a two-line ~67px block; the row is now a single 44px line, so seven
-    // fit in less height than five used to take.
-    .limit(7);
+    // TWELVE, AND THE NUMBER IS A LAYOUT MEASUREMENT, NOT A PREFERENCE.
+    //
+    // This card shares a row with the Calendar, which is a fixed six-week
+    // grid and therefore has a height the Trade list cannot influence:
+    // measured, 630px. At seven rows this card came to 413px and left 217px
+    // of dead column under it — the largest blank surface on the Dashboard.
+    //
+    // The card's own height is `98px of header and padding + rows x 45px`,
+    // so twelve rows lands it at 638px against the Calendar's 630px: the two
+    // columns now end within 8px of each other without stretching an empty
+    // card to fake it. Five and then seven were chosen against row heights
+    // (67px, then 44px) that have since changed; twelve is chosen against
+    // the thing that actually constrains it.
+    //
+    // `RecentTradesCard` caps its list height and scrolls, so a future
+    // Calendar of a different height degrades into a scroll rather than
+    // re-opening the gap. One caller (`getDashboardRawData`), so this stays
+    // a constant rather than becoming a parameter with a single argument.
+    .limit(12);
 
   return rows.map((row) => ({
     ...row,

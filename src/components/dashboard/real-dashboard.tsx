@@ -191,14 +191,25 @@ export function RealDashboard({
         five-column grid is deliberately NOT reused here; each section owns
         its own, which is exactly what D4.5's section-aware metadata was for.
 
-        `items-start`, NOT `items-stretch`. D6B stretched the shorter card to
-        give the section one bottom edge, which was a fair trade when the two
-        were 7 + 5 and close in height. Reversed, it stopped being one: the
-        Calendar is now both the wider and much the taller card, so stretching
-        left roughly 150px of empty card below five Trade rows — the largest
-        blank surface on the page, created purely to align an edge nothing
-        reads across. A ragged bottom between two cards of genuinely different
-        length is the honest shape.
+        `items-start`, NOT `items-stretch`, AND NOW FOR THE OPPOSITE REASON.
+
+        D6B stretched the shorter card so the section had one bottom edge,
+        which left ~150px of empty card below the Trade rows. That was fixed
+        by NOT stretching — an honest ragged bottom — but ragged only stopped
+        it looking deliberate; measured, the hole was still there and had
+        grown to 217px (Recent Trades 413px against the Calendar's 630px).
+
+        The hole is now closed by CONTENT rather than by either alignment
+        trick: the Trade projection returns twelve rows instead of seven,
+        which brings that card to ~638px against the Calendar's 630px. The
+        two columns end within 8px of each other because both are genuinely
+        that long.
+
+        So `items-start` stays, and its job is now the reverse of a
+        concession. It is what keeps the 8px honest — under `items-stretch`
+        the shorter card would silently absorb the difference again, and the
+        next time one side's height moved, the page would go back to
+        disguising a gap instead of showing one.
       */}
       <section aria-labelledby="recent-and-calendar-heading" className="mt-6 min-w-0">
         <h2 id="recent-and-calendar-heading" className="sr-only">
