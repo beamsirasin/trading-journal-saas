@@ -20,8 +20,9 @@ const day = (date: string, totalR: string): CalendarDay => ({
 });
 
 describe('calendar month grid', () => {
-  it('pads the first week and emits one cell per date of the month', () => {
-    // 1 March 2026 is a Sunday, so there are no leading blanks.
+  it('pads both ends to whole weeks and emits one cell per date of the month', () => {
+    // 1 March 2026 is a Sunday, so there are no leading blanks. 31 dates then
+    // run four cells into a fifth week, which four trailing blanks complete.
     const march = buildCalendarGrid({
       year: 2026,
       month: 3,
@@ -29,8 +30,9 @@ describe('calendar month grid', () => {
       todayDate: null,
       selectedDate: null,
     });
-    expect(march.cells).toHaveLength(31);
+    expect(march.cells).toHaveLength(35);
     expect(march.cells[0]).toMatchObject({ date: '2026-03-01', dayOfMonth: 1 });
+    expect(march.cells.slice(31)).toEqual([null, null, null, null]);
 
     // 1 April 2026 is a Wednesday: three leading blanks in a Sunday-first grid.
     const april = buildCalendarGrid({
@@ -42,7 +44,35 @@ describe('calendar month grid', () => {
     });
     expect(april.cells.slice(0, 3)).toEqual([null, null, null]);
     expect(april.cells[3]).toMatchObject({ date: '2026-04-01' });
-    expect(april.cells).toHaveLength(33);
+    expect(april.cells).toHaveLength(35);
+    expect(april.cells.slice(33)).toEqual([null, null]);
+  });
+
+  it('adds no trailing pad to a month that already ends on a Saturday', () => {
+    // 1 February 2026 is a Sunday and February 2026 has 28 days: exactly four
+    // whole weeks, so neither end needs padding.
+    const february = buildCalendarGrid({
+      year: 2026,
+      month: 2,
+      days: [],
+      todayDate: null,
+      selectedDate: null,
+    });
+    expect(february.cells).toHaveLength(28);
+    expect(february.cells.every((cell) => cell !== null)).toBe(true);
+  });
+
+  it('emits only whole weeks', () => {
+    for (let month = 1; month <= 12; month += 1) {
+      const grid = buildCalendarGrid({
+        year: 2026,
+        month,
+        days: [],
+        todayDate: null,
+        selectedDate: null,
+      });
+      expect(grid.cells.length % 7).toBe(0);
+    }
   });
 
   it('handles a leap February without inventing a 30th', () => {

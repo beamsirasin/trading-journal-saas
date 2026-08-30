@@ -332,7 +332,20 @@ function CalendarGridView({
       <p className="sr-only">
         {t('gridSummary', { populated: populatedDayCount, total: totalDateCount })}
       </p>
-      <div className="grid grid-cols-7 gap-0.5 @[22rem]/calendar:gap-1" data-calendar-grid="">
+      {/*
+        ONE EXPLICIT ROW, THEN A UNIFORM IMPLICIT RAMP.
+        `grid-rows-[auto]` describes the weekday header — a line of 11px
+        labels that must stay its own height — so every row after it is an
+        IMPLICIT row and `auto-rows` governs all of them together. Written as
+        `minmax(3.25rem,auto)` rather than a flat `3.25rem`: the floor is the
+        point (each week is the same height whatever it contains), but a hard
+        track would clip rather than grow if a cell's content ever exceeded
+        it at a narrow container width.
+      */}
+      <div
+        className="grid auto-rows-[minmax(3.25rem,auto)] grid-cols-7 grid-rows-[auto] gap-0.5 @[22rem]/calendar:gap-1"
+        data-calendar-grid=""
+      >
         {CALENDAR_WEEKDAY_KEYS.map((key) => (
           <div
             key={key}
@@ -344,7 +357,20 @@ function CalendarGridView({
         ))}
         {cells.map((cell, index) =>
           cell === null ? (
-            <div key={`blank-${index}`} aria-hidden="true" />
+            /*
+              A LEADING/TRAILING PAD IS A CELL, NOT A HOLE.
+
+              This was `<div aria-hidden />` — zero height, no box — so the
+              week that straddles a month boundary rendered as one or two
+              lonely squares floating beside nothing, and the grid read as
+              torn at both ends. The measured benchmark pads those positions
+              with ordinary empty cells: what makes a month grid read as a
+              GRID is that every position has a box, not that every position
+              has a number. So this takes the same shell as an in-month day
+              with nothing eligible, minus the date — which is also why it
+              needs no date arithmetic and no change to the cell projection.
+            */
+            <div key={`blank-${index}`} aria-hidden="true" className={CALENDAR_CELL_SHELL} />
           ) : (
             <CalendarCell
               key={cell.date}
@@ -358,6 +384,16 @@ function CalendarGridView({
     </div>
   );
 }
+
+/**
+ * The geometry every square shares — populated, empty, or an out-of-month pad.
+ *
+ * Extracted so the three cannot drift apart: the whole point of the grid is
+ * that all thirty-five to forty-two positions are the SAME box, and that is
+ * only true for as long as one string describes the box.
+ */
+const CALENDAR_CELL_SHELL =
+  'flex min-h-13 min-w-0 flex-col rounded-md border border-border/45 px-0.5 py-1 @[22rem]/calendar:px-1';
 
 /**
  * One square.
@@ -386,10 +422,22 @@ function CalendarCell({
         data-calendar-cell="empty"
         data-calendar-date={cell.date}
         aria-hidden="true"
-        className={cn(
-          'flex min-h-13 flex-col rounded-md border border-transparent px-0.5 py-1 @[22rem]/calendar:px-1',
-          cell.isToday && 'border-border border-dashed',
-        )}
+        /*
+          THE BORDER IS NOW VISIBLE, AND THAT IS THE WHOLE FIX.
+
+          This cell already had the container and already had `min-h-13`, so
+          every week row was genuinely the same height — the geometry was
+          never wrong. What it did not have was an EDGE: `border-transparent`
+          drew nothing, so a week with no eligible days rendered as seven bare
+          numerals and the grid appeared to stop halfway down the month.
+
+          `/45` rather than the full token: an empty day must read as an
+          absent result, not as a third kind of outcome. The ramp is tinted
+          populated > neutral populated > empty, and this sits at the bottom
+          of it — present enough to hold the grid together, quiet enough that
+          a scan still lands only on days that carry a figure.
+        */
+        className={cn(CALENDAR_CELL_SHELL, cell.isToday && 'border-border border-dashed')}
       >
         <span className="numeric text-subtle-foreground text-[11px] leading-4">
           {cell.dayOfMonth}
@@ -435,7 +483,8 @@ function CalendarCell({
         .filter((part) => part !== null)
         .join(' ')}
       className={cn(
-        'focus-visible:ring-ring flex min-h-13 min-w-0 flex-col justify-between rounded-md border px-0.5 py-1 transition-colors outline-none focus-visible:ring-2 @[22rem]/calendar:px-1',
+        CALENDAR_CELL_SHELL,
+        'focus-visible:ring-ring justify-between transition-colors outline-none focus-visible:ring-2',
         // Restrained by design: a tint, a border and an emphasised value —
         // never a saturated block. A profitable month should not read as a
         // wall of green, and the sign is always present in the text itself,

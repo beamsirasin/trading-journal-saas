@@ -31,10 +31,17 @@ export interface CalendarGrid {
   readonly year: number;
   readonly month: number;
   /**
-   * Leading `null`s pad the first week, then one cell per date of the month.
-   * Trailing padding is deliberately absent: an incomplete final row costs
-   * nothing visually and inventing cells past the month's end would put dates
-   * on screen that belong to a month the reader did not ask for.
+   * Leading `null`s pad the first week, one cell per date of the month, then
+   * trailing `null`s to complete the last week.
+   *
+   * The trailing pad used to be absent, on the grounds that "inventing cells
+   * past the month's end would put dates on screen that belong to a month the
+   * reader did not ask for". That objection was about DATES, and it still
+   * holds — a pad is not a date. It carries no `dayOfMonth`, no result and no
+   * link, and the view renders it as an empty box with nothing in it. What
+   * the missing tail actually cost was the grid: the last week stopped
+   * mid-row, so the bottom-right corner of a seven-column figure was simply
+   * void, which reads as a rendering fault rather than as the end of a month.
    */
   readonly cells: readonly (CalendarGridCell | null)[];
 }
@@ -114,6 +121,11 @@ export function buildCalendarGrid(input: {
       isSelected: date === input.selectedDate,
     });
   }
+
+  // Complete the final week. `% 7` on an already-whole grid adds nothing, so
+  // a month that ends exactly on a Saturday is untouched.
+  const trailingBlanks = (7 - (cells.length % 7)) % 7;
+  for (let index = 0; index < trailingBlanks; index += 1) cells.push(null);
 
   return { year: input.year, month: input.month, cells };
 }
