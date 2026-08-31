@@ -420,14 +420,28 @@ function RangeChip({ preset }: { preset: AnalyticsDatePreset }) {
   const t = useTranslations('dashboard.riskPerformance');
   const tFilters = useTranslations('dashboard.filters');
   return (
-    // §14 — a LABEL, not a second control. Risk Performance follows the one
-    // Dashboard date-range control that already exists above it.
-    <span
-      data-risk-range={preset}
-      className="border-border bg-muted/50 text-muted-foreground rounded-md border px-2 py-1 text-xs font-medium whitespace-nowrap"
-    >
-      <span className="sr-only">{t('rangeLabel')}: </span>
-      {tFilters(RANGE_KEY[preset])}
+    /*
+      §14 — a LABEL, not a second control. Risk Performance follows the one
+      Dashboard date-range control that already exists above it: this reads
+      `scope.datePreset`, which is the same resolved range the sticky toolbar
+      drives, and it can no more be changed from here than a caption can.
+      That was already the intent; it did not look like it.
+
+      IT WAS DRESSED AS A BUTTON. A bordered, filled, rounded pill with
+      padding is the shape of every control on this page, so a reader had to
+      click it to discover it does nothing — and next to a real range
+      dropdown 200px above, that reads as a broken duplicate rather than as a
+      caption. The border and the fill are gone; what is left is the range
+      stated in words.
+
+      THE "Range:" PREFIX IS NOW VISIBLE, not `sr-only`. Without a control's
+      shape, "All time" alone on a card header is a fragment — it needs the
+      noun to be a sentence. The screen-reader text and the visible text are
+      now the same text, which is one fewer thing that can drift apart.
+    */
+    <span data-risk-range={preset} className="text-muted-foreground text-xs whitespace-nowrap">
+      {t('rangeLabel')}:{' '}
+      <span className="text-foreground font-medium">{tFilters(RANGE_KEY[preset])}</span>
     </span>
   );
 }

@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { formatStartingBalance } from '@/lib/trading-accounts/presentation';
 import { cn } from '@/lib/utils';
 import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
-import { Card, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
 /**
@@ -90,7 +90,24 @@ export function ActiveTradingAccountSummaryCard({
         <span className="text-muted-foreground shrink-0 text-xs leading-5">
           {t('activeAccountInlineLabel')}
         </span>
-        <CardTitle className="min-w-0 truncate text-sm leading-5">{account.name}</CardTitle>
+        {/*
+          THE ACCOUNT NAME IS A VALUE, NOT A HEADING.
+
+          This was a `CardTitle`, which renders an `<h3>` — and it sat
+          directly under the page's `<h1>` in the sticky toolbar with no `h2`
+          between them. A screen reader's heading outline read Dashboard,
+          then jumped a level to the account name, which is not a section
+          title at all: it is the value beside the "Active account" label to
+          its left, the way "USD" is the value beside "Base currency".
+
+          Nothing is lost by demoting it. The region already carries
+          `role="region"` and its own `aria-label`, so the landmark is named
+          without borrowing a heading to do it, and the visible styling is
+          unchanged.
+        */}
+        <p className="min-w-0 truncate text-sm leading-5 font-semibold tracking-tight">
+          {account.name}
+        </p>
         <dl className="flex min-w-0 flex-wrap items-center gap-1.5">
           <AccountChip
             label={t('accountModeLabel')}

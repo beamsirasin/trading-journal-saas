@@ -43,7 +43,12 @@ describe('EmptyTradingDashboard', () => {
   it('exposes the active account inside a named, uniquely identifiable region', () => {
     renderDashboard();
     const region = screen.getByRole('region', { name: 'Active trading account summary' });
-    expect(within(region).getByRole('heading', { name: 'My First Account' })).toBeInTheDocument();
+    // The account NAME is a value beside its label, not a section title: it
+    // used to be an `<h3>` sitting directly under the page's `<h1>`, which
+    // skipped a heading level for a string that titles nothing. The region
+    // names itself with `aria-label`, so nothing depended on the heading.
+    expect(within(region).getByText('My First Account')).toBeVisible();
+    expect(within(region).queryByRole('heading')).not.toBeInTheDocument();
   });
 
   it("shows the real account's mode, currency and starting balance", () => {
