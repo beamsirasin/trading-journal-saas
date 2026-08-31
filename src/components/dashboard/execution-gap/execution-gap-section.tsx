@@ -2,12 +2,17 @@ import { GitCompareArrows } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { formatAnalyticsMetric } from '@/lib/analytics/presentation';
+import {
+  composeComparisonTable,
+  composeComparisonTablePrecision,
+} from '@/lib/dashboard/comparison-table';
 import type { DashboardExecutionComparison } from '@/lib/dashboard/execution-comparison';
 import { dashboardLayoutItem, dashboardWidgetAttributes } from '@/lib/dashboard/widgets';
 import { cn } from '@/lib/utils';
 import { MetricInfo } from '@/components/dashboard/kpi/metric-info';
 import { Card } from '@/components/ui/card';
 
+import { ComparisonTable } from './comparison-table';
 import {
   CumulativeComparisonChart,
   type ExecutionComparisonChartPoint,
@@ -41,28 +46,41 @@ function buildDateLabeller(locale: string): (date: string) => string {
 }
 
 /**
- * D5 — the Execution Gap section.
+ * THE SYSTEM-VERSUS-TRADER CARD.
  *
- * D4's two cards are INDEPENDENT baselines: System over Population B, Trader
- * over Population A, each answering "what did this side produce" on its own
- * eligible Trades. This section answers the different question that only a
- * paired population can: how much of the System's edge the execution actually
- * captured, and how that difference developed.
+ * One card where the Dashboard used to carry three: a System baseline, a
+ * Trader baseline, and this Execution Gap section under a floating
+ * "System vs Trader performance" heading. Between them they said one thing
+ * three times — the two baselines printed the same three metric names twice
+ * with no relationship stated, and the Gap then restated the difference the
+ * reader had already been asked to compute by eye across a 24px gutter.
+ *
+ * THE MERGE IS ONLY HONEST BECAUSE OF THE POPULATION. The two baselines
+ * counted Populations B and A: different completeness contracts, each
+ * date-anchored to its own exit column, differing by six Trades on the
+ * reference fixture. Putting those two sets of figures in one table would
+ * have invited a subtraction of numbers that were never counted over the
+ * same Trades. Every row here reads `pairedSystemAxis` and
+ * `pairedActualAxis` — both Population C, both composed by the same
+ * `composePerformanceAxis` the baselines used — so the difference column is
+ * like for like. The note under the table says what that pinning cost.
  *
  * POPULATION C ONLY, END TO END. Everything on screen comes from
  * `DashboardPageData.comparison` — one server-composed model, no fetch of its
- * own, no second date contract, no formula. The paired totals will not match
- * D4's independent totals and are not meant to: on the deterministic fixture
- * D4 shows +36.25R over 68 System Trades and +23.10R over 66 Trader Trades,
- * while these 64 paired Trades total +35.80R and +22.00R. Reconciling them
- * would destroy the distinction the product exists to make.
+ * own, no second date contract, no formula. The paired totals do not match
+ * what the retired baselines showed and are not meant to: 35.80R and 22.00R
+ * here, against +36.25R over 68 System Trades and +23.10R over 66 Trader
+ * Trades. Reconciling them would destroy the distinction the product exists
+ * to make.
  *
- * THREE BEATS, DOWN FROM FIVE. Header, the two headline figures, one
- * cumulative comparison chart. The daily strip and the distribution bar that
- * used to follow are diagnosis rather than detection and are no longer
- * mounted here; see `ExecutionGapBody` for what that did and did not remove.
- * The section still tells one story inside one card, so the eye travels down
- * it once.
+ * A RAIL AND A PLOT, NOT TWO BANDS. The table is a fixed 21rem beside the
+ * chart rather than a full-width block above it, for the reason every wide
+ * card on this page now follows: three metric names and nine figures have a
+ * size of their own, and a share of a 1750px card is not it.
+ *
+ * The daily strip and the distribution bar remain unmounted — diagnosis
+ * rather than detection. See `ExecutionGapBody` for what that did and did
+ * not remove.
  */
 export function ExecutionGapSection({
   comparison,
@@ -85,60 +103,32 @@ export function ExecutionGapSection({
     >
       <Card data-dashboard-panel="execution-gap" className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
         {/*
-          The header and the two figures share ONE row from `lg` up.
+          NAME ON THE LEFT, THE CARD'S ANSWER ON THE RIGHT.
 
-          They are the same beat — "here is the question, here is the answer" —
-          and the section is full width, so stacking them spent an entire 68px
-          band on a title with 900px of nothing beside it before the first
-          number appeared. Below `lg` they stack.
+          Execution Gap and System Edge Captured stay in the header rather
+          than becoming table rows: they are not row-level facts, they are
+          the conclusion, and a reader who takes one thing from this card
+          should take those. The table below is the working that produces
+          them. Both were briefly slated to move into the table's third
+          column; they came back here once that column became a plain
+          difference, which cannot express a captured RATIO.
 
-          With two content-sized cells rather than four stretched ones the row
-          is header · figures · ⓘ, and `me-auto` on the figures is what keeps
-          the affordance on the far edge without giving either cell width it
-          does not need.
+          One `MetricInfo` in the DOM, not one per breakpoint — two would
+          give a screen reader the same button twice.
         */}
-        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
-          {/* The header's fixed share shrank with the sentence it carried —
-              a mark and a two-word title, not a mark and a wrapped
-              paragraph. */}
-          <div className="flex min-w-0 items-center justify-between gap-3 lg:w-[13rem] lg:shrink-0 xl:w-[14rem]">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
-                <GitCompareArrows className="size-4" aria-hidden="true" />
-              </span>
-              {/*
-                THE DESCRIPTION IS GONE FROM THE FIRST LAYER, AND NOTHING WAS
-                LOST WITH IT. `description` read "How much of the System's
-                paired edge your execution captured, and how that difference
-                developed" — a strictly weaker restatement of `help`, which is
-                already one tap away on the ⓘ this header has always carried
-                and which says the same thing plus the sign convention and the
-                pairing rule. Two texts for one definition, one of them
-                permanently occupying card space, is exactly the duplication
-                the benchmark's zero-paragraph Dashboard avoids.
-              */}
-              <div className="min-w-0">
-                <h2 id={headingId} className="text-card-title">
-                  {t('title')}
-                </h2>
-              </div>
-            </div>
-            <div className="lg:hidden">
-              <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
-                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
-              </MetricInfo>
-            </div>
+        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-lg">
+              <GitCompareArrows className="size-4" aria-hidden="true" />
+            </span>
+            <h2 id={headingId} className="text-card-title min-w-0 truncate">
+              {t('title')}
+            </h2>
           </div>
 
-          <ExecutionGapSummary comparison={comparison} className="lg:me-auto" />
-
-          {/* One affordance, rendered on whichever side the layout puts it —
-              never two in the DOM at once, which would give a screen reader
-              two identical "About Execution Gap" buttons. */}
-          <div className="hidden lg:block">
-            <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
-              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
-            </MetricInfo>
+          <div className="flex min-w-0 items-start gap-2 sm:shrink-0">
+            <ExecutionGapSummary comparison={comparison} />
+            <ComparisonInfo comparison={comparison} />
           </div>
         </div>
 
@@ -218,31 +208,95 @@ function ExecutionGapBody({
     per-day gap and the paired count, so removing two visuals removes no
     information from assistive technology.
   */
+  const rows = composeComparisonTable(comparison.summary);
+
   return (
-    <figure className="flex min-w-0 flex-col gap-2">
-      <figcaption className="sr-only">{t('chart.cumulativeCaption')}</figcaption>
+    <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
       {/*
+        THE TABLE IS A RAIL, THE PLOT TAKES THE REST.
+
+        21rem is what three metric names and nine right-aligned figures need
+        — `Avg Win / Loss` is the widest label and `-13.80R` the widest cell.
+        A fraction of the card would hand the table the surplus again at
+        2560, which is the mistake this pass exists to undo. Below `lg` they
+        stack and the table goes full width, which is the right shape for a
+        table in a narrow column.
+      */}
+      <ComparisonTable
+        rows={rows}
+        exclusions={comparison.exclusions}
+        className="lg:w-[21rem] lg:shrink-0"
+      />
+
+      <figure className="flex min-w-0 flex-1 flex-col gap-2">
+        <figcaption className="sr-only">{t('chart.cumulativeCaption')}</figcaption>
+        {/*
         The legend is the whole of this row now — the daily strip's caption
         that used to sit opposite it went with the strip.
 
         Identity is never colour alone: each entry names its stroke style, so
         the two lines stay separable in greyscale and under any colour vision.
       */}
-      <ul className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
-        <LegendItem
-          label={t('series.system')}
-          note={t('series.systemNote')}
-          swatchClassName="bg-primary"
-        />
-        <LegendItem
-          label={t('series.actual')}
-          note={t('series.actualNote')}
-          swatchClassName="bg-foreground"
-        />
+        <ul className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+          <LegendItem
+            label={t('series.system')}
+            note={t('series.systemNote')}
+            swatchClassName="bg-primary"
+          />
+          <LegendItem
+            label={t('series.actual')}
+            note={t('series.actualNote')}
+            swatchClassName="bg-foreground"
+          />
+        </ul>
+        <CumulativeComparisonChart points={chartPoints} />
+        <ComparisonFallbackTable points={chartPoints} />
+      </figure>
+    </div>
+  );
+}
+
+/**
+ * The card's one affordance, and where the arithmetic lives.
+ *
+ * Three things a reader can legitimately want and none of which belong on
+ * the face: what Execution Gap means, why these totals differ from the ones
+ * the two baseline cards used to show, and the canonical figures behind a
+ * table that rounds to two places. The third exists because the difference
+ * column is rounded once from the difference rather than computed from the
+ * rounded figures (CLAUDE.md §5), so a reader checking the subtraction by
+ * eye can land one unit out in the last place and deserves to be able to
+ * confirm that rather than file a bug.
+ */
+function ComparisonInfo({ comparison }: { comparison: DashboardExecutionComparison }) {
+  const t = useTranslations('dashboard.executionGap');
+  const rows = composeComparisonTable(comparison.summary);
+  const precision = composeComparisonTablePrecision(rows);
+  const unavailable = t('precision.unavailable');
+
+  return (
+    <MetricInfo triggerLabel={t('infoTrigger')} title={t('title')}>
+      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{t('help')}</p>
+      {comparison.summary.comparableCount > 0 ? (
+        <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+          {t('populationNote', { count: comparison.summary.comparableCount })}
+        </p>
+      ) : null}
+      <p className="text-foreground mt-3 text-xs font-semibold">{t('precision.heading')}</p>
+      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{t('precision.note')}</p>
+      <ul className="mt-1.5 flex flex-col gap-0.5">
+        {precision.map((row) => (
+          <li key={row.key} className="numeric text-muted-foreground text-xs leading-4">
+            {t('precision.row', {
+              metric: t(`table.row.${row.key}`),
+              system: row.system ?? unavailable,
+              actual: row.actual ?? unavailable,
+              delta: row.delta ?? unavailable,
+            })}
+          </li>
+        ))}
       </ul>
-      <CumulativeComparisonChart points={chartPoints} />
-      <ComparisonFallbackTable points={chartPoints} />
-    </figure>
+    </MetricInfo>
   );
 }
 

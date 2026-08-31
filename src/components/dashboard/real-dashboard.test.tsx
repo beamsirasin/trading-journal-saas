@@ -241,51 +241,75 @@ function renderSkeleton() {
 }
 
 describe('RealDashboard', () => {
-  it('renders System and Trader as distinct, independently counted panels', () => {
+  /**
+   * THE TWO BASELINE PANELS ARE ONE TABLE NOW, AND THE POPULATION IS WHY.
+   *
+   * `data-dashboard-panel="system"` and `="trader"` were two cards printing
+   * the same three metric names over two DIFFERENT populations, with no
+   * relationship stated between them. They are replaced by three rows that
+   * read one paired population on both sides, so the difference column is a
+   * subtraction of like for like rather than an invitation to subtract by
+   * eye across a gutter.
+   */
+  it('renders System and Actual as one paired table, not two independent panels', () => {
     const { container } = renderDashboard();
-    const system = container.querySelector('[data-dashboard-panel="system"]');
-    const trader = container.querySelector('[data-dashboard-panel="trader"]');
-    expect(system).not.toBeNull();
-    expect(trader).not.toBeNull();
+    expect(container.querySelector('[data-dashboard-panel="system"]')).toBeNull();
+    expect(container.querySelector('[data-dashboard-panel="trader"]')).toBeNull();
+
+    const card = container.querySelector('[data-dashboard-panel="execution-gap"]') as HTMLElement;
+    // Two tables in this card: the comparison and the chart's sr-only
+    // fallback. Scope by the data hook rather than by role.
+    const table = card.querySelector('[data-comparison-table]') as HTMLElement;
     expect(
-      within(system as HTMLElement).getByRole('heading', { name: 'System Performance' }),
-    ).toBeVisible();
+      within(table)
+        .getAllByRole('columnheader')
+        .map((cell) => cell.textContent),
+    ).toEqual(['Metric', 'System', 'Actual', 'ΔDifference (Actual minus System)']);
     expect(
-      within(trader as HTMLElement).getByRole('heading', { name: 'Trader Performance' }),
-    ).toBeVisible();
-    // The two sides are INDEPENDENT populations, and the page proves it with
-    // their Total R rather than with a Trade count — the count stopped being a
-    // rendered metric when the section was cut to three per side. The fixture
-    // still gives the two axes different sample counts (3 and 5), so nothing
-    // here reconciles them.
-    expect(within(system as HTMLElement).getByText('+4.00R')).toBeVisible();
-    expect(within(trader as HTMLElement).getByText('-1.00R')).toBeVisible();
-    // Each side renders exactly the two approved secondary metrics.
-    for (const side of [system, trader]) {
-      const keys = [...(side as HTMLElement).querySelectorAll('[data-performance-metric]')].map(
-        (node) => node.getAttribute('data-performance-metric'),
-      );
-      expect(keys).toEqual(['winRate', 'payoffRatio']);
-    }
+      [...table.querySelectorAll('[data-comparison-row]')].map((row) =>
+        row.getAttribute('data-comparison-row'),
+      ),
+    ).toEqual(['totalR', 'winRate', 'payoffRatio']);
   });
 
-  it('shows Trader metrics while System is empty', () => {
-    const emptySystem = axis(0, {
-      totalR: unavailable('no_trades'),
-      expectancyR: unavailable('no_trades'),
-      winRate: unavailable('no_trades'),
-      profitFactor: unavailable('no_trades'),
+  /**
+   * The Total R row's difference is not recomputed from the two totals: it
+   * IS `executionGapR`, the same metric the header shows. If the two ever
+   * disagreed there would be two implementations of one quantity and no way
+   * to tell which was right.
+   */
+  it('shows the same Execution Gap in the header and in the Total R row', () => {
+    const { container } = renderDashboard();
+    const card = container.querySelector('[data-dashboard-panel="execution-gap"]') as HTMLElement;
+    const headline = card.querySelector('[data-execution-gap-metric="totalGap"]') as HTMLElement;
+    const totalRow = card.querySelector('[data-comparison-row="totalR"]') as HTMLElement;
+    const delta = totalRow.querySelector('[data-comparison-cell="delta"]') as HTMLElement;
+
+    expect(headline.textContent).toContain('-2.00R');
+    expect(delta.textContent).toBe('-2.00R');
+  });
+
+  /**
+   * A paired population that cannot be formed is one fact about the card,
+   * not two facts about two sides. The per-side "no eligible System Trades"
+   * and "no eligible Trader Trades" notices went with the panels that
+   * carried them; the merged card says the pairing failed once.
+   */
+  it('states an empty comparison once rather than per side', () => {
+    const model = overview({
+      comparison: {
+        status: 'empty',
+        reason: 'no_comparable_trades',
+        exclusions: NO_COMPARISON_EXCLUSIONS,
+        summary: overview().comparison.summary,
+      },
     });
-    const { container } = renderDashboard(overview({ system: emptySystem }));
-    const system = container.querySelector('[data-dashboard-panel="system"]') as HTMLElement;
-    const trader = container.querySelector('[data-dashboard-panel="trader"]') as HTMLElement;
-    // One empty notice plus the truthful zero count, not four repetitions of
-    // the same fact — and the populated side is untouched by it.
-    expect(within(system).getByText(/No eligible System Trades/i)).toBeVisible();
-    expect(within(system).queryAllByText('No eligible Trades')).toHaveLength(0);
-    expect(system).toHaveAttribute('data-performance-status', 'empty');
-    expect(trader).toHaveAttribute('data-performance-status', 'available');
-    expect(within(trader).getByText('-1.00R')).toBeVisible();
+    const { container } = renderDashboard(model);
+    const card = container.querySelector('[data-dashboard-panel="execution-gap"]') as HTMLElement;
+
+    expect(card.querySelector('[data-execution-gap-state="empty"]')).not.toBeNull();
+    expect(card.querySelector('[data-comparison-table]')).toBeNull();
+    expect(card.textContent).not.toContain('No eligible System Trades');
   });
 
   /**
@@ -318,17 +342,17 @@ describe('RealDashboard', () => {
     const attention = container.querySelector(
       '[data-dashboard-widget="review.needs-attention"]',
     ) as HTMLElement;
-    const performance = container
-      .querySelector('[data-dashboard-panel="system"]')
+    const comparison = container
+      .querySelector('[data-dashboard-panel="execution-gap"]')
       ?.closest('section') as HTMLElement;
 
     expect(kpiRow.className).toContain('mt-4');
     // Absent an account context bar the KPI band is first and takes no margin.
     expect(kpiRow.className).toContain('first:mt-0');
     expect(attention.className).toContain('mt-4');
-    expect(performance.className).toContain('mt-6');
+    expect(comparison.className).toContain('mt-6');
     // The retired ramp must not creep back in one step at a time.
-    for (const element of [kpiRow, attention, performance]) {
+    for (const element of [kpiRow, attention, comparison]) {
       expect(element.className).not.toMatch(/\bmt-(5|7|8)\b/);
     }
   });
@@ -392,43 +416,25 @@ describe('RealDashboard', () => {
     expect(screen.getByText(/whatever date range is selected/i)).toBeVisible();
   });
 
-  it('places the two performance cards side by side in one balanced grid', () => {
+  /**
+   * THE OPPOSITE RULE NOW HOLDS, DELIBERATELY.
+   *
+   * "Keeps Execution Gap out of the performance cards" was the right rule
+   * while the baselines counted their own populations: a Gap printed on a
+   * Population B card would have been a figure from a third population
+   * sitting inside a second. Once every row reads the paired population the
+   * Gap belongs in the same card — it is the difference between the two
+   * columns beside it.
+   */
+  it('carries the Gap, the captured ratio and the table in one card', () => {
     const { container } = renderDashboard();
-    const system = container.querySelector('[data-dashboard-widget="system.performance"]');
-    const trader = container.querySelector('[data-dashboard-widget="trader.performance"]');
-    expect(system).not.toBeNull();
-    expect(trader).not.toBeNull();
-    // Same parent, two equal desktop columns, neither side dominant.
-    expect(system?.parentElement).toBe(trader?.parentElement);
-    expect(system?.parentElement?.className).toContain('lg:grid-cols-2');
-    expect(system?.parentElement?.className).toContain('items-stretch');
-    expect(system?.compareDocumentPosition(trader as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  });
+    const card = container.querySelector('[data-dashboard-panel="execution-gap"]') as HTMLElement;
 
-  it('keeps Execution Gap out of the performance cards', () => {
-    const { container } = renderDashboard();
-    for (const id of ['system.performance', 'trader.performance']) {
-      const card = container.querySelector(`[data-dashboard-widget="${id}"]`) as HTMLElement;
-      expect(card.textContent).not.toContain('Execution Gap');
-      expect(card.textContent).not.toContain('System Edge Captured');
-      expect(card.textContent).not.toContain('Comparable Trades');
-    }
-    // It lives in the D5 section that follows the pair, untouched by D4.
-    expect(container.querySelector('[data-dashboard-panel="execution-gap"]')).not.toBeNull();
-  });
-
-  it('shows System metrics while Trader is empty', () => {
-    const emptyTrader = axis(0, {
-      totalR: unavailable('no_trades'),
-      expectancyR: unavailable('no_trades'),
-      winRate: unavailable('no_trades'),
-      profitFactor: unavailable('no_trades'),
-    });
-    const { container } = renderDashboard(overview({ trader: emptyTrader }));
-    const system = container.querySelector('[data-dashboard-panel="system"]') as HTMLElement;
-    const trader = container.querySelector('[data-dashboard-panel="trader"]') as HTMLElement;
-    expect(within(trader).getByText(/No eligible closed Trader Trades/i)).toBeVisible();
-    expect(within(system).getByText('+4.00R')).toBeVisible();
+    expect(card.querySelector('[data-execution-gap-metric="totalGap"]')).not.toBeNull();
+    expect(card.querySelector('[data-execution-gap-metric="systemEdgeCaptured"]')).not.toBeNull();
+    expect(card.querySelector('[data-comparison-table]')).not.toBeNull();
+    // One card, so exactly one heading for the whole comparison.
+    expect(within(card).getAllByRole('heading')).toHaveLength(1);
   });
 
   /**
@@ -448,7 +454,13 @@ describe('RealDashboard', () => {
     const comparison = container.querySelector(
       '[data-dashboard-panel="execution-gap"]',
     ) as HTMLElement;
-    const metric = within(comparison).getByText(display);
+    // The same figure is now legitimately on screen twice — as the header's
+    // conclusion and as the Total R row's difference — so this asserts the
+    // headline specifically rather than "the only node with this text".
+    const headline = comparison.querySelector(
+      '[data-execution-gap-metric="totalGap"]',
+    ) as HTMLElement;
+    const metric = within(headline).getByText(display);
     expect(metric).toBeVisible();
     expect(metric.className).toContain(value.startsWith('-') ? 'text-negative' : 'text-positive');
   });
@@ -464,7 +476,10 @@ describe('RealDashboard', () => {
     const comparison = container.querySelector(
       '[data-dashboard-panel="execution-gap"]',
     ) as HTMLElement;
-    expect(within(comparison).getByText('-5.00R')).toBeVisible();
+    const headline = comparison.querySelector(
+      '[data-execution-gap-metric="totalGap"]',
+    ) as HTMLElement;
+    expect(within(headline).getByText('-5.00R')).toBeVisible();
     expect(comparison.textContent).not.toContain('-2.50R');
     // The data itself is untouched — only the presentation dropped it.
     expect(model.comparison.summary.averageExecutionGapR).toEqual({
@@ -526,16 +541,26 @@ describe('RealDashboard', () => {
         customDateRange: { from: '2026-07-10', to: '2026-08-12' },
       },
     });
-    expect(screen.getByRole('heading', { name: 'System vs Trader performance' })).toBeVisible();
+    // The floating section heading is retired with the section; the card
+    // that replaced it names itself, which is what every other block on the
+    // page already did.
+    expect(
+      screen.queryByRole('heading', { name: 'System vs Trader performance' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'System vs Trader' })).toBeVisible();
     expect(screen.queryByRole('navigation', { name: 'Date range' })).not.toBeInTheDocument();
   });
 
   it('exposes stable widget IDs and mobile span metadata without rendering Later widgets', () => {
     const { container } = renderDashboard();
-    expect(container.querySelector('[data-dashboard-widget="system.performance"]')).toHaveAttribute(
+    expect(container.querySelector('[data-dashboard-widget="execution.gap"]')).toHaveAttribute(
       'data-dashboard-mobile-span',
       '2',
     );
+    // The two baseline widgets were absorbed rather than hidden, so they are
+    // absent from the DOM as well as from the registry.
+    expect(container.querySelector('[data-dashboard-widget="system.performance"]')).toBeNull();
+    expect(container.querySelector('[data-dashboard-widget="trader.performance"]')).toBeNull();
     expect(container.querySelector('[data-dashboard-widget="trades.recent"]')).not.toBeNull();
     expect(container.querySelector('[data-dashboard-widget="calendar.performance"]')).toBeNull();
     // D3 implemented the five Basic KPI widgets; the reserved ones stay unrendered.
@@ -558,10 +583,12 @@ describe('RealDashboard', () => {
     expect(within(kpiRow).getByText('2.00x')).toBeVisible();
 
     // The default fixture has every attention count at zero, so the panel
-    // that would sit between them is absent; the System card is the first
-    // attribution surface that always renders.
-    const system = container.querySelector('[data-dashboard-panel="system"]');
-    expect(kpiRow.compareDocumentPosition(system as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // that would sit between them is absent; the merged System vs Trader card
+    // is the first attribution surface that always renders.
+    const comparison = container.querySelector('[data-dashboard-panel="execution-gap"]');
+    expect(kpiRow.compareDocumentPosition(comparison as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it('orders the KPI row, Needs Attention and the attribution panels top to bottom', () => {
@@ -573,9 +600,11 @@ describe('RealDashboard', () => {
     const attention = container.querySelector(
       '[data-dashboard-widget="review.needs-attention"]',
     ) as HTMLElement;
-    const system = container.querySelector('[data-dashboard-panel="system"]') as HTMLElement;
+    const comparison = container.querySelector(
+      '[data-dashboard-panel="execution-gap"]',
+    ) as HTMLElement;
     expect(kpiRow.compareDocumentPosition(attention)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(attention.compareDocumentPosition(system)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(attention.compareDocumentPosition(comparison)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   /**
@@ -679,7 +708,15 @@ describe('RealDashboard', () => {
       'href',
       '/app/trades/new',
     );
-    expect(screen.getByText('+4.00R')).toBeVisible();
+    // The empty record list must not blank the analytical surfaces above it.
+    // `+4.00R` used to be the System baseline card's Total R; the merged card
+    // states the PAIRED System total instead, which is the fixture's 3.0000.
+    const totalRow = screen.getByRole('row', { name: /Total R/ });
+    expect(
+      within(totalRow).getByText('+3.00R', {
+        selector: '[data-comparison-cell="system"]',
+      }),
+    ).toBeVisible();
   });
 
   it('reserves the five-card KPI geometry in the loading skeleton', () => {

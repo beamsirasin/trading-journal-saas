@@ -2,7 +2,6 @@ import { ArrowRight, ListChecks } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { DashboardPageData } from '@/lib/dashboard/page-data';
-import { composePerformanceCards } from '@/lib/dashboard/performance-card';
 import {
   dashboardLayoutItem,
   dashboardWidgetAttributes,
@@ -18,7 +17,6 @@ import { ExecutionGapSection } from '@/components/dashboard/execution-gap/execut
 import { BasicKpiRow } from '@/components/dashboard/kpi/basic-kpi-row';
 import { BASIC_KPI_GRID_CLASS, kpiSpanClassName } from '@/components/dashboard/kpi/kpi-widget-card';
 import { MetricInfo } from '@/components/dashboard/kpi/metric-info';
-import { PerformanceCard } from '@/components/dashboard/performance/performance-card';
 import { RecentTradesCard } from '@/components/dashboard/recent-trades/recent-trades-card';
 import { MetricLabel } from '@/components/product/metric';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,10 +62,6 @@ export function RealDashboard({
   riskSlot: React.ReactNode;
 }) {
   const t = useTranslations('dashboard.real');
-  const tFilters = useTranslations('dashboard.filters');
-  const accountLabel =
-    data.account.kind === 'account' ? data.account.account.name : tFilters('allAccounts');
-  const performanceCards = composePerformanceCards(data);
 
   return (
     /*
@@ -98,70 +92,25 @@ export function RealDashboard({
       <BasicKpiRow data={data} className="mt-4 first:mt-0" />
       <NeedsAttentionPanel attention={data.attention.counts} className="mt-4" />
 
-      <section aria-labelledby="performance-heading" className="mt-6 flex flex-col gap-4">
-        {/*
-          NO LOCAL RANGE CONTROL. Through R2A this heading row carried its own
-          30D/90D/All links — a second visible owner of a range that was always
-          global. It is gone: the sticky Dashboard toolbar is the one Date
-          Range control, and it offers the full canonical preset set plus
-          Custom rather than three of the nine. The underlying state is
-          unchanged; only its single visible owner moved.
+      {/*
+        THE SECTION HEADING IS GONE WITH THE SECTION.
 
-          A SECTION HEADING, NOT A PAGE HEADER. It was `text-xl` over a
-          `leading-relaxed` sentence — 60px for two lines introducing two cards
-          whose own titles repeat the same thing 40px lower. `text-base` is
-          also what the benchmark uses for a section title (16px/500).
-        */}
-        {/*
-          A TITLE AND AN AFFORDANCE, NOT A TITLE AND A PARAGRAPH.
-
-          Measured, the benchmark Dashboard carries ZERO explanatory
-          paragraphs (§16, "Text paragraphs: 0"); its card headers are a
-          16px/500 title plus an ⓘ, and every definition lives behind that
-          icon. The sentence that used to sit here — "Active account: {name}.
-          Each side uses its own eligible Trade population." — said one thing
-          the toolbar and the account strip 100px above already say (which
-          account), and one thing that is genuine methodology (the two sides
-          do not share a Trade population). The first was redundant; the
-          second is exactly what an ⓘ is for, and it is now the first line of
-          this popover rather than a permanent second line under the heading.
-
-          Nothing was deleted: both facts are in `performanceHelp`, reachable
-          by pointer, touch and keyboard through `MetricInfo`'s real button.
-        */}
-        <div className="flex min-w-0 items-center gap-1">
-          <h2 id="performance-heading" className="text-base font-semibold tracking-tight">
-            {t('performanceTitle')}
-          </h2>
-          <MetricInfo
-            triggerLabel={t('performanceInfoTrigger')}
-            title={t('performanceTitle')}
-            description={t('performanceHelp', { account: accountLabel })}
-          />
-        </div>
-
-        {/*
-          Two equal halves, and `items-stretch` so both cards share a top edge
-          and a height whatever each side's population contains. Since D4.5
-          this grid AGREES with the layout metadata rather than contradicting
-          it: `performance` is its own two-column section and each card spans
-          one of its columns, so the retired 2+3-of-five reading is gone from
-          both the page and the record it emits.
-        */}
-        <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-2">
-          {performanceCards.map((model) => (
-            <PerformanceCard key={model.widgetId} model={model} />
-          ))}
-        </div>
-      </section>
+        "System vs Trader performance" was the only floating heading on the
+        page — every other block is a self-titled Card — so it broke the
+        vertical rhythm twice over: once as an unmatched type step, and once
+        because it introduced two cards that then repeated the same words in
+        their own titles 40px lower. Its methodology sentence was not
+        deleted; it is the population note in the merged card's own info
+        popover, beside the figures it qualifies.
+      */}
 
       {/*
-        D5B replaces D2's placeholder summary card with the real
-        `execution.gap` widget. It still consumes only
+        THE MERGED SYSTEM VS TRADER CARD, in the slot the two baselines and
+        this section used to occupy between them. It still consumes only
         `DashboardPageData.comparison` — one server-composed Population C
-        model, no fetch of its own — and it deliberately follows the D4 pair
-        it explains rather than sitting between the KPI band and the
-        baselines.
+        model, no fetch of its own — and now carries the three-row comparison
+        the two baselines used to state separately over two different
+        populations.
       */}
       <ExecutionGapSection comparison={data.comparison} dateLocale={dateLocale} className="mt-6" />
 
@@ -461,27 +410,27 @@ export function DashboardSkeleton() {
           ))}
         </div>
         <div className="bg-card mt-4 h-[74px] rounded-lg" />
-        {/* The section heading above the two baselines is real text on
-            arrival, so the skeleton reserves its single line rather than
-            letting the cards below jump 24px down when it appears. */}
-        <div className="mt-6 flex flex-col gap-4">
-          <div className="bg-card h-[24px] w-64 rounded-md" />
-          {/* 193 -> 165: the System/Trader cards went from a hero plus six
-              supporting cells to a hero plus two. Measured at 1440, where each
-              card is 648px and wide enough to lay its qualifiers beside the
-              hero; at 1024 each card is 440px, stacks, and stands at 231px —
-              the same width-dependent reservation this block has always made
-              for its primary desktop case. */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="bg-card h-[165px] rounded-lg" />
-            <div className="bg-card h-[165px] rounded-lg" />
-          </div>
-        </div>
-        {/* Execution Gap, 525 -> 416: two headline figures instead of four,
-            and one cumulative chart instead of a chart plus a daily strip
-            plus a distribution bar. Measured at 1440 on the populated
-            fixture, and stable from 1024 up. */}
-        <div className="bg-card mt-6 h-[416px] rounded-lg" />
+        {/*
+          THREE RESERVATIONS COLLAPSE INTO ONE, BECAUSE THREE BLOCKS DID.
+
+          This used to reserve a 24px section heading, two 165px baseline
+          cards side by side, and a 416px Execution Gap band — 629px plus two
+          margins, for a heading and three cards that are now one card and no
+          heading.
+
+          469px, measured at 1920 on the populated fixture against the
+          production build, not estimated: the merged card is a header row, a
+          three-row table beside a 4.5:1 plot, and the exclusion note under
+          the table. The plot is the tallest element and it is ratio-driven,
+          so this reservation is width-dependent by construction — it is the
+          primary desktop case, the same basis every other block here uses.
+          It was 438px while the plot rule was 5:1; the 31px is the plot
+          growing from 278px to 309px, which is the whole of the difference.
+          At `lg` and below the table and the plot stack and the real card is
+          taller, which errs toward a skeleton slightly shorter than its
+          content rather than a gap that has to close.
+        */}
+        <div className="bg-card mt-6 h-[469px] rounded-lg" />
         {/*
           D6B's unequal section, reserved at the geometry it actually renders
           at — five columns of Trade rows beside seven of Calendar. A skeleton

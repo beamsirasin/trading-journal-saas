@@ -118,7 +118,9 @@ describe('ExecutionGapSection — widget identity', () => {
 
   it('names itself with a real heading the section is labelled by', () => {
     const { container } = renderSection();
-    const heading = screen.getByRole('heading', { name: 'Execution Gap' });
+    // The card absorbed the two baselines, so it is named for the whole
+    // comparison rather than for one of the figures inside it.
+    const heading = screen.getByRole('heading', { name: 'System vs Trader' });
     const widget = container.querySelector('[data-dashboard-widget="execution.gap"]');
     expect(widget).toHaveAttribute('aria-labelledby', heading.id);
   });
@@ -261,7 +263,10 @@ describe('ExecutionGapSection — summary strip', () => {
 describe('ExecutionGapSection — charts', () => {
   it('plots the canonical cumulative values and ends on the paired totals', () => {
     const { container } = renderSection();
-    const table = section(container).querySelector('table') as HTMLTableElement;
+    // The card holds two tables since the merge — the comparison rail and
+    // this chart's screen-reader fallback. Reach for the fallback by the
+    // wrapper that hides it, not by position.
+    const table = section(container).querySelector('.sr-only table') as HTMLTableElement;
     const lastRow = table.querySelectorAll('tbody tr')[DAILY.length - 1] as HTMLElement;
     const cells = [...lastRow.querySelectorAll('th, td')].map((cell) => cell.textContent);
     // date, paired count, cum System, cum Actual, cum Gap, that day's Gap.
@@ -271,7 +276,7 @@ describe('ExecutionGapSection — charts', () => {
   it('reconciles the final chart point with the summary Total Gap', () => {
     const { container } = renderSection();
     const strip = section(container).querySelector('[data-execution-gap-summary]') as HTMLElement;
-    const table = section(container).querySelector('table') as HTMLTableElement;
+    const table = section(container).querySelector('.sr-only table') as HTMLTableElement;
     const lastRow = table.querySelectorAll('tbody tr')[DAILY.length - 1] as HTMLElement;
     const cumulativeGap = lastRow.querySelectorAll('td')[3]?.textContent;
     expect(cumulativeGap).toBe('-13.80R');
@@ -302,12 +307,20 @@ describe('ExecutionGapSection — charts', () => {
     const { container } = renderSection();
     const panel = section(container);
     const visibleProse = [...panel.querySelectorAll('p, figcaption')].filter(
-      (node) => !node.classList.contains('sr-only') && !node.closest('.sr-only'),
+      (node) =>
+        !node.classList.contains('sr-only') &&
+        !node.closest('.sr-only') &&
+        // The exclusion note is the ONE surviving line of visible prose, and
+        // it is not explanatory copy: it is a figure the reader cannot get
+        // anywhere else, naming which Trades the table could not pair and
+        // why. Without it the paired System total silently disagrees with
+        // the Basic KPI band and nothing on the page accounts for it.
+        node.getAttribute('data-comparison-exclusions') === null,
     );
     expect(visibleProse).toHaveLength(0);
     // Still there for assistive technology.
     expect(panel.querySelector('figcaption.sr-only')).not.toBeNull();
-    expect(panel.querySelector('table')).not.toBeNull();
+    expect(panel.querySelector('.sr-only table')).not.toBeNull();
   });
 
   it('names both series in text so identity is never colour alone', () => {
@@ -322,7 +335,7 @@ describe('ExecutionGapSection — charts', () => {
 
   it('carries the daily Gap sign into the accessible table', () => {
     const { container } = renderSection();
-    const table = section(container).querySelector('table') as HTMLTableElement;
+    const table = section(container).querySelector('.sr-only table') as HTMLTableElement;
     const dailyGaps = [...table.querySelectorAll('tbody tr')].map(
       (row) => row.querySelectorAll('td')[4]?.textContent,
     );

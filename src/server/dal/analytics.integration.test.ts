@@ -694,6 +694,52 @@ describe('analytics DAL (real PostgreSQL)', () => {
     expect(ids.filter((id) => tiedIds.includes(id))).toEqual([...tiedIds].sort());
   });
 
+  /**
+   * THE HAZARD THE `not(actualComplete)` CLAUSE EXISTS FOR.
+   *
+   * The candidate query is Population A ∪ B, and the two halves are gated on
+   * different date columns: an Actual-complete candidate by `exited_at`, a
+   * System-only candidate by `system_exited_at`, because a Trade that has not
+   * exited has no Actual exit to be anchored by.
+   *
+   * A fully paired Trade sits in both halves, and its `system_exited_at` can
+   * fall inside a range its `exited_at` falls outside. Without the negation
+   * on the second clause that Trade would enter the candidate set through the
+   * System door — and `isComparisonEligible`, which knows nothing about
+   * dates, would then admit it to Population C. The paired totals would
+   * silently gain a Trade that closed in April from a window that starts in
+   * May.
+   *
+   * So this asserts the bundle, not the focused reader: the focused reader
+   * would keep passing on the strength of its own filter while the Dashboard
+   * quietly counted an extra Trade.
+   */
+  it('keeps a paired Trade whose Actual exit is outside the range but whose System exit is inside it out of the Dashboard bundle', async () => {
+    const fixture = await createFixture();
+    const actualOutSystemIn = await createTradeRow(
+      fixture.workspaceId,
+      fixture.activeAccountId,
+      fixture.framework,
+      {
+        exitedAt: new Date('2026-04-01T10:00:00Z'),
+        systemExitedAt: new Date('2026-08-06T11:00:00Z'),
+      },
+    );
+
+    const dashboard = await getDashboardRawData({}, READ_OPTIONS);
+    if (!dashboard.ok) throw new Error(dashboard.code);
+
+    // It is complete on both axes, so it is genuinely pairable — it is only
+    // the RANGE that excludes it, which is the part a date-blind predicate
+    // cannot see.
+    expect(
+      selectComparisonEligible(dashboard.data.comparisonCandidates).map((row) => row.tradeId),
+    ).not.toContain(actualOutSystemIn);
+    expect(dashboard.data.comparisonCandidates.map((row) => row.tradeId)).not.toContain(
+      actualOutSystemIn,
+    );
+  });
+
   it('D2 narrow Dashboard bundle preserves canonical A/B/C rows without deep projections', async () => {
     await createFixture();
     const [dashboard, trader, system, paired] = await Promise.all([

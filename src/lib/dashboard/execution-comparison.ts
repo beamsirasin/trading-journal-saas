@@ -107,7 +107,7 @@ export interface ExecutionComparisonDistribution {
  * A count on its own cannot carry this. The paired System total is 35.80R
  * against the System card's 36.25R on the reference fixture, and "excluding
  * 6 Trades" does not explain a number moving in a direction the reader did
- * not ask for — "2 awaiting a System result, 2 still open, 2 not entered"
+ * not ask for — "2 awaiting a System result, 2 still open, 2 not yet taken"
  * does. Each reason names a state the reader can act on, and each maps to a
  * lifecycle field rather than to an inference.
  *

@@ -192,15 +192,24 @@ export function CumulativeComparisonChart({
       // fixed height cannot express that, because the thing that went wrong
       // was the RELATIONSHIP between width and height, and only width varies.
       //
-      // `aspect-[5/1]` states the actual rule: never flatter than five to
-      // one. `min-h-52 sm:min-h-56` keeps the previous heights as a floor so
-      // narrow viewports do not collapse the plot into a strip (at 390px the
-      // ratio alone would ask for 78px). `max-h-[22rem]` (352px) is the
-      // ceiling, and it is chosen rather than inherited: 352px is exactly 5:1
-      // at the ~1750px this section occupies on a 1920 viewport, so the rule
-      // holds precisely through the widest common desktop and only relaxes
-      // beyond it, where an uncapped ratio would demand a 600px-tall plot.
-      className="aspect-[5/1] max-h-[22rem] min-h-52 w-full min-w-0 sm:min-h-56"
+      // `aspect-[4.5/1]` states the actual rule: never flatter than four and
+      // a half to one. `min-h-52 sm:min-h-56` keeps the previous heights as a
+      // floor so narrow viewports do not collapse the plot into a strip (at
+      // 390px the ratio alone would ask for 87px). `max-h-[24rem]` (384px) is
+      // the ceiling, chosen rather than inherited: 384px is exactly 4.5:1 at
+      // 1728px, so the rule holds precisely past the widest plot any 1920
+      // viewport produces here (1422px for the balance chart beside its rail)
+      // and only relaxes on an ultrawide, where an uncapped ratio would
+      // demand a 600px-tall plot.
+      //
+      // 5:1 FIRST, THEN 4.5. The first pass set the rule at five, and the
+      // merged System vs Trader card then narrowed this plot from 1750px to
+      // 1390px — where it landed on 5.00:1 exactly, sitting on the flattest
+      // shape the rule permits with no headroom at all. A limit a plot rests
+      // against is not a shape, it is a coincidence waiting to be violated by
+      // the next width change; 4.5 puts the common case inside the band
+      // rather than on its edge.
+      className="aspect-[4.5/1] max-h-[24rem] min-h-52 w-full min-w-0 sm:min-h-56"
       role="img"
       aria-label={t('chart.cumulativeAriaLabel')}
     >

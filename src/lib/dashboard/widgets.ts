@@ -5,8 +5,6 @@ export const DASHBOARD_WIDGET_IDS = [
   'basic.day-win-rate',
   'basic.avg-win-loss',
   'review.needs-attention',
-  'system.performance',
-  'trader.performance',
   'execution.gap',
   'trades.recent',
   'calendar.performance',
@@ -21,8 +19,6 @@ export type DashboardWidgetId = (typeof DASHBOARD_WIDGET_IDS)[number];
 export type DashboardWidgetCapability =
   | 'basic'
   | 'attention'
-  | 'system'
-  | 'trader'
   | 'comparison'
   | 'recent_trades'
   | 'calendar'
@@ -46,8 +42,6 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
   { id: 'basic.day-win-rate', capability: 'basic', implementation: 'current' },
   { id: 'basic.avg-win-loss', capability: 'basic', implementation: 'current' },
   { id: 'review.needs-attention', capability: 'attention', implementation: 'current' },
-  { id: 'system.performance', capability: 'system', implementation: 'current' },
-  { id: 'trader.performance', capability: 'trader', implementation: 'current' },
   { id: 'execution.gap', capability: 'comparison', implementation: 'current' },
   { id: 'trades.recent', capability: 'recent_trades', implementation: 'current' },
   { id: 'calendar.performance', capability: 'calendar', implementation: 'current' },
@@ -72,7 +66,6 @@ export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
 export const DASHBOARD_SECTION_IDS = [
   'basic-kpi',
   'attention',
-  'performance',
   'execution-gap',
   'recent-and-calendar',
   'insight-pillars',
@@ -94,16 +87,14 @@ export interface DashboardSectionDefinition {
  * THE DASHBOARD IS A STACK OF SECTIONS, NOT ONE GLOBAL GRID.
  *
  * D2 recorded every widget's `desktopSpan` against an implied five-column
- * page grid, which made `system.performance: 2` + `trader.performance: 3`
- * the only way to fill a row — a 40/60 split the product contract has never
- * asked for. D4 shipped the two cards as equal halves anyway and recorded the
- * contradiction rather than faking parity inside a five-wide row (two equal
- * integer spans cannot fill five columns).
+ * page grid, which made the System and Trader baselines a 2 + 3 split the
+ * product contract had never asked for. D4.5 resolved it by making the
+ * metadata say what the page actually is: each section owns its own column
+ * count, so no section has to borrow another's.
  *
- * D4.5 resolves it by making the metadata say what the page actually is: the
- * Basic KPI band is a five-column row, the System/Trader pair is its own
- * balanced two-column section, and the remaining sections are full width.
- * Each section owns its column count, so no section has to borrow another's.
+ * The two-column `performance` section that pair lived in is retired with
+ * them — the merged System vs Trader card is one full-width widget, and an
+ * empty section is a slot for a prediction rather than a record of the page.
  *
  * This is deliberately NOT a layout engine — there is no persistence, no
  * editor, no drag/drop, no resize, and no runtime that turns these numbers
@@ -114,7 +105,6 @@ export interface DashboardSectionDefinition {
 export const DASHBOARD_SECTIONS: readonly DashboardSectionDefinition[] = [
   { id: 'basic-kpi', desktopColumns: 5 },
   { id: 'attention', desktopColumns: 1 },
-  { id: 'performance', desktopColumns: 2 },
   { id: 'execution-gap', desktopColumns: 1 },
   /*
     D6B: the one section on the page whose two widgets are genuinely UNEQUAL.
@@ -244,27 +234,25 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileSpan: 2,
     mobileOrder: 60,
   },
-  // Equal halves of their own section — the D2 2+3 split is retired.
-  {
-    widgetId: 'system.performance',
-    section: 'performance',
-    order: 70,
-    desktopSpan: 1,
-    mobileSpan: 2,
-    mobileOrder: 70,
-  },
-  {
-    widgetId: 'trader.performance',
-    section: 'performance',
-    order: 80,
-    desktopSpan: 1,
-    mobileSpan: 2,
-    mobileOrder: 80,
-  },
+  /*
+    ONE WIDGET WHERE THREE STOOD.
+
+    `system.performance` and `trader.performance` are retired: the two
+    baseline cards and this section were merged into one System vs Trader
+    card, because between them they said one thing three times. The merged
+    card keeps `execution.gap` rather than taking a new id — it is the same
+    capability (`comparison`) reading the same Population C model, and a new
+    id would have implied a new thing rather than an absorbed one.
+
+    Its order moves 90 -> 70, into the slot the two baselines vacated. The
+    reading order is unchanged in substance: the KPI band, then the
+    System/Trader comparison, then the pillars that explain it. The 80 and 90
+    slots are now free, which is what decade numbering is for.
+  */
   {
     widgetId: 'execution.gap',
     section: 'execution-gap',
-    order: 90,
+    order: 70,
     desktopSpan: 1,
     mobileSpan: 2,
     mobileOrder: 90,

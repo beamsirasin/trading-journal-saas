@@ -344,9 +344,6 @@
     "noActiveAccountDescription": "Your workspace does not have a usable trading account right now. Set one up to continue.",
     "noActiveAccountCta": "Manage trading accounts",
     "real": {
-      "performanceTitle": "System vs Trader performance",
-      "performanceHelp": "Active account: {account}. Each side uses its own eligible Trade population.",
-      "performanceInfoTrigger": "About System vs Trader performance",
       "dateRangeLabel": "Date range",
       "range30": "30D",
       "range90": "90D",
@@ -598,8 +595,8 @@
       "times": "{count, plural, one {# time} other {# times}}"
     },
     "executionGap": {
-      "title": "Execution Gap",
-      "infoTrigger": "About Execution Gap",
+      "title": "System vs Trader",
+      "infoTrigger": "About System vs Trader",
       "help": "Execution Gap is Actual R minus System R, measured only on Trades where both the Actual and the System outcome are complete. Negative means you captured less R than the System offered; positive means you captured more. It is a measurement of execution against available System edge, not a verdict on you.",
       "notAvailableShort": "n/a",
       "summary": {
@@ -641,7 +638,39 @@
         "emptyTitle": "No comparable Trades",
         "emptyDescription": "A Trade joins this comparison only once it has both a completed Actual outcome and a resolved System outcome. Nothing in this range has both yet.",
         "error": "This comparison could not be prepared from the stored figures. Nothing here is missing because of your Trades — the recorded data needs review."
-      }
+      },
+      "table": {
+        "caption": "System and Trader performance over the paired Trades, with the difference",
+        "metricColumn": "Metric",
+        "systemColumn": "System",
+        "actualColumn": "Actual",
+        "deltaColumn": "Δ",
+        "deltaColumnLabel": "Difference (Actual minus System)",
+        "row": {
+          "totalR": "Total R",
+          "winRate": "Win Rate",
+          "payoffRatio": "Avg Win / Loss"
+        }
+      },
+      "excluded": {
+        "none": "Every Trade in this range has both outcomes complete.",
+        "summary": "Excludes {count, plural, one {# Trade} other {# Trades}} that cannot be paired yet",
+        "reason": {
+          "awaiting_system_result": "{count} awaiting a System result",
+          "trade_open": "{count} still open",
+          "trade_planned": "{count} not yet taken",
+          "trade_canceled": "{count} canceled",
+          "incomplete_record": "{count} with an incomplete record"
+        },
+        "link": "Review these Trades"
+      },
+      "precision": {
+        "heading": "Full precision",
+        "note": "The table rounds to two decimal places. Each figure is rounded once from the value below, and the difference is rounded once from the difference of those values — so it can differ from subtracting the two displayed figures by one unit in the last place.",
+        "row": "{metric}: System {system}, Actual {actual}, Δ {delta}",
+        "unavailable": "not available"
+      },
+      "populationNote": "All three rows count the same {count} paired Trades, so the two sides are directly comparable. The System and Trader baselines each counted their own eligible population, which is why these totals differ from the ones the two separate cards used to show."
     },
     "calendar": {
       "title": "Calendar",

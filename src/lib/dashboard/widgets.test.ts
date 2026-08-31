@@ -133,29 +133,33 @@ describe('section-aware Dashboard layout metadata', () => {
   });
 
   /**
-   * The D4.5 §7 reconciliation itself. D2 recorded 2 and 3 of an implied
-   * five-column page grid — a 40/60 split D4 already refused to render. The
-   * pair is now a section of its own with one column each, so the metadata
-   * and the rendered page finally agree, and the retired split cannot come
-   * back without failing here.
+   * THE TWO BASELINE WIDGETS ARE RETIRED, AND SO IS THEIR SECTION.
+   *
+   * `system.performance` and `trader.performance` were equal halves of a
+   * two-column `performance` section. They and the Execution Gap section
+   * were merged into one System vs Trader card, so both ids and the section
+   * are gone rather than left as slots nothing fills. This asserts the
+   * absence directly: a retired id that quietly comes back would otherwise
+   * only be caught by a type error in whichever file re-added it.
    */
-  it('makes System and Trader equal halves of one two-column section', () => {
-    const system = dashboardLayoutItem('system.performance');
-    const trader = dashboardLayoutItem('trader.performance');
-    expect(system.section).toBe('performance');
-    expect(trader.section).toBe('performance');
-    expect(dashboardSection('performance').desktopColumns).toBe(2);
-    expect(system.desktopSpan).toBe(trader.desktopSpan);
-    expect(system.desktopSpan).toBe(1);
-    expect(system.order).toBeLessThan(trader.order);
+  it('no longer carries the retired System and Trader baseline widgets', () => {
+    const ids: readonly string[] = DASHBOARD_WIDGET_IDS;
+    expect(ids).not.toContain('system.performance');
+    expect(ids).not.toContain('trader.performance');
+    const sections: readonly string[] = DASHBOARD_SECTIONS.map((section) => section.id);
+    expect(sections).not.toContain('performance');
+    expect(
+      DEFAULT_DASHBOARD_LAYOUT.some((item) => (item.section as string) === 'performance'),
+    ).toBe(false);
   });
 
   /**
-   * D5A §18. The Execution Gap is a full-width analytical section at every
-   * width — it owns its section rather than borrowing a column from the KPI
-   * band or the performance pair, and it spans that section completely. D5B
-   * builds the visual on top of this metadata; nothing here anticipates what
-   * that visual looks like.
+   * The merged System vs Trader card is a full-width analytical section at
+   * every width — it owns its section rather than borrowing a column from
+   * the KPI band, and it spans that section completely. It kept the
+   * `execution.gap` id when it absorbed the two baselines: same capability,
+   * same Population C model, so a new id would have implied a new thing
+   * rather than an absorbed one.
    */
   it('keeps the Execution Gap a full-width section of its own', () => {
     const gap = dashboardLayoutItem('execution.gap');
@@ -169,8 +173,10 @@ describe('section-aware Dashboard layout metadata', () => {
     expect(
       DEFAULT_DASHBOARD_LAYOUT.filter((item) => item.section === 'execution-gap'),
     ).toHaveLength(1);
-    // It follows the System/Trader pair it explains.
-    expect(gap.order).toBeGreaterThan(dashboardLayoutItem('trader.performance').order);
+    // It moved into the slot the two baselines vacated, so it now sits
+    // between Needs Attention and the insight pillars that explain it.
+    expect(gap.order).toBeGreaterThan(dashboardLayoutItem('review.needs-attention').order);
+    expect(gap.order).toBeLessThan(dashboardLayoutItem('strategy.performance').order);
   });
 
   /**
@@ -222,8 +228,11 @@ describe('section-aware Dashboard layout metadata', () => {
       expect(pillar).toBeLessThan(recent);
       expect(pillar).toBeLessThan(risk);
     }
-    // The D3–D7 orders themselves are untouched by the insertion.
-    expect([gap, recent, risk]).toEqual([90, 100, 120]);
+    // The Execution Gap moved 90 -> 70 when it absorbed the two baseline
+    // widgets and took the slot they vacated; the record list and Risk
+    // Performance are untouched, and 80 and 90 are now free, which is what
+    // decade numbering is for.
+    expect([gap, recent, risk]).toEqual([70, 100, 120]);
   });
 
   /**
@@ -256,13 +265,13 @@ describe('section-aware Dashboard layout metadata', () => {
   });
 
   it('publishes the section and its column count alongside the span', () => {
-    expect(dashboardWidgetAttributes(dashboardLayoutItem('trader.performance'))).toEqual({
-      'data-dashboard-widget': 'trader.performance',
-      'data-dashboard-section': 'performance',
-      'data-dashboard-section-columns': 2,
+    expect(dashboardWidgetAttributes(dashboardLayoutItem('execution.gap'))).toEqual({
+      'data-dashboard-widget': 'execution.gap',
+      'data-dashboard-section': 'execution-gap',
+      'data-dashboard-section-columns': 1,
       'data-dashboard-desktop-span': 1,
       'data-dashboard-mobile-span': 2,
-      'data-dashboard-order': 80,
+      'data-dashboard-order': 70,
     });
   });
 });

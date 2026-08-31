@@ -127,7 +127,7 @@ export function ModeledBalanceChart({
       // therefore shorter — which is the ratio doing its job, not a second
       // opinion about height. The two charts still share one rule; they no
       // longer have to share one number to stay consistent.
-      className="aspect-[5/1] max-h-[22rem] min-h-52 w-full min-w-0 sm:min-h-56"
+      className="aspect-[4.5/1] max-h-[24rem] min-h-52 w-full min-w-0 sm:min-h-56"
       role="img"
       aria-label={t('chart.ariaLabel')}
     >

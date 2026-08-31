@@ -22,7 +22,13 @@ function signedFixed(decimal: InstanceType<typeof DisplayDecimal>): string {
   return `${prefix}${rounded.toFixed(2)}`;
 }
 
-export type AnalyticsDisplayStyle = 'r' | 'percent' | 'factor' | 'multiple' | 'magnitude';
+export type AnalyticsDisplayStyle =
+  | 'r'
+  | 'percent'
+  | 'percentage-points'
+  | 'factor'
+  | 'multiple'
+  | 'magnitude';
 export type AnalyticsDisplayTone = 'positive' | 'negative' | 'neutral';
 
 export type FormattedAnalyticsMetric =
@@ -55,6 +61,21 @@ export function formatAnalyticsMetric(
     return {
       status: 'available',
       text: `${decimal.times(100).toDecimalPlaces(2, DisplayDecimal.ROUND_HALF_UP).toFixed(2)}%`,
+      tone,
+    };
+  }
+  if (style === 'percentage-points') {
+    // The DIFFERENCE of two rates, which is not itself a rate. 43.75% minus
+    // 40.63% is 3.12 percentage points, not 3.12% — the second would invite
+    // reading it as a relative change (3.12% OF 43.75%, which is 1.37pp) and
+    // the two are routinely confused. Signed, because the direction is the
+    // whole content of a difference.
+    return {
+      status: 'available',
+      text: `${decimal
+        .times(100)
+        .toDecimalPlaces(2, DisplayDecimal.ROUND_HALF_UP)
+        .toFixed(2)} pp`.replace(/^(?!-)/, '+'),
       tone,
     };
   }

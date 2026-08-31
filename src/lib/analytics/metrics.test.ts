@@ -352,6 +352,72 @@ describe('comparison composition', () => {
     expect(result.pairedActualAxis.totalR).toEqual({ status: 'available', value: '3.0000' });
   });
 
+  /**
+   * THE PAIRED AXES INHERIT EVERY NULL-RESULT RULE, BECAUSE THEY ARE THE
+   * SAME COMPOSER.
+   *
+   * `composeTraderAnalytics` and `composeSystemAnalytics` already have this
+   * coverage, and all three call `composePerformanceAxis` — but these two are
+   * new API surface, they are what the comparison table renders, and a table
+   * cell is exactly where a fabricated 0.00 or an `Infinity` would surface.
+   * A population with no losses on one side and none on the other is also
+   * routine here in a way it is not on a single axis: the same Trades are
+   * being counted twice, so one side can lack losses while the other does
+   * not.
+   */
+  it('gives each paired axis its own missing-denominator reason rather than a fabricated ratio', () => {
+    // Same two Trades on both sides. The System side wins both; the Actual
+    // side loses both. Neither payoff ratio has a denominator, and they are
+    // unavailable for OPPOSITE reasons.
+    const result = composeComparisonAnalytics([
+      { ...comparison('t1', '2.0000', '-1.0000'), systemOutcome: 'win', traderOutcome: 'loss' },
+      { ...comparison('t2', '3.0000', '-2.0000'), systemOutcome: 'win', traderOutcome: 'loss' },
+    ]);
+
+    expect(result.pairedSystemAxis.payoffRatio).toEqual({
+      status: 'unavailable',
+      reason: 'no_losses',
+    });
+    expect(result.pairedActualAxis.payoffRatio).toEqual({
+      status: 'unavailable',
+      reason: 'no_wins',
+    });
+    expect(result.pairedSystemAxis.winRate).toEqual({ status: 'available', value: '1.0000' });
+    expect(result.pairedActualAxis.winRate).toEqual({ status: 'available', value: '0.0000' });
+    expect(JSON.stringify(result)).not.toMatch(/Infinity|NaN/);
+  });
+
+  it('counts break-even in the denominator of both paired win rates and in neither payoff', () => {
+    const result = composeComparisonAnalytics([
+      { ...comparison('win', '1.0000', '1.0000'), systemOutcome: 'win', traderOutcome: 'win' },
+      {
+        ...comparison('flat', '0.0000', '0.0000'),
+        systemOutcome: 'break_even',
+        traderOutcome: 'break_even',
+      },
+      { ...comparison('loss', '-1.0000', '-1.0000'), systemOutcome: 'loss', traderOutcome: 'loss' },
+    ]);
+
+    for (const axis of [result.pairedSystemAxis, result.pairedActualAxis]) {
+      expect(axis.sampleCount).toBe(3);
+      expect(axis.outcomeCounts).toEqual({ wins: 1, breakEvens: 1, losses: 1 });
+      // One win of three, not one of two — break-even is in the denominator.
+      expect(axis.winRate).toEqual({ status: 'available', value: '0.3333' });
+      // ...and in neither average, so the payoff is 1.00 rather than diluted.
+      expect(axis.payoffRatio).toEqual({ status: 'available', value: '1.0000' });
+    }
+  });
+
+  it('reports an empty paired population on both axes without inventing a zero', () => {
+    const result = composeComparisonAnalytics([]);
+    for (const axis of [result.pairedSystemAxis, result.pairedActualAxis]) {
+      expect(axis.sampleCount).toBe(0);
+      expect(axis.totalR).toEqual({ status: 'unavailable', reason: 'no_trades' });
+      expect(axis.winRate).toEqual({ status: 'unavailable', reason: 'no_trades' });
+      expect(axis.payoffRatio).toEqual({ status: 'unavailable', reason: 'no_wins' });
+    }
+  });
+
   it('never lets an axis total disagree with the dedicated paired total', () => {
     const result = composeComparisonAnalytics([
       comparison('trade-a', '6.0000', '5.0000'),
