@@ -7,6 +7,7 @@ import { parseDashboardFilterState } from '@/lib/dashboard/filters';
 import { calendarDateIn } from '@/lib/time';
 import { getDashboardPageData } from '@/server/services/dashboard';
 import { DashboardCalendarSection } from '@/components/dashboard/calendar/dashboard-calendar-section';
+import { DashboardScrollRestoration } from '@/components/dashboard/dashboard-scroll-restoration';
 import { DashboardTransitionOverlay } from '@/components/dashboard/dashboard-transition-overlay';
 import { NoActiveTradingAccountRecovery } from '@/components/dashboard/empty-trading-dashboard';
 import { InsightPillarsDataSection } from '@/components/dashboard/insights/insight-pillars-data-section';
@@ -107,12 +108,15 @@ export default async function AppOverviewPage({
         actually read — in `generateMetadata` above.
 
         `relative`, so the transition veil can cover exactly the analytical
-        area and nothing above it. `DashboardTransitionOverlay` is the ONLY
-        client component in this subtree; everything beside it stays
-        server-rendered.
+        area and nothing above it. `DashboardTransitionOverlay` and
+        `DashboardScrollRestoration` are the only client components in this
+        subtree; everything beside them stays server-rendered. The second
+        renders nothing at all — it exists to put the reader back where they
+        were across the document navigation every state control performs.
       */}
       <Container width="canvas" className="relative flex min-w-0 flex-col pt-4 pb-8">
         <DashboardTransitionOverlay />
+        <DashboardScrollRestoration />
         <Suspense fallback={<DashboardSkeleton />}>
           <DashboardContent locale={locale} rawSearchParams={rawSearchParams} />
         </Suspense>

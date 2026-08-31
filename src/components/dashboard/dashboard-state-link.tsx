@@ -6,6 +6,8 @@ import { useCallback, type ComponentPropsWithoutRef, type MouseEvent } from 'rea
 import { getPathname } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
+import { rememberDashboardScroll } from './dashboard-scroll-restoration';
+
 type DashboardStateLinkProps = Omit<ComponentPropsWithoutRef<'a'>, 'href'> & {
   readonly href: string;
 };
@@ -34,6 +36,12 @@ export function DashboardStateLink({ href, onClick, ...props }: DashboardStateLi
         // that is not going anywhere. `defaultPrevented` covers a caller that
         // has already handled the click itself.
         if (event.defaultPrevented || isModifiedClick(event)) return;
+        // Remembered HERE rather than on `beforeunload`, because this is the
+        // only moment we know the navigation is a Dashboard state transition
+        // rather than a link away from the page. See
+        // `DashboardScrollRestoration` for why a document navigation needs
+        // this at all.
+        rememberDashboardScroll();
         signalDashboardTransition();
       }}
       {...props}
@@ -46,6 +54,7 @@ export function useDashboardStateNavigation(): (href: string) => void {
   const locale = useLocale() as AppLocale;
   return useCallback(
     (href: string) => {
+      rememberDashboardScroll();
       signalDashboardTransition();
       window.location.assign(dashboardDocumentHref(href, locale));
     },

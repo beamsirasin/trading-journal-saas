@@ -8,6 +8,40 @@ the product-safe transport workaround is recorded separately at the top.
 Nothing was masked: no timeout was lengthened, no assertion weakened, no test
 disabled, no `page.reload()` or forced navigation inserted to make a step pass.
 
+## Rejected: client-side shallow routing for the Calendar tabs (2026-08-31)
+
+Proposed as UI audit item §A4: make the Calendar's Actual/System/Gap tabs
+client-side (`useSearchParams` + shallow routing) so they stop performing a
+full page navigation, while keeping the URL shareable.
+
+**Rejected**, because it re-implements the exact defect this document exists
+to record. `mode->system` and `mode->gap` are named in §1's table below: they
+failed **1/10 each** before the transport workaround, and they are
+same-pathname search-param-only navigations on `/en/app`, which is the one
+shape that ever failed. `dashboard:range->30d` — the same transport, the same
+route — failed up to **5/10**. After the workaround the stress gate committed
+**300/300**.
+
+It is also not a Calendar-local change. `DashboardStateLink` drives the mode
+control, the month navigation, every populated day cell, and the whole sticky
+toolbar. Converting one control leaves two transports on one page and gives
+the reader a Calendar whose tabs are unreliable while its month arrows are
+not.
+
+**What was done instead.** The reported symptom was never speed — it was that
+the viewport jumped to the top of the page on every tab press, roughly 900px
+above the control just used. `DashboardScrollRestoration` carries the scroll
+offset across the document navigation: `DashboardStateLink` records
+`window.scrollY` at the click, the destination consumes it once on mount and
+restores it. That addresses the symptom exactly and leaves the transport, and
+its 300/300 evidence, untouched.
+
+**Reopen only when** Next has been upgraded past `16.2.12` AND the isolated
+reproduction in `next-dashboard-search-param-navigation-repro.md` no longer
+reproduces AND the 20-flow stress gate passes on soft navigation. Until all
+three hold, a change here is a regression with a measured failure rate, not a
+refactor.
+
 ## Stabilization applied
 
 Dashboard same-pathname, search-param-only state controls now use native
