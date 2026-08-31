@@ -1,6 +1,5 @@
-import { calendarDateIn, isValidTimeZone, type CalendarDate } from '@/lib/time';
-
 import { CalcDecimal, parseCalcDecimal, toCanonicalR, type CalcDecimalValue } from './decimal';
+import { classifyDayTotalR, groupByLocalDay, sumDayR } from './trading-day';
 import { calcErr, calcOk, type CalcResult } from './types';
 
 export interface DayWinTrade {
@@ -19,39 +18,42 @@ export interface DayWinRateSummary {
 
 /**
  * Groups Population-A Trades by Actual `exited_at` in the persisted user
- * analytics timezone, sums each local day's R at full precision, then counts
- * positive/zero/negative days. Open-only days never enter because callers
+ * analytics timezone, sums each local day's R at full precision, then
+ * classifies each day with `classifyDayTotalR` — the SAME break-even band a
+ * Trade's own R is judged by, and the same function the Calendar's day cells
+ * use. It counted positive/zero/negative days with a strict `> 0` until that
+ * rule was unified; see `trading-day.ts` for why the band belongs here and
+ * why the Execution Gap distribution deliberately keeps an exact zero. Open-only days never enter because callers
  * supply the already eligible closed Actual population.
  */
 export function dayWinRate(
   trades: readonly DayWinTrade[],
   timeZone: string,
 ): CalcResult<DayWinRateSummary> {
-  if (!isValidTimeZone(timeZone)) return calcErr('invalid_timezone');
   if (trades.length === 0) return calcErr('no_trading_days');
 
-  const totals = new Map<CalendarDate, CalcDecimalValue>();
-  for (const trade of trades) {
-    const date = calendarDateIn(trade.exitedAt, timeZone);
-    if (!date.ok)
-      return calcErr(
-        date.error.code === 'invalid_timezone' ? 'invalid_timezone' : 'invalid_timestamp',
-      );
-    const r = parseCalcDecimal(trade.actualR);
-    if (r === null) return calcErr('invalid_decimal');
-    totals.set(date.value, (totals.get(date.value) ?? new CalcDecimal(0)).plus(r));
-  }
+  const grouped = groupByLocalDay(trades, timeZone, (trade) => trade.exitedAt);
+  if (!grouped.ok) return grouped;
 
   let winningDayCount = 0;
   let breakEvenDayCount = 0;
   let losingDayCount = 0;
-  for (const total of totals.values()) {
-    if (total.greaterThan(0)) winningDayCount += 1;
-    else if (total.lessThan(0)) losingDayCount += 1;
+  for (const dayTrades of grouped.value.values()) {
+    const values: CalcDecimalValue[] = [];
+    for (const trade of dayTrades) {
+      const r = parseCalcDecimal(trade.actualR);
+      if (r === null) return calcErr('invalid_decimal');
+      values.push(r);
+    }
+    // The band, not a comparison to zero — `classifyDayTotalR` owns the rule
+    // and the Calendar's day cells read the same function.
+    const classification = classifyDayTotalR(sumDayR(values));
+    if (classification === 'winning') winningDayCount += 1;
+    else if (classification === 'losing') losingDayCount += 1;
     else breakEvenDayCount += 1;
   }
 
-  const eligibleDayCount = totals.size;
+  const eligibleDayCount = grouped.value.size;
   return calcOk({
     eligibleDayCount,
     winningDayCount,

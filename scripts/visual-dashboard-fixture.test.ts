@@ -424,23 +424,32 @@ describe('deterministic visual Dashboard fixture', () => {
    * 2.2000 - 1.1000 - 1.1500 that lands on exactly -0.0500R, the tolerance
    * boundary, from Trades none of which is individually break-even.
    *
-   * THESE NUMBERS ARE THE BUG, NOT THE CONTRACT. They are pinned here so the
-   * fix has something to change: under the tolerance rule the day counts
-   * become 26 winning / 6 break-even / 32 losing and the rate becomes 0.4063.
-   * Update this test when that lands; do not update the fixture to make it
-   * pass.
+   * The rule is now unified: `classifyDayTotalR` applies the same band to a
+   * day's total that `classifyOutcome` applies to a Trade's own R, and both
+   * `dayWinRate` and the Calendar's day cells call it. Three days move out of
+   * the winning/losing counts and into break-even — the +0.0300R day, the
+   * -0.0300R day, and the three-Trade day totalling exactly -0.0500R — so
+   * 27/3/34 at 0.4219 becomes 26/6/32 at 0.4063.
+   *
+   * The denominator is untouched: break-even days stay in it, exactly as
+   * break-even Trades stay in Trade Win %'s.
    */
-  it('currently classifies a day by strict sign, ignoring the break-even band', () => {
+  it('classifies a day by the break-even band, matching how a Trade is classified', () => {
     const day = page().basic.dayWinRate;
     if (day.status !== 'available') throw new Error('unreachable');
 
     expect(day.value).toMatchObject({
       eligibleDayCount: 64,
-      winningDayCount: 27,
-      breakEvenDayCount: 3,
-      losingDayCount: 34,
-      rate: '0.4219',
+      winningDayCount: 26,
+      breakEvenDayCount: 6,
+      losingDayCount: 32,
+      rate: '0.4063',
     });
+    // Every day is still counted somewhere, so the band moved days between
+    // the three buckets rather than dropping any out of the denominator.
+    expect(day.value.winningDayCount + day.value.breakEvenDayCount + day.value.losingDayCount).toBe(
+      day.value.eligibleDayCount,
+    );
   });
 
   /**

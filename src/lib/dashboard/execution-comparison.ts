@@ -87,6 +87,15 @@ export interface ExecutionComparisonDailyPoint {
  * "matched the System", which is a different claim about a different
  * quantity. Persisted R is `NUMERIC(12,4)`, so an exact zero difference is
  * well defined and cheap to test for.
+ *
+ * THIS IS THE OPPOSITE OF WHAT `classifyDayTotalR` DOES, AND BOTH ARE RIGHT.
+ * A trading day's total R is a SUM of Trades' own R values — same unit, same
+ * axis, same thing the tolerance was defined to judge — so
+ * `src/lib/calc/trading-day.ts` applies the band there. A Gap is a
+ * DIFFERENCE BETWEEN TWO AXES, a synthetic quantity no tolerance was defined
+ * for. If these two ever look like an inconsistency, the resolution is that
+ * they classify different quantities; neither should be changed to match the
+ * other.
  */
 export interface ExecutionComparisonDistribution {
   /** Gap < 0 — the Trader captured less R than the System on that Trade. */

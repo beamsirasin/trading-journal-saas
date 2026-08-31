@@ -1,4 +1,5 @@
 import { CalcDecimal, parseCalcDecimal, toCanonicalR } from '@/lib/calc/decimal';
+import { classifyDayTotalR } from '@/lib/calc/trading-day';
 import { calendarDateIn, type CalendarDate } from '@/lib/time';
 import type { OutcomeValue } from '@/lib/trades/constants';
 
@@ -29,9 +30,15 @@ export function isCalendarMode(value: unknown): value is CalendarMode {
  * outcome won a majority of the Trades. Three losses and one large win is a
  * winning day; the total is what the account actually did.
  *
- * The sign test is exact, mirroring `dayWinRate`'s existing rule
- * (`src/lib/calc/day-win-rate.ts`) so the Calendar and the Day Win % KPI can
- * never disagree about what kind of day a day was.
+ * The verdict comes from `classifyDayTotalR` (`src/lib/calc/trading-day.ts`),
+ * which `dayWinRate` also calls, so the Calendar and the Day Win % KPI cannot
+ * disagree about what kind of day a day was. That used to be a claim this
+ * comment made about two separate copies of a sign test; it is now enforced
+ * by there being one function.
+ *
+ * The rule is the break-even BAND, not a comparison to zero — the same
+ * `BREAK_EVEN_TOLERANCE_R` a Trade's own R is judged by, because a day total
+ * is a sum of those same R values.
  */
 export type CalendarDayClassification = 'winning' | 'break_even' | 'losing';
 
@@ -189,10 +196,18 @@ function countOutcome(into: OutcomeTally, outcome: OutcomeValue): void {
   else into.breakEvens += 1;
 }
 
+/**
+ * The day's verdict, from `lib/calc`'s one classifier.
+ *
+ * This was a local `greaterThan(0)` / `lessThan(0)` pair — the same rule
+ * `dayWinRate` had its own copy of, and neither copy used the break-even
+ * band a Trade's own R is judged by. A cell holding one +0.0300R Trade was
+ * tinted as a winning day while the Trade inside it was a break-even Trade.
+ * `classifyDayTotalR` is now the only thing that decides, so the Calendar
+ * cell and the Day Win % KPI cannot drift apart again.
+ */
 function classifyTotal(total: InstanceType<typeof CalcDecimal>): CalendarDayClassification {
-  if (total.greaterThan(0)) return 'winning';
-  if (total.lessThan(0)) return 'losing';
-  return 'break_even';
+  return classifyDayTotalR(total);
 }
 
 function classifyGap(total: InstanceType<typeof CalcDecimal>): CalendarGapClassification {
