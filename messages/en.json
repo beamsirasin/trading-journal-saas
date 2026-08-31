@@ -1154,9 +1154,6 @@
       "title": "Trade Log",
       "description": "Scan your journal, then open a Trade only when you need the full detail.",
       "descriptionDay": "Trades matching the day selected in the Calendar.",
-      "descriptionPending": "Only Trades whose System outcome still needs review.",
-      "pendingEmptyTitle": "No pending System outcomes",
-      "pendingEmptyDescription": "Every System outcome in this journal has been reviewed.",
       "showAll": "Show all Trades",
       "trade": "Trade",
       "date": "Date",
@@ -1185,6 +1182,27 @@
         "updateSystem": "Update outcome",
         "viewSystem": "View System",
         "addStrategy": "Add Strategy"
+      },
+      "attentionDescription": {
+        "open": "Only Trades that are entered but not yet closed.",
+        "system-pending": "Only Trades whose System outcome still needs review.",
+        "unclassified": "Only Trades with no Strategy assigned.",
+        "reviews-pending": "Only closed Trades with no review notes yet.",
+        "needs-details": "Only planned Trades that were never entered."
+      },
+      "attentionEmptyTitle": {
+        "open": "No open Trades",
+        "system-pending": "No pending System outcomes",
+        "unclassified": "No unclassified Trades",
+        "reviews-pending": "No Trades awaiting review",
+        "needs-details": "No planned Trades"
+      },
+      "attentionEmptyDescription": {
+        "open": "Every Trade in this journal has been closed.",
+        "system-pending": "Every System outcome in this journal has been reviewed.",
+        "unclassified": "Every Trade in this journal has a Strategy.",
+        "reviews-pending": "Every closed Trade in this journal has review notes.",
+        "needs-details": "Nothing is waiting to be entered."
       }
     },
     "pagination": {

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 
 import { executionGapR } from '@/lib/calc/attribution';
 import { composeRealizedActual } from '@/lib/calc/trade';
@@ -15,6 +15,7 @@ import type {
   SystemExitReason,
   SystemResolutionKind,
   SystemStatus,
+  TradeAttentionKind,
   TradeDirection,
   TradeStatus,
 } from '@/lib/trades/constants';
@@ -166,6 +167,12 @@ export interface ListWorkspaceTradesParams {
   readonly tradingAccountId?: string;
   readonly systemStatus?: SystemStatus;
   /**
+   * One Needs Attention bucket, filtered by the SAME predicate the panel
+   * counted it with (`tradeAttentionPredicate`). Passing the equivalent
+   * condition by hand is what let the count and the list drift.
+   */
+  readonly attention?: TradeAttentionKind;
+  /**
    * Optional half-open `[start, end)` UTC bound on the SAME `occurredAt`
    * expression (`coalesce(exited_at, entered_at, created_at)`) this list
    * already sorts and paginates by — the Trading Calendar's (Phase 14D)
@@ -248,6 +255,9 @@ export async function listWorkspaceTrades(
   }
   if (params.systemStatus !== undefined) {
     conditions.push(eq(trades.systemStatus, params.systemStatus));
+  }
+  if (params.attention !== undefined) {
+    conditions.push(tradeAttentionPredicate(params.attention));
   }
   if (params.journalDateRange !== undefined) {
     conditions.push(
@@ -1123,19 +1133,48 @@ export interface TradeAttentionCounts {
  * caller's active workspace; none of them implies a Trade is invalid or
  * incomplete.
  */
+/**
+ * THE FIVE PREDICATES, WRITTEN ONCE.
+ *
+ * Each of these is both a COUNT on the Dashboard's Needs Attention panel and
+ * a FILTER on the Trades list the panel links into. Those two had no reason
+ * to agree beyond a developer keeping them in step by hand, which is exactly
+ * the arrangement that produces a card saying "4" above a list showing three
+ * — a discrepancy the reader can only read as the count being wrong.
+ *
+ * Defined as builders rather than as values because a Drizzle `SQL` fragment
+ * is consumed when it is embedded; each caller needs its own instance.
+ */
+const ATTENTION_PREDICATE: Record<TradeAttentionKind, () => SQL> = {
+  open: () => eq(trades.status, 'open') as SQL,
+  'system-pending': () => eq(trades.systemStatus, 'pending') as SQL,
+  unclassified: () => isNull(trades.strategyId) as SQL,
+  'reviews-pending': () => and(eq(trades.status, 'closed'), isNull(trades.reviewNotes)) as SQL,
+  'needs-details': () => eq(trades.status, 'planned') as SQL,
+};
+
+/** The one definition of each attention bucket, for counting or for filtering. */
+export function tradeAttentionPredicate(kind: TradeAttentionKind): SQL {
+  return ATTENTION_PREDICATE[kind]();
+}
+
 /** Trusted scope-resolved variant used by route-level read orchestrators. */
 export async function selectWorkspaceTradeAttentionCounts(
   workspaceId: string,
 ): Promise<TradeAttentionCounts> {
   const db = getDb();
+  // Every count is the same predicate the list filter uses, so a bucket
+  // cannot be counted one way and listed another.
+  const countOf = (kind: TradeAttentionKind) =>
+    sql<number>`count(*) filter (where ${tradeAttentionPredicate(kind)})::int`;
 
   const [row] = await db
     .select({
-      openTrades: sql<number>`count(*) filter (where ${trades.status} = 'open')::int`,
-      pendingSystemOutcomes: sql<number>`count(*) filter (where ${trades.systemStatus} = 'pending')::int`,
-      unclassifiedTrades: sql<number>`count(*) filter (where ${trades.strategyId} is null)::int`,
-      reviewsPending: sql<number>`count(*) filter (where ${trades.status} = 'closed' and ${trades.reviewNotes} is null)::int`,
-      needsExecutionDetails: sql<number>`count(*) filter (where ${trades.status} = 'planned')::int`,
+      openTrades: countOf('open'),
+      pendingSystemOutcomes: countOf('system-pending'),
+      unclassifiedTrades: countOf('unclassified'),
+      reviewsPending: countOf('reviews-pending'),
+      needsExecutionDetails: countOf('needs-details'),
     })
     .from(trades)
     .where(and(eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)));

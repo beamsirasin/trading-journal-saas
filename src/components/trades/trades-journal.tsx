@@ -120,11 +120,11 @@ export function TradesJournal({
         ) : null}
         <section aria-labelledby="trade-log-heading" className="border-border border-t pt-6">
           <JournalLogHeader isDayFiltered={isDayFiltered} attention={attention} />
-          {attention === 'system-pending' ? (
+          {attention !== null ? (
             <EmptyState
               icon={BookOpen}
-              title={t('list.pendingEmptyTitle')}
-              description={t('list.pendingEmptyDescription')}
+              title={t(`list.attentionEmptyTitle.${attention}`)}
+              description={t(`list.attentionEmptyDescription.${attention}`)}
               action={
                 <Button asChild variant="outline">
                   <Link href="/app/trades?view=log">{t('list.showAll')}</Link>
@@ -226,13 +226,16 @@ function JournalLogHeader({
         {t('title')}
       </h2>
       <p className="text-muted-foreground mt-1 text-sm">
-        {t(
-          attention === 'system-pending'
-            ? 'descriptionPending'
-            : isDayFiltered
-              ? 'descriptionDay'
-              : 'description',
-        )}
+        {/*
+          The bucket names its own filter. This branch used to read
+          `attention === 'system-pending'`, which is precisely why the other
+          four counts on the Dashboard's Needs Attention panel had nowhere to
+          go: the page could only describe one of the five states it was
+          being asked to show.
+        */}
+        {attention !== null
+          ? t(`attentionDescription.${attention}`)
+          : t(isDayFiltered ? 'descriptionDay' : 'description')}
       </p>
     </div>
   );

@@ -124,7 +124,11 @@ export default async function TradesPage({
       cursor: cursor ?? null,
       limit: TRADE_LOG_PAGE_SIZE,
       ...(journalDateRange === undefined ? {} : { journalDateRange }),
-      ...(attention === 'system-pending' ? { systemStatus: 'pending' as const } : {}),
+      // One bucket, filtered by the same predicate the Dashboard panel
+      // counted it with. It used to be spelled out here as
+      // `systemStatus: pending`, which is how a fifth bucket could be added
+      // to the counts with nothing to list it.
+      ...(attention === null ? {} : { attention }),
     }),
     getWorkspaceEntitlement(),
     getTradeCreateOptions(),

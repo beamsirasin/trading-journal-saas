@@ -50,6 +50,33 @@ export function isSystemStatus(value: unknown): value is SystemStatus {
 }
 
 /**
+ * THE FIVE NEEDS ATTENTION BUCKETS, NAMED IN ONE PLACE.
+ *
+ * These names are three things at once: the Dashboard panel’s five counts,
+ * the Trades list’s filter, and the value that travels in the URL between
+ * them. Keeping the list here — beside the other Trade vocabularies, and
+ * free of any server import — is what lets the URL parser and the SQL
+ * predicate map be built from the SAME set rather than from two lists that
+ * agree until someone adds a sixth bucket to one of them.
+ *
+ * The SQL each one means lives in `server/dal/trades.ts`; nothing about a
+ * database belongs in this file.
+ */
+export const TRADE_ATTENTION_KINDS = [
+  'open',
+  'system-pending',
+  'unclassified',
+  'reviews-pending',
+  'needs-details',
+] as const;
+
+export type TradeAttentionKind = (typeof TRADE_ATTENTION_KINDS)[number];
+
+export function isTradeAttentionKind(value: unknown): value is TradeAttentionKind {
+  return typeof value === 'string' && (TRADE_ATTENTION_KINDS as readonly string[]).includes(value);
+}
+
+/**
  * Persisted authority for a resolved System result. Price geometry remains
  * canonical whenever the Plan has Entry+Stop; the four Money kinds exist
  * only for a Money-only Plan and preserve how its gross counterfactual R was
