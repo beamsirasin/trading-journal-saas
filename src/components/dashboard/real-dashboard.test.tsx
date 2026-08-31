@@ -686,6 +686,73 @@ describe('RealDashboard', () => {
     );
   });
 
+  /**
+   * EVERY COUNT CARRIES THE FILTER THAT PRODUCED IT.
+   *
+   * The panel published five numbers beside one shared link to the unfiltered
+   * Trade list, so a reader who saw "Open 4" had to find those four by hand.
+   * The href is built from the same `TradeAttentionKind` the count came from,
+   * which is what stops a link pointing at a filter that does not match its
+   * own number.
+   */
+  it.each([
+    ['openTrades', 'open'],
+    ['pendingSystemOutcomes', 'system-pending'],
+    ['unclassifiedTrades', 'unclassified'],
+    ['needsExecutionDetails', 'needs-details'],
+  ])('links the %s count to its own filtered list', (key, kind) => {
+    const { container } = renderDashboard(overview(), [RECENT], {
+      openTrades: 1,
+      pendingSystemOutcomes: 1,
+      unclassifiedTrades: 1,
+      reviewsPending: 1,
+      needsExecutionDetails: 1,
+    });
+    const item = container.querySelector(`[data-attention-item="${key}"]`) as HTMLElement;
+    expect(item.tagName).toBe('A');
+    expect(item).toHaveAttribute('href', `/app/trades?view=log&attention=${kind}`);
+  });
+
+  /**
+   * NO `month` OR `date` IN THOSE HREFS. Both are real filters on the Trades
+   * page and the counts here ignore the date range entirely, so a link that
+   * inherited the reader's current month would promise four Trades and list
+   * none — worse than not linking at all.
+   */
+  it('never carries a date filter into an attention link', () => {
+    const { container } = renderDashboard(overview(), [RECENT], {
+      openTrades: 3,
+      pendingSystemOutcomes: 0,
+      unclassifiedTrades: 0,
+      reviewsPending: 0,
+      needsExecutionDetails: 0,
+    });
+    const href = container
+      .querySelector('[data-attention-item="openTrades"]')
+      ?.getAttribute('href');
+    expect(href).not.toMatch(/month=|date=/);
+  });
+
+  /**
+   * Reviews Pending stays a plain figure. It counts every closed Trade
+   * without review notes across the workspace for the life of the account —
+   * a number in the hundreds that only grows, which no filtered list makes
+   * actionable. See the note on `TradeAttentionCounts`.
+   */
+  it('leaves Reviews Pending as a figure rather than a link', () => {
+    const { container } = renderDashboard(overview(), [RECENT], {
+      openTrades: 0,
+      pendingSystemOutcomes: 0,
+      unclassifiedTrades: 0,
+      reviewsPending: 312,
+      needsExecutionDetails: 0,
+    });
+    const item = container.querySelector('[data-attention-item="reviewsPending"]') as HTMLElement;
+    expect(item).not.toBeNull();
+    expect(item.tagName).not.toBe('A');
+    expect(item).toHaveTextContent('312');
+  });
+
   // Phase 14E — Open/Close-Only Trade Flow: a small optional bucket for
   // legacy/internal `planned` rows only — shown exclusively when they
   // actually exist, never a major new workflow.

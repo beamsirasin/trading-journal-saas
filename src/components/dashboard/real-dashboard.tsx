@@ -7,6 +7,7 @@ import {
   dashboardWidgetAttributes,
   DEFAULT_DASHBOARD_LAYOUT,
 } from '@/lib/dashboard/widgets';
+import type { TradeAttentionKind } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
 import {
   DashboardLoadingIndicator,
@@ -253,14 +254,46 @@ function NeedsAttentionPanel({
     attention.needsExecutionDetails;
   if (total === 0) return null;
 
-  const items: readonly { readonly key: string; readonly count: number }[] = [
-    { key: 'openTrades', count: attention.openTrades },
-    { key: 'pendingSystemOutcomes', count: attention.pendingSystemOutcomes },
-    { key: 'unclassifiedTrades', count: attention.unclassifiedTrades },
-    { key: 'reviewsPending', count: attention.reviewsPending },
+  /*
+    EACH COUNT CARRIES THE FILTER THAT PRODUCED IT.
+
+    Every item was a plain `<div>` beside one shared "Review" link to the
+    unfiltered Trade list, so a reader who saw "Open 4" and wanted those four
+    Trades had to find them by hand. The bucket is now on the item itself:
+    `attention` is the same `TradeAttentionKind` the count was computed from,
+    so a link cannot point at a filter that does not match its own number.
+
+    NO `month` OR `date` IN THE HREF, DELIBERATELY. Those two are real
+    filters on the Trades page, and the counts here ignore the date range
+    entirely — a link that inherited the reader's current month would show
+    "Open 4" and then list nothing, which is worse than not linking at all.
+
+    `reviewsPending` DOES NOT LINK, and that is a product decision rather
+    than an omission. It counts `status = 'closed' AND review_notes IS NULL`
+    across the whole workspace, which on a real account is a number in the
+    hundreds that only grows — see the note under `TradeAttentionCounts` for
+    why that makes it a poor fit for this card at all.
+  */
+  const items: readonly {
+    readonly key: string;
+    readonly count: number;
+    readonly attention: TradeAttentionKind | null;
+  }[] = [
+    { key: 'openTrades', count: attention.openTrades, attention: 'open' },
+    {
+      key: 'pendingSystemOutcomes',
+      count: attention.pendingSystemOutcomes,
+      attention: 'system-pending',
+    },
+    { key: 'unclassifiedTrades', count: attention.unclassifiedTrades, attention: 'unclassified' },
+    { key: 'reviewsPending', count: attention.reviewsPending, attention: null },
     // Phase 14E — legacy/internal `planned` rows only; zero (and hidden via
     // the `count > 0` filter below) for every workspace with none.
-    { key: 'needsExecutionDetails', count: attention.needsExecutionDetails },
+    {
+      key: 'needsExecutionDetails',
+      count: attention.needsExecutionDetails,
+      attention: 'needs-details',
+    },
   ];
 
   return (
@@ -305,14 +338,46 @@ function NeedsAttentionPanel({
           <dl className="flex min-w-0 flex-wrap gap-x-5 gap-y-2 2xl:gap-x-7">
             {items
               .filter((item) => item.count > 0)
-              .map((item) => (
-                <div key={item.key} className="flex min-w-0 flex-col">
-                  <dt>
-                    <MetricLabel variant="plain">{t(`needsAttention.${item.key}`)}</MetricLabel>
-                  </dt>
-                  <dd className="numeric text-lg leading-6 font-semibold">{item.count}</dd>
-                </div>
-              ))}
+              .map((item) => {
+                const body = (
+                  <>
+                    <dt>
+                      <MetricLabel variant="plain">{t(`needsAttention.${item.key}`)}</MetricLabel>
+                    </dt>
+                    <dd className="numeric text-lg leading-6 font-semibold">{item.count}</dd>
+                  </>
+                );
+
+                if (item.attention === null) {
+                  return (
+                    <div
+                      key={item.key}
+                      data-attention-item={item.key}
+                      className="flex min-w-0 flex-col"
+                    >
+                      {body}
+                    </div>
+                  );
+                }
+
+                /*
+                  THE WHOLE ITEM IS THE TARGET, label and figure together.
+                  Linking the number alone would give a 20px tap target for a
+                  figure whose label is the only thing that says what it
+                  counts. `cursor: pointer` comes from the base layer now
+                  that this is a real anchor rather than a div.
+                */
+                return (
+                  <Link
+                    key={item.key}
+                    data-attention-item={item.key}
+                    href={`/app/trades?view=log&attention=${item.attention}`}
+                    className="hover:bg-accent/60 focus-visible:ring-ring -mx-1.5 flex min-w-0 flex-col rounded-md px-1.5 transition-colors outline-none focus-visible:ring-2"
+                  >
+                    {body}
+                  </Link>
+                );
+              })}
           </dl>
           <Link
             href="/app/trades"

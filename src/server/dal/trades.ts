@@ -1107,6 +1107,23 @@ export interface TradeAttentionCounts {
   /** `strategy_id IS NULL` (Phase 14B) — never fully-classified Trades with only a missing Setup. */
   readonly unclassifiedTrades: number;
   /**
+   * OPEN ISSUE: THIS COUNT PROBABLY DOES NOT BELONG ON THIS CARD.
+   *
+   * The other four buckets are transient — a Trade closes, a System outcome
+   * resolves, a Strategy is assigned, and the number goes down. This one is
+   * cumulative: it counts every closed Trade that never received review
+   * notes, across the whole workspace, for the life of the account. On a real
+   * account it settles in the hundreds and only grows.
+   *
+   * A card titled "Needs attention" promises a short list of things that can
+   * be cleared. A permanent three-digit number in it teaches the reader to
+   * ignore the whole card, including the four counts that ARE actionable.
+   *
+   * It is left in place and left UNLINKED (see `NeedsAttentionPanel`) rather
+   * than quietly removed, because dropping a published count is a product
+   * decision. The likely resolutions are a date bound, a cap, or moving it to
+   * a review surface of its own — none of which is this pass's call.
+   *
    * `status = 'closed' AND review_notes IS NULL` — the one explicit,
    * testable definition of "not yet reviewed" this phase adopts. Execution
    * Rules/Mistakes are multi-row and have no single "reviewed" bit; the
