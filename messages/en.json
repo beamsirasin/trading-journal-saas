@@ -450,7 +450,7 @@
       },
       "dayWin": {
         "label": "Day Win %",
-        "info": "The percentage of trading days that ended profitable. Days follow your account's timezone.",
+        "info": "The percentage of trading days that ended in profit. A day is judged by its TOTAL R, so several Trades can share one day — which is why this counts fewer days than the Trade count beside it. A day inside the break-even band counts in the total but not as a win, exactly as a break-even Trade does. Days follow your account timezone.",
         "indicatorTrigger": "Show Day Win breakdown"
       },
       "avgWinLoss": {

@@ -438,8 +438,28 @@ describe('BasicKpiRow', () => {
     }
     await user.click(screen.getByRole('button', { name: 'About Day Win %' }));
     await waitFor(() => {
-      expect(screen.getByText(/Days follow your account's timezone/)).toBeVisible();
+      expect(screen.getByText(/Days follow your account timezone/)).toBeVisible();
     });
+  });
+
+  /**
+   * Day Win % and Trade Win % are two percentages of a similar size sitting
+   * three cards apart, and nothing on the FACE of either says what it is a
+   * percentage of. Since a day is judged by its total R, several Trades can
+   * share one day and the two denominators genuinely differ — 64 days against
+   * 66 Trades on the reference fixture. A reader who notices that has one
+   * place to find out why, so the sentence has to be there.
+   */
+  it('explains why Day Win % counts fewer days than there are Trades', async () => {
+    const user = userEvent.setup();
+    renderRow();
+    await user.click(screen.getByRole('button', { name: 'About Day Win %' }));
+    await waitFor(() => {
+      expect(screen.getByText(/several Trades can share one day/i)).toBeVisible();
+    });
+    // And that a break-even day is in the denominator without being a win —
+    // the same rule the Trade card states for a break-even Trade.
+    expect(screen.getByText(/break-even band counts in the total but not as a win/i)).toBeVisible();
   });
 
   it('explains every metric in everyday language, free of engine vocabulary', () => {
