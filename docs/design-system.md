@@ -124,6 +124,34 @@ foreground. Raising `primary` to clear AA as text made it too light to carry
 reads as dark-on-cyan, at 5.86:1. Light mode is unaffected — `#ffffff` on
 `#1d4ed8` is 6.70:1.
 
+### Zone accents — two open issues
+
+The three Analytics zones (Results / Edge / Behavior) take their accent from
+`--color-zone-results`, `--color-zone-edge` and `--color-zone-behavior`, which
+are aliases onto already-validated tokens rather than new hues. Two problems
+are recorded here rather than fixed, so neither is rediscovered as a surprise.
+
+**1. Results and Edge are the same colour.** `zone-results` aliases
+`--primary` and `zone-edge` aliases `--brand`, and those two tokens have held
+the same hex throughout — `#2877a2` before the contrast pass, `#3498b8` after.
+The comment beside them describes two distinct accents; the page renders one.
+Results and Edge are two of the product's three top-level groupings and cannot
+currently be told apart by colour.
+
+Where it shows: a 2px left border on the section, a 20px header icon, and the
+section heading text (`ZoneSection`, `text-zone-* border-zone-*`). Six call
+sites — `analytics-overview-{results,edge,behavior}.tsx` and three in
+`analytics-page.tsx`. The `tinted` prop that would add a 5% background wash
+exists and is used by nothing.
+
+**2. `zone-behavior` borrows a chart series slot.** It aliases `--chart-4`,
+the violet reserved in §9 for "a fifth series folds into Other". Using a
+series colour as UI chrome is safe only while no fourth data series exists; the
+moment one does, the same hue would encode a series in a chart and a
+navigational grouping around it. The token's own comment says to revisit the
+alias rather than silently double-book the hue, which is the decision this note
+is here to keep visible.
+
 ## 3. Theming
 
 Dark is the product default. The only user-selectable modes are **Dark** and
