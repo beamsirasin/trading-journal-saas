@@ -305,8 +305,8 @@ describe('deterministic visual Dashboard fixture', () => {
       winRate: { status: 'available', value: '0.4091' },
       averageR: { status: 'available', value: '0.3500' },
       expectancyR: { status: 'available', value: '0.3500' },
-      profitFactor: { status: 'available', value: '1.6063' },
-      maximumDrawdownR: { status: 'available', value: '7.9000' },
+      profitFactor: { status: 'available', value: '1.6058' },
+      maximumDrawdownR: { status: 'available', value: '7.8700' },
     });
     /**
      * PAIRED TOTALS ARE NOT THE INDEPENDENT TOTALS, and this is the assertion
@@ -380,6 +380,67 @@ describe('deterministic visual Dashboard fixture', () => {
       expect(result.basic.dayWinRate.value.breakEvenDayCount).toBeGreaterThan(0);
       expect(result.basic.dayWinRate.value.losingDayCount).toBeGreaterThan(0);
     }
+  });
+
+  /**
+   * TRADE WIN % AND DAY WIN % CAN NOW DISAGREE, WHICH THEY COULD NOT BEFORE.
+   *
+   * The fixture used to put exactly one Trade on every local day, which made
+   * the two metrics share a numerator and a denominator by construction: both
+   * read 40.91% on every range, and no regression test could have caught a
+   * defect in either because they were incapable of differing. Three Trades
+   * now share one day, so 66 Trades occupy 64 days and the two rates are
+   * computed over genuinely different populations.
+   *
+   * This is what a fixture is for. The numbers below are not a target — they
+   * are the proof that the two formulas are separable.
+   */
+  it('separates Trade Win % from Day Win % instead of forcing them equal', () => {
+    const result = page();
+    const trade = result.basic.tradeWin;
+    const day = result.basic.dayWinRate;
+
+    expect(trade.tradeCount).toBe(66);
+    expect(trade.rate).toEqual({ status: 'available', value: '0.4091' });
+
+    expect(day.status).toBe('available');
+    if (day.status !== 'available') throw new Error('unreachable');
+    expect(day.value.eligibleDayCount).toBe(64);
+    expect(day.value.eligibleDayCount).toBeLessThan(trade.tradeCount);
+    expect(day.value.rate).not.toEqual(trade.rate.status === 'available' ? trade.rate.value : null);
+  });
+
+  /**
+   * THE BREAK-EVEN BAND IS REACHABLE AT DAY LEVEL, AND TODAY IT IS IGNORED.
+   *
+   * `BREAK_EVEN_TOLERANCE_R` is 0.0500R and it classifies a Trade's own R.
+   * `dayWinRate` and the Calendar both classify a DAY's total R — the same
+   * quantity, summed — but with a strict `> 0` comparison, so a day totalling
+   * +0.0300R is a winning day while the single Trade that produced it is a
+   * break-even Trade. The same figure, contradicting itself on one page.
+   *
+   * The fixture now contains all three shapes that expose it: a lone
+   * +0.0300R Trade, a lone -0.0300R Trade, and a three-Trade day of
+   * 2.2000 - 1.1000 - 1.1500 that lands on exactly -0.0500R, the tolerance
+   * boundary, from Trades none of which is individually break-even.
+   *
+   * THESE NUMBERS ARE THE BUG, NOT THE CONTRACT. They are pinned here so the
+   * fix has something to change: under the tolerance rule the day counts
+   * become 26 winning / 6 break-even / 32 losing and the rate becomes 0.4063.
+   * Update this test when that lands; do not update the fixture to make it
+   * pass.
+   */
+  it('currently classifies a day by strict sign, ignoring the break-even band', () => {
+    const day = page().basic.dayWinRate;
+    if (day.status !== 'available') throw new Error('unreachable');
+
+    expect(day.value).toMatchObject({
+      eligibleDayCount: 64,
+      winningDayCount: 27,
+      breakEvenDayCount: 3,
+      losingDayCount: 34,
+      rate: '0.4219',
+    });
   });
 
   /**

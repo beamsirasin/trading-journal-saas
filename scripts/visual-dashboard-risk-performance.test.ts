@@ -105,8 +105,8 @@ describe('Visual Dashboard D7A Risk Performance contract', () => {
         referencePeakMinor: '1242000',
       },
       max: {
-        amountMinor: '79000',
-        percentage: { status: 'available', value: '6.8666' },
+        amountMinor: '78700',
+        percentage: { status: 'available', value: '6.8405' },
         referencePeakMinor: '1150500',
       },
       count: 66,
@@ -127,8 +127,8 @@ describe('Visual Dashboard D7A Risk Performance contract', () => {
         referencePeakMinor: '1242000',
       },
       max: {
-        amountMinor: '79000',
-        percentage: { status: 'available', value: '6.8666' },
+        amountMinor: '78700',
+        percentage: { status: 'available', value: '6.8405' },
         referencePeakMinor: '1150500',
       },
       count: 64,
@@ -231,7 +231,7 @@ describe('Visual Dashboard D7B Risk Performance presentation', () => {
       period: { text: '+$2,310.00', tone: 'positive' },
       peak: '$12,420.00',
       current: { amountText: '$110.00', percentageText: '0.89%', isZero: false },
-      max: { amountText: '$790.00', percentageText: '6.87%', isZero: false },
+      max: { amountText: '$787.00', percentageText: '6.84%', isZero: false },
       count: 66,
       points: 68,
     });
@@ -244,7 +244,7 @@ describe('Visual Dashboard D7B Risk Performance presentation', () => {
       period: { text: '+$2,200.00', tone: 'positive' },
       peak: '$12,420.00',
       current: { amountText: '$110.00', percentageText: '0.89%', isZero: false },
-      max: { amountText: '$790.00', percentageText: '6.87%', isZero: false },
+      max: { amountText: '$787.00', percentageText: '6.84%', isZero: false },
       count: 64,
       points: 66,
     });

@@ -370,8 +370,59 @@ const SYSTEM_COMPARABLE = [
 const ACTUAL_ONLY = ['2.2000', '-1.1000'] as const;
 const SYSTEM_ONLY = ['2.3000', '-0.9000', '-0.9500', '0.0000'] as const;
 
+/**
+ * TWO BREAK-EVEN TRADES THAT ARE NOT EXACTLY ZERO.
+ *
+ * Break-even is a TOLERANCE BAND (`BREAK_EVEN_TOLERANCE_R`, 0.0500R), not an
+ * equality test, and every break-even Trade in this fixture used to be
+ * 0.0000R exactly. That made the band unreachable: no fixture Trade could
+ * ever be classified break-even by tolerance rather than by being zero, so no
+ * test could tell a rule that uses the band from one that compares to zero.
+ *
+ * +0.0300R and -0.0300R, so the pair nets to zero. Every total, every outcome
+ * count, every win rate and every payoff ratio downstream is unchanged --
+ * both Trades were break-even before and are break-even now, and the sum they
+ * contribute is still 0.0000R. Only the classification RULE can now tell the
+ * difference, which is the point.
+ *
+ * Chosen off `VISUAL_FIXTURE_PARTIAL_TRADE_INDICES` so each is a single
+ * clean close rather than a partial ladder built around a 300-minor total.
+ */
+const NON_ZERO_BREAK_EVEN_R: Readonly<Record<number, string>> = {
+  32: '0.0300',
+  48: '-0.0300',
+};
+
+/**
+ * THE FIXTURE USED TO PUT EXACTLY ONE TRADE ON EVERY DAY.
+ *
+ * `dateForIndex` spread 70 Trades across 89 days, so no two ever shared a
+ * local day. That is a defensible shape for a demo, and it silently made two
+ * genuinely different metrics numerically identical: with one Trade per day,
+ * "winning days / trading days" and "winning Trades / Trades" have the same
+ * numerator and the same denominator by construction. Trade Win % and Day
+ * Win % both read 40.91% on this fixture, and no regression test could ever
+ * have caught a defect in either, because the two could not disagree.
+ *
+ * Indices 39 and 40 now join 38's day. Their R values are 2.2000, -1.1000 and
+ * -1.1500 -- a win and two losses, none of them individually break-even,
+ * summing to exactly -0.0500R. That is the tolerance boundary, so the day is
+ * break-even under a band rule and losing under a strict `> 0` one, from
+ * three Trades that are each unambiguous on their own.
+ *
+ * Only the DATE moves. No R value, no outcome and no total changes here.
+ */
+const SAME_DAY_TRADE_INDICES: Readonly<Record<number, number>> = {
+  39: 38,
+  40: 38,
+};
+
 function dateForIndex(index: number, hour: number, minute = 0): Date {
-  const daysAgo = 89 - Math.floor((index * 89) / (VISUAL_FIXTURE_TRADE_COUNT - 1));
+  // The day comes from the anchor Trade when this index is deliberately
+  // collided onto an earlier one; the hour and minute stay its own, so the
+  // Trades remain individually ordered inside the shared day.
+  const dayIndex = SAME_DAY_TRADE_INDICES[index] ?? index;
+  const daysAgo = 89 - Math.floor((dayIndex * 89) / (VISUAL_FIXTURE_TRADE_COUNT - 1));
   const result = new Date(VISUAL_FIXTURE_AS_OF);
   result.setUTCDate(result.getUTCDate() - daysAgo);
   result.setUTCHours(hour, minute, 0, 0);
@@ -530,7 +581,7 @@ export function buildVisualTradeBlueprints(params: {
           ? 'B'
           : 'operational';
     const actualTargetR = isComparable
-      ? (ACTUAL_COMPARABLE[index] as string)
+      ? (NON_ZERO_BREAK_EVEN_R[index] ?? (ACTUAL_COMPARABLE[index] as string))
       : isActualOnly
         ? (ACTUAL_ONLY[index - 64] as string)
         : null;
