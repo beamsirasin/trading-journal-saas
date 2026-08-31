@@ -90,6 +90,7 @@ Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 | `positive`          | `#2fa97a` | `#047857` |
 | `negative`          | `#ef6362` | `#be123c` |
 | `break-even`        | `#5b7ef7` | `#1d4ed8` |
+| `zone-edge`         | `#d472c4` | `#a8339a` |
 | `warning`           | `#f59e0b` | `#92400e` |
 | `info`              | `#56b6f7` | `#0369a1` |
 | `chart-1`           | `#0f9e8e` | `#0891b2` |
@@ -124,19 +125,26 @@ foreground. Raising `primary` to clear AA as text made it too light to carry
 reads as dark-on-cyan, at 5.86:1. Light mode is unaffected — `#ffffff` on
 `#1d4ed8` is 6.70:1.
 
-### Zone accents — two open issues
+### Zone accents
 
 The three Analytics zones (Results / Edge / Behavior) take their accent from
 `--color-zone-results`, `--color-zone-edge` and `--color-zone-behavior`, which
 are aliases onto already-validated tokens rather than new hues. Two problems
 are recorded here rather than fixed, so neither is rediscovered as a surprise.
 
-**1. Results and Edge are the same colour.** `zone-results` aliases
-`--primary` and `zone-edge` aliases `--brand`, and those two tokens have held
-the same hex throughout — `#2877a2` before the contrast pass, `#3498b8` after.
-The comment beside them describes two distinct accents; the page renders one.
-Results and Edge are two of the product's three top-level groupings and cannot
-currently be told apart by colour.
+**1. Results and Edge were the same colour — FIXED.** `zone-results` aliases
+`--primary` and `zone-edge` aliased `--brand`, and those two tokens held the
+same hex throughout (`#2877a2`, then `#3498b8`), so two of the product's three
+top-level groupings could not be told apart. `--zone-edge` is now its own
+colour: `#d472c4` in dark (310°, 5.92:1 on the card) and `#a8339a` in light
+(5.83:1 on `#ffffff`, so it clears AA as text and not only as a border).
+
+Magenta rather than a warmer, more distant hue, on purpose. Amber sat 1° from
+`--warning` and lime 38° from it, and a warm accent on the zone whose headline
+figure is System Edge Captured reads as an alarm about a measurement — the
+card's own copy says "not a verdict on you". 310° is opposite every status
+colour this product owns (negative 0°, warning 38°, positive 157°), so it
+cannot be misread as an outcome at any swatch size.
 
 Where it shows: a 2px left border on the section, a 20px header icon, and the
 section heading text (`ZoneSection`, `text-zone-* border-zone-*`). Six call

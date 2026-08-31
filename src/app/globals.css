@@ -126,11 +126,10 @@
    * §8-11); each needs a restrained accent for a section header, an icon, a
    * subtle border/tint, and a selected state — never a saturated card fill.
    *
-   * These are chrome aliases onto ALREADY-VALIDATED tokens, deliberately not
-   * new hex values and deliberately not new chart-series slots: `results`
-   * reuses `primary` (the existing generic action blue), `edge` reuses
-   * `brand` (the existing restrained identity accent — Edge includes Strategy
-   * Performance, where `brand` already marks a selected Strategy card), and
+   * `results` reuses `primary`, the existing generic action blue. `edge` is
+   * the one that is NOT an alias, and the exception is deliberate — see
+   * `--zone-edge` below.
+   *
    * `behavior` reuses `chart-4` (violet), the one categorical chart slot the
    * product has never assigned to a live series (§9's "a fifth series folds
    * into Other" reservation). Reusing chart-4's hue here is for structural
@@ -141,7 +140,35 @@
    * the hue's meaning.
    */
   --color-zone-results: var(--primary);
-  --color-zone-edge: var(--brand);
+  /*
+   * THE ONE ZONE ACCENT THAT IS ITS OWN COLOUR, AND WHY IT HAS TO BE.
+   *
+   * `edge` aliased `--brand`, and `results` aliases `--primary` — two tokens
+   * that have held the SAME hex throughout (`#2877a2`, then `#3498b8`). The
+   * comment above described two distinct accents while the page rendered one,
+   * so Results and Edge, two of the product's three top-level groupings,
+   * could not be told apart at all.
+   *
+   * MAGENTA RATHER THAN A SECOND BLUE-GREEN, BECAUSE OF WHAT EDGE MEANS.
+   * The candidates that scored better on raw hue distance were all warm —
+   * amber sat 1° from `--warning`, lime 38° from it — and a warm accent on a
+   * zone whose headline figure is "System Edge Captured 61.45%" reads as a
+   * warning about a number that is a MEASUREMENT, not a failure. The card's
+   * own copy says so in as many words: "not a verdict on you". 310° is on the
+   * opposite side of the wheel from every status colour this product owns
+   * (negative 0°, warning 38°, positive 157°), so it cannot be misread as an
+   * outcome no matter how small the swatch. It sits 40° off `chart-4`'s 270°,
+   * which is the closest neighbour and enough at a 20px icon and a 2px rule.
+   *
+   * TWO VALUES, NOT ONE, EVEN THOUGH TODAY IT ONLY PAINTS BORDERS AND ICONS.
+   * `ZoneSection` sets `text-zone-*` and `border-zone-*` from one class, so
+   * the first heading that inherits the text colour would do it at 3.00:1 on
+   * the light card — silently, with nothing failing. The light value is a
+   * darker magenta at the same hue that clears AA as text on `#ffffff`
+   * (5.83:1) and on the light page ground (5.57:1), so the day that happens
+   * it is already correct rather than already broken.
+   */
+  --color-zone-edge: var(--zone-edge);
   --color-zone-behavior: var(--chart-4);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -440,6 +467,9 @@ html[lang='th'] .text-label {
   --positive: #2fa97a;
   --negative: #ef6362;
   --break-even: #5b7ef7;
+  /* Analytics Edge zone accent — 310deg, 5.92:1 on the card. See the note beside
+     --color-zone-edge for why this is a real colour and not an alias. */
+  --zone-edge: #d472c4;
   /*
    * The unfilled part of a KPI indicator. Deliberately NOT `--muted`, which
    * sits a hair off white on the light card: the empty half of a proportion
@@ -532,6 +562,9 @@ html[lang='th'] .text-label {
   --positive: #047857;
   --negative: #be123c;
   --break-even: #1d4ed8;
+  /* Same hue, darkened so it also clears AA as TEXT on the light card (5.83:1)
+     rather than only as a 2px border. */
+  --zone-edge: #a8339a;
   --indicator-track: rgb(11 18 32 / 0.13);
   --warning: #92400e;
   --info: #0369a1;
@@ -619,6 +652,9 @@ html[lang='th'] .text-label {
   --positive: #2fa97a;
   --negative: #ef6362;
   --break-even: #5b7ef7;
+  /* Analytics Edge zone accent — 310deg, 5.92:1 on the card. See the note beside
+     --color-zone-edge for why this is a real colour and not an alias. */
+  --zone-edge: #d472c4;
   --indicator-track: rgb(255 255 255 / 0.14);
   --warning: #f59e0b;
   --info: #56b6f7;
