@@ -40,6 +40,11 @@ export const ToolbarTrigger = React.forwardRef<
       type="button"
       {...props}
       className={cn(
+        // Named group so the chevron can read the button's own Radix
+        // `data-state` without a second source of truth. Named rather than
+        // bare `group`, because these triggers are rendered inside toolbars
+        // and panels that may own groups of their own.
+        'group/toolbar-trigger',
         'border-border bg-card text-foreground inline-flex h-11 min-w-11 items-center gap-2 rounded-lg border px-3',
         'text-sm font-medium whitespace-nowrap',
         // `accent`, not `surface-raised`: the trigger is already `bg-card`,
@@ -50,14 +55,47 @@ export const ToolbarTrigger = React.forwardRef<
         // reader can see which of the three controls the floating surface
         // belongs to without following its tail.
         'data-[state=open]:bg-accent',
-        'transition-colors duration-150 motion-reduce:transition-none',
+        /*
+          PRESS IS ACKNOWLEDGED, NOT ANNOUNCED.
+
+          A 2% inset on press — the smallest deflection that still reads as a
+          physical response on a 44px target. It is a TRANSFORM, so it costs
+          no layout: the button occupies the same box in the toolbar's flex
+          row at every point in the gesture, and nothing beside it moves.
+
+          `transition-[...]` rather than `transition` (all): `all` would put
+          width, height and the focus ring on the same clock, which is how a
+          control ends up visibly catching up with its own focus outline.
+          150ms sits in the middle of the 120–180ms band this product uses for
+          hover/press feedback, and matches the colour transition it shares.
+        */
+        'active:scale-[0.98]',
+        'transition-[color,background-color,border-color,transform] duration-150 ease-(--motion-ease-standard)',
+        // Reduced motion keeps the STATE and drops the travel: colours still
+        // change instantly and the press deflection is suppressed entirely.
+        'motion-reduce:transition-none motion-reduce:active:scale-100',
         className,
       )}
     >
       <span className="text-muted-foreground shrink-0">{icon}</span>
       <span className={cn('min-w-0 truncate', labelClassName)}>{children}</span>
       {badge}
-      <ChevronDown className="text-subtle-foreground size-3.5 shrink-0" aria-hidden="true" />
+      {/*
+        The chevron points where the panel is: down while closed, up while
+        open. Rotation rather than an icon swap, so the two states are one
+        continuous object rather than two glyphs exchanging places — and so
+        there is nothing to animate at all when motion is reduced, where the
+        arrow simply snaps to the correct direction and still tells the truth.
+      */}
+      <ChevronDown
+        className={cn(
+          'text-subtle-foreground size-3.5 shrink-0',
+          'transition-transform duration-150 ease-(--motion-ease-standard)',
+          'group-data-[state=open]/toolbar-trigger:rotate-180',
+          'motion-reduce:transition-none',
+        )}
+        aria-hidden="true"
+      />
     </button>
   );
 });

@@ -353,6 +353,53 @@ test.describe('real Dashboard', () => {
     await expect(page.getByText('Averaged over 3 Trades that had a planned target.')).toBeVisible();
     await page.keyboard.press('Escape');
 
+    /*
+      ONE ACCOUNT NAME IN THE DASHBOARD'S OWN CONTENT, AND IT IS THE ONE THAT
+      CAN BE CLICKED.
+
+      The toolbar's Account control prints the active Account's name as its
+      trigger label. The context strip beneath the page title used to print
+      the same string again, roughly 60 vertical pixels below it — the same
+      fact twice in one viewport, with the un-actionable copy second. The
+      strip keeps what the trigger does NOT carry: mode, currency, balance.
+      The shell header's own account indicator is a separate surface, outside
+      this page's content, and is deliberately untouched.
+
+      Read from the trigger rather than hard-coded, so this asserts the
+      RELATIONSHIP between the two surfaces rather than a seeded literal.
+    */
+    const accountTrigger = page.locator('[data-dashboard-toolbar-control="account"]');
+    const accountName = ((await accountTrigger.textContent()) ?? '').trim();
+    expect(accountName.length).toBeGreaterThan(0);
+    const accountStrip = page.getByRole('region', { name: 'Active trading account summary' });
+    await expect(accountStrip).toBeVisible();
+    await expect(accountStrip.getByText(accountName)).toHaveCount(0);
+    await expect(accountStrip.getByText('Active account')).toBeVisible();
+    await expect(accountStrip.getByText('USD', { exact: true })).toBeVisible();
+    // Still read-only context, never a second selector.
+    await expect(accountStrip.getByRole('button')).toHaveCount(0);
+
+    /*
+      The toolbar's open state is a real DOM state, which is what both the
+      chevron rotation and the panel's entrance animation are driven from.
+      Asserting `data-state` rather than a computed transform keeps this a
+      behaviour test: the CSS that reads the attribute is a stylesheet
+      concern, the attribute being there at all is not.
+    */
+    for (const control of ['date-range', 'filters', 'account']) {
+      const trigger = page.locator(`[data-dashboard-toolbar-control="${control}"]`);
+      await expect(trigger).toHaveAttribute('data-state', 'closed');
+      await trigger.click();
+      await expect(trigger).toHaveAttribute('data-state', 'open');
+      await expect(
+        page.locator('[data-slot="popover-content"][data-motion="toolbar"]'),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(trigger).toHaveAttribute('data-state', 'closed');
+      // Focus returns to the trigger, so the keyboard path is unbroken.
+      await expect(trigger).toBeFocused();
+    }
+
     const system = page.locator('[data-dashboard-panel="system"]');
     const trader = page.locator('[data-dashboard-panel="trader"]');
     const comparison = page.locator('[data-dashboard-panel="execution-gap"]');

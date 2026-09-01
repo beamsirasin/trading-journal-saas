@@ -50,16 +50,21 @@ export function EmptyTradingDashboard({ account }: { account: ActiveTradingAccou
  * three stacked label/value pairs on the right, which on a 1440 canvas left
  * roughly 700px of nothing between them — the widest empty region in the
  * first viewport, above the figures the page exists to show. Everything now
- * sits on ONE baseline: the label and the name read as a sentence, mode and
- * currency become chips (a chip IS its own label — "Live" and "USD" need no
- * caption beside a named account), and only the starting balance keeps a
- * visible label, because a bare "$10,000.00" beside an account name is
- * genuinely ambiguous.
+ * sits on ONE baseline: mode and currency are chips (a chip IS its own label
+ * once the row is captioned — "Live" and "USD" need no caption of their own),
+ * and only the starting balance keeps a visible label, because a bare
+ * "$10,000.00" on a context strip is genuinely ambiguous.
  *
- * NOTHING WAS DROPPED, AND NOTHING BECAME COLOUR-ONLY. Every fact and every
- * label is still in the DOM and still associated with its value through the
- * same `<dl>`; the two that lost a VISIBLE caption kept an `sr-only` one, so
- * a screen reader still hears "Account mode: Live", not a loose "Live".
+ * THE ACCOUNT NAME LEFT THIS STRIP. The toolbar's Account control already
+ * prints it as its trigger label, permanently, two rows above — so this strip
+ * was restating a string the reader could see and, unlike this copy, click.
+ * This now carries exactly the three facts the trigger does NOT: mode,
+ * currency, starting balance. See the render body for the full reasoning.
+ *
+ * NOTHING BECAME COLOUR-ONLY, AND NOTHING LOST ITS NAME. Every remaining fact
+ * is still associated with its label through the same `<dl>`; the two that
+ * have no VISIBLE caption keep an `sr-only` one, so a screen reader still
+ * hears "Account mode: Live", not a loose "Live".
  *
  * It is deliberately NOT a second account selector. The toolbar owns
  * switching; this is read-only context, so it carries no control, no
@@ -91,23 +96,26 @@ export function ActiveTradingAccountSummaryCard({
           {t('activeAccountInlineLabel')}
         </span>
         {/*
-          THE ACCOUNT NAME IS A VALUE, NOT A HEADING.
+          THE ACCOUNT NAME IS NOT PRINTED HERE, AND THAT IS THE POINT.
 
-          This was a `CardTitle`, which renders an `<h3>` — and it sat
-          directly under the page's `<h1>` in the sticky toolbar with no `h2`
-          between them. A screen reader's heading outline read Dashboard,
-          then jumped a level to the account name, which is not a section
-          title at all: it is the value beside the "Active account" label to
-          its left, the way "USD" is the value beside "Base currency".
+          It used to be — first as a `CardTitle` (an `<h3>` sitting directly
+          under the page's `<h1>` with no `h2` between them), then as a plain
+          value beside the label. Both spellings had the same defect: the
+          toolbar's Account control, two rows above and permanently on screen,
+          already carries that exact string as its trigger label. A reader saw
+          "Visual — Populated" twice within 60 vertical pixels, and the second
+          one was the copy that could not be clicked.
 
-          Nothing is lost by demoting it. The region already carries
-          `role="region"` and its own `aria-label`, so the landmark is named
-          without borrowing a heading to do it, and the visible styling is
-          unchanged.
+          So the name is owned by the ONE element that can act on it. What
+          stays here is what the trigger does NOT say: the mode, the currency
+          and the starting balance. The label to the left now introduces those
+          rather than the name, which is why it survives — a bare chip row
+          with no caption reads as loose metadata.
+
+          The landmark is unaffected: the region carries `role="region"` and
+          its own `aria-label`, so it is still named without borrowing the
+          account's name to do it.
         */}
-        <p className="min-w-0 truncate text-sm leading-5 font-semibold tracking-tight">
-          {account.name}
-        </p>
         <dl className="flex min-w-0 flex-wrap items-center gap-1.5">
           <AccountChip
             label={t('accountModeLabel')}

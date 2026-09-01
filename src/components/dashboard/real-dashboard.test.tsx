@@ -629,10 +629,13 @@ describe('RealDashboard', () => {
   it('keeps the real active-account summary and recent pinned labels', () => {
     renderDashboard();
     const account = screen.getByRole('region', { name: 'Active trading account summary' });
-    // Present, but no longer a heading: the account name is the value beside
-    // its "Active account" label, and as an `<h3>` under the page's `<h1>` it
-    // skipped a level for a string that titles nothing.
-    expect(within(account).getByText(ACCOUNT.name)).toBeVisible();
+    // The strip is still here and still carries the context the toolbar's
+    // Account trigger does not — but NOT the account name, which that trigger
+    // already prints permanently two rows above. One name, one place, and it
+    // is the one that can be clicked.
+    expect(within(account).queryByText(ACCOUNT.name)).toBeNull();
+    expect(within(account).getByText('Live')).toBeVisible();
+    expect(within(account).getByText('USD')).toBeVisible();
     expect(within(account).queryByRole('heading')).not.toBeInTheDocument();
     // The Recent Trades preview is three fields now (date, symbol, Actual R),
     // so the pinned Strategy/Setup line is no longer printed on the row — it

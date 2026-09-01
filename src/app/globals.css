@@ -893,6 +893,34 @@ html[lang='th'] .text-label {
   animation: menu-content-out var(--motion-menu-exit-duration) var(--motion-ease-exit) both;
 }
 
+/*
+ * The Dashboard toolbar's three panels — Date Range, Filters, Account.
+ *
+ * SAME SHAPE AS A DROPDOWN MENU, BECAUSE IT IS THE SAME GESTURE. Each opens
+ * from a 44px trigger it is anchored to, so it reuses `menu-content-in/out`
+ * (a 0.95 scale plus a fade) on the menu clock — 180ms in, 120ms out, quicker
+ * leaving than arriving, which is what stops a dismissal from feeling like it
+ * has to be waited through. `PopoverContent` already sets
+ * `origin-(--radix-popover-content-transform-origin)`, so the scale grows out
+ * of the trigger's own corner rather than the panel's centre: the panel reads
+ * as belonging to the button that opened it.
+ *
+ * OPT-IN, NOT UNIVERSAL. This is keyed on `data-motion='toolbar'` — set by
+ * `ToolbarDisclosure` and nothing else — rather than on `popover-content`
+ * generally, because that primitive also serves the KPI band's definition and
+ * indicator popovers. The same shape as `sheet-content`'s `data-motion`
+ * scoping directly above.
+ *
+ * The mobile branch of these controls is a `Sheet`, which already animates.
+ */
+[data-slot='popover-content'][data-motion='toolbar'][data-state='open'] {
+  animation: menu-content-in var(--motion-menu-enter-duration) var(--motion-ease-standard) both;
+}
+
+[data-slot='popover-content'][data-motion='toolbar'][data-state='closed'] {
+  animation: menu-content-out var(--motion-menu-exit-duration) var(--motion-ease-exit) both;
+}
+
 /* A centered modal (AlertDialog) reuses the sheet's plain opacity fade for
    its overlay and the dropdown menu's scale+fade for its content — both
    already exist, and a third distinct animation shape here would be
@@ -1155,8 +1183,13 @@ html[lang='th'] .text-label {
     animation-timing-function: var(--motion-ease-reduced);
   }
 
+  /* The toolbar panels join the menu family here too: the scale is dropped
+     and the reveal becomes a plain fade on the already-shortened menu clock.
+     The panel still appears instantly readable, which is the accessibility
+     requirement — reduced motion must not cost a reader the content. */
   [data-slot='dropdown-menu-content'][data-state='open'],
   [data-slot='dropdown-menu-sub-content'][data-state='open'],
+  [data-slot='popover-content'][data-motion='toolbar'][data-state='open'],
   [data-slot='alert-dialog-content'][data-state='open'],
   [data-slot='dialog-content'][data-state='open'] {
     animation-name: reduced-fade-in;
@@ -1166,6 +1199,7 @@ html[lang='th'] .text-label {
 
   [data-slot='dropdown-menu-content'][data-state='closed'],
   [data-slot='dropdown-menu-sub-content'][data-state='closed'],
+  [data-slot='popover-content'][data-motion='toolbar'][data-state='closed'],
   [data-slot='alert-dialog-content'][data-state='closed'],
   [data-slot='dialog-content'][data-state='closed'] {
     animation-name: reduced-fade-out;

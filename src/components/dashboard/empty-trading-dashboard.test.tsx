@@ -43,12 +43,12 @@ describe('EmptyTradingDashboard', () => {
   it('exposes the active account inside a named, uniquely identifiable region', () => {
     renderDashboard();
     const region = screen.getByRole('region', { name: 'Active trading account summary' });
-    // The account NAME is a value beside its label, not a section title: it
-    // used to be an `<h3>` sitting directly under the page's `<h1>`, which
-    // skipped a heading level for a string that titles nothing. The region
-    // names itself with `aria-label`, so nothing depended on the heading.
-    expect(within(region).getByText('My First Account')).toBeVisible();
+    // The region names itself with `aria-label` rather than borrowing a
+    // heading to do it — the account name used to be an `<h3>` sitting
+    // directly under the page's `<h1>`, skipping a level for a string that
+    // titles nothing, and it is no longer printed here at all.
     expect(within(region).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(region).getByText('Active account')).toBeVisible();
   });
 
   it("shows the real account's mode, currency and starting balance", () => {
@@ -103,9 +103,26 @@ describe('EmptyTradingDashboard', () => {
       expect(within(region).getByText(label)).toBeInTheDocument();
     }
     // Every value is still on screen, whatever happened to its caption.
-    for (const value of ['My First Account', 'Live', 'USD', '$10,000.00']) {
+    for (const value of ['Live', 'USD', '$10,000.00']) {
       expect(within(region).getByText(value)).toBeVisible();
     }
+  });
+
+  /*
+    THE ACCOUNT NAME IS THE TOOLBAR'S, AND ONLY THE TOOLBAR'S.
+
+    The Account control two rows above prints it permanently as its trigger
+    label, so printing it here again put the same string on screen twice —
+    and the copy in this strip was the one that could not be clicked. This
+    strip keeps the three facts the trigger does NOT carry.
+  */
+  it('does not repeat the account name the toolbar control already carries', () => {
+    renderDashboard();
+    const region = screen.getByRole('region', { name: 'Active trading account summary' });
+    expect(within(region).queryByText('My First Account')).toBeNull();
+    // ...and it is still a read-only strip, not a second account selector.
+    expect(within(region).queryByRole('button')).toBeNull();
+    expect(within(region).queryByRole('link')).toBeNull();
   });
 
   it('shows the honest no-trades explanation', () => {

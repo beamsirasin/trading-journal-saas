@@ -66,6 +66,23 @@ export function ToolbarDisclosure({
           align={align}
           sideOffset={8}
           aria-label={title}
+          /*
+            OPTS THIS POPOVER INTO THE TOOLBAR'S OPEN/CLOSE MOTION, and only
+            this one.
+
+            The animation itself lives in `globals.css` against
+            `[data-slot='popover-content'][data-motion='toolbar']`, which is
+            the same opt-in shape `SheetContent`'s `data-motion="shell"` uses
+            and the same place every other portal animation in this product is
+            defined. Scoped rather than applied to `PopoverContent` itself
+            because that primitive also serves the KPI band's definition and
+            indicator popovers, and giving every popover in the product motion
+            is a design decision this pass was not asked to make.
+
+            The mobile branch below needs no equivalent: `SheetContent`
+            already animates, from the same stylesheet.
+          */
+          data-motion="toolbar"
           // `w-auto` overrides the shared 18rem definition column width: this
           // panel sizes to its own composition, which is two calendars wide.
           // The available-height cap and the internal scroll region below it

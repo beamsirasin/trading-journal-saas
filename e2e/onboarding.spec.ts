@@ -164,9 +164,18 @@ test.describe('onboarding', () => {
     // happens to come first in the DOM — the header's, which is invisible on
     // the Mobile Chrome project and made the assertion flaky there.
     const accountRegion = page.getByRole('region', { name: 'Active trading account summary' });
-    await expect(accountRegion.getByRole('heading', { name: 'My First Account' })).toBeVisible();
     await expect(accountRegion.getByText('Live', { exact: true })).toBeVisible();
     await expect(accountRegion.getByText('USD', { exact: true })).toBeVisible();
+    // Within the Dashboard's own content the NAME belongs to the toolbar's
+    // Account control alone. The context strip beneath the title used to print
+    // it as well, putting the same string on screen twice inside one viewport
+    // — the second copy being the one that could not be clicked. (The shell
+    // header's account indicator is a separate, deliberate surface and is not
+    // in scope here.)
+    await expect(accountRegion.getByText('My First Account')).toHaveCount(0);
+    await expect(page.locator('[data-dashboard-toolbar-control="account"]')).toContainText(
+      'My First Account',
+    );
     await expect(
       page
         .getByRole('region', { name: 'Recent Trades' })
