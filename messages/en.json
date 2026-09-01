@@ -1526,8 +1526,8 @@
       "frustrated": "Frustrated"
     },
     "create": {
-      "pageTitle": "New Trade",
-      "pageDescription": "Record a Trade at entry or after it has ended.",
+      "pageTitle": "Log a trade",
+      "pageDescription": "Record your plan at entry or journal a completed trade.",
       "blockedTitle": "Trade creation is unavailable",
       "progress": "Trade creation progress",
       "ready": "Ready",
@@ -1604,7 +1604,7 @@
           "veryHigh": "Very High"
         },
         "clear": "Clear confidence",
-        "hint": "How confident are you in this setup?"
+        "hint": "How confident were you before entering? The result never changes this."
       },
       "emotions": {
         "description": "Optional. Select every emotion present as you enter this Trade."
@@ -1647,7 +1647,7 @@
       "saveTrade": "Open Trade",
       "creating": "Creating…",
       "recording": {
-        "timingQuestion": "When are you journaling?",
+        "timingQuestion": "When are you recording this trade?",
         "atEntry": "At Entry",
         "afterTrade": "After Trade",
         "ready": "Ready",
@@ -1739,7 +1739,8 @@
           "fixFields": "Check the highlighted fields and try again.",
           "invalidField": "This value is not valid."
         }
-      }
+      },
+      "backToTrades": "Back to Trades"
     },
     "prerequisite": {
       "noAccountTitle": "No active Trading Account",

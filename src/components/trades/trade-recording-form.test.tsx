@@ -76,7 +76,9 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
   it('defaults to At Entry and renders only one short panel at a time with the CTA always reachable', () => {
     renderForm();
 
-    expect(screen.getByRole('heading', { name: 'When are you journaling?' })).toBeVisible();
+    expect(
+      screen.getByRole('heading', { name: 'When are you recording this trade?' }),
+    ).toBeVisible();
     expect(screen.getByRole('button', { name: 'At Entry' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -321,5 +323,236 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     expect(screen.getByText('ผลลัพธ์จริง')).toBeVisible();
     expect(screen.getByText('คำนวณผลจริงจาก')).toBeVisible();
     expect(screen.getByRole('button', { name: 'บันทึกเทรดที่จบแล้ว' })).toBeVisible();
+  });
+});
+
+/*
+  THE VISUAL MIGRATION.
+
+  These assert what the pass was for: the page speaks the current design
+  system, and the workflow underneath it did not move. They deliberately check
+  SEMANTIC token classes rather than rendered colour — jsdom resolves no
+  stylesheet, and a token class is exactly what makes a control correct in both
+  themes without either being special-cased.
+*/
+describe('TradeRecordingForm — current design system', () => {
+  function segments(groupName: string) {
+    return within(screen.getByRole('group', { name: groupName })).getAllByRole('button');
+  }
+
+  it('keeps the At Entry / After Trade control, with its existing behaviour', () => {
+    renderForm();
+
+    // Two states, no third option, no method-selection step and no Continue.
+    const timing = segments('When are you recording this trade?');
+    expect(timing.map((button) => button.textContent)).toEqual(['At Entry', 'After Trade']);
+    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: 'At Entry' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    expect(screen.getByRole('button', { name: 'After Trade' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'At Entry' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('keeps the At Entry panels: Trade, Setup, Entry Context', () => {
+    renderForm();
+    const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
+    expect(
+      within(nav)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Trade', 'Setup', 'Entry Context']);
+    // No Review tab was added in this pass.
+    expect(within(nav).queryByRole('button', { name: 'Review' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the After Trade panels: Trade, Result, Setup, Entry Context', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
+    expect(
+      within(nav)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Trade', 'Result', 'Setup', 'Entry Context']);
+  });
+
+  it('dresses every segmented control in the shared raised-segment language', () => {
+    renderForm();
+    const [atEntry, afterTrade] = segments('When are you recording this trade?');
+
+    // The selected segment lifts to the shared raised surface with the shared
+    // control shadow — the same treatment the shared SegmentedControl gives
+    // the Dashboard filters.
+    expect(atEntry?.className).toContain('bg-surface-raised');
+    expect(atEntry?.className).toContain('shadow-control');
+    expect(afterTrade?.className).toContain('text-muted-foreground');
+    expect(afterTrade?.className).not.toContain('bg-surface-raised');
+  });
+
+  it('uses the same language for the inner panel nav', () => {
+    renderForm();
+    const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
+    expect(within(nav).getByRole('button', { name: 'Trade' }).className).toContain(
+      'bg-surface-raised',
+    );
+    expect(within(nav).getByRole('button', { name: 'Setup' }).className).toContain(
+      'text-muted-foreground',
+    );
+  });
+
+  it('does not colour Direction as if it were an outcome', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    const long = screen.getByRole('button', { name: 'Long' });
+    const short = screen.getByRole('button', { name: 'Short' });
+
+    // Positive/negative belong to what a Trade MADE. A Long is not a win.
+    expect(long.className).not.toContain('bg-positive');
+    expect(short.className).not.toContain('bg-negative');
+    // Selection survives without colour: state, surface and a check.
+    expect(long).toHaveAttribute('aria-pressed', 'true');
+    expect(short).toHaveAttribute('aria-pressed', 'false');
+    expect(long.className).toContain('bg-surface-raised');
+  });
+
+  it('gives every control a visible focus ring and honours reduced motion', () => {
+    renderForm();
+    const controls = [
+      screen.getByRole('button', { name: 'At Entry' }),
+      screen.getByRole('button', { name: 'Long' }),
+      within(screen.getByRole('navigation', { name: 'New Trade sections' })).getByRole('button', {
+        name: 'Setup',
+      }),
+    ];
+    for (const control of controls) {
+      expect(control.className).toContain('focus-visible:ring-2');
+      // The transition is restrained and drops out entirely under
+      // prefers-reduced-motion, matching the Dashboard's policy.
+      expect(control.className).toContain('transition-colors');
+      expect(control.className).toContain('motion-reduce:transition-none');
+    }
+  });
+
+  it('keeps the panel nav usable on a phone and the labels intact', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
+    // Four panels wrap to two rows on a narrow screen rather than being
+    // squeezed into four columns; every label stays spelled out.
+    expect(nav.className).toContain('grid-cols-2');
+    expect(nav.className).toContain('sm:grid-cols-4');
+    expect(within(nav).getByRole('button', { name: 'Entry Context' })).toBeVisible();
+  });
+
+  it('keeps the Trading Account select, defaulted to the workspace account', () => {
+    renderForm();
+    // The field still says which Account the Trade belongs to — it was not
+    // removed in favour of the header switcher.
+    const account = screen.getByLabelText('Trading Account');
+    expect(account.tagName).toBe('SELECT');
+    expect(account).toHaveValue(options.tradingAccounts[0].tradingAccountId);
+  });
+
+  describe('the Trading Account default on a multi-account workspace', () => {
+    const second = {
+      tradingAccountId: '018f0000-0000-7000-8000-000000000002',
+      name: 'Prop THB',
+      accountMode: 'live',
+      baseCurrency: 'THB',
+    } as const;
+    const multi = {
+      ...options,
+      tradingAccounts: [...options.tradingAccounts, second],
+    } satisfies TradeCreateOptions;
+
+    function renderMulti(activeTradingAccountId: string | null) {
+      return render(
+        <NextIntlClientProvider locale="en" messages={en}>
+          <TradeRecordingForm
+            options={multi}
+            activeTradingAccountId={activeTradingAccountId}
+            timezone="Asia/Bangkok"
+          />
+        </NextIntlClientProvider>,
+      );
+    }
+
+    it('starts on the active Account rather than on a blank select', () => {
+      renderMulti(second.tradingAccountId);
+      expect(screen.getByLabelText('Trading Account')).toHaveValue(second.tradingAccountId);
+    });
+
+    it('is still a real choice the writer can change', () => {
+      renderMulti(second.tradingAccountId);
+      const account = screen.getByLabelText('Trading Account');
+      fireEvent.change(account, {
+        target: { value: options.tradingAccounts[0].tradingAccountId },
+      });
+      expect(account).toHaveValue(options.tradingAccounts[0].tradingAccountId);
+    });
+
+    it('falls back to an explicit choice when no active Account is resolved', () => {
+      renderMulti(null);
+      expect(screen.getByLabelText('Trading Account')).toHaveValue('');
+    });
+
+    it('ignores an active Account this workspace no longer offers', () => {
+      // A per-user preference can name an Account that has since been
+      // archived; seeding a value the select does not contain would blank the
+      // field on submit.
+      renderMulti('018f0000-0000-7000-8000-0000000000aa');
+      expect(screen.getByLabelText('Trading Account')).toHaveValue('');
+    });
+  });
+
+  it('keeps Advanced closed by default', () => {
+    renderForm();
+    const advanced = screen.getByText('Advanced').closest('details');
+    expect(advanced).not.toBeNull();
+    expect(advanced).not.toHaveAttribute('open');
+    // A closed <details> still renders its children into the DOM; what matters
+    // is that none of them is reachable until the reader opens it.
+    expect(screen.getByLabelText('Actual opening differs from the System Plan')).not.toBeVisible();
+  });
+
+  it('says Confidence means confidence before entry, on both timings', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
+    expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
+    expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
+
+    // After Trade keeps the SAME historical field — it never becomes
+    // confidence about the result, and it is never required.
+    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
+    expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
+    expect(screen.getByText('Recorded retrospectively')).toBeVisible();
+  });
+
+  it('names the primary action for what it does, on each timing', () => {
+    renderForm();
+    const openTrade = screen.getByRole('button', { name: 'Open Trade' });
+    expect(openTrade).toHaveAttribute('type', 'submit');
+    // The product's current primary button, not a one-off.
+    expect(openTrade).toHaveAttribute('data-variant', 'default');
+
+    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    expect(screen.getByRole('button', { name: 'Save Completed Trade' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Open Trade' })).not.toBeInTheDocument();
+  });
+
+  it('translates the migrated copy', () => {
+    renderForm('th');
+    expect(screen.getByRole('heading', { name: 'คุณกำลังบันทึกเทรดนี้เมื่อไร?' })).toBeVisible();
   });
 });

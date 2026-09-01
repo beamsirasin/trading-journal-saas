@@ -12,11 +12,14 @@ export function TradeCreateGate({
   options,
   canWrite,
   writeBlockReason,
+  activeTradingAccountId,
   timezone,
 }: {
   options: TradeCreateOptions;
   canWrite: boolean;
   writeBlockReason: MutationDenialReason | null;
+  /** The workspace's persisted active Account, used only to seed the form's own field. */
+  activeTradingAccountId?: string | null;
   timezone: string;
 }) {
   const t = useTranslations('trades');
@@ -49,5 +52,11 @@ export function TradeCreateGate({
       />
     );
   }
-  return <TradeRecordingForm options={options} timezone={timezone} />;
+  return (
+    <TradeRecordingForm
+      options={options}
+      activeTradingAccountId={activeTradingAccountId ?? null}
+      timezone={timezone}
+    />
+  );
 }

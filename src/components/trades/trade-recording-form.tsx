@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
 import { useRouter } from '@/i18n/navigation';
 
+import { NativeSelect } from './trade-action-form';
 import { TradeConfidenceControl } from './trade-confidence-control';
 import {
   datetimeLocalToIso,
@@ -78,31 +79,41 @@ interface ExitDraft {
   exitedAt: string;
 }
 
-function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      {...props}
-      className={cn(
-        'border-input bg-background ring-offset-background focus-visible:ring-ring min-h-11 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none',
-        props.className,
-      )}
-    />
-  );
-}
-
+/**
+ * The form's two-state segmented control.
+ *
+ * IT KEEPS ITS BUTTON SEMANTICS ON PURPOSE. `components/ui/segmented-control`
+ * is the shared radio-based control and is where this one's LOOK now comes
+ * from — same bordered group, same `surface-raised` selected segment, same
+ * control shadow — but swapping the implementation would turn every segment
+ * from a `button` with `aria-pressed` into a `radio`, changing the semantics
+ * this form's existing behaviour, tests and end-to-end selectors all depend
+ * on, and losing the per-option `disabled` this one needs. This pass is a
+ * visual migration, so the visuals migrated and the behaviour did not.
+ */
 function Segmented<T extends string>({
   label,
   value,
   options,
   onChange,
+  className,
 }: {
   label: string;
   value: T;
   options: readonly { value: T; label: string; disabled?: boolean }[];
   onChange: (value: T) => void;
+  className?: string;
 }) {
   return (
-    <div role="group" aria-label={label} className="bg-muted grid grid-cols-2 gap-1 rounded-lg p-1">
+    <div
+      role="group"
+      aria-label={label}
+      className={cn(
+        'border-border bg-background grid gap-1 rounded-lg border p-1',
+        'grid-cols-2',
+        className,
+      )}
+    >
       {options.map((option) => (
         <button
           key={option.value}
@@ -111,10 +122,11 @@ function Segmented<T extends string>({
           disabled={option.disabled}
           onClick={() => onChange(option.value)}
           className={cn(
-            'min-h-11 rounded-md px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+            'focus-visible:ring-ring min-h-11 rounded-md border border-transparent px-3 text-sm font-medium transition-colors duration-150 ease-(--motion-ease-standard) outline-none focus-visible:ring-2 motion-reduce:transition-none',
+            'disabled:cursor-not-allowed disabled:opacity-45',
             value === option.value
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
+              ? 'bg-surface-raised border-border shadow-control text-foreground'
+              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           {option.label}
@@ -171,9 +183,16 @@ function outcomeKey(value: 'win' | 'loss' | 'break_even') {
 
 export function TradeRecordingForm({
   options,
+  activeTradingAccountId = null,
   timezone,
 }: {
   options: TradeCreateOptions;
+  /**
+   * The workspace's persisted active Account, used ONLY as this field's
+   * starting value. The field itself is unchanged and still decides which
+   * Account the Trade belongs to.
+   */
+  activeTradingAccountId?: string | null;
   timezone: string;
 }) {
   const t = useTranslations('trades');
@@ -200,8 +219,22 @@ export function TradeRecordingForm({
     { id: generateId(), closedPercent: '50', value: '', exitedAt: '' },
     { id: generateId(), closedPercent: '50', value: '', exitedAt: '' },
   ]);
+  /*
+    The active Account first, then the sole Account, then nothing.
+
+    The active id is checked AGAINST THE OFFERED OPTIONS rather than trusted:
+    it is a per-user preference that can name an Account that has since been
+    archived or moved, and seeding the select with a value it does not contain
+    would silently blank the field on submit. Falling through to the existing
+    single-Account default keeps the previous behaviour exactly where it
+    already applied.
+  */
   const initialAccount =
-    options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '';
+    (activeTradingAccountId !== null &&
+    options.tradingAccounts.some((account) => account.tradingAccountId === activeTradingAccountId)
+      ? activeTradingAccountId
+      : undefined) ??
+    (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
   const [values, setValues] = useState<Values>({
     tradingAccountId: initialAccount,
     symbol: '',
@@ -699,12 +732,23 @@ export function TradeRecordingForm({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+    /*
+      FULL-WIDTH IN ITS OWN PAGE COLUMN. It used to be a `max-w-3xl` block
+      centred inside a `wide` (100rem) page, so the header sat on one left edge
+      and the form on another — the "narrow and disconnected" reading. The page
+      container is now the app's standard `default` width and the form fills
+      it, which puts both on one edge and gives the two-column field grids room
+      without stretching a text input across a monitor.
+    */
+    <div className="flex w-full min-w-0 flex-col gap-6">
       <section aria-labelledby="recording-timing-title" className="grid gap-3">
-        <h2 id="recording-timing-title" className="text-lg font-semibold">
+        <h2 id="recording-timing-title" className="text-card-title">
           {r('timingQuestion')}
         </h2>
+        {/* Capped on desktop: two segments spanning the full page column would
+            read as a pair of banners rather than one control. */}
         <Segmented
+          className="sm:max-w-sm"
           label={r('timingQuestion')}
           value={timing}
           options={[
@@ -738,7 +782,10 @@ export function TradeRecordingForm({
           data-testid="new-trade-view-nav"
           aria-label={r('panels.label')}
           className={cn(
-            'bg-muted grid gap-1 rounded-lg p-1',
+            'border-border bg-background grid gap-1 rounded-lg border p-1',
+            // Unchanged information architecture: three panels At Entry, four
+            // After Trade, in the order they have always been in. Two rows on
+            // a phone rather than four cramped columns.
             timing === 'at_entry' ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4',
           )}
         >
@@ -749,8 +796,11 @@ export function TradeRecordingForm({
               aria-current={panel === item ? 'page' : undefined}
               onClick={() => openPanel(item)}
               className={cn(
-                'min-h-11 rounded-md px-2 text-sm font-semibold',
-                panel === item ? 'bg-background shadow-sm' : 'text-muted-foreground',
+                'focus-visible:ring-ring min-h-11 rounded-md border border-transparent px-3 text-sm font-medium transition-colors duration-150 ease-(--motion-ease-standard) outline-none focus-visible:ring-2 motion-reduce:transition-none',
+                'px-2',
+                panel === item
+                  ? 'bg-surface-raised border-border shadow-control text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               )}
             >
               {r(`panels.${item}`)}
@@ -758,8 +808,17 @@ export function TradeRecordingForm({
           ))}
         </nav>
 
-        <div className="border-border bg-card/95 sticky top-2 z-10 -mx-4 flex justify-end border-y p-3 backdrop-blur sm:-mx-6 sm:px-6">
-          <Button type="submit" className="w-full sm:w-auto" disabled={pending}>
+        {/*
+          The primary action stays exactly where it was and does exactly what
+          it did — Open Trade at entry, Save Completed Trade after. It keeps its
+          sticky position because the panels below it are long, and the negative
+          margins are what let it bleed to the card's own edges instead of
+          leaving two strips of scrolling content either side of it. Only the
+          surface and the button size changed: `variant="default"` is the
+          product's current primary language, unchanged.
+        */}
+        <div className="border-border bg-card/95 supports-[backdrop-filter]:bg-card/80 sticky top-2 z-10 -mx-4 flex justify-end border-y px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6">
+          <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={pending}>
             {pending ? r('saving') : timing === 'at_entry' ? r('openTrade') : r('saveCompleted')}
           </Button>
         </div>
@@ -774,7 +833,7 @@ export function TradeRecordingForm({
                   label={t('field.account')}
                   error={errors.tradingAccountId}
                 >
-                  <Select
+                  <NativeSelect
                     id="record-account"
                     value={values.tradingAccountId}
                     onChange={(event) => setField('tradingAccountId', event.target.value)}
@@ -785,7 +844,7 @@ export function TradeRecordingForm({
                         {account.name} · {account.baseCurrency}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </PlanField>
                 <TextField
                   id="record-symbol"
@@ -797,29 +856,38 @@ export function TradeRecordingForm({
               </div>
               <fieldset className="grid gap-2">
                 <legend className="text-sm font-medium">{t('field.direction')}</legend>
-                <div className="grid grid-cols-2 gap-2">
+                {/*
+                  DIRECTION IS NOT AN OUTCOME, SO IT IS NOT COLOURED. These were
+                  filled positive/negative swatches, which borrowed the tokens
+                  this product reserves for what a Trade actually MADE — a Long
+                  is not a win. Everywhere else in the app (the Trades table,
+                  the Details header) direction is plain text, so the control
+                  now uses the same neutral segmented language as its
+                  neighbours. Selection is still carried by three things that
+                  are not colour: `aria-pressed`, the raised surface, and the
+                  check.
+                */}
+                <div className="border-border bg-background grid grid-cols-2 gap-1 rounded-lg border p-1">
                   {(['long', 'short'] as const).map((direction) => {
                     const Icon = direction === 'long' ? TrendingUp : TrendingDown;
+                    const selected = values.direction === direction;
                     return (
                       <button
                         key={direction}
                         type="button"
-                        aria-pressed={values.direction === direction}
+                        aria-pressed={selected}
                         onClick={() => setField('direction', direction)}
                         className={cn(
-                          'flex min-h-11 items-center justify-center gap-2 rounded-md border-2 px-3 text-sm font-semibold',
-                          values.direction === direction
-                            ? direction === 'long'
-                              ? 'border-positive bg-positive/15 text-positive'
-                              : 'border-negative bg-negative/15 text-negative'
-                            : 'border-border',
+                          'flex items-center justify-center gap-2',
+                          'focus-visible:ring-ring min-h-11 rounded-md border border-transparent px-3 text-sm font-medium transition-colors duration-150 ease-(--motion-ease-standard) outline-none focus-visible:ring-2 motion-reduce:transition-none',
+                          selected
+                            ? 'bg-surface-raised border-border shadow-control text-foreground'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                         )}
                       >
                         <Icon size={16} aria-hidden="true" />
                         {t(`direction.${direction}`)}
-                        {values.direction === direction ? (
-                          <Check size={16} aria-hidden="true" />
-                        ) : null}
+                        {selected ? <Check size={16} aria-hidden="true" /> : null}
                       </button>
                     );
                   })}
@@ -950,7 +1018,11 @@ export function TradeRecordingForm({
                   }
                 }}
               >
-                <summary className="cursor-pointer text-sm font-semibold">{r('advanced')}</summary>
+                {/* Closed by default, exactly as before; only the trigger now
+                    reads like the product's other disclosures. */}
+                <summary className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex min-h-11 cursor-pointer items-center rounded-md text-sm font-medium transition-colors duration-150 ease-(--motion-ease-standard) outline-none focus-visible:ring-2 motion-reduce:transition-none">
+                  {r('advanced')}
+                </summary>
                 <div className="mt-4 grid gap-5">
                   <label className="flex min-h-11 items-center gap-3 text-sm">
                     <input
@@ -1211,7 +1283,7 @@ export function TradeRecordingForm({
                 <p className="text-muted-foreground mt-1 text-sm">{r('systemOutcomeHelp')}</p>
               </div>
               <PlanField id="system-choice" label={r('systemOutcome')} error={errors.systemChoice}>
-                <Select
+                <NativeSelect
                   id="system-choice"
                   value={systemChoice}
                   onChange={(event) => setSystemChoice(event.target.value as SystemChoice)}
@@ -1224,7 +1296,7 @@ export function TradeRecordingForm({
                   <option value="break_even">{r('system.breakEven')}</option>
                   <option value="custom">{r('system.custom')}</option>
                   <option value="no_trade">{r('system.noTrade')}</option>
-                </Select>
+                </NativeSelect>
               </PlanField>
               {!targetAvailable ? (
                 <p className="text-muted-foreground text-xs">{r('targetUnavailable')}</p>
@@ -1266,7 +1338,7 @@ export function TradeRecordingForm({
             ) : null}
             <div className="grid gap-5 sm:grid-cols-2">
               <PlanField id="record-strategy" label={t('field.strategy')} optional>
-                <Select
+                <NativeSelect
                   id="record-strategy"
                   value={values.strategyId}
                   onChange={(event) => {
@@ -1281,10 +1353,10 @@ export function TradeRecordingForm({
                       {strategy.name}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
               </PlanField>
               <PlanField id="record-setup" label={t('field.setup')} optional error={errors.setupId}>
-                <Select
+                <NativeSelect
                   id="record-setup"
                   value={values.setupId}
                   disabled={selectedStrategy === undefined}
@@ -1299,7 +1371,7 @@ export function TradeRecordingForm({
                       {setup.name}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
               </PlanField>
               <TextField
                 id="record-timeframe"
@@ -1384,10 +1456,12 @@ export function TradeRecordingForm({
                       )
                     }
                     className={cn(
-                      'min-h-11 rounded-full border px-4 text-sm',
+                      'min-h-11 rounded-full border px-4 text-sm outline-none',
+                      'transition-colors duration-150 ease-(--motion-ease-standard) motion-reduce:transition-none',
+                      'focus-visible:ring-ring focus-visible:ring-2',
                       emotionKeys.includes(emotion.key)
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border',
+                        ? 'border-primary bg-primary/10 text-foreground'
+                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
                     )}
                   >
                     {emotion.label}
