@@ -31,9 +31,14 @@ function MockLink({
   switcher on a route that owns a page-level one (see
   `ROUTES_WITH_OWN_ACCOUNT_CONTROL`). The DEFAULT is therefore a route that
   does NOT — the application-wide case, which is what most of this file is
-  describing — and the Dashboard is set explicitly where it is the subject.
+  describing — and the two routes that DO (the Dashboard and the Trades
+  workspace) are set explicitly where they are the subject.
+
+  It was `/app/trades` until that page grew a toolbar Account control of its
+  own; `/app/accounts` replaced it as a route that is unambiguously not on the
+  exception list.
 */
-let mockPathname = '/app/trades';
+let mockPathname = '/app/accounts';
 
 vi.mock('@/i18n/navigation', () => ({
   Link: MockLink,
@@ -91,7 +96,7 @@ beforeEach(() => {
   // Clear the persistence cookie between cases so one test's toggle cannot
   // be mistaken for another's initial state.
   document.cookie = `${SIDEBAR_COOKIE_NAME}=; path=/; max-age=0`;
-  mockPathname = '/app/trades';
+  mockPathname = '/app/accounts';
 });
 
 describe('ShellFrame — landmarks', () => {
@@ -117,8 +122,9 @@ describe('ShellFrame — landmarks', () => {
     expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
     // Account switching is not a set-once preference — it scopes every figure
     // on screen — so it earns its place in the row on a phone too. This is the
-    // application-wide default: every route except the Dashboard relies on it
-    // as the ONLY way to change the active Account.
+    // application-wide default: every route except the two that own a
+    // page-level Account control relies on it as the ONLY way to change the
+    // active Account.
     expect(within(banner).getByRole('button', { name: 'Switch trading account' })).toBeVisible();
   });
 
@@ -131,23 +137,34 @@ describe('ShellFrame — landmarks', () => {
     pixels apart, behind two different switching gestures. The page-level one
     wins there; the header's steps aside — and ONLY there.
   */
-  it('stands its switcher down on a route that owns an account control', () => {
-    mockPathname = '/app';
-    renderShell();
-    const banner = screen.getByRole('banner');
+  it('stands its switcher down on every route that owns an account control', () => {
+    // Both of them: the Dashboard and the Trades workspace each render the
+    // toolbar's Account control beside Date Range and Filters.
+    for (const route of ['/app', '/app/trades']) {
+      mockPathname = route;
+      const { unmount } = renderShell();
+      const banner = screen.getByRole('banner');
 
-    expect(
-      within(banner).queryByRole('button', { name: 'Switch trading account' }),
-    ).not.toBeInTheDocument();
-    // Nothing replaced it, and the profile control is untouched.
-    expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
-    expect(within(banner).getByRole('button', { name: /open navigation menu/i })).toBeVisible();
+      expect(
+        within(banner).queryByRole('button', { name: 'Switch trading account' }),
+      ).not.toBeInTheDocument();
+      // Nothing replaced it, and the profile control is untouched.
+      expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
+      expect(within(banner).getByRole('button', { name: /open navigation menu/i })).toBeVisible();
+      unmount();
+    }
   });
 
   it('is an exact route match, so nested routes keep the header switcher', () => {
-    // `/app/trades` and `/app/accounts` are not the Dashboard. A prefix test
-    // would have taken the control off every page in the product.
-    for (const route of ['/app/trades', '/app/accounts', '/app/analytics', '/app/settings']) {
+    /*
+      None of these is on the exception list, and `/app/trades/new` is the one
+      that proves the rule is exact rather than a prefix test: it sits directly
+      under a route that DOES suppress the switcher, has no toolbar of its own,
+      and must therefore keep the only account control it has. A prefix test
+      would have taken the control off it — and off every page in the product
+      when applied to `/app`.
+    */
+    for (const route of ['/app/trades/new', '/app/accounts', '/app/analytics', '/app/settings']) {
       mockPathname = route;
       const { unmount } = renderShell();
       expect(

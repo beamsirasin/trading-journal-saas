@@ -4,7 +4,11 @@ import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useId, useState } from 'react';
 
-import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
+import {
+  buildDashboardHref,
+  type DashboardFilterState,
+  type DashboardHrefOptions,
+} from '@/lib/dashboard/filters';
 import { cn } from '@/lib/utils';
 import type { AnalyticsFilterOptions } from '@/server/dal/analytics';
 import { useDashboardStateNavigation } from '@/components/dashboard/dashboard-state-link';
@@ -64,11 +68,17 @@ function activeFilterCount(draft: DashboardFiltersDraft): number {
 export function DashboardFiltersControl({
   filters,
   options,
+  href,
   className,
   labelClassName,
 }: {
   filters: DashboardFilterState;
   options: AnalyticsFilterOptions;
+  /**
+   * Where this control's transitions land, and what non-filter page state
+   * rides along. Omitted on the Dashboard, which keeps the `/app` default.
+   */
+  href?: DashboardHrefOptions;
   className?: string;
   labelClassName?: string;
 }) {
@@ -87,12 +97,15 @@ export function DashboardFiltersControl({
   function handleApply() {
     setOpen(false);
     navigate(
-      buildDashboardHref({
-        ...filters,
-        strategyId: draft.strategyId,
-        setupId: draft.setupId,
-        strategyVersionId: draft.strategyVersionId,
-      }),
+      buildDashboardHref(
+        {
+          ...filters,
+          strategyId: draft.strategyId,
+          setupId: draft.setupId,
+          strategyVersionId: draft.strategyVersionId,
+        },
+        href,
+      ),
     );
   }
 

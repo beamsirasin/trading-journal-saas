@@ -1848,6 +1848,184 @@
       "invalid_file": "Choose an image file to upload.",
       "invalid_storage_key": "This image could not be identified. Please upload it again.",
       "unexpected_error": "Something went wrong. Please try again."
+    },
+    "workspace": {
+      "filterError": {
+        "title": "Those filters could not be read",
+        "description": "Part of the address for this page was not recognised, so no Trades were loaded rather than a list that might describe the wrong scope.",
+        "action": "Start again with all Trades"
+      },
+      "noAccount": {
+        "title": "No trading account selected",
+        "description": "Trades are recorded against a trading account. Create or restore one, then this workspace will fill in.",
+        "action": "Go to trading accounts"
+      },
+      "empty": {
+        "paged": {
+          "title": "Nothing further on this page",
+          "description": "You have reached the end of this list. Go back a page, or clear the filters to see everything."
+        },
+        "filtered": {
+          "title": "No Trades match these filters",
+          "description": "Nothing in this account, date range and filter combination. Widen the range or clear the filters to see more."
+        }
+      },
+      "summary": {
+        "regionLabel": "Summary of the Trades in view",
+        "empty": "No Trades in scope",
+        "tradeCount": {
+          "label": "Trades"
+        },
+        "netPnl": {
+          "label": "Net P&L"
+        },
+        "totalR": {
+          "label": "Total R"
+        },
+        "winRate": {
+          "label": "Win Rate"
+        }
+      },
+      "result": {
+        "win": "WIN",
+        "loss": "LOSS",
+        "break_even": "BE",
+        "open": "OPEN",
+        "planned": "PLANNED",
+        "canceled": "CANCELED",
+        "unresolved": "NO RESULT"
+      },
+      "review": {
+        "needs_details": "Needs details",
+        "needs_system_result": "Needs system result",
+        "unclassified": "Unclassified",
+        "needs_review": "Needs review",
+        "reviewed": "Reviewed"
+      },
+      "table": {
+        "label": "Trades",
+        "realized": "so far",
+        "columns": {
+          "date": "Date",
+          "symbol": "Symbol",
+          "result": "Result",
+          "netPnl": "P&L",
+          "actualR": "R",
+          "plannedRr": "Planned RR",
+          "strategy": "Strategy",
+          "setup": "Setup",
+          "review": "Review"
+        }
+      },
+      "details": {
+        "tabsLabel": "Trade Details sections",
+        "tabs": {
+          "overview": "Overview",
+          "plan": "Plan",
+          "execution": "Execution",
+          "review": "Review",
+          "chart": "Chart",
+          "notes": "Notes"
+        },
+        "hero": {
+          "netPnl": "Net P&L",
+          "actualR": "Actual R",
+          "realizedR": "Realized R so far"
+        },
+        "notRecordedShort": "Not recorded",
+        "comparison": {
+          "system": "What the system offered (System R)",
+          "actual": "What you captured (Actual R)",
+          "gap": "Execution Gap",
+          "systemPending": "The system result has not been recorded yet, so there is nothing to compare your execution against.",
+          "systemNoTrade": "The rules would not have permitted this Trade, so there is no system result to compare against.",
+          "actualIncomplete": "This Trade is not closed yet, so your final result is not settled and cannot be compared.",
+          "unavailable": "A comparison needs both a settled result and a recorded system result. One of them is missing."
+        },
+        "groups": {
+          "result": "Result",
+          "trade": "Trade",
+          "price": "Price",
+          "cost": "Cost and size",
+          "classification": "Strategy and setup",
+          "plannedReward": "Planned reward",
+          "timeline": "What happened",
+          "attribution": "System vs trader",
+          "chart": "Trade chart"
+        },
+        "hints": {
+          "actualR": "What you actually made or lost, in units of the risk you took.",
+          "systemR": "What the strategy rules would have returned on their own.",
+          "executionGap": "Actual R minus System R. Negative means you captured less than the system offered.",
+          "plannedRr": "Reward you planned for every 1 unit of risk, set before entering."
+        },
+        "holdingTime": "Holding time",
+        "plannedTarget": "Planned target",
+        "duration": {
+          "dayHour": "{days}d {hours}h",
+          "hourMinute": "{hours}h {minutes}m",
+          "minute": "{minutes}m"
+        },
+        "confidenceMeaning": "How confident you were before entering this Trade. It is never calculated from the result.",
+        "emotionsMeaning": "What you were feeling around entry.",
+        "checklistCount": "{met} of {total} conditions met",
+        "chartAlt": "Chart attached to the {symbol} Trade",
+        "quadrant": {
+          "win_win": "Good idea, and you captured it.",
+          "win_break_even": "The idea worked. You came out flat.",
+          "win_loss": "Good trade idea, weak execution.",
+          "break_even_win": "The idea was flat. You made money anyway.",
+          "break_even_break_even": "Flat idea, flat result.",
+          "break_even_loss": "The idea was flat. Your execution cost you.",
+          "loss_win": "You made money on an idea that did not work.",
+          "loss_break_even": "The idea did not work. You got out flat.",
+          "loss_loss": "The idea itself did not work."
+        },
+        "quadrantExplanation": "The system result and your result are recorded separately, so this reading never comes from profit alone.",
+        "quadrantUnavailable": "This reading needs both a system result and your own settled result. Record the missing one to see it.",
+        "notes": {
+          "before": {
+            "label": "Before the trade",
+            "prompt": "Why am I taking this trade?"
+          },
+          "during": {
+            "label": "The trade itself",
+            "prompt": "What happened?"
+          },
+          "lesson": {
+            "label": "The lesson",
+            "prompt": "What will I repeat or change next time?"
+          },
+          "editHint": "The lesson is the post-trade review note, and it is edited in the Review tab."
+        },
+        "empty": {
+          "classification": {
+            "title": "No strategy assigned",
+            "description": "Assigning one later is normal and still counts. It is what lets this Trade join a system’s numbers."
+          },
+          "confidence": {
+            "title": "No confidence recorded",
+            "description": "Confidence is captured before entering. It was not recorded for this Trade, and it is never filled in from the result."
+          },
+          "execution": {
+            "title": "Nothing executed yet",
+            "description": "Once this Trade is opened, the entry and every exit leg will appear here in order."
+          },
+          "chart": {
+            "title": "No chart attached",
+            "description": "Add a screenshot or a TradingView link when you record or correct this Trade."
+          },
+          "notes": {
+            "title": "Nothing written down yet",
+            "description": "Notes are where a journal earns its keep: why you took it, what happened, and what you will change."
+          }
+        },
+        "timeline": {
+          "entry": "Entry",
+          "entryPrice": "{direction} at {price}",
+          "exit": "Exit {sequence} · {percent}%"
+        }
+      }
     }
   },
   "strategies": {

@@ -1,4 +1,4 @@
-import type { DashboardFilterState } from '@/lib/dashboard/filters';
+import type { DashboardFilterState, DashboardHrefOptions } from '@/lib/dashboard/filters';
 import { calendarDateIn } from '@/lib/time';
 import {
   getActiveTradingAccount,
@@ -35,9 +35,22 @@ import { DashboardFiltersControl } from './filters-control';
 export async function DashboardToolbarControls({
   filters,
   dateLocale,
+  href,
 }: {
   filters: DashboardFilterState;
   dateLocale: string;
+  /**
+   * Where the three controls' transitions land, and what non-filter page
+   * state rides along.
+   *
+   * THE THREE CONTROLS ARE NOT THE DASHBOARD'S ALONE ANY MORE. The Trades
+   * workspace scopes its list and its four summary figures with exactly this
+   * filter vocabulary, so it renders exactly these controls rather than a
+   * second Date Range / Filters / Account trio that would drift from them
+   * within a release. Omitted here, every href keeps the `/app` default and
+   * the Dashboard is unchanged.
+   */
+  href?: DashboardHrefOptions;
 }) {
   const [preferences, accounts, activeAccount, filterOptions] = await Promise.all([
     getCurrentUserPreferences(),
@@ -59,6 +72,7 @@ export async function DashboardToolbarControls({
         filters={filters}
         todayDate={today.ok ? today.value : '1970-01-01'}
         dateLocale={dateLocale}
+        {...(href === undefined ? {} : { href })}
         className="min-w-0 flex-1 md:w-auto md:min-w-40 md:flex-none"
       />
       {/*
@@ -69,12 +83,14 @@ export async function DashboardToolbarControls({
       <DashboardFiltersControl
         filters={filters}
         options={filterOptions}
+        {...(href === undefined ? {} : { href })}
         labelClassName="sr-only sm:not-sr-only"
       />
       <DashboardAccountControl
         filters={filters}
         accounts={accounts}
         activeAccountId={activeAccount?.id ?? null}
+        {...(href === undefined ? {} : { href })}
         labelClassName="sr-only sm:not-sr-only"
       />
     </>

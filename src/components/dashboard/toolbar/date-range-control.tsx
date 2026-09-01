@@ -29,7 +29,11 @@ import {
   type DashboardDatePresetOption,
   type DashboardDateRangeSummary,
 } from '@/lib/dashboard/date-range-presentation';
-import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
+import {
+  buildDashboardHref,
+  type DashboardFilterState,
+  type DashboardHrefOptions,
+} from '@/lib/dashboard/filters';
 import { cn } from '@/lib/utils';
 import { useDashboardStateNavigation } from '@/components/dashboard/dashboard-state-link';
 import { Button } from '@/components/ui/button';
@@ -59,12 +63,18 @@ export function DashboardDateRangeControl({
   filters,
   todayDate,
   dateLocale,
+  href,
   className,
 }: {
   filters: DashboardFilterState;
   /** The reader's local today in the persisted analytics timezone, resolved server-side. */
   todayDate: string;
   dateLocale: string;
+  /**
+   * Where this control's transitions land, and what non-filter page state
+   * rides along. Omitted on the Dashboard, which keeps the `/app` default.
+   */
+  href?: DashboardHrefOptions;
   className?: string;
 }) {
   const t = useTranslations('dashboard.toolbar.dateRange');
@@ -110,11 +120,14 @@ export function DashboardDateRangeControl({
     // ONE transition, through the canonical serializer, so Account, Strategy,
     // Setup, Version and unit ride along untouched.
     navigate(
-      buildDashboardHref({
-        ...filters,
-        datePreset: applyResult.applied.datePreset,
-        customDateRange: applyResult.applied.customDateRange,
-      }),
+      buildDashboardHref(
+        {
+          ...filters,
+          datePreset: applyResult.applied.datePreset,
+          customDateRange: applyResult.applied.customDateRange,
+        },
+        href,
+      ),
     );
   }
 

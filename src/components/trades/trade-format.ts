@@ -55,3 +55,34 @@ export function formatTradeDay(
   const formatted = formatInstant(parsed.value, timezone, { style: 'date', locale });
   return formatted.ok ? formatted.value : null;
 }
+
+/**
+ * `1 : 3.00` — one Trade's PLANNED reward per one unit of planned risk.
+ *
+ * Reads the canonical persisted `trades.planned_r` and does nothing but
+ * present it: no ratio is computed here, because `plannedR` already IS
+ * `plannedReward / plannedRisk` (CLAUDE.md §6), resolved once by the calc
+ * engine when the plan was recorded.
+ *
+ * SPELLED AS A RATIO, DELIBERATELY. A bare `3.00` in a table that also
+ * carries Actual R and System R columns is indistinguishable from an R value;
+ * the leading `1` is what names the unit, and it is the form a trader plans
+ * in. The spacing matches the Dashboard's Avg Planned RR card exactly
+ * (`lib/dashboard/basic-kpi.ts`) so the same quantity never appears in two
+ * different shapes across the product. It is a numeric format, not a
+ * sentence, so it is not translated.
+ *
+ * `null` — never `1 : 0.00` — for a Trade whose plan set no Target. A plan
+ * with no reward leg is a plan that was never fully made, not a plan to make
+ * nothing.
+ */
+export function formatPlannedRr(plannedR: string | null): string | null {
+  if (plannedR === null) return null;
+  try {
+    const decimal = new Decimal(plannedR);
+    if (!decimal.isFinite()) return null;
+    return `1 : ${decimal.toDecimalPlaces(2).toFixed(2)}`;
+  } catch {
+    return null;
+  }
+}

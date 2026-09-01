@@ -4,7 +4,11 @@ import { Check, Wallet } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
-import { buildDashboardHref, type DashboardFilterState } from '@/lib/dashboard/filters';
+import {
+  buildDashboardHref,
+  type DashboardFilterState,
+  type DashboardHrefOptions,
+} from '@/lib/dashboard/filters';
 import { cn } from '@/lib/utils';
 import { setActiveTradingAccountAction } from '@/server/actions/trading-accounts';
 import type { ActiveTradingAccountSummary } from '@/server/auth/dal';
@@ -46,6 +50,7 @@ export function DashboardAccountControl({
   filters,
   accounts,
   activeAccountId,
+  href,
   className,
   labelClassName,
 }: {
@@ -54,6 +59,11 @@ export function DashboardAccountControl({
   accounts: readonly ActiveTradingAccountSummary[];
   /** The persisted active Account, re-validated server-side. `null` before onboarding. */
   activeAccountId: string | null;
+  /**
+   * Where this control's transitions land, and what non-filter page state
+   * rides along. Omitted on the Dashboard, which keeps the `/app` default.
+   */
+  href?: DashboardHrefOptions;
   className?: string;
   labelClassName?: string;
 }) {
@@ -78,7 +88,7 @@ export function DashboardAccountControl({
       return;
     }
     setOpen(false);
-    navigate(buildDashboardHref({ ...filters, accountScope: { kind: 'all' } }));
+    navigate(buildDashboardHref({ ...filters, accountScope: { kind: 'all' } }, href));
   }
 
   function handleSelectAccount(accountId: string) {
@@ -98,7 +108,7 @@ export function DashboardAccountControl({
       // ONE transition, after the preference has actually been written — so
       // the page that loads reads the account the reader just chose rather
       // than racing the write.
-      navigate(buildDashboardHref({ ...filters, accountScope: { kind: 'active' } }));
+      navigate(buildDashboardHref({ ...filters, accountScope: { kind: 'active' } }, href));
     });
   }
 

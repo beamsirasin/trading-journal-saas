@@ -158,8 +158,40 @@ export function serializeDashboardFilterState(state: DashboardFilterState): URLS
   return params;
 }
 
-export function buildDashboardHref(state: DashboardFilterState): string {
-  return `/app?${serializeDashboardFilterState(state).toString()}`;
+/**
+ * Where a filter-state transition should land, and what non-filter state
+ * rides along with it.
+ *
+ * `basePath` exists because the toolbar's three controls are no longer the
+ * Dashboard's alone: the Trades workspace (`/app/trades`) reuses the same
+ * Date Range / Filters / Account controls over this same canonical filter
+ * vocabulary, and a control that hard-coded `/app` would send a reader from
+ * Trades to the Dashboard every time they changed a range. It defaults to
+ * `/app`, so every existing Dashboard call site is byte-for-byte unchanged.
+ *
+ * `extraParams` carries the destination page's OWN non-filter state through
+ * the transition — the Trades workspace's `view`/`attention`, for instance.
+ * It is deliberately a plain string record rather than a callback, because
+ * these options reach client controls from a Server Component and therefore
+ * have to be serializable. Keys the canonical serializer already owns are
+ * skipped, so a caller can never smuggle a second, conflicting `account=`
+ * past it.
+ */
+export interface DashboardHrefOptions {
+  readonly basePath?: string;
+  readonly extraParams?: Readonly<Record<string, string>>;
+}
+
+export function buildDashboardHref(
+  state: DashboardFilterState,
+  options: DashboardHrefOptions = {},
+): string {
+  const params = serializeDashboardFilterState(state);
+  for (const [key, value] of Object.entries(options.extraParams ?? {})) {
+    if (params.has(key)) continue;
+    params.set(key, value);
+  }
+  return `${options.basePath ?? '/app'}?${params.toString()}`;
 }
 
 /** Adapts the canonical Dashboard state to the shared Analytics scope resolver. */

@@ -109,6 +109,8 @@ export interface TradeListItem {
   readonly symbol: string;
   readonly direction: TradeDirection;
   readonly tradingAccountName: string;
+  /** The Account's own currency code, so a money column formats per row rather than assuming one workspace currency. */
+  readonly tradingAccountBaseCurrency: string;
   /** The pinned Strategy Version's own name — see the module's historical-label rule. `null` for an unclassified Trade (Phase 14B), never a fake "Unknown Strategy" label. */
   readonly strategyName: string | null;
   /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. `null` when this Trade has no Setup (Phase 14B). */
@@ -119,8 +121,29 @@ export interface TradeListItem {
   readonly plannedR: string | null;
   readonly actualR: string | null;
   readonly systemR: string | null;
+  /**
+   * The Trade's own authoritative `net_pnl_minor` (minor units, in
+   * `tradingAccountBaseCurrency`) — `null` whenever this Trade has no
+   * monetary result, never a fabricated `0`. Emitted as a string for the
+   * same reason every other money field on this module is: a `bigint` does
+   * not survive the Server -> Client boundary.
+   *
+   * PER-ROW ONLY. Summing this column is not how the Trades workspace's Net
+   * P&L figure is produced — that comes from the canonical analytics
+   * `netPnl` over the eligible population (CLAUDE.md §6: no formula is ever
+   * reimplemented at a presentation boundary).
+   */
+  readonly netPnlMinor: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly systemOutcome: OutcomeValue | null;
+  /**
+   * Whether a Post-Trade Review note exists — the exact field
+   * `tradeAttentionPredicate('reviews-pending')` tests, exposed as a boolean
+   * so the list's Review column can derive the same state the Dashboard's
+   * Needs Attention panel counted, from the same fact. The note's TEXT is
+   * deliberately not on the list projection; only its presence is.
+   */
+  readonly hasReviewNotes: boolean;
   /**
    * Closed/remaining basis points as of this read — `0`/`10_000` for any
    * Trade with no Exit legs (never fetched per-row; see the batched Exit
@@ -166,6 +189,20 @@ export interface ListWorkspaceTradesParams {
   /** Optional trusted/read-scoped Account identity; workspace scope still applies independently. */
   readonly tradingAccountId?: string;
   readonly systemStatus?: SystemStatus;
+  /**
+   * Optional Strategy / Setup / Strategy Version scope, matching the
+   * canonical analytics framework conditions (`frameworkConditions`,
+   * `server/dal/analytics.ts`) column for column, so the Trades workspace's
+   * list and its summary figures narrow on identical predicates rather than
+   * two hand-written approximations of "the same filter".
+   *
+   * Every identifier is still verified against the active workspace by the
+   * caller's own scope resolution before it reaches here; this DAL's
+   * workspace condition applies independently regardless.
+   */
+  readonly strategyId?: string;
+  readonly setupId?: string;
+  readonly strategyVersionId?: string;
   /**
    * One Needs Attention bucket, filtered by the SAME predicate the panel
    * counted it with (`tradeAttentionPredicate`). Passing the equivalent
@@ -256,6 +293,11 @@ export async function listWorkspaceTrades(
   if (params.systemStatus !== undefined) {
     conditions.push(eq(trades.systemStatus, params.systemStatus));
   }
+  if (params.strategyId !== undefined) conditions.push(eq(trades.strategyId, params.strategyId));
+  if (params.setupId !== undefined) conditions.push(eq(trades.setupId, params.setupId));
+  if (params.strategyVersionId !== undefined) {
+    conditions.push(eq(trades.strategyVersionId, params.strategyVersionId));
+  }
   if (params.attention !== undefined) {
     conditions.push(tradeAttentionPredicate(params.attention));
   }
@@ -282,13 +324,16 @@ export async function listWorkspaceTrades(
       plannedR: trades.plannedR,
       actualR: trades.actualR,
       systemR: trades.systemR,
+      netPnlMinor: trades.netPnlMinor,
       traderOutcome: trades.traderOutcome,
       systemOutcome: trades.systemOutcome,
+      hasReviewNotes: sql<boolean>`${trades.reviewNotes} is not null`,
       actualResultMode: trades.actualResultMode,
       actualEntry: trades.actualEntry,
       actualInitialStop: trades.actualInitialStop,
       actualInitialRiskMinor: trades.actualInitialRiskMinor,
       tradingAccountName: tradingAccounts.name,
+      tradingAccountBaseCurrency: tradingAccounts.baseCurrency,
       tradingAccountIsArchived: tradingAccounts.isArchived,
       strategyVersionName: strategyVersions.name,
       strategyVersionNumber: strategyVersions.versionNumber,
@@ -387,6 +432,7 @@ export async function listWorkspaceTrades(
         symbol: row.symbol,
         direction: row.direction as TradeDirection,
         tradingAccountName: row.tradingAccountName,
+        tradingAccountBaseCurrency: row.tradingAccountBaseCurrency,
         strategyName: row.strategyVersionName,
         setupName: row.setupVersionName,
         strategyVersionNumber: row.strategyVersionNumber,
@@ -395,8 +441,10 @@ export async function listWorkspaceTrades(
         plannedR: row.plannedR,
         actualR: row.actualR,
         systemR: row.systemR,
+        netPnlMinor: row.netPnlMinor === null ? null : row.netPnlMinor.toString(),
         traderOutcome: row.traderOutcome as OutcomeValue | null,
         systemOutcome: row.systemOutcome as OutcomeValue | null,
+        hasReviewNotes: row.hasReviewNotes,
         closedBps,
         remainingBps: 10_000 - closedBps,
         realizedRToDate,

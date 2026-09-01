@@ -17,7 +17,12 @@ export function TradesViewNav({ view }: { readonly view: TradesView }) {
     const params = new URLSearchParams(searchParams.toString());
     params.set('view', nextView);
     params.delete('trade');
+    // Both Trade Details tab contracts: the retired five-section `?section=`
+    // and the workspace sheet's `?tab=`. Neither means anything without a
+    // selected Trade, and leaving one behind would seed the next Trade opened
+    // with a tab the reader never chose.
     params.delete('section');
+    params.delete('tab');
     if (nextView === 'calendar') {
       params.delete('cursor');
       params.delete('trail');
