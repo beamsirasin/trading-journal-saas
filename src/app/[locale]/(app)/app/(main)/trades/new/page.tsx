@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
+import { parseRecordingTiming } from '@/lib/trades/recording-timing';
 import {
   getActiveTradingAccount,
   getCurrentUserPreferences,
@@ -12,12 +13,14 @@ import { getTradeCreateOptions } from '@/server/dal/trades';
 import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { TradeCreateGate } from '@/components/trades/trade-create-gate';
+import { TradeRecordingModeSelection } from '@/components/trades/trade-recording-mode-selection';
 import { Button } from '@/components/ui/button';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
+type PageSearchParams = { timing?: string | string[] | undefined };
 
 export async function generateMetadata({
   params,
@@ -53,11 +56,27 @@ export async function generateMetadata({
  * The application shell, the `PageHeader` hierarchy and the Back action are
  * unchanged: this is an ordinary product page, not a full-screen environment
  * of its own.
+ *
+ * ONE ROUTE, TWO STEPS. `?timing=` decides which: absent or unrecognised shows
+ * the recording-mode choice, and a valid value shows the form in that mode.
+ * Putting the mode in the URL rather than in component state is what makes a
+ * refresh keep it, a deep link land on it, browser Back return to the choice,
+ * and a hand-edited value fail safely back to the choice instead of guessing
+ * at which situation the trader is in. The form itself is not duplicated —
+ * `TradeRecordingForm` remains the one implementation and simply receives the
+ * mode.
  */
-export default async function NewTradePage({ params }: { params: Promise<PageParams> }) {
-  const { locale } = await params;
+export default async function NewTradePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<PageParams>;
+  searchParams: Promise<PageSearchParams>;
+}) {
+  const [{ locale }, query] = await Promise.all([params, searchParams]);
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
+  const timing = parseRecordingTiming(query.timing);
   const [options, entitlement, preferences, activeAccount] = await Promise.all([
     getTradeCreateOptions(),
     getWorkspaceEntitlement(),
@@ -83,11 +102,25 @@ export default async function NewTradePage({ params }: { params: Promise<PagePar
   ]);
   const authorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
 
+  /*
+    The choice step is narrower than the form step, deliberately. `prose`
+    (48rem) keeps two decision cards as one focused region that the header sits
+    directly on top of, rather than a pair of cards adrift under a 72rem
+    heading; the form then gets the standard `default` page width it needs for
+    its two-column field grids. Both are existing container widths.
+  */
   return (
-    <Container width="default" className="flex min-w-0 flex-col gap-8 py-8">
+    <Container
+      width={timing === null ? 'prose' : 'default'}
+      className="flex min-w-0 flex-col gap-8 py-8"
+    >
       <PageHeader
         title={t('create.pageTitle')}
-        description={t('create.pageDescription')}
+        description={
+          timing === null
+            ? t('create.pageDescription')
+            : t(`create.mode.${timing}.headerDescription`)
+        }
         actions={
           <Button asChild variant="outline">
             <Link href="/app/trades">
@@ -97,13 +130,18 @@ export default async function NewTradePage({ params }: { params: Promise<PagePar
           </Button>
         }
       />
-      <TradeCreateGate
-        options={options}
-        canWrite={authorization.allowed}
-        writeBlockReason={authorization.allowed ? null : authorization.code}
-        activeTradingAccountId={activeAccount?.id ?? null}
-        timezone={preferences.timezone}
-      />
+      {timing === null ? (
+        <TradeRecordingModeSelection />
+      ) : (
+        <TradeCreateGate
+          options={options}
+          canWrite={authorization.allowed}
+          writeBlockReason={authorization.allowed ? null : authorization.code}
+          timing={timing}
+          activeTradingAccountId={activeAccount?.id ?? null}
+          timezone={preferences.timezone}
+        />
+      )}
     </Container>
   );
 }

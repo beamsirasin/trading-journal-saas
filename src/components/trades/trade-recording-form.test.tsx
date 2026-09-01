@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { RecordingTiming } from '@/lib/trades/recording-timing';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 
 import en from '../../../messages/en.json';
@@ -14,6 +16,11 @@ const pushMock = vi.fn();
 
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+  Link: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock('@/server/actions/trades', () => ({
@@ -39,12 +46,24 @@ const options = {
   strategies: [],
 } as const satisfies TradeCreateOptions;
 
-function renderForm(locale: 'en' | 'th' = 'en') {
+/*
+  THE RECORDING MODE IS AN INPUT NOW.
+
+  It used to be local state behind an in-form toggle, so a test switched modes
+  by clicking "After Trade". The choice is its own step and travels in the URL,
+  so the form receives it — which is why these render in a mode rather than
+  clicking into one.
+*/
+function renderForm(locale: 'en' | 'th' = 'en', timing: RecordingTiming = 'at_entry') {
   return render(
     <NextIntlClientProvider locale={locale} messages={locale === 'en' ? en : th}>
-      <TradeRecordingForm options={options} timezone="Asia/Bangkok" />
+      <TradeRecordingForm options={options} timing={timing} timezone="Asia/Bangkok" />
     </NextIntlClientProvider>,
   );
+}
+
+function renderAfterTrade(locale: 'en' | 'th' = 'en') {
+  return renderForm(locale, 'after_trade');
 }
 
 function fillIdentityAndPricePlan() {
@@ -55,7 +74,6 @@ function fillIdentityAndPricePlan() {
 }
 
 function chooseAfterTrade() {
-  fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
   fillIdentityAndPricePlan();
   fireEvent.change(screen.getByLabelText('Exited At'), {
     target: { value: '2026-08-23T12:00' },
@@ -76,13 +94,12 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
   it('defaults to At Entry and renders only one short panel at a time with the CTA always reachable', () => {
     renderForm();
 
+    // The mode was chosen on the previous step, so the form states it rather
+    // than asking again.
+    expect(screen.getByText('At Entry')).toBeVisible();
     expect(
-      screen.getByRole('heading', { name: 'When are you recording this trade?' }),
-    ).toBeVisible();
-    expect(screen.getByRole('button', { name: 'At Entry' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+      screen.queryByRole('heading', { name: 'When are you recording this trade?' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText('Symbol')).toBeVisible();
     expect(screen.queryByText('Actual Result')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Result' })).not.toBeInTheDocument();
@@ -99,7 +116,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
   });
 
   it('keeps System Plan and Actual Result basis independent in After Trade', () => {
-    renderForm();
+    renderAfterTrade();
     chooseAfterTrade();
 
     expect(screen.getByText('Actual Result')).toBeVisible();
@@ -154,7 +171,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
         recordedRetrospectively: true,
       },
     });
-    renderForm();
+    renderAfterTrade();
     chooseAfterTrade();
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
@@ -179,7 +196,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
 
   it('supports a Price Plan with Money Actual without double weighting P&L', async () => {
     createCompletedTradeActionMock.mockResolvedValue({ ok: true, data: { tradeId: 'trade-id' } });
-    renderForm();
+    renderAfterTrade();
     chooseAfterTrade();
     fireEvent.click(screen.getByRole('button', { name: 'Money' }));
     fireEvent.change(screen.getByLabelText('Initial Risk'), { target: { value: '10' } });
@@ -201,8 +218,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     'supports a Money Plan with %s Actual',
     async (resultBasis) => {
       createCompletedTradeActionMock.mockResolvedValue({ ok: true, data: { tradeId: 'trade-id' } });
-      renderForm();
-      fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+      renderAfterTrade();
       fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
       fireEvent.click(screen.getByRole('button', { name: 'Short' }));
       fireEvent.change(screen.getByLabelText('Entered At'), {
@@ -261,7 +277,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
 
   it('maps expanded partial exits to canonical bps only when coverage totals 100%', async () => {
     createCompletedTradeActionMock.mockResolvedValue({ ok: true, data: { tradeId: 'trade-id' } });
-    renderForm();
+    renderAfterTrade();
     chooseAfterTrade();
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
@@ -281,7 +297,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
   });
 
   it('disables the Target preset until the selected System Plan has a target', () => {
-    renderForm();
+    renderAfterTrade();
     chooseAfterTrade();
 
     const systemOutcome = screen.getByRole('combobox', { name: 'System Outcome' });
@@ -294,31 +310,32 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     expect(screen.getByRole('option', { name: 'Target reached' })).toBeEnabled();
   });
 
-  it('clears timing-specific Actual and System fields when switching back to At Entry', () => {
-    renderForm();
+  it('starts pristine in each mode, which is what the old in-form reset guaranteed', () => {
+    /*
+      The form used to clear every timing-specific field when the toggle
+      flipped. It cannot flip any more — changing the mode leaves the route,
+      so the next form mounts fresh. Same guarantee, no partial-reset path to
+      keep correct: an At Entry form carries none of an After Trade draft.
+    */
+    const { unmount } = renderAfterTrade();
     chooseAfterTrade();
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '101' } });
-    fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '91' } });
     fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '111' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'System Outcome' }), {
       target: { value: 'custom' },
     });
-    fireEvent.change(screen.getByLabelText('System Exit Price'), { target: { value: '115' } });
+    unmount();
 
-    fireEvent.click(screen.getByRole('button', { name: 'At Entry' }));
-    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Result' }));
-
-    expect(screen.getByLabelText('Actual Entry')).toHaveValue('');
-    expect(screen.getByLabelText('Exit Price')).toHaveValue('');
-    expect(screen.getByRole('combobox', { name: 'System Outcome' })).toHaveValue('pending');
+    renderForm();
+    expect(screen.getByLabelText('Symbol')).toHaveValue('');
+    expect(screen.getByLabelText('Entry')).toHaveValue('');
+    // At Entry has no Result panel at all, so none of those fields exists.
+    expect(screen.queryByRole('button', { name: 'Result' })).not.toBeInTheDocument();
   });
 
   it('renders the frozen Thai timing and result terminology', () => {
-    renderForm('th');
-    expect(screen.getByRole('heading', { name: 'คุณกำลังบันทึกเทรดนี้เมื่อไร?' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'ตอนเข้าเทรด' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'หลังจบเทรด' }));
+    renderAfterTrade('th');
+    expect(screen.getByText('หลังจบเทรด')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'ผลลัพธ์' }));
     expect(screen.getByText('ผลลัพธ์จริง')).toBeVisible();
     expect(screen.getByText('คำนวณผลจริงจาก')).toBeVisible();
@@ -340,27 +357,39 @@ describe('TradeRecordingForm — current design system', () => {
     return within(screen.getByRole('group', { name: groupName })).getAllByRole('button');
   }
 
-  it('keeps the At Entry / After Trade control, with its existing behaviour', () => {
+  it('states the recording mode instead of offering to switch it mid-form', () => {
+    const { container, unmount } = renderForm();
+
+    // The mode is identified, and it is a statement rather than a control: a
+    // form already carrying a plan must not be able to change what it means.
+    expect(container.querySelector('[data-recording-mode="at_entry"]')).not.toBeNull();
+    expect(screen.getByText('At Entry')).toBeVisible();
+    expect(screen.queryByRole('group', { name: /When are you recording/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'After Trade' })).not.toBeInTheDocument();
+
+    unmount();
+    renderAfterTrade();
+    expect(screen.getByText('After Trade')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'At Entry' })).not.toBeInTheDocument();
+  });
+
+  it('offers one way back to the choice, straight through while the form is empty', () => {
     renderForm();
+    const change = screen.getByRole('link', { name: 'Change' });
+    expect(change).toHaveAttribute('href', '/app/trades/new');
+  });
 
-    // Two states, no third option, no method-selection step and no Continue.
-    const timing = segments('When are you recording this trade?');
-    expect(timing.map((button) => button.textContent)).toEqual(['At Entry', 'After Trade']);
-    expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+  it('asks before discarding a draft on the way back to the choice', () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
 
-    expect(screen.getByRole('button', { name: 'At Entry' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
-    expect(screen.getByRole('button', { name: 'After Trade' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'At Entry' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    // Once something has been entered the same control asks first, because
+    // leaving the route discards the draft.
+    const change = screen.getByRole('button', { name: 'Change' });
+    fireEvent.click(change);
+    expect(
+      screen.getByRole('alertdialog', { name: 'Change how you are recording this trade?' }),
+    ).toBeVisible();
   });
 
   it('keeps the At Entry panels: Trade, Setup, Entry Context', () => {
@@ -376,8 +405,7 @@ describe('TradeRecordingForm — current design system', () => {
   });
 
   it('keeps the After Trade panels: Trade, Result, Setup, Entry Context', () => {
-    renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    renderAfterTrade();
     const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
     expect(
       within(nav)
@@ -388,15 +416,15 @@ describe('TradeRecordingForm — current design system', () => {
 
   it('dresses every segmented control in the shared raised-segment language', () => {
     renderForm();
-    const [atEntry, afterTrade] = segments('When are you recording this trade?');
+    const [price, money] = segments('Plan by');
 
     // The selected segment lifts to the shared raised surface with the shared
     // control shadow — the same treatment the shared SegmentedControl gives
     // the Dashboard filters.
-    expect(atEntry?.className).toContain('bg-surface-raised');
-    expect(atEntry?.className).toContain('shadow-control');
-    expect(afterTrade?.className).toContain('text-muted-foreground');
-    expect(afterTrade?.className).not.toContain('bg-surface-raised');
+    expect(price?.className).toContain('bg-surface-raised');
+    expect(price?.className).toContain('shadow-control');
+    expect(money?.className).toContain('text-muted-foreground');
+    expect(money?.className).not.toContain('bg-surface-raised');
   });
 
   it('uses the same language for the inner panel nav', () => {
@@ -428,7 +456,6 @@ describe('TradeRecordingForm — current design system', () => {
   it('gives every control a visible focus ring and honours reduced motion', () => {
     renderForm();
     const controls = [
-      screen.getByRole('button', { name: 'At Entry' }),
       screen.getByRole('button', { name: 'Long' }),
       within(screen.getByRole('navigation', { name: 'New Trade sections' })).getByRole('button', {
         name: 'Setup',
@@ -444,8 +471,7 @@ describe('TradeRecordingForm — current design system', () => {
   });
 
   it('keeps the panel nav usable on a phone and the labels intact', () => {
-    renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    renderAfterTrade();
     const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
     // Four panels wrap to two rows on a narrow screen rather than being
     // squeezed into four columns; every label stays spelled out.
@@ -480,6 +506,7 @@ describe('TradeRecordingForm — current design system', () => {
         <NextIntlClientProvider locale="en" messages={en}>
           <TradeRecordingForm
             options={multi}
+            timing="at_entry"
             activeTradingAccountId={activeTradingAccountId}
             timezone="Asia/Bangkok"
           />
@@ -526,33 +553,38 @@ describe('TradeRecordingForm — current design system', () => {
   });
 
   it('says Confidence means confidence before entry, on both timings', () => {
-    renderForm();
+    const { unmount } = renderForm();
     fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
+    unmount();
 
     // After Trade keeps the SAME historical field — it never becomes
     // confidence about the result, and it is never required.
-    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    renderAfterTrade();
     fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
+    expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
     expect(screen.getByText('Recorded retrospectively')).toBeVisible();
   });
 
   it('names the primary action for what it does, on each timing', () => {
-    renderForm();
+    const { unmount } = renderForm();
     const openTrade = screen.getByRole('button', { name: 'Open Trade' });
     expect(openTrade).toHaveAttribute('type', 'submit');
     // The product's current primary button, not a one-off.
     expect(openTrade).toHaveAttribute('data-variant', 'default');
+    expect(screen.queryByRole('button', { name: 'Save Completed Trade' })).not.toBeInTheDocument();
+    unmount();
 
-    fireEvent.click(screen.getByRole('button', { name: 'After Trade' }));
+    renderAfterTrade();
     expect(screen.getByRole('button', { name: 'Save Completed Trade' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Open Trade' })).not.toBeInTheDocument();
   });
 
   it('translates the migrated copy', () => {
     renderForm('th');
-    expect(screen.getByRole('heading', { name: 'คุณกำลังบันทึกเทรดนี้เมื่อไร?' })).toBeVisible();
+    expect(screen.getByText('กำลังบันทึก:')).toBeVisible();
+    expect(screen.getByText('ตอนเข้าเทรด')).toBeVisible();
   });
 });

@@ -1740,7 +1740,30 @@
           "invalidField": "This value is not valid."
         }
       },
-      "backToTrades": "Back to Trades"
+      "backToTrades": "Back to Trades",
+      "mode": {
+        "question": "When are you recording this trade?",
+        "helper": "Choose the option that matches where you are in the trade.",
+        "recordingLabel": "Recording:",
+        "change": "Change",
+        "at_entry": {
+          "title": "At Entry",
+          "description": "Record the trade before the outcome is known.",
+          "hint": "Plan · Risk · Confidence",
+          "headerDescription": "Recording at Entry."
+        },
+        "after_trade": {
+          "title": "After Trade",
+          "description": "Record a trade that has already finished.",
+          "hint": "Plan · Result · Review",
+          "headerDescription": "Recording After Trade."
+        },
+        "changeConfirm": {
+          "title": "Change how you are recording this trade?",
+          "description": "Going back to the choice discards what you have entered so far. The two modes record different things, so nothing is carried across.",
+          "continue": "Discard and change"
+        }
+      }
     },
     "prerequisite": {
       "noAccountTitle": "No active Trading Account",

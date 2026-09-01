@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { composePlannedR, composeTraderCloseV2 } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
 import { isConfidenceStep, type ConfidenceStep } from '@/lib/trades/constants';
+import type { RecordingTiming } from '@/lib/trades/recording-timing';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction, createTradeAction } from '@/server/actions/trades';
 import type { TradeCreateOptions } from '@/server/dal/trades';
@@ -24,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 
 import { NativeSelect } from './trade-action-form';
 import { TradeConfidenceControl } from './trade-confidence-control';
@@ -36,7 +37,6 @@ import {
 import { formatR } from './trade-format';
 import { PlanField } from './trade-plan-field';
 
-type Timing = 'at_entry' | 'after_trade';
 type Basis = 'price' | 'money';
 type Panel = 'trade' | 'result' | 'setup' | 'context';
 type Direction = '' | 'long' | 'short';
@@ -172,6 +172,103 @@ function TextField({
   );
 }
 
+/** The pristine draft, in one place, so both the initial state and the touched-check read from it. */
+function emptyValues(tradingAccountId: string): Values {
+  return {
+    tradingAccountId,
+    symbol: '',
+    direction: '',
+    enteredAt: '',
+    exitedAt: '',
+    plannedEntry: '',
+    plannedStop: '',
+    plannedTarget: '',
+    plannedPositionSize: '',
+    plannedRisk: '',
+    plannedReward: '',
+    actualEntry: '',
+    actualStop: '',
+    actualRisk: '',
+    actualPositionSize: '',
+    simpleExit: '',
+    strategyId: '',
+    setupId: '',
+    timeframe: '',
+    session: '',
+    confidence: '',
+    confirmationNotes: '',
+    tradingviewUrl: '',
+    notes: '',
+    customSystemExit: '',
+    customSystemR: '',
+  };
+}
+
+/**
+ * The one way back to the recording-mode choice.
+ *
+ * A PLAIN LINK WHILE THE FORM IS EMPTY, AND A QUESTION ONCE IT IS NOT.
+ * Returning to the choice leaves this route, so the draft goes with it — that
+ * is the safe reset the old in-form toggle had to perform by hand, and it is
+ * now structural. But a reset the reader did not expect is just lost work, so
+ * once anything has been entered the same control asks first, through the
+ * dialog primitive this form already uses.
+ *
+ * No draft is persisted across the change. Carrying a half-filled At Entry
+ * plan into an After Trade form would mean deciding which of its fields still
+ * mean anything, and that is a product decision, not something to improvise.
+ */
+function ChangeModeControl({ isDirty }: { isDirty: boolean }) {
+  const t = useTranslations('trades');
+  const tMode = useTranslations('trades.create.mode');
+  const router = useRouter();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  if (!isDirty) {
+    return (
+      <Link
+        href="/app/trades/new"
+        data-recording-mode-change=""
+        className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+      >
+        {tMode('change')}
+      </Link>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        data-recording-mode-change=""
+        onClick={() => setConfirmOpen(true)}
+        className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+      >
+        {tMode('change')}
+      </button>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tMode('changeConfirm.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{tMode('changeConfirm.description')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('lifecycle.common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmOpen(false);
+                router.push('/app/trades/new');
+              }}
+            >
+              {tMode('changeConfirm.continue')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 function parseConfidence(value: string): ConfidenceStep | undefined {
   const parsed = Number.parseInt(value, 10);
   return isConfidenceStep(parsed) ? parsed : undefined;
@@ -183,10 +280,23 @@ function outcomeKey(value: 'win' | 'loss' | 'break_even') {
 
 export function TradeRecordingForm({
   options,
+  timing,
   activeTradingAccountId = null,
   timezone,
 }: {
   options: TradeCreateOptions;
+  /**
+   * WHICH SITUATION THIS FORM IS RECORDING, CHOSEN BEFORE IT MOUNTED.
+   *
+   * It used to be local state behind a segmented toggle at the top of the
+   * form, which meant a half-filled form could have its meaning changed
+   * underneath it. The choice is now its own step and travels in the URL, so
+   * for this form it is a fixed input: the panels, the submit action and the
+   * validation all derive from it, and nothing here can change it. Changing it
+   * is a navigation back to the choice, which discards the draft — see
+   * `ChangeModeControl`.
+   */
+  timing: RecordingTiming;
   /**
    * The workspace's persisted active Account, used ONLY as this field's
    * starting value. The field itself is unchanged and still decides which
@@ -197,10 +307,10 @@ export function TradeRecordingForm({
 }) {
   const t = useTranslations('trades');
   const r = useTranslations('trades.create.recording');
+  const tMode = useTranslations('trades.create.mode');
   const router = useRouter();
   const hydrated = useIsHydrated();
   const [mutationKey] = useState(generateId);
-  const [timing, setTiming] = useState<Timing>('at_entry');
   const [panel, setPanel] = useState<Panel>('trade');
   const [planBasis, setPlanBasis] = useState<Basis>('price');
   const [actualBasis, setActualBasis] = useState<Basis>('price');
@@ -235,34 +345,26 @@ export function TradeRecordingForm({
       ? activeTradingAccountId
       : undefined) ??
     (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
-  const [values, setValues] = useState<Values>({
-    tradingAccountId: initialAccount,
-    symbol: '',
-    direction: '',
-    enteredAt: '',
-    exitedAt: '',
-    plannedEntry: '',
-    plannedStop: '',
-    plannedTarget: '',
-    plannedPositionSize: '',
-    plannedRisk: '',
-    plannedReward: '',
-    actualEntry: '',
-    actualStop: '',
-    actualRisk: '',
-    actualPositionSize: '',
-    simpleExit: '',
-    strategyId: '',
-    setupId: '',
-    timeframe: '',
-    session: '',
-    confidence: '',
-    confirmationNotes: '',
-    tradingviewUrl: '',
-    notes: '',
-    customSystemExit: '',
-    customSystemR: '',
-  });
+  const pristine = useMemo(() => emptyValues(initialAccount), [initialAccount]);
+  const [values, setValues] = useState<Values>(pristine);
+
+  /*
+    HAS THE TRADER ACTUALLY PUT ANYTHING IN?
+
+    Compared against the pristine draft rather than tracked with a flag, so a
+    field typed into and then cleared again correctly reads as untouched, and a
+    field added to `Values` later is covered without anyone remembering to add
+    it here. The seeded Trading Account is part of the pristine draft, so
+    arriving on the form does not by itself count as a change.
+
+    Its only job is to decide whether leaving for the mode choice needs to be
+    acknowledged — it gates nothing else.
+  */
+  const isDirty =
+    emotionKeys.length > 0 ||
+    Object.values(conditionMet).some(Boolean) ||
+    exits.some((exit) => exit.value !== '' || exit.exitedAt !== '') ||
+    (Object.keys(pristine) as (keyof Values)[]).some((key) => values[key] !== pristine[key]);
 
   const defaultEnteredAt = hydrated
     ? instantToDatetimeLocal(new Date().toISOString(), timezone)
@@ -289,32 +391,17 @@ export function TradeRecordingForm({
     });
   };
 
-  function changeTiming(next: Timing) {
-    setTiming(next);
-    setPanel('trade');
-    setErrors({});
-    setFormError(null);
-    setAdvancedOpening(false);
-    setOpeningBasis(planBasis);
-    setActualBasis('price');
-    setPartialExits(false);
-    setSystemChoice('pending');
-    setExits([
-      { id: generateId(), closedPercent: '50', value: '', exitedAt: '' },
-      { id: generateId(), closedPercent: '50', value: '', exitedAt: '' },
-    ]);
-    setValues((current) => ({
-      ...current,
-      exitedAt: '',
-      actualEntry: '',
-      actualStop: '',
-      actualRisk: '',
-      actualPositionSize: '',
-      simpleExit: '',
-      customSystemExit: '',
-      customSystemR: '',
-    }));
-  }
+  /*
+    THE SAFE-RESET THAT USED TO LIVE HERE IS NOW STRUCTURAL.
+
+    `changeTiming` cleared every field that stops meaning anything when the
+    recording situation changes — the exit, the actual opening, the System
+    choice, the exit legs. It existed because the toggle could flip a live
+    form. It cannot any more: changing the mode leaves this route for the
+    choice step, so the form unmounts and the next one mounts pristine. The
+    guarantee is the same and there is no longer a partial-reset path to keep
+    correct alongside it.
+  */
 
   function changePlanBasis(next: Basis) {
     setPlanBasis(next);
@@ -741,23 +828,27 @@ export function TradeRecordingForm({
       without stretching a text input across a monitor.
     */
     <div className="flex w-full min-w-0 flex-col gap-6">
-      <section aria-labelledby="recording-timing-title" className="grid gap-3">
-        <h2 id="recording-timing-title" className="text-card-title">
-          {r('timingQuestion')}
-        </h2>
-        {/* Capped on desktop: two segments spanning the full page column would
-            read as a pair of banners rather than one control. */}
-        <Segmented
-          className="sm:max-w-sm"
-          label={r('timingQuestion')}
-          value={timing}
-          options={[
-            { value: 'at_entry', label: r('atEntry') },
-            { value: 'after_trade', label: r('afterTrade') },
-          ]}
-          onChange={changeTiming}
-        />
-      </section>
+      {/*
+        WHAT REPLACED THE TOGGLE: a statement, not a control.
+
+        It says which of the two situations this form is recording, so the
+        answer stays on screen while the trader works, and offers one quiet way
+        back to the choice. It is deliberately not a switch — the whole point
+        of moving the decision to its own step was that a form already carrying
+        a plan should not be able to change what it means.
+      */}
+      <div
+        data-recording-mode={timing}
+        className="border-border bg-card flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border px-4 py-3"
+      >
+        <p className="min-w-0 text-sm">
+          <span className="text-muted-foreground">{tMode('recordingLabel')} </span>
+          <span className="text-foreground font-semibold">
+            {timing === 'at_entry' ? r('atEntry') : r('afterTrade')}
+          </span>
+        </p>
+        <ChangeModeControl isDirty={isDirty} />
+      </div>
 
       <div
         role="status"

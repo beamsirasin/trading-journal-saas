@@ -2,6 +2,7 @@ import { CircleAlert, Landmark } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { MutationDenialReason } from '@/lib/entitlements/resolve';
+import type { RecordingTiming } from '@/lib/trades/recording-timing';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 import { EmptyState } from '@/components/product/empty-state';
 import { TradeRecordingForm } from '@/components/trades/trade-recording-form';
@@ -12,12 +13,15 @@ export function TradeCreateGate({
   options,
   canWrite,
   writeBlockReason,
+  timing,
   activeTradingAccountId,
   timezone,
 }: {
   options: TradeCreateOptions;
   canWrite: boolean;
   writeBlockReason: MutationDenialReason | null;
+  /** The recording situation chosen on the previous step, resolved from the URL. */
+  timing: RecordingTiming;
   /** The workspace's persisted active Account, used only to seed the form's own field. */
   activeTradingAccountId?: string | null;
   timezone: string;
@@ -55,6 +59,7 @@ export function TradeCreateGate({
   return (
     <TradeRecordingForm
       options={options}
+      timing={timing}
       activeTradingAccountId={activeTradingAccountId ?? null}
       timezone={timezone}
     />
