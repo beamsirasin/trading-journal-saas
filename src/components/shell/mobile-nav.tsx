@@ -15,6 +15,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 
+import { LogTradeAction } from './log-trade-action';
 import { SidebarNav } from './sidebar-nav';
 
 /**
@@ -234,6 +235,16 @@ export function MobileNav() {
           again. Settings left for the same menu, for the same reason.
         */}
         <div className="pb-safe flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-4">
+          {/*
+            The same action as the rail, in the same place in the hierarchy —
+            above the routes — and closing the drawer through the same
+            `onNavigate` every row already uses. There is no mobile-specific
+            create flow: this is one link to one route.
+          */}
+          <div className="mb-2">
+            <LogTradeAction variant="drawer" onNavigate={close} />
+          </div>
+
           <SidebarNav variant="drawer" onNavigate={close} />
 
           {/*

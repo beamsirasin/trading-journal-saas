@@ -325,17 +325,27 @@ function NavRow({
  * are in register because the flyout's icon column is the rail width less its
  * own 0.5rem insets, which centres on the same line the grid already puts the
  * real icon on.
+ *
+ * EXPORTED for the rail's one non-navigation occupant, the Log a trade action
+ * (`LogTradeAction`). It reveals its label the same way a route does, and
+ * sharing this component rather than mirroring its geometry is what guarantees
+ * the two can never drift out of register on the same rail. `tone` is the only
+ * concession: the action's surface is `--primary`, not the navigation-active
+ * token, so the pill it continues is a different colour even though every
+ * dimension is identical.
  */
-function CollapsedFlyout({
+export function CollapsedFlyout({
   at,
   label,
   Icon,
   active,
+  tone = 'nav',
 }: {
   at: { top: number; left: number };
   label: string;
   Icon: NavItem['Icon'];
   active: boolean;
+  tone?: 'nav' | 'primary';
 }) {
   return (
     <span
@@ -366,13 +376,21 @@ function CollapsedFlyout({
         // a hand-matched constant that could drift.
         'bg-sidebar shadow-popover',
         'animate-[nav-flyout-reveal_var(--motion-menu-enter-duration)_var(--motion-ease-standard)]',
-        active ? `${ACTIVE_LABEL} font-semibold` : 'text-foreground font-medium',
+        tone === 'primary'
+          ? 'text-primary-foreground font-semibold'
+          : active
+            ? `${ACTIVE_LABEL} font-semibold`
+            : 'text-foreground font-medium',
       )}
     >
       <span
         className={cn(
           'absolute inset-0 rounded-lg',
-          active ? 'bg-[var(--shell-nav-active-surface)]' : 'bg-accent/70',
+          tone === 'primary'
+            ? 'bg-primary'
+            : active
+              ? 'bg-[var(--shell-nav-active-surface)]'
+              : 'bg-accent/70',
         )}
       />
       <span className="relative flex items-center justify-center">

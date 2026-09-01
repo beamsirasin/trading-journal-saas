@@ -103,11 +103,15 @@ describe('MobileNav — opening and closing', () => {
     await user.click(screen.getByRole('button', { name: OPEN_MENU }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
-    // The routes and nothing else. The wordmark that used to be counted here
-    // moved out when the drawer was anchored below the global header, which
-    // keeps its own copy visible — see the wordmark case below.
-    expect(within(dialog).getAllByRole('link')).toHaveLength(NAV_ITEMS.length);
+    const nav = within(dialog).getByRole('navigation', { name: 'Main' });
+    expect(nav).toBeInTheDocument();
+    // The routes and nothing else INSIDE the landmark. The wordmark that used
+    // to be counted here moved out when the drawer was anchored below the
+    // global header, which keeps its own copy visible — see the wordmark case
+    // below. Log a trade is an ACTION and deliberately sits above the landmark
+    // rather than in it, so it is asserted separately.
+    expect(within(nav).getAllByRole('link')).toHaveLength(NAV_ITEMS.length);
+    expect(within(dialog).getAllByRole('link')).toHaveLength(NAV_ITEMS.length + 1);
   });
 
   /**

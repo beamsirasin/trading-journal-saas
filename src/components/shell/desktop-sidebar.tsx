@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 
 import { SIDEBAR_ELEMENT_ID } from './constants';
+import { LogTradeAction } from './log-trade-action';
 import { SidebarNav } from './sidebar-nav';
 
 /**
@@ -86,6 +87,19 @@ export function DesktopSidebar({ expanded }: { expanded: boolean }) {
         The rail is simply a narrower window onto the same layout.
       */}
       <div className="relative flex min-h-0 w-[var(--shell-nav-open-width)] flex-1 flex-col overflow-x-hidden overflow-y-auto py-3">
+        {/*
+          THE ONE ACTION ON THE RAIL, ABOVE THE ROUTES.
+
+          Outside the navigation landmark on purpose: logging a trade is what
+          the trader does, not a place they go, and a sixth item in the list
+          would read as a sixth section. It uses the rows' own two-cell grid,
+          so the icon lands on the established centre line and the panel's
+          width is untouched — see `LogTradeAction`.
+        */}
+        <div className="mb-2">
+          <LogTradeAction variant="sidebar" collapsed={!expanded} />
+        </div>
+
         {/*
           `collapsed` is what turns each row's clipped label into a hover/focus
           flyout. It is passed rather than read from a CSS var because the

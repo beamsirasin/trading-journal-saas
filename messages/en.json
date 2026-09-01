@@ -56,7 +56,8 @@
         "prop": "Prop",
         "backtest": "Backtest"
       }
-    }
+    },
+    "logTrade": "Log a trade"
   },
   "footer": {
     "tagline": "A trading journal that separates strategy edge from execution.",
