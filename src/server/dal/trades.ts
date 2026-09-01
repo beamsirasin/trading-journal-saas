@@ -188,6 +188,15 @@ export interface ListWorkspaceTradesParams {
   readonly cursor?: string | null;
   /** Optional trusted/read-scoped Account identity; workspace scope still applies independently. */
   readonly tradingAccountId?: string;
+  /**
+   * Optional canonical execution-lifecycle scope — the Trades workspace's
+   * top-level All / Open / Closed population (`lib/trades/state-filter.ts`).
+   * An ordinary equality on `trades.status`, the product's one authority on
+   * where a Trade is in its life; no predicate is redefined here, and
+   * `planned`/`canceled` are excluded from `open`/`closed` simply by being
+   * different values of it.
+   */
+  readonly status?: TradeStatus;
   readonly systemStatus?: SystemStatus;
   /**
    * Optional Strategy / Setup / Strategy Version scope, matching the
@@ -271,6 +280,67 @@ function decodeCursor(cursor: string): DecodedCursor | null {
 export const occurredAtExpr = sql<Date>`coalesce(${trades.exitedAt}, ${trades.enteredAt}, ${trades.createdAt})`;
 
 /**
+ * Every scope condition the Trade list applies, EXCEPT the keyset cursor.
+ *
+ * Extracted so `countWorkspaceTrades` below can describe the same population
+ * the list is paging through without restating a single predicate. A count
+ * that drifted from its own list is how a workspace ends up reporting "12
+ * Trades" above a list of nine.
+ */
+function tradeScopeConditions(workspaceId: string, params: ListWorkspaceTradesParams): SQL[] {
+  const conditions: SQL[] = [
+    eq(trades.workspaceId, workspaceId) as SQL,
+    isNull(trades.deletedAt) as SQL,
+  ];
+  if (params.tradingAccountId !== undefined) {
+    conditions.push(eq(trades.tradingAccountId, params.tradingAccountId) as SQL);
+  }
+  if (params.status !== undefined) conditions.push(eq(trades.status, params.status) as SQL);
+  if (params.systemStatus !== undefined) {
+    conditions.push(eq(trades.systemStatus, params.systemStatus) as SQL);
+  }
+  if (params.strategyId !== undefined) {
+    conditions.push(eq(trades.strategyId, params.strategyId) as SQL);
+  }
+  if (params.setupId !== undefined) conditions.push(eq(trades.setupId, params.setupId) as SQL);
+  if (params.strategyVersionId !== undefined) {
+    conditions.push(eq(trades.strategyVersionId, params.strategyVersionId) as SQL);
+  }
+  if (params.attention !== undefined) {
+    conditions.push(tradeAttentionPredicate(params.attention));
+  }
+  if (params.journalDateRange !== undefined) {
+    conditions.push(
+      sql`${occurredAtExpr} >= ${params.journalDateRange.start.toISOString()}::timestamptz`,
+      sql`${occurredAtExpr} < ${params.journalDateRange.end.toISOString()}::timestamptz`,
+    );
+  }
+  return conditions;
+}
+
+/**
+ * How many Trades the given scope contains, in the caller's active workspace.
+ *
+ * A COUNT, NOT A METRIC. It answers "how many rows is this workspace showing",
+ * which the paged list cannot answer for itself, and it is used for exactly
+ * one thing: the Trades summary card when the selected population is not the
+ * settled one canonical analytics measures. It computes no money, no R, and no
+ * rate — every one of those still comes from the analytics payload
+ * (CLAUDE.md section 6).
+ */
+export async function countWorkspaceTrades(
+  params: ListWorkspaceTradesParams = {},
+): Promise<number> {
+  const { workspaceId } = await getActiveWorkspaceContext();
+  const db = getDb();
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(trades)
+    .where(and(...tradeScopeConditions(workspaceId, params)));
+  return row?.count ?? 0;
+}
+
+/**
  * Every non-deleted Trade in the caller's active workspace, newest
  * `occurredAt` first, deterministically tie-broken by `id` (UUIDv7 sorts
  * chronologically as a secondary key too). One query with three inner joins
@@ -286,27 +356,7 @@ export async function listWorkspaceTrades(
   const limit = clampPageSize(params.limit);
   const cursor = params.cursor ? decodeCursor(params.cursor) : null;
 
-  const conditions = [eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)];
-  if (params.tradingAccountId !== undefined) {
-    conditions.push(eq(trades.tradingAccountId, params.tradingAccountId));
-  }
-  if (params.systemStatus !== undefined) {
-    conditions.push(eq(trades.systemStatus, params.systemStatus));
-  }
-  if (params.strategyId !== undefined) conditions.push(eq(trades.strategyId, params.strategyId));
-  if (params.setupId !== undefined) conditions.push(eq(trades.setupId, params.setupId));
-  if (params.strategyVersionId !== undefined) {
-    conditions.push(eq(trades.strategyVersionId, params.strategyVersionId));
-  }
-  if (params.attention !== undefined) {
-    conditions.push(tradeAttentionPredicate(params.attention));
-  }
-  if (params.journalDateRange !== undefined) {
-    conditions.push(
-      sql`${occurredAtExpr} >= ${params.journalDateRange.start.toISOString()}::timestamptz`,
-      sql`${occurredAtExpr} < ${params.journalDateRange.end.toISOString()}::timestamptz`,
-    );
-  }
+  const conditions = tradeScopeConditions(workspaceId, params);
   if (cursor !== null) {
     conditions.push(
       sql`(${occurredAtExpr}, ${trades.id}) < (${cursor.occurredAt}::timestamptz, ${cursor.tradeId}::uuid)`,

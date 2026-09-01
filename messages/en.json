@@ -1884,6 +1884,9 @@
         },
         "winRate": {
           "label": "Win Rate"
+        },
+        "unavailable": {
+          "open_positions": "Not settled yet"
         }
       },
       "result": {
@@ -2025,6 +2028,12 @@
           "entryPrice": "{direction} at {price}",
           "exit": "Exit {sequence} · {percent}%"
         }
+      },
+      "state": {
+        "label": "Trade population",
+        "all": "All Trades",
+        "open": "Open Trades",
+        "closed": "Closed Trades"
       }
     }
   },

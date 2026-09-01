@@ -5,6 +5,7 @@ import type { DashboardPageData } from '@/lib/dashboard/page-data';
 import {
   composeTradesSummary,
   type TradesSummaryModel,
+  type TradesSummaryScope,
   type TradesSummaryValue,
 } from '@/lib/trades/workspace-summary';
 import { cn } from '@/lib/utils';
@@ -37,13 +38,16 @@ const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
  */
 export function TradesSummaryRow({
   data,
+  scope,
   className,
 }: {
   data: DashboardPageData;
+  /** Which population is selected. Omitted means the settled one — see `TradesSummaryScope`. */
+  scope?: TradesSummaryScope;
   className?: string;
 }) {
   const t = useTranslations('trades.workspace.summary');
-  const models = composeTradesSummary(data);
+  const models = composeTradesSummary(data, scope);
 
   return (
     <section aria-labelledby="trades-summary-heading" className={cn('min-w-0', className)}>
@@ -89,9 +93,13 @@ function SummaryCard({ model }: { model: TradesSummaryModel }) {
  * `0.00R` over a population that does not exist is the one thing a journal
  * must never do (CLAUDE.md §6).
  *
- * The unavailable reasons resolve against the Dashboard's existing
+ * The canonical unavailable reasons resolve against the Dashboard's existing
  * `dashboard.real.unavailable.*` vocabulary rather than a second copy of the
- * same sentences under this page's namespace.
+ * same sentences under this page's namespace. The one reason this PAGE owns —
+ * "these are open positions" — is resolved from its own namespace first,
+ * because it is a fact about the question the workspace is asking rather than
+ * about a metric, and it has no business being added to the Dashboard's
+ * vocabulary.
  */
 function SummaryValue({ value }: { value: TradesSummaryValue }) {
   const t = useTranslations('trades.workspace.summary');
@@ -110,7 +118,9 @@ function SummaryValue({ value }: { value: TradesSummaryValue }) {
       ? t('empty')
       : value.status === 'error'
         ? tReal('unavailable.data_integrity_error')
-        : tReal(`unavailable.${value.reason}`);
+        : value.reason === 'open_positions'
+          ? t('unavailable.open_positions')
+          : tReal(`unavailable.${value.reason}`);
 
   return <span className="text-muted-foreground text-sm leading-snug">{text}</span>;
 }

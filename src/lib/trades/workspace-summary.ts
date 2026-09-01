@@ -25,14 +25,22 @@ import { formatMoney, fromMinorUnits, type CurrencyCode } from '@/lib/money';
  * Nothing is summed, averaged, or re-rounded here (CLAUDE.md §6) — this module
  * turns canonical states into display strings and nothing else.
  *
- * WHICH POPULATION THESE DESCRIBE, STATED PLAINLY. All four describe the
- * ELIGIBLE Trader population inside the current Account / Date Range / Filters
- * scope — the closed, complete Trades canonical analytics can compute over.
- * The table below lists every Trade in that same scope, planned and open ones
- * included, so the table can legitimately show more rows than `tradeCount`
- * counts. That is why the Trades card prints its own count rather than letting
- * a reader infer one from the row count, and why the count is labelled as the
- * measured population rather than as "all trades".
+ * WHICH POPULATION THESE DESCRIBE, STATED PLAINLY. Under All Trades and
+ * Closed Trades all four describe the ELIGIBLE Trader population inside the
+ * current Account / Date Range / Filters scope — the closed, complete Trades
+ * canonical analytics can compute over. The table below lists every Trade in
+ * that same scope, so under All Trades it can legitimately show more rows than
+ * `tradeCount` counts. That is why the Trades card prints its own count rather
+ * than letting a reader infer one from the row count.
+ *
+ * UNDER OPEN TRADES, THREE OF THE FOUR ARE WITHHELD. An open position has no
+ * settled result: there is no realized P&L to total, no final R to sum, and no
+ * outcome to count as a win. The canonical Trader population excludes it by
+ * construction, so reporting `0.00R` there would not be a small inaccuracy —
+ * it would be a claim that a trader currently holding risk has made nothing.
+ * The three result figures therefore report an explicit reason and only the
+ * count is answered, from the listed population itself (CLAUDE.md section 6:
+ * never a silent zero).
  */
 export const TRADES_SUMMARY_KEYS = ['tradeCount', 'netPnl', 'totalR', 'winRate'] as const;
 
@@ -45,7 +53,18 @@ export type TradesSummaryKey = (typeof TRADES_SUMMARY_KEYS)[number];
  * every reason here already resolves under `dashboard.real.unavailable.*`.
  */
 export type TradesSummaryUnavailableReason =
-  AnalyticsUnavailableReason | 'incomplete' | 'mixed_currency' | 'unsupported_currency_scale';
+  | AnalyticsUnavailableReason
+  | 'incomplete'
+  | 'mixed_currency'
+  | 'unsupported_currency_scale'
+  /**
+   * THIS PAGE'S OWN REASON, not a canonical analytics one: the selected
+   * population is open positions, which have no settled result to measure. It
+   * is a statement about the QUESTION being asked, not a failure of a metric
+   * over a population — reporting it as `no_trades` would claim the scope
+   * holds no Trades at all while the table beneath listed them.
+   */
+  | 'open_positions';
 
 export type TradesSummaryValue = MetricDisplayValue<TradesSummaryUnavailableReason>;
 
@@ -53,6 +72,20 @@ export interface TradesSummaryModel {
   readonly key: TradesSummaryKey;
   readonly value: TradesSummaryValue;
 }
+
+/**
+ * Which population the workspace is currently showing.
+ *
+ * `settled` covers All Trades and Closed Trades alike, because the canonical
+ * Trader population is the settled one either way and the four figures mean
+ * exactly what they have always meant. `open` carries its own count, because
+ * no analytics read describes open positions and the paged list cannot count
+ * itself.
+ */
+export type TradesSummaryScope =
+  { readonly kind: 'settled' } | { readonly kind: 'open'; readonly tradeCount: number };
+
+const SETTLED_SCOPE: TradesSummaryScope = { kind: 'settled' };
 
 const EMPTY: TradesSummaryValue = { status: 'empty' };
 
@@ -73,7 +106,21 @@ function formatNetPnl(currency: CurrencyCode, totalMinor: string): TradesSummary
   };
 }
 
-export function composeTradesSummary(data: DashboardPageData): readonly TradesSummaryModel[] {
+export function composeTradesSummary(
+  data: DashboardPageData,
+  scope: TradesSummaryScope = SETTLED_SCOPE,
+): readonly TradesSummaryModel[] {
+  if (scope.kind === 'open') {
+    const unmeasurable: TradesSummaryValue = {
+      status: 'unavailable',
+      reason: 'open_positions',
+    };
+    return TRADES_SUMMARY_KEYS.map((key) => ({
+      key,
+      value: key === 'tradeCount' ? plainValue(String(scope.tradeCount)) : unmeasurable,
+    }));
+  }
+
   const populationEmpty = data.availability.trader === 'empty';
   const { basic, trader } = data;
 

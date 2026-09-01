@@ -40,16 +40,40 @@ describe('parseTradesWorkspaceState — the canonical filter vocabulary', () => 
 
   it('reads the workspace keys the filter parser knows nothing about', () => {
     const state = parsed({
-      view: 'calendar',
+      state: 'open',
       trade: 'anything',
       tab: 'review',
       cursor: 'abc',
       trail: 'a,b',
-      month: '2026-08',
       date: '2026-08-20',
-      section: 'actual',
     });
-    expect(state.view).toBe('calendar');
+    expect(state.state).toBe('open');
+  });
+
+  it('still tolerates the retired Calendar keys rather than erroring on old links', () => {
+    // `?view=log&attention=...` is exactly what the Dashboard's Needs Attention
+    // panel links with, and `month`/`section` sit in bookmarks and history.
+    // Failing closed on any of them would turn a working link into an error
+    // page; they are accepted and simply not acted on.
+    const state = parsed({ view: 'calendar', month: '2026-08', section: 'actual' });
+    expect(state.state).toBe('all');
+  });
+});
+
+describe('parseTradesWorkspaceState — the top-level population', () => {
+  it('defaults to All Trades', () => {
+    expect(parsed({}).state).toBe('all');
+  });
+
+  it('reads each state from the URL', () => {
+    expect(parsed({ state: 'open' }).state).toBe('open');
+    expect(parsed({ state: 'closed' }).state).toBe('closed');
+    expect(parsed({ state: 'all' }).state).toBe('all');
+  });
+
+  it('widens an unrecognised or repeated state to All rather than failing the page', () => {
+    expect(parsed({ state: 'planned' }).state).toBe('all');
+    expect(parsed({ state: ['open', 'closed'] }).state).toBe('all');
   });
 });
 
@@ -105,22 +129,30 @@ describe('parseTradesWorkspaceState — the attention bucket', () => {
     expect(parsed({ view: 'log', attention: ['open', 'unclassified'] }).attention).toBeNull();
   });
 
-  it('drops the bucket in Calendar view, where a list filter has nothing to filter', () => {
-    expect(parsed({ view: 'calendar', attention: 'open' }).attention).toBeNull();
+  it('keeps the bucket whatever the population is — the page is always a list now', () => {
+    // The Calendar mode this used to be suppressed for no longer exists.
+    expect(parsed({ attention: 'open' }).attention).toBe('open');
+    expect(parsed({ state: 'closed', attention: 'reviews-pending' }).attention).toBe(
+      'reviews-pending',
+    );
   });
 });
 
 describe('carrying workspace state through a filter transition', () => {
-  it('carries the view and the applied bucket', () => {
-    const state = parsed({ view: 'log', attention: 'reviews-pending' });
+  it('carries the selected population and the applied bucket', () => {
+    // Changing the Account or the date range does not mean the reader wanted
+    // to leave the population they are working in.
+    const state = parsed({ state: 'open', attention: 'reviews-pending' });
     expect(tradesWorkspaceCarryParams(state)).toEqual({
-      view: 'log',
+      state: 'open',
       attention: 'reviews-pending',
     });
   });
 
-  it('omits the bucket key entirely when none is applied', () => {
-    expect(tradesWorkspaceCarryParams(parsed({ view: 'log' }))).toEqual({ view: 'log' });
+  it('spells the default population by omitting the key', () => {
+    // `/app/trades` stays the canonical address of the whole journal.
+    expect(tradesWorkspaceCarryParams(parsed({}))).toEqual({});
+    expect(tradesWorkspaceCarryParams(parsed({ state: 'all' }))).toEqual({});
   });
 
   it('does not carry the selection or the pager', () => {
@@ -128,7 +160,7 @@ describe('carrying workspace state through a filter transition', () => {
     // open in the sheet may not survive the new scope at all.
     const carried = tradesWorkspaceCarryParams(
       parsed({
-        view: 'log',
+        state: 'closed',
         trade: 'x',
         tab: 'review',
         cursor: 'c',
@@ -136,21 +168,28 @@ describe('carrying workspace state through a filter transition', () => {
         date: '2026-08-20',
       }),
     );
-    expect(carried).toEqual({ view: 'log' });
+    expect(carried).toEqual({ state: 'closed' });
   });
 });
 
 describe('buildTradesWorkspaceHref', () => {
   it('lands on the Trades workspace, never the Dashboard', () => {
-    const href = buildTradesWorkspaceHref(parsed({ view: 'log' }));
+    const href = buildTradesWorkspaceHref(parsed({}));
     expect(href.startsWith(`${TRADES_WORKSPACE_BASE_PATH}?`)).toBe(true);
   });
 
-  it('serializes the canonical filter state alongside the carried view', () => {
-    const href = buildTradesWorkspaceHref(parsed({ range: '30d', view: 'log', attention: 'open' }));
+  it('serializes the canonical filter state alongside the carried population', () => {
+    const href = buildTradesWorkspaceHref(
+      parsed({ range: '30d', state: 'closed', attention: 'open' }),
+    );
     const params = new URLSearchParams(href.slice(href.indexOf('?') + 1));
     expect(params.get('range')).toBe('30d');
-    expect(params.get('view')).toBe('log');
+    expect(params.get('state')).toBe('closed');
     expect(params.get('attention')).toBe('open');
+  });
+
+  it('writes no state key for the default population', () => {
+    const href = buildTradesWorkspaceHref(parsed({ range: '30d' }));
+    expect(new URLSearchParams(href.slice(href.indexOf('?') + 1)).get('state')).toBeNull();
   });
 });

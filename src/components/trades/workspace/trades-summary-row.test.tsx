@@ -116,3 +116,43 @@ describe('TradesSummaryRow', () => {
     expect(screen.getByText('R รวม')).toBeInTheDocument();
   });
 });
+
+describe('TradesSummaryRow — scoped to the selected population', () => {
+  it('reports the open count and withholds the three result figures', () => {
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradesSummaryRow data={data()} scope={{ kind: 'open', tradeCount: 3 }} />
+      </NextIntlClientProvider>,
+    );
+
+    expect(card(container, 'tradeCount')).toHaveTextContent('3');
+    for (const key of ['netPnl', 'totalR', 'winRate']) {
+      expect(card(container, key)).toHaveAttribute('data-trades-summary-status', 'unavailable');
+      expect(card(container, key)).toHaveTextContent('Not settled yet');
+      // Never a zero, and never a currency symbol over a population with no
+      // settled money in it.
+      expect(card(container, key)).not.toHaveTextContent('0.00');
+    }
+  });
+
+  it('keeps the labels, so the row does not change shape between populations', () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradesSummaryRow data={data()} scope={{ kind: 'open', tradeCount: 3 }} />
+      </NextIntlClientProvider>,
+    );
+    for (const label of ['Trades', 'Net P&L', 'Total R', 'Win Rate']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it('is unchanged for the settled population', () => {
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <TradesSummaryRow data={data()} scope={{ kind: 'settled' }} />
+      </NextIntlClientProvider>,
+    );
+    expect(card(container, 'netPnl')).toHaveTextContent('+$2,310.00');
+    expect(card(container, 'totalR')).toHaveTextContent('+23.10R');
+  });
+});

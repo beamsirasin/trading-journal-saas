@@ -150,3 +150,44 @@ describe('composeTradesSummary — never a fake zero', () => {
     expect(value(models, 'totalR').status).toBe('error');
   });
 });
+
+describe('composeTradesSummary — the selected population', () => {
+  it('keeps every figure for the settled population by default', () => {
+    // All Trades and Closed Trades ask the same question of the same canonical
+    // Trader population, so neither changes what these four mean.
+    const models = composeTradesSummary(data());
+    for (const key of TRADES_SUMMARY_KEYS) {
+      expect(value(models, key).status).toBe('available');
+    }
+    expect(composeTradesSummary(data(), { kind: 'settled' })).toEqual(models);
+  });
+
+  it('answers only the count for open positions, and never invents a zero', () => {
+    // An open position has no realized P&L, no final R and no outcome. Printing
+    // 0.00R here would claim a trader currently holding risk has made nothing.
+    const models = composeTradesSummary(data(), { kind: 'open', tradeCount: 3 });
+    expect(value(models, 'tradeCount')).toMatchObject({ status: 'available', text: '3' });
+    for (const key of ['netPnl', 'totalR', 'winRate'] as const) {
+      expect(value(models, key)).toEqual({ status: 'unavailable', reason: 'open_positions' });
+    }
+  });
+
+  it('counts the open population itself, never the settled analytics one', () => {
+    const models = composeTradesSummary(data({ traderTradeCount: 66 }), {
+      kind: 'open',
+      tradeCount: 2,
+    });
+    expect(text(models, 'tradeCount')).toBe('2');
+  });
+
+  it('reports no open positions as a truthful zero', () => {
+    const models = composeTradesSummary(data(), { kind: 'open', tradeCount: 0 });
+    expect(text(models, 'tradeCount')).toBe('0');
+  });
+
+  it('still publishes the same four keys in the same order', () => {
+    expect(
+      composeTradesSummary(data(), { kind: 'open', tradeCount: 3 }).map((entry) => entry.key),
+    ).toEqual([...TRADES_SUMMARY_KEYS]);
+  });
+});

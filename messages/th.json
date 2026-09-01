@@ -1884,6 +1884,9 @@
         },
         "winRate": {
           "label": "อัตราชนะ"
+        },
+        "unavailable": {
+          "open_positions": "ยังไม่ปิดออเดอร์"
         }
       },
       "result": {
@@ -2025,6 +2028,12 @@
           "entryPrice": "{direction} ที่ {price}",
           "exit": "ปิดไม้ที่ {sequence} · {percent}%"
         }
+      },
+      "state": {
+        "label": "กลุ่มออเดอร์",
+        "all": "ออเดอร์ทั้งหมด",
+        "open": "ออเดอร์ที่เปิดอยู่",
+        "closed": "ออเดอร์ที่ปิดแล้ว"
       }
     }
   },
