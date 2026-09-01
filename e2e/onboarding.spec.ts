@@ -157,22 +157,24 @@ test.describe('onboarding', () => {
     // Completion redirects to /app.
     await expect(page).toHaveURL(/\/en\/app$/);
 
-    // Active account is visible — scoped to the dashboard's own labelled
-    // region rather than `.first()`. `TradingAccountIndicator` in the header
-    // renders the same account name and mode again (`sm:flex`, hidden below
-    // the `sm` breakpoint), so an unscoped `.first()` picks whichever copy
-    // happens to come first in the DOM — the header's, which is invisible on
-    // the Mobile Chrome project and made the assertion flaky there.
+    // Active account context is visible — scoped to the dashboard's own
+    // labelled region rather than `.first()`, which used to pick whichever
+    // copy came first in the DOM.
     const accountRegion = page.getByRole('region', { name: 'Active trading account summary' });
     await expect(accountRegion.getByText('Live', { exact: true })).toBeVisible();
     await expect(accountRegion.getByText('USD', { exact: true })).toBeVisible();
-    // Within the Dashboard's own content the NAME belongs to the toolbar's
-    // Account control alone. The context strip beneath the title used to print
-    // it as well, putting the same string on screen twice inside one viewport
-    // — the second copy being the one that could not be clicked. (The shell
-    // header's account indicator is a separate, deliberate surface and is not
-    // in scope here.)
+    /*
+      ONE ACCOUNT NAME, AND ONE ACCOUNT SELECTOR, ON THIS PAGE.
+
+      The Dashboard's toolbar owns both. The context strip beneath the title
+      used to print the name as well, and the shell header used to carry a
+      second switcher beside the profile control — three copies of one fact,
+      two of them un-actionable or redundant. Both stood down; the header
+      switcher still renders on every other route, where it is the only way to
+      change the active Account.
+    */
     await expect(accountRegion.getByText('My First Account')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Switch trading account' })).toHaveCount(0);
     await expect(page.locator('[data-dashboard-toolbar-control="account"]')).toContainText(
       'My First Account',
     );

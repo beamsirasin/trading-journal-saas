@@ -6,11 +6,17 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 
 import type { ActiveTradingAccountSummary, SessionUser } from '@/server/auth/dal';
 import { Button } from '@/components/ui/button';
+import { usePathname } from '@/i18n/navigation';
 
 import { AccountMenu } from './account-menu';
 import { AccountSwitcher } from './account-switcher';
 import { Brand } from './brand';
-import { MAIN_CONTENT_ID, SIDEBAR_COOKIE_NAME, SIDEBAR_ELEMENT_ID } from './constants';
+import {
+  MAIN_CONTENT_ID,
+  ROUTES_WITH_OWN_ACCOUNT_CONTROL,
+  SIDEBAR_COOKIE_NAME,
+  SIDEBAR_ELEMENT_ID,
+} from './constants';
 import { DesktopSidebar } from './desktop-sidebar';
 import { MobileNav } from './mobile-nav';
 
@@ -42,6 +48,15 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
  * spend 88px on controls most people touch twice ever — so they now live
  * inside the account menu, at every width, which is also where a user goes
  * looking for "my settings". See `AccountMenu`.
+ *
+ * ITS ACCOUNT SWITCHER YIELDS TO A PAGE THAT HAS ONE. The header switcher is
+ * the application-wide default and the only way to change the active Account
+ * on Trades, Strategies, Accounts, Analytics, Settings, Plan and Billing — it
+ * is not going anywhere. It hides on exactly the routes in
+ * `ROUTES_WITH_OWN_ACCOUNT_CONTROL`, which today means the Dashboard alone:
+ * that page's toolbar carries an Account control beside Date Range and
+ * Filters, and two switchers for one piece of state sixty pixels apart is a
+ * contradiction a reader has to resolve rather than a convenience.
  *
  * The header is also the one surface that INVERTS in light mode: a deep
  * branded band across the top of a near-white application. `data-shell-chrome`
@@ -81,7 +96,26 @@ export function ShellFrame({
   canCreateAccount: boolean;
 }) {
   const t = useTranslations('appNav');
+  const pathname = usePathname();
   const [navExpanded, setNavExpanded] = useState(defaultExpanded);
+
+  /*
+    ONE ACCOUNT SELECTOR PER PAGE, AND THE PAGE WINS WHERE IT HAS ONE.
+
+    The header switcher is the application-wide default and is what every
+    other route relies on. It steps aside only on a route that renders an
+    Account control of its own — today just the Dashboard, whose toolbar puts
+    that control beside Date Range and Filters, with the figures those three
+    scope. Two switchers for one piece of state, sixty pixels apart, is not a
+    redundancy a reader can be expected to reconcile.
+
+    `usePathname` here rather than a prop, because the header is rendered by
+    the shared `(app)` layout: a page BELOW that layout cannot reach up and
+    turn one of its controls off, and threading a flag down through every
+    route's server layout to do it would put a Dashboard detail into the
+    signature of every page in the product.
+  */
+  const routeOwnsAccountControl = ROUTES_WITH_OWN_ACCOUNT_CONTROL.includes(pathname);
 
   function toggleSidebar() {
     const next = !navExpanded;
@@ -189,8 +223,15 @@ export function ShellFrame({
               On desktop it starts flush with the sidebar's label column. */}
           <Brand href="/app" compact size="lg" />
 
+          {/*
+            `ml-auto` with a `gap`, so the utilities cluster stays flush right
+            whether it holds one control or two: the gap only ever applies
+            BETWEEN children, and `AccountMenu` is anchored by the cluster's
+            own right edge rather than by the switcher's presence. Suppressing
+            the switcher therefore leaves no reserved space and shifts nothing.
+          */}
           <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
-            {activeAccount === null ? null : (
+            {activeAccount === null || routeOwnsAccountControl ? null : (
               <AccountSwitcher
                 activeAccount={activeAccount}
                 accounts={switchableAccounts}

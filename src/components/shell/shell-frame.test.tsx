@@ -24,9 +24,20 @@ function MockLink({
   );
 }
 
+/*
+  The route the shell believes it is rendering.
+
+  It matters to exactly one thing here: the header suppresses its own Account
+  switcher on a route that owns a page-level one (see
+  `ROUTES_WITH_OWN_ACCOUNT_CONTROL`). The DEFAULT is therefore a route that
+  does NOT — the application-wide case, which is what most of this file is
+  describing — and the Dashboard is set explicitly where it is the subject.
+*/
+let mockPathname = '/app/trades';
+
 vi.mock('@/i18n/navigation', () => ({
   Link: MockLink,
-  usePathname: () => '/app',
+  usePathname: () => mockPathname,
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
 
@@ -80,6 +91,7 @@ beforeEach(() => {
   // Clear the persistence cookie between cases so one test's toggle cannot
   // be mistaken for another's initial state.
   document.cookie = `${SIDEBAR_COOKIE_NAME}=; path=/; max-age=0`;
+  mockPathname = '/app/trades';
 });
 
 describe('ShellFrame — landmarks', () => {
@@ -104,8 +116,47 @@ describe('ShellFrame — landmarks', () => {
     expect(within(banner).getByRole('button', { name: /open navigation menu/i })).toBeVisible();
     expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
     // Account switching is not a set-once preference — it scopes every figure
-    // on screen — so it earns its place in the row on a phone too.
+    // on screen — so it earns its place in the row on a phone too. This is the
+    // application-wide default: every route except the Dashboard relies on it
+    // as the ONLY way to change the active Account.
     expect(within(banner).getByRole('button', { name: 'Switch trading account' })).toBeVisible();
+  });
+
+  /*
+    ONE ACCOUNT SELECTOR PER PAGE.
+
+    The Dashboard's toolbar carries an Account control of its own, beside Date
+    Range and Filters, scoping the same figures those two do. With the header
+    switcher also present a reader met the same account name twice, sixty
+    pixels apart, behind two different switching gestures. The page-level one
+    wins there; the header's steps aside — and ONLY there.
+  */
+  it('stands its switcher down on a route that owns an account control', () => {
+    mockPathname = '/app';
+    renderShell();
+    const banner = screen.getByRole('banner');
+
+    expect(
+      within(banner).queryByRole('button', { name: 'Switch trading account' }),
+    ).not.toBeInTheDocument();
+    // Nothing replaced it, and the profile control is untouched.
+    expect(within(banner).getByRole('button', { name: 'Account menu' })).toBeVisible();
+    expect(within(banner).getByRole('button', { name: /open navigation menu/i })).toBeVisible();
+  });
+
+  it('is an exact route match, so nested routes keep the header switcher', () => {
+    // `/app/trades` and `/app/accounts` are not the Dashboard. A prefix test
+    // would have taken the control off every page in the product.
+    for (const route of ['/app/trades', '/app/accounts', '/app/analytics', '/app/settings']) {
+      mockPathname = route;
+      const { unmount } = renderShell();
+      expect(
+        within(screen.getByRole('banner')).getByRole('button', {
+          name: 'Switch trading account',
+        }),
+      ).toBeVisible();
+      unmount();
+    }
   });
 
   it('keeps preferences out of the header row entirely', () => {

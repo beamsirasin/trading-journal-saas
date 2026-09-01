@@ -378,6 +378,11 @@ test.describe('real Dashboard', () => {
     await expect(accountStrip.getByText('USD', { exact: true })).toBeVisible();
     // Still read-only context, never a second selector.
     await expect(accountStrip.getByRole('button')).toHaveCount(0);
+    // And the shell header stands its own switcher down here for the same
+    // reason — the toolbar control below it is this route's account selector.
+    // It still renders on every other route, where it is the only one.
+    await expect(page.getByRole('button', { name: 'Switch trading account' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
 
     /*
       The toolbar's open state is a real DOM state, which is what both the

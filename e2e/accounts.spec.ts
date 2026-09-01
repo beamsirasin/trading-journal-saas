@@ -178,23 +178,24 @@ test.describe('trading account management', () => {
     await expectAccountActive(page, 'Second Account Renamed');
     await expectAccountNotActive(page, 'Main Trading Account');
 
-    // The dashboard reflects the newly active account.
+    // The dashboard reflects the newly active account — read from the
+    // TOOLBAR's Account control, which is the Dashboard's own selector. The
+    // context strip beneath the title deliberately no longer repeats the name
+    // (one account name per page, and it is the one that can be clicked), and
+    // the shell header stands its own switcher down on this route for exactly
+    // the same reason.
     await page.goto('/en/app');
-    await expect(
-      page.getByRole('region', { name: 'Active trading account summary' }).getByRole('heading', {
-        name: 'Second Account Renamed',
-      }),
-    ).toBeVisible();
+    const dashboardAccount = page.locator('[data-dashboard-toolbar-control="account"]');
+    await expect(dashboardAccount).toContainText('Second Account Renamed');
+    await expect(page.getByRole('button', { name: 'Switch trading account' })).toHaveCount(0);
 
     // Refresh preserves the selection.
     await page.reload();
-    await expect(
-      page.getByRole('region', { name: 'Active trading account summary' }).getByRole('heading', {
-        name: 'Second Account Renamed',
-      }),
-    ).toBeVisible();
+    await expect(dashboardAccount).toContainText('Second Account Renamed');
 
-    // The app-shell switcher reflects it too.
+    // The app-shell switcher reflects it too — on a route that relies on it,
+    // which is every route but this one.
+    await page.goto('/en/app/accounts');
     await page.getByRole('button', { name: 'Switch trading account' }).click();
     await expect(page.getByRole('menuitem', { name: /Second Account Renamed/ })).toHaveAttribute(
       'aria-current',
@@ -207,7 +208,7 @@ test.describe('trading account management', () => {
     const switchResponse = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/en/app' &&
+        new URL(response.url()).pathname === '/en/app/accounts' &&
         response.ok(),
     );
     await page.getByRole('menuitem', { name: /Main Trading Account/ }).click();
@@ -216,11 +217,10 @@ test.describe('trading account management', () => {
     await expect(page.getByRole('button', { name: 'Switch trading account' })).toContainText(
       'Main Trading Account',
     );
-    await expect(
-      page.getByRole('region', { name: 'Active trading account summary' }).getByRole('heading', {
-        name: 'Main Trading Account',
-      }),
-    ).toBeVisible();
+
+    // ...and the Dashboard, which never showed that switcher, agrees.
+    await page.goto('/en/app');
+    await expect(dashboardAccount).toContainText('Main Trading Account');
     await expect(
       page
         .getByRole('region', { name: 'Recent Trades' })

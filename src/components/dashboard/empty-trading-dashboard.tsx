@@ -138,8 +138,10 @@ export function ActiveTradingAccountSummaryCard({
  * One read-only metadata chip.
  *
  * The caption is `sr-only` rather than absent: a chip reading "Live" is
- * unambiguous NEXT TO an account name and nowhere else, and a screen reader
- * gets no such adjacency.
+ * unambiguous only under the strip's own "Active account" caption and beside
+ * the sibling chip that gives it scale, and a screen reader gets neither of
+ * those adjacencies — it gets one loose word. So it hears "Account mode:
+ * Live".
  *
  * `bg-muted`, not `bg-surface-raised`. Both resolve to the frozen `#262626`
  * step in dark, so on the theme this pass is led by they are the same pixel —
