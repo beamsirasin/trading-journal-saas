@@ -266,10 +266,10 @@ test.describe('real Dashboard', () => {
     // D3 Basic KPI row. The seeded 90D Trader population is XAUUSD -1R
     // (-100 minor), EURUSD +2R (+100) and GBPUSD +1R (+100), all USD.
     const netPnl = page.locator('[data-dashboard-widget="basic.net-pnl"]');
-    const tradeWin = page.locator('[data-dashboard-widget="basic.trade-win-rate"]');
-    const kpiProfitFactor = page.locator('[data-dashboard-widget="basic.profit-factor"]');
-    const dayWin = page.locator('[data-dashboard-widget="basic.day-win-rate"]');
-    const avgWinLoss = page.locator('[data-dashboard-widget="basic.avg-win-loss"]');
+    const totalR = page.locator('[data-dashboard-widget="basic.total-r"]');
+    const winRate = page.locator('[data-dashboard-widget="basic.trade-win-rate"]');
+    const plannedRr = page.locator('[data-dashboard-widget="basic.avg-planned-rr"]');
+    const avgRPerTrade = page.locator('[data-dashboard-widget="basic.avg-r-per-trade"]');
 
     await expect(netPnl).toHaveAttribute('data-kpi-status', 'available');
     await expect(netPnl.getByText('+$1.00')).toBeVisible();
@@ -277,26 +277,43 @@ test.describe('real Dashboard', () => {
     // it — and the population size is the one supporting line that stayed.
     await expect(netPnl.getByText('3 Trades')).toBeVisible();
     await expect(netPnl.getByText('USD · 3 Trades')).toHaveCount(0);
-    await expect(tradeWin.getByText('66.67%')).toBeVisible();
-    await expect(kpiProfitFactor.getByText('3.00')).toBeVisible();
-    await expect(dayWin.getByText('66.67%')).toBeVisible();
-    await expect(avgWinLoss.getByText('1.50x')).toBeVisible();
+    /*
+      -1R + 2R + 1R = +2.00R over three Trades, so +0.67R each. Every seeded
+      Trade plans 100 -> 102 against a 99 stop, which is a 1:2 plan, and the
+      Trader axis is what Total R and Avg R / Trade read — never the System
+      axis beside them, which totals +4.00R over its own population.
+    */
+    await expect(totalR.getByText('+2.00R')).toBeVisible();
+    await expect(winRate.getByText('66.67%')).toBeVisible();
+    await expect(plannedRr.getByText('1 : 2.00')).toBeVisible();
+    await expect(avgRPerTrade.getByText('+0.67R')).toBeVisible();
 
+    // The three retired cards are gone from the band, not merely renamed.
+    for (const retired of ['Profit Factor', 'Day Win %', 'Avg Win / Loss', 'Trade Win %']) {
+      await expect(page.locator('#basic-kpi-heading ~ dl').getByText(retired)).toHaveCount(0);
+    }
     // Nothing is permanently printed under those four figures any more.
-    await expect(tradeWin.getByText('2W · 0BE · 1L')).toHaveCount(0);
-    await expect(kpiProfitFactor.getByText('Calculated from R')).toHaveCount(0);
-    await expect(avgWinLoss.getByText('+1.50R / -1.00R')).toHaveCount(0);
+    await expect(winRate.getByText('2W · 0BE · 1L')).toHaveCount(0);
 
     // Four cards carry an indicator; Net P&L has none, because no Population
     // A money series is published to draw one from.
     await expect(netPnl.locator('[data-kpi-indicator]')).toHaveCount(0);
-    for (const card of [tradeWin, kpiProfitFactor, dayWin, avgWinLoss]) {
+    for (const [card, kind] of [
+      [totalR, 'cumulativeR'],
+      [winRate, 'outcomeSplit'],
+      [plannedRr, 'riskRewardSplit'],
+      [avgRPerTrade, 'divergingBar'],
+    ] as const) {
       await expect(card.locator('[data-kpi-indicator]')).toHaveCount(1);
+      await expect(card.locator('[data-kpi-indicator]')).toHaveAttribute(
+        'data-kpi-indicator',
+        kind,
+      );
     }
 
     // One balanced desktop row: five cards, same top edge, equal widths.
     const kpiBoxes = await Promise.all(
-      [netPnl, tradeWin, kpiProfitFactor, dayWin, avgWinLoss].map((card) => card.boundingBox()),
+      [netPnl, totalR, winRate, plannedRr, avgRPerTrade].map((card) => card.boundingBox()),
     );
     const tops = kpiBoxes.map((box) => Math.round(box?.y ?? -1));
     expect(new Set(tops).size).toBe(1);
@@ -305,15 +322,15 @@ test.describe('real Dashboard', () => {
 
     // The definition affordance is a real button: keyboard-operable, not hover-only.
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'About Profit Factor' }).focus();
+    await page.getByRole('button', { name: 'About Avg Planned RR' }).focus();
     await page.keyboard.press('Enter');
-    await expect(page.getByText(/for every 1R your losing Trades gave up/)).toBeVisible();
+    await expect(page.getByText(/for every 1R of risk/i)).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByText(/for every 1R your losing Trades gave up/)).toHaveCount(0);
+    await expect(page.getByText(/for every 1R of risk/i)).toHaveCount(0);
 
     // So is the indicator, and it is where the breakdowns went. Reached from
     // the keyboard, read back in words, closed with Escape.
-    await page.getByRole('button', { name: 'Show Trade Win breakdown' }).focus();
+    await page.getByRole('button', { name: 'Show Win Rate breakdown' }).focus();
     await page.keyboard.press('Enter');
     const breakdown = page.locator('[data-slot="kpi-indicator-content"]');
     await expect(breakdown.getByText('Wins')).toBeVisible();
@@ -326,17 +343,14 @@ test.describe('real Dashboard', () => {
     await expect(breakdown).toHaveCount(0);
 
     // Tap, not hover: the same panel opens from a plain click, which is the
-    // only gesture a touch device has.
-    await page.getByRole('button', { name: 'Show average win and loss' }).click();
-    const payoff = page.locator('[data-slot="kpi-indicator-content"]');
-    await expect(payoff.locator('[data-kpi-detail-row="averageWin"]')).toContainText('+1.50R');
-    await expect(payoff.locator('[data-kpi-detail-row="averageLoss"]')).toContainText('-1.00R');
-    await page.keyboard.press('Escape');
-
-    await page.getByRole('button', { name: 'Show Profit Factor detail' }).click();
+    // only gesture a touch device has. It states the plan in words and names
+    // the population it averaged, which is the one denominator on this row
+    // that can be smaller than the others.
+    await page.getByRole('button', { name: 'Show Avg Planned RR detail' }).click();
     await expect(
-      page.getByText('For every 1R lost, your winning Trades produced 3.00R.'),
+      page.getByText('For every 1R you risked, your Plans aimed at 2.00R.'),
     ).toBeVisible();
+    await expect(page.getByText('Averaged over 3 Trades that had a planned target.')).toBeVisible();
     await page.keyboard.press('Escape');
 
     const system = page.locator('[data-dashboard-panel="system"]');
@@ -531,14 +545,14 @@ test.describe('real Dashboard', () => {
 
     // Two-column KPI grid at narrow widths, with the fifth card spanning both.
     const netPnl = page.locator('[data-dashboard-widget="basic.net-pnl"]');
-    const tradeWin = page.locator('[data-dashboard-widget="basic.trade-win-rate"]');
-    const avgWinLoss = page.locator('[data-dashboard-widget="basic.avg-win-loss"]');
+    const totalR = page.locator('[data-dashboard-widget="basic.total-r"]');
+    const avgRPerTrade = page.locator('[data-dashboard-widget="basic.avg-r-per-trade"]');
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 800 });
       const [first, second, last] = await Promise.all([
         netPnl.boundingBox(),
-        tradeWin.boundingBox(),
-        avgWinLoss.boundingBox(),
+        totalR.boundingBox(),
+        avgRPerTrade.boundingBox(),
       ]);
       // Cards one and two share a row; neither value nor label is clipped away.
       expect(Math.round(first?.y ?? -1)).toBe(Math.round(second?.y ?? -2));

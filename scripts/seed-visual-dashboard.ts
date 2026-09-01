@@ -2,14 +2,11 @@ import { createHash } from 'node:crypto';
 
 import postgres from 'postgres';
 
-import type {
-  ComparisonMetricRecord,
-  SystemMetricRecord,
-  TraderMetricRecord,
-} from '@/lib/analytics/metrics';
+import type { ComparisonMetricRecord, SystemMetricRecord } from '@/lib/analytics/metrics';
 import {
   composeDashboardPageData,
   type DashboardRecentTradeRecord,
+  type DashboardTraderMetricRecord,
 } from '@/lib/dashboard/page-data';
 import type {
   OutcomeValue,
@@ -603,7 +600,7 @@ async function main(): Promise<void> {
     const loadPage = async (accountId: string) => {
       const traderRaw = await sql`
         select t.id as trade_id, t.status, t.deleted_at, t.actual_r, t.trader_outcome,
-               t.exited_at, t.net_pnl_minor::text, ta.base_currency
+               t.exited_at, t.net_pnl_minor::text, t.planned_r, ta.base_currency
         from trades t
         join trading_accounts ta on ta.id = t.trading_account_id
         where t.workspace_id = ${workspaceId}
@@ -652,7 +649,7 @@ async function main(): Promise<void> {
         order by coalesce(t.exited_at, t.entered_at, t.created_at) desc, t.id desc
         limit 10
       `;
-      const trader: TraderMetricRecord[] = traderRaw.map((row) => ({
+      const trader: DashboardTraderMetricRecord[] = traderRaw.map((row) => ({
         tradeId: row.trade_id as string,
         status: row.status as TradeStatus,
         deletedAt: null,
@@ -661,6 +658,7 @@ async function main(): Promise<void> {
         exitedAt: (row.exited_at as Date).toISOString(),
         netPnlMinor: row.net_pnl_minor as string,
         baseCurrency: row.base_currency as string,
+        plannedR: row.planned_r as string | null,
       }));
       const system: SystemMetricRecord[] = systemRaw.map((row) => ({
         tradeId: row.trade_id as string,

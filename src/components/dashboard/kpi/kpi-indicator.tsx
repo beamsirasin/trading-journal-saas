@@ -13,21 +13,24 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
  *
  * Each card's indicator draws a quantity the payload already publishes (see
  * `BasicKpiIndicator` for which, per variant, and why Net P&L has none). The
- * shapes differ on purpose — a ring, a gauge, a split track, a pair of
- * magnitude bars — so five cards in a row do not read as the same widget
- * printed five times. They stay one family because they share a size band, a
- * palette, a trigger treatment and a popover.
+ * shapes differ on purpose — a ring, a sparkline, a split track, a zero-centred
+ * deflection — so four cards in a row do not read as the same widget printed
+ * four times. They stay one family because they share a size band, a palette, a
+ * trigger treatment and a popover.
  *
- * IT IS A BUTTON, NOT A HOVER TARGET. Everything the cards stopped printing
- * permanently — `27W · 5BE · 34L`, `+2.27R / -1.12R`, the Profit Factor
- * sentence — lives one click, tap, or Enter away. A hover-only tooltip would
- * have made that data unreachable on touch and by keyboard, which is why the
- * project's `Popover` exists (see `components/ui/popover.tsx`).
+ * IT IS A BUTTON WHERE IT HAS SOMETHING TO SAY. The two cards carrying a
+ * breakdown — the Win Rate composition and the Avg Planned RR sentence — open
+ * it from a click, a tap, or Enter; a hover-only tooltip would have made that
+ * data unreachable on touch and by keyboard, which is why the project's
+ * `Popover` exists (see `components/ui/popover.tsx`). The two whose figure
+ * already says everything the drawing does stay a plain picture rather than
+ * becoming a button that opens an empty panel.
  *
- * COLOUR IS NEVER THE ONLY CHANNEL. The drawing itself is `aria-hidden`; the
- * button carries a real name ("Show Trade Win breakdown"), and the popover
- * states every figure in words with its own label. A reader who sees no
- * colour at all loses nothing.
+ * COLOUR IS NEVER THE ONLY CHANNEL. The drawing itself is `aria-hidden`; where
+ * there is a button it carries a real name ("Show Win Rate breakdown"), and the
+ * popover states every figure in words with its own label. A reader who sees no
+ * colour at all loses nothing — every indicator here restates something the
+ * card's own text already carries.
  */
 export function KpiIndicator({
   metricKey,
@@ -82,25 +85,19 @@ function IndicatorDrawing({ indicator }: { indicator: BasicKpiIndicator }) {
     case 'none':
       return null;
     case 'outcomeSplit':
-      return indicator.shape === 'gauge' ? (
-        <OutcomeGauge
-          wins={indicator.wins}
-          breakEvens={indicator.breakEvens}
-          losses={indicator.losses}
-        />
-      ) : (
+      return (
         <OutcomeDonut
           wins={indicator.wins}
           breakEvens={indicator.breakEvens}
           losses={indicator.losses}
         />
       );
-    case 'ratioSplit':
-      return <RatioSplit winSharePercent={indicator.winSharePercent} />;
-    case 'magnitudePair':
-      return (
-        <MagnitudePair winPercent={indicator.winPercent} lossPercent={indicator.lossPercent} />
-      );
+    case 'cumulativeR':
+      return <CumulativeRSparkline tone={indicator.tone} points={indicator.points} />;
+    case 'riskRewardSplit':
+      return <RiskRewardSplit riskSharePercent={indicator.riskSharePercent} />;
+    case 'divergingBar':
+      return <DivergingBar direction={indicator.direction} fillPercent={indicator.fillPercent} />;
   }
 }
 
@@ -175,102 +172,125 @@ function OutcomeDonut({
 }
 
 /**
- * Trading-day outcomes: the same three shares on a half arc.
+ * Cumulative ACTUAL R across the scoped population.
  *
- * A DIFFERENT SHAPE FOR A DIFFERENT POPULATION, WHICH IS THE POINT. Trade Win
- * % and Day Win % often land within a point or two of each other, and on a
- * data set holding one Trade per day they coincide exactly. Two identical
- * rings side by side would invite the reader to treat them as one figure
- * duplicated; a ring and a gauge keep "per Trade" and "per day" legible as
- * two different questions at a glance.
+ * A POLYLINE, NOT A CHART. There is no axis, no grid, no label, no dot and no
+ * tooltip: at 56px wide none of them would be legible, and the figure beside
+ * it is where the value is read. What the shape adds is the one thing the
+ * total cannot say — whether it arrived steadily, gave most of itself back, or
+ * turned around late.
+ *
+ * `preserveAspectRatio="none"` stretches the normalised 0–100 box to whatever
+ * width the card gives, and `vector-effect` keeps the stroke at its real
+ * weight through that stretch. The colour is the ENDING sign's semantic token,
+ * which is the same sign the figure above carries, so the two cannot disagree.
  */
-function OutcomeGauge({
-  wins,
-  breakEvens,
-  losses,
+function CumulativeRSparkline({
+  tone,
+  points,
 }: {
-  wins: number;
-  breakEvens: number;
-  losses: number;
+  tone: 'positive' | 'negative' | 'neutral';
+  points: readonly { readonly x: number; readonly y: number }[];
 }) {
-  const segments = arcSegments(wins, breakEvens, losses);
-  const arc = 'M 4 21 A 17 17 0 0 1 38 21';
+  const stroke =
+    tone === 'positive'
+      ? 'var(--positive)'
+      : tone === 'negative'
+        ? 'var(--negative)'
+        : 'var(--subtle-foreground)';
 
   return (
-    <svg viewBox="0 0 42 24" className="h-7 w-12 shrink-0" aria-hidden="true" focusable="false">
-      <path d={arc} pathLength={100} fill="none" stroke="var(--indicator-track)" strokeWidth="5" />
-      {segments.map((segment) => (
-        <path
-          key={segment.key}
-          data-kpi-arc={segment.key}
-          d={arc}
-          pathLength={100}
-          fill="none"
-          stroke={segment.stroke}
-          strokeWidth="5"
-          strokeDasharray={`${segment.length} ${100 - segment.length}`}
-          strokeDashoffset={-segment.offset}
-        />
-      ))}
+    <svg
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      // The same 56/80px width band as the two bars on this row, at the ring's
+      // height, so all four indicators occupy one visual footprint.
+      className="h-6 w-14 shrink-0 @[11rem]/kpi:w-20"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <polyline
+        data-kpi-spark="cumulativeR"
+        points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }
 
 /**
- * Profit Factor: one track split between the winning and losing sides.
+ * Avg Planned RR: one track split between planned risk and planned reward.
  *
- * The split is `PF / (PF + 1)` — see `BasicKpiIndicator` for why that is the
- * published ratio restated rather than a fabricated component. No tick, no
- * percentage label: the number above it is the figure, and this is only its
- * shape.
+ * Risk on the left because that is the side a plan commits first, and because
+ * left-to-right then reads as the ratio does: 1 of risk, then the reward it
+ * was aimed at. The split is `1 / (1 + RR)` — see `BasicKpiIndicator` for why
+ * that is the published ratio restated rather than a fabricated component. No
+ * tick and no label inside it: the number above it is the figure, and this is
+ * only its shape.
+ *
+ * Geometry unchanged from the split track this replaces — 12px over the same
+ * 56/80px container-sized width band, so the row's footprint does not move.
  */
-function RatioSplit({ winSharePercent }: { winSharePercent: number }) {
+function RiskRewardSplit({ riskSharePercent }: { riskSharePercent: number }) {
   return (
     <span
-      // Container-sized, like the figure beside it: 56px on a cramped
-      // five-across desktop card, 80px once the card can spare it. Both steps
-      // grew with the card's new vertical padding, so the indicator keeps
-      // reading as a data element rather than as decoration — the benchmark's
-      // KPI indicators (donut, partial ring, ratio bar) all carry real mass
-      // against their 120px card, and a hairline would not.
       className="flex h-3 w-14 shrink-0 overflow-hidden rounded-full bg-(--indicator-track) @[11rem]/kpi:w-20"
       aria-hidden="true"
     >
       <span
-        data-kpi-bar="ratioWin"
-        className="bg-positive/85"
-        style={{ width: `${winSharePercent}%` }}
+        data-kpi-bar="plannedRisk"
+        className="bg-negative/85"
+        style={{ width: `${riskSharePercent}%` }}
       />
-      <span data-kpi-bar="ratioLoss" className="bg-negative/85 flex-1" />
+      <span data-kpi-bar="plannedReward" className="bg-positive/85 flex-1" />
     </span>
   );
 }
 
 /**
- * Average win against average loss, drawn to scale.
+ * Avg R / Trade: a deflection from a centred zero.
  *
- * Two independent bars rather than one split track, because these are two
- * magnitudes and not two shares of a whole — and because the card next to it
- * already uses a split track, and repeating it here would lose the variety
- * the row was rebuilt for.
+ * ONE FACT, DRAWN FIRST: which side of break-even an average Trade lands on.
+ * The fill grows out of the centre rule rather than from an edge, so the
+ * direction is legible before the length is — a left-anchored bar would have
+ * made a small loss and a small gain look alike.
+ *
+ * The centre rule is always drawn, including at exactly zero, because "no
+ * deflection" is only readable against the datum it failed to leave. It uses
+ * the same `--subtle-foreground` the charts' zero line does (§9): a datum, not
+ * a series.
  */
-function MagnitudePair({ winPercent, lossPercent }: { winPercent: number; lossPercent: number }) {
+function DivergingBar({
+  direction,
+  fillPercent,
+}: {
+  direction: 'positive' | 'negative' | 'zero';
+  fillPercent: number;
+}) {
   return (
-    <span className="flex w-14 shrink-0 flex-col gap-2 @[11rem]/kpi:w-20" aria-hidden="true">
-      <span className="flex h-2 overflow-hidden rounded-full bg-(--indicator-track)">
+    <span
+      className="relative block h-3 w-14 shrink-0 overflow-hidden rounded-full bg-(--indicator-track) @[11rem]/kpi:w-20"
+      aria-hidden="true"
+    >
+      {direction === 'zero' ? null : (
         <span
-          data-kpi-bar="averageWin"
-          className="bg-positive/85 rounded-full"
-          style={{ width: `${winPercent}%` }}
+          data-kpi-bar={direction === 'positive' ? 'averageGain' : 'averageLoss'}
+          className={cn(
+            'absolute inset-y-0 rounded-full',
+            direction === 'positive' ? 'bg-positive/85 left-1/2' : 'bg-negative/85 right-1/2',
+          )}
+          style={{ width: `${fillPercent}%` }}
         />
-      </span>
-      <span className="flex h-2 overflow-hidden rounded-full bg-(--indicator-track)">
-        <span
-          data-kpi-bar="averageLoss"
-          className="bg-negative/85 rounded-full"
-          style={{ width: `${lossPercent}%` }}
-        />
-      </span>
+      )}
+      <span
+        data-kpi-bar="zeroDatum"
+        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-(--subtle-foreground)"
+      />
     </span>
   );
 }
@@ -288,50 +308,44 @@ function KpiDetail({ detail }: { detail: BasicKpiDetail }) {
 
   if (detail.kind === 'none') return null;
 
-  if (detail.kind === 'ratio') {
+  if (detail.kind === 'plannedRatio') {
     return (
-      <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
-        {t('detail.ratioSentence', { factor: detail.factor })}
-      </p>
+      <>
+        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+          {t('detail.plannedRrSentence', { factor: detail.factor })}
+        </p>
+        {/*
+          The coverage line, because this is the one card whose denominator can
+          be smaller than the row's: Trades recorded without a planned target
+          carry no ratio and are excluded rather than counted as zero.
+        */}
+        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+          {t('detail.plannedRrCoverage', { count: detail.tradeCount })}
+        </p>
+      </>
     );
   }
 
-  const rows =
-    detail.kind === 'outcome'
-      ? ([
-          {
-            key: 'wins',
-            label: t(detail.unit === 'days' ? 'detail.winningDays' : 'detail.wins'),
-            value: String(detail.wins),
-            swatch: 'bg-positive',
-          },
-          {
-            key: 'breakEvens',
-            label: t(detail.unit === 'days' ? 'detail.breakEvenDays' : 'detail.breakEvens'),
-            value: String(detail.breakEvens),
-            swatch: 'bg-break-even',
-          },
-          {
-            key: 'losses',
-            label: t(detail.unit === 'days' ? 'detail.losingDays' : 'detail.losses'),
-            value: String(detail.losses),
-            swatch: 'bg-negative',
-          },
-        ] as const)
-      : ([
-          {
-            key: 'averageWin',
-            label: t('detail.averageWin'),
-            value: detail.averageWinR,
-            swatch: 'bg-positive',
-          },
-          {
-            key: 'averageLoss',
-            label: t('detail.averageLoss'),
-            value: detail.averageLossR,
-            swatch: 'bg-negative',
-          },
-        ] as const);
+  const rows = [
+    {
+      key: 'wins',
+      label: t('detail.wins'),
+      value: String(detail.wins),
+      swatch: 'bg-positive',
+    },
+    {
+      key: 'breakEvens',
+      label: t('detail.breakEvens'),
+      value: String(detail.breakEvens),
+      swatch: 'bg-break-even',
+    },
+    {
+      key: 'losses',
+      label: t('detail.losses'),
+      value: String(detail.losses),
+      swatch: 'bg-negative',
+    },
+  ] as const;
 
   return (
     <dl className="mt-2 flex flex-col gap-1.5">

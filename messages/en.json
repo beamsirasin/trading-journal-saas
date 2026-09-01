@@ -397,7 +397,8 @@
         "data_integrity_error": "Metric temporarily unavailable",
         "incomplete": "Incomplete monetary results",
         "mixed_currency": "Mixed account currencies",
-        "unsupported_currency_scale": "Unsupported account currency"
+        "unsupported_currency_scale": "Unsupported account currency",
+        "no_planned_rr": "No Trades with a planned target"
       },
       "recent": {
         "title": "Recent Trades",
@@ -427,36 +428,30 @@
         "wins": "Wins",
         "breakEvens": "Break-even",
         "losses": "Losses",
-        "winningDays": "Winning days",
-        "breakEvenDays": "Break-even days",
-        "losingDays": "Losing days",
-        "averageWin": "Average win",
-        "averageLoss": "Average loss",
-        "ratioSentence": "For every 1R lost, your winning Trades produced {factor}R."
+        "plannedRrSentence": "For every 1R you risked, your Plans aimed at {factor}R.",
+        "plannedRrCoverage": "Averaged over {count, plural, one {# Trade} other {# Trades}} that had a planned target."
       },
       "netPnl": {
         "label": "Net P&L",
         "info": "Your total profit or loss for the selected period."
       },
+      "totalR": {
+        "label": "Total R",
+        "info": "Your combined Trade results measured in R, so the number means the same whatever your account size."
+      },
       "tradeWin": {
-        "label": "Trade Win %",
+        "label": "Win Rate",
         "info": "The percentage of closed Trades that finished in profit. Break-even Trades still count in the total.",
-        "indicatorTrigger": "Show Trade Win breakdown"
+        "indicatorTrigger": "Show Win Rate breakdown"
       },
-      "profitFactor": {
-        "label": "Profit Factor",
-        "info": "How much your winning Trades made for every 1R your losing Trades gave up.",
-        "indicatorTrigger": "Show Profit Factor detail"
+      "avgPlannedRr": {
+        "label": "Avg Planned RR",
+        "info": "The average reward your Plan aimed at for every 1R of risk, taken from the plan you made before entering. Trades you recorded without a planned target are left out.",
+        "indicatorTrigger": "Show Avg Planned RR detail"
       },
-      "dayWin": {
-        "label": "Day Win %",
-        "info": "The percentage of trading days that ended in profit. A day is judged by its TOTAL R, so several Trades can share one day — which is why this counts fewer days than the Trade count beside it. A day inside the break-even band counts in the total but not as a win, exactly as a break-even Trade does. Days follow your account timezone.",
-        "indicatorTrigger": "Show Day Win breakdown"
-      },
-      "avgWinLoss": {
-        "label": "Avg Win / Loss",
-        "info": "How much larger your average winner is than your average loser.",
-        "indicatorTrigger": "Show average win and loss"
+      "avgRPerTrade": {
+        "label": "Avg R / Trade",
+        "info": "How many R you make or lose on an average Trade."
       }
     },
     "performance": {

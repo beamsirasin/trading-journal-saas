@@ -294,6 +294,8 @@ The full closed `CalcFailureReason` set (`src/lib/calc/types.ts`) spans both Pha
 
 `NaN`, `Infinity`, and "0 means no data" are all forbidden across both phases' functions.
 
+**`no_planned_rr` is a presentation reason, not a calculation one.** The Dashboard's Avg Planned RR card averages the persisted `planned_r` of the Trader-eligible population through the canonical `averageR`, and a Trade with no planned target contributes no ratio — it is excluded from the population rather than entered as a `0` plan. When no Trade in scope carries one, `averageR` correctly returns `no_trades` for the list it was handed, but reporting that verbatim would tell the reader the range holds no Trades at all while four cards beside it print figures from those very Trades. So `src/lib/dashboard/basic-kpi.ts` maps a zero planned population to its own `no_planned_rr` ("No Trades with a planned target"). It is deliberately **not** added to `CalcFailureReason` or `AnalyticsUnavailableReason`: no calculation failed.
+
 A dashboard showing `0%` win rate for a user with no trades is stating something false. Showing "no closed trades yet" is stating something true. The type system should make the false version hard to write.
 
 | Situation                                       | Result                                        |

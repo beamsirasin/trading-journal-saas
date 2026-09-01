@@ -43,6 +43,13 @@ function axis(
     profitFactor: available('5.0000'),
     maximumDrawdownR: available('1.0000'),
     payoffRatio: available('2.4000'),
+    equityCurve: {
+      status: 'available',
+      value: [
+        { tradeId: 'trade-1', occurredAt: '2026-08-01T10:00:00.000Z', cumulativeR: '2.0000' },
+        { tradeId: 'trade-2', occurredAt: '2026-08-02T10:00:00.000Z', cumulativeR: '4.0000' },
+      ],
+    },
     ...overrides,
   };
 }
@@ -97,6 +104,7 @@ function overview(overrides: Partial<DashboardPageData> = {}): DashboardPageData
         breakEvens: 0,
         losses: 2,
       },
+      plannedRr: { average: available('2.5000'), tradeCount: 5 },
       profitFactor: available('5.0000'),
       dayWinRate: {
         status: 'available',
@@ -574,13 +582,14 @@ describe('RealDashboard', () => {
     const kpiRow = screen.getByRole('region', { name: 'Key trading figures' });
     expect(kpiRow.querySelectorAll('[data-dashboard-widget]')).toHaveLength(5);
 
-    // The fixture's Trader axis: 60% win rate, +$10.00, 66.67% of days,
-    // 2.00x payoff — every figure straight from the D2 payload.
+    // The fixture's Trader axis: +$10.00 money, -1.00R total, 60% win rate,
+    // a 1:2.50 average plan and +1.33R a Trade — every figure straight from
+    // the D2 payload.
     expect(within(kpiRow).getByText('+$10.00')).toBeVisible();
+    expect(within(kpiRow).getByText('-1.00R')).toBeVisible();
     expect(within(kpiRow).getByText('60.00%')).toBeVisible();
-    expect(within(kpiRow).getByText('5.00')).toBeVisible();
-    expect(within(kpiRow).getByText('66.67%')).toBeVisible();
-    expect(within(kpiRow).getByText('2.00x')).toBeVisible();
+    expect(within(kpiRow).getByText('1 : 2.50')).toBeVisible();
+    expect(within(kpiRow).getByText('+1.33R')).toBeVisible();
 
     // The default fixture has every attention count at zero, so the panel
     // that would sit between them is absent; the merged System vs Trader card

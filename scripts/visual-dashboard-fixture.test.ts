@@ -74,6 +74,7 @@ function page() {
       exitedAt: trade.exitedAt!.toISOString(),
       netPnlMinor: trade.netPnlMinor!.toString(),
       baseCurrency: 'USD',
+      plannedR: trade.plannedR,
     }));
   const system = trades
     .filter((trade) => trade.systemStatus === 'resolved')

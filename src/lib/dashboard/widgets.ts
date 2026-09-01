@@ -1,9 +1,9 @@
 export const DASHBOARD_WIDGET_IDS = [
   'basic.net-pnl',
+  'basic.total-r',
   'basic.trade-win-rate',
-  'basic.profit-factor',
-  'basic.day-win-rate',
-  'basic.avg-win-loss',
+  'basic.avg-planned-rr',
+  'basic.avg-r-per-trade',
   'review.needs-attention',
   'execution.gap',
   'trades.recent',
@@ -37,10 +37,10 @@ export interface DashboardWidgetDefinition {
 
 export const DASHBOARD_WIDGET_REGISTRY: readonly DashboardWidgetDefinition[] = [
   { id: 'basic.net-pnl', capability: 'basic', implementation: 'current' },
+  { id: 'basic.total-r', capability: 'basic', implementation: 'current' },
   { id: 'basic.trade-win-rate', capability: 'basic', implementation: 'current' },
-  { id: 'basic.profit-factor', capability: 'basic', implementation: 'current' },
-  { id: 'basic.day-win-rate', capability: 'basic', implementation: 'current' },
-  { id: 'basic.avg-win-loss', capability: 'basic', implementation: 'current' },
+  { id: 'basic.avg-planned-rr', capability: 'basic', implementation: 'current' },
+  { id: 'basic.avg-r-per-trade', capability: 'basic', implementation: 'current' },
   { id: 'review.needs-attention', capability: 'attention', implementation: 'current' },
   { id: 'execution.gap', capability: 'comparison', implementation: 'current' },
   { id: 'trades.recent', capability: 'recent_trades', implementation: 'current' },
@@ -181,9 +181,19 @@ export interface DashboardLayoutItem {
  * render; the rest hold a stable identity/layout slot with no component.
  * There is no persistence, editor, drag/drop, or resize behavior.
  *
- * `basic.avg-win-loss` carries `mobileSpan: 2` (D3): five one-column cards in
- * a two-column mobile grid would leave the fifth dangling beside an empty
+ * `basic.avg-r-per-trade` carries `mobileSpan: 2` (D3): five one-column cards
+ * in a two-column mobile grid would leave the fifth dangling beside an empty
  * cell, so the last Basic KPI spans the narrow grid instead.
+ *
+ * THE FIVE BASIC SLOTS ARE THE SAME FIVE SLOTS, WITH THREE NEW OCCUPANTS.
+ * Profit Factor, Day Win % and Avg Win / Loss are retired from the KPI band
+ * in favour of Total R, Avg Planned RR and Avg R / Trade — the row now reads
+ * money, R, how often, what was planned, what a Trade averages. Retired IDs
+ * are deleted rather than kept as `implementation: 'later'` placeholders:
+ * nothing persists a layout, so a retired ID would be a record of a widget
+ * this page no longer has. The three retired FIGURES remain canonical and
+ * still reach the payload (see `DashboardPageData['basic']`); only their
+ * cards are gone.
  */
 export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
   {
@@ -195,7 +205,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileOrder: 10,
   },
   {
-    widgetId: 'basic.trade-win-rate',
+    widgetId: 'basic.total-r',
     section: 'basic-kpi',
     order: 20,
     desktopSpan: 1,
@@ -203,7 +213,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileOrder: 20,
   },
   {
-    widgetId: 'basic.profit-factor',
+    widgetId: 'basic.trade-win-rate',
     section: 'basic-kpi',
     order: 30,
     desktopSpan: 1,
@@ -211,7 +221,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileOrder: 30,
   },
   {
-    widgetId: 'basic.day-win-rate',
+    widgetId: 'basic.avg-planned-rr',
     section: 'basic-kpi',
     order: 40,
     desktopSpan: 1,
@@ -219,7 +229,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: readonly DashboardLayoutItem[] = [
     mobileOrder: 40,
   },
   {
-    widgetId: 'basic.avg-win-loss',
+    widgetId: 'basic.avg-r-per-trade',
     section: 'basic-kpi',
     order: 50,
     desktopSpan: 1,

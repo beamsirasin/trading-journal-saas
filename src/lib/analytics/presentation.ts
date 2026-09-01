@@ -23,12 +23,7 @@ function signedFixed(decimal: InstanceType<typeof DisplayDecimal>): string {
 }
 
 export type AnalyticsDisplayStyle =
-  | 'r'
-  | 'percent'
-  | 'percentage-points'
-  | 'factor'
-  | 'multiple'
-  | 'magnitude';
+  'r' | 'percent' | 'percentage-points' | 'factor' | 'multiple' | 'magnitude';
 export type AnalyticsDisplayTone = 'positive' | 'negative' | 'neutral';
 
 export type FormattedAnalyticsMetric =

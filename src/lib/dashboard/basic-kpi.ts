@@ -4,44 +4,68 @@ import type { AnalyticsUnavailableReason } from '@/lib/analytics/metrics';
 import { formatAnalyticsMetric, type AnalyticsDisplayStyle } from '@/lib/analytics/presentation';
 import { formatMoney, fromMinorUnits, type CurrencyCode } from '@/lib/money';
 
-import { neutralMetric, type MetricDisplayValue } from './metric-display';
+import { neutralMetric, signedMetric, type MetricDisplayValue } from './metric-display';
 import type { DashboardPageData } from './page-data';
 import { dashboardLayoutItem, type DashboardLayoutItem, type DashboardWidgetId } from './widgets';
 
 /**
  * D3 Basic KPI presentation model.
  *
- * Pure: it reads the already-composed D2 `DashboardPageData.basic` states and
- * turns them into display strings, tones, and translation-shaped context. No
- * formula is recomputed here and nothing in this module reaches a DAL row, a
- * Trade, or a fetch — that is what keeps the five card presenters free of
- * metric-name conditionals while staying unit-testable without React.
+ * Pure: it reads the already-composed D2 `DashboardPageData` states and turns
+ * them into display strings, tones, and translation-shaped context. No formula
+ * is recomputed here and nothing in this module reaches a DAL row, a Trade, or
+ * a fetch — that is what keeps the five card presenters free of metric-name
+ * conditionals while staying unit-testable without React.
  */
 
-/** The five metric identities. Ordering comes from the D2 default layout. */
+/**
+ * The five metric identities. Ordering comes from the D2 default layout.
+ *
+ * THE ROW ANSWERS FIVE QUESTIONS IN ONE PASS, LEFT TO RIGHT: how much money
+ * did I make, how many R, how often do I win, what do I plan before entering,
+ * and what does an average Trade actually return. Profit Factor, Day Win % and
+ * Avg Win / Loss stood here before and are all recombinations or second
+ * readings of the same win/loss shape — a beginner reading five figures should
+ * not have to hold three of them together to learn anything the first two did
+ * not already say. Those three remain canonical and still reach this payload
+ * (see `DashboardPageData['basic']`); Analytics is where they are read.
+ *
+ * `tradeWin` keeps its key and its widget ID: the metric is unchanged
+ * canonical trade win rate, and only its TITLE became "Win Rate".
+ */
 export const BASIC_KPI_KEYS = [
   'netPnl',
+  'totalR',
   'tradeWin',
-  'profitFactor',
-  'dayWin',
-  'avgWinLoss',
+  'avgPlannedRr',
+  'avgRPerTrade',
 ] as const;
 
 export type BasicKpiKey = (typeof BASIC_KPI_KEYS)[number];
 
 /**
- * Canonical analytics reasons plus the three monetary-availability reasons
- * D1's `netPnl` owns. Both resolve under `dashboard.real.unavailable.*`.
+ * Canonical analytics reasons, the three monetary-availability reasons D1's
+ * `netPnl` owns, and `no_planned_rr`.
+ *
+ * `no_planned_rr` is this band's own reason rather than a new canonical
+ * analytics one: it is not a metric failure over the population but a
+ * statement that the PLAN side of these Trades was never filled in. Reporting
+ * it as `averageR`'s `no_trades` would claim the range holds no Trades at all,
+ * while the four cards beside it were printing figures from those very Trades.
+ * All of them resolve under `dashboard.real.unavailable.*`.
  */
 export type BasicKpiUnavailableReason =
-  AnalyticsUnavailableReason | 'incomplete' | 'mixed_currency' | 'unsupported_currency_scale';
+  | AnalyticsUnavailableReason
+  | 'incomplete'
+  | 'mixed_currency'
+  | 'unsupported_currency_scale'
+  | 'no_planned_rr';
 
 /** `empty` means no eligible Trader population at all — never an error. */
 export type BasicKpiValue = MetricDisplayValue<BasicKpiUnavailableReason>;
 
 /**
- * The one line printed UNDER a KPI figure — and after this pass, only one
- * card has one.
+ * The one line printed UNDER a KPI figure — and only one card has one.
  *
  * Through R2C every card carried a permanent supporting line: `27W · 5BE ·
  * 34L`, `USD · 66 Trades`, `Calculated from R`, `+2.27R / -1.12R`. Five cards
@@ -62,6 +86,12 @@ export type BasicKpiContext =
   /** `66 Trades` — the size of the population behind an available money total. */
   | { readonly kind: 'tradeCount'; readonly tradeCount: number };
 
+/** One normalized sparkline vertex, in a 0–100 box. `y` is SVG-down. */
+export interface BasicKpiSparkPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
 /**
  * The indicator drawn beside a KPI figure.
  *
@@ -76,79 +106,96 @@ export type BasicKpiContext =
  * sparkline would have to be invented outright or borrowed from Population C
  * — the paired Execution-Gap population, a different Trade universe — and
  * neither is acceptable. That card is carried by typography instead, which is
- * exactly what to do when the data is not there.
+ * exactly what to do when the data is not there. Note that this is precisely
+ * the reason Total R CAN have one: R has a published Population A series
+ * (`trader.equityCurve`) and money does not.
  */
 export type BasicKpiIndicator =
   | { readonly kind: 'none' }
   /**
-   * W / BE / L as arcs. Truthful as a share of a whole because the three
-   * counts PARTITION their population: every eligible closed Trade, and every
-   * eligible local trading day, falls in exactly one.
-   *
-   * `shape` is the only thing that differs between the two cards using this
-   * variant, and it exists so Trade Win % and Day Win % do not read as the
-   * same widget printed twice: a full ring counts Trades, a semicircular
-   * gauge counts days.
+   * W / BE / L as arcs on a full ring. Truthful as a share of a whole because
+   * the three counts PARTITION their population: every eligible closed Trade
+   * falls in exactly one.
    */
   | {
       readonly kind: 'outcomeSplit';
-      readonly shape: 'donut' | 'gauge';
-      readonly unit: 'trades' | 'days';
       readonly wins: number;
       readonly breakEvens: number;
       readonly losses: number;
     }
   /**
-   * Profit Factor as a two-part proportion.
+   * Cumulative ACTUAL R across the scoped population, as a step-free polyline.
    *
-   * THE COMPONENTS ARE NOT PUBLISHED, AND THIS BAR DOES NOT PRETEND THEY ARE.
-   * Gross positive R and absolute gross negative R are computed inside
-   * `lib/calc`'s `profitFactor` and never reach this payload. What IS
-   * published is their ratio, and a ratio fixes the proportion exactly:
+   * THE SERIES IS THE FIGURE'S OWN HISTORY, NOT A SECOND ONE. Every vertex is
+   * a `cumulativeR` value from `lib/calc`'s `equityCurveR` over Population A,
+   * in that engine's canonical order, and its LAST vertex is the Total R
+   * printed on the card face. Nothing is smoothed, interpolated, extrapolated
+   * or zero-filled; a long population is thinned by dropping vertices, never
+   * by averaging them into values no Trade produced.
    *
-   *     grossWin / (grossWin + grossLoss)  =  PF / (PF + 1)
-   *
-   * so the split below is an algebraic restatement of the figure already on
-   * the card's face, not a new quantity and not a new analytics contract.
-   * Nothing anywhere claims an absolute gross-R amount, because none is
-   * known — the popover states the ratio in words and stops there. That is
-   * the difference between drawing a published number and inventing a
-   * decorative percentage.
-   */
-  | { readonly kind: 'ratioSplit'; readonly winSharePercent: number }
-  /**
-   * The average win against the average loss, as two bars whose LENGTHS are
-   * their magnitudes: the larger fills the track and the other is drawn to
-   * scale beneath it, so a `2.02x` card shows a winner bar twice the loser
-   * bar. That is the payoff ratio made visible rather than a second claim
-   * about it. Both percentages come from the two canonical `NUMERIC`
-   * averages, computed once with `decimal.js`.
+   * `tone` comes from where the series ends, which is the same sign the figure
+   * carries — so the drawing and the number can never disagree.
    */
   | {
-      readonly kind: 'magnitudePair';
-      readonly winPercent: number;
-      readonly lossPercent: number;
+      readonly kind: 'cumulativeR';
+      readonly tone: 'positive' | 'negative' | 'neutral';
+      readonly points: readonly BasicKpiSparkPoint[];
+    }
+  /**
+   * Avg Planned RR as one track split between planned risk and planned reward.
+   *
+   * `riskSharePercent = 1 / (1 + RR)` — the algebraic restatement of the ratio
+   * already on the card's face, not a new quantity: a `1 : 3` plan draws 25%
+   * risk against 75% reward. Both components are shares of the PLAN, so unlike
+   * a Profit-Factor split there is nothing here that the published figure does
+   * not already fully determine.
+   */
+  | { readonly kind: 'riskRewardSplit'; readonly riskSharePercent: number }
+  /**
+   * Avg R / Trade as a zero-centred deflection.
+   *
+   * The question this answers is "is my average Trade above or below zero",
+   * which is a direction before it is a magnitude. `fillPercent` is a share of
+   * the FULL track measured from its centre, so it never exceeds 50.
+   *
+   * THE SCALE IS FIXED, NOT FITTED TO THE DATA. The visual domain is
+   * ±{@link AVG_R_INDICATOR_DOMAIN_R}R and values outside it are clamped, so
+   * the same bar means the same thing on every account and in every date
+   * range; a dataset-relative scale would silently redraw a `+0.05R` account
+   * as a full deflection. Clamping touches only the drawing — the figure above
+   * it remains the real value and stays authoritative.
+   */
+  | {
+      readonly kind: 'divergingBar';
+      readonly direction: 'positive' | 'negative' | 'zero';
+      readonly fillPercent: number;
     };
 
 /**
  * What the indicator reveals when a reader asks for it.
  *
- * Every figure here was printed permanently on the card face before this
- * pass. It is the same data from the same source; this type only decides that
- * its home is an affordance rather than a fourth line of small text.
+ * Every figure here is data the card face cannot carry. This type only decides
+ * that its home is an affordance rather than a fourth line of small text.
  */
 export type BasicKpiDetail =
   | { readonly kind: 'none' }
   | {
       readonly kind: 'outcome';
-      readonly unit: 'trades' | 'days';
       readonly wins: number;
       readonly breakEvens: number;
       readonly losses: number;
     }
-  /** The published ratio, formatted, for the "for every 1R lost…" sentence. */
-  | { readonly kind: 'ratio'; readonly factor: string }
-  | { readonly kind: 'averages'; readonly averageWinR: string; readonly averageLossR: string };
+  /**
+   * The planned ratio in words, plus the size of the population it was
+   * averaged over.
+   *
+   * The coverage line is not decoration. Avg Planned RR is the one card in the
+   * band whose denominator can be SMALLER than the others': a Trade recorded
+   * with no planned target carries no ratio and is excluded rather than
+   * counted as zero. A reader comparing "66 Trades" under Net P&L with this
+   * average has exactly one place to find out that it came from 58 of them.
+   */
+  | { readonly kind: 'plannedRatio'; readonly factor: string; readonly tradeCount: number };
 
 export interface BasicKpiModel {
   readonly widgetId: DashboardWidgetId;
@@ -164,11 +211,34 @@ export interface BasicKpiModel {
 
 const WIDGET_ID: Record<BasicKpiKey, DashboardWidgetId> = {
   netPnl: 'basic.net-pnl',
+  totalR: 'basic.total-r',
   tradeWin: 'basic.trade-win-rate',
-  profitFactor: 'basic.profit-factor',
-  dayWin: 'basic.day-win-rate',
-  avgWinLoss: 'basic.avg-win-loss',
+  avgPlannedRr: 'basic.avg-planned-rr',
+  avgRPerTrade: 'basic.avg-r-per-trade',
 };
+
+/**
+ * The half-width of the Avg R / Trade indicator's fixed visual domain, in R.
+ *
+ * ±1R covers the range a per-Trade average realistically occupies — an
+ * expectancy above +1R per Trade is exceptional and below -1R is catastrophic
+ * — so within it the bar reads as a real magnitude and outside it as "off the
+ * scale, in this direction". Documented as a constant because a stable scale
+ * is the entire point: the bar has to mean the same thing across accounts,
+ * ranges and filters.
+ */
+export const AVG_R_INDICATOR_DOMAIN_R = 1;
+
+/**
+ * The most vertices the cumulative-R sparkline draws.
+ *
+ * A 400-Trade population inside a 56px-wide indicator has roughly seven
+ * vertices per visible pixel; keeping them all would cost payload and DOM for
+ * a shape no one can see. Thinning DROPS vertices at an even stride and always
+ * keeps the first and last, so every point drawn is a real cumulative total
+ * and the curve still starts and ends where the population does.
+ */
+const SPARKLINE_MAX_POINTS = 32;
 
 const EMPTY: BasicKpiValue = { status: 'empty' };
 const NO_CONTEXT: BasicKpiContext = { kind: 'none' };
@@ -201,15 +271,28 @@ function formatNetPnl(currency: CurrencyCode, totalMinor: string): BasicKpiValue
 }
 
 /**
- * On this row only Net P&L — genuinely signed outcome data — earns
- * positive/negative colour; every other headline is neutral whatever its
- * value. See `neutralMetric` for why.
+ * A supporting figure, coloured only where its SIGN is the finding.
+ *
+ * Net P&L, Total R and Avg R / Trade are signed outcomes — "did this make or
+ * lose" is the whole content of the number — so they keep the tone their sign
+ * implies. Win Rate and Avg Planned RR are levels, not verdicts: a high win
+ * rate is not inherently good (CLAUDE.md §1) and a planned ratio is an
+ * intention rather than a result, so both stay neutral whatever their value.
+ * That is the same rule the rest of the product spends `--positive` /
+ * `--negative` by; see `signedMetric` / `neutralMetric`.
  */
 function neutral(
   metric: Parameters<typeof formatAnalyticsMetric>[0],
   style: AnalyticsDisplayStyle,
 ): BasicKpiValue {
   return neutralMetric<BasicKpiUnavailableReason>(metric, style);
+}
+
+function signed(
+  metric: Parameters<typeof formatAnalyticsMetric>[0],
+  style: AnalyticsDisplayStyle,
+): BasicKpiValue {
+  return signedMetric<BasicKpiUnavailableReason>(metric, style);
 }
 
 function formatted(
@@ -231,84 +314,145 @@ function toDecimal(value: string): Decimal | null {
 }
 
 /**
- * The Profit Factor bar's win share, as an integer percent, or `null`.
+ * `1 : 3.20` — the planned reward per one unit of planned risk.
  *
- * `PF / (PF + 1)`, in `decimal.js` because the input is a canonical
+ * Spelled as a ratio rather than as a bare `3.20` because that is the form a
+ * trader plans in, and because the leading `1` is what names the unit: `3.20`
+ * alone is indistinguishable from a Profit Factor or an R value on a row that
+ * also carries both. The spacing is fixed here rather than translated — it is
+ * a numeric format, like `40.91%` and `+2.00R` beside it, not a sentence.
+ */
+function formatPlannedRatio(factor: string): string {
+  return `1 : ${factor}`;
+}
+
+/**
+ * The Avg Planned RR bar's risk share, as an integer percent, or `null`.
+ *
+ * `1 / (1 + RR)`, in `decimal.js` because the input is a canonical
  * `NUMERIC(12,4)` string and CLAUDE.md §5 bans float arithmetic on those even
- * when the result only ever becomes a CSS width. A fully losing sample
- * publishes `0.0000`, which correctly yields a 0% win share rather than a
- * failure. A negative factor cannot occur — both gross components enter as
- * magnitudes — so it is refused rather than drawn inverted.
+ * when the result only ever becomes a CSS width. A plan targeting exactly zero
+ * reward correctly fills the track with risk. A negative average cannot occur
+ * — `plannedR` requires the Target on the profitable side of Entry and
+ * `moneyPlannedR` refuses a negative reward — so it is refused here rather
+ * than drawn inverted.
  */
-function ratioSharePercent(metric: Parameters<typeof formatAnalyticsMetric>[0]): number | null {
+function riskSharePercent(metric: Parameters<typeof formatAnalyticsMetric>[0]): number | null {
   if (metric.status !== 'available') return null;
-  const factor = toDecimal(metric.value);
-  if (factor === null || factor.lessThan(0)) return null;
-  return factor.dividedBy(factor.plus(1)).times(100).toDecimalPlaces(0).toNumber();
+  const ratio = toDecimal(metric.value);
+  if (ratio === null || ratio.lessThan(0)) return null;
+  return new Decimal(1).dividedBy(ratio.plus(1)).times(100).toDecimalPlaces(0).toNumber();
 }
 
 /**
- * The two payoff bars, each as a percent of the LARGER magnitude.
+ * The Avg R / Trade deflection: which side of zero, and how far along the
+ * fixed ±{@link AVG_R_INDICATOR_DOMAIN_R}R domain.
  *
- * Scaling to the larger side rather than to their sum is what makes the pair
- * read as "twice as big": at `+2.27R` against `-1.12R` the winner fills the
- * track and the loser reaches 49% of it. A share-of-total split would have
- * drawn 67/33 — a true statement, about a different question than the one the
- * `2.02x` above it asks.
- *
- * Both magnitudes are absolute because a loss average is published negative
- * and this compares SIZES. A larger magnitude of zero yields `null` rather
- * than a division by zero.
+ * `fillPercent` is a share of the FULL track measured from its centre, so a
+ * clamped value reaches 50 and never more.
  */
-function magnitudePair(
-  averageWin: Parameters<typeof formatAnalyticsMetric>[0],
-  averageLoss: Parameters<typeof formatAnalyticsMetric>[0],
-): { readonly winPercent: number; readonly lossPercent: number } | null {
-  if (averageWin.status !== 'available' || averageLoss.status !== 'available') return null;
-  const win = toDecimal(averageWin.value);
-  const loss = toDecimal(averageLoss.value);
-  if (win === null || loss === null) return null;
-  const winMagnitude = win.abs();
-  const lossMagnitude = loss.abs();
-  const larger = Decimal.max(winMagnitude, lossMagnitude);
-  if (larger.lessThanOrEqualTo(0)) return null;
-  const percent = (magnitude: Decimal): number =>
-    magnitude.dividedBy(larger).times(100).toDecimalPlaces(0).toNumber();
-  return { winPercent: percent(winMagnitude), lossPercent: percent(lossMagnitude) };
+function divergingBar(
+  metric: Parameters<typeof formatAnalyticsMetric>[0],
+): { readonly direction: 'positive' | 'negative' | 'zero'; readonly fillPercent: number } | null {
+  if (metric.status !== 'available') return null;
+  const value = toDecimal(metric.value);
+  if (value === null) return null;
+  const magnitude = Decimal.min(value.abs(), AVG_R_INDICATOR_DOMAIN_R);
+  return {
+    direction: value.greaterThan(0) ? 'positive' : value.lessThan(0) ? 'negative' : 'zero',
+    fillPercent: magnitude
+      .dividedBy(AVG_R_INDICATOR_DOMAIN_R)
+      .times(50)
+      .toDecimalPlaces(2)
+      .toNumber(),
+  };
 }
 
 /**
- * An outcome composition's indicator and detail, or neither.
+ * Thins a series to at most {@link SPARKLINE_MAX_POINTS} vertices by dropping,
+ * never by averaging. The first and last are always kept.
+ */
+function thin<T>(points: readonly T[]): readonly T[] {
+  if (points.length <= SPARKLINE_MAX_POINTS) return points;
+  const last = points.length - 1;
+  const kept: T[] = [];
+  for (let slot = 0; slot < SPARKLINE_MAX_POINTS; slot += 1) {
+    const index = Math.round((slot * last) / (SPARKLINE_MAX_POINTS - 1));
+    const point = points[index];
+    if (point !== undefined) kept.push(point);
+  }
+  return kept;
+}
+
+/**
+ * The cumulative-R sparkline, or `null` when there is no history to draw.
  *
- * DAY COUNTS COME FROM THE DAY-LEVEL SUMMARY, NEVER FROM `tradeWin`. The
- * caller passes `dayWinRate`'s own `winningDayCount`/`breakEvenDayCount`/
- * `losingDayCount`, which `lib/calc/day-win-rate` produces by grouping
- * Population A on Actual `exited_at` in the workspace timezone, summing each
- * local day's R, and classifying the DAY. On a data set holding exactly one
- * Trade per day the two compositions coincide — that is arithmetic, not a
- * wiring mistake — and where a day holds two Trades they diverge, which is
- * the case this separation exists to keep correct.
+ * A single Trade produces a single vertex, which is a dot rather than a
+ * history — it draws nothing rather than a fabricated flat line, exactly as a
+ * zero-population ring draws nothing rather than an empty frame.
+ *
+ * ZERO IS ALWAYS INSIDE THE VERTICAL DOMAIN. Scaling to the series' own
+ * extremes alone would fit a curve that never left profit to the same box as
+ * one that never left loss, and the reader would have no way to tell which
+ * they were looking at. Anchoring the domain to include zero costs nothing and
+ * makes above-water and below-water legible without an axis.
+ */
+function cumulativeRIndicator(
+  metric: DashboardPageData['trader']['equityCurve'],
+): BasicKpiIndicator | null {
+  if (metric.status !== 'available') return null;
+  const parsed: Decimal[] = [];
+  for (const point of metric.value) {
+    const value = toDecimal(point.cumulativeR);
+    if (value === null) return null;
+    parsed.push(value);
+  }
+  if (parsed.length < 2) return null;
+
+  const series = thin(parsed);
+  const last = series.length - 1;
+  const ending = series[last];
+  if (ending === undefined) return null;
+  const minimum = Decimal.min(...series, 0);
+  const maximum = Decimal.max(...series, 0);
+  const span = maximum.minus(minimum);
+  const points = series.map((value, index) => ({
+    x: new Decimal(index).dividedBy(last).times(100).toDecimalPlaces(2).toNumber(),
+    // A zero span means every cumulative total (and zero) coincided: one flat
+    // line through the middle, which is what actually happened.
+    y: span.isZero()
+      ? 50
+      : new Decimal(100)
+          .minus(value.minus(minimum).dividedBy(span).times(100))
+          .toDecimalPlaces(2)
+          .toNumber(),
+  }));
+
+  return {
+    kind: 'cumulativeR',
+    tone: ending.greaterThan(0) ? 'positive' : ending.lessThan(0) ? 'negative' : 'neutral',
+    points,
+  };
+}
+
+/**
+ * The Trade-outcome ring and the breakdown behind it, or neither.
+ *
+ * The three counts come from `tradeWin`'s own composition, which
+ * `composePerformanceAxis` produced by classifying each eligible closed
+ * Trade's stored outcome — never re-derived from the rate above it.
  */
 function outcomeIndicator(
-  unit: 'trades' | 'days',
   counts: { readonly wins: number; readonly breakEvens: number; readonly losses: number } | null,
 ): { readonly indicator: BasicKpiIndicator; readonly detail: BasicKpiDetail } {
   if (counts === null) return { indicator: NO_INDICATOR, detail: NO_DETAIL };
-  const detail: BasicKpiDetail = { kind: 'outcome', unit, ...counts };
+  const detail: BasicKpiDetail = { kind: 'outcome', ...counts };
   // A zero population draws nothing rather than an empty frame; the detail
   // still exists, because "0 wins, 0 break-even, 0 losses" is answerable.
   if (counts.wins + counts.breakEvens + counts.losses <= 0) {
     return { indicator: NO_INDICATOR, detail };
   }
-  return {
-    indicator: {
-      kind: 'outcomeSplit',
-      shape: unit === 'days' ? 'gauge' : 'donut',
-      unit,
-      ...counts,
-    },
-    detail,
-  };
+  return { indicator: { kind: 'outcomeSplit', ...counts }, detail };
 }
 
 /**
@@ -321,6 +465,7 @@ function outcomeIndicator(
 export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiModel[] {
   const populationEmpty = data.availability.trader === 'empty';
   const basic = data.basic;
+  const trader = data.trader;
 
   const netPnlValue: BasicKpiValue = populationEmpty
     ? EMPTY
@@ -335,24 +480,7 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
       ? { kind: 'tradeCount', tradeCount: data.coverage.monetaryResultCount }
       : NO_CONTEXT;
 
-  const dayWin = basic.dayWinRate;
-  const dayWinValue: BasicKpiValue = populationEmpty
-    ? EMPTY
-    : dayWin.status === 'available'
-      ? neutral({ status: 'available', value: dayWin.value.rate }, 'percent')
-      : dayWin.status === 'unavailable'
-        ? { status: 'unavailable', reason: dayWin.reason }
-        : { status: 'error' };
-
-  const averageWinR = formatted(basic.averageWinLoss.averageWinR, 'r');
-  const averageLossR = formatted(basic.averageWinLoss.averageLossR, 'r');
-  // `factor`, not `r`: the sentence this feeds already supplies the unit
-  // ("…produced 1.61R"), and the `r` style would have signed it into
-  // "+1.61R", which reads as an R outcome rather than as a ratio.
-  const profitFactorText = formatted(basic.profitFactor, 'factor');
-
   const tradeWin = outcomeIndicator(
-    'trades',
     populationEmpty
       ? null
       : {
@@ -362,21 +490,21 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
         },
   );
 
-  const dayWinOutcome = outcomeIndicator(
-    'days',
-    !populationEmpty && dayWin.status === 'available'
-      ? {
-          wins: dayWin.value.winningDayCount,
-          breakEvens: dayWin.value.breakEvenDayCount,
-          losses: dayWin.value.losingDayCount,
-        }
-      : null,
-  );
+  // No planned Trade is not a metric failure over the population — it is the
+  // PLAN side never having been filled in. See `BasicKpiUnavailableReason`.
+  const plannedRrAvailable = !populationEmpty && basic.plannedRr.tradeCount > 0;
+  const plannedRrFactor = plannedRrAvailable ? formatted(basic.plannedRr.average, 'factor') : null;
+  const plannedRrValue: BasicKpiValue = populationEmpty
+    ? EMPTY
+    : basic.plannedRr.tradeCount === 0
+      ? { status: 'unavailable', reason: 'no_planned_rr' }
+      : plannedRrFactor === null
+        ? neutral(basic.plannedRr.average, 'factor')
+        : { status: 'available', text: formatPlannedRatio(plannedRrFactor), tone: 'neutral' };
 
-  const ratioShare = populationEmpty ? null : ratioSharePercent(basic.profitFactor);
-  const payoff = populationEmpty
-    ? null
-    : magnitudePair(basic.averageWinLoss.averageWinR, basic.averageWinLoss.averageLossR);
+  const riskShare = plannedRrAvailable ? riskSharePercent(basic.plannedRr.average) : null;
+  const deflection = populationEmpty ? null : divergingBar(trader.averageR);
+  const cumulative = populationEmpty ? null : cumulativeRIndicator(trader.equityCurve);
 
   const models: Record<
     BasicKpiKey,
@@ -385,10 +513,20 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
     netPnl: {
       value: netPnlValue,
       // The row's lead figure: it is the one number a trader looks for first,
-      // and the only one that is genuinely signed.
+      // and the one that answers the question in the account's own currency.
       emphasis: 'lead',
       context: netPnlContext,
       indicator: NO_INDICATOR,
+      detail: NO_DETAIL,
+    },
+    totalR: {
+      // The ACTUAL, realized Trader total — `lib/calc`'s `totalR` over
+      // Population A, the same figure the System vs Trader card labels "Actual
+      // Total R". Never the System axis and never the paired subset.
+      value: populationEmpty ? EMPTY : signed(trader.totalR, 'r'),
+      emphasis: 'standard',
+      context: NO_CONTEXT,
+      indicator: cumulative ?? NO_INDICATOR,
       detail: NO_DETAIL,
     },
     tradeWin: {
@@ -398,40 +536,32 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
       indicator: tradeWin.indicator,
       detail: tradeWin.detail,
     },
-    profitFactor: {
-      value: populationEmpty ? EMPTY : neutral(basic.profitFactor, 'factor'),
+    avgPlannedRr: {
+      value: plannedRrValue,
       emphasis: 'standard',
       context: NO_CONTEXT,
       indicator:
-        ratioShare === null ? NO_INDICATOR : { kind: 'ratioSplit', winSharePercent: ratioShare },
-      detail:
-        populationEmpty || profitFactorText === null
-          ? NO_DETAIL
-          : { kind: 'ratio', factor: profitFactorText },
-    },
-    dayWin: {
-      value: dayWinValue,
-      emphasis: 'standard',
-      context: NO_CONTEXT,
-      indicator: dayWinOutcome.indicator,
-      detail: dayWinOutcome.detail,
-    },
-    avgWinLoss: {
-      value: populationEmpty ? EMPTY : neutral(basic.averageWinLoss.payoffRatio, 'multiple'),
-      emphasis: 'standard',
-      context: NO_CONTEXT,
-      indicator:
-        payoff === null
+        riskShare === null
           ? NO_INDICATOR
-          : {
-              kind: 'magnitudePair',
-              winPercent: payoff.winPercent,
-              lossPercent: payoff.lossPercent,
-            },
+          : { kind: 'riskRewardSplit', riskSharePercent: riskShare },
       detail:
-        !populationEmpty && averageWinR !== null && averageLossR !== null
-          ? { kind: 'averages', averageWinR, averageLossR }
-          : NO_DETAIL,
+        plannedRrFactor === null
+          ? NO_DETAIL
+          : {
+              kind: 'plannedRatio',
+              factor: plannedRrFactor,
+              tradeCount: basic.plannedRr.tradeCount,
+            },
+    },
+    avgRPerTrade: {
+      // `averageR` over the SAME Population A as Total R, so the two cards are
+      // one figure and its per-Trade reading — never a separately filtered
+      // mean, and never a planned or System average.
+      value: populationEmpty ? EMPTY : signed(trader.averageR, 'r'),
+      emphasis: 'standard',
+      context: NO_CONTEXT,
+      indicator: deflection === null ? NO_INDICATOR : { kind: 'divergingBar', ...deflection },
+      detail: NO_DETAIL,
     },
   };
 

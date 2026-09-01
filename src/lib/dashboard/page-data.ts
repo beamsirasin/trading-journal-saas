@@ -9,7 +9,7 @@ import {
   type SystemMetricRecord,
   type TraderMetricRecord,
 } from '@/lib/analytics/metrics';
-import { selectTraderEligible } from '@/lib/calc/aggregate';
+import { averageR, selectTraderEligible } from '@/lib/calc/aggregate';
 import { executionGapR, isComparisonEligible } from '@/lib/calc/attribution';
 import { dayWinRate, type DayWinRateSummary } from '@/lib/calc/day-win-rate';
 import { netPnl, type NetPnlAvailability } from '@/lib/calc/net-pnl';
@@ -120,6 +120,16 @@ export type DashboardPerformanceData = Pick<
   | 'profitFactor'
   | 'maximumDrawdownR'
   | 'payoffRatio'
+  /*
+    `equityCurve` joins the slice because the Basic KPI band's Total R card
+    draws it as a cumulative-R sparkline. It is `lib/calc`'s own
+    `equityCurveR`, already computed for BOTH axes by `composePerformanceAxis`
+    over each axis's frozen population, in each axis's own canonical order —
+    so the sparkline beside a Total R figure is that same figure's history and
+    cannot be a second series computed a second way. Never re-accumulated
+    downstream; a React render is not a place to sum a financial series.
+  */
+  | 'equityCurve'
 >;
 
 export interface DashboardPageData {
@@ -147,6 +157,34 @@ export interface DashboardPageData {
       readonly breakEvens: number;
       readonly losses: number;
     };
+    /**
+     * AVERAGE PLANNED REWARD PER 1R OF PLANNED RISK — the PLAN axis, and the
+     * one figure on this band that is not a result.
+     *
+     * `average` is `lib/calc`'s own `averageR` over the persisted
+     * `trades.planned_r` snapshots of the Trader-eligible population; it never
+     * reads Actual execution, System resolution, realized P&L, or an exit
+     * price. `tradeCount` is how many of those Trades actually carried a
+     * Planned R, which is a genuinely smaller population than
+     * `coverage.traderTradeCount`: a Trade with no Target (or no plan at all)
+     * is EXCLUDED, never counted as a `0` plan. Callers must report a zero
+     * `tradeCount` as unavailable rather than printing `averageR`'s
+     * `no_trades`, which would claim the range holds no Trades at all.
+     */
+    readonly plannedRr: {
+      readonly average: AnalyticsMetric;
+      readonly tradeCount: number;
+    };
+    /*
+      THE THREE FIGURES BELOW NO LONGER HAVE A CARD, AND ARE STILL PUBLISHED.
+
+      Profit Factor, Day Win % and Avg Win / Loss were retired from the Basic
+      KPI band in favour of Total R, Avg Planned RR and Avg R / Trade. They
+      remain canonical Trader-population figures composed here exactly as
+      before — the same reason `DashboardPerformanceData` keeps the metrics its
+      card stopped rendering. Presentation decides what is SHOWN; this decides
+      what is available.
+    */
     readonly profitFactor: AnalyticsMetric;
     readonly dayWinRate: AnalyticsMetric<DayWinRateSummary>;
     readonly averageWinLoss: {
@@ -178,11 +216,27 @@ export interface DashboardPageData {
   };
 }
 
+/**
+ * The canonical Trader analytics record plus the one PLAN field the Dashboard
+ * reads.
+ *
+ * Widened here rather than on `TraderMetricRecord` itself because Planned R is
+ * not a Trader-performance input: no analytics formula over the Trader axis
+ * takes it, and adding it there would invite exactly the blurring of PLAN and
+ * ACTUAL this product exists to prevent. `selectTraderEligible` is generic
+ * over its input, so eligibility still runs on the canonical contract and this
+ * extra field simply rides along.
+ */
+export interface DashboardTraderMetricRecord extends TraderMetricRecord {
+  /** `trades.planned_r`; `null` for a Trade whose plan sets no reward target. */
+  readonly plannedR: string | null;
+}
+
 export interface DashboardPageCompositionInput {
   readonly scope: AnalyticsScopeModel;
   readonly filters: DashboardFilterState;
   readonly account: DashboardAccountContext;
-  readonly trader: readonly TraderMetricRecord[];
+  readonly trader: readonly DashboardTraderMetricRecord[];
   readonly system: readonly SystemMetricRecord[];
   readonly comparison: readonly ComparisonMetricRecord[];
   readonly attention: DashboardAttentionCounts;
@@ -199,6 +253,7 @@ const selectPerformance = (axis: PerformanceAnalyticsModel): DashboardPerformanc
   profitFactor: axis.profitFactor,
   maximumDrawdownR: axis.maximumDrawdownR,
   payoffRatio: axis.payoffRatio,
+  equityCurve: axis.equityCurve,
 });
 
 export function composeRecentTrade(record: DashboardRecentTradeRecord): DashboardRecentTrade {
@@ -252,6 +307,32 @@ export function composeRecentTrade(record: DashboardRecentTradeRecord): Dashboar
   };
 }
 
+/**
+ * Average Planned RR over the Trades in scope that actually carry a plan.
+ *
+ * NO NEW FORMULA. `planned_r` is already the canonical per-Trade reward-per-1R
+ * snapshot — `plannedR`/`moneyPlannedR` in `lib/calc/trade.ts`, persisted at
+ * compute time — and the mean of a set of R values is `lib/calc`'s `averageR`.
+ * This function only chooses the population.
+ *
+ * THE POPULATION IS TRADER-ELIGIBLE ∩ HAS A PLANNED R, and both halves matter.
+ * Trader-eligible keeps this card on the same closed-Trade universe, the same
+ * Actual `exited_at` date axis, and the same Account/Strategy/Setup/Version
+ * scope as every other figure in the band, so the five cards describe one set
+ * of Trades. The Planned R filter then drops Trades that planned no reward at
+ * all: a Trade with no Target has no ratio to average, and counting it as `0`
+ * would report a plan the trader never made.
+ */
+function composePlannedRr(records: readonly DashboardTraderMetricRecord[]): {
+  readonly average: AnalyticsMetric;
+  readonly tradeCount: number;
+} {
+  const values = records
+    .map((record) => record.plannedR)
+    .filter((value): value is string => value !== null);
+  return { average: toAnalyticsMetric(averageR(values)), tradeCount: values.length };
+}
+
 /** Pure D2 route-level composer. Widgets consume this DTO and never raw DAL rows. */
 export function composeDashboardPageData(input: DashboardPageCompositionInput): DashboardPageData {
   const traderRecords = selectTraderEligible(input.trader);
@@ -289,6 +370,7 @@ export function composeDashboardPageData(input: DashboardPageCompositionInput): 
         breakEvens: traderFull.outcomeCounts.breakEvens,
         losses: traderFull.outcomeCounts.losses,
       },
+      plannedRr: composePlannedRr(traderRecords),
       profitFactor: traderFull.profitFactor,
       dayWinRate: toAnalyticsMetric(
         dayWinRate(

@@ -24,14 +24,21 @@ const AXIS: DashboardPerformanceData = {
   profitFactor: available('3.6400'),
   maximumDrawdownR: available('2.0000'),
   payoffRatio: available('2.4000'),
+  equityCurve: {
+    status: 'available',
+    value: [
+      { tradeId: 'a', occurredAt: '2026-08-01T10:00:00.000Z', cumulativeR: '1.0000' },
+      { tradeId: 'b', occurredAt: '2026-08-02T10:00:00.000Z', cumulativeR: '-0.5000' },
+      { tradeId: 'c', occurredAt: '2026-08-03T10:00:00.000Z', cumulativeR: '9.0000' },
+    ],
+  },
 };
 
 interface Overrides {
   readonly traderEmpty?: boolean;
   readonly netPnl?: NetPnlAvailability;
-  readonly profitFactor?: AnalyticsMetric;
-  readonly dayWinRate?: DashboardPageData['basic']['dayWinRate'];
-  readonly averageWinLoss?: Partial<DashboardPageData['basic']['averageWinLoss']>;
+  readonly plannedRr?: Partial<DashboardPageData['basic']['plannedRr']>;
+  readonly trader?: Partial<DashboardPerformanceData>;
 }
 
 function data(overrides: Overrides = {}): DashboardPageData {
@@ -56,8 +63,9 @@ function data(overrides: Overrides = {}): DashboardPageData {
         breakEvens: 3,
         losses: 11,
       },
-      profitFactor: overrides.profitFactor ?? available('3.6400'),
-      dayWinRate: overrides.dayWinRate ?? {
+      plannedRr: { average: available('3.2000'), tradeCount: 28, ...overrides.plannedRr },
+      profitFactor: available('3.6400'),
+      dayWinRate: {
         status: 'available',
         value: {
           eligibleDayCount: 12,
@@ -71,11 +79,10 @@ function data(overrides: Overrides = {}): DashboardPageData {
         averageWinR: available('2.1200'),
         averageLossR: available('-0.9000'),
         payoffRatio: available('2.3556'),
-        ...overrides.averageWinLoss,
       },
     },
     system: AXIS,
-    trader: AXIS,
+    trader: { ...AXIS, ...overrides.trader },
   } as unknown as DashboardPageData;
 }
 
@@ -95,10 +102,10 @@ function widget(container: HTMLElement, id: string): HTMLElement {
 
 const BASIC_IDS = [
   'basic.net-pnl',
+  'basic.total-r',
   'basic.trade-win-rate',
-  'basic.profit-factor',
-  'basic.day-win-rate',
-  'basic.avg-win-loss',
+  'basic.avg-planned-rr',
+  'basic.avg-r-per-trade',
 ] as const;
 
 describe('BasicKpiRow', () => {
@@ -124,11 +131,11 @@ describe('BasicKpiRow', () => {
     }
 
     // The fifth card fills the narrow grid so mobile never dangles a half row.
-    expect(widget(container, 'basic.avg-win-loss')).toHaveAttribute(
+    expect(widget(container, 'basic.avg-r-per-trade')).toHaveAttribute(
       'data-dashboard-mobile-span',
       '2',
     );
-    expect(widget(container, 'basic.avg-win-loss').className).toContain('col-span-2');
+    expect(widget(container, 'basic.avg-r-per-trade').className).toContain('col-span-2');
     expect(widget(container, 'basic.net-pnl')).toHaveAttribute('data-dashboard-mobile-span', '1');
   });
 
@@ -143,27 +150,51 @@ describe('BasicKpiRow', () => {
   it('shows each metric in its native unit, ignoring the global unit mode', () => {
     const { container } = renderRow();
     expect(within(widget(container, 'basic.net-pnl')).getByText('+$1,243.50')).toBeVisible();
+    expect(within(widget(container, 'basic.total-r')).getByText('+9.00R')).toBeVisible();
     expect(within(widget(container, 'basic.trade-win-rate')).getByText('54.84%')).toBeVisible();
-    expect(within(widget(container, 'basic.profit-factor')).getByText('3.64')).toBeVisible();
-    expect(within(widget(container, 'basic.day-win-rate')).getByText('58.33%')).toBeVisible();
-    expect(within(widget(container, 'basic.avg-win-loss')).getByText('2.36x')).toBeVisible();
+    expect(within(widget(container, 'basic.avg-planned-rr')).getByText('1 : 3.20')).toBeVisible();
+    expect(within(widget(container, 'basic.avg-r-per-trade')).getByText('+0.29R')).toBeVisible();
   });
 
-  it('colours only Net P&L by sign and keeps the other four neutral', () => {
+  /*
+    COLOUR IS SPENT ON SIGNS, NOT ON LEVELS. Money, Total R and Avg R / Trade
+    are signed outcomes and keep their direction; a win rate and a planned
+    ratio are readings, and colouring them would make green mean nothing more
+    specific than "a number".
+  */
+  it('colours the three signed outcomes and keeps the two levels neutral', () => {
     const { container } = renderRow();
     const netPnl = within(widget(container, 'basic.net-pnl')).getByText('+$1,243.50');
     expect(netPnl).toHaveClass('text-kpi-hero', 'text-positive');
+    expect(within(widget(container, 'basic.total-r')).getByText('+9.00R')).toHaveClass(
+      'text-kpi',
+      'text-positive',
+    );
+    expect(within(widget(container, 'basic.avg-r-per-trade')).getByText('+0.29R')).toHaveClass(
+      'text-kpi',
+      'text-positive',
+    );
     for (const [id, text] of [
       ['basic.trade-win-rate', '54.84%'],
-      ['basic.profit-factor', '3.64'],
-      ['basic.day-win-rate', '58.33%'],
-      ['basic.avg-win-loss', '2.36x'],
+      ['basic.avg-planned-rr', '1 : 3.20'],
     ] as const) {
       const value = within(widget(container, id)).getByText(text);
       expect(value).toHaveClass('text-kpi', 'text-foreground');
       expect(value).not.toHaveClass('text-positive');
       expect(value).not.toHaveClass('text-negative');
     }
+  });
+
+  it('renders negative R results with the negative tone', () => {
+    const { container } = renderRow({
+      trader: { totalR: available('-6.0000'), averageR: available('-0.2000') },
+    });
+    expect(within(widget(container, 'basic.total-r')).getByText('-6.00R')).toHaveClass(
+      'text-negative',
+    );
+    expect(within(widget(container, 'basic.avg-r-per-trade')).getByText('-0.20R')).toHaveClass(
+      'text-negative',
+    );
   });
 
   it('renders a negative Net P&L with the negative tone and no partial fallback', () => {
@@ -185,12 +216,9 @@ describe('BasicKpiRow', () => {
 
   it('prints no permanent breakdown or jargon under any figure but Net P&L', () => {
     const { container } = renderRow();
-    // The four shorthand lines this pass removed, in the exact spelling they
-    // used to carry.
-    for (const removed of ['17W · 3BE · 11L', '7W · 1BE · 4L days', 'Calculated from R']) {
+    for (const removed of ['17W · 3BE · 11L', 'Calculated from R']) {
       expect(within(container).queryByText(removed)).toBeNull();
     }
-    expect(container.textContent).not.toContain('+2.12R / -0.90R');
     // Net P&L keeps the one fact its figure cannot carry, and drops the
     // currency the account strip above already names.
     expect(within(widget(container, 'basic.net-pnl')).getByText('31 Trades')).toBeVisible();
@@ -203,45 +231,78 @@ describe('BasicKpiRow', () => {
       widget(container, id).querySelector('[data-kpi-indicator]');
 
     expect(indicatorFor('basic.net-pnl')).toBeNull();
+    expect(indicatorFor('basic.total-r')).toHaveAttribute('data-kpi-indicator', 'cumulativeR');
     expect(indicatorFor('basic.trade-win-rate')).toHaveAttribute(
       'data-kpi-indicator',
       'outcomeSplit',
     );
-    expect(indicatorFor('basic.profit-factor')).toHaveAttribute('data-kpi-indicator', 'ratioSplit');
-    expect(indicatorFor('basic.day-win-rate')).toHaveAttribute(
+    expect(indicatorFor('basic.avg-planned-rr')).toHaveAttribute(
       'data-kpi-indicator',
-      'outcomeSplit',
+      'riskRewardSplit',
     );
-    expect(indicatorFor('basic.avg-win-loss')).toHaveAttribute(
+    expect(indicatorFor('basic.avg-r-per-trade')).toHaveAttribute(
       'data-kpi-indicator',
-      'magnitudePair',
+      'divergingBar',
     );
   });
 
   it('draws each indicator from its own metric, not from a neighbour', () => {
     const { container } = renderRow();
-    // A ring for Trades, a half arc for days: different shapes, and the day
-    // arcs carry DAY counts (7/1/4), never the Trade counts (17/3/11).
+    // 17 winning Trades of 31 -> 54.84 of the ring.
     const tradeArcs = widget(container, 'basic.trade-win-rate').querySelectorAll(
       'circle[data-kpi-arc]',
     );
-    const dayArcs = widget(container, 'basic.day-win-rate').querySelectorAll('path[data-kpi-arc]');
     expect(tradeArcs).toHaveLength(3);
-    expect(dayArcs).toHaveLength(3);
-    // 7 winning days of 12 -> 58.33 of the arc; 17 winning Trades of 31 ->
-    // 54.84 of the ring. Same three signs, two different populations.
-    expect(dayArcs[0]?.getAttribute('stroke-dasharray')).toMatch(/^58\.33/);
     expect(tradeArcs[0]?.getAttribute('stroke-dasharray')).toMatch(/^54\.83/);
+
+    // The sparkline's last vertex is the highest cumulative total, so it sits
+    // at the top of its box — the same +9.00R printed beside it.
+    const spark = widget(container, 'basic.total-r').querySelector('[data-kpi-spark]');
+    expect(spark?.getAttribute('points')?.split(' ').at(-1)).toBe('100,0');
+
+    // A 1:3.20 plan is 1 / 4.20 of the track as risk.
+    const risk = widget(container, 'basic.avg-planned-rr').querySelector(
+      '[data-kpi-bar="plannedRisk"]',
+    );
+    expect((risk as HTMLElement | null)?.style.width).toBe('24%');
   });
 
-  it('names every indicator as an action and hides the drawing from assistive tech', () => {
+  it('deflects the Avg R / Trade bar from the centre, in the direction of the sign', () => {
+    const positive = renderRow({ trader: { averageR: available('0.5000') } });
+    const gain = widget(positive.container, 'basic.avg-r-per-trade').querySelector(
+      '[data-kpi-bar="averageGain"]',
+    ) as HTMLElement | null;
+    expect(gain?.style.width).toBe('25%');
+    expect(gain?.className).toContain('left-1/2');
+    positive.unmount();
+
+    const negative = renderRow({ trader: { averageR: available('-0.5000') } });
+    const loss = widget(negative.container, 'basic.avg-r-per-trade').querySelector(
+      '[data-kpi-bar="averageLoss"]',
+    ) as HTMLElement | null;
+    expect(loss?.style.width).toBe('25%');
+    expect(loss?.className).toContain('right-1/2');
+    // The zero datum is drawn either way, because "no deflection" is only
+    // readable against the line it failed to leave.
+    expect(
+      widget(negative.container, 'basic.avg-r-per-trade').querySelector(
+        '[data-kpi-bar="zeroDatum"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it('shows only the zero datum for an exactly break-even average', () => {
+    const { container } = renderRow({ trader: { averageR: available('0.0000') } });
+    const card = widget(container, 'basic.avg-r-per-trade');
+    expect(card.querySelector('[data-kpi-bar="averageGain"]')).toBeNull();
+    expect(card.querySelector('[data-kpi-bar="averageLoss"]')).toBeNull();
+    expect(card.querySelector('[data-kpi-bar="zeroDatum"]')).not.toBeNull();
+    expect(within(card).getByText('0.00R')).toBeVisible();
+  });
+
+  it('names the two revealing indicators as actions and hides every drawing', () => {
     const { container } = renderRow();
-    for (const name of [
-      'Show Trade Win breakdown',
-      'Show Profit Factor detail',
-      'Show Day Win breakdown',
-      'Show average win and loss',
-    ]) {
+    for (const name of ['Show Win Rate breakdown', 'Show Avg Planned RR detail']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
     for (const svg of container.querySelectorAll('svg')) {
@@ -249,36 +310,36 @@ describe('BasicKpiRow', () => {
     }
   });
 
-  it.each([
-    ['Show Trade Win breakdown', ['Wins', '17', 'Break-even', '3', 'Losses', '11']],
-    ['Show Day Win breakdown', ['Winning days', '7', 'Break-even days', '1', 'Losing days', '4']],
-    ['Show average win and loss', ['Average win', '+2.12R', 'Average loss', '-0.90R']],
-  ])('reveals %s in plain words on click, not on hover alone', async (name, expected) => {
+  it('reveals the Win Rate composition in plain words on click, not on hover alone', async () => {
     const user = userEvent.setup();
     renderRow();
-    await user.click(screen.getByRole('button', { name }));
-    for (const text of expected) {
+    await user.click(screen.getByRole('button', { name: 'Show Win Rate breakdown' }));
+    for (const text of ['Wins', '17', 'Break-even', '3', 'Losses', '11']) {
       await waitFor(() => {
         expect(screen.getByText(text)).toBeVisible();
       });
     }
   });
 
-  it('explains Profit Factor as a sentence rather than as a formula', async () => {
+  /*
+    Avg Planned RR is the one card whose denominator can be smaller than the
+    row's — a Trade recorded without a planned target carries no ratio and is
+    excluded rather than counted as zero — so the popover has to say so.
+  */
+  it('explains the planned ratio as a sentence and states what it averaged', async () => {
     const user = userEvent.setup();
     renderRow();
-    await user.click(screen.getByRole('button', { name: 'Show Profit Factor detail' }));
+    await user.click(screen.getByRole('button', { name: 'Show Avg Planned RR detail' }));
     await waitFor(() => {
-      expect(
-        screen.getByText('For every 1R lost, your winning Trades produced 3.64R.'),
-      ).toBeVisible();
+      expect(screen.getByText('For every 1R you risked, your Plans aimed at 3.20R.')).toBeVisible();
     });
+    expect(screen.getByText('Averaged over 28 Trades that had a planned target.')).toBeVisible();
   });
 
   it('opens an indicator from the keyboard and closes it with Escape', async () => {
     const user = userEvent.setup();
     renderRow();
-    const trigger = screen.getByRole('button', { name: 'Show Trade Win breakdown' });
+    const trigger = screen.getByRole('button', { name: 'Show Win Rate breakdown' });
     trigger.focus();
     expect(trigger).toHaveFocus();
 
@@ -295,23 +356,16 @@ describe('BasicKpiRow', () => {
 
   it.each([
     [
-      'no losing Trades',
-      { profitFactor: { status: 'unavailable', reason: 'no_losses' } as AnalyticsMetric },
-      'basic.profit-factor',
-      'No losing Trades',
-      'no_losses',
-    ],
-    [
-      'no eligible trading days',
+      'no Trade carrying a planned target',
       {
-        dayWinRate: {
-          status: 'unavailable',
-          reason: 'no_trading_days',
-        } as DashboardPageData['basic']['dayWinRate'],
+        plannedRr: {
+          average: { status: 'unavailable', reason: 'no_trades' } as AnalyticsMetric,
+          tradeCount: 0,
+        },
       },
-      'basic.day-win-rate',
-      'No eligible trading days',
-      'no_trading_days',
+      'basic.avg-planned-rr',
+      'No Trades with a planned target',
+      'no_planned_rr',
     ],
     [
       'incomplete monetary results',
@@ -348,39 +402,18 @@ describe('BasicKpiRow', () => {
     expect(within(card).queryByText('—')).toBeNull();
   });
 
-  it('never renders Infinity for a no-loss Profit Factor', () => {
+  /*
+    A range holding Trades that were simply never planned must not be reported
+    as a range holding no Trades — the four cards beside it are printing
+    figures from those very Trades.
+  */
+  it('never reports an unplanned population as having no eligible Trades', () => {
     const { container } = renderRow({
-      profitFactor: { status: 'unavailable', reason: 'no_losses' },
+      plannedRr: { average: { status: 'unavailable', reason: 'no_trades' }, tradeCount: 0 },
     });
-    expect(container.textContent).not.toMatch(/Infinity|NaN/);
+    expect(container.textContent).not.toContain('No eligible Trades');
+    expect(within(widget(container, 'basic.total-r')).getByText('+9.00R')).toBeVisible();
   });
-
-  it.each([
-    [
-      'no wins',
-      {
-        averageWinR: { status: 'unavailable', reason: 'no_wins' } as AnalyticsMetric,
-        payoffRatio: { status: 'unavailable', reason: 'no_wins' } as AnalyticsMetric,
-      },
-      'No winning Trades',
-    ],
-    [
-      'no losses',
-      {
-        averageLossR: { status: 'unavailable', reason: 'no_losses' } as AnalyticsMetric,
-        payoffRatio: { status: 'unavailable', reason: 'no_losses' } as AnalyticsMetric,
-      },
-      'No losing Trades',
-    ],
-  ])(
-    'shows Avg Win/Loss as unavailable with %s rather than a misleading number',
-    (_name, averageWinLoss, copy) => {
-      const { container } = renderRow({ averageWinLoss });
-      const card = widget(container, 'basic.avg-win-loss');
-      expect(within(card).getByText(copy as string)).toBeVisible();
-      expect(within(card).queryByText(/x$/)).toBeNull();
-    },
-  );
 
   it('distinguishes an empty population from an unavailable metric', () => {
     const { container } = renderRow({ traderEmpty: true, netPnl: { status: 'empty' } });
@@ -396,8 +429,14 @@ describe('BasicKpiRow', () => {
     const { container } = renderRow();
     const terms = [...container.querySelectorAll('dt')].map((node) => node.textContent);
     expect(terms.some((term) => term?.includes('Net P&L'))).toBe(true);
-    expect(terms.some((term) => term?.includes('Trade Win %'))).toBe(true);
-    expect(terms.some((term) => term?.includes('Day Win %'))).toBe(true);
+    expect(terms.some((term) => term?.includes('Total R'))).toBe(true);
+    expect(terms.some((term) => term?.includes('Win Rate'))).toBe(true);
+    expect(terms.some((term) => term?.includes('Avg Planned RR'))).toBe(true);
+    expect(terms.some((term) => term?.includes('Avg R / Trade'))).toBe(true);
+    // The retired titles are gone from the band entirely.
+    for (const retired of ['Trade Win %', 'Day Win %', 'Profit Factor', 'Avg Win / Loss']) {
+      expect(container.textContent).not.toContain(retired);
+    }
     expect(container.querySelectorAll('dd')).toHaveLength(5);
     expect(screen.getByRole('region', { name: 'Key trading figures' })).toBeInTheDocument();
   });
@@ -405,22 +444,22 @@ describe('BasicKpiRow', () => {
   it('opens a metric definition from the keyboard, not hover alone', async () => {
     const user = userEvent.setup();
     renderRow();
-    const trigger = screen.getByRole('button', { name: 'About Profit Factor' });
+    const trigger = screen.getByRole('button', { name: 'About Avg Planned RR' });
 
     await user.tab();
-    for (let guard = 0; guard < 10 && document.activeElement !== trigger; guard += 1) {
+    for (let guard = 0; guard < 12 && document.activeElement !== trigger; guard += 1) {
       await user.tab();
     }
     expect(trigger).toHaveFocus();
 
     await user.keyboard('{Enter}');
     await waitFor(() => {
-      expect(screen.getByText(/for every 1R your losing Trades gave up/)).toBeVisible();
+      expect(screen.getByText(/for every 1R of risk/i)).toBeVisible();
     });
 
     await user.keyboard('{Escape}');
     await waitFor(() => {
-      expect(screen.queryByText(/for every 1R your losing Trades gave up/)).toBeNull();
+      expect(screen.queryByText(/for every 1R of risk/i)).toBeNull();
     });
   });
 
@@ -429,37 +468,33 @@ describe('BasicKpiRow', () => {
     renderRow();
     for (const name of [
       'About Net P&L',
-      'About Trade Win %',
-      'About Profit Factor',
-      'About Day Win %',
-      'About Avg Win / Loss',
+      'About Total R',
+      'About Win Rate',
+      'About Avg Planned RR',
+      'About Avg R / Trade',
     ]) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
-    await user.click(screen.getByRole('button', { name: 'About Day Win %' }));
+    await user.click(screen.getByRole('button', { name: 'About Total R' }));
     await waitFor(() => {
-      expect(screen.getByText(/Days follow your account timezone/)).toBeVisible();
+      expect(screen.getByText(/whatever your account size/i)).toBeVisible();
     });
   });
 
   /**
-   * Day Win % and Trade Win % are two percentages of a similar size sitting
-   * three cards apart, and nothing on the FACE of either says what it is a
-   * percentage of. Since a day is judged by its total R, several Trades can
-   * share one day and the two denominators genuinely differ — 64 days against
-   * 66 Trades on the reference fixture. A reader who notices that has one
-   * place to find out why, so the sentence has to be there.
+   * The PLAN axis and the ACTUAL axis are the product's central distinction,
+   * and this row now carries both. Avg Planned RR must say, in the one place a
+   * reader goes for a definition, that it comes from the plan made BEFORE
+   * entry — otherwise it reads as a fourth result.
    */
-  it('explains why Day Win % counts fewer days than there are Trades', async () => {
+  it('says outright that Avg Planned RR comes from the plan, not the result', async () => {
     const user = userEvent.setup();
     renderRow();
-    await user.click(screen.getByRole('button', { name: 'About Day Win %' }));
+    await user.click(screen.getByRole('button', { name: 'About Avg Planned RR' }));
     await waitFor(() => {
-      expect(screen.getByText(/several Trades can share one day/i)).toBeVisible();
+      expect(screen.getByText(/before entering/i)).toBeVisible();
     });
-    // And that a break-even day is in the denominator without being a win —
-    // the same rule the Trade card states for a break-even Trade.
-    expect(screen.getByText(/break-even band counts in the total but not as a win/i)).toBeVisible();
+    expect(screen.getByText(/without a planned target are left out/i)).toBeVisible();
   });
 
   it('explains every metric in everyday language, free of engine vocabulary', () => {
@@ -491,10 +526,10 @@ describe('BasicKpiRow', () => {
     const user = userEvent.setup();
     const { container } = renderRow({}, 'th');
     const tradeWin = widget(container, 'basic.trade-win-rate');
-    expect(within(tradeWin).getByText('% เทรดที่ชนะ')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'เกี่ยวกับ % เทรดที่ชนะ' })).toBeInTheDocument();
+    expect(within(tradeWin).getByText('อัตราชนะ')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'เกี่ยวกับ อัตราชนะ' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'ดูรายละเอียด % เทรดที่ชนะ' }));
+    await user.click(screen.getByRole('button', { name: 'ดูรายละเอียดอัตราชนะ' }));
     await waitFor(() => {
       expect(screen.getByText('ชนะ')).toBeVisible();
     });

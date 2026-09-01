@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type {
-  ComparisonMetricRecord,
-  SystemMetricRecord,
-  TraderMetricRecord,
-} from '@/lib/analytics/metrics';
+import type { ComparisonMetricRecord, SystemMetricRecord } from '@/lib/analytics/metrics';
 
-import { composeDashboardPageData, type DashboardPageCompositionInput } from './page-data';
+import {
+  composeDashboardPageData,
+  type DashboardPageCompositionInput,
+  type DashboardTraderMetricRecord,
+} from './page-data';
 
 const TIME = '2026-08-01T10:00:00.000Z';
 
@@ -16,7 +16,8 @@ function trader(
   outcome: 'win' | 'break_even' | 'loss',
   netPnlMinor: string | null = '100',
   baseCurrency = 'USD',
-): TraderMetricRecord {
+  plannedR: string | null = '2.0000',
+): DashboardTraderMetricRecord {
   return {
     tradeId,
     status: 'closed',
@@ -26,6 +27,7 @@ function trader(
     exitedAt: TIME,
     netPnlMinor,
     baseCurrency,
+    plannedR,
   };
 }
 
@@ -237,6 +239,75 @@ describe('DashboardPageData composition', () => {
     });
     expect(result.basic.netPnl).toEqual({ status: 'empty' });
     expect(result.basic.dayWinRate).toEqual({ status: 'unavailable', reason: 'no_trading_days' });
+  });
+
+  /*
+    AVG PLANNED RR IS THE PLAN AXIS, AND ITS POPULATION IS ITS OWN.
+
+    It averages the persisted `planned_r` of the SAME Trader-eligible Trades
+    the rest of the band reads — so it follows Account, date range and every
+    filter identically — but a Trade with no planned target contributes no
+    ratio and leaves the denominator, rather than entering it as a zero plan.
+  */
+  it('averages Planned R over the Trader-eligible Trades that carry one', () => {
+    const result = composeDashboardPageData(
+      input({
+        trader: [
+          trader('a', '2.0000', 'win', '250', 'USD', '3.0000'),
+          trader('b', '-1.0000', 'loss', '-125', 'USD', '2.0000'),
+        ],
+      }),
+    );
+    expect(result.basic.plannedRr).toEqual({
+      average: { status: 'available', value: '2.5000' },
+      tradeCount: 2,
+    });
+  });
+
+  it('excludes an unplanned Trade from Avg Planned RR without counting it as zero', () => {
+    const result = composeDashboardPageData(
+      input({
+        trader: [
+          trader('planned', '2.0000', 'win', '250', 'USD', '4.0000'),
+          trader('unplanned', '1.0000', 'win', '100', 'USD', null),
+        ],
+      }),
+    );
+    // 4.0000 over ONE Trade, not 2.0000 over two.
+    expect(result.basic.plannedRr).toEqual({
+      average: { status: 'available', value: '4.0000' },
+      tradeCount: 1,
+    });
+    // The Trader axis still counts both — only the PLAN population narrowed.
+    expect(result.coverage.traderTradeCount).toBe(2);
+  });
+
+  it('reports a wholly unplanned population as a zero count, never a fabricated ratio', () => {
+    const result = composeDashboardPageData(
+      input({
+        trader: [
+          trader('a', '2.0000', 'win', '250', 'USD', null),
+          trader('b', '1.0000', 'win', '100', 'USD', null),
+        ],
+      }),
+    );
+    expect(result.basic.plannedRr.tradeCount).toBe(0);
+    expect(result.basic.plannedRr.average.status).not.toBe('available');
+  });
+
+  /*
+    The cumulative-R series the Total R card draws is the axis's OWN canonical
+    equity curve, so its final point is that axis's Total R by construction.
+  */
+  it('publishes each axis equity curve, ending at that axis total', () => {
+    const result = composeDashboardPageData(input());
+    const curve = result.trader.equityCurve;
+    expect(curve.status).toBe('available');
+    if (curve.status !== 'available') throw new Error('expected a curve');
+    // The engine's own order — exit timestamp, then Trade ID — not the order
+    // the fixture happened to list them in.
+    expect(curve.value.map((point) => point.cumulativeR)).toEqual(['0.0000', '-1.0000', '1.0000']);
+    expect(result.trader.totalR).toEqual({ status: 'available', value: '1.0000' });
   });
 
   it('preserves negative Gap sign and explicit recent-trade unresolved states', () => {

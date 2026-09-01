@@ -427,6 +427,19 @@ export interface TraderAnalyticsRecord {
   readonly direction: TradeDirection;
   readonly session: string | null;
   readonly timeframe: string | null;
+  /**
+   * The persisted Planned R snapshot (`trades.planned_r`) — the PLAN side of
+   * the Trade, never Actual execution and never System resolution. Null is
+   * legitimate and common: a Price plan with no Target and a Trade recorded
+   * with no plan at all both carry none, which is why every consumer must
+   * exclude those Trades rather than read them as `0`.
+   *
+   * Added to this ALREADY-fetched, already-eligible query rather than a new
+   * one, exactly as Phase 15D's context columns were: the population is the
+   * same Trader-eligible population, and a second query for the same rows
+   * would be a second eligibility contract waiting to drift.
+   */
+  readonly plannedR: string | null;
 }
 
 async function selectTraderAnalyticsRecords(
@@ -450,6 +463,7 @@ async function selectTraderAnalyticsRecords(
       direction: trades.direction,
       session: trades.session,
       timeframe: trades.timeframe,
+      plannedR: trades.plannedR,
     })
     .from(trades)
     .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))

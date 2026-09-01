@@ -67,7 +67,7 @@ describe('static Dashboard widget foundation', () => {
       (item) => item.widgetId.startsWith('basic.') && item.mobileSpan === 1,
     );
     expect(narrow).toHaveLength(4);
-    expect(dashboardLayoutItem('basic.avg-win-loss').mobileSpan).toBe(2);
+    expect(dashboardLayoutItem('basic.avg-r-per-trade').mobileSpan).toBe(2);
   });
 
   it('marks every Basic KPI widget as implemented', () => {
