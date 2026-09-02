@@ -283,6 +283,30 @@ Kept for the reasoning, not as a changelog. Each entry records what the cause ac
 
 - **The standing method.** Sabotage in both directions, run the whole group, and treat any test that stays green under a defect in its own subject as broken. That is what turns "the tests pass" into evidence.
 
+## Release blockers and repository configuration
+
+Not product debt: these are the things that make shipping the current work unsafe, and none of them is visible from the code. Established on 2026-09-03 by inspecting the repository, the deployment history, and the CI history directly.
+
+**`main` is wired to automatic Production deployment, and the work waiting to land needs migrations the production database has never had.** Do not push `main` until there is a migration plan.
+
+- `main` is trunk: every one of the fourteen pull requests this repository has ever had (#1–#14) targeted it, and its tip is `8880cbd` (2026-08-12).
+- Eighty commits have accumulated on `redesign/log-trade-wizard` (and the two `fix/confidence-*` branches that descend from it) that have never reached `main`: one security commit stranded on `phase/12-hardening-launch-readiness`, thirty-one on `feature/trade-plan-ux-uat`, and forty-eight only on `redesign/log-trade-wizard`. All three merge into `main` as clean fast-forwards — the history is strictly linear, with no merge commits and no conflicts.
+- Those commits add **migrations `0010`–`0016`**. `main` stops at `0009`. Nothing in this repository applies migrations automatically — `db:migrate` is a deliberate manual step and neither `build` nor `start` touches the database (CLAUDE.md §2) — so deploying this code over a `0009` database means the running app queries tables that do not exist.
+- **The deployment link is inferred, not confirmed.** GitHub records sixteen `Production` deployments created by `vercel[bot]`, and every one of their SHAs is a tip commit of `main` (the most recent is `8880cbd` itself, 2026-08-12), while every other branch has only ever produced `Preview` deployments. That is strong evidence Vercel's Production Branch is `main` and that a push deploys immediately, but it has not been checked against the Vercel dashboard. Do that before relying on either reading.
+- A local `--ff-only` merge is safe and proves nothing about production; only `git push origin main` triggers a deploy. The full check suite has been run that way, on a local merge of all three branches (reset afterwards, nothing pushed): typecheck, lint, `format:check`, unit (3075 passed), and production build all pass; integration and e2e are as described below.
+
+**CI has been red on every branch since 2026-08-12, and the end-to-end job has not run since.** `.github/workflows/ci.yml` runs on `push` to every branch and on pull requests into `main`.
+
+- The last green run was `8880cbd` on `main`, 2026-08-12 — the same commit as the last Production deployment. Every run on every branch since has failed.
+- The failure is **five integration tests across two files**, identical in CI and on a local merge of all three branches (5 failed, 983 passed, 988 total): `src/server/services/analytics.integration.test.ts` — `builds the Dashboard from active Account scope with strict 90D, 30D, and All ranges` (expected 5 rows, got 9) and `Phase 15G.5C: excludes proven retrospective entry context before aggregation while preserving every financial/classification axis` (fails with `read_only_workspace`); and `src/server/services/workspace-settings.integration.test.ts` — `returns a sanitized active workspace summary under professional access`, `… under starter access`, and `uses only the authenticated active workspace and returns closed JSON-safe action failures`.
+- `Lint, typecheck, test, build` passes. The **Playwright job never runs at all** — it is cancelled when the integration job fails — so no end-to-end result has been recorded in CI for three weeks. Run locally, `trades.spec.ts --workers=4` reports exactly the nineteen documented known-red name/project pairs and nothing else (`pnpm e2e:known-red` → EXACT MATCH).
+- The date CI went red is the date the pull-request workflow stopped being used. Every branch created after 2026-08-13 was pushed directly and never proposed for merge, so nothing has forced a green check since.
+
+**The repository's default branch points at a commit from the day the project was created.** `origin/HEAD` resolves to `phase/00-foundation`, whose tip is still `0a73fd1 "chore: establish trading journal project foundation"` (2026-07-31) — the first commit in the repository. It should be `main`.
+
+- This is not cosmetic: it is what tooling reports as the branch to compare against, so a branch's distance from "trunk" reads as **101 commits** when the real distance from `main` is **80**. That misreading has already happened once and will happen again to anyone — or any agent — that trusts the default.
+- `main` also has **no branch protection and no rulesets** (the protection API returns 404), so nothing prevents a direct push, including the one that would deploy to Production.
+
 ## Known product debt
 
 **Nineteen `e2e/trades.spec.ts` tests still assert the retired Trade Journal and Trade Detail UI.** The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. The nineteen tests below fail for that reason alone, listed under the Playwright project each one runs in:
