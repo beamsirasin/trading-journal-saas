@@ -239,6 +239,45 @@ Not yet done: production email delivery, a real payment provider, accessibility 
 
 Broker API integration · MT4/MT5 sync · CSV import · OCR · TradingView API · real payment processing · AI API integration · native mobile apps.
 
+## Open defects
+
+These are bugs to fix, not debt to live with. Kept separate from _Known product debt_ below for exactly that reason.
+
+**A cancelled Confidence drag sometimes commits the value it was dragged to.** `src/components/trades/trade-confidence-control.tsx`.
+
+- **Reproduction rate, measured.** `e2e/trades.spec.ts -g "a cancelled pointer gesture" --repeat-each=10 --workers=1` fails **3 times in 10**, in isolation with no parallel load. Every failure is identical — the post-cancel `expect(radio '25% · Low').toBeChecked()` reports `unchecked` — so this is not a stale locator and not assertion noise: intermittently, a cancelled gesture really does change the committed value. It is intermittent, so a single green run proves nothing about it.
+- **Mechanism.** `handlePointerCancel` (~L154) tears down the drag preview — `setIsDragging(false)`, `setPreviewIndex(null)`, and it animates the visual offset back — but it sets no flag that `handleDragEnd` (~L137) can see. `handleDragEnd` then runs and commits: it recomputes `nearestIndexFromClientX(info.point.x)` and calls `selectStep(finalStep)`. The handler's own comment ("nothing was ever persisted during the drag, so simply tearing down the preview is sufficient — the committed `value` was never touched") is the incomplete reasoning that hides this: the commit does not happen _during_ the drag, it happens at its end, and cancelling never suppresses that end.
+- **User impact.** `pointercancel` is what fires on touch when the system takes the gesture over — a scroll takeover, an edge swipe, a notification. The trader's Confidence is then silently recorded as wherever their finger happened to be when they were interrupted, rather than left at the value they had actually chosen. Confidence is journaling input the product promises the result never changes (CLAUDE.md §1), and it feeds the Phase 13H Psychology analytics, so a wrong value is wrong data that no later screen flags.
+- **What the numbers do and do not establish.** The three red runs are evidence that the committed value really changed: it cannot change on its own if cancelling worked. What is unresolved is the seven green runs — green because cancelling worked, or green because the drag never started. Those are two different questions, and only instrumentation answers the second.
+- **Unknown, and the two things to settle first.** (1) Whether Framer Motion fires `onDragEnd` at the `pointercancel` itself or at the `pointerup` that follows it — the observable outcome is the same, a commit, but the fix differs (suppress the end handler versus ignore a trailing release). (2) Whether the intermittency lives in the product or in the test: the spec dispatches a **synthetic** `pointercancel` and then a **real** `page.mouse.up()`, so the 7-in-10 green runs may be ones where Motion never registered a drag session at all rather than ones where cancelling worked. Until (2) is answered it is not established that a real interrupted touch gesture reaches this path. **Instrument the event order before changing anything** — and note that a fix which only makes the test deterministic, without explaining which of the two it was, has settled nothing.
+- **Why the suite never caught it.** `e2e/trades.spec.ts` has five Confidence-drag tests. Four of them cancel and then call `clickConfidenceOption(...)` again _before_ asserting, so they overwrite the state they were about to inspect and can never observe it. Only `a cancelled pointer gesture leaves the Confidence value in a valid, unchanged discrete state` checks the post-cancel state directly, and it had been failing earlier in its own setup — at the New Trade form, before ever reaching the assertion — so the defect stayed invisible until that setup was repaired.
+- **When fixing.** Add a test that asserts the post-cancel value with no intervening click, and consider whether the four masking tests should assert it too rather than clicking over it.
+
+This is an open, intermittent defect — not an expected failure, and it must never be added to the known-red list below. Because it is intermittent, a `trades.spec.ts` run may report either 16 or 17 failures; the seventeenth, when it appears, is only ever this test.
+
 ## Known product debt
+
+**Sixteen `e2e/trades.spec.ts` tests still assert the retired Trade Journal and Trade Detail UI.** The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. The sixteen tests below fail for that reason alone:
+
+- `Phase 15G.5C discloses retrospective recording once at Entry Snapshot level`
+- `desktop creates, completes, corrects discipline, resolves, and deletes a Trade`
+- `creates a Money-only Trade (no Price fields) and renders it truthfully`
+- `Price Partial Close weights every leg, closes the exact remainder, and corrects an earlier Exit`
+- `Money Partial Close sums already-net leg P&L without weighting it twice`
+- `Money-only System Target resolves independently while Actual remains partially open`
+- `Money-only System Stop can be corrected to Custom gross R`
+- `confirms unmet Conditions and persists the exact mixed snapshots`
+- `zero-Condition Setup shows Not configured and saves without a warning`
+- `Phase 15G.5D After Trade creates one completed Price Trade and opens Detail directly`
+- `Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis`
+- `walks one Trade through create (already Open), partial close, independent System resolve, final close, review, and confirms Detail, List, and Analytics all agree`
+- `Phase 14C/14E — minimal New Trade with no Plan/Strategy/Setup opens atomically, Actual closes while System stays Pending, then classifies the Trade later`
+- `Phase 15G.1 — Calendar is separate from Trade Log, independent Trader/System dates never collapse, and day selection filters Log truthfully`
+- `Phase 15G.1 — Trade Log uses 10-row URL pagination with reload-safe Previous`
+- `Phase 15G.3 pending Analytics action stays filtered through pagination and deep action`
+
+Repairing them is not a locator swap: the assertions have to be rewritten against `TradesTable` and `TradeDetailsSheet`, including the `?section=` → `?tab=` Trade Detail contract. Deliberately left out of the Log a trade wizard slice, whose own e2e repair covered only the two causes that slice touched.
+
+**Compare by name, never by count.** A `trades.spec.ts` run is expected to report exactly these sixteen names, optionally plus the intermittent defect above — so 16 or 17 failures, and no other name. Line numbers are deliberately omitted: they moved twice during the repair that produced this list. A name on this list going green is progress; a name _not_ on it going red is a regression.
 
 **A money-Risk Analytics view does not exist.** `ANALYTICS_VIEWS` is `overview | results | edge | behavior`, and none of them renders modeled-balance material: Analytics' `maximumDrawdownR` is an **R** metric over a different population and is not a home for D7's money drawdown. When the Dashboard's Risk snapshot was reduced to Modeled Balance + Current Drawdown + the balance chart, the figures it stopped showing — **money Max Drawdown, Peak Balance, peak history, deeper drawdown/underwater analysis and modeled-balance diagnostics** — were moved into that card's info popover _with their values_ rather than to Analytics, because there was nowhere to send them. That is deliberate temporary progressive disclosure, not a resting place. A future Risk Analytics view should give them a real home, after which the popover can shrink back to definitions.

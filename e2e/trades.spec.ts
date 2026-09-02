@@ -478,8 +478,7 @@ async function openNewTradeView(page: Page, view: 'Trade' | 'Setup' | 'Entry Con
  * this phase's change.
  */
 async function createOpenTrade(page: Page) {
-  await page.getByRole('link', { name: 'Log a trade' }).first().click();
-  await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+  await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await page.getByRole('button', { name: 'Long' }).click();
   await page.getByLabel('Entry', { exact: true }).fill('100');
@@ -504,8 +503,7 @@ async function createOpenTrade(page: Page) {
  * exactly, so downstream R-value assertions are unaffected.
  */
 async function createMoneyOnlyOpenTrade(page: Page) {
-  await page.getByRole('link', { name: 'Log a trade' }).first().click();
-  await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+  await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
   await page.getByRole('button', { name: 'Short' }).click();
   await page.getByRole('button', { name: 'Money' }).click();
@@ -864,7 +862,7 @@ test.describe('real Trade Journal creation', () => {
     const user = await provisionJournalUser('e2e-trades-conditions');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades/new');
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
@@ -954,7 +952,7 @@ test.describe('real Trade Journal creation', () => {
     const user = await provisionJournalUser('e2e-trades-zero-conditions');
     await seedFramework(user.id, false);
     await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades/new');
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('150');
@@ -981,8 +979,7 @@ test.describe('real Trade Journal creation', () => {
     const user = await provisionJournalUser('e2e-trades-mismatch');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades');
-    await page.getByRole('link', { name: 'Log a trade' }).first().click();
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('100');
@@ -1025,7 +1022,7 @@ test.describe('real Trade Journal creation', () => {
     for (const locale of ['en', 'th'] as const) {
       for (const width of [1440, 390, 320]) {
         await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
-        await page.goto(`/${locale}/app/trades/new`);
+        await page.goto(`/${locale}/app/trades/new?timing=at_entry`);
 
         const form = page.locator('form');
         const viewNav = page.getByTestId('new-trade-view-nav');
@@ -1050,13 +1047,10 @@ test.describe('real Trade Journal creation', () => {
 
         // The same viewport also proves the mutually-exclusive After Trade
         // surface, including its fourth Result panel and timing-specific CTA.
-        await page
-          .getByRole('group', {
-            name: locale === 'en' ? 'When are you journaling?' : 'คุณกำลังบันทึกเทรดนี้เมื่อไร?',
-          })
-          .locator('button')
-          .nth(1)
-          .click();
+        // The mode is no longer a toggle inside the form — it is chosen before
+        // the form exists and travels in the URL, so that is how this asks for
+        // it.
+        await page.goto(`/${locale}/app/trades/new?timing=after_trade`);
         await expect(viewNav.locator('button')).toHaveCount(4);
         await viewNav.locator('button').nth(1).click();
         await expect(page.locator('#actual-entry')).toBeVisible();
@@ -1081,9 +1075,7 @@ test.describe('real Trade Journal creation', () => {
     test.setTimeout(180_000);
     const user = await provisionJournalUser('e2e-trades-g5d-completed');
     await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades/new');
-
-    await page.getByRole('button', { name: 'After Trade' }).click();
+    await page.goto('/en/app/trades/new?timing=after_trade');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entered At').fill('2026-08-22T10:00');
@@ -1161,7 +1153,7 @@ test.describe('real Trade Journal creation', () => {
     test.setTimeout(180_000);
     const user = await provisionJournalUser('e2e-trades-g3-advanced');
     await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades/new');
+    await page.goto('/en/app/trades/new?timing=at_entry');
 
     await page.getByRole('textbox', { name: 'Symbol' }).fill('ADVANCED');
     await page.getByRole('button', { name: 'Long' }).click();
@@ -1196,7 +1188,7 @@ test.describe('real Trade Journal creation', () => {
 
     for (const width of [390, 768, 1024]) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/en/app/trades/new');
+      await page.goto('/en/app/trades/new?timing=at_entry');
 
       const form = page.locator('form');
       await expect(form).toBeVisible();
@@ -1350,9 +1342,7 @@ test.describe('real Trade Journal creation', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginAs(page, 'en', user);
 
-    await page.goto('/en/app/trades');
-    await page.getByRole('link', { name: 'Log a trade' }).first().click();
-    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDCAD');
     await page.getByRole('button', { name: 'Long' }).click();
     // Genuinely no Plan, Strategy, or Setup at all (Phase 14C.1/Phase 14E) —
@@ -1429,9 +1419,7 @@ test.describe('real Trade Journal creation', () => {
     // required Actual execution basis (Money mode, matching the Plan's own
     // risk so R math stays comparable) -> Confidence -> an Emotion -> an Entry
     // Reason -> [Open Trade]. One atomic action — no separate "Open" step.
-    await page.goto('/en/app/trades');
-    await page.getByRole('link', { name: 'Log a trade' }).first().click();
-    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
     await page.getByRole('button', { name: 'Long' }).click();
@@ -1692,9 +1680,7 @@ test.describe('real Trade Journal creation', () => {
     // Phase 14C.1 no-Plan contract, migration 0016, still holds — Plan
     // remains optional data). Creates the Trade already Open in one atomic
     // action; Open never silently reintroduces a Plan requirement.
-    await page.goto('/en/app/trades');
-    await page.getByRole('link', { name: 'Log a trade' }).first().click();
-    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
     await openNewTradeView(page, 'Setup');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
@@ -2057,9 +2043,7 @@ test.describe('Confidence pill drag interaction', () => {
     const user = await provisionJournalUser(prefix);
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades');
-    await page.getByRole('link', { name: 'Log a trade' }).first().click();
-    await expect(page).toHaveURL(/\/en\/app\/trades\/new/);
+    await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
     await openNewTradeView(page, 'Setup');
