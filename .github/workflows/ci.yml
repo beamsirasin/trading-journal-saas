@@ -5,10 +5,33 @@ on:
     branches: ['**']
   pull_request:
     branches: [main]
+  # A nightly run so a test that breaks with the calendar rather than with a
+  # commit is found on the day it breaks. Two of them already got through:
+  # five integration tests went red on 2026-09-01 because a fixture seeded a
+  # paid period ending that day, and nobody saw it for a day because nothing
+  # pushed. Before that, the entire Dashboard rebuild landed inside a nine-day
+  # window with no CI run at all, stranding an assertion nobody noticed.
+  #
+  # 22:00 UTC is 05:00 in Asia/Bangkok, so the result is waiting rather than
+  # arriving mid-morning.
+  #
+  # IMPORTANT, and the reason this may look inert: GitHub runs scheduled
+  # workflows from the DEFAULT BRANCH only, and this repository's default
+  # branch is still `phase/00-foundation`, whose tip is the project's first
+  # commit. Until the default branch is moved to `main` (see docs/roadmap.md,
+  # "Release blockers and repository configuration") and this file reaches
+  # `main`, this schedule will never fire. It is committed now so that fixing
+  # the default branch is all that is needed, not so that it works today.
+  # There is no way to schedule a run for "every active branch": a schedule
+  # has exactly one ref, the default one.
+  schedule:
+    - cron: '0 22 * * *'
 
-# A newer push to the same branch makes the in-flight run obsolete.
+# A newer push to the same branch makes the in-flight run obsolete. Scheduled
+# runs share the default branch's ref, so they are grouped by event too — a
+# nightly run must never cancel, or be cancelled by, a push to that branch.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

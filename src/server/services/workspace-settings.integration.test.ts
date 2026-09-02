@@ -13,6 +13,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
+import { activePaidPeriod } from '@/test/entitlement-fixtures';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 const authState = vi.hoisted(() => ({
@@ -95,8 +96,9 @@ async function fixture(db: Db, label: string, options: FixtureOptions = {}) {
       trialEndsAt: status === 'trialing' ? new Date('2026-08-16T00:00:00.000Z') : null,
       billingCurrency: status === 'active' ? 'USD' : null,
       billingInterval: status === 'active' ? 'monthly' : null,
-      currentPeriodStartedAt: status === 'active' ? new Date('2026-08-01T00:00:00.000Z') : null,
-      currentPeriodEndsAt: status === 'active' ? new Date('2026-09-01T00:00:00.000Z') : null,
+      ...(status === 'active'
+        ? activePaidPeriod()
+        : { currentPeriodStartedAt: null, currentPeriodEndsAt: null }),
     });
   }
   for (let index = 0; index < (options.additionalAccounts ?? 0); index += 1) {

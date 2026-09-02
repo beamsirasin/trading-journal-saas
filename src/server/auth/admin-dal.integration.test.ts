@@ -9,6 +9,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
+import { activePaidPeriod } from '@/test/entitlement-fixtures';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 /**
@@ -164,8 +165,7 @@ describe('requirePlatformAdmin / getOptionalPlatformAdmin (real database)', () =
       planKey: 'professional',
       billingCurrency: 'USD',
       billingInterval: 'monthly',
-      currentPeriodStartedAt: new Date('2026-08-01T00:00:00Z'),
-      currentPeriodEndsAt: new Date('2026-09-01T00:00:00Z'),
+      ...activePaidPeriod(),
       source: 'paid',
     });
 

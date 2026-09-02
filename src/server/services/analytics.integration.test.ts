@@ -27,6 +27,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '@/server/db/schema';
+import { activePaidPeriod } from '@/test/entitlement-fixtures';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { closeDb } from '../db/client';
@@ -60,6 +61,25 @@ const workspaceIds: string[] = [];
 const userIds: string[] = [];
 const REFERENCE = new Date('2026-08-09T12:00:00.000Z');
 const READ_OPTIONS = { referenceInstant: REFERENCE } as const;
+
+/**
+ * The Dashboard's Recent Trades cap (`selectDashboardRecentTrades`, which
+ * documents why the number is eleven). Written here as the number the tests
+ * assert against so that changing the card's cap without revisiting them is a
+ * red test rather than a silent one — the previous version of this file
+ * hard-coded the cap of the day in one assertion and never noticed it move.
+ */
+const DASHBOARD_RECENT_TRADE_LIMIT = 11;
+
+/** True when every row is at or before the row before it. */
+function isNewestFirst(rows: readonly { readonly occurredAt: string }[]): boolean {
+  return rows.every(
+    (row, index) =>
+      index === 0 ||
+      Date.parse((rows[index - 1] as { occurredAt: string }).occurredAt) >=
+        Date.parse(row.occurredAt),
+  );
+}
 
 function sessionFor(userId: string): MockSession {
   return {
@@ -107,8 +127,7 @@ async function createWorkspace(userId: string, label: string): Promise<string> {
     planKey: 'professional',
     billingCurrency: 'USD',
     billingInterval: 'monthly',
-    currentPeriodStartedAt: new Date('2026-08-01T00:00:00Z'),
-    currentPeriodEndsAt: new Date('2026-09-01T00:00:00Z'),
+    ...activePaidPeriod(),
   });
   return workspace.id;
 }
@@ -812,12 +831,18 @@ describe('analytics service (real PostgreSQL)', () => {
       },
     });
     expect(defaultRange.data.overview.trader.sampleCount).toBe(8);
-    expect(defaultRange.data.recentTrades).toHaveLength(5);
+    // Asserted as intent, not as a row count. This fixture has fewer Trades
+    // than the card's cap, so what it can prove is the scope and the order —
+    // the cap itself is proved by the test below, which seeds past it. The
+    // count it used to assert (5) was the cap of the day; the cap moved to 7
+    // and then 11 and this line stayed behind, unnoticed for three days.
+    expect(defaultRange.data.recentTrades.length).toBeLessThanOrEqual(DASHBOARD_RECENT_TRADE_LIMIT);
     expect(
       defaultRange.data.recentTrades.every(
         (trade) => trade.tradingAccountName === 'Active Account',
       ),
     ).toBe(true);
+    expect(isNewestFirst(defaultRange.data.recentTrades)).toBe(true);
 
     const thirtyDays = await getDashboardOverview('30d', READ_OPTIONS);
     if (!thirtyDays.ok) throw new Error(thirtyDays.code);
@@ -1508,6 +1533,49 @@ describe('analytics service (real PostgreSQL)', () => {
     });
 
     expect(() => JSON.stringify(result.data)).not.toThrow();
+  });
+
+  it('caps Recent Trades at the card limit and returns them newest first', async () => {
+    const userId = await createUser('recent-trades-cap');
+    const workspaceId = await createWorkspace(userId, 'recent-trades-cap');
+    const accountId = await createAccount(workspaceId, 'Cap Account');
+    await db
+      .update(userPreferences)
+      .set({ activeTradingAccountId: accountId })
+      .where(eq(userPreferences.userId, userId));
+    const framework = await createFramework(workspaceId, 'Cap');
+
+    // Two more than the cap, so the cap has something to cut and a wrong cap
+    // in either direction changes the answer. Ascending timestamps, so the
+    // newest-first assertion is not satisfied by insertion order.
+    const seeded = DASHBOARD_RECENT_TRADE_LIMIT + 2;
+    for (let index = 0; index < seeded; index += 1) {
+      const exitedAt = new Date(Date.UTC(2026, 6, 10 + index, 10, 0, 0));
+      await createTrade(workspaceId, {
+        accountId,
+        framework,
+        actualR: '1.0000',
+        traderOutcome: 'win',
+        systemR: '1.0000',
+        systemOutcome: 'win',
+        exitedAt,
+        systemExitedAt: new Date(exitedAt.getTime() + 60 * 60 * 1000),
+      });
+    }
+    currentSession = sessionFor(userId);
+
+    const dashboard = await getDashboardOverview(undefined, READ_OPTIONS);
+    if (!dashboard.ok) throw new Error(dashboard.code);
+    const { recentTrades } = dashboard.data;
+
+    expect(recentTrades).toHaveLength(DASHBOARD_RECENT_TRADE_LIMIT);
+    expect(isNewestFirst(recentTrades)).toBe(true);
+    // The cap must drop the OLDEST rows, not an arbitrary window: the newest
+    // seeded Trade is present and the oldest two are gone.
+    const newest = Date.UTC(2026, 6, 10 + seeded - 1, 10, 0, 0);
+    const oldest = Date.UTC(2026, 6, 10, 10, 0, 0);
+    expect(Date.parse(recentTrades[0]?.occurredAt ?? '')).toBe(newest);
+    expect(recentTrades.some((trade) => Date.parse(trade.occurredAt) === oldest)).toBe(false);
   });
 
   it('Phase 15G.5C: excludes proven retrospective entry context before aggregation while preserving every financial/classification axis', async () => {
