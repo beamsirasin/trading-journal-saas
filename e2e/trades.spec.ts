@@ -2138,6 +2138,35 @@ test.describe('Confidence pill drag interaction', () => {
     await page.mouse.up();
   }
 
+  /**
+   * Waits out the animation frame in which a finished gesture actually
+   * commits its value.
+   *
+   * Framer Motion defers `onDragEnd` to `frame.postRender()`
+   * (`VisualElementDragControls.stop`), so the committed value changes one
+   * frame AFTER the pointer event that ended the gesture. A Playwright
+   * assertion passes on its FIRST successful poll, and that poll reliably
+   * wins the race against the deferred commit — which is how a cancelled
+   * gesture that overwrote the value on every single run still reported
+   * 7-in-10 green. Measured on the unfixed control: read straight after
+   * `mouse.up()` the value was still the old one in 10 runs out of 10, and
+   * read again 500ms later it was the overwritten one in 10 runs out of 10.
+   * Any assertion about a value after a gesture must come after this call,
+   * or it is inspecting a state the browser has not finished changing.
+   *
+   * Two nested `requestAnimationFrame`s rather than a fixed sleep: the first
+   * resolves within the next frame, the second guarantees one whole frame —
+   * Motion's update step and its postRender step — ran in between.
+   */
+  async function waitForGestureCommitFrame(page: Page) {
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+  }
+
   async function trackBox(page: Page) {
     const box = await page.locator('[data-slot="confidence-track"]').boundingBox();
     if (!box) throw new Error('Confidence track has no geometry');
@@ -2258,6 +2287,79 @@ test.describe('Confidence pill drag interaction', () => {
     await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
     const checkedCount = await page.getByRole('radio', { checked: true }).count();
     expect(checkedCount).toBe(1);
+  });
+
+  /**
+   * The test that watches the committed value across a cancelled gesture
+   * with nothing writing over it.
+   *
+   * DO NOT click a Confidence option between a cancel and an assertion here.
+   * The four sibling drag tests all call `clickConfidenceOption(...)` after
+   * cancelling, which overwrites the state they were about to inspect — that
+   * is precisely why a defect that fired on every cancelled drag survived a
+   * suite which cancels gestures five separate times. Any write to
+   * Confidence after the cancel makes this test incapable of failing.
+   *
+   * Both cancel flavours are exercised, because they reach `handleDragEnd`
+   * by different routes (see `trade-confidence-control.tsx`):
+   *  - a default synthetic `pointercancel` is non-primary, so Motion's own
+   *    window listener filters it out (`isPrimaryPointer`), the pan session
+   *    survives, and the commit arrives later on the real `pointerup`;
+   *  - a primary `pointercancel` — what an interrupted touch produces — ends
+   *    the pan session there and then, and the commit arrives as an
+   *    `onDragEnd` whose event type is `pointercancel`.
+   * A fix that only covers one route leaves the other committing silently.
+   */
+  test('a cancelled pointer gesture leaves the committed Confidence value untouched, observed after the commit frame', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
+    test.setTimeout(120_000);
+    await reachConfidenceStep(page, 'e2e-confidence-cancel-commit');
+    await clickConfidenceOption(page, 25);
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+
+    const pill = page.locator('[data-slot="confidence-pill"]');
+    const track = await trackBox(page);
+    // Far enough that a commit could only land on 100%, never back on 25%.
+    const farRight = track.x + track.width * 0.9;
+
+    async function dragTowardTheEndOfTheTrack() {
+      await waitForPillSettled(page);
+      const resting = await pill.boundingBox();
+      if (!resting) throw new Error('Confidence pill has no geometry');
+      await beginPillDragTo(page, farRight);
+      const dragged = await pill.boundingBox();
+      if (!dragged) throw new Error('Confidence pill has no geometry mid-drag');
+      // Guards the other way this test could go falsely green: if Motion
+      // never registered a drag session there is no commit to suppress, and
+      // an unchanged value would prove nothing. A pill that moved is proof
+      // the gesture was real.
+      expect(dragged.x).toBeGreaterThan(resting.x + 20);
+    }
+
+    await dragTowardTheEndOfTheTrack();
+    await pill.dispatchEvent('pointercancel');
+    await page.mouse.up();
+    await waitForGestureCommitFrame(page);
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '100% · Very High' })).not.toBeChecked();
+    expect(await page.getByRole('radio', { checked: true }).count()).toBe(1);
+
+    await dragTowardTheEndOfTheTrack();
+    // A primary pointercancel: the one an interrupted touch actually emits,
+    // and the only one Motion's own listener accepts.
+    await pill.dispatchEvent('pointercancel', {
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: 0,
+      bubbles: true,
+    });
+    await page.mouse.up();
+    await waitForGestureCommitFrame(page);
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '100% · Very High' })).not.toBeChecked();
+    expect(await page.getByRole('radio', { checked: true }).count()).toBe(1);
   });
 
   test('dragging the pill on a narrow 390px mobile viewport snaps correctly with no page scroll hijack', async ({

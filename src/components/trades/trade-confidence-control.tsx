@@ -35,6 +35,7 @@ export function TradeConfidenceControl({
   const trackRef = useRef<HTMLDivElement>(null);
   const segmentRefs = useRef<Array<HTMLDivElement | null>>([]);
   const dragOffsetX = useMotionValue(0);
+  const gestureCancelled = useRef(false);
 
   const [isDragging, setIsDragging] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -126,6 +127,7 @@ export function TradeConfidenceControl({
   }
 
   function handleDragStart() {
+    gestureCancelled.current = false;
     setIsDragging(true);
     setPreviewIndex(activeIndex);
   }
@@ -134,9 +136,30 @@ export function TradeConfidenceControl({
     setPreviewIndex(nearestIndexFromClientX(info.point.x));
   }
 
+  /**
+   * A drag commits at its END, not during it, so cancelling has to suppress
+   * that end — tearing down the preview is not enough. Both conditions below
+   * are load-bearing and neither is redundant, because a cancelled gesture
+   * reaches this handler by two different routes:
+   *
+   *  - `gestureCancelled`, set by `handlePointerCancel` below. A synthetic or
+   *    non-primary `pointercancel` is filtered out by Motion's own window
+   *    listener (`isPrimaryPointer`, motion-dom), so its pan session survives
+   *    the cancel and ends later on the trailing `pointerup` — arriving here
+   *    with `_event.type === 'pointerup'`, indistinguishable from a real
+   *    release except for this flag.
+   *  - `_event.type === 'pointercancel'`, for the cancel Motion does accept.
+   *    Motion never calls `setPointerCapture`, so a real cancel is delivered
+   *    to whatever element is under the pointer — which, once the pill has
+   *    been dragged out from under it, need not be the pill at all. When that
+   *    happens React's `onPointerCancel` never fires and the flag is never
+   *    set, and this event type is the only remaining evidence.
+   *
+   * Deleting either check re-opens the defect for one of the two routes.
+   */
   function handleDragEnd(_event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) {
-    const finalIndex = nearestIndexFromClientX(info.point.x);
-    const finalStep = CONFIDENCE_STEPS[finalIndex];
+    const cancelled = gestureCancelled.current || _event.type === 'pointercancel';
+    gestureCancelled.current = false;
     setIsDragging(false);
     setPreviewIndex(null);
     // The drag offset is purely visual; the pill's true position is always
@@ -144,6 +167,11 @@ export function TradeConfidenceControl({
     // it to zero — animated, or instant under reduced motion — is what makes
     // the release look like a snap rather than a jump.
     animate(dragOffsetX, 0, prefersReducedMotion ? { duration: 0 } : LAYOUT_SPRING);
+    // A cancelled gesture leaves the committed value exactly where the trader
+    // last put it, and does not move focus either.
+    if (cancelled) return;
+    const finalIndex = nearestIndexFromClientX(info.point.x);
+    const finalStep = CONFIDENCE_STEPS[finalIndex];
     if (finalStep !== undefined && finalStep !== value) {
       selectStep(finalStep);
     } else {
@@ -152,10 +180,11 @@ export function TradeConfidenceControl({
   }
 
   function handlePointerCancel() {
-    // A cancelled gesture (e.g. touch interrupted by a system gesture) must
-    // still leave a valid discrete state: nothing was ever persisted during
-    // the drag, so simply tearing down the preview is sufficient — the
-    // committed `value` was never touched.
+    // A cancelled gesture (e.g. touch interrupted by a system gesture) tears
+    // down the preview here, and records that the gesture died so the drag
+    // end that follows it cannot commit. See `handleDragEnd` above for why
+    // the flag alone is not sufficient.
+    gestureCancelled.current = true;
     setIsDragging(false);
     setPreviewIndex(null);
     animate(dragOffsetX, 0, prefersReducedMotion ? { duration: 0 } : LAYOUT_SPRING);
