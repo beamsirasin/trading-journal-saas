@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/product/page-header';
 import { Container } from '@/components/shell/container';
 import { TradeCreateGate } from '@/components/trades/trade-create-gate';
 import { TradeRecordingModeSelection } from '@/components/trades/trade-recording-mode-selection';
+import { WizardShell } from '@/components/trades/trade-wizard-shell';
 import { Button } from '@/components/ui/button';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
 import { Link } from '@/i18n/navigation';
@@ -21,6 +22,17 @@ import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
 type PageSearchParams = { timing?: string | string[] | undefined };
+
+/**
+ * HOW LONG THIS FLOW IS, stated once.
+ *
+ * Two: choose the recording situation, then fill the form. The form's own
+ * panels (three At Entry, four After Trade) are NOT steps — every one of them
+ * is reachable at any time and none is gated on another, so counting them here
+ * would promise a reader a gate that does not exist.
+ */
+const RECORDING_FLOW_STEPS = 2;
+const CHOICE_STEP = 1;
 
 export async function generateMetadata({
   params,
@@ -44,18 +56,20 @@ export async function generateMetadata({
 }
 
 /**
- * LOG A TRADE — the same page it has always been, in the current visual system.
+ * LOG A TRADE — one route, two steps, two deliberately different frames.
  *
- * WIDTH IS THE ONE STRUCTURAL CHANGE. It rendered a `max-w-3xl` form centred
- * inside a `wide` (100rem) container, so the header ran to one edge and the
- * form floated in the middle of a column twice its width. It now uses the app's
- * standard `default` page width and the form fills it, which puts the header
- * and the form on one left edge and gives the two-column field grids real room
- * — without stretching a text input across a 100rem monitor.
+ * The choice step renders in `WizardShell`: centred, narrow, progress at the
+ * top, the question as the page's `<h1>`. The form step keeps the ordinary
+ * product-page frame it has always had — `Container` at the app's standard
+ * `default` width, `PageHeader`, and the Back action — because the form is a
+ * place you work rather than a question you answer. See the comment above the
+ * branch itself for why the shell stops at the choice.
  *
- * The application shell, the `PageHeader` hierarchy and the Back action are
- * unchanged: this is an ordinary product page, not a full-screen environment
- * of its own.
+ * WIDTH ON THE FORM STEP. It once rendered a `max-w-3xl` form centred inside a
+ * `wide` (100rem) container, so the header ran to one edge and the form floated
+ * in the middle of a column twice its width. `default` puts the header and the
+ * form on one left edge and gives the two-column field grids real room without
+ * stretching a text input across a 100rem monitor.
  *
  * ONE ROUTE, TWO STEPS. `?timing=` decides which: absent or unrecognised shows
  * the recording-mode choice, and a valid value shows the form in that mode.
@@ -103,24 +117,44 @@ export default async function NewTradePage({
   const authorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
 
   /*
-    The choice step is narrower than the form step, deliberately. `prose`
-    (48rem) keeps two decision cards as one focused region that the header sits
-    directly on top of, rather than a pair of cards adrift under a 72rem
-    heading; the form then gets the standard `default` page width it needs for
-    its two-column field grids. Both are existing container widths.
+    THE CHOICE STEP IS NOT AN ORDINARY PRODUCT PAGE, AND STOPPED PRETENDING TO
+    BE ONE. It rendered inside the same `Container` + `PageHeader` frame as
+    every destination in the app: a left-aligned title that named the route
+    rather than asking the question, the question itself demoted to an `<h2>`
+    beneath it, and a boxed "Back to Trades" button sitting where a page's
+    actions go. That frame is right for a place and wrong for a decision.
+
+    `WizardShell` inverts it — progress, two quiet exits, then the question
+    centred as the page's `<h1>`. Only ONE of the two frames ever renders, so
+    the page still has exactly one `<h1>`: this branch returns early, and the
+    form below keeps the header it has always had.
+
+    THE FORM STEP IS DELIBERATELY NOT IN THE SHELL. 42.5rem is a reading
+    measure for one question; the form needs the app's standard page width for
+    its two-column field grids, and it carries its own recording-mode banner,
+    sticky submit bar and panel navigation. Folding it in is a separate
+    decision, not a consequence of this one.
   */
+  if (timing === null) {
+    return (
+      <WizardShell
+        step={CHOICE_STEP}
+        totalSteps={RECORDING_FLOW_STEPS}
+        eyebrow={t('create.pageTitle')}
+        title={t('create.mode.question')}
+        description={t('create.mode.helper')}
+        exitHref="/app/trades"
+      >
+        <TradeRecordingModeSelection />
+      </WizardShell>
+    );
+  }
+
   return (
-    <Container
-      width={timing === null ? 'prose' : 'default'}
-      className="flex min-w-0 flex-col gap-8 py-8"
-    >
+    <Container width="default" className="flex min-w-0 flex-col gap-8 py-8">
       <PageHeader
         title={t('create.pageTitle')}
-        description={
-          timing === null
-            ? t('create.pageDescription')
-            : t(`create.mode.${timing}.headerDescription`)
-        }
+        description={t(`create.mode.${timing}.headerDescription`)}
         actions={
           <Button asChild variant="outline">
             <Link href="/app/trades">
@@ -130,18 +164,14 @@ export default async function NewTradePage({
           </Button>
         }
       />
-      {timing === null ? (
-        <TradeRecordingModeSelection />
-      ) : (
-        <TradeCreateGate
-          options={options}
-          canWrite={authorization.allowed}
-          writeBlockReason={authorization.allowed ? null : authorization.code}
-          timing={timing}
-          activeTradingAccountId={activeAccount?.id ?? null}
-          timezone={preferences.timezone}
-        />
-      )}
+      <TradeCreateGate
+        options={options}
+        canWrite={authorization.allowed}
+        writeBlockReason={authorization.allowed ? null : authorization.code}
+        timing={timing}
+        activeTradingAccountId={activeAccount?.id ?? null}
+        timezone={preferences.timezone}
+      />
     </Container>
   );
 }

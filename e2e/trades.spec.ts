@@ -1010,6 +1010,46 @@ test.describe('real Trade Journal creation', () => {
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
   });
 
+  /**
+   * THE ONE TEST IN THIS SUITE THAT DRIVES THE RECORDING-MODE CHOICE ITSELF.
+   *
+   * Every other test in this file states its mode in the URL (`?timing=`) and
+   * starts at the form, deliberately: they are about journaling a Trade, not
+   * about how the mode is picked, and routing a dozen unrelated tests through
+   * two clicks on this screen would mean any change to it breaks all of them.
+   * This test is where that UI is allowed to break the build — so if the choice
+   * step is redesigned again, this is the one place that has to be updated.
+   */
+  test('the recording-mode choice walks from the cards to the form', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
+    test.setTimeout(120_000);
+    const user = await provisionJournalUser('e2e-trades-mode-choice');
+    await loginAs(page, 'en', user);
+    await page.goto('/en/app/trades/new');
+
+    // Nothing is chosen, so there is no destination yet — and therefore no
+    // link, not merely a link that looks unavailable.
+    await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await expect(page.getByRole('link', { name: 'Continue' })).toHaveCount(0);
+
+    const atEntry = page.getByRole('radio', { name: 'At Entry' });
+    await atEntry.click();
+    await expect(atEntry).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('radio', { name: 'After Trade' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+
+    // Choosing turns the commit into a real anchor addressed at that mode's own
+    // URL — which is what keeps prefetch and open-in-new-tab working.
+    const commit = page.getByRole('link', { name: 'Continue' });
+    await expect(commit).toHaveAttribute('href', '/en/app/trades/new?timing=at_entry');
+    await commit.click();
+
+    await expect(page).toHaveURL(/\/en\/app\/trades\/new\?timing=at_entry/);
+    await expect(page.getByRole('textbox', { name: 'Symbol' })).toBeVisible();
+  });
+
   test('Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH', async ({
     page,
   }) => {
