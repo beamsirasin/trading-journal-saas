@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
+    "e2e:known-red": "node scripts/compare-known-red-e2e.mjs",
     "test:money": "vitest run src/lib/money",
     "test:time": "vitest run src/lib/time",
     "test:integration": "vitest run --config vitest.integration.config.ts",
