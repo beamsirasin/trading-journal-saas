@@ -2206,21 +2206,39 @@ test.describe('Confidence pill drag interaction', () => {
     await expect(page.getByRole('radio', { name: '25% · Low' })).not.toBeChecked();
   });
 
+  /**
+   * Every assertion here has to require the value to CHANGE, and this test is
+   * the reason that rule is written down. It used to select 50%, drag to
+   * ratio 0.60 and assert 50% — the value it already had — which passes
+   * before the drag can be wrong; and a wrongly committed 75% then satisfied
+   * its second assertion for free. Measured against deliberately broken code:
+   * with the snapping index off by one to the right the whole test stayed
+   * green, and off by one to the left only its second assertion ever failed.
+   *
+   * Starting from 0% fixes both. Each assertion now names a step the control
+   * was not already on, and 50% and 75% are interior steps, so an off-by-one
+   * in either direction lands somewhere else rather than being absorbed by
+   * `clampIndex` at an end of the track.
+   */
   test('dragging near a step boundary picks the geometrically nearest step', async ({ page }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
     test.setTimeout(120_000);
     await reachConfidenceStep(page, 'e2e-confidence-drag-c');
-    await clickConfidenceOption(page, 50);
-    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
+    await clickConfidenceOption(page, 0);
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
 
     // The 50%/75% boundary sits at ratio 0.625 (round(x*4) flips from 2 to 3
     // there). 0.60 is nearer to 50%; 0.66 is nearer to 75%.
     const track = await trackBox(page);
     await dragPillTo(page, track.x + track.width * 0.6);
+    await waitForGestureCommitFrame(page);
     await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).not.toBeChecked();
 
     await dragPillTo(page, track.x + track.width * 0.66);
+    await waitForGestureCommitFrame(page);
     await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '50% · Neutral' })).not.toBeChecked();
   });
 
   test('drag cannot push the pill past the 0% or 100% bounds of the track', async ({ page }) => {
@@ -2241,11 +2259,25 @@ test.describe('Confidence pill drag interaction', () => {
     expect(pillPastLeft?.x ?? -1).toBeGreaterThanOrEqual(track.x - leftScaleTolerance);
     await pill.dispatchEvent('pointercancel');
     await page.mouse.up();
-    await clickConfidenceOption(page, 50);
+    // Inspect what the cancel really left behind, after the frame that would
+    // commit one. This used to call `clickConfidenceOption(50)` right here,
+    // which overwrote the state it was about to assert — a cancelled gesture
+    // committing 0% went unseen. Nothing may write Confidence between a
+    // cancel and its assertion.
+    await waitForGestureCommitFrame(page);
     await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
 
-    // A valid release in the outer step commits the exact boundary value.
+    // A valid release commits, checked first on an interior step: at ratio
+    // 0.25 a snapping error in either direction lands on a different step,
+    // whereas at the ends of the track `clampIndex` absorbs one direction and
+    // the assertion below could only ever catch the other.
+    await dragPillTo(page, track.x + track.width * 0.25);
+    await waitForGestureCommitFrame(page);
+    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
+
+    // And the outer step is still reachable by a release near the edge.
     await dragPillTo(page, track.x + track.width * 0.05);
+    await waitForGestureCommitFrame(page);
     await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
 
     await beginPillDragTo(page, track.x + track.width + 1);
@@ -2256,8 +2288,9 @@ test.describe('Confidence pill drag interaction', () => {
     );
     await pill.dispatchEvent('pointercancel');
     await page.mouse.up();
-    await clickConfidenceOption(page, 0);
+    await waitForGestureCommitFrame(page);
     await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
+    expect(await page.getByRole('radio', { checked: true }).count()).toBe(1);
   });
 
   test('a cancelled pointer gesture leaves the Confidence value in a valid, unchanged discrete state', async ({
@@ -2284,6 +2317,10 @@ test.describe('Confidence pill drag interaction', () => {
     await pill.dispatchEvent('pointercancel');
     await page.mouse.up();
 
+    // Without this the assertion below reads the value before the frame that
+    // would overwrite it, and passes on the state that is already there — it
+    // stayed green against the very defect it exists to catch.
+    await waitForGestureCommitFrame(page);
     await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
     const checkedCount = await page.getByRole('radio', { checked: true }).count();
     expect(checkedCount).toBe(1);
@@ -2379,8 +2416,15 @@ test.describe('Confidence pill drag interaction', () => {
 
     const track = await trackBox(page);
     const scrollBefore = await page.evaluate(() => window.scrollY);
-    await dragPillTo(page, track.x + track.width * 0.9);
-    await expect(page.getByRole('radio', { name: '100% · Very High' })).toBeChecked();
+    // Ratio 0.75 maps to round(0.75*4)=3 -> 75%, an interior step. It used to
+    // drag to 0.9 and assert 100%, where `clampIndex` absorbs any error that
+    // points off the end of the track: with the snapping index deliberately
+    // off by one to the right this test stayed green, and only caught the
+    // error pointing the other way.
+    await dragPillTo(page, track.x + track.width * 0.75);
+    await waitForGestureCommitFrame(page);
+    await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '0% · Very Low' })).not.toBeChecked();
     const scrollAfter = await page.evaluate(() => window.scrollY);
     expect(scrollAfter).toBe(scrollBefore);
 
