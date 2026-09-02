@@ -170,7 +170,16 @@ jobs:
   e2e:
     name: Playwright end-to-end
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # TEMPORARY, AND A MEASUREMENT RATHER THAN A FIX. At 20 minutes this job
+    # was cancelled mid-suite with no summary, so the serial cost of the
+    # current 673 tests has never been observed — the last run that finished
+    # was 523 tests in 11.5 minutes on 2026-08-23. 60 is a deliberately
+    # generous ceiling chosen to get one complete run, not a claim that the
+    # suite should take an hour. `workers: 1` is untouched on purpose: the
+    # point is to measure the serial total before deciding between more
+    # workers, sharding, or accepting the time. Put this back once the number
+    # is known and the decision is made. See docs/roadmap.md.
+    timeout-minutes: 60
 
     services:
       postgres:
