@@ -581,7 +581,51 @@ async function completeTradeLifecycle(page: Page) {
   await expect(detail.getByLabel('Actual').getByText('Win', { exact: true }).first()).toBeVisible();
 }
 
+/**
+ * The cap for the long Trade-journey flows below, and it is a measured number.
+ * Checked out at `8e9f394` — the commit before the Trades rebuild, where all
+ * six still pass — and timed against a REMOTE Neon database, slower than the
+ * local Postgres container CI uses: 47.7s, 38.0s, 28.2s, 22.3s, 21.3s, 7.7s.
+ * 90s is roughly 1.9x the slowest of those.
+ *
+ * It used to be 300s, a number no commit ever explained. That mattered once
+ * the Trades rebuild turned these from assertion failures into hangs: their
+ * locators stopped existing, so each one waited out the full five minutes and
+ * was retried twice, and three of them alone consumed 45 of the 60 minutes
+ * that CI's Playwright job was given before being cancelled. See
+ * docs/roadmap.md.
+ *
+ * 90 rather than 60: while these tests are red the cap is only a cost knob,
+ * but it has to survive their repair, and a runner's CPU is slower than the
+ * machine those timings came from. 60s would leave 1.26x over a measurement
+ * taken on a faster CPU; the extra 30s costs at most three minutes of a
+ * thirty-five minute budget, and a cap that is too tight buys back a flaky
+ * timeout — the exact failure this work exists to remove.
+ */
+const LONG_TRADE_FLOW_TIMEOUT_MS = 90_000;
+
 test.describe('real Trade Journal creation', () => {
+  /**
+   * Nineteen of this block's twenty-one tests are the documented known-red
+   * set (docs/roadmap.md), so retrying them is three attempts at a result
+   * this repository already records — and with the caps above that is the
+   * difference between three minutes and nine. The global `retries: 2`
+   * (playwright.config.ts) is deliberately left alone everywhere else,
+   * because it demonstrably works: the completed CI runs of 2026-08-15 to
+   * 2026-08-23 recovered between one and four genuinely flaky tests each,
+   * and the one identified by name was `app-shell.spec.ts`'s navigation
+   * landmark test, not a known-red one.
+   *
+   * Playwright has no per-test retry setting, so this is block-scoped, and
+   * the two tests here that are NOT known-red — `the recording-mode choice
+   * walks from the cards to the form` and `Phase 15G.3 New Trade views stay
+   * exclusive and usable at 1440/390/320 in EN/TH` — lose their retries too.
+   * That is a deliberate, visible trade: if either becomes flaky it shows up
+   * immediately as a red name that `pnpm e2e:known-red` reports as
+   * undocumented, which is the loud failure mode rather than the quiet one.
+   */
+  test.describe.configure({ retries: 0 });
+
   test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
 
   test('Phase 15G.5C discloses retrospective recording once at Entry Snapshot level', async ({
@@ -605,7 +649,7 @@ test.describe('real Trade Journal creation', () => {
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(LONG_TRADE_FLOW_TIMEOUT_MS);
     const user = await provisionJournalUser('e2e-trades-desktop');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
@@ -682,7 +726,7 @@ test.describe('real Trade Journal creation', () => {
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(LONG_TRADE_FLOW_TIMEOUT_MS);
     const user = await provisionJournalUser('e2e-trades-price-exits');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
@@ -742,7 +786,7 @@ test.describe('real Trade Journal creation', () => {
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(LONG_TRADE_FLOW_TIMEOUT_MS);
     const user = await provisionJournalUser('e2e-trades-money-exits');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
@@ -782,7 +826,7 @@ test.describe('real Trade Journal creation', () => {
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(LONG_TRADE_FLOW_TIMEOUT_MS);
     const user = await provisionJournalUser('e2e-system-money-target');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
@@ -1709,7 +1753,7 @@ test.describe('real Trade Journal creation', () => {
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(LONG_TRADE_FLOW_TIMEOUT_MS);
     const user = await provisionJournalUser('e2e-trades-independent-ux');
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
@@ -1974,7 +2018,7 @@ test.describe('real Trade Journal creation', () => {
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(300_000);
+    test.setTimeout(LONG_TRADE_FLOW_TIMEOUT_MS);
     const user = await provisionJournalUser('e2e-system-pending-filter');
     await seedPendingWorkflowTrades(user.id);
     await loginAs(page, 'en', user);
