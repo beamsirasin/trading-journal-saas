@@ -419,7 +419,7 @@ The three `mobile-chrome` entries were added on 2026-09-02, after a full `pnpm e
 
 **Four more reads assert an order they never asked for.** Found by scanning for the shape above after it cost a CI run on 2026-09-04. Listed, not fixed — every one of them is green today, which is exactly the problem.
 
-- `src/server/services/workspace-export.integration.test.ts:768` — **the identical defect**: two `data.exported` audit rows (json, then csv) read with no `ORDER BY` and asserted with `toEqual([json, csv])`. It is green purely on the same luck the settings test ran out of. This is the one worth repairing first.
+- ~~`src/server/services/workspace-export.integration.test.ts:768`~~ — **repaired 2026-09-04**, proved red first by swapping the expected order, then `.orderBy(auditLogs.id)` and ten consecutive green runs. Fixed while still green rather than waiting for it to fail, because its green never meant the order was right.
 - `src/server/services/settings.integration.test.ts:157`, `src/server/services/workspace-settings.integration.test.ts:164`, `src/server/services/account-security.integration.test.ts:249` — single-element arrays over unordered reads. Order cannot bite a one-row result, so these are the weaker case; what they still assert without asking is that exactly one row exists. That is a claim about the data, not about the query, and it is worth making explicit when someone is in the file anyway.
 - **The repair, in all four:** `.orderBy(<table>.id)` — every table here uses UUIDv7 ids, so id order is write order.
 - **Acceptance criterion.** Swap the expected order in the multi-row case and it must go red; restore it and it must stay green over repeated runs. A one-line ordering change that no test can tell apart has not been verified.

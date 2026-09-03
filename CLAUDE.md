@@ -169,14 +169,16 @@ riskPerUnit(entry, initialStop) =
 
 `riskPerUnit` must be **strictly positive**. A non-positive value means the stop is on the wrong side of entry — reject at validation, never silently proceed.
 
-```
-initialRiskAmount = riskPerUnit × positionSize × contractMultiplier   [minor units]
+`riskPerUnit` is a price distance. It is **not** a route to a monetary risk amount.
 
+```
 netResult = grossPnL − commission − fees − swap                        [minor units]
 
-actualR   = netResult / actualInitialRiskAmount   [current runtime V1 Money path]
+actualR   = net_pnl_minor / actual_initial_risk_minor   [current runtime V1 Money path]
 plannedR  = plannedRewardPerUnit / plannedRiskPerUnit
 ```
+
+**Monetary risk is stored, never reconstructed from price × size.** `Trade.actual_initial_risk_minor` and `Trade.net_pnl_minor` (both `BIGINT` account-currency minor units) are the **authoritative** monetary inputs to Actual R. `riskPerUnit × positionSize × contractMultiplier` is **not** a valid substitute and must not be implemented: it does not hold across Forex, gold, crypto and indices, especially when the account currency differs from the quote currency — a pip value in JPY-quoted pairs, a per-contract multiplier for an index future, and a crypto position sized in the base asset do not reduce to one multiplication safely. The execution forms accept these authoritative amounts directly (registry-aware exact money parsing, or explicit raw minor units for an unknown currency); neither React nor the service derives them from price and quantity. `Trade.actual_entry`/`actual_exit`/`actual_position_size` remain informational `NUMERIC(20,10)` primitives, not R inputs. Locked in Phase 08; see `docs/calculation-spec.md` §_Initial risk amount — Actual is stored, not derived_.
 
 **Phase 13E Journal V2 runtime:** Actual Result has an explicit persisted mode. Price mode derives `Actual R = SUM((closed_bps / 10000) × direction-aware leg R)` from actual entry, actual initial stop, and Exit prices without requiring or fabricating monetary risk/P&L. Money mode derives `Actual R = SUM(realized_pnl_minor) / actual_initial_risk_minor`, without weighting each already-realized P&L leg by closed fraction again. When both complete representations exist, Money is authoritative for Trader Performance and Price remains diagnostic context; no strict equality invariant is permitted. See `docs/phases/PHASE-13-journal-v2.md` §§3–4.
 

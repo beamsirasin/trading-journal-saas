@@ -765,12 +765,25 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
 
+    /*
+      ORDER BY, BECAUSE THIS ASSERTION IS ABOUT ORDER — json was exported
+      first, csv second, and that sequence is the thing being checked.
+
+      Same defect as the settings audit-log read repaired in `f45d6a7`: an
+      unordered read under an order-sensitive `toEqual`. This one was still
+      green, which is precisely why it is being fixed now rather than when it
+      eventually is not — its green never meant the order was right, only
+      that the rows happened to come back that way on the machines that had
+      run it so far. `id` is UUIDv7, so ordering by it is ordering by the
+      sequence the writes actually happened in.
+    */
     const events = await db
       .select({ action: auditLogs.action, metadata: auditLogs.metadata })
       .from(auditLogs)
       .where(
         and(eq(auditLogs.workspaceId, seeded.workspace.id), eq(auditLogs.action, 'data.exported')),
-      );
+      )
+      .orderBy(auditLogs.id);
     expect(events).toEqual([
       {
         action: 'data.exported',
