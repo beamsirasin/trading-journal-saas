@@ -461,10 +461,27 @@ async function expandEntrySnapshotDetails(page: Page) {
   await page.getByText('Show full details', { exact: true }).click();
 }
 
-async function openNewTradeView(page: Page, view: 'Trade' | 'Setup' | 'Entry Context' | 'Result') {
+/**
+ * The New Trade form's panels, addressed by what they ARE rather than by what
+ * they are currently called. Callers name the panel; this map owns the visible
+ * label, so renaming one is a single edit here instead of a hunt through
+ * thirteen call sites — and a rename that breaks navigation fails in one
+ * obvious place rather than as thirteen unrelated-looking failures.
+ *
+ * The panel keys deliberately match the values the form uses internally and
+ * the ones that travel in the URL; only the labels on the right are visual.
+ */
+const NEW_TRADE_VIEW_LABELS = {
+  trade: 'Trade',
+  result: 'Result',
+  setup: 'Setup',
+  context: 'Entry Context',
+} as const;
+
+async function openNewTradeView(page: Page, view: keyof typeof NEW_TRADE_VIEW_LABELS) {
   await page
     .getByTestId('new-trade-view-nav')
-    .getByRole('button', { name: view, exact: true })
+    .getByRole('button', { name: NEW_TRADE_VIEW_LABELS[view], exact: true })
     .click();
 }
 
@@ -484,7 +501,7 @@ async function createOpenTrade(page: Page) {
   await page.getByLabel('Entry', { exact: true }).fill('100');
   await page.getByLabel('Stop Loss', { exact: true }).fill('90');
   await page.getByLabel(/Take Profit/).fill('130');
-  await openNewTradeView(page, 'Setup');
+  await openNewTradeView(page, 'setup');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
   await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
@@ -509,7 +526,7 @@ async function createMoneyOnlyOpenTrade(page: Page) {
   await page.getByRole('button', { name: 'Money' }).click();
   await page.getByLabel('Risk').fill('100.00');
   await page.getByLabel(/Target Reward/).fill('300.00');
-  await openNewTradeView(page, 'Setup');
+  await openNewTradeView(page, 'setup');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
   await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
@@ -911,14 +928,14 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
-    await openNewTradeView(page, 'Setup');
+    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
-    await openNewTradeView(page, 'Entry Context');
+    await openNewTradeView(page, 'context');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Fearful' }).click();
     await page.getByRole('button', { name: 'Hesitant' }).click();
@@ -1001,7 +1018,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entry', { exact: true }).fill('150');
     await page.getByLabel('Stop Loss', { exact: true }).fill('149');
-    await openNewTradeView(page, 'Setup');
+    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByText('Not configured')).toBeVisible();
@@ -1043,7 +1060,7 @@ test.describe('real Trade Journal creation', () => {
     // Resolve the disagreement — Money now agrees with Price (+3R) — and proceed.
     await page.getByLabel(/Planned reward/).fill('150.00');
     await expect(page.getByText('Price and Money plans disagree')).toHaveCount(0);
-    await openNewTradeView(page, 'Setup');
+    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
@@ -1167,7 +1184,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
     await page.getByLabel(/Take Profit/).fill('130');
-    await openNewTradeView(page, 'Result');
+    await openNewTradeView(page, 'result');
     await page.getByLabel('Actual Entry').fill('100');
     await page.getByLabel('Actual Initial Stop').fill('90');
     await page.getByLabel('Exit Price').fill('120');
@@ -1510,7 +1527,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Money' }).click();
     await page.getByLabel('Risk').fill('100.00');
     await page.getByLabel(/Target Reward/).fill('300.00');
-    await openNewTradeView(page, 'Setup');
+    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByLabel(/^Setup/)).toHaveValue(/.+/);
@@ -1518,7 +1535,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
-    await openNewTradeView(page, 'Entry Context');
+    await openNewTradeView(page, 'context');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Focused' }).click();
     await page
@@ -1766,9 +1783,9 @@ test.describe('real Trade Journal creation', () => {
     // action; Open never silently reintroduces a Plan requirement.
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
-    await openNewTradeView(page, 'Setup');
+    await openNewTradeView(page, 'setup');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
-    await openNewTradeView(page, 'Trade');
+    await openNewTradeView(page, 'trade');
     await expect(page.getByLabel('Entry', { exact: true })).toHaveValue('');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
@@ -2130,9 +2147,9 @@ test.describe('Confidence pill drag interaction', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
-    await openNewTradeView(page, 'Setup');
+    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await openNewTradeView(page, 'Entry Context');
+    await openNewTradeView(page, 'context');
   }
 
   /** Clicks a Confidence segment's styled (visible) label — the step number itself renders in a separate pointer-events-none overlay, so it is not a valid click target. */
