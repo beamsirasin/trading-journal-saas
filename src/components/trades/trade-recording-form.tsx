@@ -969,7 +969,7 @@ export function TradeRecordingForm({
         {panel === 'trade' ? (
           <div className="grid gap-8">
             <fieldset className="grid gap-5">
-              <legend className="text-base font-semibold">{r('identity')}</legend>
+              <legend className="mb-2 text-base font-semibold">{r('identity')}</legend>
               {/*
                 A FIELD IS AS WIDE AS WHAT GOES IN IT. Account is a select
                 holding a name and a currency; Symbol holds four or six
@@ -1081,7 +1081,7 @@ export function TradeRecordingForm({
               so the heading now matches every other heading on the panel.
             */}
             <fieldset className="grid gap-5">
-              <legend className="text-base font-semibold">{r('systemPlan')}</legend>
+              <legend className="mb-2 text-base font-semibold">{r('systemPlan')}</legend>
               <PlanField id="plan-basis" label={r('planBy')} hint={r('planByHelp')}>
                 <Segmented
                   label={r('planBy')}

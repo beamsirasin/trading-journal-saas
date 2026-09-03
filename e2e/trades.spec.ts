@@ -472,10 +472,10 @@ async function expandEntrySnapshotDetails(page: Page) {
  * the ones that travel in the URL; only the labels on the right are visual.
  */
 const NEW_TRADE_VIEW_LABELS = {
-  trade: 'Trade',
+  trade: 'The trade',
   result: 'Result',
-  setup: 'Setup',
-  context: 'Entry Context',
+  setup: 'Setup · optional',
+  context: 'Context · optional',
 } as const;
 
 async function openNewTradeView(page: Page, view: keyof typeof NEW_TRADE_VIEW_LABELS) {
