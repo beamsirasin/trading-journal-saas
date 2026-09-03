@@ -266,10 +266,30 @@ describe('account-level preference Settings (real PostgreSQL)', () => {
       locale: 'en',
       theme: 'system',
     });
+    /*
+      ORDER BY, BECAUSE THIS ASSERTION IS ABOUT ORDER.
+
+      This read had no ordering at all and was asserted with an
+      order-sensitive `toEqual`, so for twenty-five days it was checking
+      what PostgreSQL felt like returning. `audit_logs` carries exactly one
+      index — `(workspace_id, created_at)` — and nothing on
+      `actor_user_id`, so this is a sequential scan whose row order no
+      contract covers. On 2026-09-03 it stopped agreeing: CI returned
+      theme-then-locale on two consecutive runs of an unchanged commit
+      while this same test returned locale-then-theme locally.
+
+      `created_at` cannot break the tie. Both rows are written in one
+      transaction (`user-preferences.ts`, a loop over `changedFields`) and
+      `defaultNow()` is transaction start time, so they share a timestamp
+      exactly. `id` is the only monotonic column: UUIDv7, generated per
+      insert, so ordering by it IS ordering by the sequence the writes
+      happened in — which is the thing this test means to assert.
+    */
     const events = await db
       .select({ action: auditLogs.action, metadata: auditLogs.metadata })
       .from(auditLogs)
-      .where(eq(auditLogs.actorUserId, actor.id));
+      .where(eq(auditLogs.actorUserId, actor.id))
+      .orderBy(auditLogs.id);
     expect(events).toEqual([
       { action: 'user_preferences.locale_changed', metadata: { changedFields: ['locale'] } },
       { action: 'user_preferences.theme_changed', metadata: { changedFields: ['theme'] } },
