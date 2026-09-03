@@ -299,7 +299,7 @@ Not product debt: these are the things that make shipping the current work unsaf
 
 - The last green run was `8880cbd` on `main`, 2026-08-12 — the same commit as the last Production deployment. No run on any branch has passed since: thirty-five failed and one was cancelled.
 - The failure is **five integration tests across two files**, identical in CI and on a local merge of all three branches (5 failed, 983 passed, 988 total): `src/server/services/analytics.integration.test.ts` — `builds the Dashboard from active Account scope with strict 90D, 30D, and All ranges` (expected 5 rows, got 9) and `Phase 15G.5C: excludes proven retrospective entry context before aggregation while preserving every financial/classification axis` (fails with `read_only_workspace`); and `src/server/services/workspace-settings.integration.test.ts` — `returns a sanitized active workspace summary under professional access`, `… under starter access`, and `uses only the authenticated active workspace and returns closed JSON-safe action failures`.
-- `Lint, typecheck, test, build` passes on every 2026-09-02 run. The **Playwright job is now cancelled before it starts**, because the integration job it waits on fails — but that is recent, and an earlier version of this entry wrongly said e2e had not run in CI for three weeks. It had: across the thirty-three runs from 2026-08-13 to 2026-08-24 the Playwright job **ran** in thirty-two of them and **failed on its own** in twenty-seven, on the retired-UI debt listed below, while the integration job passed in twenty-six of those runs and failed in seven. So the integration failure is new — it appears for the first time on the 2026-09-02 runs — and it is what is now hiding the e2e result rather than adding to it. Run locally, `trades.spec.ts --workers=4` reports exactly the nineteen documented known-red name/project pairs and nothing else (`pnpm e2e:known-red` → EXACT MATCH).
+- `Lint, typecheck, test, build` passes on every 2026-09-02 run. The **Playwright job is now cancelled before it starts**, because the integration job it waits on fails — but that is recent, and an earlier version of this entry wrongly said e2e had not run in CI for three weeks. It had: across the thirty-three runs from 2026-08-13 to 2026-08-24 the Playwright job **ran** in thirty-two of them and **failed on its own** in twenty-seven, on the retired-UI debt listed below, while the integration job passed in twenty-six of those runs and failed in seven. So the integration failure is new — it appears for the first time on the 2026-09-02 runs — and it is what is now hiding the e2e result rather than adding to it. Run locally, `trades.spec.ts --workers=4` reports the nineteen retired-UI name/project pairs and nothing else; the twentieth, documented below, only appears in CI.
 - **Nothing ran CI between 2026-08-24 and 2026-09-02, and that nine-day gap is where the breakage happened.** The Dashboard rebuild landed inside it (2026-08-27 to 2026-08-31), including the commit that moved the Dashboard's recent-trades limit and left the assertion above stranded. No run means no signal: the tests did not start failing quietly, they started failing where nothing was looking.
 - The date CI went red is the date the pull-request workflow stopped being used. Every branch created after 2026-08-13 was pushed directly and never proposed for merge, so nothing has forced a green check since.
 
@@ -343,9 +343,9 @@ Not product debt: these are the things that make shipping the current work unsaf
 
 ## Known product debt
 
-**Nineteen `e2e/trades.spec.ts` tests still assert the retired Trade Journal and Trade Detail UI.** The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. The nineteen tests below fail for that reason alone, listed under the Playwright project each one runs in:
+**Twenty `e2e/trades.spec.ts` tests still assert a UI that is not there.** Nineteen of them are one defect — the retired Trade Journal and Trade Detail — and the twentieth is a different one, described after the list. The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. Those nineteen fail for that reason alone. They are listed below together with the twentieth, under the Playwright project each one runs in:
 
-**`chromium` (16)**
+**`chromium` (17)**
 
 - `Phase 15G.5C discloses retrospective recording once at Entry Snapshot level`
 - `desktop creates, completes, corrects discipline, resolves, and deletes a Trade`
@@ -363,6 +363,7 @@ Not product debt: these are the things that make shipping the current work unsaf
 - `Phase 15G.1 — Calendar is separate from Trade Log, independent Trader/System dates never collapse, and day selection filters Log truthfully`
 - `Phase 15G.1 — Trade Log uses 10-row URL pagination with reload-safe Previous`
 - `Phase 15G.3 pending Analytics action stays filtered through pagination and deep action`
+- `Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH`
 
 **`mobile-chrome` (3)**
 
@@ -370,10 +371,31 @@ Not product debt: these are the things that make shipping the current work unsaf
 - `Phase 14C mobile — minimal New Trade (no Plan/Strategy/Setup), late classification dialog, and Needs Attention stay usable at 390px`
 - `Phase 15G.1 mobile — Trading Calendar and Trade Log remain separate at 390px`
 
+**The twentieth is not the same defect, and it is CI-only.** `Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH` fails on a **strict-mode violation** — `locator('form')` resolves to two elements, so the page renders two forms where the test expects one. It is not a retired locator, and it is not a timeout. It **passes locally** on this branch (`trades.spec.ts --workers=4`) and fails in CI, which is why it went unrecorded for so long.
+
+It was not caused by turning retries off for that block, and there is direct evidence: the identical failure — same locator, same "resolved to 2 elements" — is already annotated in the 60-minute measurement run of 2026-09-02, while `retries: 2` was still in force. Removing the retries only stopped it being absorbed. No complete CI run existed between the Trades rebuild and 2026-09-03, so nothing had ever adjudicated it either way.
+
 Repairing them is not a locator swap: the assertions have to be rewritten against `TradesTable` and `TradeDetailsSheet`, including the `?section=` → `?tab=` Trade Detail contract. Deliberately left out of the Log a trade wizard slice, whose own e2e repair covered only the two causes that slice touched.
 
-**Compare by name _and project_, never by count, and never from a single project's run.** Do it with `pnpm e2e:known-red <run.log>` (`scripts/compare-known-red-e2e.mjs`), which diffs this list against a run and separates a name that went red from a name that went green — comparing by eye is how the omission below happened. A full `trades.spec.ts` run is expected to report exactly these nineteen name/project pairs and no other — 19 failures. Line numbers are deliberately omitted: they moved twice during the repair that produced this list. A pair on this list going green is progress; a pair _not_ on it going red is a regression.
+**Compare by name _and project_, never by count, and never from a single project's run.** Do it with `pnpm e2e:known-red <run.log>` (`scripts/compare-known-red-e2e.mjs`), which diffs this list against a run and separates a name that went red from a name that went green — comparing by eye is how the omission below happened. A full `trades.spec.ts` run is expected to report exactly these twenty name/project pairs and no other — 20 failures in CI. A local run reports 19 of them: the strict-mode failure above does not reproduce outside CI. Line numbers are deliberately omitted: they moved twice during the repair that produced this list. A pair on this list going green is progress; a pair _not_ on it going red is a regression.
 
 The three `mobile-chrome` entries were added on 2026-09-02, after a full `pnpm exec playwright test e2e/trades.spec.ts --workers=4` reported **19 failed / 10 passed / 32 skipped** rather than the sixteen this list then claimed. They are not new and not a regression: they fail identically at `--workers=1`, so not from parallel load, and they fail identically again with that day's `trade-confidence-control.tsx` change stashed and the app rebuilt — same locators, same `getByRole('navigation', { name: 'Trade sections' })` and `getByTestId('trading-calendar')` not-found signature as their `chromium` counterparts. **The original list was compiled from a `chromium`-only run and silently omitted the same debt's `mobile-chrome` members.** That is why the comparison rule above now names the project: a list gathered from one project cannot be checked against a run of all of them. When something unexpected does go red, settle it the way this was settled — stash the change, rebuild, re-run — rather than by arguing it looks unrelated.
+
+**Thirty-one e2e failures outside `trades.spec.ts` have never been looked at.** The first complete Playwright run since 2026-08-24 (2026-09-03, 27.2 minutes, 673 tests on one worker) reported **51 failed, 4 flaky, 67 skipped, 547 passed**. Twenty of those failures are the documented list above. The other thirty-one are spread across ten spec files and are undocumented, uninvestigated, and unattributed to any cause:
+
+| spec                         | failures |
+| ---------------------------- | -------- |
+| `strategies.spec.ts`         | 5        |
+| `dashboard.spec.ts`          | 4        |
+| `i18n.spec.ts`               | 4        |
+| `onboarding.spec.ts`         | 4        |
+| `settings.spec.ts`           | 4        |
+| `accounts.spec.ts`           | 2        |
+| `analytics.spec.ts`          | 2        |
+| `app-shell.spec.ts`          | 2        |
+| `dashboard-calendar.spec.ts` | 2        |
+| `home.spec.ts`               | 2        |
+
+**Why this was invisible.** The known-red list has only ever covered `trades.spec.ts`, and no complete e2e run existed between the Trades rebuild and 2026-09-03 — the job was cancelled every time, first by a failing dependency and then by its own timeout. The last run that finished, on 2026-08-23, reported 14 failures in total; the work that has landed since took that to 51 without anyone being able to see it. Nothing here is triaged: some may share the retired-UI cause, some may be their own defects, and some may be CI-only like the twentieth above. **Do not assume; measure, then split this entry into what it turns out to be.**
 
 **A money-Risk Analytics view does not exist.** `ANALYTICS_VIEWS` is `overview | results | edge | behavior`, and none of them renders modeled-balance material: Analytics' `maximumDrawdownR` is an **R** metric over a different population and is not a home for D7's money drawdown. When the Dashboard's Risk snapshot was reduced to Modeled Balance + Current Drawdown + the balance chart, the figures it stopped showing — **money Max Drawdown, Peak Balance, peak history, deeper drawdown/underwater analysis and modeled-balance diagnostics** — were moved into that card's info popover _with their values_ rather than to Analytics, because there was nowhere to send them. That is deliberate temporary progressive disclosure, not a resting place. A future Risk Analytics view should give them a real home, after which the popover can shrink back to definitions.

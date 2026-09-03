@@ -14,15 +14,23 @@
  * Usage:
  *   pnpm exec playwright test e2e/trades.spec.ts --workers=4 > run.log
  *   node scripts/compare-known-red-e2e.mjs run.log
- *   ... | node scripts/compare-known-red-e2e.mjs      # or read stdin
+ *   gh run view <id> --log | node scripts/compare-known-red-e2e.mjs
  *
- * Reads the `list` reporter's numbered failure summary, which is what a local
- * run prints by default (playwright.config.ts uses `github` + `html` in CI,
- * so pass `--reporter=list` there).
+ * Reads either reporter: the `list` reporter's numbered failure summary (what
+ * a local run prints) or the `github` reporter's summary block (what CI
+ * prints, playwright.config.ts). A raw `gh run view --log` is accepted as-is —
+ * the job/step/timestamp prefix and ANSI colouring are stripped — because a
+ * tool that cannot read the log CI actually produces is a tool that gets
+ * skipped.
  *
  * Give it a run of the WHOLE spec across every project. A `-g`-filtered or
  * single-project run reports every test it never executed as "documented but
  * green", which is the exact mistake this script exists to catch.
+ *
+ * The documented list covers ONE spec file, named in its own headline.
+ * Failures in other specs are reported separately and do not affect the
+ * verdict — see the "Thirty-one e2e failures outside `trades.spec.ts`" entry
+ * in docs/roadmap.md for why those are their own, untriaged, debt.
  *
  * Exit codes: 0 exact match · 1 a difference · 2 could not parse the inputs.
  */
@@ -52,7 +60,22 @@ const NAME_BULLET = /^- `(.*)`$/;
  * its encoding does not always survive a pipe or a redirect — and split on
  * with its surrounding spaces, so an em dash inside a test name survives.
  */
-const FAILURE_HEAD = /^\s*\d+\) \[([a-z][a-z0-9-]*)\] (\S) (e2e[\\/][\w./-]+):\d+:\d+ /;
+const LIST_FAILURE = /^\s*\d+\) \[([a-z][a-z0-9-]*)\] (\S) (e2e[\\/][\w./-]+):\d+:\d+ /;
+
+/**
+ * The `github` reporter prints an unnumbered, indented block under a bare
+ * `  N failed` heading and ends it at the next `  N flaky|skipped|passed`.
+ * Names there are padded to the terminal width with box-drawing dashes.
+ */
+const GITHUB_FAILED_HEADING = /^\s*\d+ failed\s*$/;
+const GITHUB_BLOCK_END = /^\s*\d+ (flaky|skipped|passed)\b/;
+const GITHUB_FAILURE = /^\s*\[([a-z][a-z0-9-]*)\] (\S) (e2e[\\/][\w./-]+):\d+:\d+ /;
+
+const ANSI = /\u001b\[[0-9;]*m/g;
+/** `Playwright end-to-end\tPlaywright tests\t2026-09-03T11:28:45.1274942Z ` */
+const CI_PREFIX = /^.*?\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z /;
+/** The github reporter pads a title out with `─`; `list` leaves trailing space. */
+const TRAILING_RULE = /[\s\u2500-\u257f]+$/;
 
 function readInput(argv) {
   const file = argv[2];
@@ -68,18 +91,48 @@ function fail(message) {
   process.exit(2);
 }
 
+/** One failure row, from whichever reporter wrote the log. */
+function toRow(line, match) {
+  const [, project, separator, specFile] = match;
+  const parts = line.split(` ${separator} `);
+  return {
+    project,
+    specFile: specFile.replace(/\\/g, '/'),
+    name: (parts[parts.length - 1] ?? '').replace(TRAILING_RULE, '').trim(),
+  };
+}
+
 function parseFailures(log) {
-  const failures = [];
-  const specFiles = new Set();
-  for (const line of log.split(/\r?\n/)) {
-    const head = line.match(FAILURE_HEAD);
-    if (!head) continue;
-    const [, project, separator, specFile] = head;
-    const parts = line.split(` ${separator} `);
-    specFiles.add(specFile.replace(/\\/g, '/'));
-    failures.push({ project, name: parts[parts.length - 1].trim() });
+  const lines = log
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(ANSI, '').replace(CI_PREFIX, ''));
+
+  // The indented summary block both reporters print is authoritative when
+  // present: its `N failed` list excludes flaky tests, whereas the numbered
+  // per-failure detail also printed includes a flaky test's failed first
+  // attempt. Read the block first so a recovered flake is never a failure.
+  const githubRows = [];
+  let inFailedBlock = false;
+  for (const line of lines) {
+    if (GITHUB_FAILED_HEADING.test(line)) {
+      inFailedBlock = true;
+      continue;
+    }
+    if (!inFailedBlock) continue;
+    if (GITHUB_BLOCK_END.test(line)) break;
+    const m = line.match(GITHUB_FAILURE);
+    if (m) githubRows.push(toRow(line, m));
   }
-  return { failures, specFiles };
+  if (githubRows.length > 0) return { rows: githubRows, source: 'failure summary block' };
+
+  // Otherwise fall back to the numbered per-failure headings.
+  const listRows = [];
+  for (const line of lines) {
+    const m = line.match(LIST_FAILURE);
+    if (m) listRows.push(toRow(line, m));
+  }
+  return { rows: listRows, source: 'numbered failure lines' };
 }
 
 function parseKnownRed(markdown) {
@@ -125,21 +178,25 @@ const report = (label, rows) => {
 };
 
 const log = readInput(process.argv);
-const { failures, specFiles } = parseFailures(log);
+const { rows, source } = parseFailures(log);
 const { known, specFile, countMismatches } = parseKnownRed(readFileSync(ROADMAP, 'utf8'));
 
-if (failures.length === 0 && !/\b\d+ failed\b/.test(log)) {
-  fail('no numbered failure lines found — was this a `list` reporter run?');
+if (rows.length === 0 && !/\b\d+ failed\b/.test(log)) {
+  fail('no failure lines found — was this a `list` or `github` reporter run?');
 }
 
-const failedKeys = new Set(failures.map(key));
-const knownKeys = new Set(known.map(key));
-const unexpected = failures.filter((f) => !knownKeys.has(key(f)));
-const repaired = known.filter((k) => !failedKeys.has(key(k)));
+// The documented list covers one spec. Anything else is reported, not judged.
+const inScope = rows.filter((row) => row.specFile === specFile);
+const outOfScope = rows.filter((row) => row.specFile !== specFile);
 
+const failedKeys = new Set(inScope.map(key));
+const knownKeys = new Set(known.map(key));
+const unexpected = inScope.filter((row) => !knownKeys.has(key(row)));
+const repaired = known.filter((row) => !failedKeys.has(key(row)));
+
+console.log(`read from       : ${source}`);
 console.log(`spec documented : ${specFile}`);
-console.log(`spec in the run : ${[...specFiles].join(', ') || '(none)'}`);
-console.log(`failed: ${failures.length}   documented: ${known.length}`);
+console.log(`failed: ${inScope.length}   documented: ${known.length}`);
 console.log('');
 report(
   'red but NOT documented (regression, or an undocumented member of the same debt)',
@@ -148,6 +205,18 @@ report(
 report('documented but green (progress — remove it from docs/roadmap.md)', repaired);
 for (const mismatch of countMismatches) {
   console.log(`heading count is stale — ${mismatch}`);
+}
+
+if (outOfScope.length > 0) {
+  const byFile = new Map();
+  for (const row of outOfScope) byFile.set(row.specFile, (byFile.get(row.specFile) ?? 0) + 1);
+  console.log('');
+  console.log(
+    `outside the documented spec, not compared: ${outOfScope.length} (see docs/roadmap.md)`,
+  );
+  for (const [file, n] of [...byFile].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${String(n).padStart(3)}  ${file}`);
+  }
 }
 
 const clean = unexpected.length === 0 && repaired.length === 0 && countMismatches.length === 0;
