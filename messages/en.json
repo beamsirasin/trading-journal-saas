@@ -1606,7 +1606,8 @@
           "veryHigh": "Very High"
         },
         "clear": "Clear confidence",
-        "hint": "How confident were you before entering? The result never changes this."
+        "hint": "How confident were you before entering? The result never changes this.",
+        "hintHindsight": "How confident were you before entering? The result never changes this. You are writing this after the outcome, so answer as the you who had not seen it yet."
       },
       "emotions": {
         "description": "Optional. Select every emotion present as you enter this Trade."
@@ -1745,7 +1746,19 @@
         "remaining": {
           "ready": "Ready to save",
           "needed": "{fields} still needed"
-        }
+        },
+        "headSection": "Where was your head?",
+        "rememberSection": "Anything worth remembering?",
+        "emotionsQuestion": "What pushed you in?",
+        "emotionGroups": {
+          "inControl": "In control",
+          "pushedIn": "Pushed in",
+          "heldBack": "Held back",
+          "depleted": "Depleted",
+          "other": "Other"
+        },
+        "entryReasonPlaceholder": "Why did you take this trade?",
+        "notesPlaceholder": "Anything else you want to remember"
       },
       "backToTrades": "Back to Trades",
       "mode": {

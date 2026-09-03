@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Check, Link as LinkIcon, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
@@ -172,6 +172,32 @@ function TextField({
   );
 }
 
+/**
+ * THE FOUR THINGS A FEELING CAN BE DOING TO A TRADE.
+ *
+ * Ten emotions in one flat wrap is a word cloud: the reader scans all ten to
+ * find the one they mean, and nothing on screen says why "Calm" and "Revenge"
+ * are different kinds of answer. Grouped, the question answers itself — what
+ * pushed you in, what held you back, what was already spent before you
+ * started.
+ *
+ * THIS IS LAYOUT AND NOTHING ELSE. The keys are the nine... ten system
+ * emotions seeded by migration 0012, the labels still come from the database
+ * row, the selected keys are still sent exactly as before, and no group is
+ * ever submitted. Nothing here changes what a Trade records.
+ *
+ * The catalog is read `WHERE is_system = true`, so today it is exactly these
+ * ten. `other` exists anyway: if an eleventh is ever seeded, it appears in its
+ * own group rather than silently vanishing from a form that only knows about
+ * the ten it was written for.
+ */
+const EMOTION_GROUPS = [
+  { key: 'inControl', emotions: ['calm', 'focused'] },
+  { key: 'pushedIn', emotions: ['fomo', 'greedy', 'excited', 'revenge'] },
+  { key: 'heldBack', emotions: ['fearful', 'hesitant'] },
+  { key: 'depleted', emotions: ['tired', 'frustrated'] },
+] as const;
+
 /** The pristine draft, in one place, so both the initial state and the touched-check read from it. */
 function emptyValues(tradingAccountId: string): Values {
   return {
@@ -308,6 +334,7 @@ export function TradeRecordingForm({
   const locale = useLocale();
   const t = useTranslations('trades');
   const r = useTranslations('trades.create.recording');
+  const tConfidence = useTranslations('trades.create.confidence');
   const tMode = useTranslations('trades.create.mode');
   const router = useRouter();
   const hydrated = useIsHydrated();
@@ -885,6 +912,29 @@ export function TradeRecordingForm({
             outstanding,
           ),
         });
+
+  /**
+   * The emotion catalog, arranged for reading.
+   *
+   * Built from `options.emotionCatalog` — the same rows, the same labels, the
+   * same order within a group — so this is a view of the server's list, not a
+   * list of its own. Any key the map does not know about lands in `other`, and
+   * an empty group is never rendered, so seeding an eleventh system emotion
+   * shows it rather than dropping it.
+   */
+  const groupedEmotionKeys = new Set<string>(EMOTION_GROUPS.flatMap((group) => group.emotions));
+  const emotionGroups = [
+    ...EMOTION_GROUPS.map((group) => ({
+      key: group.key,
+      emotions: options.emotionCatalog.filter((emotion) =>
+        (group.emotions as readonly string[]).includes(emotion.key),
+      ),
+    })),
+    {
+      key: 'other' as const,
+      emotions: options.emotionCatalog.filter((emotion) => !groupedEmotionKeys.has(emotion.key)),
+    },
+  ].filter((group) => group.emotions.length > 0);
 
   return (
     /*
@@ -1594,68 +1644,123 @@ export function TradeRecordingForm({
         ) : null}
 
         {panel === 'context' ? (
-          <div className="grid gap-6">
+          <div className="grid gap-8">
             {timing === 'after_trade' ? (
               <p className="bg-muted/50 text-muted-foreground rounded-md px-3 py-2 text-sm">
                 {r('retrospective')}
               </p>
             ) : null}
-            <TradeConfidenceControl
-              id="record-confidence"
-              label={t('field.confidence')}
-              value={parseConfidence(values.confidence) ?? null}
-              onChange={(value) => setField('confidence', value === null ? '' : String(value))}
-            />
-            <fieldset className="grid gap-3">
-              <legend className="text-sm font-semibold">{r('emotions')}</legend>
-              <div className="flex flex-wrap gap-2">
-                {options.emotionCatalog.map((emotion) => (
-                  <button
-                    key={emotion.key}
-                    type="button"
-                    aria-pressed={emotionKeys.includes(emotion.key)}
-                    onClick={() =>
-                      setEmotionKeys((current) =>
-                        current.includes(emotion.key)
-                          ? current.filter((key) => key !== emotion.key)
-                          : [...current, emotion.key],
-                      )
-                    }
-                    className={cn(
-                      'min-h-11 rounded-full border px-4 text-sm outline-none',
-                      'transition-colors duration-150 ease-(--motion-ease-standard) motion-reduce:transition-none',
-                      'focus-visible:ring-ring focus-visible:ring-2',
-                      emotionKeys.includes(emotion.key)
-                        ? 'border-primary bg-primary/10 text-foreground'
-                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    {emotion.label}
-                  </button>
-                ))}
-              </div>
+
+            <fieldset className="grid gap-5">
+              <legend className="mb-2 text-base font-semibold">{r('headSection')}</legend>
+              <TradeConfidenceControl
+                id="record-confidence"
+                label={t('field.confidence')}
+                value={parseConfidence(values.confidence) ?? null}
+                {...(timing === 'after_trade' ? { hint: tConfidence('hintHindsight') } : {})}
+                onChange={(value) => setField('confidence', value === null ? '' : String(value))}
+              />
+
+              <fieldset className="grid gap-3">
+                <legend className="text-sm font-semibold">{r('emotionsQuestion')}</legend>
+                <div className="grid gap-3">
+                  {emotionGroups.map((group) => (
+                    <div
+                      key={group.key}
+                      data-emotion-group={group.key}
+                      className="grid gap-1.5 sm:grid-cols-[8.5rem_1fr] sm:items-baseline sm:gap-3"
+                    >
+                      {/*
+                        The group's name reads as a caption, not as a control:
+                        it labels a row of chips whose own labels and pressed
+                        state carry every bit of meaning a reader acts on.
+                        Left of the chips where there is width for it, above
+                        them where there is not.
+                      */}
+                      <p className="text-muted-foreground text-xs font-medium sm:text-right">
+                        {r(`emotionGroups.${group.key}`)}
+                      </p>
+                      <div className="flex min-w-0 flex-wrap gap-2">
+                        {group.emotions.map((emotion) => (
+                          <button
+                            key={emotion.key}
+                            type="button"
+                            aria-pressed={emotionKeys.includes(emotion.key)}
+                            onClick={() =>
+                              setEmotionKeys((current) =>
+                                current.includes(emotion.key)
+                                  ? current.filter((key) => key !== emotion.key)
+                                  : [...current, emotion.key],
+                              )
+                            }
+                            className={cn(
+                              'min-h-11 rounded-full border px-4 text-sm outline-none',
+                              'transition-colors duration-150 ease-(--motion-ease-standard) motion-reduce:transition-none',
+                              'focus-visible:ring-ring focus-visible:ring-2',
+                              emotionKeys.includes(emotion.key)
+                                ? 'border-primary bg-primary/10 text-foreground'
+                                : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
+                            )}
+                          >
+                            {emotion.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
             </fieldset>
-            <PlanField id="entry-reason" label={r('entryReason')} optional>
-              <Textarea
-                id="entry-reason"
-                value={values.confirmationNotes}
-                onChange={(event) => setField('confirmationNotes', event.target.value)}
-              />
-            </PlanField>
-            <TextField
-              id="chart-link"
-              label={r('chartLink')}
-              value={values.tradingviewUrl}
-              onChange={(value) => setField('tradingviewUrl', value)}
-              optional
-            />
-            <PlanField id="record-notes" label={t('field.notes')} optional>
-              <Textarea
-                id="record-notes"
-                value={values.notes}
-                onChange={(event) => setField('notes', event.target.value)}
-              />
-            </PlanField>
+
+            <fieldset className="grid gap-5">
+              <legend className="mb-2 text-base font-semibold">{r('rememberSection')}</legend>
+              {/*
+                Two boxes that used to say only "Entry Reason" and "Notes" —
+                which is the same instruction twice to anyone who has not
+                already decided what belongs where. The placeholders are the
+                only thing that distinguishes them, so they say it plainly.
+              */}
+              <PlanField id="entry-reason" label={r('entryReason')} optional>
+                <Textarea
+                  id="entry-reason"
+                  placeholder={r('entryReasonPlaceholder')}
+                  value={values.confirmationNotes}
+                  onChange={(event) => setField('confirmationNotes', event.target.value)}
+                />
+              </PlanField>
+
+              {/*
+                One line, not a full field block: a URL is a single short thing
+                and the icon says what kind of thing it is before the label is
+                read.
+              */}
+              <PlanField id="chart-link" label={r('chartLink')} optional>
+                <div className="relative">
+                  <LinkIcon
+                    aria-hidden="true"
+                    size={16}
+                    className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+                  />
+                  <Input
+                    id="chart-link"
+                    type="url"
+                    inputMode="url"
+                    className="pl-9"
+                    value={values.tradingviewUrl}
+                    onChange={(event) => setField('tradingviewUrl', event.target.value)}
+                  />
+                </div>
+              </PlanField>
+
+              <PlanField id="record-notes" label={t('field.notes')} optional>
+                <Textarea
+                  id="record-notes"
+                  placeholder={r('notesPlaceholder')}
+                  value={values.notes}
+                  onChange={(event) => setField('notes', event.target.value)}
+                />
+              </PlanField>
+            </fieldset>
           </div>
         ) : null}
 

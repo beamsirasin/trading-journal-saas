@@ -13,6 +13,17 @@ import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 type PillRect = { left: number; width: number };
 
+/**
+ * The knob's diameter, and the one number the slider's geometry needs.
+ *
+ * It is a constant rather than a measurement because the knob is a fixed
+ * affordance, not a box that resizes with the track — and because the drag
+ * mathematics never reads it. `nearestIndexFromClientX` maps a pointer against
+ * the TRACK's rect, so the knob can be any size without moving where a step
+ * begins.
+ */
+const KNOB_SIZE = 20;
+
 function clampIndex(index: number): number {
   return Math.min(CONFIDENCE_STEPS.length - 1, Math.max(0, index));
 }
@@ -21,11 +32,18 @@ export function TradeConfidenceControl({
   id,
   label,
   value,
+  hint,
   onChange,
 }: {
   id: string;
   label: string;
   value: number | null;
+  /**
+   * The sentence under the control. Defaults to the At Entry wording. After
+   * Trade passes a longer one that adds the hindsight warning — the same
+   * control, said differently, rather than a second control that could drift.
+   */
+  hint?: string | undefined;
   onChange: (value: number | null) => void;
 }) {
   const t = useTranslations('trades');
@@ -50,13 +68,29 @@ export function TradeConfidenceControl({
   // effect, and leaves the last-known geometry harmlessly stale in state.
   const renderedPillRect = activeIndex === null ? null : pillRect;
 
-  function measureSegment(index: number): PillRect | null {
+  /**
+   * Where the knob sits for a given step, in pixels from the track's left edge.
+   *
+   * Slider geometry, not segment geometry: step 0 puts the knob flush left and
+   * step 4 flush right, so the knob's travel spans the whole rail and lines up
+   * with the tick beneath it. Measuring the segment instead would park the
+   * first knob a tenth of the way in and the last a tenth from the end, which
+   * is right for a segmented control and wrong for a slider.
+   *
+   * This is presentation. It does not participate in deciding which step a
+   * drag lands on — that is `nearestIndexFromClientX`, which reads the track
+   * and nothing else.
+   */
+  function measureKnob(index: number): PillRect | null {
     const track = trackRef.current;
-    const segment = segmentRefs.current[index];
-    if (!track || !segment) return null;
-    const trackRect = track.getBoundingClientRect();
-    const segmentRect = segment.getBoundingClientRect();
-    return { left: segmentRect.left - trackRect.left, width: segmentRect.width };
+    if (!track) return null;
+    // No zero-width guard: a track that has not been laid out yet (jsdom, or
+    // the first paint) still has to produce a rect, because returning null
+    // here would mean no knob renders at all rather than one at the origin.
+    const width = track.getBoundingClientRect().width;
+    const travel = Math.max(0, width - KNOB_SIZE);
+    const ratio = CONFIDENCE_STEPS.length <= 1 ? 0 : index / (CONFIDENCE_STEPS.length - 1);
+    return { left: ratio * travel, width: KNOB_SIZE };
   }
 
   // Pixel-measured (not percentage) so the pill aligns exactly with each
@@ -68,11 +102,11 @@ export function TradeConfidenceControl({
   useEffect(() => {
     if (activeIndex === null) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPillRect(measureSegment(activeIndex));
+    setPillRect(measureKnob(activeIndex));
     const track = trackRef.current;
     if (!track || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      setPillRect(measureSegment(activeIndex));
+      setPillRect(measureKnob(activeIndex));
     });
     observer.observe(track);
     return () => observer.disconnect();
@@ -199,15 +233,31 @@ export function TradeConfidenceControl({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <Label>
-          {label} <span className="text-muted-foreground font-normal">{t('common.optional')}</span>
-        </Label>
-        <div className="flex items-center gap-1.5">
+      <Label>
+        {label} <span className="text-muted-foreground font-normal">{t('common.optional')}</span>
+      </Label>
+
+      <fieldset id={id} onKeyDown={handleKeyDown} className="min-w-0">
+        <legend className="sr-only">{label}</legend>
+
+        {/*
+          THE VALUE, NEXT TO THE THING THAT SETS IT.
+
+          It used to sit small and grey in the far corner of a header row, so
+          the number a trader had just chosen was the least prominent text in
+          the block, and "Not set" read as a status message about the form
+          rather than the state of this control.
+
+          It stays ONE text node — "25% · Low", not a number and a word in two
+          spans. The exact string is what the drag coverage in
+          e2e/trades.spec.ts and this component's own tests assert on, and a
+          reader using a screen reader gets the same single phrase.
+        */}
+        <div className="mb-2 flex min-w-0 items-center gap-1.5">
           <span
             className={cn(
-              'text-sm font-semibold',
-              displayValue === null && 'text-muted-foreground font-medium',
+              'text-xl leading-none font-semibold tabular-nums',
+              displayValue === null && 'text-muted-foreground text-base font-medium',
             )}
           >
             {valueText}
@@ -223,15 +273,41 @@ export function TradeConfidenceControl({
             </button>
           )}
         </div>
-      </div>
 
-      <fieldset id={id} onKeyDown={handleKeyDown} className="min-w-0">
-        <legend className="sr-only">{label}</legend>
+        {/*
+          A RAIL AND A KNOB, BECAUSE IT IS DRAGGABLE.
+
+          This was five boxes in a bordered strip, which reads as a segmented
+          control or a tab bar — neither of which you drag. It always was a
+          slider; it just did not look like one, so nobody tried.
+
+          The track keeps its full width and its `data-slot`: the drag
+          mathematics maps a pointer's X against THIS element's rect, so its
+          box is a contract, not a style choice. The five step targets still
+          fill it edge to edge, each 44px tall, and are still what a click
+          selects.
+        */}
         <div
           ref={trackRef}
           data-slot="confidence-track"
-          className="bg-muted border-border relative flex w-full gap-1 rounded-xl border p-1 shadow-inner"
+          className="relative flex w-full min-w-0 touch-none items-center"
         >
+          {/* The rail itself: 4px of line, purely decorative, never in the way. */}
+          <span
+            aria-hidden="true"
+            className="bg-muted border-border pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full border"
+          />
+          <span
+            aria-hidden="true"
+            className="bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full transition-[width] duration-150 motion-reduce:transition-none"
+            style={{
+              width:
+                displayIndex === null
+                  ? 0
+                  : `${(displayIndex / (CONFIDENCE_STEPS.length - 1)) * 100}%`,
+            }}
+          />
+
           {CONFIDENCE_STEPS.map((step, index) => {
             const checked = value === step;
             const inputId = `${groupName}-${step}`;
@@ -242,7 +318,7 @@ export function TradeConfidenceControl({
                 ref={(el) => {
                   segmentRefs.current[index] = el;
                 }}
-                className="relative min-w-0 flex-1"
+                className="relative z-10 min-w-0 flex-1"
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() =>
                   setHoveredIndex((current) => (current === index ? null : current))
@@ -261,6 +337,12 @@ export function TradeConfidenceControl({
                   aria-label={`${step}% · ${levelLabel(step)}`}
                   className="peer sr-only"
                 />
+                {/*
+                  The click target, unchanged in role and size: the full width
+                  of its fifth of the track and 44px tall, which is the touch
+                  minimum. It is transparent now that the rail draws the
+                  control, but it is still the thing a tap lands on.
+                */}
                 <label
                   htmlFor={inputId}
                   data-slot="confidence-option"
@@ -276,8 +358,12 @@ export function TradeConfidenceControl({
               <span
                 aria-hidden="true"
                 data-slot="confidence-pill"
-                className="bg-primary shadow-control absolute top-1 bottom-1 rounded-lg"
-                style={{ left: renderedPillRect.left, width: renderedPillRect.width }}
+                className="bg-primary border-background shadow-control pointer-events-auto absolute top-1/2 z-20 -translate-y-1/2 rounded-full border-2"
+                style={{
+                  left: renderedPillRect.left,
+                  width: renderedPillRect.width,
+                  height: renderedPillRect.width,
+                }}
               />
             ) : (
               <motion.span
@@ -291,47 +377,79 @@ export function TradeConfidenceControl({
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
                 onPointerCancel={handlePointerCancel}
-                whileDrag={{ scale: 1.03 }}
-                animate={{ left: renderedPillRect.left, width: renderedPillRect.width }}
+                whileDrag={{ scale: 1.15 }}
+                /*
+                  NO MOUNT ANIMATION.  makes the knob appear
+                  already at its step instead of sliding there from the left
+                  edge on first paint.
+
+                  It is not a taste decision. The knob is 20px where the old
+                  full-width pill was ~200px, and a pointer press aimed at a
+                  box read mid-flight used to land on the pill anyway — with a
+                  knob it lands beside it, no drag starts, and the press
+                  becomes a plain click on whichever step is under the finger.
+                  Measured: with the mount animation, the cancelled-gesture
+                  e2e test failed 5 times out of 5, and instrumentation showed
+                  no dragStart at all. The gesture code is not involved and was
+                  not touched; this is the geometry it is handed.
+                */
+                initial={false}
+                animate={{ left: renderedPillRect.left }}
                 transition={LAYOUT_SPRING}
-                style={{ x: dragOffsetX, touchAction: 'none' }}
+                style={{
+                  x: dragOffsetX,
+                  touchAction: 'none',
+                  width: renderedPillRect.width,
+                  height: renderedPillRect.width,
+                }}
                 className={cn(
-                  'bg-primary shadow-control absolute top-1 bottom-1 rounded-lg',
+                  'bg-primary border-background shadow-control absolute top-1/2 z-20 -translate-y-1/2 rounded-full border-2',
                   isDragging ? 'cursor-grabbing' : 'cursor-grab',
                 )}
               />
             )
           ) : null}
+        </div>
 
-          {/* Visual step labels — a `pointer-events-none` overlay on top of
-              both the click targets and the pill, so it never intercepts a
-              click or a drag gesture. The accessible name for each option
-              comes from the input's own `aria-label` above, not from this
-              text. */}
-          <div aria-hidden="true" className="pointer-events-none absolute inset-1 flex gap-1">
-            {CONFIDENCE_STEPS.map((step, index) => {
-              const highlighted = displayIndex === index;
-              return (
-                <span
-                  key={step}
-                  className={cn(
-                    'flex min-w-0 flex-1 items-center justify-center text-sm font-medium transition-colors duration-150',
-                    highlighted
-                      ? 'text-primary-foreground font-semibold'
-                      : hoveredIndex === index
-                        ? 'text-foreground'
-                        : 'text-muted-foreground',
-                  )}
-                >
-                  {step}%
-                </span>
-              );
-            })}
-          </div>
+        {/*
+          The scale, under the rail where a slider's scale goes. Decorative and
+          `aria-hidden`: every step's accessible name is on its own radio
+          above, so a screen reader hears "50% · Neutral", not a bare number
+          twice.
+        */}
+        <div aria-hidden="true" className="relative mt-1 h-4 min-w-0">
+          {CONFIDENCE_STEPS.map((step, index) => {
+            const ratio = index / (CONFIDENCE_STEPS.length - 1);
+            return (
+              <span
+                key={step}
+                className={cn(
+                  'absolute -translate-x-1/2 text-xs tabular-nums transition-colors duration-150',
+                  displayIndex === index
+                    ? 'text-foreground font-semibold'
+                    : hoveredIndex === index
+                      ? 'text-foreground'
+                      : 'text-muted-foreground',
+                )}
+                /*
+                  Each tick sits under its knob position, not under its fifth of
+                  the row. The knob travels `width - KNOB_SIZE` and is centred on
+                  itself, so its centre is `ratio x (width - KNOB) + KNOB/2` —
+                  which this says in CSS without measuring anything. Evenly
+                  spaced columns would put 0% and 100% a tenth of the way in
+                  from each end while the knob reaches the ends, and the scale
+                  would disagree with the thing it labels.
+                */
+                style={{ left: `calc(${ratio * 100}% + ${KNOB_SIZE / 2 - ratio * KNOB_SIZE}px)` }}
+              >
+                {step}%
+              </span>
+            );
+          })}
         </div>
       </fieldset>
 
-      <p className="text-muted-foreground text-xs">{t('create.confidence.hint')}</p>
+      <p className="text-muted-foreground text-xs">{hint ?? t('create.confidence.hint')}</p>
     </div>
   );
 }

@@ -66,6 +66,26 @@ function renderAfterTrade(locale: 'en' | 'th' = 'en') {
   return renderForm(locale, 'after_trade');
 }
 
+/** The same form with a different emotion catalog, to exercise the grouping. */
+function renderWithEmotions(emotionCatalog: readonly { key: string; label: string }[]) {
+  return render(
+    <NextIntlClientProvider locale="en" messages={en}>
+      <TradeRecordingForm
+        options={{ ...options, emotionCatalog }}
+        timing="at_entry"
+        timezone="Asia/Bangkok"
+      />
+    </NextIntlClientProvider>,
+  );
+}
+
+/** The emotion groups actually drawn, in the order they appear. */
+function emotionGroupKeys(): (string | null)[] {
+  return Array.from(document.querySelectorAll('[data-emotion-group]')).map((group) =>
+    group.getAttribute('data-emotion-group'),
+  );
+}
+
 function fillIdentityAndPricePlan() {
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('button', { name: 'Long' }));
@@ -561,6 +581,8 @@ describe('TradeRecordingForm — current design system', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
+    // At Entry has nothing to warn about: the outcome does not exist yet.
+    expect(screen.queryByText(/after the outcome/)).not.toBeInTheDocument();
     unmount();
 
     // After Trade keeps the SAME historical field — it never becomes
@@ -569,7 +591,53 @@ describe('TradeRecordingForm — current design system', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
+    // …and it adds the warning the timing makes necessary: this is written
+    // with the result already known, so the answer has to be the one from
+    // before it was.
+    expect(screen.getByText(/answer as the you who had not seen it yet/)).toBeVisible();
     expect(screen.getByText('Recorded retrospectively')).toBeVisible();
+  });
+
+  it('groups the emotions, and renders no group the catalog cannot fill', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
+
+    expect(screen.getByText('What pushed you in?')).toBeVisible();
+    // This fixture's catalog holds only Calm and Focused, so exactly one
+    // group has anything to show and the other three are not drawn as empty
+    // rows. Grouping is layout: it never invents a heading with nothing
+    // under it.
+    expect(emotionGroupKeys()).toEqual(['inControl']);
+    for (const label of ['Calm', 'Focused']) {
+      expect(screen.getByRole('button', { name: label, pressed: false })).toBeVisible();
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Calm' }));
+    expect(screen.getByRole('button', { name: 'Calm', pressed: true })).toBeVisible();
+  });
+
+  it('orders the groups, and gives an unrecognised emotion a home instead of dropping it', () => {
+    // A catalog covering all four groups plus one key the layout has never
+    // heard of — the eleventh system emotion nobody has seeded yet. It must
+    // appear, because a form that silently omits an option the server offered
+    // is worse than one that shows it under a vague heading.
+    renderWithEmotions([
+      { key: 'calm', label: 'Calm' },
+      { key: 'fomo', label: 'FOMO' },
+      { key: 'revenge', label: 'Revenge' },
+      { key: 'fearful', label: 'Fearful' },
+      { key: 'tired', label: 'Tired' },
+      { key: 'bewildered', label: 'Bewildered' },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
+
+    expect(emotionGroupKeys()).toEqual(['inControl', 'pushedIn', 'heldBack', 'depleted', 'other']);
+    expect(screen.getByRole('button', { name: 'Bewildered' })).toBeVisible();
+    // Order within a group follows the catalog the server sent, not the map.
+    expect(
+      Array.from(
+        document.querySelector('[data-emotion-group="pushedIn"]')?.querySelectorAll('button') ?? [],
+      ).map((button) => button.textContent),
+    ).toEqual(['FOMO', 'Revenge']);
   });
 
   it('names the primary action for what it does, on each timing', () => {
