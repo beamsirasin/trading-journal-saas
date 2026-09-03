@@ -486,6 +486,31 @@ async function openNewTradeView(page: Page, view: keyof typeof NEW_TRADE_VIEW_LA
 }
 
 /**
+ * CHOOSE A BASIS. DO NOT INHERIT ONE.
+ *
+ * Seven tests in this file used to reach straight for `Entry` / `Actual
+ * Entry` and worked only because the New Trade form happened to open in
+ * Price. That made the form's default a silent premise of each of them: a
+ * test named "advanced Price execution" was not testing Price, it was testing
+ * whatever the default was, and changing the default would have failed them
+ * for a reason that has nothing to do with what they are about.
+ *
+ * Worse, all seven are on the known-red list, and `pnpm e2e:known-red`
+ * compares by NAME, not by cause — a second cause hiding under the first
+ * would have gone unreported until someone fixed the first one.
+ *
+ * CLICK BEFORE TYPING. The basis handlers clear the fields they own on EVERY
+ * click, including a click on the segment that is already selected.
+ */
+async function chooseBasis(
+  page: Page,
+  group: 'Plan by' | 'Actual result by' | 'Actual opening by',
+  basis: 'Price' | 'Money',
+) {
+  await page.getByRole('group', { name: group }).getByRole('button', { name: basis }).click();
+}
+
+/**
  * Phase 14E — Open/Close-Only Trade Flow: the normal customer New Trade form
  * now requires one authoritative Actual execution basis alongside the
  * optional Plan, and creates the Trade already `open` in one atomic action
@@ -498,6 +523,7 @@ async function createOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await page.getByRole('button', { name: 'Long' }).click();
+  await chooseBasis(page, 'Plan by', 'Price');
   await page.getByLabel('Entry', { exact: true }).fill('100');
   await page.getByLabel('Stop Loss', { exact: true }).fill('90');
   await page.getByLabel(/Take Profit/).fill('130');
@@ -926,6 +952,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
     await openNewTradeView(page, 'setup');
@@ -1016,6 +1043,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
     await page.getByRole('button', { name: 'Long' }).click();
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('150');
     await page.getByLabel('Stop Loss', { exact: true }).fill('149');
     await openNewTradeView(page, 'setup');
@@ -1043,6 +1071,7 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
     await page.getByRole('button', { name: 'Long' }).click();
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
     await page.getByLabel(/Take Profit/).fill('130'); // Price implies +3R
@@ -1181,10 +1210,12 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Long' }).click();
     await page.getByLabel('Entered At').fill('2026-08-22T10:00');
     await page.getByLabel('Exited At').fill('2026-08-22T12:00');
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
     await page.getByLabel(/Take Profit/).fill('130');
     await openNewTradeView(page, 'result');
+    await chooseBasis(page, 'Actual result by', 'Price');
     await page.getByLabel('Actual Entry').fill('100');
     await page.getByLabel('Actual Initial Stop').fill('90');
     await page.getByLabel('Exit Price').fill('120');
@@ -1258,10 +1289,12 @@ test.describe('real Trade Journal creation', () => {
 
     await page.getByRole('textbox', { name: 'Symbol' }).fill('ADVANCED');
     await page.getByRole('button', { name: 'Long' }).click();
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
     await page.getByText('Advanced', { exact: true }).click();
     await page.getByLabel('Actual opening differs from the System Plan').check();
+    await chooseBasis(page, 'Actual opening by', 'Price');
     await page.getByLabel('Actual Entry').fill('101');
     await page.getByLabel('Actual Stop').fill('90');
     await page.getByRole('button', { name: 'Open Trade' }).click();
@@ -1448,6 +1481,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByRole('button', { name: 'Long' }).click();
     // Genuinely no Plan, Strategy, or Setup at all (Phase 14C.1/Phase 14E) —
     // Account/Symbol/Direction plus the one required Actual execution basis.
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('0.8500');
     await page.getByLabel('Stop Loss', { exact: true }).fill('0.8450');
     await page.getByRole('button', { name: 'Open Trade' }).click();
@@ -1786,9 +1820,15 @@ test.describe('real Trade Journal creation', () => {
     await openNewTradeView(page, 'setup');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
     await openNewTradeView(page, 'trade');
-    await expect(page.getByLabel('Entry', { exact: true })).toHaveValue('');
+    // Read the plan field the fresh form actually opened with, and read it
+    // WITHOUT touching the basis toggle: clicking one clears the very fields
+    // this assertion is about, which would turn it into a tautology that
+    // passes over a leaked draft. The anchors keep 'Initial Risk', 'Actual
+    // Entry' and 'Entered At' out of the match.
+    await expect(page.getByLabel(/^(Entry|Risk)$/)).toHaveValue('');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
     await page.getByRole('button', { name: 'Long' }).click();
+    await chooseBasis(page, 'Plan by', 'Price');
     await page.getByLabel('Entry', { exact: true }).fill('1.2500');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.2400');
     await page.getByRole('button', { name: 'Open Trade' }).click();

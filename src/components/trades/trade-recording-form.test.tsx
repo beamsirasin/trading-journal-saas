@@ -86,9 +86,31 @@ function emotionGroupKeys(): (string | null)[] {
   );
 }
 
+/**
+ * CHOOSE A BASIS. DO NOT INHERIT ONE.
+ *
+ * Nine tests below used to reach straight for `Entry` / `Actual Entry` and
+ * worked only because the form happened to open in Price. That made the
+ * form's default a silent premise of every one of them: a test named "Price
+ * Actual" was not testing Price, it was testing whatever the default was. Say
+ * it out loud instead, so that changing the default changes the default and
+ * nothing else.
+ *
+ * CLICK BEFORE TYPING. `changePlanBasis`/`changeActualBasis` clear the fields
+ * they own on EVERY click — including a click on the segment that is already
+ * selected, because `Segmented` calls `onChange` unconditionally. Calling this
+ * after filling a field silently empties it.
+ */
+function chooseBasis(groupName: 'Plan by' | 'Actual result by', basis: 'Price' | 'Money') {
+  fireEvent.click(
+    within(screen.getByRole('group', { name: groupName })).getByRole('button', { name: basis }),
+  );
+}
+
 function fillIdentityAndPricePlan() {
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+  chooseBasis('Plan by', 'Price');
   fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
   fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
 }
@@ -141,6 +163,10 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     chooseAfterTrade();
 
     expect(screen.getByText('Actual Result')).toBeVisible();
+    // The Plan is Price (chosen in `fillIdentityAndPricePlan`). The Actual is
+    // chosen here, separately, and the point of the test is that moving one
+    // does not move the other.
+    chooseBasis('Actual result by', 'Price');
     expect(screen.getByRole('button', { name: 'Price' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(
       within(screen.getByRole('group', { name: 'Actual result by' })).getByRole('button', {
@@ -194,6 +220,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     });
     renderAfterTrade();
     chooseAfterTrade();
+    chooseBasis('Actual result by', 'Price');
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
     fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '120' } });
@@ -253,6 +280,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Result' }));
 
       if (resultBasis === 'price') {
+        chooseBasis('Actual result by', 'Price');
         fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '1.1' } });
         fireEvent.change(screen.getByLabelText('Actual Initial Stop'), {
           target: { value: '1.2' },
@@ -300,6 +328,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     createCompletedTradeActionMock.mockResolvedValue({ ok: true, data: { tradeId: 'trade-id' } });
     renderAfterTrade();
     chooseAfterTrade();
+    chooseBasis('Actual result by', 'Price');
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
     fireEvent.click(screen.getByLabelText('Partial exits'));
@@ -340,6 +369,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     */
     const { unmount } = renderAfterTrade();
     chooseAfterTrade();
+    chooseBasis('Actual result by', 'Price');
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '101' } });
     fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '111' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'System Outcome' }), {
@@ -349,7 +379,15 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
 
     renderForm();
     expect(screen.getByLabelText('Symbol')).toHaveValue('');
-    expect(screen.getByLabelText('Entry')).toHaveValue('');
+    /*
+      Read the plan field the fresh form actually opened with, and read it
+      WITHOUT clicking the basis toggle. Clicking clears the very fields this
+      test is trying to prove are already clear, which would turn the
+      assertion into a tautology that passes over a leaked draft.
+    */
+    const planField = screen.queryByLabelText('Entry') ?? screen.queryByLabelText('Risk');
+    expect(planField).not.toBeNull();
+    expect(planField).toHaveValue('');
     // At Entry has no Result panel at all, so none of those fields exists.
     expect(screen.queryByRole('button', { name: 'Result' })).not.toBeInTheDocument();
   });
@@ -440,15 +478,22 @@ describe('TradeRecordingForm — current design system', () => {
 
   it('dresses every segmented control in the shared raised-segment language', () => {
     renderForm();
-    const [price, money] = segments('Plan by');
+    // WHICH segment is selected is not this test's subject — the treatment of
+    // the selected one is. Read that off `aria-pressed` rather than off the
+    // position, so a change of default cannot turn a styling test red.
+    const [first, second] = segments('Plan by');
+    const selected = first?.getAttribute('aria-pressed') === 'true' ? first : second;
+    const unselected = selected === first ? second : first;
+    expect(selected?.getAttribute('aria-pressed')).toBe('true');
+    expect(unselected?.getAttribute('aria-pressed')).toBe('false');
 
     // The selected segment lifts to the shared raised surface with the shared
     // control shadow — the same treatment the shared SegmentedControl gives
     // the Dashboard filters.
-    expect(price?.className).toContain('bg-surface-raised');
-    expect(price?.className).toContain('shadow-control');
-    expect(money?.className).toContain('text-muted-foreground');
-    expect(money?.className).not.toContain('bg-surface-raised');
+    expect(selected?.className).toContain('bg-surface-raised');
+    expect(selected?.className).toContain('shadow-control');
+    expect(unselected?.className).toContain('text-muted-foreground');
+    expect(unselected?.className).not.toContain('bg-surface-raised');
   });
 
   it('uses the same language for the inner panel nav', () => {
