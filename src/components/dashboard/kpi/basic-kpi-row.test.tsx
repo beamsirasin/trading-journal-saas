@@ -39,6 +39,7 @@ interface Overrides {
   readonly netPnl?: NetPnlAvailability;
   readonly plannedRr?: Partial<DashboardPageData['basic']['plannedRr']>;
   readonly trader?: Partial<DashboardPerformanceData>;
+  readonly coverage?: Partial<DashboardPageData['coverage']>;
 }
 
 function data(overrides: Overrides = {}): DashboardPageData {
@@ -53,6 +54,7 @@ function data(overrides: Overrides = {}): DashboardPageData {
       systemTradeCount: 31,
       pairedTradeCount: 31,
       monetaryResultCount: 31,
+      ...overrides.coverage,
     },
     basic: {
       netPnl: overrides.netPnl ?? { status: 'available', currency: 'USD', totalMinor: '124350' },
@@ -354,6 +356,39 @@ describe('BasicKpiRow', () => {
     });
   });
 
+  it('names how many Trades cost the money total, and why', () => {
+    /*
+      The card used to say "Incomplete monetary results" and then withhold its
+      context line entirely — `monetaryResultCount` was published only
+      alongside an available total. So a reader was told a figure was missing
+      without being told how much of their history was missing it, or that
+      their own recording choice was the cause. Twenty-eight of thirty-one
+      Trades having a result is a very different situation from three of
+      thirty-one, and the card said the same thing in both.
+    */
+    const { container } = renderRow({
+      netPnl: { status: 'unavailable', reason: 'incomplete' } as NetPnlAvailability,
+      coverage: { traderTradeCount: 31, monetaryResultCount: 28 },
+    });
+    const card = widget(container, 'basic.net-pnl');
+    expect(card).toHaveAttribute('data-kpi-status', 'unavailable');
+    expect(within(card).getByText('Some Trades have no money result')).toBeVisible();
+    expect(
+      within(card).getByText('No money result on 3 of 31 closed Trades — recorded by price'),
+    ).toBeVisible();
+  });
+
+  it('withholds the coverage line when the money total failed for another reason', () => {
+    // `mixed_currency` is not about missing results, and the count would be
+    // zero anyway — a "0 of 31" line would be a false explanation.
+    const { container } = renderRow({
+      netPnl: { status: 'unavailable', reason: 'mixed_currency' } as NetPnlAvailability,
+      coverage: { traderTradeCount: 31, monetaryResultCount: 28 },
+    });
+    const card = widget(container, 'basic.net-pnl');
+    expect(within(card).queryByText(/closed Trades/)).not.toBeInTheDocument();
+  });
+
   it.each([
     [
       'no Trade carrying a planned target',
@@ -371,7 +406,7 @@ describe('BasicKpiRow', () => {
       'incomplete monetary results',
       { netPnl: { status: 'unavailable', reason: 'incomplete' } as NetPnlAvailability },
       'basic.net-pnl',
-      'Incomplete monetary results',
+      'Some Trades have no money result',
       'incomplete',
     ],
     [

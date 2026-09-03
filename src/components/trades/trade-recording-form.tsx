@@ -1,6 +1,14 @@
 'use client';
 
-import { Check, Link as LinkIcon, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
+import {
+  Check,
+  Link as LinkIcon,
+  Plus,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  TriangleAlert,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
@@ -133,6 +141,37 @@ function Segmented<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * WHAT CHOOSING PRICE COSTS, SAID WHERE THE CHOICE IS MADE.
+ *
+ * Price is a legitimate way to record a Trade and nothing here argues against
+ * it. But it produces no monetary result — `composeRealizedActual` returns a
+ * null `realizedPnlMinor` for it by design (`docs/calculation-spec.md` §62:
+ * the authoritative monetary inputs are stored amounts, never
+ * price × size × multiplier) — and `netPnl()` reports the whole population
+ * unavailable as soon as ONE closed Trade lacks money. So a single Trade
+ * recorded this way empties the Dashboard's Net P&L for every other Trade
+ * too.
+ *
+ * That consequence used to be invisible: nothing said it at the toggle,
+ * nothing said it at save, and the Dashboard reported only "Incomplete
+ * monetary results" days later without naming a cause. This is the sentence
+ * that was missing, and it appears the moment Price is selected rather than
+ * at save, because at save the choice has already cost something.
+ */
+function PriceHasNoMoneyNotice({ message }: { message: string }) {
+  return (
+    <p
+      role="status"
+      data-price-no-money-notice=""
+      className="border-warning/40 bg-warning/10 text-foreground flex items-start gap-2 rounded-lg border p-3 text-xs"
+    >
+      <TriangleAlert aria-hidden="true" className="text-warning mt-px size-4 shrink-0" />
+      <span>{message}</span>
+    </p>
   );
 }
 
@@ -340,10 +379,24 @@ export function TradeRecordingForm({
   const hydrated = useIsHydrated();
   const [mutationKey] = useState(generateId);
   const [panel, setPanel] = useState<Panel>('trade');
-  const [planBasis, setPlanBasis] = useState<Basis>('price');
-  const [actualBasis, setActualBasis] = useState<Basis>('price');
+  /*
+    MONEY FIRST.
+
+    `docs/calculation-spec.md` settled this on 2026-08-09: the authoritative
+    monetary inputs are the stored amounts, and Actual R is derived from them.
+    The form opened in Price anyway, so a customer who never touched the
+    toggle recorded every Trade without a monetary result and met
+    "Incomplete monetary results" on their Dashboard from their first Trade,
+    with nothing anywhere connecting the two. The product decided; the form
+    had not caught up.
+
+    Price remains fully supported and one click away — see
+    `PriceHasNoMoneyNotice` for what selecting it now says out loud.
+  */
+  const [planBasis, setPlanBasis] = useState<Basis>('money');
+  const [actualBasis, setActualBasis] = useState<Basis>('money');
   const [advancedOpening, setAdvancedOpening] = useState(false);
-  const [openingBasis, setOpeningBasis] = useState<Basis>('price');
+  const [openingBasis, setOpeningBasis] = useState<Basis>('money');
   const [partialExits, setPartialExits] = useState(false);
   const [systemChoice, setSystemChoice] = useState<SystemChoice>('pending');
   const [errors, setErrors] = useState<ErrorMap>({});
@@ -913,6 +966,27 @@ export function TradeRecordingForm({
           ),
         });
 
+  /*
+    WHICH TOGGLE DECIDES THE MONEY — it is not always the same one.
+
+    An At Entry Trade takes its `actual_result_mode` from the PLAN basis
+    (`trade-management.ts`: `defaultActualMode = systemPlanBasis`), unless
+    Advanced overrides the opening, in which case the opening basis wins. An
+    After Trade Trade takes it from the Actual basis and the Plan basis has no
+    say. The notice therefore has to follow the control that is actually
+    deciding, or it would warn about the wrong thing on two of the three
+    paths. This mirrors `submit()`'s own `advancedOpening ? openingBasis :
+    planBasis`.
+  */
+  const moneyDecidedBy: { basis: Basis; control: 'plan' | 'opening' | 'actual' } =
+    timing === 'after_trade'
+      ? { basis: actualBasis, control: 'actual' }
+      : advancedOpening
+        ? { basis: openingBasis, control: 'opening' }
+        : { basis: planBasis, control: 'plan' };
+  const showNoMoneyNotice = (control: 'plan' | 'opening' | 'actual') =>
+    moneyDecidedBy.control === control && moneyDecidedBy.basis === 'price';
+
   /**
    * The emotion catalog, arranged for reading.
    *
@@ -1143,6 +1217,9 @@ export function TradeRecordingForm({
                   onChange={changePlanBasis}
                 />
               </PlanField>
+              {showNoMoneyNotice('plan') ? (
+                <PriceHasNoMoneyNotice message={r('priceHasNoMoney')} />
+              ) : null}
               {planBasis === 'price' ? (
                 /*
                   Four short numbers that are read together — entry, stop,
@@ -1271,6 +1348,9 @@ export function TradeRecordingForm({
                           }));
                         }}
                       />
+                      {showNoMoneyNotice('opening') ? (
+                        <PriceHasNoMoneyNotice message={r('priceHasNoMoney')} />
+                      ) : null}
                       {openingBasis === 'price' ? (
                         <div className="grid gap-5 sm:grid-cols-2">
                           <TextField
@@ -1319,7 +1399,12 @@ export function TradeRecordingForm({
               <h2 id="actual-result-title" className="text-base font-semibold">
                 {r('actualResult')}
               </h2>
-              <PlanField id="actual-basis" label={r('actualResultBy')} error={errors.actualResult}>
+              <PlanField
+                id="actual-basis"
+                label={r('actualResultBy')}
+                hint={r('actualResultByHelp')}
+                error={errors.actualResult}
+              >
                 <Segmented
                   label={r('actualResultBy')}
                   value={actualBasis}
@@ -1330,6 +1415,9 @@ export function TradeRecordingForm({
                   onChange={changeActualBasis}
                 />
               </PlanField>
+              {showNoMoneyNotice('actual') ? (
+                <PriceHasNoMoneyNotice message={r('priceHasNoMoney')} />
+              ) : null}
               {actualBasis === 'price' ? (
                 <div className="grid gap-5 sm:grid-cols-2">
                   <TextField

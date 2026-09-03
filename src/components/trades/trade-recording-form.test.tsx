@@ -101,6 +101,11 @@ function emotionGroupKeys(): (string | null)[] {
  * selected, because `Segmented` calls `onChange` unconditionally. Calling this
  * after filling a field silently empties it.
  */
+/** The two buttons of one basis toggle, in DOM order: Price, then Money. */
+function segments(groupName: string) {
+  return within(screen.getByRole('group', { name: groupName })).getAllByRole('button');
+}
+
 function chooseBasis(groupName: 'Plan by' | 'Actual result by', basis: 'Price' | 'Money') {
   fireEvent.click(
     within(screen.getByRole('group', { name: groupName })).getByRole('button', { name: basis }),
@@ -156,6 +161,74 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.queryByLabelText(/^Strategy/)).not.toBeInTheDocument();
+  });
+
+  it('opens in Money, so a Trade recorded without a second thought carries one', () => {
+    /*
+      `docs/calculation-spec.md` settled on money as the authoritative source
+      of Actual R on 2026-08-09; the form kept opening in Price, so a customer
+      who never touched the toggle produced a journal with no monetary result
+      in it at all and a Dashboard that said "Incomplete monetary results"
+      from their very first Trade.
+
+      This asserts the default in ONE place. Every other test in this file
+      chooses its basis out loud (see `chooseBasis`), so moving the default
+      again fails here and nowhere else.
+    */
+    renderForm();
+    const [, planMoney] = segments('Plan by');
+    expect(planMoney).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Risk')).toBeVisible();
+    expect(screen.queryByLabelText('Entry')).not.toBeInTheDocument();
+
+    // Nothing has been given up, so nothing is warned about.
+    expect(document.querySelector('[data-price-no-money-notice]')).toBeNull();
+  });
+
+  it('says what choosing Price costs, at the moment it is chosen', () => {
+    renderForm();
+    chooseBasis('Plan by', 'Price');
+
+    // At Entry, the PLAN basis is what `actual_result_mode` is taken from
+    // (`trade-management.ts`), so this is the control that decides, and the
+    // consequence is stated here — not at save, by which time the choice has
+    // already cost something.
+    const notice = document.querySelector('[data-price-no-money-notice]');
+    expect(notice).not.toBeNull();
+    expect(notice).toHaveAttribute('role', 'status');
+    expect(notice?.textContent).toContain('no profit or loss in money');
+    expect(notice?.textContent).toContain('leaves Net P&L blank for all of them');
+
+    // And it is not a one-way door: going back to Money withdraws the warning.
+    chooseBasis('Plan by', 'Money');
+    expect(document.querySelector('[data-price-no-money-notice]')).toBeNull();
+  });
+
+  it('warns about the control that actually decides the money, not the other one', () => {
+    /*
+      After Trade takes `actual_result_mode` from the ACTUAL basis, and the
+      Plan basis has no say in it. A notice under the Plan toggle here would
+      be warning about a consequence that does not follow.
+    */
+    renderAfterTrade();
+    chooseAfterTrade();
+    chooseBasis('Actual result by', 'Money');
+    fireEvent.click(screen.getByRole('button', { name: 'The trade' }));
+    chooseBasis('Plan by', 'Price');
+    expect(document.querySelector('[data-price-no-money-notice]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Result' }));
+    chooseBasis('Actual result by', 'Price');
+    expect(document.querySelector('[data-price-no-money-notice]')).not.toBeNull();
+  });
+
+  it('tells the reader what each Actual basis will and will not give them', () => {
+    // The Actual basis toggle shipped with no helper text at all — the one
+    // control in the form whose choice decides whether the Trade carries
+    // money said nothing about it.
+    renderAfterTrade();
+    chooseAfterTrade();
+    expect(screen.getByText(/Only Money gives this Trade a profit or loss in money/)).toBeVisible();
   });
 
   it('keeps System Plan and Actual Result basis independent in After Trade', () => {
@@ -412,10 +485,6 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
   themes without either being special-cased.
 */
 describe('TradeRecordingForm — current design system', () => {
-  function segments(groupName: string) {
-    return within(screen.getByRole('group', { name: groupName })).getAllByRole('button');
-  }
-
   it('states the recording mode instead of offering to switch it mid-form', () => {
     const { container, unmount } = renderForm();
 

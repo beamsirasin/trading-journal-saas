@@ -396,7 +396,7 @@
         "no_conditions_applicable": "No Trades with applicable Setup Conditions",
         "no_confidence_recorded": "No Trades with recorded Confidence",
         "data_integrity_error": "Metric temporarily unavailable",
-        "incomplete": "Incomplete monetary results",
+        "incomplete": "Some Trades have no money result",
         "mixed_currency": "Mixed account currencies",
         "unsupported_currency_scale": "Unsupported account currency",
         "no_planned_rr": "No Trades with a planned target"
@@ -425,6 +425,7 @@
       "empty": "No Trades yet",
       "compositionTrades": "{wins}W · {breakEvens}BE · {losses}L",
       "tradeCount": "{count, plural, one {# Trade} other {# Trades}}",
+      "missingMoney": "No money result on {missing} of {total} closed Trades — recorded by price",
       "detail": {
         "wins": "Wins",
         "breakEvens": "Break-even",
@@ -1679,6 +1680,8 @@
         "initialRisk": "Initial Risk",
         "actualResult": "Actual Result",
         "actualResultBy": "Actual result by",
+        "actualResultByHelp": "Money works the result out from what you actually risked and made. Price works it out from your entry, stop and exit levels. Only Money gives this Trade a profit or loss in money.",
+        "priceHasNoMoney": "This Trade will have no profit or loss in money. Your R figures still work — but the Dashboard needs every closed Trade to have one, so a single Trade recorded this way leaves Net P&L blank for all of them.",
         "exitPrice": "Exit Price",
         "realizedPnl": "Realized P&L",
         "partialExits": "Partial exits",
@@ -1742,7 +1745,7 @@
           "fixFields": "Check the highlighted fields and try again.",
           "invalidField": "This value is not valid."
         },
-        "planByHelp": "Price uses chart levels. Money uses amounts you risk.",
+        "planByHelp": "Money takes the amounts you risk and aim for. Price takes your levels off the chart. Both give you R — and on a Trade you are opening now, this choice also decides whether it will have a profit or loss in money.",
         "remaining": {
           "ready": "Ready to save",
           "needed": "{fields} still needed"

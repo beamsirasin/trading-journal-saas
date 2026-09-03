@@ -139,7 +139,8 @@ function KpiValue({ value, emphasis }: { value: BasicKpiValue; emphasis: 'lead' 
  *
  * Everything the other four used to print here moved behind their indicator
  * (see `BasicKpiContext`). What is left is the one fact a money total does not
- * carry on its face: how many Trades produced it.
+ * carry on its face: how many Trades produced it — or, when there is no total,
+ * how many Trades are the reason and why.
  */
 function KpiContext({ context }: { context: BasicKpiContext }) {
   const t = useTranslations('dashboard.basicKpi');
@@ -147,6 +148,12 @@ function KpiContext({ context }: { context: BasicKpiContext }) {
   switch (context.kind) {
     case 'tradeCount':
       return <span className="numeric">{t('tradeCount', { count: context.tradeCount })}</span>;
+    case 'missingMoney':
+      return (
+        <span className="numeric" data-kpi-missing-money="">
+          {t('missingMoney', { missing: context.missing, total: context.total })}
+        </span>
+      );
     case 'none':
       return null;
   }

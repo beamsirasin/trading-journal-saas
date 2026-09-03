@@ -84,7 +84,23 @@ export type BasicKpiValue = MetricDisplayValue<BasicKpiUnavailableReason>;
 export type BasicKpiContext =
   | { readonly kind: 'none' }
   /** `66 Trades` — the size of the population behind an available money total. */
-  | { readonly kind: 'tradeCount'; readonly tradeCount: number };
+  | { readonly kind: 'tradeCount'; readonly tradeCount: number }
+  /**
+   * `No money result on 3 of 11 closed Trades — recorded by price`.
+   *
+   * The coverage line for a money total that could NOT be stated. It exists
+   * because the unavailable card used to say only "Incomplete monetary
+   * results" and then withhold its context line entirely, so the reader was
+   * told a total was missing, not how much of their history was missing it,
+   * and never that their own recording choice was the cause.
+   *
+   * The cause is safe to name here. This population is
+   * `selectTraderEligible`, which is closed Trades only, and a closed Trade
+   * reaches `net_pnl_minor = null` by exactly one route: a Price-mode Actual,
+   * for which `composeRealizedActual` returns a null `realizedPnlMinor` by
+   * design. A closed Money-mode Trade always carries one.
+   */
+  | { readonly kind: 'missingMoney'; readonly missing: number; readonly total: number };
 
 /** One normalized sparkline vertex, in a 0–100 box. `y` is SVG-down. */
 export interface BasicKpiSparkPoint {
@@ -475,10 +491,25 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
         ? { status: 'unavailable', reason: basic.netPnl.reason }
         : formatNetPnl(basic.netPnl.currency, basic.netPnl.totalMinor);
 
+  /*
+    An unavailable money total is still worth a coverage line — arguably more
+    so than an available one. `incomplete` is the only unavailable reason
+    this applies to: `mixed_currency` and `unsupported_currency_scale` are
+    not about missing results, and the card's own wording already names them.
+  */
+  const missingMoneyCount = data.coverage.traderTradeCount - data.coverage.monetaryResultCount;
   const netPnlContext: BasicKpiContext =
     netPnlValue.status === 'available' && basic.netPnl.status === 'available'
       ? { kind: 'tradeCount', tradeCount: data.coverage.monetaryResultCount }
-      : NO_CONTEXT;
+      : netPnlValue.status === 'unavailable' &&
+          netPnlValue.reason === 'incomplete' &&
+          missingMoneyCount > 0
+        ? {
+            kind: 'missingMoney',
+            missing: missingMoneyCount,
+            total: data.coverage.traderTradeCount,
+          }
+        : NO_CONTEXT;
 
   const tradeWin = outcomeIndicator(
     populationEmpty
