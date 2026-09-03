@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, Plus, Trash2, TrendingDown, TrendingUp } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import { composePlannedR, composeTraderCloseV2 } from '@/lib/calc/trade';
@@ -305,6 +305,7 @@ export function TradeRecordingForm({
   activeTradingAccountId?: string | null;
   timezone: string;
 }) {
+  const locale = useLocale();
   const t = useTranslations('trades');
   const r = useTranslations('trades.create.recording');
   const tMode = useTranslations('trades.create.mode');
@@ -573,7 +574,21 @@ export function TradeRecordingForm({
     else setPanel('trade');
   }
 
-  async function submit(unmetConfirmed = false) {
+  /**
+   * EVERY REQUIREMENT THIS FORM HAS, COLLECTED ONCE.
+   *
+   * Moved out of `submit()` unchanged — same rules, same order, same
+   * messages — because two things now need the answer: the submit handler,
+   * which decides whether to send, and the action bar, which says what is
+   * still missing. A second implementation of "what is required" would be a
+   * parallel truth, and the moment it drifted the bar would promise
+   * something the button refuses (or the reverse). There is one function, so
+   * there is one answer.
+   *
+   * Pure: it reads state and returns a map. Nothing here sets state, which
+   * is what makes it safe to call during render.
+   */
+  function collectErrors(): ErrorMap {
     const next = validateBase();
     const entered = datetimeLocalToIso(enteredAtValue, timezone);
     if (!entered.ok) next.enteredAt = t('lifecycle.validation.time');
@@ -610,6 +625,15 @@ export function TradeRecordingForm({
         if (values.actualStop.trim() === '') next.actualStop = r('validation.actualStop');
       } else if (values.actualRisk.trim() === '') next.actualRisk = r('validation.actualRisk');
     }
+    return next;
+  }
+
+  async function submit(unmetConfirmed = false) {
+    const next = collectErrors();
+    // Still computed here, where it always was: the payload needs the same
+    // conversion the validator did, and handing it back out of `collectErrors()`
+    // would make the validator responsible for building the request too.
+    const entered = datetimeLocalToIso(enteredAtValue, timezone);
     if (Object.keys(next).length > 0) {
       setErrors(next);
       setFormError(r('validation.fixFields'));
@@ -818,6 +842,50 @@ export function TradeRecordingForm({
     router.push(`/app/trades?trade=${result.data.tradeId}`);
   }
 
+  /**
+   * WHAT IS STILL OUTSTANDING, SAID IN THE SAME WORDS THE FIELDS USE.
+   *
+   * `collectErrors()` is the one place that knows what this form requires —
+   * the same call `submit()` makes before deciding whether to send — so this
+   * sentence and the button cannot disagree about whether the form is ready.
+   * The map below only turns a field key into the label the reader already saw
+   * next to the input; it decides nothing and adds no rule of its own.
+   *
+   * `Intl.ListFormat` rather than joining on a comma, because "Symbol and
+   * Entry" is a sentence where "Symbol, Entry" is a list — and Thai joins a
+   * list differently from English.
+   */
+  const outstandingFieldLabels: Record<string, string> = {
+    tradingAccountId: t('field.account'),
+    symbol: t('field.symbol'),
+    direction: t('field.direction'),
+    setupId: t('field.setup'),
+    enteredAt: r('enteredAt'),
+    exitedAt: r('exitedAt'),
+    plannedEntry: r('plannedEntry'),
+    plannedStop: r('plannedStop'),
+    plannedRisk: r('plannedRisk'),
+    plannedReward: r('targetReward'),
+    actualEntry: r('actualEntry'),
+    actualStop: r('actualStop'),
+    actualRisk: r('initialRisk'),
+    simpleExit: actualBasis === 'price' ? r('exitPrice') : r('realizedPnl'),
+    exits: r('partialExits'),
+    actualResult: r('actualResult'),
+    systemChoice: r('systemOutcome'),
+  };
+  const outstanding = Object.keys(collectErrors())
+    .map((key) => outstandingFieldLabels[key])
+    .filter((label): label is string => label !== undefined);
+  const outstandingSummary =
+    outstanding.length === 0
+      ? r('remaining.ready')
+      : r('remaining.needed', {
+          fields: new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(
+            outstanding,
+          ),
+        });
+
   return (
     /*
       FULL-WIDTH IN ITS OWN PAGE COLUMN. It used to be a `max-w-3xl` block
@@ -829,26 +897,25 @@ export function TradeRecordingForm({
     */
     <div className="flex w-full min-w-0 flex-col gap-6">
       {/*
-        WHAT REPLACED THE TOGGLE: a statement, not a control.
+        THE MODE, SAID ONCE, DIRECTLY UNDER THE HEADING THAT NAMES IT.
 
-        It says which of the two situations this form is recording, so the
-        answer stays on screen while the trader works, and offers one quiet way
-        back to the choice. It is deliberately not a switch — the whole point
-        of moving the decision to its own step was that a form already carrying
-        a plan should not be able to change what it means.
+        Three things used to say it: an `<h1>` reading "Log a trade", a
+        subtitle reading "Recording at Entry.", and a bordered card reading
+        "Recording: At Entry" with a Change link inside it. The heading is now
+        the mode itself, so this is the sentence that explains what the mode
+        means, with the way back to the choice at the end of it.
+
+        It renders inside the shell's children rather than as a `description`
+        prop because the Change control needs `isDirty` — form state that has
+        no business being lifted into a layout component to satisfy a layout.
+        Centred and muted so it reads as a continuation of the header above it.
       */}
-      <div
+      <p
         data-recording-mode={timing}
-        className="border-border bg-card flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border px-4 py-3"
+        className="text-muted-foreground mx-auto max-w-prose text-center text-sm text-pretty"
       >
-        <p className="min-w-0 text-sm">
-          <span className="text-muted-foreground">{tMode('recordingLabel')} </span>
-          <span className="text-foreground font-semibold">
-            {timing === 'at_entry' ? r('atEntry') : r('afterTrade')}
-          </span>
-        </p>
-        <ChangeModeControl isDirty={isDirty} />
-      </div>
+        {tMode(`${timing}.description`)} <ChangeModeControl isDirty={isDirty} />
+      </p>
 
       <div
         role="status"
@@ -899,28 +966,21 @@ export function TradeRecordingForm({
           ))}
         </nav>
 
-        {/*
-          The primary action stays exactly where it was and does exactly what
-          it did — Open Trade at entry, Save Completed Trade after. It keeps its
-          sticky position because the panels below it are long, and the negative
-          margins are what let it bleed to the card's own edges instead of
-          leaving two strips of scrolling content either side of it. Only the
-          surface and the button size changed: `variant="default"` is the
-          product's current primary language, unchanged.
-        */}
-        <div className="border-border bg-card/95 supports-[backdrop-filter]:bg-card/80 sticky top-2 z-10 -mx-4 flex justify-end border-y px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6">
-          <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={pending}>
-            {pending ? r('saving') : timing === 'at_entry' ? r('openTrade') : r('saveCompleted')}
-          </Button>
-        </div>
-
         {panel === 'trade' ? (
           <div className="grid gap-8">
             <fieldset className="grid gap-5">
               <legend className="text-base font-semibold">{r('identity')}</legend>
-              <div className="grid gap-5 sm:grid-cols-2">
+              {/*
+                A FIELD IS AS WIDE AS WHAT GOES IN IT. Account is a select
+                holding a name and a currency; Symbol holds four or six
+                characters. Splitting the row in half gave a ticker a box wide
+                enough for a sentence, which reads as "we have no idea what you
+                are about to type".
+              */}
+              <div className="grid gap-5 sm:grid-cols-3">
                 <PlanField
                   id="record-account"
+                  className="sm:col-span-2"
                   label={t('field.account')}
                   error={errors.tradingAccountId}
                 >
@@ -1012,9 +1072,17 @@ export function TradeRecordingForm({
               ) : null}
             </div>
 
-            <fieldset className="border-border grid gap-5 rounded-lg border p-4">
-              <legend className="px-1 text-base font-semibold">{r('systemPlan')}</legend>
-              <PlanField id="plan-basis" label={r('planBy')}>
+            {/*
+              A GROUP, NOT A BOX. This was a bordered fieldset inside a
+              bordered card, which drew a second frame around a third of the
+              form and made the plan look like an aside rather than the middle
+              of the story. It keeps the `<fieldset>`/`<legend>` semantics —
+              these controls really are one group — and drops only the border,
+              so the heading now matches every other heading on the panel.
+            */}
+            <fieldset className="grid gap-5">
+              <legend className="text-base font-semibold">{r('systemPlan')}</legend>
+              <PlanField id="plan-basis" label={r('planBy')} hint={r('planByHelp')}>
                 <Segmented
                   label={r('planBy')}
                   value={planBasis}
@@ -1026,7 +1094,14 @@ export function TradeRecordingForm({
                 />
               </PlanField>
               {planBasis === 'price' ? (
-                <div className="grid gap-5 sm:grid-cols-2">
+                /*
+                  Four short numbers that are read together — entry, stop,
+                  target, size — so they sit on one line where there is room
+                  for it, two-by-two on a tablet and one per row on a phone.
+                  As two columns they wrapped into a 2x2 block whose reading
+                  order (entry, stop / target, size) had to be inferred.
+                */
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
                   <TextField
                     id="planned-entry"
                     label={r('plannedEntry')}
@@ -1583,6 +1658,38 @@ export function TradeRecordingForm({
             </PlanField>
           </div>
         ) : null}
+
+        {/*
+          THE ACTION BELONGS AT THE END OF THE THING IT COMPLETES.
+
+          It used to sit above the panels, sticky to the top of the card: the
+          first thing a reader met on a form they had not filled in yet, and
+          still there, unmoved, when they reached the bottom. At the foot it is
+          where a reader arrives when they are done, and it can say something
+          the top could not — what is still outstanding, on the left.
+
+          That sentence reads from `collectErrors()`, the same function
+          `submit()` uses to decide whether to send. It cannot disagree with
+          the button, because it is not a second opinion.
+
+          Sticky only on a phone, where the panels are tall enough that the
+          action would otherwise be a scroll away; `pb-safe` keeps it clear of
+          a home indicator. On a wider screen it is simply the last row of the
+          card. The negative margins let it bleed to the card's own edges.
+        */}
+        <div className="border-border bg-card/95 supports-[backdrop-filter]:bg-card/80 pb-safe sticky bottom-0 z-10 -mx-4 -mb-4 border-t px-4 backdrop-blur-sm sm:static sm:-mx-6 sm:-mb-6 sm:px-6 sm:pb-0 sm:backdrop-blur-none">
+          <div className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <p className="text-muted-foreground min-w-0 text-sm">{outstandingSummary}</p>
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full sm:w-auto sm:shrink-0"
+              disabled={pending}
+            >
+              {pending ? r('saving') : timing === 'at_entry' ? r('openTrade') : r('saveCompleted')}
+            </Button>
+          </div>
+        </div>
       </form>
 
       <AlertDialog open={confirmUnmetOpen} onOpenChange={setConfirmUnmetOpen}>

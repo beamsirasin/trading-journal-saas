@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
 
 /**
- * THE FRAME A GUIDED STEP RENDERS IN — Log a trade's choice step, today.
+ * THE FRAME A GUIDED STEP RENDERS IN — both of Log a trade's steps.
  *
  * It exists because a decision step and an ordinary product page want opposite
  * things. A product page announces where you are in the app: shell chrome, a
@@ -21,8 +21,14 @@ import { Link } from '@/i18n/navigation';
  * destination and wrong for a question. This shell owns the `<h1>` instead —
  * still exactly one per page — and centres it, because a question the reader
  * has to answer before anything else appears should not compete with a header
- * row for the middle of the screen. Nothing renders both: the route picks one
- * (`timing === null` gets this, the form keeps `PageHeader`).
+ * row for the middle of the screen. The route renders exactly one shell: the
+ * choice or the form, never both.
+ *
+ * IT NOW CARRIES THE FORM STEP TOO. It used to stop at the choice, and the
+ * form kept the ordinary product-page frame — `Container`, `PageHeader`, a
+ * boxed Back action — which made the second half of one flow look like a
+ * different destination. Same chrome for both steps is what makes the
+ * progress bar mean anything.
  *
  * WHY THE PROGRESS BAR IS REAL AND NOT DECORATION. `role="progressbar"` with
  * `aria-valuetext` means a screen reader announces "Step 1 of 2" rather than a
@@ -31,18 +37,21 @@ import { Link } from '@/i18n/navigation';
  * here because the shell must never be the thing that decides how long a flow
  * is.
  *
- * WHY BOTH THE ARROW AND THE CLOSE LEAD TO THE SAME PLACE ON STEP ONE. There
- * is no earlier step to go back to, so both exit to `exitHref`. They are still
- * two controls with two different accessible names — "Back to Trades" and
- * "Close" — because a reader who has learned that the arrow means "one step
- * back" should find it where they expect it when this flow grows a third step,
- * and until then it must at least not lie about where it lands.
+ * WHY BOTH THE ARROW AND THE CLOSE LEAD TO THE SAME PLACE. On step one there
+ * is no earlier step, so both exit to `exitHref`. On step two they still do,
+ * and deliberately: the way back to the CHOICE is the "Change" control the
+ * form renders, which is the one that knows whether a draft would be lost and
+ * asks before discarding it. Leaving these two as plain exits keeps them doing
+ * exactly what the boxed "Back to Trades" button did before, rather than
+ * quietly turning an exit into a step backwards. They remain two controls with
+ * two accessible names — "Back to Trades" and "Close" — so neither lies about
+ * where it lands.
  *
  * WIDTH IS A PROP WITH A DELIBERATE DEFAULT. 42.5rem (680px) is a reading
- * measure for one question and a small set of choices. The form step is not
- * this width and should not be forced into it — its two-column field grids
- * need the app's standard page width — so widening is an explicit decision at
- * the call site, not something this shell assumes it may do.
+ * measure for one question and a small set of choices. A step with field grids
+ * needs more, so the form step passes `max-w-6xl` — the width its page
+ * container gave it before. Widening stays an explicit decision at the call
+ * site rather than something this shell assumes about its children.
  */
 export function WizardShell({
   step,

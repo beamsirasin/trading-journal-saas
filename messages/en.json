@@ -1072,7 +1072,8 @@
       "optional": "(optional)",
       "version": "Version {number}",
       "archived": "Archived",
-      "notAssigned": "Not assigned"
+      "notAssigned": "Not assigned",
+      "optionalMarker": "optional"
     },
     "direction": {
       "long": "Long",
@@ -1655,10 +1656,10 @@
         "saving": "Saving…",
         "openTrade": "Open Trade",
         "saveCompleted": "Save Completed Trade",
-        "identity": "Trade",
+        "identity": "What did you trade?",
         "enteredAt": "Entered At",
         "exitedAt": "Exited At",
-        "systemPlan": "System Plan",
+        "systemPlan": "What was the plan?",
         "planBy": "Plan by",
         "price": "Price",
         "money": "Money",
@@ -1700,10 +1701,10 @@
         "chartLink": "Chart link",
         "panels": {
           "label": "New Trade sections",
-          "trade": "Trade",
+          "trade": "The trade",
           "result": "Result",
-          "setup": "Setup",
-          "context": "Entry Context"
+          "setup": "Setup · optional",
+          "context": "Context · optional"
         },
         "outcome": {
           "win": "Win",
@@ -1739,6 +1740,11 @@
           "customSystem": "Complete the custom System outcome.",
           "fixFields": "Check the highlighted fields and try again.",
           "invalidField": "This value is not valid."
+        },
+        "planByHelp": "Price uses chart levels. Money uses amounts you risk.",
+        "remaining": {
+          "ready": "Ready to save",
+          "needed": "{fields} still needed"
         }
       },
       "backToTrades": "Back to Trades",
@@ -1751,7 +1757,6 @@
           "title": "At Entry",
           "description": "Record the trade before the outcome is known.",
           "hint": "Plan · Risk · Confidence",
-          "headerDescription": "Recording at Entry.",
           "chips": {
             "plan": "Plan",
             "risk": "Risk",
@@ -1762,7 +1767,6 @@
           "title": "After Trade",
           "description": "Record a trade that has already finished.",
           "hint": "Plan · Result · Review",
-          "headerDescription": "Recording After Trade.",
           "chips": {
             "plan": "Plan",
             "result": "Result",

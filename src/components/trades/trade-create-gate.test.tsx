@@ -103,7 +103,7 @@ describe('TradeCreateGate', () => {
         timezone: 'Asia/Bangkok',
       });
       expect(screen.getByLabelText('Trading Account')).toBeVisible();
-      fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Setup · optional' }));
       expect(screen.getByLabelText(/^Strategy/)).toBeVisible();
       expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
     },

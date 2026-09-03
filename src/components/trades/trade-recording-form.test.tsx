@@ -95,8 +95,9 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     renderForm();
 
     // The mode was chosen on the previous step, so the form states it rather
-    // than asking again.
-    expect(screen.getByText('At Entry')).toBeVisible();
+    // than asking again. The mode's NAME is now the page heading, which the
+    // route owns; what this component states is what the mode means.
+    expect(screen.getByText(/Record the trade before the outcome is known/)).toBeVisible();
     expect(
       screen.queryByRole('heading', { name: 'When are you recording this trade?' }),
     ).not.toBeInTheDocument();
@@ -105,12 +106,12 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     expect(screen.queryByRole('button', { name: 'Result' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Setup' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Setup · optional' }));
     expect(screen.getByLabelText(/^Strategy/)).toBeVisible();
     expect(screen.queryByLabelText('Symbol')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.queryByLabelText(/^Strategy/)).not.toBeInTheDocument();
   });
@@ -128,7 +129,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     );
     expect(screen.getByLabelText('Initial Risk')).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'The trade' }));
     expect(screen.getByLabelText('Entry')).toHaveValue('100');
     expect(screen.getByLabelText('Stop Loss')).toHaveValue('90');
   });
@@ -304,7 +305,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     expect(systemOutcome).toHaveValue('pending');
     expect(screen.getByRole('option', { name: 'Target reached' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Trade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'The trade' }));
     fireEvent.change(screen.getByLabelText(/^Take Profit/), { target: { value: '130' } });
     fireEvent.click(screen.getByRole('button', { name: 'Result' }));
     expect(screen.getByRole('option', { name: 'Target reached' })).toBeEnabled();
@@ -335,7 +336,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
 
   it('renders the frozen Thai timing and result terminology', () => {
     renderAfterTrade('th');
-    expect(screen.getByText('หลังจบเทรด')).toBeVisible();
+    expect(screen.getByText(/บันทึกออเดอร์ที่จบไปแล้ว/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'ผลลัพธ์' }));
     expect(screen.getByText('ผลลัพธ์จริง')).toBeVisible();
     expect(screen.getByText('คำนวณผลจริงจาก')).toBeVisible();
@@ -363,13 +364,16 @@ describe('TradeRecordingForm — current design system', () => {
     // The mode is identified, and it is a statement rather than a control: a
     // form already carrying a plan must not be able to change what it means.
     expect(container.querySelector('[data-recording-mode="at_entry"]')).not.toBeNull();
-    expect(screen.getByText('At Entry')).toBeVisible();
+    expect(screen.getByText(/Record the trade before the outcome is known/)).toBeVisible();
     expect(screen.queryByRole('group', { name: /When are you recording/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'After Trade' })).not.toBeInTheDocument();
 
     unmount();
-    renderAfterTrade();
-    expect(screen.getByText('After Trade')).toBeVisible();
+    const afterTrade = renderAfterTrade();
+    expect(
+      afterTrade.container.querySelector('[data-recording-mode="after_trade"]'),
+    ).not.toBeNull();
+    expect(screen.getByText(/Record a trade that has already finished/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'At Entry' })).not.toBeInTheDocument();
   });
 
@@ -399,7 +403,7 @@ describe('TradeRecordingForm — current design system', () => {
       within(nav)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Trade', 'Setup', 'Entry Context']);
+    ).toEqual(['The trade', 'Setup · optional', 'Context · optional']);
     // No Review tab was added in this pass.
     expect(within(nav).queryByRole('button', { name: 'Review' })).not.toBeInTheDocument();
   });
@@ -411,7 +415,7 @@ describe('TradeRecordingForm — current design system', () => {
       within(nav)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Trade', 'Result', 'Setup', 'Entry Context']);
+    ).toEqual(['The trade', 'Result', 'Setup · optional', 'Context · optional']);
   });
 
   it('dresses every segmented control in the shared raised-segment language', () => {
@@ -430,10 +434,10 @@ describe('TradeRecordingForm — current design system', () => {
   it('uses the same language for the inner panel nav', () => {
     renderForm();
     const nav = screen.getByRole('navigation', { name: 'New Trade sections' });
-    expect(within(nav).getByRole('button', { name: 'Trade' }).className).toContain(
+    expect(within(nav).getByRole('button', { name: 'The trade' }).className).toContain(
       'bg-surface-raised',
     );
-    expect(within(nav).getByRole('button', { name: 'Setup' }).className).toContain(
+    expect(within(nav).getByRole('button', { name: 'Setup · optional' }).className).toContain(
       'text-muted-foreground',
     );
   });
@@ -458,7 +462,7 @@ describe('TradeRecordingForm — current design system', () => {
     const controls = [
       screen.getByRole('button', { name: 'Long' }),
       within(screen.getByRole('navigation', { name: 'New Trade sections' })).getByRole('button', {
-        name: 'Setup',
+        name: 'Setup · optional',
       }),
     ];
     for (const control of controls) {
@@ -477,7 +481,7 @@ describe('TradeRecordingForm — current design system', () => {
     // squeezed into four columns; every label stays spelled out.
     expect(nav.className).toContain('grid-cols-2');
     expect(nav.className).toContain('sm:grid-cols-4');
-    expect(within(nav).getByRole('button', { name: 'Entry Context' })).toBeVisible();
+    expect(within(nav).getByRole('button', { name: 'Context · optional' })).toBeVisible();
   });
 
   it('keeps the Trading Account select, defaulted to the workspace account', () => {
@@ -554,7 +558,7 @@ describe('TradeRecordingForm — current design system', () => {
 
   it('says Confidence means confidence before entry, on both timings', () => {
     const { unmount } = renderForm();
-    fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
     unmount();
@@ -562,7 +566,7 @@ describe('TradeRecordingForm — current design system', () => {
     // After Trade keeps the SAME historical field — it never becomes
     // confidence about the result, and it is never required.
     renderAfterTrade();
-    fireEvent.click(screen.getByRole('button', { name: 'Entry Context' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Context · optional' }));
     expect(screen.getByText('Confidence', { selector: 'label' })).toBeVisible();
     expect(screen.getByText(/How confident were you before entering/)).toBeVisible();
     expect(screen.getByText('Recorded retrospectively')).toBeVisible();
@@ -584,7 +588,7 @@ describe('TradeRecordingForm — current design system', () => {
 
   it('translates the migrated copy', () => {
     renderForm('th');
-    expect(screen.getByText('กำลังบันทึก:')).toBeVisible();
-    expect(screen.getByText('ตอนเข้าเทรด')).toBeVisible();
+    expect(screen.getByText(/บันทึกออเดอร์ก่อนที่จะรู้ผลลัพธ์/)).toBeVisible();
+    expect(screen.getByRole('link', { name: 'เปลี่ยน' })).toBeVisible();
   });
 });

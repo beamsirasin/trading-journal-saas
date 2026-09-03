@@ -1,4 +1,3 @@
-import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
@@ -10,14 +9,10 @@ import {
   getWorkspaceEntitlement,
 } from '@/server/auth/dal';
 import { getTradeCreateOptions } from '@/server/dal/trades';
-import { PageHeader } from '@/components/product/page-header';
-import { Container } from '@/components/shell/container';
 import { TradeCreateGate } from '@/components/trades/trade-create-gate';
 import { TradeRecordingModeSelection } from '@/components/trades/trade-recording-mode-selection';
 import { WizardShell } from '@/components/trades/trade-wizard-shell';
-import { Button } from '@/components/ui/button';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
-import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
@@ -33,6 +28,7 @@ type PageSearchParams = { timing?: string | string[] | undefined };
  */
 const RECORDING_FLOW_STEPS = 2;
 const CHOICE_STEP = 1;
+const FORM_STEP = 2;
 
 export async function generateMetadata({
   params,
@@ -56,20 +52,27 @@ export async function generateMetadata({
 }
 
 /**
- * LOG A TRADE — one route, two steps, two deliberately different frames.
+ * LOG A TRADE — one route, two steps, one frame.
  *
- * The choice step renders in `WizardShell`: centred, narrow, progress at the
- * top, the question as the page's `<h1>`. The form step keeps the ordinary
- * product-page frame it has always had — `Container` at the app's standard
- * `default` width, `PageHeader`, and the Back action — because the form is a
- * place you work rather than a question you answer. See the comment above the
- * branch itself for why the shell stops at the choice.
+ * Both steps render in `WizardShell`: progress at the top, two quiet exits,
+ * and the step's own subject as the page's `<h1>`. The form step used to keep
+ * the ordinary product-page frame instead — `Container`, `PageHeader`, a boxed
+ * "Back to Trades" — which made step two look like a different destination
+ * rather than the second half of the thing the reader had just started. A flow
+ * that changes its chrome halfway through reads as two features.
  *
- * WIDTH ON THE FORM STEP. It once rendered a `max-w-3xl` form centred inside a
- * `wide` (100rem) container, so the header ran to one edge and the form floated
- * in the middle of a column twice its width. `default` puts the header and the
- * form on one left edge and gives the two-column field grids real room without
- * stretching a text input across a 100rem monitor.
+ * WIDTH IS THE ONE DIFFERENCE, and it is a prop. The choice is 42.5rem — a
+ * reading measure for one question. The form is `max-w-6xl`, the same width
+ * the page container gave it before, because its field grids need the room and
+ * narrowing them was never part of this.
+ *
+ * WHAT THE FORM STEP'S HEADING SAYS. Not "Log a trade", which the eyebrow
+ * already says, but the recording mode itself — "At Entry" or "After Trade".
+ * That is the answer the reader gave on step one, and repeating the flow's
+ * name in the `<h1>` while the mode hid in a subtitle and again in a card
+ * below it meant three lines saying one thing. The sentence under the heading,
+ * and the way back to the choice, come from the form (`TradeRecordingForm`)
+ * because the "Change" control needs to know whether the form is dirty.
  *
  * ONE ROUTE, TWO STEPS. `?timing=` decides which: absent or unrecognised shows
  * the recording-mode choice, and a valid value shows the form in that mode.
@@ -117,23 +120,8 @@ export default async function NewTradePage({
   const authorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
 
   /*
-    THE CHOICE STEP IS NOT AN ORDINARY PRODUCT PAGE, AND STOPPED PRETENDING TO
-    BE ONE. It rendered inside the same `Container` + `PageHeader` frame as
-    every destination in the app: a left-aligned title that named the route
-    rather than asking the question, the question itself demoted to an `<h2>`
-    beneath it, and a boxed "Back to Trades" button sitting where a page's
-    actions go. That frame is right for a place and wrong for a decision.
-
-    `WizardShell` inverts it — progress, two quiet exits, then the question
-    centred as the page's `<h1>`. Only ONE of the two frames ever renders, so
-    the page still has exactly one `<h1>`: this branch returns early, and the
-    form below keeps the header it has always had.
-
-    THE FORM STEP IS DELIBERATELY NOT IN THE SHELL. 42.5rem is a reading
-    measure for one question; the form needs the app's standard page width for
-    its two-column field grids, and it carries its own recording-mode banner,
-    sticky submit bar and panel navigation. Folding it in is a separate
-    decision, not a consequence of this one.
+    STEP ONE: the question. Exactly one of the two branches renders, so the
+    page still has exactly one `<h1>` — this one returns early.
   */
   if (timing === null) {
     return (
@@ -151,19 +139,14 @@ export default async function NewTradePage({
   }
 
   return (
-    <Container width="default" className="flex min-w-0 flex-col gap-8 py-8">
-      <PageHeader
-        title={t('create.pageTitle')}
-        description={t(`create.mode.${timing}.headerDescription`)}
-        actions={
-          <Button asChild variant="outline">
-            <Link href="/app/trades">
-              <ArrowLeft aria-hidden="true" />
-              {t('create.backToTrades')}
-            </Link>
-          </Button>
-        }
-      />
+    <WizardShell
+      step={FORM_STEP}
+      totalSteps={RECORDING_FLOW_STEPS}
+      eyebrow={t('create.pageTitle')}
+      title={t(`create.mode.${timing}.title`)}
+      exitHref="/app/trades"
+      className="max-w-6xl"
+    >
       <TradeCreateGate
         options={options}
         canWrite={authorization.allowed}
@@ -172,6 +155,6 @@ export default async function NewTradePage({
         activeTradingAccountId={activeAccount?.id ?? null}
         timezone={preferences.timezone}
       />
-    </Container>
+    </WizardShell>
   );
 }
