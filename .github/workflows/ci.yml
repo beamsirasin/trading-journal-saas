@@ -170,16 +170,16 @@ jobs:
   e2e:
     name: Playwright end-to-end
     runs-on: ubuntu-latest
-    # TEMPORARY, AND A MEASUREMENT RATHER THAN A FIX. At 20 minutes this job
-    # was cancelled mid-suite with no summary, so the serial cost of the
-    # current 673 tests has never been observed — the last run that finished
-    # was 523 tests in 11.5 minutes on 2026-08-23. 60 is a deliberately
-    # generous ceiling chosen to get one complete run, not a claim that the
-    # suite should take an hour. `workers: 1` is untouched on purpose: the
-    # point is to measure the serial total before deciding between more
-    # workers, sharding, or accepting the time. Put this back once the number
-    # is known and the decision is made. See docs/roadmap.md.
-    timeout-minutes: 60
+    # 35, from the measurement the 60-minute run bought (see docs/roadmap.md).
+    # That run was cancelled at 60m18s without finishing even the chromium
+    # project, and 45 of those minutes were three known-red tests waiting out a
+    # 300s cap three times each. With those caps at 90s and no retries for that
+    # block, the estimate is ~22 minutes: 14.8 scaled from the last complete run
+    # (523 tests in 11.5 minutes, 2026-08-23) plus the capped and fast-failing
+    # known-red. The estimate is a floor — the ~150 tests added since are heavy
+    # Journal/Dashboard/Trades flows — so 20 is not a number to go back to, and
+    # 35 leaves room to find out what the real one is.
+    timeout-minutes: 35
 
     services:
       postgres:
