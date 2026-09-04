@@ -243,7 +243,14 @@ Broker API integration · MT4/MT5 sync · CSV import · OCR · TradingView API �
 
 These are bugs to fix, not debt to live with. Kept separate from _Known product debt_ below for exactly that reason.
 
-None open.
+**Horizontal overflow at 320px on two Dashboard sections, since `4d643f7` (2026-08-31).** The page scrolls sideways on a 320px viewport, which CLAUDE.md §8 forbids outright: "**No horizontal page overflow at any breakpoint.**" It has been on `main` for four days.
+
+- **Measured**, at a 320px viewport, `document.scrollWidth` against `clientWidth`: the insight pillars section reaches **332px** and Risk Performance **324px**, against a 321px allowance. `e2e/dashboard.spec.ts:1409` and `:946` `[mobile-chrome]`.
+- **Bisected to one commit**: `4d643f7 feat(dashboard): merge System, Trader and Execution Gap into one card`. Its parent `0c594dd` passes both tests; `4d643f7` fails both, with the same 332 and 324 seen on `main` today. Seven bisect steps, each with its own `next build` — the numbers did not drift between the culprit and `main`, so nothing since has made it worse or better.
+- **Both sections break together at one commit**, which points at something shared rather than at either section's own layout. The same commit also removed `data-dashboard-panel="system"`, which is what `dashboard.spec.ts:252` and `:576` fail on — one commit, four of the thirty failures.
+- **The two tests are not stale.** Both were written days before the breakage (`8389032` on 2026-08-28, `4c41aac` on 2026-08-29) and both pass at the commits that introduced them. They are the only two of the thirty that report a live defect rather than a moved target. They were also the two the run history could not date, because both were written after the last complete August run — bisect answered what the history could not.
+- **320px is a real phone, not a theoretical breakpoint.** This is not a rounding argument about 3px: the pillars section is 11px over.
+- **Acceptance criterion.** Both tests pass at 320px with no `.first()`, no widened allowance and no test edit at all — the allowance stays `clientWidth + 1`. Fixing the layout is the only way to make them green, which is the property that makes them worth keeping.
 
 ## Resolved defects
 
@@ -326,6 +333,14 @@ Not product debt: these are the things that make shipping the current work unsaf
 - The cause is that the suite outgrew its budget, not that anything regressed: on 2026-08-23 the same job ran **523 tests on one worker and finished in 11.5 minutes** (14 failed, 456 passed); today it is **673 tests on one worker** and does not finish. The roughly 150 tests added since are the heavy Journal/Dashboard/Trades flows, so the per-test cost rose as well as the count.
 - This is the same family as the false green and the false red recorded above, and it is the easiest of the three to be fooled by, because it makes no claim. A green result asserts something checkable; a red one points at a line. A cancelled job asserts nothing, so it slides past review as "inconclusive, look later" — while the work it did do, and the failures it did find, are sitting in the log. **Read what a cancelled job actually did before treating it as no result.**
 - Consequence while it stands: no end-to-end result can reach CI at the current suite size, so any test added from here gets no CI signal at all.
+
+**A sixth: the log that points at a line that is not the cause.** Found on 2026-09-04 while triaging the thirty e2e failures outside `trades.spec.ts`. This one does not make a red look green or a green look red — it makes a red look like a DIFFERENT red, which is worse, because it sends the reader somewhere real and wrong.
+
+- `e2e/dashboard.spec.ts:252` fails in CI at **line 274**, on a strict-mode violation: `[data-dashboard-widget="basic.net-pnl"]` resolved to two identical elements. Run the same test on the same commit locally and it gets past 274 without complaint and fails at **line 411**, because `[data-dashboard-panel="system"]` no longer exists — retired by `4d643f7`.
+- Two different lines, two different causes, one commit. Anyone triaging from the CI log alone would have gone hunting for a duplicate-render bug and never found the retired locator sitting 137 lines further down. The duplicate is real, but it is a **condition of the environment**, and it fires at whichever locator the test happens to reach first.
+- **Five of the thirty failures were this shape** — see _Group 7_ in the triage below. All five pass locally.
+- **The rule, for every e2e triage from now on: run the suite locally and diff it against CI before believing any single failing line.** The two lists agreeing is the evidence that a failure is about the code. Where they disagree, the local line is the one about the code and the CI line is about CI. Neither log is wrong; reading only one of them is.
+- **The general shape.** A stack trace answers "where did execution stop", never "why". When a first failing line and a plausible cause line up too neatly, check that the test would still fail there in an environment that cannot produce the first symptom.
 
 **A fifth: the test that passes because the database happened to return the order it wanted, not because it asked for one.** Found on 2026-09-04, in CI, on a commit that could not have caused it.
 
@@ -424,21 +439,51 @@ The three `mobile-chrome` entries were added on 2026-09-02, after a full `pnpm e
 - **The repair, in all four:** `.orderBy(<table>.id)` — every table here uses UUIDv7 ids, so id order is write order.
 - **Acceptance criterion.** Swap the expected order in the multi-row case and it must go red; restore it and it must stay green over repeated runs. A one-line ordering change that no test can tell apart has not been verified.
 
-**Thirty-one e2e failures outside `trades.spec.ts` have never been looked at.** The first complete Playwright run since 2026-08-24 (2026-09-03, 27.2 minutes, 673 tests on one worker) reported **51 failed, 4 flaky, 67 skipped, 547 passed**. Twenty of those failures are the documented list above. The other thirty-one are spread across ten spec files and are undocumented, uninvestigated, and unattributed to any cause:
+**The thirty e2e failures outside `trades.spec.ts` are triaged.** Done on 2026-09-04 against `main` at `31a737c`, from a complete CI run (`33819714074`: 50 failed, 1 flaky, 67 skipped, 551 passed, 26.4 min) **and** a complete local run of the same commit (46 failed, 68 skipped, 554 passed, 22.5 min). Twenty of the fifty are the documented `trades.spec.ts` list above; these thirty are the rest. Running both was not belt-and-braces — it is what produced the sixth false signal above, and five of the thirty turned out to be CI-only.
 
-| spec                         | failures |
-| ---------------------------- | -------- |
-| `strategies.spec.ts`         | 5        |
-| `dashboard.spec.ts`          | 4        |
-| `i18n.spec.ts`               | 4        |
-| `onboarding.spec.ts`         | 4        |
-| `settings.spec.ts`           | 4        |
-| `accounts.spec.ts`           | 2        |
-| `analytics.spec.ts`          | 2        |
-| `app-shell.spec.ts`          | 2        |
-| `dashboard-calendar.spec.ts` | 2        |
-| `home.spec.ts`               | 2        |
+Grouped by CAUSE rather than by file, because the file tells you nothing about who fixes it or when:
 
-**Why this was invisible.** The known-red list has only ever covered `trades.spec.ts`, and no complete e2e run existed between the Trades rebuild and 2026-09-03 — the job was cancelled every time, first by a failing dependency and then by its own timeout. The last run that finished, on 2026-08-23, reported 14 failures in total; the work that has landed since took that to 51 without anyone being able to see it. Nothing here is triaged: some may share the retired-UI cause, some may be their own defects, and some may be CI-only like the twentieth above. **Do not assume; measure, then split this entry into what it turns out to be.**
+| #   | Group                                      | Cases | Fix together?                             | Size                    |
+| --- | ------------------------------------------ | ----- | ----------------------------------------- | ----------------------- |
+| 1   | Retired UI — Dashboard rebuild             | 10    | yes                                       | one sitting, mechanical |
+| 2   | Locator too broad after a panel was added  | 4     | yes                                       | small                   |
+| 3   | Assertion pinned to a constant that moved  | 4     | yes                                       | trivial                 |
+| 4   | Copy renamed under the test                | 2     | separate — needs a product answer         | small                   |
+| 5   | Desktop test running in the mobile project | 1     | separate                                  | small                   |
+| 6   | **Real horizontal overflow at 320px**      | 2     | separate — **this is a defect, not debt** | see below               |
+| 7   | CI-only duplicate render                   | 5     | cannot be fixed until it is understood    | unknown                 |
+
+**Group 1 — retired UI, from the Dashboard rebuild (10).** `dashboard.spec.ts:252` and `:576` look for `[data-dashboard-panel="system"]`, removed by `4d643f7` when System, Trader and Execution Gap merged into one card. `accounts.spec.ts:420` (×2), `onboarding.spec.ts:124` (×2) and `:202` (×2) look for the Account name as a heading inside the `Active trading account summary` region; `fb7acd9` deliberately removed it, and `empty-trading-dashboard.tsx` carries the reason in a comment — the toolbar's Account control two rows above already carries that exact string, and the copy that could not be clicked was the second one. `i18n.spec.ts:99` and `:130` (×2) look for Thai section headings the rebuilt Analytics overview no longer uses; it renders `ภาพรวมการวิเคราะห์ / ผลลัพธ์ / ความได้เปรียบ / พฤติกรรม` now. **These are not the Trades rebuild.** `85b861c` and `201195d` own the twenty above and none of these ten.
+
+**Group 2 — a locator that was never specific enough (4).** `strategies.spec.ts:315` (×2) and `:616` (×2) call `getByRole('heading', { name: 'Wave 2 Reversal' })` unscoped. The Setup name now appears in two legitimate panels — `Setups` and `Setup Conditions` — so it resolves to two. Both elements are correct; the test simply never said which one it meant. Same class as the `trades.spec.ts` locator work already done: scope it, do not weaken it with `.first()`.
+
+**Group 3 — an assertion pinned to a constant that moved (4).** `settings.spec.ts:47`, `:239` and `:294` assert `schemaVersion === 1`; `WORKSPACE_EXPORT_SCHEMA_VERSION` has been `6` since the Journal V2 work. `app-shell.spec.ts:1666` (×2) asserts the mobile drawer holds exactly 5 links; it holds 6, because a **Log a trade** action was added above the five routes. The test's actual subject — "no Settings, no preferences" — still passes; only the hard-coded count is stale. Assert the routes by name rather than by count so the next deliberate addition does not read as a regression.
+
+**Group 4 — copy renamed under the test (2).** `home.spec.ts:62` (×2) asserts the landing page says **Edge leakage**. Phase 13H renamed that to **Execution Gap** everywhere, on purpose, and the page says `an Execution Gap of -27.9R` today. The test's own comment — "if these labels disappear the page has stopped making the argument" — is still the right instinct; the argument survived, the label did not. Do not fix this one blind: see the Discipline Score question below, which the same test raises.
+
+**Group 5 — a desktop test running in the mobile project (1).** `i18n.spec.ts:99` `[mobile-chrome]` waits for `navigation "เมนูหลัก"`. At 390px the main navigation lives in a drawer, not in a persistent landmark, so it is not there to find. The `[chromium]` half of the same test fails for the Group 1 reason instead, which is why this one is easy to miss.
+
+**Group 6 — see _Horizontal overflow at 320px_ under _Open defects_. This is the only one of the thirty that is a product defect rather than a stale test.**
+
+**Group 7 — the same page present twice, in CI only (5).** `analytics.spec.ts:442`, `analytics.spec.ts:738`, `dashboard-calendar.spec.ts:289`, `dashboard-calendar.spec.ts:506` and `settings.spec.ts:166` all fail in CI on a strict-mode violation where the two matches are byte-identical elements — the first inside `#main-content`, the second outside it. **All five pass locally**, in a full run and, for `settings.spec.ts:166`, five times out of five under `--repeat-each`.
+
+- What is established: each component is mounted exactly once in the tree (checked for `SecuritySection` and `DashboardCalendarSection`); the duplicate pairs carry different `useId` values — `_r_0_` beside `_R_24lubsnrsnqivb_`, the server and client formats — so two React trees exist at that instant; the accessibility snapshot captured at failure time shows exactly one of each landmark, so it is transient rather than structural; there is no `AnimatePresence` in the codebase, no view transition, and the Dashboard skeleton carries none of these attributes.
+- **What is not established: why it happens.** There are plausible mechanisms and none of them has been verified, so none is recorded here as the cause. Reproducing it means running CI repeatedly to catch a condition that may not appear — expensive, and not certain to pay.
+- It is intermittent even within CI: `settings.spec.ts:166` was flaky in `33812193620`, green in `33816357107`, and red in `33819714074`. **A count moving by one in this file is not evidence of a regression** — it is this group crossing between "flaky" and "failed".
+
+**When these broke, which is not what we assumed.** Comparing against the last two complete August runs (`32663174658` on 2026-08-23, `32747185243` on 2026-08-24):
+
+- **Thirteen of the thirty were already red on 2026-08-23** — `home.spec.ts:62` (×2), `settings.spec.ts:47`/`:239`/`:294`, `strategies.spec.ts:315` (×2) and `:616` (×2), `analytics.spec.ts:738`, the Analytics `i18n` pair, and the desktop `dashboard.spec.ts` case. That is **before both rebuilds**. We had assumed this whole pile came from the Trades and Dashboard rebuilds; nearly half of it predates them, and Groups 2, 3 and 4 in particular are older debt that the rebuilds only made visible by finally letting a full e2e run finish.
+- Fifteen appeared after 2026-08-24 — the Dashboard-rebuild groups.
+- **Two could not be compared at all**: `dashboard.spec.ts:946` was written on 2026-08-28 (`8389032`) and `:1409` on 2026-08-29 (`4c41aac`), both after the last complete August run, so no earlier result exists. Those two were settled by bisect instead — see _Open defects_.
+
+**What this entry replaces.** The previous version of it said thirty-one failures across ten files, undocumented and unattributed, and told the next reader to measure rather than assume. That was right, and the measurement changed the picture: it is thirty, not thirty-one (the thirty-first was `settings.spec.ts:166` counted on a run where it was flaky); only two are product defects; five are not reproducible outside CI; and thirteen are older than the rebuilds everyone blamed.
+
+**The landing page advertises a Discipline Score the product has not agreed how to compute.** A product question, not technical debt, and recorded here only so it stops being invisible — the decision is the Founder's.
+
+- `e2e/home.spec.ts:62` asserts the landing page shows **Discipline score**, and it does: the string appears twice on the rendered page today.
+- CLAUDE.md §6 says the opposite about the thing behind it: "**Discipline Score and mistake-cost attribution have no approved formula and remain unimplemented**", and §11 A2 records why — the source documents name nine mistake types but define no evidence-backed relative severity, so Phase 07 seeded all nine neutral rather than invent differentiation.
+- So the marketing surface promises a figure that the calculation engine is deliberately not allowed to produce yet. Both halves are defensible on their own; together they are a promise with no delivery date.
+- **The decision is one of three**, and it is not an engineering call: approve a formula, remove the claim from the landing page, or state a date by which it ships. Whichever it is, `home.spec.ts:62` should assert the copy that survives that decision — which is also why the **Edge leakage → Execution Gap** repair in Group 4 above should wait for it rather than be done twice.
 
 **A money-Risk Analytics view does not exist.** `ANALYTICS_VIEWS` is `overview | results | edge | behavior`, and none of them renders modeled-balance material: Analytics' `maximumDrawdownR` is an **R** metric over a different population and is not a home for D7's money drawdown. When the Dashboard's Risk snapshot was reduced to Modeled Balance + Current Drawdown + the balance chart, the figures it stopped showing — **money Max Drawdown, Peak Balance, peak history, deeper drawdown/underwater analysis and modeled-balance diagnostics** — were moved into that card's info popover _with their values_ rather than to Analytics, because there was nowhere to send them. That is deliberate temporary progressive disclosure, not a resting place. A future Risk Analytics view should give them a real home, after which the popover can shrink back to definitions.
