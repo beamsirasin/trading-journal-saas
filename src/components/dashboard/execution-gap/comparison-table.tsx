@@ -99,10 +99,31 @@ export function ComparisonTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.key} data-comparison-row={row.key} className="border-border/60 border-b">
-              <th
-                scope="row"
-                className="text-muted-foreground py-2.5 pe-2 text-start font-medium whitespace-nowrap"
-              >
+              {/*
+                THE ROW LABEL WRAPS, AND IT HAS TO.
+
+                This carried `whitespace-nowrap`, which made the table
+                un-shrinkable below its longest label. A `<table>` uses
+                `table-layout: auto`, so its used width can never fall below
+                its intrinsic minimum content width, and `w-full min-w-0` on
+                the table does nothing about that — `min-width` constrains the
+                box, not the content-based minimum that auto layout computes.
+
+                Measured at a 320px viewport: "Avg Win / Loss" held this
+                column at 105px, the three figure columns took 186px, and the
+                291px floor did not fit the 254px the card had to give it. The
+                document scrolled sideways by 4px on the Risk fixture and 12px
+                on the Insight one — the same element, two different Dashboard
+                tests, one cause. CLAUDE.md §8 forbids that outright.
+
+                Letting it wrap drops the column to 53px at 320px and the
+                table lands at exactly the 254px available, with every figure
+                still at its natural width (`scrollWidth === clientWidth` in
+                all twelve cells, at 320, 360 and 390). The labels take a
+                second line on the narrowest phone, which is what a label is
+                for.
+              */}
+              <th scope="row" className="text-muted-foreground py-2.5 pe-2 text-start font-medium">
                 {t(`table.row.${row.key}`)}
               </th>
               <Cell metric={row.system} style={row.style} column="system" />
