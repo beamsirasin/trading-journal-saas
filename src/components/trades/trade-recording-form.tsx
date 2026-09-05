@@ -12,6 +12,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
+import { executionGapR } from '@/lib/calc/attribution';
 import { composePlannedR, composeTraderCloseV2 } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
 import { isConfidenceStep, type ConfidenceStep } from '@/lib/trades/constants';
@@ -42,8 +43,9 @@ import {
   instantToDatetimeLocal,
   parseTradeMoneyInput,
 } from './trade-form-values';
-import { formatR } from './trade-format';
+import { formatR, formatTradeMoney } from './trade-format';
 import { PlanField } from './trade-plan-field';
+import { TradePlanVsActual, type PlanVsActualRow } from './trade-plan-vs-actual';
 
 type Basis = 'price' | 'money';
 type Panel = 'trade' | 'result' | 'setup' | 'context';
@@ -237,6 +239,15 @@ const EMOTION_GROUPS = [
   { key: 'depleted', emotions: ['tired', 'frustrated'] },
 ] as const;
 
+/**
+ * A planned field as text, or `null` when the trader left it empty — never an
+ * empty string, which a table cell would render as a value that is there.
+ */
+function plannedOrNull(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 /** The pristine draft, in one place, so both the initial state and the touched-check read from it. */
 function emptyValues(tradingAccountId: string): Values {
   return {
@@ -399,6 +410,8 @@ export function TradeRecordingForm({
   const [openingBasis, setOpeningBasis] = useState<Basis>('money');
   const [partialExits, setPartialExits] = useState(false);
   const [systemChoice, setSystemChoice] = useState<SystemChoice>('pending');
+  /** Set the first time the trader uses the System Outcome select themselves. */
+  const [systemChoiceTouched, setSystemChoiceTouched] = useState(false);
   const [errors, setErrors] = useState<ErrorMap>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -606,6 +619,141 @@ export function TradeRecordingForm({
 
   const targetAvailable =
     planBasis === 'price' ? values.plannedTarget.trim() !== '' : values.plannedReward.trim() !== '';
+
+  /*
+    THE PLAN AND THE RESULT DO NOT HAVE TO BE RECORDED THE SAME WAY.
+
+    A trader can plan off the chart and settle up in money, or the reverse.
+    That is an ordinary way to work, not a mistake, and R is precisely the
+    unit that lets the two be read together — so the form says so rather than
+    leaving a column of empty cells to be read as an error.
+  */
+  const crossBasis = timing === 'after_trade' && planBasis !== actualBasis;
+
+  /*
+    1R IN MONEY, ONLY WHERE THE PLAN ACTUALLY STATES IT.
+
+    A Money plan names its own 1R: it is the planned risk, already entered.
+    A PRICE plan does not. Turning `|entry − stop|` into an amount would take
+    `riskPerUnit × size × contractMultiplier`, which CLAUDE.md §6 forbids
+    outright — it does not hold across Forex, gold, crypto and indices. So
+    this is shown when it is known and omitted when it is not; it is never
+    derived.
+  */
+  const plannedOneR =
+    planBasis === 'money' && parsedPlanMoney.risk?.ok
+      ? formatTradeMoney(parsedPlanMoney.risk.value, currency)
+      : null;
+
+  /*
+    THE DIFFERENCE IS THE ENGINE'S OWN SUBTRACTION OF TWO ENGINE RESULTS.
+
+    `plannedPreview` and `actualPreview` already call `lib/calc` — the same
+    functions the server calls — so the bar re-uses their output rather than
+    re-reading the inputs. `executionGapR` is `lib/calc`'s canonical
+    "one canonical R minus another", including its null and invalid-decimal
+    handling and its canonical rounding.
+
+    IT IS NOT LABELLED "Execution Gap" IN THE UI, and must not be. That metric
+    is defined against the System's RESOLVED `system_r` (CLAUDE.md §6), not
+    against the plan. This bar compares what was planned with what was taken;
+    only the subtraction primitive is shared.
+
+    Either side unresolved -> no difference at all. A number subtracted from
+    one the engine could not produce is a fabrication, and a dash in a money
+    form reads as zero.
+  */
+  const plannedRText =
+    plannedPreview?.ok && plannedPreview.value.plannedR !== null
+      ? formatR(plannedPreview.value.plannedR)
+      : null;
+  const actualRText = actualPreview?.ok ? formatR(actualPreview.value.actualR) : null;
+  const versusPlan =
+    plannedPreview?.ok && plannedPreview.value.plannedR !== null && actualPreview?.ok
+      ? executionGapR(actualPreview.value.actualR, plannedPreview.value.plannedR)
+      : null;
+  const versusPlanText = versusPlan?.ok === true ? formatR(versusPlan.value) : null;
+  const versusPlanTone: 'positive' | 'negative' | 'neutral' =
+    versusPlan?.ok !== true
+      ? 'neutral'
+      : versusPlan.value.startsWith('-')
+        ? 'negative'
+        : Number(versusPlan.value) === 0
+          ? 'neutral'
+          : 'positive';
+
+  /** Exit legs the trader has actually filled in — an empty row is not one. */
+  const recordedExitCount = exits.filter((leg) => leg.value.trim() !== '').length;
+
+  /*
+    WHAT THE SYSTEM WOULD HAVE DONE, WHERE THE EXIT ALREADY SAYS IT.
+
+    A long that exited at or beyond its planned target reached the target; one
+    that exited at or beyond its planned stop was stopped out. Anything
+    between the two is genuinely unknowable from the exit alone, and a form
+    that guesses there would be putting words in the trader's mouth about the
+    one field this product exists to keep independent (CLAUDE.md §1: system
+    outcome is never derived from actual profit).
+
+    THIS IS A FORM DEFAULT AND NOTHING MORE. It seeds the select; the trader
+    can change it; `submit()` sends `systemChoice` exactly as it always did.
+  */
+  const systemInference = useMemo<{
+    readonly applicable: boolean;
+    readonly choice: SystemChoice | null;
+  }>(() => {
+    const no = { applicable: false, choice: null } as const;
+    if (timing !== 'after_trade') return no;
+    // Reading an exit against a stop and a target is a PRICE comparison. A
+    // Money plan states neither, so there is nothing to read and no reason to
+    // explain — a "your exit landed between the stop and the target" sentence
+    // on a form with no stop and no target describes an attempt nobody made.
+    if (planBasis !== 'price' || actualBasis !== 'price') return no;
+    if (values.direction === '') return no;
+    // Several legs at several prices are several answers; the single-exit
+    // case is the only one where one price settles it.
+    if (partialExits) return no;
+    const exit = Number(values.simpleExit.trim());
+    const stop = Number(values.plannedStop.trim());
+    const target = Number(values.plannedTarget.trim());
+    if (values.simpleExit.trim() === '' || !Number.isFinite(exit)) return no;
+    if (values.plannedStop.trim() === '' || !Number.isFinite(stop)) return no;
+    const long = values.direction === 'long';
+    if (values.plannedTarget.trim() !== '' && Number.isFinite(target)) {
+      if (long ? exit >= target : exit <= target) return { applicable: true, choice: 'target' };
+    }
+    if (long ? exit <= stop : exit >= stop) return { applicable: true, choice: 'stop' };
+    // Between the two: genuinely unknowable from the exit, and saying so is
+    // the honest answer.
+    return { applicable: true, choice: null };
+  }, [
+    actualBasis,
+    partialExits,
+    planBasis,
+    timing,
+    values.direction,
+    values.plannedStop,
+    values.plannedTarget,
+    values.simpleExit,
+  ]);
+  const inferredSystemChoice = systemInference.choice;
+
+  /*
+    THE ONE VALUE THIS FIELD HAS, derived rather than pushed into state.
+
+    An effect that wrote the inference into `systemChoice` would leave a
+    render in which the select shows one thing and `submit()` would send
+    another, and it would fight the trader's own edit on the next keystroke in
+    the exit field. Deriving it means there is exactly one answer at any
+    instant, and `systemChoiceTouched` — latched the moment the trader uses
+    the select — hands ownership over permanently.
+
+    Every read below goes through this, INCLUDING `submit()`: the trader who
+    accepts the preselection by not touching it sends the preselected value,
+    which is the whole point of preselecting.
+  */
+  const effectiveSystemChoice: SystemChoice =
+    systemChoiceTouched || inferredSystemChoice === null ? systemChoice : inferredSystemChoice;
   const panels: Panel[] =
     timing === 'at_entry' ? ['trade', 'setup', 'context'] : ['trade', 'result', 'setup', 'context'];
 
@@ -692,10 +840,10 @@ export function TradeRecordingForm({
       }
       if (actualPreview === null || !actualPreview.ok)
         next.actualResult = r('validation.actualResult');
-      if (systemChoice === 'target' && !targetAvailable)
+      if (effectiveSystemChoice === 'target' && !targetAvailable)
         next.systemChoice = r('validation.targetUnavailable');
       if (
-        systemChoice === 'custom' &&
+        effectiveSystemChoice === 'custom' &&
         (planBasis === 'price' ? values.customSystemExit : values.customSystemR).trim() === ''
       )
         next.systemChoice = r('validation.customSystem');
@@ -857,23 +1005,23 @@ export function TradeRecordingForm({
       };
     });
     const systemResult = (() => {
-      if (systemChoice === 'pending') return undefined;
-      if (systemChoice === 'no_trade') return { status: 'no_trade' as const };
+      if (effectiveSystemChoice === 'pending') return undefined;
+      if (effectiveSystemChoice === 'no_trade') return { status: 'no_trade' as const };
       if (planBasis === 'price') {
         const price =
-          systemChoice === 'target'
+          effectiveSystemChoice === 'target'
             ? values.plannedTarget
-            : systemChoice === 'stop'
+            : effectiveSystemChoice === 'stop'
               ? values.plannedStop
-              : systemChoice === 'break_even'
+              : effectiveSystemChoice === 'break_even'
                 ? values.plannedEntry
                 : values.customSystemExit;
         const reason =
-          systemChoice === 'target'
+          effectiveSystemChoice === 'target'
             ? 'target_hit'
-            : systemChoice === 'stop'
+            : effectiveSystemChoice === 'stop'
               ? 'stop_hit'
-              : systemChoice === 'break_even'
+              : effectiveSystemChoice === 'break_even'
                 ? 'break_even_rule'
                 : 'manual_system_valid_exit';
         return {
@@ -886,11 +1034,11 @@ export function TradeRecordingForm({
         };
       }
       const resolutionKind =
-        systemChoice === 'target'
+        effectiveSystemChoice === 'target'
           ? 'money_target'
-          : systemChoice === 'stop'
+          : effectiveSystemChoice === 'stop'
             ? 'money_stop'
-            : systemChoice === 'break_even'
+            : effectiveSystemChoice === 'break_even'
               ? 'money_break_even'
               : 'money_custom';
       return {
@@ -1418,69 +1566,170 @@ export function TradeRecordingForm({
               {showNoMoneyNotice('actual') ? (
                 <PriceHasNoMoneyNotice message={r('priceHasNoMoney')} />
               ) : null}
-              {actualBasis === 'price' ? (
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <TextField
-                    id="actual-entry"
-                    label={r('actualEntry')}
-                    value={values.actualEntry}
-                    onChange={(value) => setField('actualEntry', value)}
-                    error={errors.actualEntry}
-                  />
-                  <TextField
-                    id="actual-stop"
-                    label={r('actualInitialStop')}
-                    value={values.actualStop}
-                    onChange={(value) => setField('actualStop', value)}
-                    error={errors.actualStop}
-                  />
-                  <TextField
-                    id="actual-size"
-                    label={t('field.actualPositionSize')}
-                    value={values.actualPositionSize}
-                    onChange={(value) => setField('actualPositionSize', value)}
-                    optional
-                  />
-                  {!partialExits ? (
-                    <TextField
-                      id="simple-exit"
-                      label={r('exitPrice')}
-                      value={values.simpleExit}
-                      onChange={(value) => setField('simpleExit', value)}
-                      error={errors.simpleExit}
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <TextField
-                    id="actual-risk"
-                    label={r('initialRisk')}
-                    value={values.actualRisk}
-                    onChange={(value) => setField('actualRisk', value)}
-                    error={errors.actualRisk}
-                    hint={currency}
-                  />
-                  {!partialExits ? (
-                    <TextField
-                      id="simple-pnl"
-                      label={r('realizedPnl')}
-                      value={values.simpleExit}
-                      onChange={(value) => setField('simpleExit', value)}
-                      error={errors.simpleExit}
-                      hint={currency}
-                    />
-                  ) : null}
-                </div>
-              )}
-              <label className="flex min-h-11 items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={partialExits}
-                  onChange={(event) => setPartialExits(event.target.checked)}
-                />
-                {r('partialExits')}
-              </label>
+              {/*
+                PLANNED ON THE LEFT, ACTUAL ON THE RIGHT, ONE ROW EACH.
+
+                The labels and the planned strings are assembled here, beside
+                the state they read; `TradePlanVsActual` only lays them out.
+                The right-hand controls are the SAME `TextField`s as before,
+                bound to the same values with the same ids and the same error
+                keys — this pass moves them, it does not rewire them.
+              */}
+              <TradePlanVsActual
+                planColumnLabel={r('planColumn')}
+                actualColumnLabel={r('actualColumn')}
+                notPlannedLabel={r('notPlanned')}
+                {...(crossBasis ? { crossBasisNotice: r('crossBasis') } : {})}
+                {...(actualBasis === 'money' && plannedOneR !== null
+                  ? { oneRReference: r('oneRReference', { amount: plannedOneR }) }
+                  : {})}
+                rows={
+                  actualBasis === 'price'
+                    ? ([
+                        {
+                          key: 'entry',
+                          label: r('plannedEntry'),
+                          planned:
+                            planBasis === 'price' ? plannedOrNull(values.plannedEntry) : null,
+                          input: (
+                            <TextField
+                              id="actual-entry"
+                              label={r('actualEntry')}
+                              value={values.actualEntry}
+                              onChange={(value) => setField('actualEntry', value)}
+                              error={errors.actualEntry}
+                            />
+                          ),
+                        },
+                        {
+                          key: 'stop',
+                          label: r('plannedStop'),
+                          planned: planBasis === 'price' ? plannedOrNull(values.plannedStop) : null,
+                          input: (
+                            <TextField
+                              id="actual-stop"
+                              label={r('actualInitialStop')}
+                              value={values.actualStop}
+                              onChange={(value) => setField('actualStop', value)}
+                              error={errors.actualStop}
+                            />
+                          ),
+                        },
+                        ...(partialExits
+                          ? []
+                          : [
+                              {
+                                key: 'exit',
+                                label: r('takeProfit'),
+                                // The planned exit IS the target: it is where
+                                // the plan said this Trade would be closed.
+                                planned:
+                                  planBasis === 'price'
+                                    ? plannedOrNull(values.plannedTarget)
+                                    : null,
+                                input: (
+                                  <TextField
+                                    id="simple-exit"
+                                    label={r('exitPrice')}
+                                    value={values.simpleExit}
+                                    onChange={(value) => setField('simpleExit', value)}
+                                    error={errors.simpleExit}
+                                  />
+                                ),
+                              },
+                            ]),
+                        {
+                          key: 'size',
+                          label: t('field.positionSizeSimple'),
+                          planned:
+                            planBasis === 'price'
+                              ? plannedOrNull(values.plannedPositionSize)
+                              : null,
+                          input: (
+                            <TextField
+                              id="actual-size"
+                              label={t('field.actualPositionSize')}
+                              value={values.actualPositionSize}
+                              onChange={(value) => setField('actualPositionSize', value)}
+                              optional
+                            />
+                          ),
+                        },
+                      ] satisfies PlanVsActualRow[])
+                    : ([
+                        {
+                          key: 'risk',
+                          label: r('plannedRisk'),
+                          planned: planBasis === 'money' ? plannedOneR : null,
+                          input: (
+                            <TextField
+                              id="actual-risk"
+                              label={r('initialRisk')}
+                              value={values.actualRisk}
+                              onChange={(value) => setField('actualRisk', value)}
+                              error={errors.actualRisk}
+                              hint={currency}
+                            />
+                          ),
+                        },
+                        ...(partialExits
+                          ? []
+                          : [
+                              {
+                                key: 'pnl',
+                                label: r('targetReward'),
+                                planned:
+                                  planBasis === 'money' && parsedPlanMoney.reward?.ok
+                                    ? formatTradeMoney(parsedPlanMoney.reward.value, currency)
+                                    : null,
+                                input: (
+                                  <TextField
+                                    id="simple-pnl"
+                                    label={r('realizedPnl')}
+                                    value={values.simpleExit}
+                                    onChange={(value) => setField('simpleExit', value)}
+                                    error={errors.simpleExit}
+                                    hint={currency}
+                                  />
+                                ),
+                              },
+                            ]),
+                      ] satisfies PlanVsActualRow[])
+                }
+                summary={{
+                  plannedLabel: r('plannedR'),
+                  plannedText: plannedRText,
+                  actualLabel: r('actualR'),
+                  actualText: actualRText,
+                  differenceLabel: r('differenceR'),
+                  differenceText: versusPlanText,
+                  differenceTone: versusPlanTone,
+                  incompleteText: r('summaryIncomplete'),
+                }}
+              />
+
+              {/*
+                A CHECKBOX LABELLED "Partial exits" ASKED THE READER TO ALREADY
+                KNOW THE ANSWER. The two states are now named for what they
+                are, and the count of legs already recorded is stated rather
+                than hidden behind the control that reveals them.
+              */}
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-pressed={partialExits}
+                  data-multiple-exits-toggle=""
+                  onClick={() => setPartialExits((current) => !current)}
+                >
+                  {partialExits ? r('singleExit') : r('multipleExits')}
+                </Button>
+                {recordedExitCount > 0 ? (
+                  <span data-recorded-exit-count="" className="text-muted-foreground text-xs">
+                    {r('exitsPlanned', { count: recordedExitCount })}
+                  </span>
+                ) : null}
+              </div>
               {partialExits ? (
                 <div className="grid gap-4">
                   {exits.map((leg, index) => (
@@ -1562,16 +1811,15 @@ export function TradeRecordingForm({
                   </Button>
                 </div>
               ) : null}
+              {/*
+                Actual R moved into the summary bar above, where it sits beside
+                the plan it is read against. What is left here is the one thing
+                that bar does not carry: the outcome word.
+              */}
               {actualPreview?.ok ? (
-                <div className="border-border bg-muted/40 grid grid-cols-2 gap-4 rounded-lg border p-4">
-                  <div>
-                    <div className="text-muted-foreground text-xs uppercase">{r('actualR')}</div>
-                    <strong>{formatR(actualPreview.value.actualR)}</strong>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs uppercase">{r('result')}</div>
-                    <strong>{r(`outcome.${outcomeKey(actualPreview.value.traderOutcome)}`)}</strong>
-                  </div>
+                <div className="border-border bg-muted/40 flex items-baseline justify-between gap-4 rounded-lg border p-4">
+                  <div className="text-muted-foreground text-xs uppercase">{r('result')}</div>
+                  <strong>{r(`outcome.${outcomeKey(actualPreview.value.traderOutcome)}`)}</strong>
                 </div>
               ) : null}
             </section>
@@ -1589,8 +1837,13 @@ export function TradeRecordingForm({
               <PlanField id="system-choice" label={r('systemOutcome')} error={errors.systemChoice}>
                 <NativeSelect
                   id="system-choice"
-                  value={systemChoice}
-                  onChange={(event) => setSystemChoice(event.target.value as SystemChoice)}
+                  value={effectiveSystemChoice}
+                  onChange={(event) => {
+                    // From here on the trader owns this field: no later
+                    // inference may overwrite what they chose.
+                    setSystemChoiceTouched(true);
+                    setSystemChoice(event.target.value as SystemChoice);
+                  }}
                 >
                   <option value="pending">{r('system.pending')}</option>
                   <option value="target" disabled={!targetAvailable}>
@@ -1602,10 +1855,35 @@ export function TradeRecordingForm({
                   <option value="no_trade">{r('system.noTrade')}</option>
                 </NativeSelect>
               </PlanField>
-              {!targetAvailable ? (
-                <p className="text-muted-foreground text-xs">{r('targetUnavailable')}</p>
+              {/*
+                WHY THE FIELD READS THE WAY IT DOES — three different answers,
+                never collapsed into one. Either the exit already settled it,
+                or it could not, and the reason it could not is the actionable
+                part: no target on the plan is a thing the trader can go and
+                fix, so that sentence carries the way back to fix it.
+              */}
+              {inferredSystemChoice !== null && !systemChoiceTouched ? (
+                <p data-system-preselected="" className="text-muted-foreground text-xs">
+                  {r('systemPreselected')}
+                </p>
+              ) : !targetAvailable ? (
+                <p data-system-no-target="" className="text-muted-foreground text-xs">
+                  {r('targetUnavailable')}{' '}
+                  {timing === 'after_trade' ? r('systemNoTargetToInfer') : null}{' '}
+                  <button
+                    type="button"
+                    className="text-foreground underline underline-offset-2"
+                    onClick={() => openPanel('trade')}
+                  >
+                    {r('addTargetLink')}
+                  </button>
+                </p>
+              ) : systemInference.applicable && effectiveSystemChoice === 'pending' ? (
+                <p data-system-not-inferable="" className="text-muted-foreground text-xs">
+                  {r('systemNotInferable')}
+                </p>
               ) : null}
-              {systemChoice === 'custom' ? (
+              {effectiveSystemChoice === 'custom' ? (
                 <details open className="border-border rounded-lg border p-4">
                   <summary className="cursor-pointer text-sm font-semibold">
                     {r('customSystem')}

@@ -120,6 +120,19 @@ function fillIdentityAndPricePlan() {
   fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
 }
 
+/**
+ * The same After Trade fixture with a planned target, for the cases that are
+ * about a plan which RESOLVES: without a target `composePlannedR` states no
+ * Planned R at all, which is correct and is its own test above.
+ */
+function chooseAfterTradeWithTarget() {
+  fillIdentityAndPricePlan();
+  fireEvent.change(screen.getByLabelText(/^Take Profit/), { target: { value: '130' } });
+  fireEvent.change(screen.getByLabelText('Exited At'), { target: { value: '2026-08-23T12:00' } });
+  fireEvent.change(screen.getByLabelText('Entered At'), { target: { value: '2026-08-23T10:00' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Result' }));
+}
+
 function chooseAfterTrade() {
   fillIdentityAndPricePlan();
   fireEvent.change(screen.getByLabelText('Exited At'), {
@@ -229,6 +242,188 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     renderAfterTrade();
     chooseAfterTrade();
     expect(screen.getByText(/Only Money gives this Trade a profit or loss in money/)).toBeVisible();
+  });
+
+  it('reads the plan beside the result, one row per field', () => {
+    /*
+      `Entry` and `Actual Entry` are a pair. They were on two different
+      panels, so the comparison the journal exists to make needed a tab
+      switch and a number held in the head.
+    */
+    renderAfterTrade();
+    chooseAfterTrade();
+    chooseBasis('Actual result by', 'Price');
+
+    const planned = (key: string) =>
+      document.querySelector(`[data-planned-value="${key}"]`)?.textContent;
+    // The Trade panel's own values, carried across as read-only context.
+    expect(planned('entry')).toBe('100');
+    expect(planned('stop')).toBe('90');
+    // Every row still holds the same live control, with the same id.
+    expect(screen.getByLabelText('Actual Entry')).toBeVisible();
+    expect(document.querySelectorAll('[data-plan-vs-actual-row]')).toHaveLength(4);
+  });
+
+  it('says a field was not planned instead of leaving the cell blank', () => {
+    // A Money plan has no Entry. An empty cell in a row of numbers reads as
+    // zero, which is a different claim entirely.
+    renderAfterTrade();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    chooseBasis('Plan by', 'Money');
+    fireEvent.change(screen.getByLabelText('Risk'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Result' }));
+    chooseBasis('Actual result by', 'Price');
+
+    expect(document.querySelector('[data-planned-value="entry"]')?.textContent).toBe('Not planned');
+    // A Money plan read through a Price result is an ordinary way to work,
+    // and the form says so rather than implying an error.
+    expect(document.querySelector('[data-cross-basis-notice]')).not.toBeNull();
+  });
+
+  it('states 1R in money only where the plan actually states it', () => {
+    /*
+      A Money plan names its own 1R. A PRICE plan does not, and turning a
+      price distance into an amount needs the formula CLAUDE.md §6 forbids —
+      so the reference appears in one case and is absent in the other.
+    */
+    const { unmount } = renderAfterTrade();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    chooseBasis('Plan by', 'Money');
+    fireEvent.change(screen.getByLabelText('Risk'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Result' }));
+    chooseBasis('Actual result by', 'Money');
+    expect(document.querySelector('[data-one-r-reference]')?.textContent).toContain('20.00');
+    unmount();
+
+    renderAfterTrade();
+    chooseAfterTrade();
+    chooseBasis('Actual result by', 'Money');
+    expect(document.querySelector('[data-one-r-reference]')).toBeNull();
+  });
+
+  it('shows the plan and the result in R together, and no difference until both resolve', () => {
+    renderAfterTrade();
+    chooseAfterTradeWithTarget();
+    chooseBasis('Actual result by', 'Price');
+
+    const summary = () => document.querySelector('[data-r-summary]')?.textContent ?? '';
+    // The plan resolves from the Trade panel alone; the result does not yet.
+    expect(summary()).toContain('+3.00R');
+    expect(summary()).toContain('Not enough yet');
+    // AND NO DIFFERENCE AT ALL. A figure subtracted from one the engine could
+    // not produce is a fabrication, and in a money form a dash reads as zero.
+    expect(summary()).not.toContain('Against plan');
+
+    fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '120' } });
+
+    // Planned +3.00R, taken +2.00R, and the difference is the engine's own
+    // subtraction of those two results — not a third calculation.
+    expect(summary()).toContain('+3.00R');
+    expect(summary()).toContain('+2.00R');
+    expect(summary()).toContain('-1.00R');
+  });
+
+  it('names both states of the exit control and counts the legs already recorded', () => {
+    renderAfterTrade();
+    chooseAfterTrade();
+    chooseBasis('Actual result by', 'Price');
+
+    // "Partial exits" asked the reader to already know the answer.
+    const toggle = screen.getByRole('button', { name: 'Closed in more than one exit' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(document.querySelector('[data-recorded-exit-count]')).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Closed in one exit' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // An empty leg is not a recorded one, so the count stays silent.
+    expect(document.querySelector('[data-recorded-exit-count]')).toBeNull();
+
+    fireEvent.change(screen.getAllByLabelText('Exit Price')[0]!, { target: { value: '110' } });
+    expect(document.querySelector('[data-recorded-exit-count]')?.textContent).toBe(
+      '1 exit recorded',
+    );
+  });
+
+  it('preselects the System outcome the exit already settled, and yields it the moment the trader chooses', () => {
+    renderAfterTrade();
+    chooseAfterTradeWithTarget();
+    chooseBasis('Actual result by', 'Price');
+    fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
+
+    const systemOutcome = screen.getByRole('combobox', { name: 'System Outcome' });
+    // Plan target 130. An exit at 135 is past it, so the System reached its
+    // target — read off the exit, not guessed.
+    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '135' } });
+    expect(systemOutcome).toHaveValue('target');
+    expect(document.querySelector('[data-system-preselected]')).not.toBeNull();
+
+    // Past the stop instead.
+    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '85' } });
+    expect(systemOutcome).toHaveValue('stop');
+
+    // The trader disagrees. From here the field is theirs, and a later
+    // keystroke in the exit must not take it back.
+    fireEvent.change(systemOutcome, { target: { value: 'break_even' } });
+    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '135' } });
+    expect(systemOutcome).toHaveValue('break_even');
+    expect(document.querySelector('[data-system-preselected]')).toBeNull();
+  });
+
+  it('leaves an exit between the stop and the target for review, and says why', () => {
+    renderAfterTrade();
+    chooseAfterTradeWithTarget();
+    chooseBasis('Actual result by', 'Price');
+    fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
+    // Between the stop (90) and the target (130): the exit cannot say what
+    // the System would have done, and the form must not invent it —
+    // CLAUDE.md §1 keeps system outcome independent of actual profit.
+    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '120' } });
+
+    expect(screen.getByRole('combobox', { name: 'System Outcome' })).toHaveValue('pending');
+    expect(document.querySelector('[data-system-not-inferable]')).not.toBeNull();
+  });
+
+  it('does not explain a reading it never attempted', () => {
+    // A Money result has no stop and no target to read an exit against, so
+    // 'your exit landed between the stop and the target' would be describing
+    // an attempt nobody made. A reason must match the attempt.
+    renderAfterTrade();
+    chooseAfterTradeWithTarget();
+    chooseBasis('Actual result by', 'Money');
+    fireEvent.change(screen.getByLabelText('Initial Risk'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Realized P&L'), { target: { value: '150' } });
+
+    expect(screen.getByRole('combobox', { name: 'System Outcome' })).toHaveValue('pending');
+    expect(document.querySelector('[data-system-not-inferable]')).toBeNull();
+  });
+
+  it('offers the way back when there is no target to read the outcome against', () => {
+    renderAfterTrade();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
+    chooseBasis('Plan by', 'Price');
+    fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
+    fireEvent.change(screen.getByLabelText('Exited At'), { target: { value: '2026-08-23T12:00' } });
+    fireEvent.change(screen.getByLabelText('Entered At'), {
+      target: { value: '2026-08-23T10:00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Result' }));
+
+    // No target: the sentence explains the gap AND carries the way to close
+    // it, rather than leaving the reader to find the panel themselves.
+    expect(document.querySelector('[data-system-no-target]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a target' }));
+    expect(screen.getByLabelText(/^Take Profit/)).toBeVisible();
   });
 
   it('keeps System Plan and Actual Result basis independent in After Trade', () => {
@@ -404,7 +599,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     chooseBasis('Actual result by', 'Price');
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
-    fireEvent.click(screen.getByLabelText('Partial exits'));
+    fireEvent.click(screen.getByRole('button', { name: 'Closed in more than one exit' }));
     const exitPrices = screen.getAllByLabelText('Exit Price');
     fireEvent.change(exitPrices[0]!, { target: { value: '110' } });
     fireEvent.change(exitPrices[1]!, { target: { value: '120' } });
