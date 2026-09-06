@@ -314,10 +314,33 @@ export function TradeConfidenceControl({
           fill it edge to edge, each 44px tall, and are still what a click
           selects.
         */}
+        {/*
+          THE FOCUS RING BELONGS TO THE WHOLE CONTROL.
+
+          It used to sit on each step's `<label>` via `peer-focus-visible`, which
+          was right when those labels were five visible boxes in a bordered
+          strip: the ring outlined the box you had arrowed onto. Once the strip
+          became a rail the labels went transparent, and the ring was left
+          drawing a rounded rectangle around one invisible fifth of the track —
+          measured at exactly 20% of its width, attached to nothing a trader can
+          see, and never around the knob.
+
+          It moves here rather than onto the knob for two reasons. The knob is
+          `aria-hidden` and not focusable, so ringing it would point at the one
+          element that cannot receive focus; and until a step is chosen there is
+          no knob at all, which would leave the unset control with no visible
+          focus indicator whatsoever. The rail is what the arrow keys operate on,
+          so the rail is what the ring should describe.
+
+          `has-[:focus-visible]` keeps this pure CSS: no focus state to track, no
+          handler, nothing near the gesture code. `ring` is a box-shadow and
+          `rounded-lg` a radius, so neither touches this element's rect — which
+          the drag mathematics reads and which stays a contract.
+        */}
         <div
           ref={trackRef}
           data-slot="confidence-track"
-          className="relative flex w-full min-w-0 touch-none items-center"
+          className="has-[:focus-visible]:ring-ring/50 relative flex w-full min-w-0 touch-none items-center rounded-lg has-[:focus-visible]:ring-[3px]"
         >
           {/* The rail itself: 4px of line, purely decorative, never in the way. */}
           <span
@@ -418,7 +441,7 @@ export function TradeConfidenceControl({
                   htmlFor={inputId}
                   data-slot="confidence-option"
                   data-step={step}
-                  className="peer-focus-visible:ring-ring flex min-h-11 w-full cursor-pointer rounded-lg transition-colors duration-150 select-none peer-focus-visible:ring-2 peer-focus-visible:ring-offset-1"
+                  className="flex min-h-11 w-full cursor-pointer rounded-lg transition-colors duration-150 select-none"
                 />
               </div>
             );
