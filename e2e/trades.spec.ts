@@ -2586,6 +2586,14 @@ test.describe('Confidence rendered geometry', () => {
    */
   const GEOMETRY_TOLERANCE_PX = 1.5;
 
+  /**
+   * The knob's resting X transform is not a tolerance question the way a
+   * position is — it is either zero or it is a drag offset that outlived its
+   * drag. Half a pixel only absorbs sub-pixel matrix arithmetic; the smallest
+   * real corruption measured was 15px, from a 15px change in the track's width.
+   */
+  const RESTING_TRANSFORM_TOLERANCE_PX = 0.5;
+
   const STEP_NAMES = [
     '0% · Very Low',
     '25% · Low',
@@ -2593,6 +2601,9 @@ test.describe('Confidence rendered geometry', () => {
     '75% · High',
     '100% · Very High',
   ] as const;
+
+  /** The `data-step` attribute values, in the same order as `STEP_NAMES`. */
+  const CONFIDENCE_STEP_VALUES = [0, 25, 50, 75, 100] as const;
 
   async function reachContextStep(page: Page, prefix: string) {
     const user = await provisionJournalUser(prefix);
@@ -2686,14 +2697,28 @@ test.describe('Confidence rendered geometry', () => {
           return rect.left + rect.width / 2 - trackRect.left;
         });
 
+      // The knob's own X transform, read out of the composed matrix. At rest
+      // this must be zero: the knob's resting position is CSS `left`, and the
+      // transform belongs to a drag in progress and to nothing else.
+      const knobTransform = getComputedStyle(knob).transform;
+      const knobTranslateX = new DOMMatrixReadOnly(
+        knobTransform === 'none' ? undefined : knobTransform,
+      ).m41;
+
       return {
         trackWidth: trackRect.width,
         knobWidth: knobRect.width,
         knobCentre: knobRect.left + knobRect.width / 2 - trackRect.left,
+        knobTranslateX,
         fillEnd: fillRect === null ? null : fillRect.right - trackRect.left,
         tickCentres,
       };
     });
+  }
+
+  /** The step's position under the slider contract, in px from the track's left edge. */
+  function expectedCentre(trackWidth: number, knobWidth: number, index: number) {
+    return (index / (STEP_NAMES.length - 1)) * (trackWidth - knobWidth) + knobWidth / 2;
   }
 
   test('the knob, the fill and the scale all point at the committed step, at every step and every width', async ({
@@ -2756,6 +2781,118 @@ test.describe('Confidence rendered geometry', () => {
           )
           .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
       }
+    }
+  });
+
+  /**
+   * A RESIZE MUST NOT LEAVE A DRAG OFFSET BEHIND.
+   *
+   * The knob's resting position is CSS `left`. Its X transform belongs to a
+   * drag in progress and to nothing else, so at rest it must be exactly zero —
+   * and it is the transform, not the position, that this asserts, because the
+   * position is only the symptom.
+   *
+   * Motion writes that transform on its own. `dragConstraints={trackRef}` makes
+   * it watch three things — `window.resize`, a ResizeObserver on the knob, and
+   * a ResizeObserver on the track — and every one of them calls
+   * `scalePositionWithinConstraints`, which ends in
+   * `axisValue.set(mixNumber(min, max, boxProgress))`. `axisValue` resolves to
+   * the component's own `dragOffsetX`, because the knob is rendered with
+   * `style={{ x: dragOffsetX }}`. Nothing zeroes it outside a drag, so whatever
+   * Motion writes there stays written.
+   *
+   * Measured before the repair, at 1200px -> 900px: 25% off by -142.6px, 50%
+   * by -198.5px, 75% by -302.4px, 100% by -460.6px, and growing the window
+   * instead of shrinking it was worse (+730.0px at 100%). Only 0% survived,
+   * because its `left` is zero and the arithmetic then yields zero. Ten
+   * identical runs corrupted it ten times, at magnitudes from -60.1px to
+   * -641.0px — reliably broken, unreliably by how much.
+   *
+   * The widths are 1200 and 900 deliberately: above roughly 1240px the content
+   * column is max-width capped, the track's width does not follow the window,
+   * and nothing fires at all. Below the cap the knob is displaced by exactly
+   * the number of pixels the width changed.
+   */
+  test('a window resize leaves no drag offset on the knob, at every step', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium rendering coverage');
+    test.setTimeout(180_000);
+    await reachContextStep(page, 'e2e-confidence-resize');
+
+    for (const [index, stepName] of STEP_NAMES.entries()) {
+      await page.setViewportSize({ width: 1200, height: 1200 });
+      await openContextStep(page);
+      await page
+        .locator(`[data-slot="confidence-option"][data-step="${CONFIDENCE_STEP_VALUES[index]}"]`)
+        .click();
+      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
+      await waitForKnobAtRest(page);
+
+      await page.setViewportSize({ width: 900, height: 1200 });
+      await waitForKnobAtRest(page);
+
+      const geometry = await readSliderGeometry(page);
+      const expected = expectedCentre(geometry.trackWidth, geometry.knobWidth, index);
+      const where = `${stepName} after 1200px -> 900px (track ${geometry.trackWidth.toFixed(1)}px)`;
+
+      expect
+        .soft(
+          Math.abs(geometry.knobTranslateX),
+          `knob keeps a drag offset it never earned at ${where}: translateX ${geometry.knobTranslateX.toFixed(1)}px, expected 0`,
+        )
+        .toBeLessThanOrEqual(RESTING_TRANSFORM_TOLERANCE_PX);
+
+      expect
+        .soft(
+          Math.abs(geometry.knobCentre - expected),
+          `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expected.toFixed(1)}px`,
+        )
+        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
+    }
+  });
+
+  /**
+   * The same defect, reached the way a person reaches it: by turning the phone
+   * over. No window to drag, no developer tools, one ordinary gesture on the
+   * form a trader fills on a phone.
+   *
+   * Measured before the repair on the Pixel 7 profile, portrait to landscape:
+   * 50% displaced by +235.5px and 100% by +471.0px, which put the knob 461px
+   * past the right-hand end of an 817px track — outside the control entirely.
+   */
+  test('rotating the device leaves no drag offset on the knob, at every step', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile-chrome', 'Touch-capable viewport coverage');
+    test.setTimeout(180_000);
+    await reachContextStep(page, 'e2e-confidence-rotate');
+
+    for (const [index, stepName] of STEP_NAMES.entries()) {
+      await page.setViewportSize({ width: 412, height: 915 });
+      await openContextStep(page);
+      await page
+        .locator(`[data-slot="confidence-option"][data-step="${CONFIDENCE_STEP_VALUES[index]}"]`)
+        .click();
+      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
+      await waitForKnobAtRest(page);
+
+      await page.setViewportSize({ width: 915, height: 412 });
+      await waitForKnobAtRest(page);
+
+      const geometry = await readSliderGeometry(page);
+      const expected = expectedCentre(geometry.trackWidth, geometry.knobWidth, index);
+      const where = `${stepName} after rotating to landscape (track ${geometry.trackWidth.toFixed(1)}px)`;
+
+      expect
+        .soft(
+          Math.abs(geometry.knobTranslateX),
+          `knob keeps a drag offset it never earned at ${where}: translateX ${geometry.knobTranslateX.toFixed(1)}px, expected 0`,
+        )
+        .toBeLessThanOrEqual(RESTING_TRANSFORM_TOLERANCE_PX);
+
+      expect
+        .soft(
+          Math.abs(geometry.knobCentre - expected),
+          `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expected.toFixed(1)}px`,
+        )
+        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
     }
   });
 });
