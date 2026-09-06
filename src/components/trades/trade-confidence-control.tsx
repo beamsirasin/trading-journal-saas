@@ -299,6 +299,7 @@ export function TradeConfidenceControl({
           />
           <span
             aria-hidden="true"
+            data-slot="confidence-fill"
             className="bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full transition-[width] duration-150 motion-reduce:transition-none"
             style={{
               width:

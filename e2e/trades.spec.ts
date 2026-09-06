@@ -2536,3 +2536,226 @@ test.describe('Confidence pill drag interaction', () => {
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
   });
 });
+
+/**
+ * WHERE THE CONTROL IS DRAWN, ASSERTED AGAINST THE VALUE IT HOLDS.
+ *
+ * Every Confidence test above this point proves the committed VALUE is right.
+ * None of them proves the PICTURE is right, and those are not the same claim.
+ * The drag group reads `pill.boundingBox()` in five places and not one of them
+ * is an expectation about position: two feed a gesture its start point
+ * (`beginPillDragTo`), one waits out an animation (`waitForPillSettled`), and
+ * the two that do call `expect()` assert only that the pill stayed INSIDE the
+ * track, each as a one-sided bound. A knob resting ten pixels away from its own
+ * value satisfies all of them.
+ *
+ * That gap is not hypothetical. Measured on `e2445fd~1`, at 1440px with the
+ * value committed to 100%, the pill came to rest at 62.5% of the track — on top
+ * of the "75%" label — and stayed there; the whole drag group was green
+ * throughout. The suite could not see it because a misplaced pill only moves
+ * where a drag STARTS: `beginPillDragTo` picks the pill up wherever it happens
+ * to be and drags to an absolute X derived from the TRACK, and
+ * `nearestIndexFromClientX` then reads that X against the track as well. The
+ * answer stays right no matter where the picture is.
+ *
+ * So this group asserts the picture, and it asserts all three indicators,
+ * because they do not share one coordinate system by accident of construction:
+ * the knob travels `trackWidth - knobWidth` and is centred on itself, the ticks
+ * say the same thing in CSS, and the fill is a separate expression that has to
+ * be kept honest against both.
+ */
+test.describe('Confidence rendered geometry', () => {
+  test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
+
+  /**
+   * 1.5 CSS pixels, and the UNIT is the deliberate part.
+   *
+   * The defect this guards against is a fixed pixel offset — half a knob — so
+   * it is the same 10px whether the track is 1054px or 324px wide, while as a
+   * percentage of the track it is 0.95pp at one width and 3.09pp at the other.
+   * A percentage tolerance would have to be re-tuned per breakpoint to mean the
+   * same thing; a pixel tolerance already does.
+   *
+   * The band is set from measurement, not taste. Sub-pixel disagreement between
+   * the knob and its own tick — both derived from the same expression, one in
+   * JS and one in CSS `calc()` — was at most 0.25px across 1440/768/390. The
+   * smallest real offset the fill can be wrong by is 5px (at 25% and 75%; it is
+   * 10px at the ends and, unavoidably, 0 at 50% where the two coordinate
+   * systems cross). 1.5px therefore sits ~6x above the observed noise floor and
+   * ~3.3x below the smallest defect it must catch.
+   */
+  const GEOMETRY_TOLERANCE_PX = 1.5;
+
+  const STEP_NAMES = [
+    '0% · Very Low',
+    '25% · Low',
+    '50% · Neutral',
+    '75% · High',
+    '100% · Very High',
+  ] as const;
+
+  async function reachContextStep(page: Page, prefix: string) {
+    const user = await provisionJournalUser(prefix);
+    await seedFramework(user.id);
+    await loginAs(page, 'en', user);
+    await openContextStep(page);
+  }
+
+  /**
+   * Loads the Context step fresh at whatever the current viewport is.
+   *
+   * Each width RELOADS rather than merely resizing, and that is not tidiness.
+   * Resizing the window while Confidence holds a step above the midpoint leaves
+   * a stale `-562px` X transform on the knob — Motion re-resolves
+   * `dragConstraints` against the newly narrower track and corrects the element
+   * back inside it, and nothing ever clears that correction because the only
+   * code that resets the offset runs at the END of a drag, which never
+   * happened. The knob then renders hundreds of pixels outside the control and
+   * stays there. That is a separate defect, it lives in the drag region, and it
+   * is not what this group is about: these assertions are about where a step is
+   * DRAWN, so they measure a freshly laid-out control, which is also how a
+   * trader actually arrives at a breakpoint.
+   */
+  async function openContextStep(page: Page) {
+    await page.goto('/en/app/trades/new?timing=at_entry');
+    await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
+    await page.getByRole('button', { name: 'Long' }).click();
+    await openNewTradeView(page, 'context');
+    await expect(page.getByRole('group', { name: 'Confidence' })).toBeVisible();
+  }
+
+  /**
+   * Waits for the knob's spring to STOP, with a floor before the first sample.
+   *
+   * The floor is the whole point. A spring is motionless at t=0 — it has no
+   * velocity yet — so two reads taken one frame apart immediately after a
+   * keypress agree to well under a pixel and report "settled" before the
+   * animation has begun. Measured: the knob does not move at all for the first
+   * ~40ms after an ArrowRight, then travels for ~300ms. Sampling without a
+   * floor reads the OLD position and calls it the new one.
+   */
+  async function waitForKnobAtRest(page: Page) {
+    const knob = page.locator('[data-slot="confidence-pill"]');
+    await page.waitForTimeout(250);
+    await expect(async () => {
+      const first = await knob.boundingBox();
+      await page.waitForTimeout(120);
+      const second = await knob.boundingBox();
+      if (!first || !second || Math.abs(first.x - second.x) > 0.05) {
+        throw new Error('knob still moving');
+      }
+    }).toPass({ timeout: 10_000, intervals: [100] });
+  }
+
+  /**
+   * Reads the three indicators as pixel offsets from the track's left edge.
+   *
+   * `knobWidth` is measured rather than hard-coded, so the expectation is the
+   * slider CONTRACT — a thumb that travels the rail edge to edge and is centred
+   * on itself — rather than a copy of one constant from the component under
+   * test, which would agree with it even when both are wrong.
+   */
+  async function readSliderGeometry(page: Page) {
+    return page.evaluate(() => {
+      const track = document.querySelector('[data-slot="confidence-track"]');
+      if (!track) throw new Error('Confidence track is not rendered');
+      const trackRect = track.getBoundingClientRect();
+
+      const knob = track.querySelector('[data-slot="confidence-pill"]');
+      if (!knob) throw new Error('Confidence knob is not rendered');
+      const knobRect = knob.getBoundingClientRect();
+
+      // A missing fill is reported as a failed assertion below, not thrown
+      // here: throwing would abort the read and take the knob and scale
+      // assertions down with it, hiding whatever THEY had to say. Each of the
+      // three indicators has to be able to fail on its own.
+      const fill = track.querySelector('[data-slot="confidence-fill"]');
+      const fillRect = fill?.getBoundingClientRect() ?? null;
+
+      // The scale, wherever it lives: every leaf span in the fieldset whose
+      // whole text is a percentage. Located by content rather than by position,
+      // so the assertion does not depend on the tick row's markup.
+      const tickCentres = Array.from(
+        (track.closest('fieldset') as HTMLElement).querySelectorAll('span'),
+      )
+        .filter(
+          (span) => span.children.length === 0 && /^\d+%$/.test((span.textContent ?? '').trim()),
+        )
+        .map((span) => {
+          const rect = span.getBoundingClientRect();
+          return rect.left + rect.width / 2 - trackRect.left;
+        });
+
+      return {
+        trackWidth: trackRect.width,
+        knobWidth: knobRect.width,
+        knobCentre: knobRect.left + knobRect.width / 2 - trackRect.left,
+        fillEnd: fillRect === null ? null : fillRect.right - trackRect.left,
+        tickCentres,
+      };
+    });
+  }
+
+  test('the knob, the fill and the scale all point at the committed step, at every step and every width', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium rendering coverage');
+    test.setTimeout(180_000);
+    await reachContextStep(page, 'e2e-confidence-geometry');
+
+    // Three widths, because the offset this catches is a constant number of
+    // pixels and therefore a DIFFERENT fraction of the rail at each breakpoint.
+    for (const width of [1440, 768, 390] as const) {
+      await page.setViewportSize({ width, height: width === 1440 ? 1000 : 900 });
+      await openContextStep(page);
+
+      await page.locator('[data-slot="confidence-option"][data-step="0"]').click();
+      await expect(page.getByRole('radio', { name: STEP_NAMES[0] })).toBeChecked();
+
+      for (const [index, stepName] of STEP_NAMES.entries()) {
+        if (index > 0) {
+          await page.getByRole('group', { name: 'Confidence' }).press('ArrowRight');
+          await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
+        }
+        await waitForKnobAtRest(page);
+
+        const geometry = await readSliderGeometry(page);
+        const ratio = index / (STEP_NAMES.length - 1);
+        // The slider contract: the thumb's travel spans the rail, and the step
+        // is where the thumb's CENTRE lands.
+        const expectedCentre =
+          ratio * (geometry.trackWidth - geometry.knobWidth) + geometry.knobWidth / 2;
+        const where = `${stepName} at ${width}px (track ${geometry.trackWidth.toFixed(1)}px)`;
+
+        expect
+          .soft(
+            Math.abs(geometry.knobCentre - expectedCentre),
+            `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expectedCentre.toFixed(1)}px`,
+          )
+          .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
+
+        // The fill is a separate expression from the knob's, and it is the one
+        // measured wrong: it ended at `ratio x trackWidth` while the knob sat at
+        // `ratio x (trackWidth - knobWidth) + knobWidth/2`.
+        expect
+          .soft(
+            geometry.fillEnd === null
+              ? Number.POSITIVE_INFINITY
+              : Math.abs(geometry.fillEnd - expectedCentre),
+            `fill ends away from ${where}: end ${geometry.fillEnd?.toFixed(1) ?? 'missing'}px, expected ${expectedCentre.toFixed(1)}px`,
+          )
+          .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
+
+        const tickCentre = geometry.tickCentres[index];
+        expect
+          .soft(
+            tickCentre === undefined
+              ? Number.POSITIVE_INFINITY
+              : Math.abs(tickCentre - expectedCentre),
+            `scale label is drawn away from ${where}: centre ${tickCentre?.toFixed(1) ?? 'missing'}px, expected ${expectedCentre.toFixed(1)}px`,
+          )
+          .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
+      }
+    }
+  });
+});
