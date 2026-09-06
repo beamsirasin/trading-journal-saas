@@ -30,7 +30,7 @@ const KNOB_SIZE = 20;
  * string so the two can never drift into looking like different elements.
  */
 const FILL_CLASS_NAME =
-  'bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full';
+  'bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full';
 
 function clampIndex(index: number): number {
   return Math.min(CONFIDENCE_STEPS.length - 1, Math.max(0, index));
@@ -342,11 +342,59 @@ export function TradeConfidenceControl({
           data-slot="confidence-track"
           className="has-[:focus-visible]:ring-ring/50 relative flex w-full min-w-0 touch-none items-center rounded-lg has-[:focus-visible]:ring-[3px]"
         >
-          {/* The rail itself: 4px of line, purely decorative, never in the way. */}
+          {/*
+            THE RAIL HAS TO LOOK LIKE SOMETHING YOU CAN USE.
+
+            It was `bg-muted` with a `border-border` hairline: #262626 on a
+            #0d0d0d background in dark, and #e9edf7 on #f8fafd in light. Both
+            are a shade away from the surface behind them, so with no value
+            chosen the whole control rendered as a single faint line and read as
+            a divider rather than an input.
+
+            `bg-muted-foreground/30` is a translucent FOREGROUND colour, so it
+            resolves against whatever surface the control sits on and stays
+            visible in both themes without being loud. The border is gone
+            because it was only ever compensating for a fill that could not be
+            seen.
+          */}
           <span
             aria-hidden="true"
-            className="bg-muted border-border pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full border"
+            className="bg-muted-foreground/30 pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full"
           />
+
+          {/*
+            THE GHOST KNOB — a spec correction, not a defect repair.
+
+            The original brief for this control said: with no value chosen, hide
+            the knob and show "Not set". That was followed exactly, and it was
+            the wrong instruction. It was harmless while the unset control was
+            still a bordered strip with five readable labels; once the strip
+            became a rail, hiding the knob left nothing but a line, and a line
+            is not an affordance.
+
+            So the knob is outlined rather than absent: same size, same travel,
+            no fill, parked at the midpoint of its own travel — which is the 50%
+            step, `calc(50% - KNOB/2)`, the identical expression the real knob
+            resolves to at that step. Pure CSS, so it needs no measurement and
+            is correct on the first paint.
+
+            It is `aria-hidden` and `pointer-events-none`: it says "this is a
+            slider and it has no value yet" to the eye only. Nothing about it is
+            announced, nothing about it is clickable, and "Not set" remains the
+            statement of record above the control.
+          */}
+          {activeIndex === null ? (
+            <span
+              aria-hidden="true"
+              data-slot="confidence-ghost-knob"
+              className="border-muted-foreground/60 pointer-events-none absolute top-1/2 z-20 -translate-y-1/2 rounded-full border-2 bg-transparent"
+              style={{
+                left: `calc(50% - ${KNOB_SIZE / 2}px)`,
+                width: KNOB_SIZE,
+                height: KNOB_SIZE,
+              }}
+            />
+          ) : null}
           {/*
             THE FILL RUNS ON THE KNOB'S ANIMATION, NOT ITS OWN.
 
