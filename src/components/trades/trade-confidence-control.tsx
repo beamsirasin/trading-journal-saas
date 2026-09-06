@@ -301,11 +301,27 @@ export function TradeConfidenceControl({
             aria-hidden="true"
             data-slot="confidence-fill"
             className="bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full transition-[width] duration-150 motion-reduce:transition-none"
+            /*
+              The fill ends UNDER THE KNOB'S CENTRE, which is not the same place
+              as `ratio` of the rail.
+
+              The knob travels `width - KNOB_SIZE` and is centred on itself, so
+              its centre is `ratio x (width - KNOB) + KNOB/2`. Filling to
+              `ratio x width` instead put the fill on the rail's own coordinate
+              system while the knob and the ticks were on the knob's — two
+              systems that agree only at 50%, and are half a knob apart at the
+              ends: +10px at 0%, -10px at 100%, 5px at the quarters.
+
+              This is the same expression the ticks already use below, said in
+              the same CSS. Nothing here decides which step a drag lands on.
+            */
             style={{
               width:
                 displayIndex === null
                   ? 0
-                  : `${(displayIndex / (CONFIDENCE_STEPS.length - 1)) * 100}%`,
+                  : `calc(${(displayIndex / (CONFIDENCE_STEPS.length - 1)) * 100}% + ${
+                      KNOB_SIZE / 2 - (displayIndex / (CONFIDENCE_STEPS.length - 1)) * KNOB_SIZE
+                    }px)`,
             }}
           />
 
