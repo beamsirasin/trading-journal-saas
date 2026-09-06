@@ -90,6 +90,41 @@ export function TradeConfidenceControl({
       : 0;
 
   /**
+   * The knob's drag bounds, as pixel offsets on `x` rather than a ref to the
+   * track — and the difference is the whole point of this expression.
+   *
+   * `dragConstraints={trackRef}` looked like the obvious way to say "stay
+   * inside the rail", but handing Motion a ref makes it OWN this element's
+   * position: it attaches a `window.resize` listener plus ResizeObservers on
+   * both the knob and the track, and each one calls
+   * `scalePositionWithinConstraints`, which rewrites `x` to keep the element
+   * proportionally placed inside the re-measured box. `x` here is
+   * `dragOffsetX`, a value this component also uses, and nothing outside a
+   * drag ever put it back to zero. So a resize left a drag offset behind
+   * permanently — up to 471px on a phone rotated to landscape, which drew the
+   * knob clean off the end of its own track.
+   *
+   * Motion's own guards read `isRefObject(dragConstraints)`:
+   * `scalePositionWithinConstraints` returns immediately when it is false, and
+   * the resize observers are never attached at all. Passing numbers therefore
+   * removes the writer instead of cleaning up after it, which is why this is
+   * not a reset-on-resize effect — there is nothing left to reset, and no
+   * ordering to get right between two observers racing over one value.
+   *
+   * The numbers say the same thing the ref did. `left`/`right` are relative to
+   * the element's own layout box, and for an axis driven by an external motion
+   * value Motion rebases them to exactly these values, so `x` is clamped to
+   * `[-left edge, travel - left edge]` — the knob may reach either end of the
+   * rail and no further. Both terms come from the same measurement pass as the
+   * knob's own position, so they cannot disagree with it.
+   */
+  const knobTravel = trackWidth === null ? 0 : Math.max(0, trackWidth - KNOB_SIZE);
+  const dragBounds =
+    renderedPillRect === null
+      ? { left: 0, right: 0 }
+      : { left: -renderedPillRect.left, right: knobTravel - renderedPillRect.left };
+
+  /**
    * Where the knob sits for a given step, in pixels from the track's left edge.
    *
    * Slider geometry, not segment geometry: step 0 puts the knob flush left and
@@ -512,7 +547,7 @@ export function TradeConfidenceControl({
                 aria-hidden="true"
                 data-slot="confidence-pill"
                 drag="x"
-                dragConstraints={trackRef}
+                dragConstraints={dragBounds}
                 dragElastic={0}
                 dragMomentum={false}
                 onDragStart={handleDragStart}
