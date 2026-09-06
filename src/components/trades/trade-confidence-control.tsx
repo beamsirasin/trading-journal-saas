@@ -24,6 +24,14 @@ type PillRect = { left: number; width: number };
  */
 const KNOB_SIZE = 20;
 
+/**
+ * Shared by the fill's two renderings — the static one before the track has
+ * been measured or under reduced motion, and the animated one after. One
+ * string so the two can never drift into looking like different elements.
+ */
+const FILL_CLASS_NAME =
+  'bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full';
+
 function clampIndex(index: number): number {
   return Math.min(CONFIDENCE_STEPS.length - 1, Math.max(0, index));
 }
@@ -59,6 +67,10 @@ export function TradeConfidenceControl({
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [pillRect, setPillRect] = useState<PillRect | null>(null);
+  // The track's measured width, so the fill can be expressed in the same
+  // pixels the knob is — see the fill below for why it cannot stay a CSS
+  // percentage.
+  const [trackWidth, setTrackWidth] = useState<number | null>(null);
 
   const activeIndex = value === null ? null : CONFIDENCE_STEPS.indexOf(value as ConfidenceStep);
   const displayIndex = isDragging && previewIndex !== null ? previewIndex : activeIndex;
@@ -67,6 +79,15 @@ export function TradeConfidenceControl({
   // clearing the value hides the pill immediately without waiting on an
   // effect, and leaves the last-known geometry harmlessly stale in state.
   const renderedPillRect = activeIndex === null ? null : pillRect;
+
+  // The fill's end, in the knob's pixels rather than the rail's percentage —
+  // see the fill in the markup below. `displayIndex` (not `activeIndex`) so a
+  // drag still previews the step under the finger, exactly as before.
+  const isFillMeasured = displayIndex !== null && trackWidth !== null;
+  const fillWidth =
+    isFillMeasured && trackWidth !== null && displayIndex !== null
+      ? (displayIndex / (CONFIDENCE_STEPS.length - 1)) * (trackWidth - KNOB_SIZE) + KNOB_SIZE / 2
+      : 0;
 
   /**
    * Where the knob sits for a given step, in pixels from the track's left edge.
@@ -101,13 +122,19 @@ export function TradeConfidenceControl({
   // exception, not state-syncing-state.
   useEffect(() => {
     if (activeIndex === null) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPillRect(measureKnob(activeIndex));
+    const measure = () => {
+      setPillRect(measureKnob(activeIndex));
+      setTrackWidth(trackRef.current?.getBoundingClientRect().width ?? null);
+    };
+    // Still the DOM-measurement exception described above, and still a
+    // set-state-in-effect: `react-hooks/set-state-in-effect` simply stops
+    // seeing it once the writes sit behind a function the observer also calls.
+    // The disable directive it used to need was removed because it was dead,
+    // not because the rule stopped applying.
+    measure();
     const track = trackRef.current;
     if (!track || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      setPillRect(measureKnob(activeIndex));
-    });
+    const observer = new ResizeObserver(measure);
     observer.observe(track);
     return () => observer.disconnect();
   }, [activeIndex]);
@@ -297,33 +324,60 @@ export function TradeConfidenceControl({
             aria-hidden="true"
             className="bg-muted border-border pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full border"
           />
-          <span
-            aria-hidden="true"
-            data-slot="confidence-fill"
-            className="bg-primary/70 pointer-events-none absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full transition-[width] duration-150 motion-reduce:transition-none"
-            /*
-              The fill ends UNDER THE KNOB'S CENTRE, which is not the same place
-              as `ratio` of the rail.
+          {/*
+            THE FILL RUNS ON THE KNOB'S ANIMATION, NOT ITS OWN.
 
-              The knob travels `width - KNOB_SIZE` and is centred on itself, so
-              its centre is `ratio x (width - KNOB) + KNOB/2`. Filling to
-              `ratio x width` instead put the fill on the rail's own coordinate
-              system while the knob and the ticks were on the knob's — two
-              systems that agree only at 50%, and are half a knob apart at the
-              ends: +10px at 0%, -10px at 100%, 5px at the quarters.
+            It ends under the knob's CENTRE, and it gets there on the knob's
+            spring. Both of those were separately wrong.
 
-              This is the same expression the ticks already use below, said in
-              the same CSS. Nothing here decides which step a drag lands on.
-            */
-            style={{
-              width:
-                displayIndex === null
-                  ? 0
-                  : `calc(${(displayIndex / (CONFIDENCE_STEPS.length - 1)) * 100}% + ${
-                      KNOB_SIZE / 2 - (displayIndex / (CONFIDENCE_STEPS.length - 1)) * KNOB_SIZE
-                    }px)`,
-            }}
-          />
+            Where: the knob travels `width - KNOB_SIZE` and is centred on
+            itself, so a step sits at `ratio x (width - KNOB) + KNOB/2`. Filling
+            to `ratio x width` put the fill on the rail's coordinate system
+            while the knob and the ticks were on the knob's — two systems that
+            meet only at 50% and are half a knob apart at the ends.
+
+            When: this used to be `transition-[width] duration-150` against the
+            knob's `LAYOUT_SPRING`, so the two moved on different curves and
+            disagreed for the whole of every transition, not just at the ends.
+            Measured 127ms after an ArrowRight to 100%: fill at 99.22% of the
+            track, knob at 88.98%, and the scale already bold at 100% — which is
+            what a trader reported as "the thumb is in the wrong place". The
+            fill was simply finishing first, every time.
+
+            Same spring, same start, and the delta is identical (the fill's
+            width is the knob's `left` plus half a knob), so the two trajectories
+            are the same trajectory rather than two curves tuned to look alike.
+            That is why this is a measured pixel width and not a CSS
+            percentage: a spring cannot be expressed as a CSS transition, and a
+            duration picked to "feel about the same" is the bug this replaces.
+
+            The knob's own animation is deliberately untouched. It is what
+            `dragOffsetX` springs against when a drag is released, and giving
+            the two properties different curves would make the release wobble.
+
+            The scale stays instant. A label changing weight is not a claim
+            about position, so it has nothing to be out of step with.
+          */}
+          {!isFillMeasured || prefersReducedMotion ? (
+            <span
+              aria-hidden="true"
+              data-slot="confidence-fill"
+              className={FILL_CLASS_NAME}
+              style={{ width: fillWidth }}
+            />
+          ) : (
+            <motion.span
+              aria-hidden="true"
+              data-slot="confidence-fill"
+              className={FILL_CLASS_NAME}
+              // As on the knob: this element first appears already measured, so
+              // it must not sweep out from zero on the frame the measurement
+              // arrives.
+              initial={false}
+              animate={{ width: fillWidth }}
+              transition={LAYOUT_SPRING}
+            />
+          )}
 
           {CONFIDENCE_STEPS.map((step, index) => {
             const checked = value === step;
