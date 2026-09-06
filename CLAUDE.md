@@ -270,6 +270,10 @@ Payments are a **mock flow** for the MVP, isolated behind a payment adapter so a
 
 **Never claim a check passed unless it was actually executed.** Report failures with their output.
 
+**A defect that stops reproducing after an unrelated change has not been fixed — it has been reduced to a smaller set of inputs, and nothing records which ones.** Before calling a symptom gone, name the mechanism and say which input made it fire. A change that shrinks the trigger without being aimed at it will look exactly like a repair, in the diff and in a green suite, and the remainder goes unrecorded because nobody knew there was a remainder. Verified example: the Confidence knob's misplacement stopped reproducing at rest when a redesign gave the knob a fixed size, which silenced one of three writers to the same value; the other two survived for a further two weeks, one of them throwing the knob clean off the control on any phone rotation. See _the seventh false signal_ in [`docs/roadmap.md`](docs/roadmap.md).
+
+**Read a test's assertions before trusting its name.** A suite can measure a value constantly and never judge it: geometry read to aim a gesture, a timing helper written to wait out a wobble, a bound asserted on one side only. Those are uses, not assertions, and a defect sitting in the difference stays green forever. Ask of any check: which observations drive the system, and which judge it?
+
 **Never** delete data, reset a database, rewrite git history, or modify production configuration without explicit authorization.
 
 ### Definition of Done
