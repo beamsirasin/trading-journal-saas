@@ -11,3 +11,7 @@ next-env.d.ts
 # reformat these back to its own style, so formatting them here only adds
 # diff noise.
 drizzle/
+
+# Vendored agent skill packs — third-party Markdown this project does not own
+# and must not reformat. 142 of its files fail `format:check` otherwise.
+.agents/

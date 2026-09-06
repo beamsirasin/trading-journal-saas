@@ -47,3 +47,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent skill packs installed into the working tree by the harness, not by
+# this project. They carry their own lockfile and are re-fetched on demand.
+.agents/
+skills-lock.json
