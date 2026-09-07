@@ -73,26 +73,32 @@ export function TradeLogHeader({
   /*
     ONE ROW ON DESKTOP, TWO ON A PHONE — reordered rather than restacked.
 
-    The mobile order the spec asks for is "Trades + Log a trade", then the scope
-    line. A plain `flex-col` gave three stacked rows with the action alone on
-    the second, which spent 60px of a 780px screen on one button. `order` puts
-    the action beside the title below `md` and back at the end of the row above
-    it, with ONE instance of each control rather than two copies holding two
-    copies of the same open state.
+    The mobile order is "Trades + Log a trade", then ONE compact scope line
+    carrying Account and Date together, with the account name free to truncate
+    rather than force a third row. `order` puts the action beside the title
+    below `md` and back at the end of the row above it, with one instance of
+    each control rather than two copies holding two copies of the same state.
+
+    MOBILE SPENDS LESS BEFORE THE FIRST TRADE. Vertical padding drops from 16px
+    to 12px and the title from 24px to 20px below `md`. No touch target shrank:
+    every control on this row is still 44px tall.
   */
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 py-4 md:min-h-16 md:flex-nowrap md:gap-4">
-      <h1 className="text-foreground min-w-0 flex-1 text-2xl leading-8 font-semibold tracking-tight md:flex-none">
+    <div className="flex min-w-0 flex-wrap items-center gap-2 py-3 md:min-h-16 md:flex-nowrap md:gap-4 md:py-4">
+      <h1 className="text-foreground min-w-0 flex-1 text-xl leading-7 font-semibold tracking-tight md:flex-none md:text-2xl md:leading-8">
         {copy.pageTitle}
       </h1>
 
-      <div className="order-2 flex w-full min-w-0 flex-wrap items-center gap-2 md:order-none md:ml-auto md:w-auto">
+      <div className="order-2 flex w-full min-w-0 items-center gap-2 md:order-none md:ml-auto md:w-auto">
         <ToolbarDisclosure
           open={accountOpen}
           onOpenChange={setAccountOpen}
           title={copy.allAccounts}
           trigger={
-            <ToolbarTrigger icon={<Wallet className="size-4" />} className="max-w-[15rem]">
+            <ToolbarTrigger
+              icon={<Wallet className="size-4" />}
+              className="min-w-0 flex-1 md:max-w-[15rem] md:flex-none"
+            >
               {accountLabel}
             </ToolbarTrigger>
           }
@@ -121,7 +127,7 @@ export function TradeLogHeader({
           onOpenChange={setDateOpen}
           title="Activity date"
           trigger={
-            <ToolbarTrigger icon={<CalendarRange className="size-4" />}>
+            <ToolbarTrigger icon={<CalendarRange className="size-4" />} className="min-w-0 shrink">
               {copy.dateRange}
             </ToolbarTrigger>
           }
@@ -153,7 +159,13 @@ export function TradeLogHeader({
         </ToolbarDisclosure>
       </div>
 
-      <Button onClick={onLogTrade} className="order-1 shrink-0 md:order-none">
+      <Button
+        onClick={onLogTrade}
+        // Free to wrap and shrink. `Button` is `shrink-0` with a nowrap label by
+        // default, and at 200% text zoom on a 390px screen that pushed the
+        // title row 16px past the viewport edge.
+        className="order-1 h-auto min-h-11 min-w-0 shrink py-2 text-left whitespace-normal md:order-none"
+      >
         <Plus className="size-4" aria-hidden="true" />
         {copy.logTrade}
       </Button>
@@ -191,6 +203,38 @@ export function TradeLogToolbar({
     (query.strategy === null ? 0 : 1) +
     (query.setup === null ? 0 : 1);
 
+  // Declared once and placed once. It sits beside the state control on a phone
+  // and at the end of the row on a desktop — one instance either way, so the
+  // open/closed state cannot diverge between two copies of the same control.
+  const sortControl = (
+    <ToolbarDisclosure
+      open={sortOpen}
+      onOpenChange={setSortOpen}
+      title="Sort"
+      trigger={
+        <ToolbarTrigger
+          icon={<ArrowUpDown className="size-4" />}
+          className="max-w-[13rem] min-w-0 shrink"
+          aria-label={`${copy.sort}: ${sortLabel(copy, query.sort)}`}
+          labelClassName="hidden truncate sm:inline"
+        >
+          {sortLabel(copy, query.sort)}
+        </ToolbarTrigger>
+      }
+    >
+      <RadioList
+        name="prototype-sort"
+        legend={copy.sort}
+        value={query.sort}
+        options={SORT_KEYS.map((key) => ({ value: key, label: sortLabel(copy, key) }))}
+        onChange={(value) => {
+          onQueryChange({ ...query, sort: value as SortKey, page: 1 });
+          setSortOpen(false);
+        }}
+      />
+    </ToolbarDisclosure>
+  );
+
   return (
     /*
       THE TOOLBAR WRAPS RATHER THAN OVERFLOWS.
@@ -203,24 +247,42 @@ export function TradeLogToolbar({
       to break costs nothing at ordinary sizes (it never wraps there) and turns
       the zoom case into a second row instead of an overflow.
     */
-    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-      <SegmentedControl<JournalState>
-        legend="Trade state"
-        value={query.state}
-        onValueChange={(state) => onQueryChange({ ...query, state, page: 1 })}
-        options={[
-          { value: 'all', label: copy.stateAll },
-          { value: 'open', label: copy.stateOpen },
-          { value: 'closed', label: copy.stateClosed },
-        ]}
-        className="shrink-0"
-      />
+    <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-3">
+      {/*
+        TWO PAIRS ON A PHONE, ONE ROW ON A DESKTOP.
 
-      <div className="flex min-w-0 flex-1 items-center gap-2 lg:justify-end">
+        Below `lg` the state control shares its line with Sort, and Search
+        shares the next line with Filters. That is the specification's own
+        mobile order — "full-width Search with adjacent Filters button", Sort
+        "beside the result count" — and it is also what fixes the one measured
+        defect here: with Search, Filters AND Sort on one 320px line the field
+        was left 128px and visibly clipped its own placeholder. It now gets
+        ~208px and does not.
+
+        `lg:contents` dissolves both wrappers at desktop widths so their four
+        children rejoin the parent row and take their desktop order directly.
+        No control is duplicated, so no control holds two copies of its state.
+      */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 lg:contents">
+        <SegmentedControl<JournalState>
+          legend="Trade state"
+          value={query.state}
+          onValueChange={(state) => onQueryChange({ ...query, state, page: 1 })}
+          options={[
+            { value: 'all', label: copy.stateAll },
+            { value: 'open', label: copy.stateOpen },
+            { value: 'closed', label: copy.stateClosed },
+          ]}
+          className="min-w-0 shrink lg:order-1"
+        />
+        <div className="ml-auto min-w-0 shrink lg:order-4 lg:ml-0">{sortControl}</div>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:contents">
         {/* 280px preferred, 220px minimum, and free to shrink below that before
             the row is allowed to overflow — the spec's widths are a target for
             ordinary type, not a floor that outranks "no horizontal scrolling". */}
-        <div className="relative min-w-0 flex-1 lg:max-w-[280px] lg:basis-[280px]">
+        <div className="relative min-w-0 flex-1 lg:order-2 lg:ml-auto lg:max-w-[280px] lg:basis-[280px]">
           <Search
             className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
             aria-hidden="true"
@@ -280,6 +342,7 @@ export function TradeLogToolbar({
               // for its placeholder — responsive by LABEL, never by shrinking
               // the 44px target. The accessible name survives the hidden span.
               aria-label={copy.filters}
+              className="shrink-0 lg:order-3"
               labelClassName="hidden min-[430px]:inline"
               badge={
                 activeFilterCount === 0 ? undefined : (
@@ -294,36 +357,6 @@ export function TradeLogToolbar({
           }
         >
           <FiltersPanel query={query} onQueryChange={onQueryChange} />
-        </ToolbarDisclosure>
-
-        <ToolbarDisclosure
-          open={sortOpen}
-          onOpenChange={setSortOpen}
-          title="Sort"
-          trigger={
-            <ToolbarTrigger
-              icon={<ArrowUpDown className="size-4" />}
-              className="max-w-[13rem]"
-              aria-label={`${copy.sort}: ${sortLabel(copy, query.sort)}`}
-              labelClassName="hidden truncate sm:inline"
-            >
-              {sortLabel(copy, query.sort)}
-            </ToolbarTrigger>
-          }
-        >
-          <RadioList
-            name="prototype-sort"
-            legend={copy.sort}
-            value={query.sort}
-            options={SORT_KEYS.map((key) => ({
-              value: key,
-              label: sortLabel(copy, key),
-            }))}
-            onChange={(value) => {
-              onQueryChange({ ...query, sort: value as SortKey, page: 1 });
-              setSortOpen(false);
-            }}
-          />
         </ToolbarDisclosure>
       </div>
     </div>

@@ -73,7 +73,7 @@ export function ConfidenceControl({
         </button>
       </div>
 
-      <div className="mt-3 grid min-w-0 grid-cols-5 gap-1">
+      <div className="mt-3 grid min-w-0 grid-cols-5 items-start gap-1">
         {CONFIDENCE_STEPS.map((step, index) => {
           const id = `${name}-${step}`;
           const checked = value === step;
@@ -92,27 +92,56 @@ export function ConfidenceControl({
               <label
                 htmlFor={id}
                 className={cn(
-                  'flex min-h-16 cursor-pointer flex-col items-center justify-end gap-2 rounded-md px-1 pb-2 text-center',
+                  'flex cursor-pointer flex-col items-center gap-2 rounded-md px-1 pt-3 pb-2 text-center',
                   'peer-focus-visible:ring-ring transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
                   checked ? 'bg-primary/10' : 'hover:bg-accent',
                 )}
               >
-                {/* The rail. A filled step below the selection is what makes the
-                    ORDER visible; the selected step is taller and carries the
-                    accent, so it is identifiable without relying on the fill
-                    colour alone. */}
+                {/*
+                  THE MARKS SIT IN A FIXED BAND, SO A LABEL CANNOT MOVE THEM.
+
+                  The cells used to be `justify-end`, so "Very high" wrapping to
+                  two lines pushed ITS mark up while the other four stayed put —
+                  the rail visibly stepped at the last stop, and would do the
+                  same to any stop in a wider language. The mark now lives in its
+                  own fixed-height row and the label below it in a reserved
+                  two-line box, so all five are on one baseline at every width.
+
+                  THE SELECTED STOP IS NOT JUST A TALLER FILLED ONE. Cumulative
+                  fill shows ORDER; the selection needs to be findable among
+                  those fills at a glance, so it also carries a notch beneath it
+                  and the only bold label in the row. Three signals, none of them
+                  colour alone.
+                */}
+                <span
+                  aria-hidden="true"
+                  className="flex h-3 w-full shrink-0 items-center justify-center"
+                >
+                  <span
+                    className={cn(
+                      'w-full rounded-full transition-[height,background-color] duration-150',
+                      'motion-reduce:transition-none',
+                      checked
+                        ? 'bg-primary h-3'
+                        : filled
+                          ? 'bg-primary/40 h-1.5'
+                          : 'bg-border h-1.5',
+                    )}
+                  />
+                </span>
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'w-full rounded-full transition-[height,background-color] duration-150',
-                    'motion-reduce:transition-none',
-                    checked ? 'bg-primary h-3' : filled ? 'bg-primary/40 h-1.5' : 'bg-border h-1.5',
+                    'size-1.5 shrink-0 rounded-full',
+                    checked ? 'bg-primary' : 'bg-transparent',
                   )}
                 />
                 <span
                   className={cn(
-                    'min-w-0 text-xs leading-tight break-words',
-                    checked ? 'text-foreground font-medium' : 'text-muted-foreground',
+                    // Two lines of room, always. Reserved rather than reactive:
+                    // the cell's height must not depend on how a label wraps.
+                    'flex min-h-8 min-w-0 items-start justify-center text-xs leading-tight break-words',
+                    checked ? 'text-foreground font-semibold' : 'text-muted-foreground',
                   )}
                 >
                   {CONFIDENCE_LABEL[step]}

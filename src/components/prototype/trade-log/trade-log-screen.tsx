@@ -162,7 +162,7 @@ export function TradeLogScreen({
           }}
         />
 
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-2 md:gap-4">
           <TradeLogToolbar copy={copy} query={query} onQueryChange={handleQueryChange} />
 
           <AppliedFilterChips copy={copy} query={query} onQueryChange={handleQueryChange} />

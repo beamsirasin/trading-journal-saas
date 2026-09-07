@@ -44,15 +44,18 @@ export interface PrototypeCopy {
   readonly summaryTotalR: string;
   readonly summaryOpenTrades: string;
   readonly summaryPartiallyClosed: string;
-  readonly summaryNoClosedResults: string;
+  /** The heading a PARTIAL total wears, so it is never read as the whole. */
+  readonly summaryKnownNetPnl: string;
+  readonly summaryNoClosedTrades: string;
+  readonly summaryNotRecorded: string;
   readonly summaryMultipleCurrencies: string;
-  readonly summaryMultipleCurrenciesHint: string;
-  readonly summaryPnlIncomplete: string;
-  readonly summaryUnsupportedCurrency: string;
-  /** `{count}` — closed trades with no monetary result. */
-  readonly summaryPnlIncompleteDetail: string;
-  /** `{count}` — the eligible closed subset the financial figures describe. */
-  readonly summaryResultsFrom: string;
+  readonly summarySelectOneAccount: string;
+  /** `{with}` of `{closed}` — coverage of the money aggregate. */
+  readonly summaryMoneyCoverage: string;
+  /** `{with}` of `{closed}` — coverage of the R aggregate. */
+  readonly summaryRCoverage: string;
+  /** `{count}` — how many carry no value. */
+  readonly summaryNotRecordedCount: string;
 
   readonly sortOldest: string;
   readonly sortSymbol: string;
@@ -121,13 +124,14 @@ const EN: PrototypeCopy = {
   summaryTotalR: 'Total R',
   summaryOpenTrades: 'open trades',
   summaryPartiallyClosed: 'partially closed',
-  summaryNoClosedResults: 'No closed results yet',
+  summaryKnownNetPnl: 'Known net P&L',
+  summaryNoClosedTrades: 'No closed trades',
+  summaryNotRecorded: 'Not recorded',
   summaryMultipleCurrencies: 'Multiple currencies',
-  summaryMultipleCurrenciesHint: 'Choose one account to total P&L.',
-  summaryPnlIncomplete: 'P&L incomplete',
-  summaryUnsupportedCurrency: 'P&L unavailable',
-  summaryPnlIncompleteDetail: '{count} closed trades have no monetary result recorded.',
-  summaryResultsFrom: 'Results from {count} closed trades',
+  summarySelectOneAccount: 'Select one account',
+  summaryMoneyCoverage: '{with} of {closed} closed trades have monetary results',
+  summaryRCoverage: '{with} of {closed} have an R value',
+  summaryNotRecordedCount: '{count} not recorded',
 
   sortOldest: 'Oldest activity',
   sortSymbol: 'Symbol A–Z',
@@ -196,13 +200,14 @@ const TH: PrototypeCopy = {
   summaryTotalR: 'R รวม',
   summaryOpenTrades: 'ออเดอร์ที่เปิดอยู่',
   summaryPartiallyClosed: 'ปิดบางส่วน',
-  summaryNoClosedResults: 'ยังไม่มีผลลัพธ์ที่ปิดแล้ว',
+  summaryKnownNetPnl: 'กำไร/ขาดทุนสุทธิเท่าที่ทราบ',
+  summaryNoClosedTrades: 'ยังไม่มีออเดอร์ที่ปิดแล้ว',
+  summaryNotRecorded: 'ไม่ได้บันทึก',
   summaryMultipleCurrencies: 'หลายสกุลเงิน',
-  summaryMultipleCurrenciesHint: 'เลือกบัญชีเดียวเพื่อรวมกำไร/ขาดทุน',
-  summaryPnlIncomplete: 'ข้อมูลกำไร/ขาดทุนไม่ครบ',
-  summaryUnsupportedCurrency: 'ไม่มีข้อมูลกำไร/ขาดทุน',
-  summaryPnlIncompleteDetail: 'ออเดอร์ที่ปิดแล้ว {count} รายการไม่ได้บันทึกผลเป็นจำนวนเงิน',
-  summaryResultsFrom: 'ผลลัพธ์จากออเดอร์ที่ปิดแล้ว {count} รายการ',
+  summarySelectOneAccount: 'เลือกบัญชีเดียว',
+  summaryMoneyCoverage: 'ออเดอร์ที่ปิดแล้ว {with} จาก {closed} รายการมีผลเป็นจำนวนเงิน',
+  summaryRCoverage: '{with} จาก {closed} รายการมีค่า R',
+  summaryNotRecordedCount: 'ไม่ได้บันทึก {count} รายการ',
 
   sortOldest: 'เก่าสุดก่อน',
   sortSymbol: 'สินทรัพย์ ก–ฮ',
@@ -251,26 +256,11 @@ export function prototypeCopy(locale: PrototypeLocale): PrototypeCopy {
   return locale === 'th' ? TH : EN;
 }
 
-/** `{count}` interpolation — the only placeholder this dictionary uses. */
-export function withCount(template: string, count: number): string {
-  return template.replace('{count}', String(count));
-}
-
-/** The reason a summary figure is unavailable, in words. */
-export function summaryUnavailable(
-  copy: PrototypeCopy,
-  reason: 'no_closed_results' | 'multiple_currencies' | 'pnl_incomplete' | 'unsupported_currency',
-): string {
-  switch (reason) {
-    case 'no_closed_results':
-      return copy.summaryNoClosedResults;
-    case 'multiple_currencies':
-      return copy.summaryMultipleCurrencies;
-    case 'pnl_incomplete':
-      return copy.summaryPnlIncomplete;
-    case 'unsupported_currency':
-      return copy.summaryUnsupportedCurrency;
-  }
+/** Named-placeholder interpolation — `{count}`, `{with}`, `{closed}`. */
+export function fill(template: string, values: Record<string, number | string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    key in values ? String(values[key]) : match,
+  );
 }
 
 /** The sort options, in the reading language. Keyed by `SortKey` from `query.ts`. */

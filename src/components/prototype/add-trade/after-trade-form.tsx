@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { PROTOTYPE_STRATEGIES, PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
 import { ConfidenceControl } from './confidence-control';
-import { EmotionsControl } from './emotions-control';
+import { emotionLabel, EmotionsControl } from './emotions-control';
 import { ExitsEditor } from './exits-editor';
 import {
   BasisSwitch,
@@ -21,9 +21,9 @@ import {
   FieldPair,
   FormFooter,
   FormShell,
-  OptionalSection,
   TextField,
 } from './form-primitives';
+import { OptionalDetails, OptionalEntry } from './optional-details';
 
 /**
  * AFTER TRADE — actual first, and the plan is optional beneath it.
@@ -90,7 +90,11 @@ export function AfterTradeForm() {
     confidence === null
       ? null
       : `${['Very low', 'Low', 'Neutral', 'High', 'Very high'][confidence / 25] ?? ''} confidence`,
-    emotions === null ? null : emotions.length === 0 ? 'None of these' : emotions.join(', '),
+    emotions === null
+      ? null
+      : emotions.length === 0
+        ? 'None of these'
+        : emotions.map(emotionLabel).join(', '),
   ].filter((part): part is string => part !== null && part !== '');
 
   return (
@@ -166,10 +170,7 @@ export function AfterTradeForm() {
           </CoreGroup>
 
           <div className="border-border border-t pt-5">
-            <CoreGroup
-              title="Actual result"
-              description="What actually happened. This is all a closed trade needs."
-            >
+            <CoreGroup title="Actual result">
               <BasisSwitch value={basis} onChange={setBasis} />
 
               {basis === 'money' ? (
@@ -186,7 +187,7 @@ export function AfterTradeForm() {
                   <Field
                     label="Net realized P&L"
                     suffix="USD"
-                    hint="Profit or loss after all costs. Costs are not subtracted again."
+                    hint="Profit or loss after fees and other costs"
                   >
                     {(id) => (
                       <div className="flex min-w-0 items-center gap-2">
@@ -282,141 +283,143 @@ export function AfterTradeForm() {
           is a legitimate and common answer that the form should be able to
           leave alone.
         */}
-        <OptionalSection
-          title="Add original plan"
-          summary={planOpen && plannedReward !== '' ? `Target reward ${plannedReward} USD` : null}
-        >
-          <div className="flex min-w-0 flex-col gap-4">
-            <p className="text-muted-foreground text-xs leading-relaxed">
-              Only what you actually planned before the trade. Nothing here is filled in from the
-              result above.
-            </p>
-            <FieldPair>
-              <TextField label="Planned risk" suffix="USD" value="" onChange={() => {}} numeric />
-              <TextField
-                label="Target reward"
-                suffix="USD"
-                value={plannedReward}
-                onChange={(value) => {
-                  setPlannedReward(value);
-                  setPlanOpen(true);
-                }}
-                numeric
-              />
-            </FieldPair>
-          </div>
-        </OptionalSection>
-
-        <OptionalSection title="Strategy" summary={strategySummary}>
-          <div className="flex min-w-0 flex-col gap-4">
-            <Field label="Strategy">
-              {(id) => (
-                <select
-                  id={id}
-                  value={strategy ?? ''}
-                  onChange={(event) => {
-                    setStrategy(event.target.value === '' ? null : event.target.value);
-                    setSetup(null);
+        <OptionalDetails description="None of this is required to save">
+          <OptionalEntry
+            title="Add original plan"
+            summary={planOpen && plannedReward !== '' ? `Target reward ${plannedReward} USD` : null}
+          >
+            <div className="flex min-w-0 flex-col gap-4">
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Only what you actually planned before the trade. Nothing here is filled in from the
+                result above.
+              </p>
+              <FieldPair>
+                <TextField label="Planned risk" suffix="USD" value="" onChange={() => {}} numeric />
+                <TextField
+                  label="Target reward"
+                  suffix="USD"
+                  value={plannedReward}
+                  onChange={(value) => {
+                    setPlannedReward(value);
+                    setPlanOpen(true);
                   }}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                >
-                  <option value="">Not assigned</option>
-                  {PROTOTYPE_STRATEGIES.map((item) => (
-                    <option key={item.name} value={item.name}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            {strategy === null ? null : (
-              <Field label="Setup">
+                  numeric
+                />
+              </FieldPair>
+            </div>
+          </OptionalEntry>
+
+          <OptionalEntry title="Strategy" summary={strategySummary}>
+            <div className="flex min-w-0 flex-col gap-4">
+              <Field label="Strategy">
                 {(id) => (
                   <select
                     id={id}
-                    value={setup ?? ''}
-                    onChange={(event) =>
-                      setSetup(event.target.value === '' ? null : event.target.value)
-                    }
+                    value={strategy ?? ''}
+                    onChange={(event) => {
+                      setStrategy(event.target.value === '' ? null : event.target.value);
+                      setSetup(null);
+                    }}
                     className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
                   >
                     <option value="">Not assigned</option>
-                    {(
-                      PROTOTYPE_STRATEGIES.find((item) => item.name === strategy)?.setups ?? []
-                    ).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
+                    {PROTOTYPE_STRATEGIES.map((item) => (
+                      <option key={item.name} value={item.name}>
+                        {item.name}
                       </option>
                     ))}
                   </select>
                 )}
               </Field>
-            )}
-          </div>
-        </OptionalSection>
+              {strategy === null ? null : (
+                <Field label="Setup">
+                  {(id) => (
+                    <select
+                      id={id}
+                      value={setup ?? ''}
+                      onChange={(event) =>
+                        setSetup(event.target.value === '' ? null : event.target.value)
+                      }
+                      className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
+                    >
+                      <option value="">Not assigned</option>
+                      {(
+                        PROTOTYPE_STRATEGIES.find((item) => item.name === strategy)?.setups ?? []
+                      ).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+              )}
+            </div>
+          </OptionalEntry>
 
-        <OptionalSection
-          title="Entry context"
-          summary={contextParts.length === 0 ? null : contextParts.join(' · ')}
-          note="Recorded after the trade"
-        >
-          <div className="flex min-w-0 flex-col gap-6">
-            <p className="text-muted-foreground text-xs leading-relaxed">
-              Recalled after the result was known. Stored as recalled, never presented as though it
-              was captured at entry.
-            </p>
-            <ConfidenceControl value={confidence} onChange={setConfidence} />
-            <EmotionsControl value={emotions} onChange={setEmotions} />
-          </div>
-        </OptionalSection>
+          <OptionalEntry
+            title="Entry context"
+            summary={contextParts.length === 0 ? null : contextParts.join(' · ')}
+            note="Recorded after the trade"
+          >
+            <div className="flex min-w-0 flex-col gap-6">
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Recalled after the result was known. Stored as recalled, never presented as though
+                it was captured at entry.
+              </p>
+              <ConfidenceControl value={confidence} onChange={setConfidence} />
+              <EmotionsControl value={emotions} onChange={setEmotions} />
+            </div>
+          </OptionalEntry>
 
-        <OptionalSection title="Notes and chart" summary={null}>
-          <Field label="Anything else to remember?" optional>
-            {(id) => (
-              <textarea
-                id={id}
-                rows={3}
-                className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
-              />
-            )}
-          </Field>
-        </OptionalSection>
-
-        <OptionalSection
-          title="Add system result"
-          summary={systemOutcome === 'review_later' ? null : 'Resolved'}
-          note="Review later"
-        >
-          <div className="flex min-w-0 flex-col gap-4">
-            <p className="text-muted-foreground text-xs leading-relaxed">
-              What the strategy&apos;s own rules would have produced. Nothing here is selected from
-              your exit price.
-            </p>
-            <Field label="System outcome">
+          <OptionalEntry title="Notes and chart" summary={null}>
+            <Field label="Anything else to remember?" optional>
               {(id) => (
-                <select
+                <textarea
                   id={id}
-                  value={systemOutcome}
-                  onChange={(event) => setSystemOutcome(event.target.value)}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                >
-                  <option value="review_later">Review later</option>
-                  <option value="target">Target reached</option>
-                  <option value="stop">Stop reached</option>
-                  <option value="break_even">Break-even rule</option>
-                  <option value="other">Other rule-based exit</option>
-                  <option value="no_trade">System would not enter</option>
-                </select>
+                  rows={3}
+                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
+                />
               )}
             </Field>
-            {systemOutcome === 'target' ? (
+          </OptionalEntry>
+
+          <OptionalEntry
+            title="Add system result"
+            summary={systemOutcome === 'review_later' ? null : 'Resolved'}
+            note="Review later"
+          >
+            <div className="flex min-w-0 flex-col gap-4">
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Target reached needs a recorded target. Add an original plan above to resolve it
-                numerically, or choose another outcome.
+                What the strategy&apos;s own rules would have produced. Nothing here is selected
+                from your exit price.
               </p>
-            ) : null}
-          </div>
-        </OptionalSection>
+              <Field label="System outcome">
+                {(id) => (
+                  <select
+                    id={id}
+                    value={systemOutcome}
+                    onChange={(event) => setSystemOutcome(event.target.value)}
+                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
+                  >
+                    <option value="review_later">Review later</option>
+                    <option value="target">Target reached</option>
+                    <option value="stop">Stop reached</option>
+                    <option value="break_even">Break-even rule</option>
+                    <option value="other">Other rule-based exit</option>
+                    <option value="no_trade">System would not enter</option>
+                  </select>
+                )}
+              </Field>
+              {systemOutcome === 'target' ? (
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Target reached needs a recorded target. Add an original plan above to resolve it
+                  numerically, or choose another outcome.
+                </p>
+              ) : null}
+            </div>
+          </OptionalEntry>
+        </OptionalDetails>
       </FormShell>
     </PrototypeShell>
   );

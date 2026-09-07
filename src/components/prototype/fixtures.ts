@@ -141,7 +141,15 @@ export interface PrototypeTrade {
   readonly chartUrl: string | null;
 
   readonly mistakes: readonly string[];
+  /** The SETUP's own checklist — shown with the Setup it belongs to. */
   readonly conditions: readonly PrototypeCondition[];
+  /**
+   * The STRATEGY's execution rules — a different question from a setup's entry
+   * checklist, and reviewed in a different place. A setup condition asks "was
+   * this true when I entered?"; an execution rule asks "did I manage the trade
+   * the way the system says to?".
+   */
+  readonly executionRules: readonly PrototypeCondition[];
   readonly exits: readonly PrototypeExit[];
 
   /** A record created before the current contract; details are genuinely missing. */
@@ -187,6 +195,7 @@ const BASE: PrototypeTrade = {
   chartUrl: null,
   mistakes: [],
   conditions: [],
+  executionRules: [],
   exits: [],
   legacy: false,
 };
@@ -235,12 +244,17 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     },
     costs: { commissionMinor: '1400', feesMinor: '0', swapMinor: '-320' },
     confidence: 75,
-    emotions: ['Calm', 'Focused'],
+    emotions: ['calm', 'focused'],
     entryReason:
       'Third push out of the London range with the 4H trend. Waited for the 15m close back above 3420 rather than anticipating it.',
     notes:
       'Size was correct. Took profit into the New York open instead of holding for the measured move.',
     chartUrl: 'https://www.tradingview.com/x/2fJk9Qha/',
+    executionRules: [
+      { label: 'Stop left at its initial level', state: 'met' },
+      { label: 'No size added after entry', state: 'met' },
+      { label: 'Exited on the rule, not on feel', state: 'unknown' },
+    ],
     conditions: [
       { label: 'Higher-timeframe trend aligned', state: 'met' },
       { label: 'Wave 2 retracement held above 50%', state: 'met' },
@@ -275,7 +289,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     initialStop: '112900.00',
     exitPrice: '112900.00',
     confidence: 25,
-    emotions: ['Rushed'],
+    emotions: ['fomo'],
     entryReason: 'Shorted into the weekend without a level. No setup — I wanted a trade.',
     exits: [
       {
@@ -349,7 +363,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
       target: null,
     },
     confidence: 75,
-    emotions: ['Calm'],
+    emotions: ['calm'],
     entryReason: 'Continuation off the Asian session low, with the daily trend.',
     exits: [
       {
@@ -391,7 +405,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     },
     costs: { commissionMinor: '4200', feesMinor: '0', swapMinor: '0' },
     confidence: 100,
-    emotions: ['Confident', 'Patient'],
+    emotions: ['calm', 'focused'],
     entryReason:
       'Sweep of the prior day low, reclaimed within two candles, then continuation into the New York session.',
     chartUrl: 'https://www.tradingview.com/x/8kQm2Wpa/',
@@ -468,6 +482,11 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     hasReviewNote: true,
     reviewNote:
       'Moved the stop twice. The system took one stop; I took three. Repeat: no manual stop moves below the entry candle.',
+    executionRules: [
+      { label: 'Stop left at its initial level', state: 'not_met' },
+      { label: 'No size added after entry', state: 'not_met' },
+      { label: 'Exited on the rule, not on feel', state: 'not_met' },
+    ],
     mistakes: ['Moved stop', 'Averaged down'],
     plan: {
       basis: 'money',
@@ -479,7 +498,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
       target: null,
     },
     confidence: 25,
-    emotions: ['Frustrated', 'Impatient'],
+    emotions: ['frustrated', 'revenge'],
     entryReason: 'Two standard deviations below the 20 EMA on the 4H.',
     exits: [
       {
@@ -562,7 +581,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     hasReviewNote: true,
     reviewNote: 'Scratched it at the first pullback. The system held to target.',
     confidence: 50,
-    emotions: ['Anxious'],
+    emotions: ['hesitant'],
     exits: [
       {
         sequence: 1,
@@ -748,7 +767,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     setup: 'Wave C exhaustion',
     systemState: 'pending',
     confidence: 0,
-    emotions: ['Fearful'],
+    emotions: ['fearful'],
   }),
   trade({
     id: 't-20',
@@ -891,19 +910,6 @@ export const PROTOTYPE_STRATEGIES = [
     name: 'Institutional Order Flow Continuation',
     setups: ['London open sweep and reclaim of the prior day low'],
   },
-] as const;
-
-export const PROTOTYPE_EMOTIONS = [
-  'Calm',
-  'Focused',
-  'Confident',
-  'Patient',
-  'Anxious',
-  'Fearful',
-  'Rushed',
-  'Impatient',
-  'Frustrated',
-  'Overconfident',
 ] as const;
 
 export const PROTOTYPE_TIMEZONE = 'Asia/Bangkok · GMT+7';

@@ -38,6 +38,58 @@ interface ExitRow {
  * closed-trade action stays unavailable. Below 100% nothing is normalised
  * silently: the reader either records the rest or changes to an open position.
  */
+/**
+ * THE ORDINARY CLOSE IS NOT AN ALLOCATION PROBLEM.
+ *
+ * A trader who simply closed their position has one result and one time. Asking
+ * them to confirm that it was 100% of the position, in an editable field, beside
+ * a "0.00% remaining" meter, is arithmetic invented by the form — there is
+ * nothing to divide. This is what the single-close path shows instead; the
+ * percentage machinery appears only once the reader asks for Multiple exits,
+ * because that is the only situation in which it means anything.
+ */
+export function SingleCloseFields({
+  amount,
+  onAmountChange,
+  at,
+  onAtChange,
+  currency = 'USD',
+}: {
+  amount: string;
+  onAmountChange: (value: string) => void;
+  at: string;
+  onAtChange: (value: string) => void;
+  currency?: string;
+}) {
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-4 min-[560px]:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <Label htmlFor="single-close-amount" className="text-xs">
+          Net P&amp;L ({currency})
+        </Label>
+        <Input
+          id="single-close-amount"
+          value={amount}
+          inputMode="decimal"
+          onChange={(event) => onAmountChange(event.target.value)}
+          className="numeric text-base"
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <Label htmlFor="single-close-at" className="text-xs">
+          Exit time
+        </Label>
+        <Input
+          id="single-close-at"
+          value={at}
+          onChange={(event) => onAtChange(event.target.value)}
+          className="text-base"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ExitsEditor({
   variant = 'after-trade',
   initialRows,
@@ -155,20 +207,38 @@ export function ExitsEditor({
         ))}
       </ol>
 
+      {/*
+        AT 100% THERE IS NOTHING LEFT TO ALLOCATE, AND THE UI SAYS SO.
+
+        `Add exit` used to stay live at a full allocation, offering a sixth leg
+        of a position that is entirely closed. Pressing it could only produce an
+        invalid total, so the reader was being invited to break the record. It
+        is disabled at 100% with the reason stated — and the reason names the
+        remedy, because redistribution IS supported: reduce an existing leg and
+        the remainder reappears.
+      */}
       <div className="border-border flex min-w-0 flex-wrap items-center gap-2 border-t px-4 py-3">
         <Button
           variant="outline"
           size="sm"
-          onClick={() =>
+          aria-disabled={complete}
+          className={cn(complete && 'pointer-events-none opacity-50')}
+          onClick={() => {
+            if (complete) return;
             setRows((current) => [
               ...current,
               { id: `e${current.length + 1}-${Date.now()}`, percent: '', amount: '', at: '' },
-            ])
-          }
+            ]);
+          }}
         >
           <Plus className="size-4" aria-hidden="true" />
           Add exit
         </Button>
+        {complete ? (
+          <p className="text-muted-foreground min-w-0 text-xs">
+            100% allocated. Reduce an exit to free up a percentage.
+          </p>
+        ) : null}
         {remaining > 0 ? (
           <Button
             variant="ghost"

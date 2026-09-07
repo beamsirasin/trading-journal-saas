@@ -35,28 +35,35 @@ export function EntryChoiceScreen() {
           Live · FTMO 100K · USD · Asia/Bangkok · GMT+7
         </p>
 
+        {/*
+          CONCISE, AND NO LONGER ABOUT WHEN YOU TRADED.
+
+          "Record the trade you have just taken" implied At Entry was only for a
+          position opened moments ago; it is equally the path for a position
+          opened last week that is still running. The "Asks for…" paragraphs went
+          because the form answers that question in one activation, and a card
+          that pre-explains a form the reader is one click from is a card asking
+          to be skipped.
+        */}
         <div className="mt-6 grid min-w-0 gap-4 min-[600px]:grid-cols-2">
           <ChoiceCard
             href="./log-trade/at-entry"
             title="At entry"
             situation="Position is open"
-            description="Record the trade you have just taken. Add exits and the review later."
-            asks="Asks for symbol, direction, entry time and your initial risk."
+            description="Record an open position. Add exits later."
             Icon={CircleDot}
           />
           <ChoiceCard
             href="./log-trade/after-trade"
             title="After trade"
             situation="Position is closed"
-            description="Record a trade that has already finished, with what actually happened."
-            asks="Asks for the times, your initial risk and the net result."
+            description="Record the completed trade and its result."
             Icon={CircleCheckBig}
           />
         </div>
 
-        <p className="text-muted-foreground mt-6 text-xs leading-relaxed">
-          Already recorded an open position? Open it from the journal and use Record exit — you do
-          not need to create it again.
+        <p className="text-muted-foreground mt-5 text-xs leading-relaxed">
+          Already recorded this position? Open it to record an exit.
         </p>
       </div>
     </PrototypeShell>
@@ -68,14 +75,12 @@ function ChoiceCard({
   title,
   situation,
   description,
-  asks,
   Icon,
 }: {
   href: string;
   title: string;
   situation: string;
   description: string;
-  asks: string;
   Icon: typeof CircleDot;
 }) {
   return (
@@ -97,9 +102,10 @@ function ChoiceCard({
       </span>
 
       <span className="text-muted-foreground block text-sm leading-relaxed">{description}</span>
-      <span className="text-subtle-foreground block text-xs leading-relaxed">{asks}</span>
 
-      <span className="text-primary mt-auto inline-flex items-center gap-1.5 pt-2 text-sm font-medium">
+      {/* No `mt-auto`. The cards are as tall as their content; stretching them to
+          match each other was filling whitespace because the page is sparse. */}
+      <span className="text-primary inline-flex items-center gap-1.5 pt-1 text-sm font-medium">
         Start
         <ArrowRight
           className="size-4 transition-transform duration-150 group-hover/card:translate-x-0.5 motion-reduce:transition-none"

@@ -18,7 +18,7 @@
  */
 
 import { totalR } from '@/lib/calc/aggregate';
-import { isCurrencyCode, sum, type CurrencyCode, type Money } from '@/lib/money';
+import { isCurrencyCode, sum, type Money } from '@/lib/money';
 
 import type { ActualOutcome, Direction, PrototypeTrade } from './fixtures';
 import { PROTOTYPE_POPULATION } from './population';
@@ -231,25 +231,43 @@ export function applyQuery(query: JournalQuery): {
  * sitting in the middle of the Thai journal. The code travels; the wording is
  * chosen by the component that draws it, from the copy dictionary.
  */
-export type SummaryUnavailableReason =
-  'no_closed_results' | 'multiple_currencies' | 'pnl_incomplete' | 'unsupported_currency';
+export type FigureTone = 'positive' | 'negative' | 'flat';
 
+/**
+ * A QUALIFIED KNOWN TOTAL, replacing the old "P&L incomplete" presentation.
+ *
+ * The previous model refused to publish any figure once a single closed trade
+ * lacked money — technically honest and practically useless, because on a real
+ * journal one price-only trade silenced the total forever. This model publishes
+ * the total that IS known and states its coverage in the same breath:
+ *
+ *   total          every eligible closed trade has a monetary result
+ *   known_total    some do; the figure covers those, and says how many
+ *   not_recorded   there are closed trades, but none carries money
+ *   no_closed      there is nothing settled to total
+ *   mixed_currency two currencies in scope; never summed, never converted
+ *
+ * `withValue` / `closedCount` are the SAME filtered closed population the
+ * aggregate itself was computed from — never the whole matching set, which
+ * would put open positions in the denominator of a settled figure.
+ */
 export type SummaryFigure =
+  | { readonly kind: 'total'; readonly text: string; readonly tone: FigureTone }
   | {
-      readonly status: 'available';
+      readonly kind: 'known_total';
       readonly text: string;
-      readonly tone: 'positive' | 'negative' | 'flat';
+      readonly tone: FigureTone;
+      readonly withValue: number;
+      readonly closedCount: number;
+      readonly missing: number;
     }
-  | {
-      readonly status: 'unavailable';
-      readonly reason: SummaryUnavailableReason;
-      /** How many trades the reason applies to, where the reason names a count. */
-      readonly count?: number;
-    };
+  | { readonly kind: 'not_recorded' }
+  | { readonly kind: 'no_closed' }
+  | { readonly kind: 'mixed_currency' };
 
 export interface JournalSummary {
   readonly totalMatching: number;
-  readonly closedEligible: number;
+  readonly closedCount: number;
   readonly openCount: number;
   readonly partiallyClosedCount: number;
   readonly netPnl: SummaryFigure;
@@ -265,7 +283,7 @@ export function summarize(matching: readonly PrototypeTrade[]): JournalSummary {
 
   return {
     totalMatching: matching.length,
-    closedEligible: closed.filter((trade) => trade.actualR !== null).length,
+    closedCount: closed.length,
     openCount,
     partiallyClosedCount,
     netPnl: summarizeMoney(closed),
@@ -273,66 +291,76 @@ export function summarize(matching: readonly PrototypeTrade[]): JournalSummary {
   };
 }
 
-function summarizeMoney(closed: readonly PrototypeTrade[]): SummaryFigure {
-  if (closed.length === 0) {
-    return { status: 'unavailable', reason: 'no_closed_results' };
-  }
-
-  const currencies = new Set(closed.map((trade) => trade.currency));
-  if (currencies.size > 1) {
-    return { status: 'unavailable', reason: 'multiple_currencies' };
-  }
-
-  const [currency] = [...currencies];
-  if (currency === undefined || !isCurrencyCode(currency)) {
-    return { status: 'unavailable', reason: 'unsupported_currency' };
-  }
-
-  const missing = closed.filter((trade) => trade.netPnlMinor === null).length;
-  if (missing > 0) {
-    return { status: 'unavailable', reason: 'pnl_incomplete', count: missing };
-  }
-
-  const amounts: Money[] = closed.map((trade) => ({
-    amountMinor: BigInt(trade.netPnlMinor ?? '0'),
-    currency: currency as CurrencyCode,
-  }));
-  const total = sum(amounts, currency as CurrencyCode);
-  if (!total.ok) {
-    return { status: 'unavailable', reason: 'unsupported_currency' };
-  }
-
-  const text = signedMoney(total.value.amountMinor.toString(), currency);
-  if (text === null) return { status: 'unavailable', reason: 'unsupported_currency' };
-  return {
-    status: 'available',
-    text,
-    tone:
-      total.value.amountMinor > 0n
-        ? 'positive'
-        : total.value.amountMinor < 0n
-          ? 'negative'
-          : 'flat',
-  };
+function toneOf(numeric: number): FigureTone {
+  return numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : 'flat';
 }
 
+function summarizeMoney(closed: readonly PrototypeTrade[]): SummaryFigure {
+  if (closed.length === 0) return { kind: 'no_closed' };
+
+  const withMoney = closed.filter((trade) => trade.netPnlMinor !== null);
+  if (withMoney.length === 0) return { kind: 'not_recorded' };
+
+  // Currency is judged on the trades that CARRY money, because those are the
+  // only ones the sum would touch. A price-only trade in a second currency
+  // cannot make a total ambiguous that it was never going to join.
+  const currencies = new Set(withMoney.map((trade) => trade.currency));
+  if (currencies.size > 1) return { kind: 'mixed_currency' };
+
+  const [currency] = [...currencies];
+  if (currency === undefined || !isCurrencyCode(currency)) return { kind: 'not_recorded' };
+
+  const amounts: Money[] = withMoney.map((trade) => ({
+    amountMinor: BigInt(trade.netPnlMinor ?? '0'),
+    currency,
+  }));
+  const total = sum(amounts, currency);
+  if (!total.ok) return { kind: 'not_recorded' };
+
+  const text = signedMoney(total.value.amountMinor.toString(), currency);
+  if (text === null) return { kind: 'not_recorded' };
+  const tone = toneOf(Number(total.value.amountMinor));
+
+  return withMoney.length === closed.length
+    ? { kind: 'total', text, tone }
+    : {
+        kind: 'known_total',
+        text,
+        tone,
+        withValue: withMoney.length,
+        closedCount: closed.length,
+        missing: closed.length - withMoney.length,
+      };
+}
+
+/**
+ * The same honesty applied to R, because the two populations can differ: a
+ * price-only trade has an R and no money, and a legacy record can have neither.
+ */
 function summarizeR(closed: readonly PrototypeTrade[]): SummaryFigure {
+  if (closed.length === 0) return { kind: 'no_closed' };
+
   const values = closed
     .map((trade) => trade.actualR)
     .filter((value): value is string => value !== null);
+  if (values.length === 0) return { kind: 'not_recorded' };
 
   const result = totalR(values);
-  if (!result.ok) {
-    return { status: 'unavailable', reason: 'no_closed_results' };
-  }
+  if (!result.ok) return { kind: 'not_recorded' };
   const text = signedR(result.value);
-  if (text === null) return { status: 'unavailable', reason: 'no_closed_results' };
-  const numeric = Number(result.value);
-  return {
-    status: 'available',
-    text,
-    tone: numeric > 0 ? 'positive' : numeric < 0 ? 'negative' : 'flat',
-  };
+  if (text === null) return { kind: 'not_recorded' };
+  const tone = toneOf(Number(result.value));
+
+  return values.length === closed.length
+    ? { kind: 'total', text, tone }
+    : {
+        kind: 'known_total',
+        text,
+        tone,
+        withValue: values.length,
+        closedCount: closed.length,
+        missing: closed.length - values.length,
+      };
 }
 
 export function followUpOf(trade: PrototypeTrade): FollowUp {

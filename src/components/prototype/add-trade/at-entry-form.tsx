@@ -1,14 +1,15 @@
 'use client';
 
-import { Check, ChevronDown } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useState } from 'react';
 
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 
 import { PROTOTYPE_STRATEGIES, PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
 import { ConfidenceControl } from './confidence-control';
-import { EmotionsControl } from './emotions-control';
+import { emotionLabel, EmotionsControl } from './emotions-control';
 import {
   BasisSwitch,
   ChoiceGroup,
@@ -19,9 +20,9 @@ import {
   FieldPair,
   FormFooter,
   FormShell,
-  OptionalSection,
   TextField,
 } from './form-primitives';
+import { OptionalDetails, OptionalEntry } from './optional-details';
 
 /**
  * AT ENTRY — the short path, made to look short.
@@ -90,7 +91,11 @@ export function AtEntryForm({
     confidence === null
       ? null
       : `${['Very low', 'Low', 'Neutral', 'High', 'Very high'][confidence / 25] ?? ''} confidence`,
-    emotions === null ? null : emotions.length === 0 ? 'None of these' : emotions.join(', '),
+    emotions === null
+      ? null
+      : emotions.length === 0
+        ? 'None of these'
+        : emotions.map(emotionLabel).join(', '),
   ].filter((part): part is string => part !== null && part !== '');
   const notesSummary = notes.trim() === '' ? null : 'Note added';
 
@@ -213,140 +218,154 @@ export function AtEntryForm({
                 </ComputedResult>
               ) : null}
 
-              <div className="border-border rounded-md border border-dashed p-3">
-                <p className="text-foreground flex min-w-0 items-start gap-2 text-sm">
-                  <Check className="text-positive mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  <span>
-                    Opening matches this plan.
-                    <span className="text-muted-foreground">
-                      {' '}
-                      Your initial risk is recorded as both the planned risk and the risk you
-                      actually took.
-                    </span>
-                  </span>
-                </p>
+              {/*
+                ONE LINE, NOT A PANEL.
+
+                This was a dashed box carrying a check icon, a two-sentence
+                explanation and a disclosure button — roughly 100px asserting
+                that nothing unusual had happened. On the SHORT path, the path
+                whose entire claim is that it looks short, the largest single
+                element was the one saying there was nothing to do.
+
+                The rule is now a sentence with the escape beside it, and the
+                explanation appears only once the reader has asked for it by
+                activating Change — which is the moment the distinction between
+                a plan and an opening starts to matter.
+              */}
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <Check className="text-positive size-4 shrink-0" aria-hidden="true" />
+                <span className="text-muted-foreground">Opening matches plan</span>
+                <span className="text-subtle-foreground" aria-hidden="true">
+                  ·
+                </span>
                 <button
                   type="button"
                   aria-expanded={differs}
                   onClick={() => setDiffers((current) => !current)}
-                  className="text-primary focus-visible:ring-ring mt-2 inline-flex min-h-11 items-center gap-1 rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+                  className={cn(
+                    'text-primary focus-visible:ring-ring relative rounded-sm font-medium',
+                    'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
+                    'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
+                  )}
                 >
-                  Opening differs from plan
-                  <ChevronDown
-                    className={`size-4 transition-transform duration-150 motion-reduce:transition-none ${differs ? 'rotate-180' : ''}`}
-                    aria-hidden="true"
-                  />
+                  Change
                 </button>
-
-                {differs ? (
-                  <div className="border-border mt-3 border-t pt-3">
-                    <TextField
-                      label="Actual initial risk"
-                      suffix="USD"
-                      value={actualRisk}
-                      onChange={setActualRisk}
-                      inputMode="decimal"
-                      numeric
-                      hint="The risk on the position you actually opened. Your plan above is kept as it was."
-                    />
-                  </div>
-                ) : null}
               </div>
+
+              {differs ? (
+                <div className="border-border bg-muted/30 flex min-w-0 flex-col gap-3 rounded-md border p-3">
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    In money mode your initial risk is recorded as both the planned risk and the
+                    risk you actually took. Enter the real opening risk here to separate them; the
+                    plan above is kept as it was.
+                  </p>
+                  <TextField
+                    label="Actual initial risk"
+                    suffix="USD"
+                    value={actualRisk}
+                    onChange={setActualRisk}
+                    inputMode="decimal"
+                    numeric
+                  />
+                </div>
+              ) : null}
             </CoreGroup>
           </div>
         </CoreSurface>
 
-        <OptionalSection title="Strategy" summary={strategySummary} defaultOpen={prefilled}>
-          <div className="flex min-w-0 flex-col gap-4">
-            <Field label="Strategy">
-              {(id) => (
-                <select
-                  id={id}
-                  value={strategy ?? ''}
-                  onChange={(event) => {
-                    setStrategy(event.target.value === '' ? null : event.target.value);
-                    setSetup(null);
-                  }}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                >
-                  <option value="">Not assigned</option>
-                  {PROTOTYPE_STRATEGIES.map((item) => (
-                    <option key={item.name} value={item.name}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            {strategy === null ? null : (
-              <Field label="Setup">
+        <OptionalDetails description="None of this is required to save">
+          <OptionalEntry title="Strategy" summary={strategySummary} defaultOpen={prefilled}>
+            <div className="flex min-w-0 flex-col gap-4">
+              <Field label="Strategy">
                 {(id) => (
                   <select
                     id={id}
-                    value={setup ?? ''}
-                    onChange={(event) =>
-                      setSetup(event.target.value === '' ? null : event.target.value)
-                    }
+                    value={strategy ?? ''}
+                    onChange={(event) => {
+                      setStrategy(event.target.value === '' ? null : event.target.value);
+                      setSetup(null);
+                    }}
                     className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
                   >
                     <option value="">Not assigned</option>
-                    {(
-                      PROTOTYPE_STRATEGIES.find((item) => item.name === strategy)?.setups ?? []
-                    ).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
+                    {PROTOTYPE_STRATEGIES.map((item) => (
+                      <option key={item.name} value={item.name}>
+                        {item.name}
                       </option>
                     ))}
                   </select>
                 )}
               </Field>
-            )}
-          </div>
-        </OptionalSection>
-
-        <OptionalSection
-          title="Entry context"
-          summary={contextParts.length === 0 ? null : contextParts.join(' · ')}
-        >
-          <div className="flex min-w-0 flex-col gap-6">
-            <ConfidenceControl value={confidence} onChange={setConfidence} />
-            <EmotionsControl value={emotions} onChange={setEmotions} />
-            <Field label="Why did you take this trade?" optional>
-              {(id) => (
-                <textarea
-                  id={id}
-                  rows={3}
-                  value={entryReason}
-                  onChange={(event) => setEntryReason(event.target.value)}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
-                />
+              {strategy === null ? null : (
+                <Field label="Setup">
+                  {(id) => (
+                    <select
+                      id={id}
+                      value={setup ?? ''}
+                      onChange={(event) =>
+                        setSetup(event.target.value === '' ? null : event.target.value)
+                      }
+                      className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
+                    >
+                      <option value="">Not assigned</option>
+                      {(
+                        PROTOTYPE_STRATEGIES.find((item) => item.name === strategy)?.setups ?? []
+                      ).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
               )}
-            </Field>
-          </div>
-        </OptionalSection>
+            </div>
+          </OptionalEntry>
 
-        <OptionalSection title="Notes and chart" summary={notesSummary}>
-          <div className="flex min-w-0 flex-col gap-4">
-            <Field label="Anything else to remember?" optional>
-              {(id) => (
-                <textarea
-                  id={id}
-                  rows={3}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
-                />
-              )}
-            </Field>
-            <TextField
-              label="Chart link"
-              optional
-              value=""
-              onChange={() => {}}
-              placeholder="https://www.tradingview.com/x/…"
-            />
-          </div>
-        </OptionalSection>
+          <OptionalEntry
+            title="Entry context"
+            summary={contextParts.length === 0 ? null : contextParts.join(' · ')}
+          >
+            <div className="flex min-w-0 flex-col gap-6">
+              <ConfidenceControl value={confidence} onChange={setConfidence} />
+              <EmotionsControl value={emotions} onChange={setEmotions} />
+              <Field label="Why did you take this trade?" optional>
+                {(id) => (
+                  <textarea
+                    id={id}
+                    rows={3}
+                    value={entryReason}
+                    onChange={(event) => setEntryReason(event.target.value)}
+                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
+                  />
+                )}
+              </Field>
+            </div>
+          </OptionalEntry>
+
+          <OptionalEntry title="Notes and chart" summary={notesSummary}>
+            <div className="flex min-w-0 flex-col gap-4">
+              <Field label="Anything else to remember?" optional>
+                {(id) => (
+                  <textarea
+                    id={id}
+                    rows={3}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
+                  />
+                )}
+              </Field>
+              <TextField
+                label="Chart link"
+                optional
+                value=""
+                onChange={() => {}}
+                placeholder="https://www.tradingview.com/x/…"
+              />
+            </div>
+          </OptionalEntry>
+        </OptionalDetails>
       </FormShell>
     </PrototypeShell>
   );

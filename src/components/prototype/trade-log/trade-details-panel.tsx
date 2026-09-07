@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
+import { emotionLabel } from '../add-trade/emotions-control';
 import { outcomeLabel, statusLabel, type PrototypeCopy } from '../copy';
 import { PROTOTYPE_TIMEZONE, type PrototypeTrade } from '../fixtures';
 import {
@@ -302,10 +303,10 @@ function ResultBlock({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
             system trade to compare against — this is not a zero-R result.
           </p>
         ) : (
-          <p className="text-muted-foreground text-sm">
-            System result <span className="text-foreground font-medium">not resolved yet</span>. No
-            execution gap until it is.
-          </p>
+          // Concise. The absence of a comparison is self-evident from the
+          // absence of a comparison; a sentence explaining why the execution gap
+          // cannot be computed is space spent on nothing having happened.
+          <p className="text-muted-foreground text-sm">System result not recorded</p>
         )}
       </div>
     </div>
@@ -354,21 +355,29 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
       ? null
       : trade.emotions.length === 0
         ? 'None of these'
-        : trade.emotions.join(', ');
+        : trade.emotions.map(emotionLabel).join(', ');
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <ResultBlock trade={trade} copy={copy} />
 
-      <PanelSection title="Trade">
+      {/*
+        SYMBOL, DIRECTION AND ACCOUNT ARE NOT REPEATED HERE.
+
+        All three sit in the drawer's persistent header, forty pixels above,
+        where they stay visible on every tab and through every scroll. Restating
+        them as the first three rows of Overview spent the panel's most valuable
+        space telling the reader something already on screen. What Overview owes
+        them instead is WHEN — which the header has no room for.
+      */}
+      <PanelSection title="Timing">
         <FactGrid>
-          <Fact label="Account" value={trade.accountName} />
-          <Fact label="Symbol" value={trade.symbol} />
-          <Fact label="Direction" value={trade.direction === 'long' ? 'Long' : 'Short'} />
           <Fact label="Entered" value={trade.enteredAt} />
           <Fact label="Exited" value={trade.exitedAt} />
-          <Fact label="Timezone" value={PROTOTYPE_TIMEZONE} />
         </FactGrid>
+        {/* The zone, once, as supporting copy beside the times it qualifies —
+            not as a fact row of equal weight to them. */}
+        <p className="text-subtle-foreground text-xs">{PROTOTYPE_TIMEZONE}</p>
       </PanelSection>
 
       <PanelSection title="Strategy and setup">
@@ -378,10 +387,24 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
             description="Assign a strategy to compare this trade against the system that produced it."
           />
         ) : (
-          <FactGrid>
-            <Fact label="Strategy" value={trade.strategy} />
-            <Fact label="Setup" value={trade.setup} />
-          </FactGrid>
+          <div className="flex min-w-0 flex-col gap-3">
+            <FactGrid>
+              <Fact label="Strategy" value={trade.strategy} />
+              <Fact label="Setup" value={trade.setup} />
+            </FactGrid>
+            {/*
+              SETUP CONDITIONS BELONG TO THE SETUP.
+
+              They were under a "Rule observations" heading in Review, which put
+              a question about THIS SETUP'S checklist beside questions about the
+              system's counterfactual result — two different subjects sharing a
+              tab because both are retrospective. They are a property of the
+              setup and now sit with it.
+            */}
+            {trade.conditions.length === 0 ? null : (
+              <SetupConditions conditions={trade.conditions} />
+            )}
+          </div>
         )}
       </PanelSection>
 
@@ -444,17 +467,17 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
         {trade.chartUrl === null ? (
           <p className="text-muted-foreground text-sm">No chart reference.</p>
         ) : (
+          // "View chart", not the raw URL. A 44-character TradingView link is an
+          // address, not information: it wraps across two lines, says nothing a
+          // reader wants to read, and its only useful property is that it is
+          // clickable. The href still carries it for copy-link and new-tab.
           <a
             href={trade.chartUrl}
-            /*
-              44px tall and free to wrap. It was a 20px line of unbreakable URL
-              — under the minimum target size on a phone, where this drawer is
-              the full screen and the link is one of very few things on it worth
-              tapping.
-            */
-            className="text-primary focus-visible:ring-ring inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-sm text-sm break-all underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+            // 44px tall, as a phone needs — and now short enough that it no
+            // longer has to wrap to get there.
+            className="text-primary focus-visible:ring-ring inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-sm text-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2"
           >
-            {trade.chartUrl}
+            View chart
             <ExternalLink className="size-3.5" aria-hidden="true" />
           </a>
         )}
@@ -624,6 +647,53 @@ function ExecutionTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeC
   );
 }
 
+/**
+ * A setup's own checklist, shown with the setup.
+ *
+ * `Not recorded` is a first-class third state, never folded into "not met" —
+ * "I did not evaluate this" and "this was false" are different claims about a
+ * trader's process, and only one of them is a criticism.
+ */
+function SetupConditions({
+  conditions,
+  caption = 'Setup conditions · unanswered is not the same as failed',
+}: {
+  conditions: PrototypeTrade['conditions'];
+  caption?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-subtle-foreground mb-1.5 text-xs">{caption}</p>
+      <ul className="divide-border border-border divide-y rounded-md border">
+        {conditions.map((condition) => (
+          <li
+            key={condition.label}
+            className="flex min-w-0 items-center justify-between gap-3 p-2.5"
+          >
+            <span className="text-foreground min-w-0 text-sm">{condition.label}</span>
+            <span
+              className={cn(
+                'shrink-0 text-xs font-medium',
+                condition.state === 'met'
+                  ? 'text-positive'
+                  : condition.state === 'not_met'
+                    ? 'text-negative'
+                    : 'text-muted-foreground',
+              )}
+            >
+              {condition.state === 'met'
+                ? 'Met'
+                : condition.state === 'not_met'
+                  ? 'Not met'
+                  : 'Not recorded'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ReviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCopy }) {
   const gap = trade.systemState === 'resolved' ? executionGapR(trade.actualR, trade.systemR) : null;
 
@@ -634,14 +704,21 @@ function ReviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCopy
         description="What the strategy's own rules would have produced — decided by you, never inferred from your exit."
       >
         {trade.systemState === 'pending' ? (
-          <div className="border-border flex flex-col items-start gap-3 rounded-lg border border-dashed p-4">
-            <div>
-              <p className="text-foreground text-sm font-medium">Review later</p>
-              <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                Pending is unavailable, not zero. Nothing is compared until you resolve it.
-              </p>
-            </div>
-            <Button size="sm">Add system result</Button>
+          /*
+            CONCISE, NOT APOLOGETIC.
+
+            This was a dashed panel with a heading and a two-line paragraph
+            explaining that an execution gap cannot be computed yet — four lines
+            spent on an absence, on the tab where the reader came to DO
+            something about it. "System result not recorded" plus the action is
+            the whole message; the reason no comparison appears is that no
+            comparison appears.
+          */
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <p className="text-muted-foreground min-w-0 text-sm">System result not recorded</p>
+            <Button size="sm" className="shrink-0">
+              Add system result
+            </Button>
           </div>
         ) : (
           <FactGrid>
@@ -687,38 +764,23 @@ function ReviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCopy
         </PanelSection>
       ) : null}
 
-      <PanelSection title="Rule observations" description="Unanswered is not the same as failed.">
-        {trade.conditions.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No setup conditions recorded for this trade.
-          </p>
+      {/*
+        EXECUTION RULES STAY HERE; SETUP CONDITIONS MOVED TO OVERVIEW.
+
+        They were one list under an ambiguous "Rule observations" heading, and
+        the reader had to work out which rules were meant. A setup condition
+        asks "was this true when I entered?" and belongs beside the Setup; an
+        execution rule asks "did I manage this the way the system says to?" and
+        belongs beside the system's own result, which is what this tab is for.
+      */}
+      <PanelSection title="Execution rules">
+        {trade.executionRules.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No execution rules recorded.</p>
         ) : (
-          <ul className="border-border divide-border divide-y rounded-lg border">
-            {trade.conditions.map((condition) => (
-              <li
-                key={condition.label}
-                className="flex min-w-0 items-center justify-between gap-3 p-3"
-              >
-                <span className="text-foreground min-w-0 text-sm">{condition.label}</span>
-                <span
-                  className={cn(
-                    'shrink-0 text-xs font-medium',
-                    condition.state === 'met'
-                      ? 'text-positive'
-                      : condition.state === 'not_met'
-                        ? 'text-negative'
-                        : 'text-muted-foreground',
-                  )}
-                >
-                  {condition.state === 'met'
-                    ? 'Met'
-                    : condition.state === 'not_met'
-                      ? 'Not met'
-                      : 'Not recorded'}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <SetupConditions
+            conditions={trade.executionRules}
+            caption="How the trade was managed against the strategy's rules"
+          />
         )}
       </PanelSection>
 

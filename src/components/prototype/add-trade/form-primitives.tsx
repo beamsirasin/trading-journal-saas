@@ -1,7 +1,7 @@
 'use client';
 
-import { Check, ChevronDown, ChevronLeft, X } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { Check, ChevronLeft, X } from 'lucide-react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -19,12 +19,12 @@ import { Label } from '@/components/ui/label';
  * fields live on one surface and everything else is a closed row underneath it
  * that says, when it holds something, what it holds.
  *
- * A COLLAPSED SECTION IS NOT AN EMPTY ONE. `OptionalSection` shows its summary
- * in the header — "Strategy · Elliott Wave / Wave 3" — so closing a section
- * never hides whether it was answered. Expanding and collapsing changes
- * nothing about the data, which is the other half of the same promise: the
- * current form clears the actual-opening override when Advanced is collapsed,
- * and a gesture that looks like tidying must never be a gesture that deletes.
+ * A COLLAPSED SECTION IS NOT AN EMPTY ONE — see `OptionalEntry` in
+ * `optional-details.tsx`, which owns that behaviour now. Expanding and
+ * collapsing changes nothing about the data, which is the other half of the same
+ * promise: the current production form clears the actual-opening override when
+ * Advanced is collapsed, and a gesture that looks like tidying must never be a
+ * gesture that deletes.
  */
 
 export function FormShell({
@@ -85,7 +85,17 @@ export function FormShell({
 
       <div className="flex min-w-0 flex-col gap-4">{children}</div>
 
-      <div className="mt-6">{footer}</div>
+      {/*
+        THE FOOTER IS A DIRECT CHILD OF THE FORM COLUMN, not of a wrapper.
+
+        It was inside a `<div className="mt-6">` whose height was exactly the
+        footer's own — and a `position: sticky` element can only travel inside
+        its containing block, so with nowhere to travel it never stuck to
+        anything. It computed as `sticky`, reported itself docked, and rendered
+        1,379px down the page on a 844px screen: a docked CTA that was never
+        docked, and no amount of reading the class list would have said so.
+      */}
+      {footer}
     </div>
   );
 }
@@ -304,78 +314,6 @@ export function ComputedResult({
 }
 
 /**
- * An optional section: a closed row that says what it holds.
- *
- * `summary` is the whole reason this is not a plain `<details>`. "Strategy" and
- * "Strategy · Elliott Wave / Wave 3" are different offers, and a reader
- * scanning for what they still have to do should not have to open four rows to
- * find out that three are already answered.
- */
-export function OptionalSection({
-  title,
-  summary,
-  note,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  /** What the section contains, or `null` while it is genuinely untouched. */
-  summary?: string | null;
-  /** A standing clarification, e.g. "Recorded after the trade". */
-  note?: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const id = useId();
-
-  return (
-    <section className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-      <h2>
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={id}
-          onClick={() => setOpen((current) => !current)}
-          className={cn(
-            'focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 px-4 text-left outline-none',
-            'hover:bg-accent/50 focus-visible:-ring-offset-2 transition-colors focus-visible:ring-2',
-          )}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="text-foreground block text-sm font-medium">{title}</span>
-            {summary === undefined || summary === null ? (
-              <span className="text-muted-foreground block text-xs">Optional</span>
-            ) : (
-              <span className="text-muted-foreground block truncate text-xs">{summary}</span>
-            )}
-          </span>
-          {note === undefined ? null : (
-            // `shrink-0` here pushed "Recorded after the trade" 45px past the
-            // right edge at 200% zoom on a 320px screen. The note is the least
-            // important thing in the row, so it is the thing that yields.
-            <span className="text-subtle-foreground min-w-0 text-right text-xs">{note}</span>
-          )}
-          <ChevronDown
-            className={cn(
-              'text-subtle-foreground size-4 shrink-0 transition-transform duration-150',
-              open && 'rotate-180',
-              'motion-reduce:transition-none',
-            )}
-            aria-hidden="true"
-          />
-        </button>
-      </h2>
-      {open ? (
-        <div id={id} className="border-border border-t px-4 py-5">
-          {children}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-/**
  * The primary action and the sentence that removes the anxiety around it.
  *
  * ONE filled button per task. The helper line is not decoration: the single
@@ -394,11 +332,33 @@ export function FormFooter({
   secondary?: string;
   sticky?: boolean;
 }) {
+  /*
+    THE DOCKED SAVE RELEASES ITSELF WHEN THE KEYBOARD NEEDS THE ROOM.
+
+    A CTA docked to `bottom-0` is docked to the LAYOUT viewport, which a mobile
+    keyboard does not shrink. So the bar keeps sitting at the bottom of a
+    viewport the keyboard is now covering — either hidden behind it, or worse,
+    floating over the field the reader is typing into along with its error.
+
+    `visualViewport` is the only API that reports the region actually visible.
+    When it is meaningfully shorter than the layout viewport a keyboard is up,
+    and the footer stops being sticky and returns to the form's natural end.
+    Nothing is hidden and nothing overlaps: the focused input and its message
+    keep the screen, which is the non-negotiable half of this requirement, and
+    the docked convenience is what yields.
+
+    It degrades safely: with no `visualViewport` the footer simply stays docked,
+    which is today's behaviour.
+  */
+  const keyboardOpen = useKeyboardObscuringViewport();
+  const docked = sticky && !keyboardOpen;
+
   return (
     <div
+      data-form-footer={docked ? 'docked' : 'inline'}
       className={cn(
-        'flex min-w-0 flex-col gap-2',
-        sticky &&
+        'mt-6 flex min-w-0 flex-col gap-2',
+        docked &&
           'bg-background/95 border-border sticky bottom-0 -mx-4 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none',
       )}
     >
@@ -415,6 +375,33 @@ export function FormFooter({
       <p className="text-muted-foreground text-xs">{helper}</p>
     </div>
   );
+}
+
+/**
+ * `true` while the visual viewport is materially shorter than the layout
+ * viewport — the only honest signal available that a keyboard (or another
+ * platform panel) is covering the page.
+ *
+ * 140px rather than any smaller number: a mobile browser's collapsing URL bar
+ * changes the visual viewport by 50–90px during ordinary scrolling, and a
+ * threshold under that would undock the save button every time someone scrolled.
+ */
+function useKeyboardObscuringViewport(): boolean {
+  const [obscured, setObscured] = useState(false);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (viewport === undefined || viewport === null) return;
+
+    const read = () => {
+      setObscured(window.innerHeight - viewport.height > 140);
+    };
+    read();
+    viewport.addEventListener('resize', read);
+    return () => viewport.removeEventListener('resize', read);
+  }, []);
+
+  return obscured;
 }
 
 /**

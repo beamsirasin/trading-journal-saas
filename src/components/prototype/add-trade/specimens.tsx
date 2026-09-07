@@ -5,7 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { PrototypeShell } from '../prototype-shell';
 import { ConfidenceControl } from './confidence-control';
 import { EmotionsControl } from './emotions-control';
-import { ExitsEditor } from './exits-editor';
+import { ExitsEditor, SingleCloseFields } from './exits-editor';
 import { Field } from './form-primitives';
 
 /**
@@ -40,6 +40,33 @@ function Specimen({
   );
 }
 
+/** The ordinary close, with the escape hatch to the allocation editor beside it. */
+function SingleCloseSpecimen() {
+  const [amount, setAmount] = useState('200.00');
+  const [at, setAt] = useState('7 Sep 2026, 14:32');
+  const [multiple, setMultiple] = useState(false);
+
+  return (
+    <>
+      <SingleCloseFields amount={amount} onAmountChange={setAmount} at={at} onAtChange={setAt} />
+      <button
+        type="button"
+        aria-expanded={multiple}
+        onClick={() => setMultiple((current) => !current)}
+        className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center self-start rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+      >
+        {multiple ? 'Use a single result' : 'Multiple exits'}
+      </button>
+      {multiple ? (
+        <ExitsEditor
+          variant="after-trade"
+          initialRows={[{ id: 'sc1', percent: '', amount: amount, at }]}
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function ExitsSpecimenScreen() {
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
@@ -53,14 +80,11 @@ export function ExitsSpecimenScreen() {
         <div className="flex min-w-0 flex-col gap-10">
           <Specimen
             title="Ordinary full close"
-            description="One leg, 100%, one result. No percentage arithmetic for a reader who simply closed the trade."
+            description="A result and a time. No editable 100% allocation, no remaining-position meter, no allocation machinery — there is nothing to divide, so the form does not ask. Multiple exits reveals the editor below."
           >
-            <ExitsEditor
-              variant="after-trade"
-              initialRows={[
-                { id: 'f1', percent: '100.00', amount: '200.00', at: '7 Sep 2026, 14:32' },
-              ]}
-            />
+            <div className="border-border bg-card flex min-w-0 flex-col gap-3 rounded-lg border p-4">
+              <SingleCloseSpecimen />
+            </div>
           </Specimen>
 
           <Specimen
@@ -102,7 +126,7 @@ export function EntryContextSpecimenScreen() {
 
   const [untouched, setUntouched] = useState<readonly string[] | null>(null);
   const [none, setNone] = useState<readonly string[] | null>([]);
-  const [chosen, setChosen] = useState<readonly string[] | null>(['Calm', 'Focused']);
+  const [chosen, setChosen] = useState<readonly string[] | null>(['calm', 'focused']);
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
