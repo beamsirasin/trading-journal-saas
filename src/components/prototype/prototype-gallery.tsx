@@ -1,7 +1,7 @@
 'use client';
 
 import { ExternalLink, Monitor, Smartphone, Tablet } from 'lucide-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
@@ -173,8 +173,67 @@ const SCREENS: readonly Screen[] = [
 const WIDTH_ICON = (width: number) =>
   width >= 1280 ? Monitor : width >= 700 ? Tablet : Smartphone;
 
+/**
+ * WHY IFRAMES MOUNT ONE AT A TIME, NOT ALL AT ONCE.
+ *
+ * `SCREENS` lists 15 frames over 6 distinct routes, and every `<iframe>` used
+ * to get its `src` on the same render — so opening this gallery on a COLD dev
+ * server fired a burst of up to 15 near-simultaneous requests, several of them
+ * the FIRST-EVER compile of a given route. That burst reliably corrupted a
+ * Turbopack dev-server manifest (a genuine upstream race in concurrent first
+ * compiles, confirmed by reproducing the identical failure against an
+ * equally-sized production route group under the same concurrency) and
+ * returned 500 for EVERY route touched in the burst, including this gallery
+ * page itself. A single ordinary navigation never mounts more than one route
+ * at a time and never hit it; visiting this review index was the one place in
+ * the whole product that self-inflicted the concurrency this bug needs.
+ *
+ * A FIXED-DELAY STAGGER WAS TRIED FIRST AND WAS NOT ENOUGH. Loading 15 iframes
+ * — several of them cold Next.js compiles — keeps this tab's main thread busy
+ * enough that a chain of independent `setTimeout` calls does not fire evenly:
+ * several backlogged timers can go off within the same few milliseconds once
+ * the thread frees up, which reintroduces the exact multi-route burst this
+ * exists to prevent. It also does not explain why TWO frames pointing at the
+ * SAME already-releasing route can still race each other — a fixed delay only
+ * ever staggers the first request to each distinct path.
+ *
+ * ONE FRAME AT A TIME, GATED BY THE PREVIOUS FRAME'S OWN LOAD EVENT, FIXES
+ * BOTH. Frame N does not mount until frame N-1 has fired `load` or `error` —
+ * so at most one HTTP request to any prototype route is ever in flight from
+ * this page, regardless of whether consecutive frames share a route or not,
+ * and regardless of how busy the main thread gets (a delayed callback still
+ * only ever advances the count by one, because it IS the signal, not a guess
+ * at how much time has passed). A `Loading …` placeholder reserves each
+ * frame's exact geometry while it waits its turn, so nothing shifts.
+ */
+function useSequentialReveal(total: number): {
+  readonly revealedCount: number;
+  readonly advance: () => void;
+} {
+  // The first frame mounts immediately; each one after waits for the previous
+  // frame's own load/error event to call `advance`.
+  const [revealedCount, setRevealedCount] = useState(1);
+
+  const advance = useCallback(() => {
+    setRevealedCount((count) => Math.min(count + 1, total));
+  }, [total]);
+
+  // A safety net only — never let one frame that never fires `load` (a
+  // network hiccup, a throttled devtools profile) stall every frame behind it
+  // forever. Far longer than any real compile in these reproductions, so it
+  // never fires on a normal successful load.
+  useEffect(() => {
+    if (revealedCount >= total) return;
+    const timer = window.setTimeout(advance, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [revealedCount, total, advance]);
+
+  return { revealedCount, advance };
+}
+
 export function PrototypeGallery() {
   const [zoom, setZoom] = useState(0.62);
+  const { revealedCount, advance } = useSequentialReveal(SCREENS.length);
 
   return (
     <div className="bg-background text-foreground min-h-dvh">
@@ -210,8 +269,9 @@ export function PrototypeGallery() {
 
       <main className="mx-auto w-full max-w-[1400px] px-6 py-8">
         <div className="flex flex-col gap-10">
-          {SCREENS.map((screen) => {
+          {SCREENS.map((screen, index) => {
             const Icon = WIDTH_ICON(screen.width);
+            const isReleased = index < revealedCount;
             return (
               <section key={screen.id} className="min-w-0">
                 <div className="mb-3 flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -246,14 +306,45 @@ export function PrototypeGallery() {
                   )}
                   style={{ width: screen.width * zoom, height: screen.height * zoom }}
                 >
-                  <iframe
-                    src={screen.path}
-                    title={screen.title}
-                    width={screen.width}
-                    height={screen.height}
-                    className="origin-top-left border-0"
-                    style={{ transform: `scale(${zoom})` }}
-                  />
+                  {/*
+                    THE PLACEHOLDER RESERVES THE FRAME'S OWN GEOMETRY — same
+                    width/height as the eventual iframe — so nothing shifts as
+                    routes are released. Never blank: the label says exactly
+                    what is about to appear, matching this codebase's own
+                    "reserve final geometry, never a bare spinner" loading
+                    convention.
+                  */}
+                  {isReleased ? (
+                    <iframe
+                      src={screen.path}
+                      title={screen.title}
+                      width={screen.width}
+                      height={screen.height}
+                      className="origin-top-left border-0"
+                      style={{ transform: `scale(${zoom})` }}
+                      /*
+                        THE NEXT FRAME DOES NOT EXIST UNTIL THIS ONE FIRES.
+
+                        Because frame N+1 is not even in the DOM until
+                        `revealedCount` passes N, at most one frame is ever
+                        "mounted but not yet loaded" at a time — so wiring
+                        `advance` to every frame is just each frame reporting
+                        "I'm done" once, in the order they were allowed to
+                        start. `onError` counts too: a frame that fails to
+                        load must not stall every frame behind it.
+                      */
+                      onLoad={advance}
+                      onError={advance}
+                    />
+                  ) : (
+                    <div
+                      aria-hidden="true"
+                      className="text-subtle-foreground flex size-full animate-pulse items-center justify-center text-xs motion-reduce:animate-none"
+                      style={{ width: screen.width * zoom, height: screen.height * zoom }}
+                    >
+                      Loading {screen.title}…
+                    </div>
+                  )}
                 </div>
               </section>
             );
