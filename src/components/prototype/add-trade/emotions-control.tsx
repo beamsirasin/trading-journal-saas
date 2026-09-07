@@ -14,19 +14,32 @@ import { cn } from '@/lib/utils';
  * `is_system` emotions in `src/config/emotions.ts`, and the real groups are the
  * four the recording form already renders. Both are imported/mirrored here
  * rather than retyped, so a prototype screenshot can never show a vocabulary the
- * product does not have.
+ * product does not have. Neither the catalog nor the grouping is touched by this
+ * pass; only their arrangement is.
+ *
+ * FOUR STACKED SECTIONS BECAME TWO COLUMNS. Each group was a full-width block
+ * with its own heading and its own row of chips, so on a desktop the control was
+ * roughly 280px of mostly empty horizontal space — four isolated bands for ten
+ * short words. Two columns above 560px halve that and let the four group names
+ * be read as one set rather than as four sections to work through. On a phone
+ * they stay stacked, because one column of wrapping chips is what a phone has
+ * room for.
  *
  * THE DISTINCTION THIS CONTROL EXISTS TO PROTECT. `null` means the trader never
  * said. `[]` means the trader explicitly said "none of these". Those are
- * different facts about a journal, and the current production form collapses
- * them: merely visiting the Context tab submits an empty emotion selection, so
- * the product ends up holding "I felt nothing" for every trade whose author only
+ * different facts about a journal, and the production form collapses them:
+ * merely visiting the Context tab submits an empty emotion selection, so the
+ * product ends up holding "I felt nothing" for every trade whose author only
  * glanced at the section. Analytics built on that cannot tell an answered
  * population from a browsed one.
  *
- * So "None of these" is a real, separate, mutually-exclusive choice, and the
- * caption states which of the three states is current in words. Deselecting
- * every chip returns to untouched — it does not silently become "none".
+ * WHAT THE SECOND PASS REMOVED. The caption reading "Recorded: Calm, Focused."
+ * The selected chips are filled, bordered and check-marked; restating them in a
+ * sentence underneath said nothing the reader could not see, and it was the only
+ * part of the control that grew as more was selected. The `null` caption stays,
+ * alone, because "nothing is selected" and "the trader said none of these" look
+ * identical until one of them is named — and the "None of these" control is the
+ * thing that names the other.
  *
  * NO SCORING AND NO ADVICE. The chips carry no valence colour and the group
  * headings are neutral descriptions, not verdicts. "Fearful" is not a mistake,
@@ -72,13 +85,20 @@ export function EmotionsControl({
 
   return (
     <fieldset className="min-w-0">
-      <legend className="text-foreground text-sm font-medium">How did you feel at entry?</legend>
+      {/*
+        NOT A SECOND "How did you feel at entry?". That is the question the whole
+        editor is titled with, and repeating it verbatim as this control's legend
+        made the phone screen ask the same thing twice within 600px. The legend
+        names what THIS control contributes to that answer, and stays a real
+        legend so the fieldset keeps its accessible name.
+      */}
+      <legend className="text-foreground text-sm font-medium">Which of these applied?</legend>
 
-      <div className="mt-3 flex min-w-0 flex-col gap-4">
+      <div className="mt-3 grid min-w-0 gap-x-6 gap-y-4 min-[560px]:grid-cols-2">
         {EMOTION_GROUPS.map((group) => (
           <div key={group.key} className="min-w-0">
-            <p className="text-subtle-foreground text-label mb-2 uppercase">{group.label}</p>
-            <div className="flex min-w-0 flex-wrap gap-2">
+            <p className="text-subtle-foreground text-label mb-1.5 uppercase">{group.label}</p>
+            <div className="flex min-w-0 flex-wrap gap-1.5">
               {group.emotions.map((key) => {
                 const selected = value !== null && value.includes(key);
                 return (
@@ -88,8 +108,11 @@ export function EmotionsControl({
                     aria-pressed={selected}
                     onClick={() => toggle(key, selected)}
                     className={cn(
-                      'focus-visible:ring-ring inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-sm outline-none focus-visible:ring-2',
-                      'transition-colors',
+                      'inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-sm',
+                      'focus-visible:ring-ring relative transition-colors outline-none focus-visible:ring-2',
+                      // 40px of ink, 44px of target — the chips are dense by
+                      // design and the hit area does not have to be.
+                      'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
                       selected
                         ? 'border-primary bg-primary/10 text-foreground font-medium'
                         : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -107,30 +130,35 @@ export function EmotionsControl({
         ))}
       </div>
 
-      <div className="border-border mt-4 border-t pt-3">
+      {/*
+        QUIETER THAN A GROUP, AND STILL A REAL ANSWER. It was a bordered control
+        below a full-width rule, which made an edge case look like a fifth
+        category. It is one small dashed chip on the same row as the resting
+        caption now — findable, mutually exclusive, and visibly not one of the
+        ten.
+      */}
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         <button
           type="button"
           aria-pressed={isNone}
           onClick={() => onChange(isNone ? null : [])}
           className={cn(
-            'focus-visible:ring-ring inline-flex min-h-11 items-center gap-2 rounded-md border px-3.5 text-sm outline-none focus-visible:ring-2',
+            'inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-xs',
+            'focus-visible:ring-ring relative transition-colors outline-none focus-visible:ring-2',
+            'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
             isNone
               ? 'border-primary bg-primary/10 text-foreground font-medium'
-              : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
+              : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground border-dashed',
           )}
         >
-          {isNone ? <Check className="text-primary size-4" aria-hidden="true" /> : null}
+          {isNone ? <Check className="text-primary size-3.5" aria-hidden="true" /> : null}
           None of these
         </button>
-      </div>
 
-      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-        {value === null
-          ? 'Not recorded. Opening this section does not record an answer.'
-          : isNone
-            ? 'Recorded: no emotion from this list applied.'
-            : `Recorded: ${value.map(emotionLabel).join(', ')}.`}
-      </p>
+        {value === null ? (
+          <span className="text-muted-foreground text-xs">Not recorded</span>
+        ) : null}
+      </div>
     </fieldset>
   );
 }

@@ -80,7 +80,6 @@ export interface PrototypeCopy {
   readonly statusOpen: string;
   readonly statusPartiallyClosed: string;
   readonly statusClosed: string;
-  readonly statusNeedsDetails: string;
   readonly statusCanceled: string;
 
   readonly outcomeWin: string;
@@ -124,13 +123,13 @@ const EN: PrototypeCopy = {
   summaryTotalR: 'Total R',
   summaryOpenTrades: 'open trades',
   summaryPartiallyClosed: 'partially closed',
-  summaryKnownNetPnl: 'Known net P&L',
+  summaryKnownNetPnl: 'Recorded net P&L',
   summaryNoClosedTrades: 'No closed trades',
   summaryNotRecorded: 'Not recorded',
   summaryMultipleCurrencies: 'Multiple currencies',
   summarySelectOneAccount: 'Select one account',
-  summaryMoneyCoverage: '{with} of {closed} closed trades have monetary results',
-  summaryRCoverage: '{with} of {closed} have an R value',
+  summaryMoneyCoverage: '{count} closed {trades} missing P&L',
+  summaryRCoverage: '{count} closed {trades} missing R',
   summaryNotRecordedCount: '{count} not recorded',
 
   sortOldest: 'Oldest activity',
@@ -142,21 +141,20 @@ const EN: PrototypeCopy = {
   colActivity: 'Activity',
   colStatus: 'Status',
   colNetPnl: 'Net P&L',
-  colActualR: 'Actual R',
-  colStrategySetup: 'Strategy / Setup',
+  colActualR: 'Result (R)',
+  colStrategySetup: 'Strategy',
   colFollowUp: 'Follow-up',
 
   timezoneNote: 'Times in Asia/Bangkok · GMT+7',
-  realized: 'Realized',
+  realized: 'From closed portion',
   notRecorded: 'Not recorded',
   notAvailable: 'Not available',
-  noStrategy: 'No strategy',
+  noStrategy: '',
   closedOfPosition: 'closed',
 
   statusOpen: 'Open',
   statusPartiallyClosed: 'Partially closed',
   statusClosed: 'Closed',
-  statusNeedsDetails: 'Needs details',
   statusCanceled: 'Canceled',
 
   outcomeWin: 'Win',
@@ -200,13 +198,13 @@ const TH: PrototypeCopy = {
   summaryTotalR: 'R รวม',
   summaryOpenTrades: 'ออเดอร์ที่เปิดอยู่',
   summaryPartiallyClosed: 'ปิดบางส่วน',
-  summaryKnownNetPnl: 'กำไร/ขาดทุนสุทธิเท่าที่ทราบ',
+  summaryKnownNetPnl: 'กำไร/ขาดทุนสุทธิที่บันทึกไว้',
   summaryNoClosedTrades: 'ยังไม่มีออเดอร์ที่ปิดแล้ว',
   summaryNotRecorded: 'ไม่ได้บันทึก',
   summaryMultipleCurrencies: 'หลายสกุลเงิน',
   summarySelectOneAccount: 'เลือกบัญชีเดียว',
-  summaryMoneyCoverage: 'ออเดอร์ที่ปิดแล้ว {with} จาก {closed} รายการมีผลเป็นจำนวนเงิน',
-  summaryRCoverage: '{with} จาก {closed} รายการมีค่า R',
+  summaryMoneyCoverage: 'ออเดอร์ที่ปิดแล้ว {count} รายการยังไม่มีกำไร/ขาดทุน',
+  summaryRCoverage: 'ออเดอร์ที่ปิดแล้ว {count} รายการยังไม่มีค่า R',
   summaryNotRecordedCount: 'ไม่ได้บันทึก {count} รายการ',
 
   sortOldest: 'เก่าสุดก่อน',
@@ -218,21 +216,20 @@ const TH: PrototypeCopy = {
   colActivity: 'วันที่',
   colStatus: 'สถานะ',
   colNetPnl: 'กำไร/ขาดทุน',
-  colActualR: 'R ที่ทำได้',
-  colStrategySetup: 'กลยุทธ์ / เซ็ตอัพ',
+  colActualR: 'ผลลัพธ์ (R)',
+  colStrategySetup: 'กลยุทธ์',
   colFollowUp: 'สิ่งที่ต้องทำต่อ',
 
   timezoneNote: 'เวลาตามเขต Asia/Bangkok · GMT+7',
-  realized: 'ที่รับรู้แล้ว',
+  realized: 'จากส่วนที่ปิดแล้ว',
   notRecorded: 'ไม่ได้บันทึก',
   notAvailable: 'ไม่มีข้อมูล',
-  noStrategy: 'ไม่มีกลยุทธ์',
+  noStrategy: '',
   closedOfPosition: 'ปิดแล้ว',
 
   statusOpen: 'เปิดอยู่',
   statusPartiallyClosed: 'ปิดบางส่วน',
   statusClosed: 'ปิดแล้ว',
-  statusNeedsDetails: 'ต้องเพิ่มรายละเอียด',
   statusCanceled: 'ยกเลิก',
 
   outcomeWin: 'ชนะ',
@@ -284,7 +281,7 @@ export function sortLabel(
 
 export function statusLabel(
   copy: PrototypeCopy,
-  lifecycle: 'open' | 'partially_closed' | 'closed' | 'needs_details' | 'canceled',
+  lifecycle: 'open' | 'partially_closed' | 'closed' | 'canceled',
 ): string {
   switch (lifecycle) {
     case 'open':
@@ -293,8 +290,6 @@ export function statusLabel(
       return copy.statusPartiallyClosed;
     case 'closed':
       return copy.statusClosed;
-    case 'needs_details':
-      return copy.statusNeedsDetails;
     case 'canceled':
       return copy.statusCanceled;
   }

@@ -19,7 +19,14 @@
 export type Direction = 'long' | 'short';
 
 /** Lifecycle as the redesigned Status column presents it (spec §C). */
-export type Lifecycle = 'open' | 'partially_closed' | 'closed' | 'needs_details' | 'canceled';
+/*
+  POSITION STATUS ONLY. `needs_details` used to live here, which made journal
+  COMPLETENESS a kind of position state — so a legacy import with a missing P&L
+  displayed as though the position itself were in some fifth condition. A trade
+  is open, partly closed, closed or cancelled; whether its record has gaps is a
+  separate question, answered by the Filters panel.
+*/
+export type Lifecycle = 'open' | 'partially_closed' | 'closed' | 'canceled';
 
 /** Canonical actual outcome. `unresolved` is a closed Trade whose result is not classifiable. */
 export type ActualOutcome = 'win' | 'loss' | 'break_even' | 'unresolved';
@@ -514,7 +521,7 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     id: 't-08',
     symbol: 'GBPJPY',
     direction: 'long',
-    lifecycle: 'needs_details',
+    lifecycle: 'open',
     outcome: null,
     activityDate: '3 Sep 2026',
     activityTime: 'Opened 08:00',

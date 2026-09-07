@@ -33,8 +33,9 @@ const PAGES = [
   { name: 'log-trade', path: '/en/prototype/log-trade' },
   { name: 'at-entry', path: '/en/prototype/log-trade/at-entry' },
   { name: 'after-trade', path: '/en/prototype/log-trade/after-trade' },
-  { name: 'exits', path: '/en/prototype/exits' },
-  { name: 'context', path: '/en/prototype/context' },
+  { name: 'still-open-filled', path: '/en/prototype/log-trade/at-entry?filled=1' },
+  { name: 'partial-exits', path: '/en/prototype/log-trade/after-trade?exits=1' },
+  { name: 'exit-editor', path: '/en/prototype/log-trade/after-trade?exits=1&edit=e2' },
 ];
 
 const findings = [];

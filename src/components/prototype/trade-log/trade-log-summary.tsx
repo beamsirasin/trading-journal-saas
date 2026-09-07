@@ -116,7 +116,17 @@ export function TradeLogSummary({
           }
           figure={summary.netPnl}
         />
-        <Reading copy={copy} label={copy.summaryTotalR} figure={summary.totalR} />
+        {/*
+          A QUALIFIED FIGURE SAYS SO IN ITS OWN LABEL. `Total R` printed over an
+          incomplete population claims a completeness the number does not have;
+          `Recorded total R` is true whether or not every closed trade has one,
+          and the missing count underneath says how far short it falls.
+        */}
+        <Reading
+          copy={copy}
+          label={summary.totalR.kind === 'known_total' ? 'Recorded total R' : copy.summaryTotalR}
+          figure={summary.totalR}
+        />
       </div>
 
       {/*
@@ -136,14 +146,24 @@ export function TradeLogSummary({
   );
 }
 
+/**
+ * AN INFORMATION LINE, NOT A CARD.
+ *
+ * The strip was a bordered `bg-card` panel with its own radius and shadow-less
+ * fill, sitting between the toolbar and the journal — so the page opened with
+ * three stacked framed bands before the first trade, and the summary looked like
+ * a small dashboard rather than a caption on the list beneath it.
+ *
+ * It is unboxed now: the same facts, the same order, the same coverage
+ * qualifier, with no border, no fill and no radius. It reads as a line ABOUT the
+ * journal, which is what it is, and the journal's own card is left as the one
+ * framed surface on the page.
+ */
 function Strip({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
     <section
       aria-label="Journal summary"
-      className={cn(
-        'border-border bg-card flex min-h-14 min-w-0 items-center rounded-lg border px-4 py-3',
-        className,
-      )}
+      className={cn('flex min-w-0 items-center px-1 pt-1 pb-0.5', className)}
       {...props}
     >
       {children}
@@ -154,13 +174,24 @@ function Strip({ children, className, ...props }: React.ComponentProps<'section'
 /**
  * The coverage sentence for a partial figure, or `null` when the figure covers
  * everything it claims to.
+ *
+ * IT COUNTS WHAT IS MISSING, NOT THE POPULATION ARITHMETIC. The line used to
+ * read "109 of 111 closed trades have monetary results · 2 not recorded" —
+ * three numbers and a division for a reader who wanted one fact. "2 closed
+ * trades missing P&L" is that fact. The full population is still correct and
+ * still derived from the closed set rather than the matching set, and it stays
+ * available in the query model for anyone who needs it; what changed is that the
+ * strip no longer makes every reader do the subtraction.
  */
 function coverageOf(copy: PrototypeCopy, figure: SummaryFigure, template: string): string | null {
-  if (figure.kind !== 'known_total') return null;
-  return [
-    fill(template, { with: figure.withValue, closed: figure.closedCount }),
-    fill(copy.summaryNotRecordedCount, { count: figure.missing }),
-  ].join(' · ');
+  if (figure.kind !== 'known_total' || figure.missing === 0) return null;
+  // "1 closed trades missing R" is not a sentence. The Thai template carries no
+  // `{trades}` placeholder — Thai nouns do not inflect for number — so `fill`
+  // simply leaves the extra value unused there.
+  return fill(template, {
+    count: figure.missing,
+    trades: figure.missing === 1 ? 'trade' : 'trades',
+  });
 }
 
 const TONE_CLASS = {

@@ -22,7 +22,7 @@ import { isCurrencyCode, sum, type Money } from '@/lib/money';
 
 import type { ActualOutcome, Direction, PrototypeTrade } from './fixtures';
 import { PROTOTYPE_POPULATION } from './population';
-import { deriveFollowUp, signedMoney, signedR, type FollowUp } from './presentation';
+import { signedMoney, signedR } from './presentation';
 
 export const PAGE_SIZE = 25;
 
@@ -47,11 +47,21 @@ export const SORT_KEYS: readonly SortKey[] = [
 export type FollowUpFilter =
   'needs_details' | 'system_pending' | 'no_strategy' | 'review_note_missing';
 
+/*
+  THE FILTERS NAME WHAT THEY FIND, and they are the ONE place enrichment gaps
+  are still surfaced. A trader who deliberately opens Filters and asks for
+  trades with no review note is looking for work to do; a journal row that
+  volunteers the same thing, unasked, in every row, is an audit. The rows lost
+  their prompts; these kept their purpose.
+
+  "Needs details" became a specific fact for the same reason it did everywhere
+  else: it named a verdict on the record rather than the thing that is missing.
+*/
 export const FOLLOW_UP_FILTER_LABEL: Record<FollowUpFilter, string> = {
-  needs_details: 'Needs details',
-  system_pending: 'System result pending',
+  needs_details: 'Missing P&L or times',
+  system_pending: 'No rule comparison',
   no_strategy: 'No strategy',
-  review_note_missing: 'Review note missing',
+  review_note_missing: 'No review note',
 };
 
 export const OUTCOME_FILTER_LABEL: Record<ActualOutcome, string> = {
@@ -116,7 +126,7 @@ export function clearRefinements(query: JournalQuery): JournalQuery {
 function matchesState(trade: PrototypeTrade, state: JournalState): boolean {
   if (state === 'all') return true;
   if (state === 'open') return trade.lifecycle === 'open' || trade.lifecycle === 'partially_closed';
-  return trade.lifecycle === 'closed' || trade.lifecycle === 'needs_details';
+  return trade.lifecycle === 'closed';
 }
 
 /**
@@ -138,7 +148,7 @@ function matchesFollowUp(trade: PrototypeTrade, filters: readonly FollowUpFilter
   return filters.some((filter) => {
     switch (filter) {
       case 'needs_details':
-        return trade.legacy || trade.lifecycle === 'needs_details';
+        return trade.legacy || (trade.lifecycle === 'closed' && trade.netPnlMinor === null);
       case 'system_pending':
         return trade.lifecycle === 'closed' && trade.systemState === 'pending';
       case 'no_strategy':
@@ -361,8 +371,4 @@ function summarizeR(closed: readonly PrototypeTrade[]): SummaryFigure {
         closedCount: closed.length,
         missing: closed.length - values.length,
       };
-}
-
-export function followUpOf(trade: PrototypeTrade): FollowUp {
-  return deriveFollowUp(trade);
 }

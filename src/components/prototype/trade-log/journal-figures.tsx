@@ -113,11 +113,20 @@ export function MoneyFigure({
   );
 }
 
+/**
+ * R, WITHOUT REPEATING THE PARTIAL QUALIFIER.
+ *
+ * Both figures carried a "From closed portion" marker, so a partially closed row
+ * said it twice within 200px — and in the narrow R column the phrase wrapped to
+ * two lines, making those rows visibly taller than every other row in the table.
+ * The Status cell already says "Partially closed · 40% closed" and the money
+ * beside it carries the marker; a third statement of the same fact is noise that
+ * costs the table its rhythm.
+ */
 export function RFigure({
   trade,
   copy,
   className,
-  marker = 'below',
 }: {
   trade: PrototypeTrade;
   copy: PrototypeCopy;
@@ -126,7 +135,6 @@ export function RFigure({
 }) {
   const text = signedR(trade.actualR);
   const tone = toneForDecimal(trade.actualR);
-  const isRealized = trade.lifecycle === 'partially_closed';
 
   if (text === null) {
     return (
@@ -137,19 +145,8 @@ export function RFigure({
   }
 
   return (
-    <span
-      className={cn(
-        marker === 'below' ? 'flex flex-col items-end gap-0.5' : 'inline-block',
-        className,
-      )}
-    >
-      {isRealized && marker === 'inline' ? (
-        <Marker placement={marker} label={copy.realized} />
-      ) : null}
-      <span className={cn('numeric text-sm font-semibold', TONE_CLASS[tone])}>{text}</span>
-      {isRealized && marker === 'below' ? (
-        <Marker placement={marker} label={copy.realized} />
-      ) : null}
+    <span className={cn('numeric inline-block text-sm font-semibold', TONE_CLASS[tone], className)}>
+      {text}
     </span>
   );
 }
@@ -158,7 +155,6 @@ const LIFECYCLE_DOT: Record<PrototypeTrade['lifecycle'], string> = {
   open: 'bg-info',
   partially_closed: 'bg-info',
   closed: 'bg-muted-foreground/50',
-  needs_details: 'bg-warning',
   canceled: 'bg-subtle-foreground/40',
 };
 
@@ -213,37 +209,48 @@ export function StatusCell({
 }
 
 /**
- * Strategy over Setup, and one quiet sentence when there is neither.
- *
- * "No strategy" is not an error and is not styled as one — it is the ordinary
- * state of a trade taken outside a system, which this product exists to let
- * people notice rather than be scolded for.
+ * The strategy a trade came from, when it came from one.
  */
 export function ClassificationCell({
   trade,
-  copy,
   className,
 }: {
   trade: PrototypeTrade;
-  copy: PrototypeCopy;
   className?: string;
 }) {
-  if (trade.strategy === null) {
-    return (
-      <span className={cn('text-muted-foreground text-sm', className)}>{copy.noStrategy}</span>
-    );
-  }
+  /*
+    DEMOTED, DELIBERATELY, AND NOT REMOVED.
+
+    Strategy and Setup were `text-sm` on the strategy line — the same size as the
+    symbol and the date, and one step above the R beside them once tone is taken
+    into account. That put "which system produced this" in the same rank as
+    "what did it make", and a reader scanning a column of results had four
+    competing sizes to sort through per row. Both lines are `text-xs` and muted
+    now: still legible, still scannable down the column, visibly subordinate to
+    the two figures the journal exists to show.
+  */
+  /*
+    STRATEGY ONLY, AND SILENCE WHEN THERE IS NONE.
+
+    Two changes, both about what a journal row is for. Setup moved to Trade
+    details: it is the second half of a classification the reader is rarely
+    scanning for, and it was spending a line of every row plus half the column's
+    width on a value that truncates at typical names anyway.
+
+    And an unassigned strategy now renders NOTHING. It used to print "No
+    strategy", which put a small grey accusation in every row of a journal
+    belonging to someone who simply has not created strategies yet — a valid
+    record made to look deficient by a label. Absence of an optional
+    classification is not information worth a row's space.
+  */
+  if (trade.strategy === null) return null;
 
   return (
-    <span className={cn('flex min-w-0 flex-col gap-0.5', className)}>
-      <span className="text-foreground truncate text-sm" title={trade.strategy}>
-        {trade.strategy}
-      </span>
-      {trade.setup === null ? null : (
-        <span className="text-muted-foreground truncate text-xs" title={trade.setup}>
-          {trade.setup}
-        </span>
-      )}
+    <span
+      className={cn('text-muted-foreground block min-w-0 truncate text-xs', className)}
+      title={trade.strategy}
+    >
+      {trade.strategy}
     </span>
   );
 }

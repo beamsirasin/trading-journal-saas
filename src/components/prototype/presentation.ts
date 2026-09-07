@@ -1,9 +1,9 @@
 /**
  * PROTOTYPE PRESENTATION RULES.
  *
- * Derivations the redesigned journal needs in order to be judged: which single
- * follow-up a row offers, what the Status column says, and how a signed figure
- * is toned. All of it is presentation — nothing here computes a financial
+ * Derivations the redesigned journal needs in order to be judged: what the
+ * Status column says, which enrichment the Filters panel can search for, and how
+ * a signed figure is toned. All of it is presentation — nothing here computes a financial
  * value. Money and R are formatted by the product's OWN helpers
  * (`formatTradeMoney`, `formatR`), so the prototype prints the same strings the
  * real table does rather than a second, prettier arithmetic.
@@ -14,80 +14,39 @@ import { formatR, formatTradeMoney } from '@/components/trades/trade-format';
 import type { PrototypeTrade } from './fixtures';
 
 /**
- * The single action a row may offer, in priority order (spec §C).
+ * WHICH ENRICHMENT A TRADE IS MISSING — for the FILTERS, and nowhere else.
  *
- * `none` is a quiet em dash and is NOT inferred to mean "reviewed" — the
- * absence of an outstanding item is not evidence that a review happened.
+ * This used to drive a Follow-up column in every journal composition, so an
+ * ordinary valid trade with no review note carried a coloured "Add review note"
+ * link in its row, and a journal of 25 such trades read as a list of 25 chores.
+ * A record that is missing only OPTIONAL enrichment is not incomplete; it is
+ * finished, and saying otherwise in every row teaches a trader that their
+ * journal is permanently behind.
+ *
+ * The rows no longer show any of this. The Filters panel still offers it,
+ * because a trader who opens Filters and asks for trades with no rule
+ * comparison is deliberately looking for work — the difference between an
+ * offer and a nag is who started the conversation.
+ *
+ * `complete_details` is the one genuinely FACTUAL gap in the set: a settled
+ * trade whose money was never recorded. It is named for what is missing rather
+ * than judged as a defective record.
  */
 export type FollowUp =
   'complete_details' | 'add_system_result' | 'add_review_note' | 'add_strategy' | 'none';
 
-/** Which detail tab the follow-up opens. */
-export const FOLLOW_UP_TAB: Record<
-  Exclude<FollowUp, 'none'>,
-  'overview' | 'execution' | 'review'
-> = {
-  complete_details: 'execution',
-  add_system_result: 'review',
-  add_review_note: 'review',
-  add_strategy: 'overview',
-};
-
 export const FOLLOW_UP_LABEL: Record<FollowUp, string> = {
-  complete_details: 'Complete details',
-  add_system_result: 'Add system result',
+  complete_details: 'Add P&L',
+  add_system_result: 'Add rule comparison',
   add_review_note: 'Add review note',
   add_strategy: 'Add strategy',
   none: '—',
 };
 
-/**
- * THREE TONES, AND THE THIRD ONE WAS EARNED BY LOOKING AT THE PAGE.
- *
- * `attention` (amber) is for a record that is broken AS A RECORD — a legacy row
- * whose own facts are missing. Nothing else qualifies.
- *
- * `action` (the primary accent) is for adding the system result. It began as a
- * second amber, and on a real page of 25 rows that put three or four warning-
- * coloured links in one column, which read as "four things are wrong here"
- * rather than "here is the product's central action". Resolving the system
- * outcome is what makes attribution possible at all; it deserves to look like
- * the offer it is, not like a defect.
- *
- * `neutral` is depth the trader simply has not added — a strategy, a review
- * note. Missing optional information must never be styled as an error
- * (spec §B5).
- */
-export type FollowUpTone = 'attention' | 'action' | 'neutral' | 'quiet';
-
-export const FOLLOW_UP_TONE: Record<FollowUp, FollowUpTone> = {
-  complete_details: 'attention',
-  add_system_result: 'action',
-  add_review_note: 'neutral',
-  add_strategy: 'neutral',
-  none: 'quiet',
-};
-
-export function deriveFollowUp(trade: PrototypeTrade): FollowUp {
-  if (trade.legacy || trade.lifecycle === 'needs_details') return 'complete_details';
-
-  const isClosed = trade.lifecycle === 'closed';
-
-  // Suppressed while the position is open: an unresolved system result is not
-  // yet actionable, because the trade the system is being compared against has
-  // not finished happening.
-  if (isClosed && trade.systemState === 'pending') return 'add_system_result';
-  if (isClosed && !trade.hasReviewNote) return 'add_review_note';
-  if (trade.strategy === null && trade.lifecycle !== 'canceled') return 'add_strategy';
-
-  return 'none';
-}
-
 export const STATUS_LABEL: Record<PrototypeTrade['lifecycle'], string> = {
   open: 'Open',
   partially_closed: 'Partially closed',
   closed: 'Closed',
-  needs_details: 'Needs details',
   canceled: 'Canceled',
 };
 

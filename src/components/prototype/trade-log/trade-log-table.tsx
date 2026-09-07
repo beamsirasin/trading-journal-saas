@@ -14,8 +14,6 @@ import {
 
 import type { PrototypeCopy } from '../copy';
 import type { PrototypeTrade } from '../fixtures';
-import { deriveFollowUp } from '../presentation';
-import { FollowUpAction } from './follow-up-action';
 import { ClassificationCell, MoneyFigure, RFigure, StatusCell } from './journal-figures';
 import type { DetailTab } from './trade-details-panel';
 
@@ -86,14 +84,18 @@ export function TradeLogTable({
         words wrapped onto a second line, which grew those rows and broke the
         column rhythm the table exists to provide.
       */}
+      {/*
+        SIX COLUMNS, NOT SEVEN. The Follow-up column is gone — see the note at
+        the top of this file. The 168px it occupied went to the two figures and
+        to Strategy, which no longer has to truncate at typical names.
+      */}
       <colgroup>
+        <col className="w-[180px]" />
+        <col className="w-[152px]" />
         <col className="w-[160px]" />
-        <col className="w-[148px]" />
-        <col className="w-[156px]" />
-        <col className="w-[164px]" />
-        <col className="w-[104px]" />
+        <col className="w-[180px]" />
+        <col className="w-[120px]" />
         <col />
-        <col className="w-[168px]" />
       </colgroup>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
@@ -105,7 +107,6 @@ export function TradeLogTable({
           <TableHead className="h-10 px-4 text-right">{copy.colNetPnl}</TableHead>
           <TableHead className="h-10 px-4 text-right">{copy.colActualR}</TableHead>
           <TableHead className="h-10 px-4">{copy.colStrategySetup}</TableHead>
-          <TableHead className="h-10 px-4">{copy.colFollowUp}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -186,15 +187,7 @@ export function TradeLogTable({
               </TableCell>
 
               <TableCell className="min-w-0 px-4 py-3">
-                <ClassificationCell trade={trade} copy={copy} />
-              </TableCell>
-
-              <TableCell className="px-4 py-3">
-                <FollowUpAction
-                  followUp={deriveFollowUp(trade)}
-                  copy={copy}
-                  onSelect={(tab) => onSelect(trade.id, tab)}
-                />
+                <ClassificationCell trade={trade} />
               </TableCell>
             </TableRow>
           );

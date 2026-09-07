@@ -46,243 +46,266 @@ const OUT = path.resolve('docs/prototype/review-screenshots');
  * whole job is to sit below the core surface in tone.
  */
 const SHOTS = [
-  // --- 1-3. Trade Log -----------------------------------------------------
-  { name: '01-trade-log-desktop-1440', path: '/en/prototype/trade-log', width: 1440, height: 1200 },
+  // --- 1. Log a trade · the recording choice ---------------------------------
+  { name: '01-choice-desktop', path: '/en/prototype/log-trade', width: 1440, height: 760 },
+  { name: '02-choice-mobile', path: '/en/prototype/log-trade', width: 390, height: 844 },
+
+  // --- 2. Still open ---------------------------------------------------------
   {
-    name: '01b-trade-log-desktop-1440-light',
+    name: '03-still-open-desktop',
+    path: '/en/prototype/log-trade/at-entry',
+    width: 1440,
+    height: 1000,
+    full: true,
+  },
+  {
+    name: '03b-still-open-desktop-light',
+    path: '/en/prototype/log-trade/at-entry',
+    width: 1440,
+    height: 1000,
+    full: true,
+    theme: 'light',
+  },
+  {
+    name: '04-still-open-mobile',
+    path: '/en/prototype/log-trade/at-entry',
+    width: 390,
+    height: 844,
+  },
+  {
+    name: '05-still-open-target-added',
+    path: '/en/prototype/log-trade/at-entry',
+    width: 1440,
+    height: 1000,
+    full: true,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'Add target' }).click();
+      await page.locator('input').last().fill('1000.00');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '06-still-open-plan-editor-desktop',
+    path: '/en/prototype/log-trade/at-entry',
+    width: 1440,
+    height: 1100,
+    full: true,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'What is your plan?' }).click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '07-still-open-feelings-editor-mobile',
+    path: '/en/prototype/log-trade/at-entry',
+    width: 390,
+    height: 844,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'How did you feel at entry?' }).click();
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: '08-still-open-prompts-answered',
+    path: '/en/prototype/log-trade/at-entry?filled=1',
+    width: 1440,
+    height: 1000,
+    full: true,
+  },
+
+  // --- 3. Fully closed -------------------------------------------------------
+  {
+    name: '09-fully-closed-desktop',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+  },
+  {
+    name: '09b-fully-closed-desktop-light',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    theme: 'light',
+  },
+  {
+    name: '10-fully-closed-mobile',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 390,
+    height: 844,
+  },
+  {
+    name: '11-fully-closed-plan-editor',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'What was your plan?' }).click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '12-fully-closed-feelings-editor',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'How did you feel at entry?' }).click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '13-fully-closed-review-editor',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page
+        .getByRole('button', { name: 'What would you repeat or change next time?' })
+        .click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '14-fully-closed-prompts-answered',
+    path: '/en/prototype/log-trade/after-trade?filled=1',
+    width: 1440,
+    height: 1200,
+    full: true,
+  },
+
+  // --- 4. Date and time ------------------------------------------------------
+  {
+    name: '15-timestamp-picker-desktop',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1000,
+    prepare: async (page) => {
+      await page.getByLabel('Entry time').click();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: '16-timestamp-picker-mobile',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 390,
+    height: 844,
+    prepare: async (page) => {
+      await page.getByLabel('Entry time').click();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: '17-timestamp-picker-month-year',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1000,
+    prepare: async (page) => {
+      await page.getByLabel('Entry time').click();
+      await page.waitForTimeout(300);
+      await page.getByRole('button', { name: /^September 2026$/ }).click();
+      await page.waitForTimeout(300);
+    },
+  },
+
+  // --- 5. Partial exits ------------------------------------------------------
+  {
+    name: '18-partial-exits-collapsed',
+    path: '/en/prototype/log-trade/after-trade?exits=1',
+    width: 1440,
+    height: 1300,
+    full: true,
+  },
+  {
+    name: '19-partial-exits-collapsed-mobile',
+    path: '/en/prototype/log-trade/after-trade?exits=1',
+    width: 390,
+    height: 844,
+    prepare: async (page) => {
+      await page.getByRole('heading', { name: 'Exits' }).scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '20-partial-exit-active-editor',
+    path: '/en/prototype/log-trade/after-trade?exits=1&edit=e2',
+    width: 1440,
+    height: 1500,
+    full: true,
+  },
+  {
+    name: '21-partial-trade-closed-vs-open',
+    path: '/en/prototype/trade-log?trade=t-04&tab=execution',
+    width: 1440,
+    height: 1100,
+  },
+
+  // --- 6. Trade Log ----------------------------------------------------------
+  { name: '22-trade-log-desktop', path: '/en/prototype/trade-log', width: 1440, height: 1200 },
+  {
+    name: '22b-trade-log-desktop-light',
     path: '/en/prototype/trade-log',
     width: 1440,
     height: 1200,
     theme: 'light',
   },
-  { name: '02-trade-log-mobile-390', path: '/en/prototype/trade-log', width: 390, height: 844 },
+  { name: '23-trade-log-mobile', path: '/en/prototype/trade-log', width: 390, height: 844 },
+  { name: '23b-trade-log-320', path: '/en/prototype/trade-log', width: 320, height: 800 },
   {
-    name: '02b-trade-log-mobile-390-light',
-    path: '/en/prototype/trade-log',
-    width: 390,
-    height: 844,
-    theme: 'light',
+    name: '24-trade-log-partial-trade',
+    path: '/en/prototype/trade-log?state=open',
+    width: 1440,
+    height: 900,
   },
-  { name: '03-trade-log-mobile-320', path: '/en/prototype/trade-log', width: 320, height: 800 },
-
-  // --- 4-5. Trade Details -------------------------------------------------
   {
-    name: '04-trade-details-desktop-overview',
+    name: '25-trade-log-incomplete-coverage',
+    path: '/en/prototype/trade-log?account=all',
+    width: 1440,
+    height: 900,
+  },
+
+  // --- 7. Trade details ------------------------------------------------------
+  {
+    name: '26-details-overview-desktop',
     path: '/en/prototype/trade-log?trade=t-01',
     width: 1440,
     height: 1100,
   },
   {
-    name: '04b-trade-details-desktop-execution',
+    name: '27-details-overview-mobile',
+    path: '/en/prototype/trade-log?trade=t-01',
+    width: 390,
+    height: 844,
+  },
+  {
+    name: '28-details-entry-exits-desktop',
     path: '/en/prototype/trade-log?trade=t-04&tab=execution',
     width: 1440,
     height: 1100,
   },
   {
-    name: '04c-trade-details-desktop-review',
-    path: '/en/prototype/trade-log?trade=t-07&tab=review',
-    width: 1440,
-    height: 1100,
+    name: '29-details-entry-exits-mobile',
+    path: '/en/prototype/trade-log?trade=t-04&tab=execution',
+    width: 390,
+    height: 844,
   },
   {
-    // The concise "System result not recorded" + action, on a pending trade.
-    name: '04d-trade-details-review-system-not-recorded',
+    name: '30-details-review-desktop',
     path: '/en/prototype/trade-log?trade=t-01&tab=review',
     width: 1440,
     height: 1100,
   },
   {
-    name: '05-trade-details-mobile',
-    path: '/en/prototype/trade-log?trade=t-01',
+    name: '31-details-review-mobile',
+    path: '/en/prototype/trade-log?trade=t-01&tab=review',
     width: 390,
     height: 844,
-  },
-
-  // --- 6. Log a trade choice ---------------------------------------------
-  {
-    name: '06-log-a-trade-choice',
-    path: '/en/prototype/log-trade',
-    width: 1440,
-    height: 900,
-    full: true,
-  },
-
-  // --- 7-10. At Entry -----------------------------------------------------
-  {
-    name: '07-at-entry-desktop',
-    path: '/en/prototype/log-trade/at-entry',
-    width: 1440,
-    height: 1000,
-    full: true,
-  },
-  {
-    name: '07b-at-entry-desktop-optional-filled',
-    path: '/en/prototype/log-trade/at-entry?expand=1',
-    width: 1440,
-    height: 1000,
-    full: true,
-  },
-  {
-    name: '08-at-entry-mobile-main',
-    path: '/en/prototype/log-trade/at-entry',
-    width: 390,
-    height: 844,
-  },
-  {
-    name: '09-at-entry-mobile-optional-subview',
-    path: '/en/prototype/log-trade/at-entry',
-    width: 390,
-    height: 844,
-    prepare: async (page) => {
-      await page.getByRole('button', { name: /Entry context/ }).click();
-      await page.waitForTimeout(400);
-    },
-  },
-  {
-    name: '10-at-entry-mobile-keyboard-open',
-    path: '/en/prototype/log-trade/at-entry',
-    width: 390,
-    height: 844,
-    /*
-      A REPRESENTATIVE KEYBOARD-OPEN STATE.
-
-      Headless Chromium has no soft keyboard, so the keyboard is emulated the
-      only honest way available: the visual viewport is shrunk to the height a
-      real keyboard leaves (about 340px of a 844px screen), which is exactly the
-      signal `useKeyboardObscuringViewport` reads. The footer then undocks on its
-      own, and the shot shows the focused field and its label with nothing of
-      ours covering them.
-    */
-    keyboard: 340,
-    prepare: async (page) => {
-      const field = page.getByLabel('Initial risk');
-      await field.focus();
-      /*
-        SCROLLED INTO THE REGION THE KEYBOARD LEAVES, not into the layout
-        viewport. `scrollIntoViewIfNeeded` sees an 844px window and concludes
-        the field is already visible — then the keyboard covers the lower 340px
-        of it. The point of this frame is that the focused field and its label
-        survive a keyboard, so the scroll has to reason about the same 504px the
-        reader can actually see.
-      */
-      await page.evaluate((keyboardHeight) => {
-        const input = document.activeElement;
-        if (input === null) return;
-        const visible = window.innerHeight - keyboardHeight;
-        const rect = input.getBoundingClientRect();
-        // Leave room beneath for the field's helper/validation line.
-        const target = visible - 96;
-        if (rect.bottom > target) window.scrollBy(0, rect.bottom - target);
-      }, 340);
-      await page.waitForTimeout(400);
-      // ASSERTED, NOT ASSUMED. The whole point of this frame is that the docked
-      // save released itself; if it did not, the screenshot would show a bar
-      // over the keyboard and quietly claim the opposite.
-      const state = await page.locator('[data-form-footer]').getAttribute('data-form-footer');
-      if (state !== 'inline') {
-        throw new Error(`expected the save action to undock under a keyboard, got "${state}"`);
-      }
-    },
-  },
-
-  // --- 11-13. After Trade -------------------------------------------------
-  {
-    name: '11-after-trade-desktop',
-    path: '/en/prototype/log-trade/after-trade',
-    width: 1440,
-    height: 1000,
-    full: true,
-  },
-  {
-    name: '11b-after-trade-desktop-light',
-    path: '/en/prototype/log-trade/after-trade',
-    width: 1440,
-    height: 1000,
-    theme: 'light',
-    full: true,
-  },
-  {
-    name: '12-after-trade-mobile-main',
-    path: '/en/prototype/log-trade/after-trade',
-    width: 390,
-    height: 844,
-  },
-  {
-    name: '13-after-trade-mobile-optional-subview',
-    path: '/en/prototype/log-trade/after-trade',
-    width: 390,
-    height: 844,
-    prepare: async (page) => {
-      await page.getByRole('button', { name: /Add original plan/ }).click();
-      await page.waitForTimeout(400);
-    },
-  },
-
-  // --- 14-15. Exits -------------------------------------------------------
-  {
-    name: '14-ordinary-full-close',
-    path: '/en/prototype/exits',
-    width: 1120,
-    height: 620,
-  },
-  {
-    name: '15-multiple-exits',
-    path: '/en/prototype/exits',
-    width: 1120,
-    height: 1200,
-    full: true,
-  },
-  { name: '15b-multiple-exits-mobile', path: '/en/prototype/exits', width: 390, height: 844 },
-
-  // --- 16. Confidence / entry context -------------------------------------
-  {
-    name: '16-confidence-context-mobile',
-    path: '/en/prototype/context',
-    width: 390,
-    height: 844,
-  },
-  {
-    name: '16b-confidence-context-desktop',
-    path: '/en/prototype/context',
-    width: 1440,
-    height: 1000,
-    full: true,
-  },
-  {
-    name: '16c-confidence-context-desktop-light',
-    path: '/en/prototype/context',
-    width: 1440,
-    height: 1000,
-    theme: 'light',
-    full: true,
-  },
-
-  // --- 17. The qualified Known net P&L state ------------------------------
-  {
-    // The default scope contains a price-only trade and a legacy record, so the
-    // money aggregate covers 110 of 112 closed trades and says so.
-    name: '17-known-net-pnl-qualified',
-    path: '/en/prototype/trade-log',
-    width: 1440,
-    height: 460,
-  },
-  {
-    // Filtered to one strategy: every closed trade in scope carries money, so
-    // the same strip reads the unqualified "Net P&L".
-    name: '17b-net-pnl-complete',
-    path: '/en/prototype/trade-log?strategy=Elliott%20Wave',
-    width: 1440,
-    height: 460,
-  },
-  {
-    // Two currencies in scope: never summed, never converted.
-    name: '17c-net-pnl-multiple-currencies',
-    path: '/en/prototype/trade-log?account=all',
-    width: 1440,
-    height: 460,
   },
 ];
-
 await mkdir(OUT, { recursive: true });
 
 const browser = await chromium.launch();

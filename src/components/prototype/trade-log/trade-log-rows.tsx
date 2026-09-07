@@ -6,8 +6,7 @@ import { cn } from '@/lib/utils';
 
 import { outcomeLabel, statusLabel, type PrototypeCopy } from '../copy';
 import type { PrototypeTrade } from '../fixtures';
-import { closedPercentLabel, deriveFollowUp } from '../presentation';
-import { FollowUpAction } from './follow-up-action';
+import { closedPercentLabel } from '../presentation';
 import { MoneyFigure, RFigure } from './journal-figures';
 import type { DetailTab } from './trade-details-panel';
 
@@ -59,7 +58,6 @@ export function TradeLogRows({
     <ul aria-label={copy.journalLabel} className={cn('flex min-w-0 flex-col', className)}>
       {trades.map((trade) => {
         const isSelected = selectedTradeId === trade.id;
-        const followUp = deriveFollowUp(trade);
         const lifecycleLine = [
           statusLabel(copy, trade.lifecycle),
           trade.outcome === null
@@ -126,22 +124,14 @@ export function TradeLogRows({
               <RFigure trade={trade} copy={copy} marker="inline" className="shrink-0 text-right" />
             </div>
 
-            <div className="mt-2 flex min-w-0 items-baseline justify-between gap-4">
-              <span className="text-muted-foreground min-w-0 truncate text-xs">
-                {trade.strategy === null
-                  ? copy.noStrategy
-                  : trade.setup === null
-                    ? trade.strategy
-                    : `${trade.strategy} · ${trade.setup}`}
-              </span>
-              <FollowUpAction
-                followUp={followUp}
-                copy={copy}
-                onSelect={(tab) => onSelect(trade.id, tab)}
-                emptyPlaceholder={false}
-                className="shrink-0 text-xs"
-              />
-            </div>
+            {/* Strategy alone, and only when there is one. A row with no
+                strategy prints nothing rather than "No strategy" — see
+                `ClassificationCell`. Setup lives in Trade details. */}
+            {trade.strategy === null ? null : (
+              <p className="text-muted-foreground mt-2 min-w-0 truncate text-xs">
+                {trade.strategy}
+              </p>
+            )}
           </li>
         );
       })}

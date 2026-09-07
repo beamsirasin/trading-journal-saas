@@ -275,7 +275,15 @@ export function TradeLogToolbar({
           ]}
           className="min-w-0 shrink lg:order-1"
         />
-        <div className="ml-auto min-w-0 shrink lg:order-4 lg:ml-0">{sortControl}</div>
+        {/*
+          SORT IS A DESKTOP CONTROL NOW. Below `lg` its trigger was icon-only —
+          a bare glyph with no label, offering a choice a reader cannot see the
+          current value of. On a phone the row is Search and Filters, and sorting
+          lives inside Filters where it has room for its options and its labels.
+        */}
+        <div className="ml-auto hidden min-w-0 shrink lg:order-4 lg:ml-0 lg:block">
+          {sortControl}
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:contents">
@@ -356,7 +364,7 @@ export function TradeLogToolbar({
             </ToolbarTrigger>
           }
         >
-          <FiltersPanel query={query} onQueryChange={onQueryChange} />
+          <FiltersPanel copy={copy} query={query} onQueryChange={onQueryChange} />
         </ToolbarDisclosure>
       </div>
     </div>
@@ -364,9 +372,11 @@ export function TradeLogToolbar({
 }
 
 function FiltersPanel({
+  copy,
   query,
   onQueryChange,
 }: {
+  copy: PrototypeCopy;
   query: JournalQuery;
   onQueryChange: (next: JournalQuery) => void;
 }) {
@@ -459,7 +469,21 @@ function FiltersPanel({
         </FilterGroup>
       )}
 
-      <FilterGroup label="Follow-up">
+      {/* The phone's sort control. `lg:hidden` rather than a second component:
+          one `query.sort`, one writer, no chance of two copies disagreeing. */}
+      <div className="lg:hidden">
+        <FilterGroup label="Sort">
+          <RadioList
+            name="prototype-sort-mobile"
+            legend="Sort"
+            value={query.sort}
+            options={SORT_KEYS.map((key) => ({ value: key, label: sortLabel(copy, key) }))}
+            onChange={(value) => onQueryChange({ ...query, sort: value as SortKey, page: 1 })}
+          />
+        </FilterGroup>
+      </div>
+
+      <FilterGroup label="Missing information">
         {(Object.keys(FOLLOW_UP_FILTER_LABEL) as FollowUpFilter[]).map((key) => (
           <CheckRow
             key={key}

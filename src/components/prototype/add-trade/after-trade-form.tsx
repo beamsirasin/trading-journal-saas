@@ -1,132 +1,172 @@
 'use client';
 
-import { Minus, Plus } from 'lucide-react';
 import { useState } from 'react';
 
-import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
-
-import { PROTOTYPE_STRATEGIES, PROTOTYPE_TIMEZONE } from '../fixtures';
+import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
-import { ConfidenceControl } from './confidence-control';
-import { emotionLabel, EmotionsControl } from './emotions-control';
 import { ExitsEditor } from './exits-editor';
 import {
-  BasisSwitch,
+  Band,
+  BasisToggle,
   ChoiceGroup,
-  ComputedResult,
-  CoreGroup,
-  CoreSurface,
+  ContextLine,
   Field,
   FieldPair,
   FormFooter,
   FormShell,
+  OutcomeChoice,
+  PrimaryAmountField,
+  QuietAction,
+  ResultSummary,
+  TaskSurface,
   TextField,
+  type MoneyOutcome,
 } from './form-primitives';
-import { OptionalDetails, OptionalEntry } from './optional-details';
+import {
+  EMPTY_FEELINGS,
+  EMPTY_PLAN,
+  EMPTY_REVIEW,
+  FeelingsEditor,
+  feelingsSummary,
+  PlanEditor,
+  planSummary,
+  ReviewEditor,
+  reviewSummary,
+  type FeelingsDraft,
+  type PlanDraft,
+  type ReviewDraft,
+} from './journal-editors';
+import { JournalPrompts } from './journal-prompts';
+import { TimestampField, type Timestamp } from './timestamp-picker';
 
 /**
- * AFTER TRADE — actual first, and the plan is optional beneath it.
+ * FULLY CLOSED — the whole finished trade, written up in one sitting.
  *
- * THIS IS THE STRUCTURAL CHANGE THE REDESIGN IS FOR. The current form requires
- * a plan basis and plan values in BOTH recording paths, so a trader writing up
- * a trade from three weeks ago has to invent a planned risk before the form will
- * accept what actually happened — and then type the real risk again below it.
- * That is how a journal starts collecting fiction. Here the first thing the page
- * asks for is the result, and "Add original plan" is a closed row under it.
+ * THE MENTAL MODEL THIS PASS CORRECTED. The previous composition read "the
+ * result, and everything else is hidden somewhere". That is a defensible
+ * reading of "After trade" and the wrong one: a trader journaling a completed
+ * trade is reconstructing the WHOLE trade — what was traded, which way, when it
+ * opened and closed, what was risked, what it made, and what they thought about
+ * it. So the screen shows two compact factual groups, THE TRADE and RESULT,
+ * and the result is prominent because it is known, not because the rest was
+ * demoted.
  *
- * WHAT THE ORDER SAYS. Identity, times, then Actual result, in money by
- * default: initial risk and net realized P&L, which is two numbers a broker
- * statement can answer directly. The computed line beneath them states the
- * canonical outcome — `+2.00R · Win` — as an ANSWER, not as another question:
- * the engine classifies the result, the trader does not choose it.
+ * MONEY LEADS; R FOLLOWS. `+2.00R` was the largest figure on the screen, which
+ * is right for a trader fluent in R and useless to everyone else. `Net profit
+ * +400.00 USD` is the headline now, with `Result (R)` beneath it — a beginner
+ * can verify the first against their broker statement and learn the second by
+ * watching it move.
  *
- * A MISSING PLAN IS NOT PUNISHED. There is no empty plan column beside the
- * actual figures, no "Planned R —" placeholder, and no warning. Planned R is
- * simply unavailable for a trade that was never planned on paper, and the
- * journal says so later rather than the form complaining now.
+ * NO PLUS/MINUS TOGGLE. The sign is asked in words — Profit, Loss, Break-even —
+ * because a beginner should never have to discover an icon-only control in order
+ * to record a losing trade, and because a form that silently defaults to
+ * "profit" will happily save someone's worst trade as a win.
  *
- * THE SYSTEM RESULT DEFAULTS TO REVIEW LATER and is never seeded from the exit.
- * An exit price says where the position closed; it does not say which of the
- * strategy's rules would have fired first, and letting the form guess is how a
- * counterfactual quietly becomes a copy of the actual.
+ * NOTHING IS RECONSTRUCTED FROM THE RESULT. The plan starts blank and stays
+ * blank unless the trader actually had one; the rule-based comparison is never
+ * seeded from the exit. An exit price says where the position closed, not which
+ * rule would have fired first, and a form that guesses turns a counterfactual
+ * into a copy of the actual.
  */
-export function AfterTradeForm() {
+export function AfterTradeForm({
+  /** Opens the multiple-exits editor on arrival, for the partial-exit review states. */
+  exits = false,
+  /** Which leg opens as the active editor, for the active-editor review state. */
+  activeExit = null,
+  /** A part-finished draft, for the review state that shows populated summaries. */
+  filled = false,
+}: {
+  exits?: boolean;
+  activeExit?: string | null;
+  filled?: boolean;
+}) {
   const [basis, setBasis] = useState<'money' | 'price'>('money');
   const [symbol, setSymbol] = useState('XAUUSD');
   const [direction, setDirection] = useState<'long' | 'short' | null>('long');
   const [risk, setRisk] = useState('200.00');
   const [pnl, setPnl] = useState('400.00');
-  const [negative, setNegative] = useState(false);
-  const [multipleExits, setMultipleExits] = useState(false);
+  const [outcome, setOutcome] = useState<MoneyOutcome>('profit');
+  const [multipleExits, setMultipleExits] = useState(exits);
 
-  const [planOpen, setPlanOpen] = useState(false);
-  const [plannedReward, setPlannedReward] = useState('');
-  const [strategy, setStrategy] = useState<string | null>(null);
-  const [setup, setSetup] = useState<string | null>(null);
-  const [confidence, setConfidence] = useState<number | null>(null);
-  const [emotions, setEmotions] = useState<readonly string[] | null>(null);
-  const [systemOutcome, setSystemOutcome] = useState('review_later');
+  const [enteredAt, setEnteredAt] = useState<Timestamp | null>(null);
+  const [exitedAt, setExitedAt] = useState<Timestamp | null>(null);
 
+  const [plan, setPlan] = useState<PlanDraft>(
+    filled
+      ? {
+          ...EMPTY_PLAN,
+          strategy: 'Elliott Wave',
+          setup: 'Wave 3 Continuation',
+          plannedTarget: '1000.00',
+        }
+      : EMPTY_PLAN,
+  );
+  const [feelings, setFeelings] = useState<FeelingsDraft>(
+    filled ? { confidence: 75, emotions: ['calm', 'focused'] } : EMPTY_FEELINGS,
+  );
+  const [review, setReview] = useState<ReviewDraft>(
+    filled
+      ? {
+          ...EMPTY_REVIEW,
+          note: 'Wait for the candle close next time rather than anticipating it.',
+          followedRules: 'met',
+        }
+      : EMPTY_REVIEW,
+  );
+
+  /*
+    THE SIGN COMES FROM THE WORD THE TRADER CHOSE, and break-even is a real zero
+    rather than a typed one. This is INPUT MEANING only: the engine still
+    classifies the outcome from the resulting R against its own tolerance band,
+    and a "profit" of a few cents can still classify as break-even.
+  */
+  const signedPnl = outcome === 'break_even' ? 0 : Number(pnl) * (outcome === 'loss' ? -1 : 1);
   const riskNumber = Number(risk);
-  const pnlNumber = Number(pnl) * (negative ? -1 : 1);
-  const actualR =
-    Number.isFinite(riskNumber) && riskNumber > 0 && Number.isFinite(pnlNumber) && pnl !== ''
-      ? pnlNumber / riskNumber
-      : null;
-  // Break-even is a tolerance band, never an equality test against zero.
-  const outcome =
-    actualR === null
-      ? null
-      : Math.abs(actualR) <= 0.05
-        ? 'Break-even'
-        : actualR > 0
-          ? 'Win'
-          : 'Loss';
+  const hasResult =
+    Number.isFinite(riskNumber) &&
+    riskNumber > 0 &&
+    Number.isFinite(signedPnl) &&
+    (outcome === 'break_even' || pnl !== '');
+  const actualR = hasResult ? signedPnl / riskNumber : null;
 
-  const strategySummary =
-    strategy === null ? null : setup === null ? strategy : `${strategy} / ${setup}`;
-  const contextParts = [
-    confidence === null
-      ? null
-      : `${['Very low', 'Low', 'Neutral', 'High', 'Very high'][confidence / 25] ?? ''} confidence`,
-    emotions === null
-      ? null
-      : emotions.length === 0
-        ? 'None of these'
-        : emotions.map(emotionLabel).join(', '),
-  ].filter((part): part is string => part !== null && part !== '');
+  const moneyLabel =
+    outcome === 'profit' ? 'Net profit' : outcome === 'loss' ? 'Net loss' : 'Net P&L';
+  const moneyText = hasResult ? `${signedPnl > 0 ? '+' : ''}${signedPnl.toFixed(2)} USD` : null;
+  const tone = signedPnl > 0 ? 'positive' : signedPnl < 0 ? 'negative' : 'neutral';
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
       <FormShell
-        situation="After trade · Position is closed"
+        situation="Fully closed"
         onChangeSituation={() => {
           window.location.href = '../log-trade';
         }}
         footer={
           <FormFooter
             action="Save closed trade"
-            helper="You can add the plan, the strategy and the system result later."
+            helper="You can add your plan, your review and the rule comparison later."
             sticky
           />
         }
       >
-        <CoreSurface>
-          <CoreGroup>
-            <Field label="Account" suffix="USD">
-              {(id) => (
-                <select
-                  id={id}
-                  defaultValue="Live · FTMO 100K"
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                >
-                  <option>Live · FTMO 100K</option>
-                  <option>Personal · Thai broker</option>
-                </select>
-              )}
-            </Field>
+        <TaskSurface>
+          <Band className="gap-3 py-3.5">
+            <ContextLine
+              account="Live · FTMO 100K"
+              currency="USD"
+              timezone={PROTOTYPE_TIMEZONE}
+              onChange={() => {}}
+            />
+          </Band>
 
+          {/*
+            GROUP ONE — THE TRADE. What was traded, which way, and when it ran.
+            It comes first because a completed trade is a thing that happened,
+            and a screen that opens on its P&L is a receipt rather than a journal
+            entry.
+          */}
+          <Band>
+            <h2 className="text-label text-muted-foreground uppercase">The trade</h2>
             <FieldPair>
               <TextField label="Symbol" value={symbol} onChange={setSymbol} placeholder="XAUUSD" />
               <Field label="Direction">
@@ -145,281 +185,150 @@ export function AfterTradeForm() {
             </FieldPair>
 
             {/*
-              THE TIMEZONE IS STATED ONCE, ABOVE BOTH FIELDS (spec §I).
-
-              It was on each field's own label row, which on a 390px screen put
-              "Asia/Bangkok · GMT+7" on the page twice within 150 vertical
-              pixels, saying the same thing about two fields that could not
-              possibly be in different zones.
+              BOTH TIMESTAMPS START UNANSWERED. A historical trade silently dated
+              today is a wrong record that looks like a right one, so neither
+              picker selects anything until the trader does — opening one shows a
+              convenient month, and selects nothing.
             */}
-            <div className="flex min-w-0 flex-col gap-2">
-              <p className="text-subtle-foreground text-xs">Times in {PROTOTYPE_TIMEZONE}</p>
-              <FieldPair>
-                <Field label="Entry time">
-                  {(id) => (
-                    // Deliberately blank on arrival. A historical trade silently
-                    // dated today is a wrong record that looks like a right one.
-                    <Input id={id} type="datetime-local" className="numeric text-base" />
-                  )}
-                </Field>
-                <Field label="Exit time">
-                  {(id) => <Input id={id} type="datetime-local" className="numeric text-base" />}
-                </Field>
-              </FieldPair>
+            <FieldPair>
+              <TimestampField
+                label="Entry time"
+                title="Entry date and time"
+                value={enteredAt}
+                onChange={setEnteredAt}
+                placeholder="Select entry date and time"
+              />
+              <TimestampField
+                label="Final exit time"
+                title="Final exit date and time"
+                value={exitedAt}
+                onChange={setExitedAt}
+                placeholder="Select exit date and time"
+              />
+            </FieldPair>
+          </Band>
+
+          {/* GROUP TWO — RESULT. */}
+          <Band divided={false} className="py-4">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <h2 className="text-label text-muted-foreground uppercase">Result</h2>
+              <BasisToggle value={basis} onChange={setBasis} />
             </div>
-          </CoreGroup>
 
-          <div className="border-border border-t pt-5">
-            <CoreGroup title="Actual result">
-              <BasisSwitch value={basis} onChange={setBasis} />
-
-              {basis === 'money' ? (
-                <FieldPair>
+            {basis === 'money' ? (
+              <>
+                <div className="max-w-[16rem]">
                   <TextField
-                    label="Initial risk"
-                    suffix="USD"
+                    label="Risk at entry (USD)"
                     value={risk}
                     onChange={setRisk}
                     inputMode="decimal"
                     numeric
-                    hint="The amount you initially risked on this trade."
                   />
-                  <Field
-                    label="Net realized P&L"
-                    suffix="USD"
-                    hint="Profit or loss after fees and other costs"
-                  >
-                    {(id) => (
-                      <div className="flex min-w-0 items-center gap-2">
-                        {/* A visible sign control, because a phone's decimal
-                            keypad frequently has no minus key — and a journal
-                            that cannot record a loss on a phone is not a
-                            journal. It stays synchronised with a typed sign and
-                            preserves an explicit zero. */}
-                        <button
-                          type="button"
-                          onClick={() => setNegative((current) => !current)}
-                          aria-pressed={negative}
-                          aria-label={negative ? 'Negative — a loss' : 'Positive — a profit'}
-                          className={cn(
-                            'focus-visible:ring-ring flex size-11 shrink-0 items-center justify-center rounded-md border text-sm outline-none focus-visible:ring-2',
-                            negative
-                              ? 'border-negative/40 bg-negative/10 text-negative'
-                              : 'border-positive/40 bg-positive/10 text-positive',
-                          )}
-                        >
-                          {negative ? (
-                            <Minus className="size-4" aria-hidden="true" />
-                          ) : (
-                            <Plus className="size-4" aria-hidden="true" />
-                          )}
-                        </button>
-                        <Input
-                          id={id}
-                          value={pnl}
-                          inputMode="decimal"
-                          onChange={(event) => setPnl(event.target.value)}
-                          className="numeric text-base"
-                        />
-                      </div>
-                    )}
-                  </Field>
-                </FieldPair>
-              ) : (
+                </div>
+
+                {/*
+                  WHEN THE EXITS OWN THE RESULT, THE SINGLE-FIGURE INPUTS GO.
+                  A screenshot caught the cost of leaving them: "Net P&L 400.00"
+                  sat directly above an exits editor totalling +80.00, so the
+                  screen stated two different results for one trade and gave the
+                  reader no way to tell which one would be saved. The legs are
+                  authoritative once there is more than one, so they are the only
+                  place the result is entered.
+                */}
+                {multipleExits ? null : <OutcomeChoice value={outcome} onChange={setOutcome} />}
+
+                {multipleExits || outcome === 'break_even' ? null : (
+                  <PrimaryAmountField
+                    label="Net P&L"
+                    currency="USD"
+                    value={pnl}
+                    onChange={setPnl}
+                    hint="After fees and other costs"
+                  />
+                )}
+
+                {multipleExits ? null : (
+                  <ResultSummary
+                    money={moneyText}
+                    moneyLabel={moneyLabel}
+                    r={actualR === null ? null : `${actualR > 0 ? '+' : ''}${actualR.toFixed(2)}R`}
+                    tone={tone}
+                  />
+                )}
+              </>
+            ) : (
+              <>
                 <FieldPair>
-                  <TextField label="Actual entry" value="" onChange={() => {}} numeric />
-                  <TextField label="Initial stop" value="" onChange={() => {}} numeric />
+                  <TextField label="Entry price" value="" onChange={() => {}} numeric />
+                  <TextField label="Stop loss at entry" value="" onChange={() => {}} numeric />
                   <TextField label="Exit price" value="" onChange={() => {}} numeric />
                   <TextField label="Position size" optional value="" onChange={() => {}} numeric />
                 </FieldPair>
-              )}
-
-              {actualR !== null && outcome !== null ? (
-                <ComputedResult
-                  tone={
-                    outcome === 'Win' ? 'positive' : outcome === 'Loss' ? 'negative' : 'neutral'
-                  }
-                >
-                  <span className="text-muted-foreground">Actual result</span>
-                  <span
-                    className={cn(
-                      'numeric text-base font-semibold',
-                      outcome === 'Win'
-                        ? 'text-positive'
-                        : outcome === 'Loss'
-                          ? 'text-negative'
-                          : 'text-foreground',
-                    )}
-                  >
-                    {actualR > 0 ? '+' : ''}
-                    {actualR.toFixed(2)}R
-                  </span>
-                  <span className="text-foreground font-medium">· {outcome}</span>
-                </ComputedResult>
-              ) : null}
-
-              <div>
-                <button
-                  type="button"
-                  aria-expanded={multipleExits}
-                  onClick={() => setMultipleExits((current) => !current)}
-                  className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
-                >
-                  {multipleExits ? 'Use a single result' : 'Multiple exits'}
-                </button>
-                {multipleExits ? (
-                  <div className="mt-3">
-                    <ExitsEditor variant="after-trade" />
-                  </div>
-                ) : null}
-              </div>
-            </CoreGroup>
-          </div>
-        </CoreSurface>
-
-        {/*
-          THE PLAN, BELOW THE RESULT AND CLOSED. Its summary reads "Not
-          recorded" rather than sitting empty, because "I never wrote one down"
-          is a legitimate and common answer that the form should be able to
-          leave alone.
-        */}
-        <OptionalDetails description="None of this is required to save">
-          <OptionalEntry
-            title="Add original plan"
-            summary={planOpen && plannedReward !== '' ? `Target reward ${plannedReward} USD` : null}
-          >
-            <div className="flex min-w-0 flex-col gap-4">
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Only what you actually planned before the trade. Nothing here is filled in from the
-                result above.
-              </p>
-              <FieldPair>
-                <TextField label="Planned risk" suffix="USD" value="" onChange={() => {}} numeric />
-                <TextField
-                  label="Target reward"
-                  suffix="USD"
-                  value={plannedReward}
-                  onChange={(value) => {
-                    setPlannedReward(value);
-                    setPlanOpen(true);
-                  }}
-                  numeric
-                />
-              </FieldPair>
-            </div>
-          </OptionalEntry>
-
-          <OptionalEntry title="Strategy" summary={strategySummary}>
-            <div className="flex min-w-0 flex-col gap-4">
-              <Field label="Strategy">
-                {(id) => (
-                  <select
-                    id={id}
-                    value={strategy ?? ''}
-                    onChange={(event) => {
-                      setStrategy(event.target.value === '' ? null : event.target.value);
-                      setSetup(null);
-                    }}
-                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                  >
-                    <option value="">Not assigned</option>
-                    {PROTOTYPE_STRATEGIES.map((item) => (
-                      <option key={item.name} value={item.name}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              {strategy === null ? null : (
-                <Field label="Setup">
-                  {(id) => (
-                    <select
-                      id={id}
-                      value={setup ?? ''}
-                      onChange={(event) =>
-                        setSetup(event.target.value === '' ? null : event.target.value)
-                      }
-                      className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                    >
-                      <option value="">Not assigned</option>
-                      {(
-                        PROTOTYPE_STRATEGIES.find((item) => item.name === strategy)?.setups ?? []
-                      ).map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </Field>
-              )}
-            </div>
-          </OptionalEntry>
-
-          <OptionalEntry
-            title="Entry context"
-            summary={contextParts.length === 0 ? null : contextParts.join(' · ')}
-            note="Recorded after the trade"
-          >
-            <div className="flex min-w-0 flex-col gap-6">
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                Recalled after the result was known. Stored as recalled, never presented as though
-                it was captured at entry.
-              </p>
-              <ConfidenceControl value={confidence} onChange={setConfidence} />
-              <EmotionsControl value={emotions} onChange={setEmotions} />
-            </div>
-          </OptionalEntry>
-
-          <OptionalEntry title="Notes and chart" summary={null}>
-            <Field label="Anything else to remember?" optional>
-              {(id) => (
-                <textarea
-                  id={id}
-                  rows={3}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
-                />
-              )}
-            </Field>
-          </OptionalEntry>
-
-          <OptionalEntry
-            title="Add system result"
-            summary={systemOutcome === 'review_later' ? null : 'Resolved'}
-            note="Review later"
-          >
-            <div className="flex min-w-0 flex-col gap-4">
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                What the strategy&apos;s own rules would have produced. Nothing here is selected
-                from your exit price.
-              </p>
-              <Field label="System outcome">
-                {(id) => (
-                  <select
-                    id={id}
-                    value={systemOutcome}
-                    onChange={(event) => setSystemOutcome(event.target.value)}
-                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                  >
-                    <option value="review_later">Review later</option>
-                    <option value="target">Target reached</option>
-                    <option value="stop">Stop reached</option>
-                    <option value="break_even">Break-even rule</option>
-                    <option value="other">Other rule-based exit</option>
-                    <option value="no_trade">System would not enter</option>
-                  </select>
-                )}
-              </Field>
-              {systemOutcome === 'target' ? (
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  Target reached needs a recorded target. Add an original plan above to resolve it
-                  numerically, or choose another outcome.
+                  Prices calculate R. Money is not recorded in this mode.
                 </p>
-              ) : null}
+              </>
+            )}
+
+            <div className="flex min-w-0">
+              <QuietAction
+                expanded={multipleExits}
+                onClick={() => setMultipleExits((current) => !current)}
+              >
+                {multipleExits ? 'This was one single exit' : 'It closed in more than one exit'}
+              </QuietAction>
             </div>
-          </OptionalEntry>
-        </OptionalDetails>
+
+            {multipleExits ? (
+              <ExitsEditor
+                variant="after-trade"
+                initialRisk={risk}
+                currency="USD"
+                initialActiveId={activeExit}
+              />
+            ) : null}
+          </Band>
+        </TaskSurface>
+
+        <JournalPrompts
+          prompts={[
+            {
+              id: 'plan',
+              question: 'What was your plan?',
+              summary: planSummary(plan, 'USD'),
+              children: (
+                <PlanEditor
+                  tense="past"
+                  draft={plan}
+                  onChange={setPlan}
+                  currency="USD"
+                  basis={basis}
+                />
+              ),
+            },
+            {
+              id: 'feelings',
+              question: 'How did you feel at entry?',
+              summary: feelingsSummary(feelings),
+              note: 'Recalled after the trade',
+              children: <FeelingsEditor draft={feelings} onChange={setFeelings} recalled />,
+            },
+            {
+              id: 'review',
+              question: 'What would you repeat or change next time?',
+              summary: reviewSummary(review),
+              children: (
+                <ReviewEditor
+                  draft={review}
+                  onChange={setReview}
+                  currency="USD"
+                  actualMoney={moneyText ?? 'Not recorded'}
+                />
+              ),
+            },
+          ]}
+        />
       </FormShell>
     </PrototypeShell>
   );

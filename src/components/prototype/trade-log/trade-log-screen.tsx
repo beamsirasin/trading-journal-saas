@@ -162,17 +162,29 @@ export function TradeLogScreen({
           }}
         />
 
-        <div className="flex min-w-0 flex-col gap-2 md:gap-4">
-          <TradeLogToolbar copy={copy} query={query} onQueryChange={handleQueryChange} />
+        <div className="flex min-w-0 flex-col gap-3">
+          {/*
+            ONE QUIET BAND OF CHROME, THEN THE JOURNAL.
 
-          <AppliedFilterChips copy={copy} query={query} onQueryChange={handleQueryChange} />
+            The controls, the applied-filter chips and the summary were three
+            children of a `gap-4` column, each visually independent — and with the
+            summary framed as a card, the page presented three stacked bands
+            before the first trade. They are one group now, spaced tightly enough
+            to read as a single toolbar region, and the only remaining gap of
+            consequence is the one between that region and the journal itself.
+          */}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <TradeLogToolbar copy={copy} query={query} onQueryChange={handleQueryChange} />
 
-          <TradeLogSummary
-            copy={copy}
-            summary={summary}
-            state={query.state}
-            status={demo === 'error' ? 'failed' : demo === 'loading' ? 'loading' : 'ready'}
-          />
+            <AppliedFilterChips copy={copy} query={query} onQueryChange={handleQueryChange} />
+
+            <TradeLogSummary
+              copy={copy}
+              summary={summary}
+              state={query.state}
+              status={demo === 'error' ? 'failed' : demo === 'loading' ? 'loading' : 'ready'}
+            />
+          </div>
 
           {/* ONE CONTINUOUS JOURNAL SURFACE — table or rows or list, plus its
               own footer. Not a card per trade, and not a card per breakpoint. */}

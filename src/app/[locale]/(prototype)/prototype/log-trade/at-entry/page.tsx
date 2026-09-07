@@ -2,13 +2,15 @@ import type { Metadata } from 'next';
 
 import { AtEntryForm } from '@/components/prototype/add-trade/at-entry-form';
 
-export const metadata: Metadata = { title: 'Prototype · At entry' };
+export const metadata: Metadata = { title: 'Prototype · Still open' };
 
 /**
- * Prototypes 6 and 7: the At Entry short path, desktop and mobile.
+ * The STILL OPEN recording path — internally `AT_ENTRY`, and the route keeps
+ * that name because the domain concept has not changed. Only what the reader is
+ * shown has.
  *
- * `?expand=1` renders the same form with its optional sections answered, so the
- * collapsed-summary treatment can be judged beside the empty one.
+ * `?filled=1` renders a part-finished draft so the populated journaling
+ * summaries can be judged beside the empty ones.
  */
 export default async function AtEntryPrototypePage({
   searchParams,
@@ -16,5 +18,5 @@ export default async function AtEntryPrototypePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  return <AtEntryForm prefilled={params['expand'] === '1'} />;
+  return <AtEntryForm filled={params['filled'] === '1'} />;
 }

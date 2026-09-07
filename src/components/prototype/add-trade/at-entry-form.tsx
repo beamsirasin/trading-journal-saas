@@ -1,108 +1,114 @@
 'use client';
 
-import { Check } from 'lucide-react';
 import { useState } from 'react';
 
-import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
-
-import { PROTOTYPE_STRATEGIES, PROTOTYPE_TIMEZONE } from '../fixtures';
+import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
-import { ConfidenceControl } from './confidence-control';
-import { emotionLabel, EmotionsControl } from './emotions-control';
 import {
-  BasisSwitch,
+  Band,
+  BasisToggle,
   ChoiceGroup,
-  ComputedResult,
-  CoreGroup,
-  CoreSurface,
+  ContextLine,
   Field,
   FieldPair,
   FormFooter,
   FormShell,
+  PrimaryAmountField,
+  QuietAction,
+  ResultLine,
+  TaskSurface,
   TextField,
 } from './form-primitives';
-import { OptionalDetails, OptionalEntry } from './optional-details';
+import {
+  EMPTY_FEELINGS,
+  EMPTY_PLAN,
+  FeelingsEditor,
+  feelingsSummary,
+  PlanEditor,
+  planSummary,
+  type FeelingsDraft,
+  type PlanDraft,
+} from './journal-editors';
+import { JournalPrompts } from './journal-prompts';
+import { TimestampField, type Timestamp } from './timestamp-picker';
+
+const RECENT_SYMBOLS = ['XAUUSD', 'NAS100', 'EURUSD'];
 
 /**
- * AT ENTRY — the short path, made to look short.
+ * STILL OPEN — the whole position, or part of it, is still running.
  *
- * FOUR FACTS AND ONE NUMBER. Account, symbol, direction, entry time, initial
- * risk. Everything else on this page is either computed from those or is a
- * closed row the reader may ignore entirely. The form's PERCEIVED length is the
- * thing being designed here: a trader logging a position they have just opened
- * is doing it in the thirty seconds before the market moves again, and a page
- * that opens looking like a questionnaire gets abandoned regardless of how few
- * fields are actually required.
+ * WHAT THE LABEL CHANGE FIXED. This path was called "At entry", which describes
+ * WHEN the journal was opened rather than what state the trade is in. A trader
+ * who opened a position last week and is writing it up today belongs here and
+ * would never have guessed it; a partially closed position belongs here too and
+ * fitted neither of the old labels. `Still open` is a fact about the trade, and
+ * the trader always knows it.
  *
- * "OPENING MATCHES THIS PLAN" IS STATED, NOT ASSUMED. In money mode the initial
- * risk is both the planned risk and the risk actually taken, and that identity
- * is exactly the kind of thing a form silently relies on and a reader never
- * learns. It is a visible rule with a visible escape: "Opening differs from
- * plan" reveals the actual figures inline and LEAVES the plan above them, so
- * the two remain distinguishable rather than one overwriting the other.
+ * THE SHORT PATH IS FOUR ANSWERS. Symbol, direction, risk at entry, save. The
+ * account is already chosen and the entry time is already captured, so a trader
+ * who agrees with both is three fields from a saved record. Everything else on
+ * this screen is an invitation.
  *
- * NO MISSING-FIELD CHECKLIST BEFORE THE FIRST SAVE. Validation happens on
- * submission and on blur for malformed values; it does not stand beside the
- * form narrating what has not been typed yet.
+ * "RISK AT ENTRY", NOT "INITIAL RISK". The old label reads as jargon to someone
+ * who has not met the concept; the new one says when the number was true. It is
+ * the one large editable figure on the page, because it is the only number the
+ * product cannot derive and the only one this screen genuinely needs.
+ *
+ * THE TARGET IS AN ENTRANCE, NOT AN EMPTY FIELD. A blank "Target reward" box
+ * standing open says a target is expected; a link says it is available. And R
+ * appears only once a target exists to derive it from — never as the page's
+ * headline, because a beginner does not yet know what R is and a screen that
+ * leads with it has led with a unit rather than with their trade.
+ *
+ * NOTHING ASSERTS THAT THE OPENING MATCHED A PLAN. The previous version printed
+ * "Opening matches plan" with a tick, which is a claim the form had no evidence
+ * for — nobody had said what the plan was. If a planned risk has been recorded
+ * in the journal, it is stated beside the actual one as a fact; if it has not,
+ * the page says nothing at all.
  */
 export function AtEntryForm({
-  /**
-   * The "already answered" review state, reachable at `?expand=1`.
-   *
-   * A PROP RESOLVED ON THE SERVER, not a mount effect that fills the fields in
-   * afterwards — the effect version rendered the empty form first and then
-   * populated it, which is a cascading render React's lint rule rejects and a
-   * race a screenshot can lose.
-   */
-  prefilled = false,
+  /** A part-finished draft, for the review state that shows populated summaries. */
+  filled = false,
 }: {
-  prefilled?: boolean;
+  filled?: boolean;
 }) {
   const [basis, setBasis] = useState<'money' | 'price'>('money');
-  const [symbol, setSymbol] = useState('XAUUSD');
-  const [direction, setDirection] = useState<'long' | 'short' | null>('long');
-  const [risk, setRisk] = useState('200.00');
-  const [reward, setReward] = useState('1000.00');
-  const [differs, setDiffers] = useState(false);
-  const [actualRisk, setActualRisk] = useState('');
+  const [symbol, setSymbol] = useState(filled ? 'XAUUSD' : '');
+  const [direction, setDirection] = useState<'long' | 'short' | null>(filled ? 'long' : null);
+  const [risk, setRisk] = useState(filled ? '200.00' : '');
+  const [enteredAt, setEnteredAt] = useState<Timestamp | null>({
+    date: '2026-09-07',
+    time: '14:32',
+  });
 
-  const [strategy, setStrategy] = useState<string | null>(prefilled ? 'Elliott Wave' : null);
-  const [setup, setSetup] = useState<string | null>(prefilled ? 'Wave 3 Continuation' : null);
-  const [confidence, setConfidence] = useState<number | null>(prefilled ? 75 : null);
-  const [emotions, setEmotions] = useState<readonly string[] | null>(prefilled ? ['Calm'] : null);
-  const [entryReason, setEntryReason] = useState(
-    prefilled ? 'Third push out of the London range, with the 4H trend.' : '',
+  const [showTarget, setShowTarget] = useState(filled);
+  const [target, setTarget] = useState(filled ? '1000.00' : '');
+
+  const [plan, setPlan] = useState<PlanDraft>(
+    filled
+      ? {
+          ...EMPTY_PLAN,
+          reason: 'Third push out of the London range, with the 4H trend.',
+          strategy: 'Elliott Wave',
+          setup: 'Wave 3 Continuation',
+        }
+      : EMPTY_PLAN,
   );
-  const [notes, setNotes] = useState(
-    prefilled ? 'Watching for the New York open to extend it.' : '',
+  const [feelings, setFeelings] = useState<FeelingsDraft>(
+    filled ? { confidence: 75, emotions: ['calm', 'focused'] } : EMPTY_FEELINGS,
   );
 
   const riskNumber = Number(risk);
-  const rewardNumber = Number(reward);
+  const targetNumber = Number(target);
   const plannedR =
-    Number.isFinite(riskNumber) && riskNumber > 0 && Number.isFinite(rewardNumber) && reward !== ''
-      ? rewardNumber / riskNumber
+    Number.isFinite(riskNumber) && riskNumber > 0 && Number.isFinite(targetNumber) && target !== ''
+      ? targetNumber / riskNumber
       : null;
-
-  const strategySummary =
-    strategy === null ? null : setup === null ? strategy : `${strategy} / ${setup}`;
-  const contextParts = [
-    confidence === null
-      ? null
-      : `${['Very low', 'Low', 'Neutral', 'High', 'Very high'][confidence / 25] ?? ''} confidence`,
-    emotions === null
-      ? null
-      : emotions.length === 0
-        ? 'None of these'
-        : emotions.map(emotionLabel).join(', '),
-  ].filter((part): part is string => part !== null && part !== '');
-  const notesSummary = notes.trim() === '' ? null : 'Note added';
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
       <FormShell
-        situation="At entry · Position is open"
+        situation="Still open"
         onChangeSituation={() => {
           window.location.href = '../log-trade';
         }}
@@ -114,29 +120,41 @@ export function AtEntryForm({
           />
         }
       >
-        <CoreSurface>
-          <CoreGroup>
-            <Field label="Account" suffix="USD">
-              {(id) => (
-                <select
-                  id={id}
-                  className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                  defaultValue="Live · FTMO 100K"
-                >
-                  <option>Live · FTMO 100K</option>
-                  <option>Personal · Thai broker</option>
-                </select>
-              )}
-            </Field>
+        <TaskSurface>
+          <Band className="gap-3 py-3.5">
+            <ContextLine
+              account="Live · FTMO 100K"
+              currency="USD"
+              timezone={PROTOTYPE_TIMEZONE}
+              onChange={() => {}}
+            />
+          </Band>
 
+          <Band>
             <FieldPair>
-              <TextField
-                label="Symbol"
-                value={symbol}
-                onChange={setSymbol}
-                placeholder="XAUUSD"
-                hint="Recently used: XAUUSD, NAS100, EURUSD"
-              />
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <TextField
+                  label="Symbol"
+                  value={symbol}
+                  onChange={setSymbol}
+                  placeholder="e.g. XAUUSD"
+                />
+                {/* Recent symbols as one-tap chips. On a phone this is the
+                    difference between typing six characters and pressing once. */}
+                <div className="flex min-w-0 flex-wrap gap-1.5">
+                  {RECENT_SYMBOLS.map((recent) => (
+                    <button
+                      key={recent}
+                      type="button"
+                      onClick={() => setSymbol(recent)}
+                      className="border-border text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring relative rounded-full border px-2.5 py-1 text-xs outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] focus-visible:ring-2"
+                    >
+                      {recent}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <Field label="Direction">
                 {() => (
                   <ChoiceGroup
@@ -152,220 +170,121 @@ export function AtEntryForm({
               </Field>
             </FieldPair>
 
-            <Field label="Entered at" suffix={PROTOTYPE_TIMEZONE}>
-              {(id) => (
-                <div className="flex min-w-0 items-center gap-2">
-                  {/* Initialised ONCE, to now. It does not advance while the
-                      reader types, opens a section or switches basis. */}
-                  <Input
-                    id={id}
-                    type="datetime-local"
-                    defaultValue="2026-09-07T14:32"
-                    className="numeric text-base"
-                  />
-                  <button
-                    type="button"
-                    className="border-border hover:bg-accent focus-visible:ring-ring h-11 shrink-0 rounded-md border px-3 text-sm outline-none focus-visible:ring-2"
-                  >
-                    Now
-                  </button>
-                </div>
-              )}
-            </Field>
-          </CoreGroup>
+            {/* Captured ONCE, on arrival. It does not advance while the reader
+                types, opens an editor or switches basis — and `Now` inside the
+                picker is the deliberate way to refresh it. */}
+            <TimestampField
+              label="Entry time"
+              title="Entry date and time"
+              value={enteredAt}
+              onChange={setEnteredAt}
+              placeholder="Select entry date and time"
+            />
+          </Band>
 
-          <div className="border-border border-t pt-5">
-            <CoreGroup title="Your plan">
-              <BasisSwitch value={basis} onChange={setBasis} />
-
-              {basis === 'money' ? (
-                <FieldPair>
-                  <TextField
-                    label="Initial risk"
-                    suffix="USD"
-                    value={risk}
-                    onChange={setRisk}
-                    inputMode="decimal"
-                    numeric
-                    hint="The amount you initially risked on this trade."
-                  />
-                  <TextField
-                    label="Target reward"
-                    suffix="USD"
-                    optional
-                    value={reward}
-                    onChange={setReward}
-                    inputMode="decimal"
-                    numeric
-                  />
-                </FieldPair>
-              ) : (
-                <FieldPair>
-                  <TextField label="Planned entry" value="" onChange={() => {}} numeric />
-                  <TextField label="Planned stop" value="" onChange={() => {}} numeric />
-                </FieldPair>
-              )}
-
-              {/* Shown only once it MEANS something — never as an empty frame
-                  saying "not enough yet". */}
-              {plannedR !== null ? (
-                <ComputedResult>
-                  <span className="text-muted-foreground">Planned reward</span>
-                  <span className="numeric text-foreground text-base font-semibold">
-                    {plannedR.toFixed(2)}R
-                  </span>
-                  <span className="text-muted-foreground">· 1R = {riskNumber.toFixed(2)} USD</span>
-                </ComputedResult>
-              ) : null}
-
-              {/*
-                ONE LINE, NOT A PANEL.
-
-                This was a dashed box carrying a check icon, a two-sentence
-                explanation and a disclosure button — roughly 100px asserting
-                that nothing unusual had happened. On the SHORT path, the path
-                whose entire claim is that it looks short, the largest single
-                element was the one saying there was nothing to do.
-
-                The rule is now a sentence with the escape beside it, and the
-                explanation appears only once the reader has asked for it by
-                activating Change — which is the moment the distinction between
-                a plan and an opening starts to matter.
-              */}
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                <Check className="text-positive size-4 shrink-0" aria-hidden="true" />
-                <span className="text-muted-foreground">Opening matches plan</span>
-                <span className="text-subtle-foreground" aria-hidden="true">
-                  ·
-                </span>
-                <button
-                  type="button"
-                  aria-expanded={differs}
-                  onClick={() => setDiffers((current) => !current)}
-                  className={cn(
-                    'text-primary focus-visible:ring-ring relative rounded-sm font-medium',
-                    'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
-                    'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
-                  )}
-                >
-                  Change
-                </button>
-              </div>
-
-              {differs ? (
-                <div className="border-border bg-muted/30 flex min-w-0 flex-col gap-3 rounded-md border p-3">
-                  <p className="text-muted-foreground text-xs leading-relaxed">
-                    In money mode your initial risk is recorded as both the planned risk and the
-                    risk you actually took. Enter the real opening risk here to separate them; the
-                    plan above is kept as it was.
-                  </p>
-                  <TextField
-                    label="Actual initial risk"
-                    suffix="USD"
-                    value={actualRisk}
-                    onChange={setActualRisk}
-                    inputMode="decimal"
-                    numeric
-                  />
-                </div>
-              ) : null}
-            </CoreGroup>
-          </div>
-        </CoreSurface>
-
-        <OptionalDetails description="None of this is required to save">
-          <OptionalEntry title="Strategy" summary={strategySummary} defaultOpen={prefilled}>
-            <div className="flex min-w-0 flex-col gap-4">
-              <Field label="Strategy">
-                {(id) => (
-                  <select
-                    id={id}
-                    value={strategy ?? ''}
-                    onChange={(event) => {
-                      setStrategy(event.target.value === '' ? null : event.target.value);
-                      setSetup(null);
-                    }}
-                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                  >
-                    <option value="">Not assigned</option>
-                    {PROTOTYPE_STRATEGIES.map((item) => (
-                      <option key={item.name} value={item.name}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
-              {strategy === null ? null : (
-                <Field label="Setup">
-                  {(id) => (
-                    <select
-                      id={id}
-                      value={setup ?? ''}
-                      onChange={(event) =>
-                        setSetup(event.target.value === '' ? null : event.target.value)
-                      }
-                      className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                    >
-                      <option value="">Not assigned</option>
-                      {(
-                        PROTOTYPE_STRATEGIES.find((item) => item.name === strategy)?.setups ?? []
-                      ).map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </Field>
-              )}
-            </div>
-          </OptionalEntry>
-
-          <OptionalEntry
-            title="Entry context"
-            summary={contextParts.length === 0 ? null : contextParts.join(' · ')}
-          >
-            <div className="flex min-w-0 flex-col gap-6">
-              <ConfidenceControl value={confidence} onChange={setConfidence} />
-              <EmotionsControl value={emotions} onChange={setEmotions} />
-              <Field label="Why did you take this trade?" optional>
-                {(id) => (
-                  <textarea
-                    id={id}
-                    rows={3}
-                    value={entryReason}
-                    onChange={(event) => setEntryReason(event.target.value)}
-                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
-                  />
-                )}
-              </Field>
-            </div>
-          </OptionalEntry>
-
-          <OptionalEntry title="Notes and chart" summary={notesSummary}>
-            <div className="flex min-w-0 flex-col gap-4">
-              <Field label="Anything else to remember?" optional>
-                {(id) => (
-                  <textarea
-                    id={id}
-                    rows={3}
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-24 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
-                  />
-                )}
-              </Field>
-              <TextField
-                label="Chart link"
-                optional
-                value=""
-                onChange={() => {}}
-                placeholder="https://www.tradingview.com/x/…"
+          {/*
+            THE FOCAL BAND. No heading above it: "Your plan" competed with the
+            figure for the reader's first fixation and told them nothing the
+            field label does not. The figure IS the section.
+          */}
+          <Band divided={false} className="py-5">
+            {basis === 'money' ? (
+              <PrimaryAmountField
+                label="Risk at entry"
+                currency="USD"
+                value={risk}
+                onChange={setRisk}
+                hint="How much you stood to lose if the stop was hit."
+                trailing={<BasisToggle value={basis} onChange={setBasis} />}
               />
-            </div>
-          </OptionalEntry>
-        </OptionalDetails>
+            ) : (
+              <div className="flex min-w-0 flex-col gap-4">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <p className="text-foreground text-sm font-medium">Entry and stop</p>
+                  <BasisToggle value={basis} onChange={setBasis} />
+                </div>
+                <FieldPair>
+                  <TextField label="Entry price" value="" onChange={() => {}} numeric />
+                  <TextField label="Stop loss at entry" value="" onChange={() => {}} numeric />
+                </FieldPair>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Prices calculate R. Money is not recorded in this mode.
+                </p>
+              </div>
+            )}
+
+            {/*
+              A PLANNED FIGURE IS STATED, NEVER MATCHED. If the trader recorded a
+              planned risk in their journal, it appears here as a second fact
+              beside the real one. If they did not, this line does not exist —
+              the form never asserts that an opening "matches" a plan it has
+              never been told.
+            */}
+            {plan.plannedRisk === '' || plan.plannedRisk === risk ? null : (
+              <p className="text-muted-foreground text-xs">
+                You planned to risk{' '}
+                <span className="numeric text-foreground">{plan.plannedRisk} USD</span>.
+              </p>
+            )}
+
+            {showTarget ? (
+              <div className="flex max-w-[16rem] min-w-0 flex-col gap-2">
+                <TextField
+                  label={basis === 'money' ? 'Target profit' : 'Target price'}
+                  {...(basis === 'money' ? { suffix: 'USD' } : {})}
+                  value={target}
+                  onChange={setTarget}
+                  inputMode="decimal"
+                  numeric
+                />
+              </div>
+            ) : (
+              <QuietAction className="self-start" onClick={() => setShowTarget(true)}>
+                Add target
+              </QuietAction>
+            )}
+
+            {/*
+              R IS SECONDARY AND SAYS SO. It appears only once a target exists to
+              derive it from, at body size, under a label that names the unit
+              rather than assuming it — never as the largest thing on a screen
+              belonging to someone who has not learned what R means.
+            */}
+            {plannedR === null ? null : (
+              <ResultLine
+                label="If it reaches your target"
+                value={`${plannedR.toFixed(2)}R`}
+                detail={`1R = ${riskNumber.toFixed(2)} USD`}
+              />
+            )}
+          </Band>
+        </TaskSurface>
+
+        <JournalPrompts
+          prompts={[
+            {
+              id: 'plan',
+              question: 'What is your plan?',
+              summary: planSummary(plan, 'USD'),
+              children: (
+                <PlanEditor
+                  tense="present"
+                  draft={plan}
+                  onChange={setPlan}
+                  currency="USD"
+                  basis={basis}
+                  includeLevels={false}
+                />
+              ),
+            },
+            {
+              id: 'feelings',
+              question: 'How did you feel at entry?',
+              summary: feelingsSummary(feelings),
+              children: <FeelingsEditor draft={feelings} onChange={setFeelings} />,
+            },
+          ]}
+        />
       </FormShell>
     </PrototypeShell>
   );

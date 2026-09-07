@@ -8,13 +8,11 @@ import { outcomeLabel, statusLabel, type PrototypeCopy } from '../copy';
 import type { PrototypeTrade } from '../fixtures';
 import {
   closedPercentLabel,
-  deriveFollowUp,
   moneyAbsenceKind,
   signedMoney,
   signedR,
   toneForDecimal,
 } from '../presentation';
-import { FollowUpAction } from './follow-up-action';
 import type { DetailTab } from './trade-details-panel';
 
 /**
@@ -76,7 +74,6 @@ export function TradeLogMobileList({
     <ul aria-label={copy.journalLabel} className={cn('flex min-w-0 flex-col', className)}>
       {trades.map((trade) => {
         const isSelected = selectedTradeId === trade.id;
-        const followUp = deriveFollowUp(trade);
         const money = signedMoney(trade.netPnlMinor, trade.currency);
         const rValue = signedR(trade.actualR);
         const isRealized = trade.lifecycle === 'partially_closed';
@@ -192,23 +189,12 @@ export function TradeLogMobileList({
               the mid-width composition does it.
             */}
             <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 px-4 pt-0.5 pb-3">
-              <span className="text-muted-foreground min-w-0 text-sm break-words">
-                {trade.strategy === null
-                  ? copy.noStrategy
-                  : trade.setup === null
-                    ? trade.strategy
-                    : `${trade.strategy} · ${trade.setup}`}
+              <span className="text-subtle-foreground min-w-0 text-xs break-words">
+                {trade.strategy ?? ''}
                 {showAccount ? (
                   <span className="text-subtle-foreground block text-xs">{trade.accountName}</span>
                 ) : null}
               </span>
-              <FollowUpAction
-                followUp={followUp}
-                copy={copy}
-                onSelect={(tab) => onSelect(trade.id, tab)}
-                emptyPlaceholder={false}
-                className="min-w-0 text-sm"
-              />
             </div>
           </li>
         );
