@@ -1,0 +1,13 @@
+
+Running 4 tests using 2 workers
+
+  ok   1 [chromium] › e2e\fixture.spec.ts:10:7 › fixture suite › a healthy test (1.0s)
+  x    2 [chromium] › e2e\fixture.spec.ts:20:7 › fixture suite › alpha stays red for a documented reason (1.1s)
+  x    3 [chromium] › e2e\fixture.spec.ts:30:7 › fixture suite › beta stays red for a documented reason (1.1s)
+  x    4 [mobile-chrome] › e2e\fixture.spec.ts:40:7 › fixture suite › gamma stays red for a documented reason (1.2s)
+
+  3 failed
+    [chromium] › e2e\fixture.spec.ts:20:7 › fixture suite › alpha stays red for a documented reason 
+    [chromium] › e2e\fixture.spec.ts:30:7 › fixture suite › beta stays red for a documented reason 
+    [mobile-chrome] › e2e\fixture.spec.ts:40:7 › fixture suite › gamma stays red for a documented reason 
+  1 passed (5.0s)

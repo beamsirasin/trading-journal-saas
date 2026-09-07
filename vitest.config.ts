@@ -25,7 +25,11 @@ export default defineConfig({
     // belongs to `vitest.integration.config.ts` — those hit a real database
     // and import `server-only` modules that throw outside a server-like
     // environment, so they must never run under this jsdom config.
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // `scripts/` is included because `compare-known-red-e2e.mjs` adjudicates
+    // every e2e run: a defect in it is a defect in every verdict this
+    // repository reaches about its own suite, so it belongs in the default
+    // `pnpm test` rather than in a corner nobody runs.
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.{test,spec}.mjs'],
     exclude: ['node_modules/**', '.next/**', 'e2e/**', 'src/**/*.integration.test.ts'],
     coverage: {
       provider: 'v8',

@@ -40,7 +40,13 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ROADMAP = path.join(repoRoot, 'docs', 'roadmap.md');
+/**
+ * `docs/roadmap.md` in every real run. `KNOWN_RED_ROADMAP` exists so this
+ * script's own tests can point it at a fixture list instead: pinning them to
+ * the real one would make them fail whenever the debt changes, which is the
+ * one thing that list is supposed to be free to do.
+ */
+const ROADMAP = process.env.KNOWN_RED_ROADMAP ?? path.join(repoRoot, 'docs', 'roadmap.md');
 
 /**
  * The known-red block in `docs/roadmap.md`: a headline naming the spec, then

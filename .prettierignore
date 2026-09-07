@@ -15,3 +15,8 @@ drizzle/
 # Vendored agent skill packs — third-party Markdown this project does not own
 # and must not reformat. 142 of its files fail `format:check` otherwise.
 .agents/
+
+# Verbatim Playwright reporter output, kept as fixtures for
+# scripts/compare-known-red-e2e.test.mjs. Reformatting them would change the
+# exact bytes the parser is asserted against, which is the whole point of them.
+scripts/__fixtures__/*.log
