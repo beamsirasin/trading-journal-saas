@@ -23,9 +23,19 @@
  * tool that cannot read the log CI actually produces is a tool that gets
  * skipped.
  *
+ * A documented test that is missing from the failures either PASSED or never
+ * reached a verdict, and those mean opposite things. The two are separated by
+ * reading the `list` reporter's per-test outcome lines, where `-` marks a test
+ * that produced no verdict — skipped, or never attempted because an earlier
+ * failure in its serial group aborted the rest. Only the first is reported as
+ * progress. A `github`-reporter log from CI carries no such lines; when one is
+ * combined with a progress claim in a run that abandoned tests, the script says
+ * the claim cannot be trusted rather than making it.
+ *
  * Give it a run of the WHOLE spec across every project. A `-g`-filtered or
- * single-project run reports every test it never executed as "documented but
- * green", which is the exact mistake this script exists to catch.
+ * single-project run leaves most of the list unexecuted, which now reports as
+ * "documented but NEVER RAN" instead of as progress — still not a verdict you
+ * can act on, but no longer one that reads like good news.
  *
  * The documented list covers ONE spec file, named in its own headline.
  * Failures in other specs are reported separately and do not affect the
@@ -76,6 +86,30 @@ const LIST_FAILURE = /^\s*\d+\) \[([a-z][a-z0-9-]*)\] (\S) (e2e[\\/][\w./-]+):\d
 const GITHUB_FAILED_HEADING = /^\s*\d+ failed\s*$/;
 const GITHUB_BLOCK_END = /^\s*\d+ (flaky|skipped|passed)\b/;
 const GITHUB_FAILURE = /^\s*\[([a-z][a-z0-9-]*)\] (\S) (e2e[\\/][\w./-]+):\d+:\d+ /;
+
+/**
+ * A per-test status line from the `list` reporter, whatever the outcome:
+ *
+ *   `  ok   1 [chromium] > e2e/trades.spec.ts:100:7 > suite > name (1.0s)`
+ *   `  x    2 [chromium] > e2e/trades.spec.ts:200:7 > suite > name (1.1s)`
+ *   `  -    4 [chromium] > e2e/trades.spec.ts:300:7 > suite > name`
+ *
+ * The `-` is what this script was missing. Playwright prints it for a test that
+ * produced NO VERDICT — skipped, or never attempted at all because an earlier
+ * failure in its serial group aborted the rest — and neither of those is a test
+ * that passed. The failure summary this script used to read on its own lists
+ * failures only, so a `-` on a documented test looked exactly like success.
+ *
+ * The `github` reporter (what CI writes) prints no such lines; see the
+ * unverifiable warning below for what happens when they are absent.
+ */
+const LIST_STATUS = /^\s*(ok|x|-)\s+\d+\s+\[([a-z][a-z0-9-]*)\] (\S) (e2e[\\/][\w./-]+):\d+:\d+ /;
+
+/** `  5 did not run`, in either reporter's summary. */
+const DID_NOT_RUN_TOTAL = /^\s*(\d+) did not run\b/;
+
+/** The `(1.2s)` / `(340ms)` / `(1.0m)` a `list` outcome line ends with. */
+const DURATION_SUFFIX = /\s*\(\d+(?:\.\d+)?(?:ms|s|m)\)\s*$/;
 
 const ANSI = /\u001b\[[0-9;]*m/g;
 /** `Playwright end-to-end\tPlaywright tests\t2026-09-03T11:28:45.1274942Z ` */
@@ -141,6 +175,49 @@ function parseFailures(log) {
   return { rows: listRows, source: 'numbered failure lines' };
 }
 
+/**
+ * Every per-test outcome the `list` reporter printed, keyed by project+name.
+ *
+ * This is what makes "documented but green" a claim rather than a guess. A
+ * documented test missing from the failures is only progress if the run
+ * actually reached a verdict on it; `-` means it did not.
+ *
+ * Returns `null` when the log has no such lines at all — a `github`-reporter
+ * log from CI — because "no line" and "no verdict" must not be conflated.
+ */
+function parsePerTestStatus(log) {
+  const lines = log
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(ANSI, '').replace(CI_PREFIX, ''));
+
+  const byKey = new Map();
+  let seen = 0;
+  let didNotRunTotal = null;
+  for (const line of lines) {
+    const total = line.match(DID_NOT_RUN_TOTAL);
+    if (total) didNotRunTotal = Number(total[1]);
+
+    const m = line.match(LIST_STATUS);
+    if (!m) continue;
+    const [, outcome, project, separator, specFile] = m;
+    const parts = line.split(` ${separator} `);
+    const name = (parts[parts.length - 1] ?? '')
+      .replace(DURATION_SUFFIX, '')
+      .replace(TRAILING_RULE, '')
+      .trim();
+    seen += 1;
+    byKey.set(`${project} :: ${name}`, {
+      outcome,
+      project,
+      name,
+      specFile: specFile.replace(/\\/g, '/'),
+    });
+  }
+
+  return { byKey: seen > 0 ? byKey : null, seen, didNotRunTotal };
+}
+
 function parseKnownRed(markdown) {
   const start = markdown.match(LIST_START);
   if (!start)
@@ -185,6 +262,7 @@ const report = (label, rows) => {
 
 const log = readInput(process.argv);
 const { rows, source } = parseFailures(log);
+const perTest = parsePerTestStatus(log);
 const { known, specFile, countMismatches } = parseKnownRed(readFileSync(ROADMAP, 'utf8'));
 
 if (rows.length === 0 && !/\b\d+ failed\b/.test(log)) {
@@ -198,17 +276,57 @@ const outOfScope = rows.filter((row) => row.specFile !== specFile);
 const failedKeys = new Set(inScope.map(key));
 const knownKeys = new Set(known.map(key));
 const unexpected = inScope.filter((row) => !knownKeys.has(key(row)));
-const repaired = known.filter((row) => !failedKeys.has(key(row)));
+
+// A documented test that is not among the failures either PASSED or never
+// reached a verdict, and those mean opposite things. Split them: only the
+// first is progress. Without per-test lines the distinction cannot be drawn,
+// and the warning below says so rather than guessing.
+const notFailed = known.filter((row) => !failedKeys.has(key(row)));
+const noVerdict = perTest.byKey
+  ? notFailed.filter((row) => perTest.byKey.get(key(row))?.outcome === '-')
+  : [];
+const noVerdictKeys = new Set(noVerdict.map(key));
+const repaired = notFailed.filter((row) => !noVerdictKeys.has(key(row)));
 
 console.log(`read from       : ${source}`);
+console.log(
+  `per-test status : ${
+    perTest.byKey
+      ? `${perTest.seen} outcome lines (list reporter)`
+      : 'NOT AVAILABLE — this log has no per-test lines (github reporter)'
+  }`,
+);
 console.log(`spec documented : ${specFile}`);
 console.log(`failed: ${inScope.length}   documented: ${known.length}`);
+console.log(`did not run: ${perTest.didNotRunTotal ?? 0} (whole run, every spec)`);
 console.log('');
 report(
   'red but NOT documented (regression, or an undocumented member of the same debt)',
   unexpected,
 );
+report(
+  'documented but NEVER RAN (no verdict — skipped, or a serial group aborted before reaching it; NOT progress)',
+  noVerdict,
+);
 report('documented but green (progress — remove it from docs/roadmap.md)', repaired);
+
+// The dangerous combination, and the reason this script grew a second reader:
+// a "repaired" claim drawn from a log that cannot show whether the test was
+// ever attempted, in a run that is known to have abandoned some tests.
+const unverifiableProgress =
+  !perTest.byKey && repaired.length > 0 && (perTest.didNotRunTotal ?? 0) > 0;
+if (unverifiableProgress) {
+  console.log('');
+  console.log(
+    `!! ${repaired.length} entries above are called progress on a log that cannot prove it.`,
+  );
+  console.log(
+    `   ${perTest.didNotRunTotal} tests did not run in this run, and a github-reporter log`,
+  );
+  console.log('   shows no per-test outcomes — so a documented test that was never attempted');
+  console.log('   is indistinguishable here from one that passed. Re-run with the `list`');
+  console.log('   reporter before removing anything from docs/roadmap.md.');
+}
 for (const mismatch of countMismatches) {
   console.log(`heading count is stale — ${mismatch}`);
 }
@@ -225,7 +343,12 @@ if (outOfScope.length > 0) {
   }
 }
 
-const clean = unexpected.length === 0 && repaired.length === 0 && countMismatches.length === 0;
+const clean =
+  unexpected.length === 0 &&
+  repaired.length === 0 &&
+  noVerdict.length === 0 &&
+  countMismatches.length === 0 &&
+  !unverifiableProgress;
 console.log('');
 console.log(`EXACT MATCH: ${clean}`);
 process.exit(clean ? 0 : 1);
