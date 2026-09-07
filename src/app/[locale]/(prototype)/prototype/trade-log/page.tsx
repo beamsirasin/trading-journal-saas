@@ -40,6 +40,12 @@ export default async function TradeLogPrototypePage({
     return typeof value === 'string' ? value : null;
   };
 
+  const demoState = one('demo');
+  const demo =
+    demoState === 'loading' || demoState === 'error' || demoState === 'first-use'
+      ? demoState
+      : null;
+
   const state = one('state');
   const account = one('account');
   const strategy = one('strategy');
@@ -58,6 +64,7 @@ export default async function TradeLogPrototypePage({
       locale={one('lang') === 'th' ? ('th' satisfies PrototypeLocale) : 'en'}
       initialQuery={initialQuery}
       initialTradeId={one('trade')}
+      demo={demo}
       initialTab={tab === 'execution' || tab === 'review' ? (tab satisfies DetailTab) : 'overview'}
     />
   );

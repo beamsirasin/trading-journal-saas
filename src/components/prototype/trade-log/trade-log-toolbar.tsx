@@ -99,6 +99,7 @@ export function TradeLogHeader({
         >
           <RadioList
             name="prototype-account"
+            legend={copy.allAccounts}
             value={query.account}
             options={[
               { value: 'all', label: copy.allAccounts, hint: 'USD and THB' },
@@ -128,6 +129,7 @@ export function TradeLogHeader({
           <div className="min-w-[16rem]">
             <RadioList
               name="prototype-date"
+              legend="Activity date"
               value="all"
               options={[
                 { value: 'all', label: copy.allTime },
@@ -190,7 +192,18 @@ export function TradeLogToolbar({
     (query.setup === null ? 0 : 1);
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    /*
+      THE TOOLBAR WRAPS RATHER THAN OVERFLOWS.
+
+      `lg:flex-row` with no wrap meant the row had exactly one way to fail: at
+      200% text zoom on a 1024px screen the segmented control, a 280px search
+      field and two pills need more than the line, and the chevrons inside the
+      Sort trigger were pushed 76px past the viewport — a sideways-scrolling
+      page, which this design system forbids at every width. Allowing the line
+      to break costs nothing at ordinary sizes (it never wraps there) and turns
+      the zoom case into a second row instead of an overflow.
+    */
+    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
       <SegmentedControl<JournalState>
         legend="Trade state"
         value={query.state}
@@ -203,8 +216,11 @@ export function TradeLogToolbar({
         className="shrink-0"
       />
 
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="relative min-w-0 flex-1 lg:w-[280px] lg:min-w-[220px] lg:flex-none">
+      <div className="flex min-w-0 flex-1 items-center gap-2 lg:justify-end">
+        {/* 280px preferred, 220px minimum, and free to shrink below that before
+            the row is allowed to overflow — the spec's widths are a target for
+            ordinary type, not a floor that outranks "no horizontal scrolling". */}
+        <div className="relative min-w-0 flex-1 lg:max-w-[280px] lg:basis-[280px]">
           <Search
             className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
             aria-hidden="true"
@@ -297,6 +313,7 @@ export function TradeLogToolbar({
         >
           <RadioList
             name="prototype-sort"
+            legend={copy.sort}
             value={query.sort}
             options={SORT_KEYS.map((key) => ({
               value: key,
@@ -464,17 +481,29 @@ function CheckRow({
 
 function RadioList({
   name,
+  legend,
   value,
   options,
   onChange,
 }: {
   name: string;
+  /** Names the group for assistive tech. The panel's own title, reused. */
+  legend: string;
   value: string;
   options: readonly { value: string; label: string; hint?: string }[];
   onChange: (value: string) => void;
 }) {
   return (
-    <div role="radiogroup" className="flex min-w-0 flex-col">
+    /*
+      A REAL `<fieldset>`, not `role="radiogroup"` on a div.
+
+      Same-named native radios already form a group; adding the ARIA role on
+      top of them was redundant, and the div carried no accessible name, so the
+      group announced as an unlabelled radiogroup. `fieldset`/`legend` is the
+      native mechanism and needs no ARIA at all.
+    */
+    <fieldset className="flex min-w-0 flex-col">
+      <legend className="sr-only">{legend}</legend>
       {options.map((option) => (
         <label
           key={option.value}
@@ -494,7 +523,7 @@ function RadioList({
           )}
         </label>
       ))}
-    </div>
+    </fieldset>
   );
 }
 

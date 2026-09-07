@@ -29,13 +29,14 @@ returns 404 while `/en/login` returns 200.
 | `/en/prototype/context`               | Prototype 11: confidence and emotions across every state             |
 
 `/en/prototype/trade-log` accepts `?trade=<id>`, `?tab=`, `?lang=th`, `?account=all`, `?state=`,
-`?strategy=`, `?q=`. `/en/prototype/log-trade/at-entry` accepts `?expand=1`.
+`?strategy=`, `?q=` and `?demo=loading|first-use|error`.
+`/en/prototype/log-trade/at-entry` accepts `?expand=1`.
 
 The gallery uses **iframes, not narrow divs**: every responsive rule in this codebase is a viewport
 media query, so a 390px column inside a 1440px window renders the desktop composition squeezed —
 precisely the failure the mobile design exists to prevent, presented as though it were the design.
 
-Screenshots: `docs/prototype/screenshots/` (28 PNGs at 2× DPR).
+Screenshots: `docs/prototype/screenshots/` (32 PNGs at 2× DPR).
 Regenerate with the dev server running: `node scripts/prototype-screenshots.mjs`.
 
 ---
@@ -60,7 +61,7 @@ Nothing existing was modified. Every file below is new.
 `form-primitives.tsx`, `confidence-control.tsx`, `emotions-control.tsx`, `exits-editor.tsx`,
 `specimens.tsx`
 
-**Tooling** — `scripts/prototype-screenshots.mjs`
+**Tooling** — `scripts/prototype-screenshots.mjs`, `scripts/prototype-audit.mjs`
 
 A route group inside `[locale]` rather than a top-level segment, deliberately: `/admin` sits outside
 `[locale]` and needed its own branch in `proxy.ts` to escape next-intl's locale prefixing. This
@@ -197,7 +198,90 @@ to assert.
 
 ---
 
-## 8. What happens next
+## 8. Implementation-quality audit (Modern Web Guidance)
+
+A second pass audited the prototype against the Modern Web Guidance
+`accessibility`, `forms`, `html` and `css-layout` guides, measured empirically at
+320 / 390 / 768 / 1024 / 1280 / 1440 / 1920, in both themes, at default text size
+and at 200% text zoom.
+
+`scripts/prototype-audit.mjs` runs that sweep — it reports measured facts
+(horizontal page overflow, missing landmarks/headings, effective touch-target
+size, unlabelled controls, invalid ARIA), not opinions about the markup, because
+this class of defect only appears once real type, a real font and a real viewport
+are involved. Both passes now report **0 findings**.
+
+### A — implementation defects, fixed
+
+| Defect                                                                                                    | Guidance                              | Fix                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No `<main>` on any screen; no skip link                                                                   | a11y §1 landmarks                     | `main#prototype-main` + a real skip link in `PrototypeShell`                                                                                                                                                  |
+| `<tr aria-selected>` — invalid outside a grid                                                             | a11y §2 ARIA-to-behaviour             | `data-selected` for styling; `aria-current` on the row's link                                                                                                                                                 |
+| Thai rendered under `lang="en"`                                                                           | a11y §4 inline language               | `lang="th"` on the journal subtree                                                                                                                                                                            |
+| Mobile form had no `<h1>` (desktop-only, `display:none`)                                                  | a11y §1 headings                      | one `<h1>`, rendered once, styled per width                                                                                                                                                                   |
+| Detail tabs: arrows changed selection but stranded focus on a `tabindex="-1"` tab — operable exactly once | a11y §5 keyboard                      | focus follows selection; Home/End added                                                                                                                                                                       |
+| Closing the drawer dropped focus to `<body>`                                                              | a11y §5 / spec §N.10                  | focus returns to the originating row (the _visible_ copy — see C2)                                                                                                                                            |
+| Follow-up / Change / Clear controls 16–20px tall                                                          | a11y §9, forms §5                     | transparent `::after` extends the target to 44px with **zero** layout cost                                                                                                                                    |
+| Chart link 20px tall, unbreakable URL                                                                     | forms §5                              | `min-h-11`, `break-all`                                                                                                                                                                                       |
+| `role="radiogroup"` on an unnamed div                                                                     | a11y §2 redundant ARIA                | native `<fieldset>`/`<legend>`                                                                                                                                                                                |
+| Table had no accessible name                                                                              | a11y §1 semantic tables               | visually-hidden `<caption>`                                                                                                                                                                                   |
+| `disabled` on drawer Previous/Next and pagination removed them from the tab order at boundaries           | a11y §2 `disabled` vs `aria-disabled` | `aria-disabled`, control stays reachable                                                                                                                                                                      |
+| **Horizontal page overflow at 200% text zoom** — 10 occurrences                                           | a11y §9 zoom, css-layout §6           | brand wordmark truncates; toolbar wraps; search shrinks below its 280px preference; long interpolated button labels wrap **and** shrink (`Button` is `shrink-0`, so `whitespace-normal` alone was not enough) |
+| Loading and error states missing entirely                                                                 | design-system §8 four states          | skeleton (real 64px row geometry) + failed-read notice, at `?demo=`                                                                                                                                           |
+| Error state showed a stale summary as if current                                                          | spec §N.12                            | the strip goes silent when the read fails; placeholder while loading                                                                                                                                          |
+
+### B — design/product judgment, deliberately unchanged
+
+All six measured decisions from the first pass survived the audit; none of them
+produced a usability, accessibility or responsive defect:
+
+1. **1248px table transition** — no overflow or clipping at any tested width.
+2. **156px Status column** — the wider column is what _prevents_ the wrapping
+   defect; guidance gave no reason to narrow it.
+3. **Three follow-up tones** — colour is never the only signal (every action is a
+   word), and contrast holds in both themes.
+4. **"Not recorded" vs an em dash** — a semantic distinction, not a style; the
+   guidance's "don't rely on colour alone" is already satisfied by both.
+5. **Inline "Realized" before the number** — preserves the right-edge alignment
+   the composition is scanned on.
+6. **Five-stop connected confidence rail** — a real `<fieldset>` of native
+   radios; keyboard, grouping and "3 of 5" announcements come from the platform.
+
+Also left alone: 25 rows per page, the summary's honest "P&L incomplete" default,
+and the Dashboard-derived visual language.
+
+### C — production-only concerns, documented not fixed
+
+1. **Truncated Strategy/Setup reveal on keyboard focus.** `title` shows on hover
+   only. Spec §C wants pointer _and_ keyboard reveal; that needs a real tooltip
+   (`interest-triggered-tooltips`), which is production work.
+2. **Three compositions mounted at once.** Every trade has three DOM rows, two
+   `display:none`. No accessibility harm (hidden rows leave the a11y tree and tab
+   order) but it forced the focus-restoration fix to search for the _visible_
+   copy. Production renders one.
+3. **No live region for "Updating trades…"** during a refinement (spec §C).
+4. **Real validation, drafts, and idempotent retry** are unbuilt, so
+   `accessible-error-announcement` / `validate-input-after-interaction`
+   (`:user-invalid`, `aria-describedby` error wiring) could not be applied.
+5. **Contrast was not instrument-measured.** Only product tokens are used and no
+   new colour was introduced, but a real audit needs a contrast tool, not this
+   sweep.
+6. **No screen-reader pass.** Guidance §12 is explicit that automated checks do
+   not prove usability; NVDA/VoiceOver testing belongs with production.
+
+### Remaining concerns
+
+**Desktop** — none blocking. The 1920 case leaves the journal at the 1920px
+canvas cap with wide gutters, which is the Dashboard's existing behaviour and a
+B-level question for the design review, not a defect.
+
+**Mobile** — none blocking. Two things to watch in production: the sticky save
+footer's keyboard interaction is prototyped as a CSS `sticky` band and needs real
+`visualViewport` handling on device; and the At Entry / After Trade forms remain
+long on a 390px screen once optional sections are opened — the spec's full-screen
+subview treatment (§I) is described but not built here.
+
+## 9. What happens next
 
 **Nothing, until the visual design is approved.** No production migration, no backend work. The
 specification's P0 items — actual-first persistence, unknown checklist observations, full-history

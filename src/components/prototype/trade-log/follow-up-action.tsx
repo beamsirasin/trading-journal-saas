@@ -62,8 +62,20 @@ export function FollowUpAction({
         onSelect(FOLLOW_UP_TAB[followUp]);
       }}
       className={cn(
-        'focus-visible:ring-ring inline-flex items-center rounded-sm text-left text-sm',
+        'focus-visible:ring-ring relative inline-flex items-center rounded-sm text-left text-sm',
         'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
+        /*
+          THE HIT AREA IS BIGGER THAN THE INK.
+
+          Measured at 16–20px tall across the table and the journal rows, which
+          is under WCAG 2.2's 24px minimum and well under this product's own
+          44px target. Growing the control itself would have added ~24px to
+          every row in a 25-row list — the density the redesign exists to
+          protect. A transparent pseudo-element extends the target vertically
+          instead: it costs no layout, so the row keeps its height and its
+          baseline alignment, and the thumb still gets 44px.
+        */
+        'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
         tone === 'attention'
           ? 'text-warning font-medium'
           : tone === 'action'

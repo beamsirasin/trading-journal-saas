@@ -40,24 +40,29 @@ export function FormShell({
 }) {
   return (
     <div className="mx-auto w-full max-w-[760px] px-4 pt-4 pb-24 sm:px-6 md:pt-8">
-      {/* MOBILE FORM HEADER — Back, title, Close. The global product header is
-          suppressed below `lg` on this route: on a 390px screen it costs 60px
-          of vertical space to repeat a brand the reader is not currently using
-          and an account they already see below. */}
-      <div className="mb-4 flex items-center justify-between gap-2 lg:hidden">
-        <Button variant="ghost" size="icon" aria-label="Back">
+      {/*
+        MOBILE FORM HEADER — Back, title, Close. The global product header is
+        suppressed below `lg` on this route: on a 390px screen it costs 60px of
+        vertical space to repeat a brand the reader is not currently using and
+        an account they already see below.
+
+        ONE `<h1>`, RENDERED ONCE, STYLED TWICE. It used to be a desktop-only
+        `<h1>` plus a mobile `<p>`, which meant the phone layout — the one this
+        flow is most used on — had no page heading in the accessibility tree at
+        all. `min-w-0 truncate` on it is what stops the row from pushing the
+        page sideways at 200% text zoom on a 320px screen, where two 44px icon
+        buttons and a 32px title do not fit.
+      */}
+      <div className="mb-4 flex min-w-0 items-center justify-between gap-2 lg:mb-5 lg:justify-start">
+        <Button variant="ghost" size="icon" aria-label="Back" className="shrink-0 lg:hidden">
           <ChevronLeft className="size-5" aria-hidden="true" />
         </Button>
-        <p className="text-foreground text-base font-semibold">Log a trade</p>
-        <Button variant="ghost" size="icon" aria-label="Close">
-          <X className="size-5" aria-hidden="true" />
-        </Button>
-      </div>
-
-      <div className="mb-5 hidden lg:block">
-        <h1 className="text-foreground text-2xl leading-8 font-semibold tracking-tight">
+        <h1 className="text-foreground min-w-0 truncate text-base font-semibold lg:text-2xl lg:leading-8 lg:tracking-tight">
           Log a trade
         </h1>
+        <Button variant="ghost" size="icon" aria-label="Close" className="shrink-0 lg:hidden">
+          <X className="size-5" aria-hidden="true" />
+        </Button>
       </div>
 
       <div className="border-border mb-5 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
@@ -66,7 +71,12 @@ export function FormShell({
           <button
             type="button"
             onClick={onChangeSituation}
-            className="text-primary focus-visible:ring-ring rounded-sm text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+            className={cn(
+              'text-primary focus-visible:ring-ring relative rounded-sm text-sm font-medium',
+              'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
+              // 20px of ink, 44px of target — see `FollowUpAction`.
+              'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
+            )}
           >
             Change
           </button>
@@ -341,7 +351,10 @@ export function OptionalSection({
             )}
           </span>
           {note === undefined ? null : (
-            <span className="text-subtle-foreground shrink-0 text-xs">{note}</span>
+            // `shrink-0` here pushed "Recorded after the trade" 45px past the
+            // right edge at 200% zoom on a 320px screen. The note is the least
+            // important thing in the row, so it is the thing that yields.
+            <span className="text-subtle-foreground min-w-0 text-right text-xs">{note}</span>
           )}
           <ChevronDown
             className={cn(

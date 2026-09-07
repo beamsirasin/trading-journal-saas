@@ -28,6 +28,9 @@ import { cn } from '@/lib/utils';
  * frame rather than floating on a blank page.
  */
 
+/** The skip link's target, named once so the two can never drift apart. */
+const PROTOTYPE_MAIN_ID = 'prototype-main';
+
 const NAV = [
   { key: 'overview', label: 'Dashboard', Icon: LayoutDashboard },
   { key: 'accounts', label: 'Accounts', Icon: Wallet },
@@ -52,7 +55,13 @@ export function PrototypeShell({
   chrome?: 'full' | 'desktop-only' | 'none';
 }) {
   if (chrome === 'none') {
-    return <div className="bg-background min-h-dvh">{children}</div>;
+    return (
+      <div className="bg-background min-h-dvh">
+        <main id={PROTOTYPE_MAIN_ID} tabIndex={-1}>
+          {children}
+        </main>
+      </div>
+    );
   }
 
   const headerHidden = chrome === 'desktop-only' ? 'hidden lg:block' : '';
@@ -62,6 +71,25 @@ export function PrototypeShell({
       className="bg-background min-h-dvh"
       style={{ ['--shell-workspace-offset' as string]: 'var(--shell-rail-width)' }}
     >
+      {/*
+        A REAL SKIP LINK, not a decorative one. The prototype puts a header and
+        a five-item rail ahead of the journal on every screen; without this a
+        keyboard user tabs through both before reaching the first trade. The
+        target is `tabindex="-1"` so focus actually lands there.
+      */}
+      <a
+        href={`#${PROTOTYPE_MAIN_ID}`}
+        className={cn(
+          'sr-only focus-visible:not-sr-only',
+          'focus-visible:bg-card focus-visible:text-foreground focus-visible:ring-ring',
+          'focus-visible:fixed focus-visible:top-2 focus-visible:left-2 focus-visible:z-50',
+          'focus-visible:inline-flex focus-visible:min-h-11 focus-visible:items-center',
+          'focus-visible:rounded-md focus-visible:px-4 focus-visible:text-sm focus-visible:ring-2',
+        )}
+      >
+        Skip to trades
+      </a>
+
       <header
         data-shell-chrome
         className={cn('border-shell-chrome-border sticky top-0 z-40 w-full border-b', headerHidden)}
@@ -80,16 +108,26 @@ export function PrototypeShell({
             <Menu className="size-[1.125rem]" />
           </span>
 
-          <span className="flex min-w-0 shrink-0 items-center gap-2">
-            <span className="bg-brand text-shell-chrome-foreground flex size-8 items-center justify-center rounded-lg text-sm font-semibold">
+          {/*
+            THE WORDMARK YIELDS BEFORE THE ROW DOES.
+
+            It was `shrink-0` with a `whitespace-nowrap` label, which at 200%
+            text zoom on a 390px screen pushed the account cluster 70px past the
+            right edge — the page scrolled sideways, which this design system
+            forbids at any width. The mark and the utilities keep their size;
+            the LABEL is the one thing here that can afford to be clipped, so it
+            is the one thing allowed to be.
+          */}
+          <span className="flex min-w-0 shrink items-center gap-2">
+            <span className="bg-brand text-shell-chrome-foreground flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-semibold">
               T
             </span>
-            <span className="text-shell-chrome-foreground hidden text-lg font-semibold tracking-tight whitespace-nowrap min-[360px]:inline">
+            <span className="text-shell-chrome-foreground hidden min-w-0 truncate text-lg font-semibold tracking-tight min-[360px]:inline">
               TradeChemist
             </span>
           </span>
 
-          <span className="ml-auto flex items-center gap-1 sm:gap-1.5">
+          <span className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
             <span className="border-shell-chrome-border text-shell-chrome-foreground hidden h-9 items-center gap-2 rounded-md border px-3 text-sm sm:inline-flex">
               Live · FTMO 100K
             </span>
@@ -125,7 +163,14 @@ export function PrototypeShell({
         </ul>
       </aside>
 
-      <div className="lg:pl-[var(--shell-workspace-offset)]">{children}</div>
+      {/*
+        THE ONE `main` LANDMARK. Every prototype screen was previously a bare
+        `div` between a header and an aside, so a screen-reader user had no
+        region to jump to and the skip link above had nothing to target.
+      */}
+      <main id={PROTOTYPE_MAIN_ID} tabIndex={-1} className="lg:pl-[var(--shell-workspace-offset)]">
+        {children}
+      </main>
     </div>
   );
 }

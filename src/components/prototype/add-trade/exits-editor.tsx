@@ -173,6 +173,19 @@ export function ExitsEditor({
           <Button
             variant="ghost"
             size="sm"
+            /*
+              `Button` is `whitespace-nowrap` by design, which is right for the
+              short labels it usually carries. This one interpolates a number
+              into a sentence, and at 200% text zoom on a 390px screen
+              "Use remaining 60.00%" is 346px of unbreakable text that pushed
+              the page 21px sideways. Allowing THIS label to wrap keeps the
+              button's own contract intact everywhere else.
+            */
+            // `shrink min-w-0` as well as `whitespace-normal`: `Button` is
+            // `shrink-0`, so letting the text wrap was not enough — a flex item
+            // that cannot shrink still claims its max-content width, and the
+            // label went on overflowing at its full 346px.
+            className="h-auto min-h-11 min-w-0 shrink py-2 text-left whitespace-normal"
             onClick={() =>
               setRows((current) => {
                 const lastBlank = [...current].reverse().find((row) => row.percent === '');

@@ -31,13 +31,65 @@ export function TradeLogSummary({
   copy,
   summary,
   state,
+  status = 'ready',
   className,
 }: {
   copy: PrototypeCopy;
   summary: JournalSummary;
   state: JournalState;
+  /**
+   * `loading` reserves the strip's geometry while the query resolves;
+   * `failed` says the strip describes nothing. Only `ready` prints figures.
+   */
+  status?: 'ready' | 'loading' | 'failed';
   className?: string;
 }) {
+  if (status === 'loading') {
+    return (
+      <section
+        aria-label="Journal summary"
+        aria-busy="true"
+        className={cn(
+          'border-border bg-card flex min-h-14 min-w-0 items-center gap-6 rounded-lg border px-4 py-3',
+          className,
+        )}
+      >
+        {/* The strip's real height, held. A summary that appears after the rows
+            pushes the whole journal down under a reader who has already started
+            scanning it. */}
+        <span aria-hidden="true" className="flex animate-pulse gap-6 motion-reduce:animate-none">
+          <span className="bg-muted block h-5 w-24 rounded" />
+          <span className="bg-muted block h-5 w-36 rounded" />
+          <span className="bg-muted block h-5 w-28 rounded" />
+        </span>
+      </section>
+    );
+  }
+  /*
+    A FAILED READ SILENCES THE SUMMARY TOO.
+
+    The error state below the strip said "Trades could not be loaded" while the
+    strip above it went on publishing "118 trades · Total R +105.22R" from the
+    last successful query. Stale figures presented as current are a worse
+    failure than the zeroes the spec already forbids: they are specific,
+    plausible, and wrong, and nothing on the page marks them as old.
+  */
+  if (status === 'failed') {
+    return (
+      <section
+        aria-label="Journal summary"
+        className={cn(
+          'border-border bg-card flex min-h-14 min-w-0 items-center rounded-lg border px-4 py-3',
+          className,
+        )}
+      >
+        <p className="text-muted-foreground min-w-0 text-sm">
+          Summary unavailable while the journal cannot be loaded.
+        </p>
+      </section>
+    );
+  }
+
   if (state === 'open') {
     return (
       <section

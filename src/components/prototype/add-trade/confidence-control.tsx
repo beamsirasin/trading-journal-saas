@@ -60,7 +60,10 @@ export function ConfidenceControl({
           onClick={() => onChange(null)}
           disabled={value === null}
           className={cn(
-            'focus-visible:ring-ring rounded-sm text-xs underline-offset-4 outline-none focus-visible:ring-2',
+            'focus-visible:ring-ring relative rounded-sm text-xs underline-offset-4 outline-none focus-visible:ring-2',
+            // Same hit-area extension as the journal's follow-up: 16px of ink,
+            // 44px of target, no effect on the header row's height.
+            'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
             value === null
               ? 'text-subtle-foreground cursor-default'
               : 'text-muted-foreground hover:text-foreground hover:underline',

@@ -132,17 +132,36 @@ function TradeDetailsBody({
         </p>
 
         <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+          {/*
+            `aria-disabled`, NOT `disabled`, on these two.
+
+            `disabled` removes an element from the focus order entirely. At the
+            first and last trade of a page that silently deleted a control from
+            the drawer's toolbar mid-review: a keyboard user tabbing through the
+            header would find Previous present on one trade and gone on the
+            next, with nothing to explain the change. `aria-disabled` keeps both
+            reachable and announced as unavailable, and the handler simply does
+            nothing — which is also why they are not `<Button disabled>`, whose
+            styling would have implied the other behaviour.
+          */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
-              disabled={onPrevious === null}
+              aria-disabled={onPrevious === null}
+              className={cn(onPrevious === null && 'pointer-events-none opacity-50')}
               onClick={() => onPrevious?.()}
             >
               <ChevronLeft className="size-4" aria-hidden="true" />
               Previous
             </Button>
-            <Button variant="ghost" size="sm" disabled={onNext === null} onClick={() => onNext?.()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-disabled={onNext === null}
+              className={cn(onNext === null && 'pointer-events-none opacity-50')}
+              onClick={() => onNext?.()}
+            >
               Next
               <ChevronRight className="size-4" aria-hidden="true" />
             </Button>
@@ -168,14 +187,34 @@ function TradeDetailsBody({
             aria-controls={`${tabsId}-${key}-panel`}
             tabIndex={tab === key ? 0 : -1}
             onClick={() => onTabChange(key)}
+            /*
+              THE ROVING TABINDEX HAS TO TAKE FOCUS WITH IT.
+
+              Arrow keys already changed the selected tab, but focus stayed on
+              the button that had just become `tabindex="-1"`. A second arrow
+              press then did nothing a keyboard user could see, and Tab jumped
+              somewhere unrelated — the tablist was operable exactly once. The
+              ARIA tabs pattern requires focus to follow selection here, so the
+              newly selected tab is focused explicitly. Home/End are part of the
+              same pattern and were simply missing.
+            */
             onKeyDown={(event) => {
               const order: DetailTab[] = ['overview', 'execution', 'review'];
               const index = order.indexOf(tab);
+              let nextTab: DetailTab | null = null;
               if (event.key === 'ArrowRight') {
-                onTabChange(order[(index + 1) % order.length] ?? 'overview');
+                nextTab = order[(index + 1) % order.length] ?? 'overview';
               } else if (event.key === 'ArrowLeft') {
-                onTabChange(order[(index + order.length - 1) % order.length] ?? 'overview');
+                nextTab = order[(index + order.length - 1) % order.length] ?? 'overview';
+              } else if (event.key === 'Home') {
+                nextTab = 'overview';
+              } else if (event.key === 'End') {
+                nextTab = 'review';
               }
+              if (nextTab === null) return;
+              event.preventDefault();
+              onTabChange(nextTab);
+              document.getElementById(`${tabsId}-${nextTab}-tab`)?.focus();
             }}
             className={cn(
               'focus-visible:ring-ring relative min-h-11 rounded-t-md px-3 text-sm font-medium outline-none focus-visible:ring-2',
@@ -407,7 +446,13 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
         ) : (
           <a
             href={trade.chartUrl}
-            className="text-primary focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-sm text-sm underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+            /*
+              44px tall and free to wrap. It was a 20px line of unbreakable URL
+              — under the minimum target size on a phone, where this drawer is
+              the full screen and the link is one of very few things on it worth
+              tapping.
+            */
+            className="text-primary focus-visible:ring-ring inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-sm text-sm break-all underline-offset-4 outline-none hover:underline focus-visible:ring-2"
           >
             {trade.chartUrl}
             <ExternalLink className="size-3.5" aria-hidden="true" />
@@ -503,7 +548,13 @@ function ExecutionTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeC
             <Button variant="outline" size="sm">
               Record partial exit
             </Button>
-            <Button variant="outline" size="sm">
+            {/* Same interpolated-label wrap as the exits editor's
+                "Use remaining X%" — see its note. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-auto min-h-11 min-w-0 shrink py-2 text-left whitespace-normal"
+            >
               Close remaining {closedPercentLabel(remainingBps)}
             </Button>
           </div>

@@ -69,6 +69,16 @@ export function TradeLogTable({
   return (
     <Table className={cn('min-w-0 table-fixed', className)}>
       {/*
+        A REAL `<caption>`, visually hidden. It is the table's native accessible
+        name and the sentence a screen reader reads before entering the grid;
+        the production table gets the equivalent from `TableScroller`'s
+        `role="region"`, which this composition does not use because at
+        ≥1,120px of content the table has no reason to scroll.
+      */}
+      <caption className="sr-only">
+        {copy.journalLabel} — {copy.timezoneNote}
+      </caption>
+      {/*
         Fixed columns, with Strategy / Setup as the ONE that absorbs slack.
         Status is 156px rather than the 104px minimum the spec names, measured
         rather than guessed: "Partially closed" at 14px plus its dot and the
@@ -105,7 +115,17 @@ export function TradeLogTable({
             <TableRow
               key={trade.id}
               data-trade-row={trade.id}
-              aria-selected={isSelected}
+              /*
+                `data-selected`, NOT `aria-selected`.
+
+                `aria-selected` is only defined on a row inside a `grid` or
+                `treegrid`; on a row in a plain `table` it is invalid ARIA that
+                either gets dropped or, worse, makes the row announce a
+                selection state in a widget that has no selection model. The
+                open trade is conveyed to assistive tech by `aria-current` on
+                the row's own link, which is where the navigation actually is.
+              */
+              data-selected={isSelected ? '' : undefined}
               onClick={(event) => handleRowClick(event, trade.id)}
               className={cn(
                 'group/row h-16 cursor-pointer',
@@ -122,6 +142,7 @@ export function TradeLogTable({
               <TableCell className="px-4 py-3">
                 <a
                   href={`?trade=${trade.id}`}
+                  aria-current={isSelected ? 'true' : undefined}
                   onClick={(event) => {
                     if (
                       event.metaKey ||

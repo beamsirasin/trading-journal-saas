@@ -186,6 +186,31 @@ const SHOTS = [
     theme: 'light',
   },
   { name: '11c-confidence-context-mobile', path: '/en/prototype/context', width: 390, height: 950 },
+  // --- Journal states, added after the implementation-quality audit ----
+  {
+    name: '12-journal-loading',
+    path: '/en/prototype/trade-log?demo=loading',
+    width: 1440,
+    height: 800,
+  },
+  {
+    name: '12b-journal-first-use',
+    path: '/en/prototype/trade-log?demo=first-use',
+    width: 1440,
+    height: 800,
+  },
+  {
+    name: '12c-journal-error',
+    path: '/en/prototype/trade-log?demo=error',
+    width: 1440,
+    height: 800,
+  },
+  {
+    name: '12d-journal-no-match',
+    path: '/en/prototype/trade-log?q=zzzzz',
+    width: 1440,
+    height: 800,
+  },
 ];
 
 const shots = FILTER === '' ? SHOTS : SHOTS.filter((shot) => shot.name.includes(FILTER));
