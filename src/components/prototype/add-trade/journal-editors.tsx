@@ -122,6 +122,35 @@ export function planSummary(draft: PlanDraft, currency: string): readonly string
   return lines;
 }
 
+/**
+ * THE TRADE IDEA, AS THE SURFACE PREVIEWS IT — the trader's own sentence first.
+ *
+ * DIFFERENT ORDER FROM `planSummary`, deliberately. That one leads with the
+ * classification because it summarises a section called "your plan", where the
+ * structured facts are the point. This previews an area called "Trade idea",
+ * where the point is the thought: "Wave 3 continuation after the pullback" says
+ * more about why the trade was taken than "Elliott Wave · Wave 3 Continuation"
+ * does, and it is what the trader actually wrote.
+ *
+ * The classification follows as a second line when there is one. Never more than
+ * two lines reach the surface.
+ */
+export function tradeIdeaSummary(draft: PlanDraft): readonly string[] {
+  const lines: string[] = [];
+  if (draft.reason.trim() !== '') lines.push(excerpt(draft.reason));
+
+  const classification = [draft.strategy, draft.setup].filter(
+    (part): part is string => part !== null,
+  );
+  if (classification.length > 0) lines.push(classification.join(' · '));
+
+  // Only when neither the sentence nor the classification exists does a bare
+  // level stand in — otherwise the preview would repeat the baseline above it.
+  if (lines.length === 0 && draft.entryPrice !== '') lines.push(`Entry ${draft.entryPrice}`);
+
+  return lines;
+}
+
 export function feelingsSummary(draft: FeelingsDraft): readonly string[] {
   const parts = [
     draft.confidence === null

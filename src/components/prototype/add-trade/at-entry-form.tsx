@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
+
+import { cn } from '@/lib/utils';
 
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
@@ -17,17 +19,17 @@ import {
   TaskSurface,
   TextField,
 } from './form-primitives';
+import { JournalAtEntry } from './journal-at-entry';
 import {
   EMPTY_FEELINGS,
   EMPTY_PLAN,
   FeelingsEditor,
   feelingsSummary,
   PlanEditor,
-  planSummary,
+  tradeIdeaSummary,
   type FeelingsDraft,
   type PlanDraft,
 } from './journal-editors';
-import { JournalPrompts } from './journal-prompts';
 import { TimestampField, type Timestamp } from './timestamp-picker';
 
 const RECENT_SYMBOLS = ['XAUUSD', 'NAS100', 'EURUSD'];
@@ -73,10 +75,13 @@ export function AtEntryForm({
   /** Seeds the baseline, so a review state can show a legible worked example. */
   seedRisk,
   seedTarget,
+  /** Opens on the explicit No fixed target state, so it can be reviewed directly. */
+  seedNoTarget = false,
 }: {
   filled?: boolean;
   seedRisk?: string;
   seedTarget?: string;
+  seedNoTarget?: boolean;
 }) {
   const [symbol, setSymbol] = useState(filled ? 'XAUUSD' : '');
   const [direction, setDirection] = useState<'long' | 'short' | null>(filled ? 'long' : null);
@@ -84,6 +89,16 @@ export function AtEntryForm({
   const [enteredAt, setEnteredAt] = useState<Timestamp | null>(CAPTURED_NOW);
 
   const [target, setTarget] = useState(seedTarget ?? (filled ? '1000.00' : ''));
+  /*
+    THREE STATES, NOT TWO. A blank target means "not answered yet"; this flag
+    means "this strategy has no fixed target", which is a complete answer. They
+    are different facts about a plan and the form must not collapse them.
+
+    The typed value is KEPT so the choice is reversible, and is excluded from
+    every calculation while the flag is set — see `targetR`. Nothing derived
+    reads `target` without checking this first.
+  */
+  const [noFixedTarget, setNoFixedTarget] = useState(seedNoTarget);
 
   const [plan, setPlan] = useState<PlanDraft>(
     filled
@@ -114,7 +129,9 @@ export function AtEntryForm({
   const targetNumber = Number(target);
   const hasRisk = risk !== '' && Number.isFinite(riskNumber) && riskNumber > 0;
   const targetR =
-    hasRisk && target !== '' && Number.isFinite(targetNumber) ? targetNumber / riskNumber : null;
+    !noFixedTarget && hasRisk && target !== '' && Number.isFinite(targetNumber)
+      ? targetNumber / riskNumber
+      : null;
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
@@ -224,39 +241,48 @@ export function AtEntryForm({
             optional structured detail behind "What is your plan?", where they
             describe the trade rather than gate the form.
           */}
+          {/*
+            TWO EQUAL AMOUNTS, NOT ONE FIGURE AND ONE FOOTNOTE.
+
+            Risk was a full-size focal field and Target was a narrow
+            "Target profit · Optional" box beneath it — so the screen said risk
+            matters and the target is an extra. Both are the plan-at-entry
+            baseline: same label weight, same control, same height, same currency
+            treatment, equal columns on a desktop and equal full-width rows on a
+            phone. What "Optional" used to carry is carried precisely now, by the
+            No fixed target choice underneath.
+          */}
           <Band divided={false} className="py-5">
-            <PrimaryAmountField
-              label="Risk at entry"
-              currency="USD"
-              value={risk}
-              onChange={setRisk}
-              hint="What the whole position stood to lose if your protective exit was hit."
-            />
-
-            {/*
-              THE TARGET IS IN THE BASELINE NOW, NOT BEHIND A LINK.
-
-              It was hidden behind "Add target", which made the commonest half of
-              a plan feel like an extra. It is a plain optional field: visible,
-              answerable, and legitimately left blank by any strategy that exits
-              on a signal rather than at a price.
-            */}
-            <div className="flex max-w-[16rem] min-w-0 flex-col gap-2">
-              <TextField
-                label="Target profit (USD)"
-                optional
+            <FieldPair>
+              <PrimaryAmountField
+                label="Risk at entry"
+                currency="USD"
+                value={risk}
+                onChange={setRisk}
+              />
+              <PrimaryAmountField
+                label="Target profit"
+                currency="USD"
                 value={target}
                 onChange={setTarget}
-                inputMode="decimal"
-                numeric
+                {...(noFixedTarget ? { readOut: 'No fixed target' } : {})}
+                footer={<NoFixedTargetChoice checked={noFixedTarget} onChange={setNoFixedTarget} />}
               />
-            </div>
+            </FieldPair>
+
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Risk at entry is what the whole position stood to lose if your protective exit was
+              hit.
+            </p>
 
             {/*
-              R IS SECONDARY AND SAYS SO. It appears only once a target exists to
-              derive it from, at body size, under a label that names the unit
-              rather than assuming it — never as the largest thing on a screen
-              belonging to someone who has not learned what R means.
+              ONE DERIVED LINE, AND ONLY WHEN IT MEANS SOMETHING.
+
+              Absent while the target is unanswered, and absent when there is no
+              fixed target — in that case the declaration above already explains
+              why, and printing "0R" or "Not recorded" would answer a question
+              the trader has already answered. No reward:risk ratio beside it:
+              one derived figure, secondary to the two amounts it comes from.
             */}
             {targetR === null ? null : (
               <ResultLine
@@ -268,25 +294,100 @@ export function AtEntryForm({
           </Band>
         </TaskSurface>
 
-        <JournalPrompts
-          prompts={[
+        {/*
+          "TRADE IDEA", NOT "WHAT IS YOUR PLAN?".
+
+          The baseline directly above already holds the plan's numbers — risk,
+          target, Target R — so a journaling row called "your plan" asked for the
+          same thing twice under one name. What the editor actually collects is
+          the thought behind the trade, so that is what the entrance is called.
+          The editor itself is unchanged, and still opens on "Why did you take
+          this trade?" with strategy, setup, price levels and notes behind it.
+        */}
+        <JournalAtEntry
+          areas={[
             {
-              id: 'plan',
-              question: 'What is your plan?',
-              summary: planSummary(plan, 'USD'),
+              id: 'idea',
+              label: 'Trade idea',
+              invitation: 'Why did you take this trade?',
+              title: 'Trade idea',
+              preview: tradeIdeaSummary(plan),
               children: (
                 <PlanEditor tense="present" draft={plan} onChange={setPlan} currency="USD" />
               ),
             },
             {
               id: 'feelings',
-              question: 'How did you feel at entry?',
-              summary: feelingsSummary(feelings),
+              label: 'Feelings at entry',
+              invitation: 'How did you feel?',
+              title: 'How did you feel at entry?',
+              preview: feelingsSummary(feelings),
               children: <FeelingsEditor draft={feelings} onChange={setFeelings} />,
             },
           ]}
         />
       </FormShell>
     </PrototypeShell>
+  );
+}
+
+/**
+ * NO FIXED TARGET — a declaration, not a blank.
+ *
+ * A CHECKBOX, NOT A MODE SELECTOR. A segmented "Fixed target / No fixed target"
+ * pair would make the exception a peer of the ordinary case and force a choice
+ * before a number could be typed. This leaves entering a target as the shortest
+ * path — type it and move on — and puts the exception one deliberate click away,
+ * directly beneath the field it speaks for.
+ *
+ * IT IS A REAL `<input type="checkbox">`. Keyboard behaviour, the checked state
+ * in the accessibility tree and the label association all come from the platform
+ * rather than from a `role` attribute and a keydown handler.
+ *
+ * REVERSIBLE, AND HONEST WHILE SET. Unchecking restores the typed value exactly
+ * as it was; while checked, that value is excluded from every derivation, so
+ * nothing downstream can quietly keep using a target the trader has said does
+ * not exist.
+ */
+function NoFixedTargetChoice({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {/*
+        24px OF BOX, NOT 16.
+
+        The default checkbox is a 16px square, and the ::after extension that
+        every other quiet control here uses does not help: it grows the hit area
+        of the LABEL, while the box itself stays a 16px target. WCAG 2.2 asks for
+        24, the audit measures the element's own rect, and both are right — a
+        transparent pseudo-element on a neighbouring element is not a bigger
+        checkbox. So the checkbox is genuinely bigger, and the label beside it is
+        `text-sm` so the pairing still reads as one control rather than a large
+        box next to fine print.
+      */}
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="border-input focus-visible:ring-ring accent-primary size-6 shrink-0 cursor-pointer rounded-sm outline-none focus-visible:ring-2"
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          'relative min-w-0 cursor-pointer text-sm',
+          'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
+          checked ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        No fixed target
+      </label>
+    </div>
   );
 }

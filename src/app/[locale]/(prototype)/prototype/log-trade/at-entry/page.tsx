@@ -9,10 +9,11 @@ export const metadata: Metadata = { title: 'Prototype · Still open' };
  * that name because the domain concept has not changed. Only what the reader is
  * shown has.
  *
- * `?filled=1` renders a part-finished draft so the populated journaling
- * summaries can be judged beside the empty ones. `?risk=` and `?target=` seed
- * the baseline, so the worked example — 10 risked, 20 targeted, +2.00R — can be
- * photographed without anyone typing it.
+ * `?filled=1` renders a part-finished draft so the populated Journal at entry
+ * previews can be judged beside the empty ones. `?risk=` and `?target=` seed
+ * the baseline, so the worked example — 10 risked, 20 targeted, +2.00R — is one
+ * URL away. `?notarget=1` opens on the explicit No fixed target declaration,
+ * which is a state nothing else can reach without a click.
  */
 export default async function AtEntryPrototypePage({
   searchParams,
@@ -30,6 +31,7 @@ export default async function AtEntryPrototypePage({
   return (
     <AtEntryForm
       filled={params['filled'] === '1'}
+      seedNoTarget={params['notarget'] === '1'}
       {...(risk === undefined ? {} : { seedRisk: risk })}
       {...(target === undefined ? {} : { seedTarget: target })}
     />

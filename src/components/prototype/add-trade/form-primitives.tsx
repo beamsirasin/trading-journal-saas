@@ -348,6 +348,8 @@ export function PrimaryAmountField({
   onChange,
   hint,
   trailing,
+  readOut,
+  footer,
 }: {
   label: string;
   currency: string;
@@ -356,6 +358,17 @@ export function PrimaryAmountField({
   hint?: string;
   /** A small control that belongs on the label's own line. */
   trailing?: ReactNode;
+  /**
+   * Replaces the input with a neutral readout of the SAME HEIGHT.
+   *
+   * For a field whose value has been deliberately declared absent — "No fixed
+   * target" — rather than merely left blank. Swapping the control for text
+   * rather than disabling it in place is what makes the declaration legible:
+   * a greyed-out input still looks like somewhere a number belongs.
+   */
+  readOut?: string;
+  /** A control that belongs under the amount, e.g. the No fixed target choice. */
+  footer?: ReactNode;
 }) {
   const id = useId();
   return (
@@ -378,20 +391,30 @@ export function PrimaryAmountField({
         nothing at any width where both fit, which is every width a reader is
         likely to be at.
       */}
-      <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex min-w-0 flex-wrap items-center gap-x-2 rounded-lg border px-3 py-1 focus-within:ring-[3px]">
-        <input
-          id={id}
-          value={value}
-          inputMode="decimal"
-          onChange={(event) => onChange(event.target.value)}
-          // The floor is PX, not REM: a rem floor scales with the root font size, which
-          // is exactly what 200% text zoom changes — so it grew to 224px and pushed
-          // the page sideways. 112px keeps the value readable without ever
-          // outgrowing the box that holds it.
-          className="numeric text-foreground h-12 w-full min-w-[112px] flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl"
-        />
-        <span className="text-muted-foreground shrink-0 pb-1 text-sm">{currency}</span>
-      </div>
+      {readOut === undefined ? (
+        <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex min-w-0 flex-wrap items-center gap-x-2 rounded-lg border px-3 py-1 focus-within:ring-[3px]">
+          <input
+            id={id}
+            value={value}
+            inputMode="decimal"
+            onChange={(event) => onChange(event.target.value)}
+            // The floor is PX, not REM: a rem floor scales with the root font size, which
+            // is exactly what 200% text zoom changes — so it grew to 224px and pushed
+            // the page sideways. 112px keeps the value readable without ever
+            // outgrowing the box that holds it.
+            className="numeric text-foreground h-12 w-full min-w-[112px] flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl"
+          />
+          <span className="text-muted-foreground shrink-0 pb-1 text-sm">{currency}</span>
+        </div>
+      ) : (
+        /* Same box, same height, no input — the field is answered, and the
+           answer is that there is no number. */
+        <p className="border-input bg-muted/40 text-muted-foreground flex min-h-[3.5rem] min-w-0 items-center rounded-lg border px-3 text-base">
+          {readOut}
+        </p>
+      )}
+
+      {footer}
 
       {hint === undefined ? null : (
         <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>
