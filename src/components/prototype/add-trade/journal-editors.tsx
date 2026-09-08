@@ -31,6 +31,8 @@ import { ContextualAction, NestedEditor } from './journal-prompts';
 export interface PlanDraft {
   readonly reason: string;
   readonly strategy: string | null;
+  /** `true` is an explicit answer; `false` plus `strategy: null` is unanswered. */
+  readonly noStrategy: boolean;
   readonly setup: string | null;
   readonly checklist: Readonly<Record<string, ChecklistState>>;
   /**
@@ -54,13 +56,20 @@ export interface PlanDraft {
   readonly targetPrice: string;
   readonly note: string;
   readonly chartUrl: string;
+  /** The focused Still-open Trade idea attachment. Legacy editors keep `chartUrl`. */
+  readonly chart: ChartAttachment | null;
 }
+
+export type ChartAttachment =
+  | { readonly kind: 'link'; readonly url: string }
+  | { readonly kind: 'upload'; readonly name: string; readonly dataUrl: string };
 
 export type ChecklistState = 'met' | 'not_met' | 'not_answered';
 
 export const EMPTY_PLAN: PlanDraft = {
   reason: '',
   strategy: null,
+  noStrategy: false,
   setup: null,
   checklist: {},
   targetProfit: '',
@@ -69,6 +78,7 @@ export const EMPTY_PLAN: PlanDraft = {
   targetPrice: '',
   note: '',
   chartUrl: '',
+  chart: null,
 };
 
 export interface FeelingsDraft {
@@ -139,14 +149,12 @@ export function tradeIdeaSummary(draft: PlanDraft): readonly string[] {
   const lines: string[] = [];
   if (draft.reason.trim() !== '') lines.push(excerpt(draft.reason));
 
-  const classification = [draft.strategy, draft.setup].filter(
-    (part): part is string => part !== null,
-  );
+  const classification = draft.noStrategy
+    ? ['No strategy']
+    : [draft.strategy, draft.setup].filter((part): part is string => part !== null);
   if (classification.length > 0) lines.push(classification.join(' · '));
 
-  // Only when neither the sentence nor the classification exists does a bare
-  // level stand in — otherwise the preview would repeat the baseline above it.
-  if (lines.length === 0 && draft.entryPrice !== '') lines.push(`Entry ${draft.entryPrice}`);
+  if (lines.length === 0 && draft.chart !== null) lines.push('Chart attached');
 
   return lines;
 }

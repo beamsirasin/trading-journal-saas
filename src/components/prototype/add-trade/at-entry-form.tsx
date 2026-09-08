@@ -26,12 +26,12 @@ import {
   EMPTY_PLAN,
   FeelingsEditor,
   feelingsSummary,
-  PlanEditor,
   tradeIdeaSummary,
   type FeelingsDraft,
   type PlanDraft,
 } from './journal-editors';
 import { TimestampField, type Timestamp } from './timestamp-picker';
+import { TradeIdeaOverlay } from './trade-idea-overlay';
 
 const RECENT_SYMBOLS = ['XAUUSD', 'NAS100', 'EURUSD'];
 
@@ -372,8 +372,8 @@ export function AtEntryForm({
           target, Target R — so a journaling row called "your plan" asked for the
           same thing twice under one name. What the editor actually collects is
           the thought behind the trade, so that is what the entrance is called.
-          The editor itself is unchanged, and still opens on "Why did you take
-          this trade?" with strategy, setup, price levels and notes behind it.
+          Its focused editor holds the reasoning, Strategy / Setup and chart
+          evidence. Structured plan facts stay in the baseline above.
         */}
         <JournalAtEntry
           areas={[
@@ -387,12 +387,15 @@ export function AtEntryForm({
               preview: tradeIdeaSummary(plan),
               onDone: idea.done,
               onCancel: idea.cancel,
-              children: (
-                <PlanEditor
-                  tense="present"
+              children: null,
+              renderOverlay: ({ open, onOpenChange }) => (
+                <TradeIdeaOverlay
+                  open={open}
+                  onOpenChange={onOpenChange}
                   draft={idea.draft}
                   onChange={idea.setDraft}
-                  currency="USD"
+                  onDone={idea.done}
+                  onCancel={idea.cancel}
                 />
               ),
             },

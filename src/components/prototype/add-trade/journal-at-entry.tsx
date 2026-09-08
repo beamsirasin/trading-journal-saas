@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronRight, Plus, type LucideIcon } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,11 @@ export interface JournalArea {
   readonly preview: readonly string[];
   /** The editor, bound to the overlay-local draft — see `useJournalDraft`. */
   readonly children: ReactNode;
+  /** A specialized editor may still reuse this area's launcher and active state. */
+  readonly renderOverlay?: (state: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) => ReactNode;
   /** Applies the overlay's edits to the trade. */
   readonly onDone: () => void;
   /** Discards them. Escape and the backdrop do this too. */
@@ -140,54 +145,68 @@ export function JournalAtEntry({ areas }: { areas: readonly JournalArea[] }) {
         overlays each keep a stable title for their whole life, which is also
         what lets each one name its own launcher for focus restoration.
       */}
-      {areas.map((area) => (
-        <AdaptiveOverlay
-          key={area.id}
-          open={activeId === area.id}
-          onOpenChange={(next) => {
-            if (next) return;
-            // Escape and the backdrop are `Cancel`, not `Done`. An overlay that
-            // silently kept edits on dismissal would make Cancel a lie.
-            area.onCancel();
-            setActiveId(null);
-          }}
-          returnFocusTo={`[data-journal-area="${area.id}"]`}
-          title={area.title}
-          description={area.description}
-          className="sm:max-w-[38rem]"
-          footer={
-            <OverlayActions
-              secondary={
-                <Button
-                  variant="ghost"
-                  className="min-h-11 w-full sm:w-auto"
-                  onClick={() => {
-                    area.onCancel();
-                    setActiveId(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-              }
-              primary={
-                <Button
-                  className="min-h-11 w-full sm:w-auto"
-                  onClick={() => {
-                    area.onDone();
-                    setActiveId(null);
-                  }}
-                >
-                  Done
-                </Button>
-              }
-            />
-          }
-        >
-          {/* Mounted only while open, so an abandoned editor is not still
-              holding scroll position or an open sub-control next time. */}
-          {activeId === area.id ? area.children : null}
-        </AdaptiveOverlay>
-      ))}
+      {areas.map((area) => {
+        const open = activeId === area.id;
+        if (area.renderOverlay !== undefined) {
+          return (
+            <Fragment key={area.id}>
+              {area.renderOverlay({
+                open,
+                onOpenChange: (next) => setActiveId(next ? area.id : null),
+              })}
+            </Fragment>
+          );
+        }
+
+        return (
+          <AdaptiveOverlay
+            key={area.id}
+            open={open}
+            onOpenChange={(next) => {
+              if (next) return;
+              // Escape and the backdrop are `Cancel`, not `Done`. An overlay that
+              // silently kept edits on dismissal would make Cancel a lie.
+              area.onCancel();
+              setActiveId(null);
+            }}
+            returnFocusTo={`[data-journal-area="${area.id}"]`}
+            title={area.title}
+            description={area.description}
+            className="sm:max-w-[38rem]"
+            footer={
+              <OverlayActions
+                secondary={
+                  <Button
+                    variant="ghost"
+                    className="min-h-11 w-full sm:w-auto"
+                    onClick={() => {
+                      area.onCancel();
+                      setActiveId(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                }
+                primary={
+                  <Button
+                    className="min-h-11 w-full sm:w-auto"
+                    onClick={() => {
+                      area.onDone();
+                      setActiveId(null);
+                    }}
+                  >
+                    Done
+                  </Button>
+                }
+              />
+            }
+          >
+            {/* Mounted only while open, so an abandoned editor is not still
+                holding scroll position or an open sub-control next time. */}
+            {open ? area.children : null}
+          </AdaptiveOverlay>
+        );
+      })}
     </>
   );
 }

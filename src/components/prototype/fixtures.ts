@@ -952,6 +952,7 @@ export const PROTOTYPE_STRATEGIES = [
     exitPlan: 'Close on the return to the mean, or at the session close, whichever comes first.',
   },
   { name: 'Price Action', setups: ['Liquidity sweep'] },
+  { name: 'Discretionary trend', setups: [] },
   {
     name: 'Institutional Order Flow Continuation',
     setups: ['London open sweep and reclaim of the prior day low'],
