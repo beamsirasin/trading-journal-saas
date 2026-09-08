@@ -6,7 +6,6 @@ import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
 import {
   Band,
-  BasisToggle,
   ChoiceGroup,
   ContextLine,
   Field,
@@ -14,7 +13,6 @@ import {
   FormFooter,
   FormShell,
   PrimaryAmountField,
-  QuietAction,
   ResultLine,
   TaskSurface,
   TextField,
@@ -72,17 +70,20 @@ const CAPTURED_NOW = { date: '2026-09-07', time: '14:32' } as const;
 export function AtEntryForm({
   /** A part-finished draft, for the review state that shows populated summaries. */
   filled = false,
+  /** Seeds the baseline, so a review state can show a legible worked example. */
+  seedRisk,
+  seedTarget,
 }: {
   filled?: boolean;
+  seedRisk?: string;
+  seedTarget?: string;
 }) {
-  const [basis, setBasis] = useState<'money' | 'price'>('money');
   const [symbol, setSymbol] = useState(filled ? 'XAUUSD' : '');
   const [direction, setDirection] = useState<'long' | 'short' | null>(filled ? 'long' : null);
-  const [risk, setRisk] = useState(filled ? '200.00' : '');
+  const [risk, setRisk] = useState(seedRisk ?? (filled ? '200.00' : ''));
   const [enteredAt, setEnteredAt] = useState<Timestamp | null>(CAPTURED_NOW);
 
-  const [showTarget, setShowTarget] = useState(filled);
-  const [target, setTarget] = useState(filled ? '1000.00' : '');
+  const [target, setTarget] = useState(seedTarget ?? (filled ? '1000.00' : ''));
 
   const [plan, setPlan] = useState<PlanDraft>(
     filled
@@ -98,12 +99,22 @@ export function AtEntryForm({
     filled ? { confidence: 75, emotions: ['calm', 'focused'] } : EMPTY_FEELINGS,
   );
 
+  /*
+    TARGET R IS DERIVED, AND ONLY WHEN BOTH HALVES EXIST.
+
+    `Target profit / Risk at entry`. It is not a result and never becomes one —
+    it is what this trade is set up to pay if it reaches the target, expressed in
+    the unit the rest of the journal uses. A trade with no target has no Target
+    R, which is an ordinary state for any strategy that exits on a signal rather
+    than at a price.
+
+    A zero or unrecorded risk yields `null`, never a zero and never an infinity.
+  */
   const riskNumber = Number(risk);
   const targetNumber = Number(target);
-  const plannedR =
-    Number.isFinite(riskNumber) && riskNumber > 0 && Number.isFinite(targetNumber) && target !== ''
-      ? targetNumber / riskNumber
-      : null;
+  const hasRisk = risk !== '' && Number.isFinite(riskNumber) && riskNumber > 0;
+  const targetR =
+    hasRisk && target !== '' && Number.isFinite(targetNumber) ? targetNumber / riskNumber : null;
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
@@ -202,62 +213,44 @@ export function AtEntryForm({
             figure for the reader's first fixation and told them nothing the
             field label does not. The figure IS the section.
           */}
+          {/*
+            THE BASELINE. Two amounts, and the ratio between them.
+
+            THE AMOUNTS / PRICES SWITCH IS GONE FROM THIS PATH. It asked a trader
+            to choose a representation before they had entered a single figure —
+            and the two branches were not equivalent: one recorded money and the
+            other recorded levels and quietly could not produce a monetary
+            result. A baseline is two amounts. Price levels still exist, as
+            optional structured detail behind "What is your plan?", where they
+            describe the trade rather than gate the form.
+          */}
           <Band divided={false} className="py-5">
-            {basis === 'money' ? (
-              <PrimaryAmountField
-                label="Risk at entry"
-                currency="USD"
-                value={risk}
-                onChange={setRisk}
-                hint="How much you stood to lose if the stop was hit."
-                trailing={<BasisToggle value={basis} onChange={setBasis} />}
-              />
-            ) : (
-              <div className="flex min-w-0 flex-col gap-4">
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <p className="text-foreground text-sm font-medium">Entry and stop</p>
-                  <BasisToggle value={basis} onChange={setBasis} />
-                </div>
-                <FieldPair>
-                  <TextField label="Entry price" value="" onChange={() => {}} numeric />
-                  <TextField label="Stop loss at entry" value="" onChange={() => {}} numeric />
-                </FieldPair>
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  Prices calculate R. Money is not recorded in this mode.
-                </p>
-              </div>
-            )}
+            <PrimaryAmountField
+              label="Risk at entry"
+              currency="USD"
+              value={risk}
+              onChange={setRisk}
+              hint="What the whole position stood to lose if your protective exit was hit."
+            />
 
             {/*
-              A PLANNED FIGURE IS STATED, NEVER MATCHED. If the trader recorded a
-              planned risk in their journal, it appears here as a second fact
-              beside the real one. If they did not, this line does not exist —
-              the form never asserts that an opening "matches" a plan it has
-              never been told.
-            */}
-            {plan.plannedRisk === '' || plan.plannedRisk === risk ? null : (
-              <p className="text-muted-foreground text-xs">
-                You planned to risk{' '}
-                <span className="numeric text-foreground">{plan.plannedRisk} USD</span>.
-              </p>
-            )}
+              THE TARGET IS IN THE BASELINE NOW, NOT BEHIND A LINK.
 
-            {showTarget ? (
-              <div className="flex max-w-[16rem] min-w-0 flex-col gap-2">
-                <TextField
-                  label={basis === 'money' ? 'Target profit' : 'Target price'}
-                  {...(basis === 'money' ? { suffix: 'USD' } : {})}
-                  value={target}
-                  onChange={setTarget}
-                  inputMode="decimal"
-                  numeric
-                />
-              </div>
-            ) : (
-              <QuietAction className="self-start" onClick={() => setShowTarget(true)}>
-                Add target
-              </QuietAction>
-            )}
+              It was hidden behind "Add target", which made the commonest half of
+              a plan feel like an extra. It is a plain optional field: visible,
+              answerable, and legitimately left blank by any strategy that exits
+              on a signal rather than at a price.
+            */}
+            <div className="flex max-w-[16rem] min-w-0 flex-col gap-2">
+              <TextField
+                label="Target profit (USD)"
+                optional
+                value={target}
+                onChange={setTarget}
+                inputMode="decimal"
+                numeric
+              />
+            </div>
 
             {/*
               R IS SECONDARY AND SAYS SO. It appears only once a target exists to
@@ -265,10 +258,10 @@ export function AtEntryForm({
               rather than assuming it — never as the largest thing on a screen
               belonging to someone who has not learned what R means.
             */}
-            {plannedR === null ? null : (
+            {targetR === null ? null : (
               <ResultLine
-                label="If it reaches your target"
-                value={`${plannedR.toFixed(2)}R`}
+                label="Target R"
+                value={`+${targetR.toFixed(2)}R`}
                 detail={`1R = ${riskNumber.toFixed(2)} USD`}
               />
             )}
@@ -282,14 +275,7 @@ export function AtEntryForm({
               question: 'What is your plan?',
               summary: planSummary(plan, 'USD'),
               children: (
-                <PlanEditor
-                  tense="present"
-                  draft={plan}
-                  onChange={setPlan}
-                  currency="USD"
-                  basis={basis}
-                  includeLevels={false}
-                />
+                <PlanEditor tense="present" draft={plan} onChange={setPlan} currency="USD" />
               ),
             },
             {

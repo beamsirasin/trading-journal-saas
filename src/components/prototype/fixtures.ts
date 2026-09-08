@@ -336,16 +336,25 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     strategy: 'Opening Range Fade',
     setup: 'First 30-minute failure',
     systemState: 'pending',
-    actualRiskMinor: '25000',
+    /*
+      THE WORKED EXAMPLE, AS A FIXTURE.
+
+      10 risked against a 20 target is 2.00R, and every figure derived from it
+      can be checked in one's head — which is exactly what a reviewer needs from
+      the open trade that the Close trade flow is demonstrated on. The price
+      levels are the real ones for this instrument; only the money is chosen to
+      be legible.
+    */
+    actualRiskMinor: '1000',
     entryPrice: '24118.50',
     initialStop: '24196.00',
     plan: {
       basis: 'money',
-      riskMinor: '25000',
-      rewardMinor: '62500',
-      plannedR: '2.5000',
-      entry: null,
-      stop: null,
+      riskMinor: '1000',
+      rewardMinor: '2000',
+      plannedR: '2.0000',
+      entry: '24118.50',
+      stop: '24196.00',
       target: null,
     },
     confidence: 50,

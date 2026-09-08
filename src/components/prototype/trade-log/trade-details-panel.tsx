@@ -189,9 +189,26 @@ function TradeDetailsBody({
               <ChevronRight className="size-4" aria-hidden="true" />
             </Button>
           </div>
-          <Button variant="outline" size="sm">
-            {isOpenPosition ? 'Record exit' : 'Edit result'}
-          </Button>
+          {/*
+            AN OPEN TRADE'S PRIMARY ACTION IS CLOSING IT.
+
+            It said "Record exit", which describes a step rather than the thing
+            the trader came to do, and it went nowhere. The journal already holds
+            this position's account, symbol, direction, entry time, risk and
+            plan, so closing it is a focused flow that carries all of that
+            forward and asks only what happened — never the historical
+            "Log a trade → Fully closed" path, which exists to reconstruct a
+            trade nothing knows about.
+          */}
+          {isOpenPosition ? (
+            <Button size="sm" asChild>
+              <a href={`../close-trade?trade=${trade.id}`}>Close trade</a>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm">
+              Edit result
+            </Button>
+          )}
         </div>
       </header>
 
@@ -297,6 +314,17 @@ function ResultBlock({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
   const isPartial = trade.lifecycle === 'partially_closed';
   const tone = toneForDecimal(trade.netPnlMinor);
 
+  /*
+    AN OPEN POSITION HAS NO ACTUAL RESULT YET — that is not the same as one whose
+    result was never recorded.
+
+    A trade with nothing closed led with "Net P&L / Not recorded", which reads as
+    a gap in the record and is a reproach for something that has not happened.
+    Only Actual and System are outcomes, and an open trade has neither yet: what
+    it has is a baseline, which is the group directly below.
+  */
+  const nothingClosed = trade.lifecycle === 'open' && trade.closedBps === 0;
+
   const moneyLabel = isPartial
     ? 'Net P&L from closed portion'
     : tone === 'positive'
@@ -333,7 +361,7 @@ function ResultBlock({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
                 : cn('text-metric', TONE_CLASS[tone]),
             )}
           >
-            {money ?? copy.notRecorded}
+            {money ?? (nothingClosed ? 'No result yet' : copy.notRecorded)}
           </p>
         </div>
 
@@ -505,39 +533,55 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
         )}
       </Group>
 
-      <Group title="Plan">
-        {trade.plan === null ? (
+      {/*
+        PLAN AT ENTRY IS A BASELINE, NOT A THIRD RESULT.
+
+        The group was titled "Plan" and its last row was "Planned R", which reads
+        as an outcome alongside Actual R and the rule-based result — three
+        results, one of which never happened. Only Actual and System are
+        outcomes. This is what the trade was set up to do: the risk that fixes
+        every R on the record, the target, and the ratio between them.
+
+        "Target R", not "Planned R", for exactly that reason. And the risk row is
+        the SAME figure the R calculations divide by — not a second planned
+        number sitting beside a real one, which is what made the old pairing read
+        as a comparison.
+
+        A missing target is "Not recorded", not a defect: plenty of strategies
+        exit on a signal and never set one.
+      */}
+      <Group title="Plan at entry">
+        {trade.plan === null && trade.actualRiskMinor === null ? (
           <p className="text-subtle-foreground text-sm">
-            No original plan. Planned R stays unavailable rather than being reconstructed from the
+            No baseline recorded. R stays unavailable rather than being reconstructed from the
             result.
           </p>
         ) : (
           <dl className="divide-border min-w-0 divide-y">
-            {trade.plan.basis === 'money' ? (
-              <>
-                <Line
-                  label="Planned risk"
-                  value={
-                    signedMoney(trade.plan.riskMinor, trade.currency)?.replace('+', '') ?? null
-                  }
-                  tone="numeric"
-                />
-                <Line
-                  label="Target reward"
-                  value={
-                    signedMoney(trade.plan.rewardMinor, trade.currency)?.replace('+', '') ?? null
-                  }
-                  tone="numeric"
-                />
-              </>
-            ) : (
-              <>
-                <Line label="Planned entry" value={trade.plan.entry} tone="numeric" />
-                <Line label="Planned stop" value={trade.plan.stop} tone="numeric" />
-                <Line label="Planned target" value={trade.plan.target} tone="numeric" />
-              </>
-            )}
-            <Line label="Planned R" value={signedR(trade.plan.plannedR)} tone="numeric" />
+            <Line
+              label="Risk at entry"
+              value={
+                signedMoney(
+                  trade.actualRiskMinor ?? trade.plan?.riskMinor ?? null,
+                  trade.currency,
+                )?.replace('+', '') ?? null
+              }
+              tone="numeric"
+            />
+            <Line
+              label="Target profit"
+              value={
+                signedMoney(trade.plan?.rewardMinor ?? null, trade.currency)?.replace('+', '') ??
+                null
+              }
+              tone="numeric"
+            />
+            <Line label="Target R" value={signedR(trade.plan?.plannedR ?? null)} tone="numeric" />
+            {/* Original price levels, when the trader recorded them. Optional
+                structured detail about the trade — never a second way of
+                measuring it. */}
+            <Line label="Entry price" value={trade.plan?.entry ?? null} tone="numeric" />
+            <Line label="Stop price at entry" value={trade.plan?.stop ?? null} tone="numeric" />
           </dl>
         )}
       </Group>

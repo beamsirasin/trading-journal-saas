@@ -33,8 +33,25 @@ export interface PlanDraft {
   readonly strategy: string | null;
   readonly setup: string | null;
   readonly checklist: Readonly<Record<string, ChecklistState>>;
-  readonly plannedRisk: string;
-  readonly plannedTarget: string;
+  /**
+   * The baseline target, in money.
+   *
+   * Still open owns this in its main baseline, so its editor does not offer it
+   * again. A historical Fully closed trade has no baseline until someone
+   * reconstructs one, and this is where that happens.
+   */
+  readonly targetProfit: string;
+  /**
+   * ORIGINAL price levels, when the trader recorded them.
+   *
+   * OPTIONAL STRUCTURED DETAIL, NOT A RECORDING MODE. These used to be one half
+   * of an Amounts/Prices switch that gated the whole form. They describe the
+   * trade; they do not decide how it is measured, and monetary amounts alone
+   * never prove which level price reached.
+   */
+  readonly entryPrice: string;
+  readonly stopPrice: string;
+  readonly targetPrice: string;
   readonly note: string;
   readonly chartUrl: string;
 }
@@ -46,8 +63,10 @@ export const EMPTY_PLAN: PlanDraft = {
   strategy: null,
   setup: null,
   checklist: {},
-  plannedRisk: '',
-  plannedTarget: '',
+  targetProfit: '',
+  entryPrice: '',
+  stopPrice: '',
+  targetPrice: '',
   note: '',
   chartUrl: '',
 };
@@ -90,8 +109,9 @@ export function planSummary(draft: PlanDraft, currency: string): readonly string
   if (classification.length > 0) lines.push(classification.join(' · '));
 
   const levels = [
-    draft.plannedRisk === '' ? null : `Planned risk ${draft.plannedRisk} ${currency}`,
-    draft.plannedTarget === '' ? null : `Target ${draft.plannedTarget} ${currency}`,
+    draft.targetProfit === '' ? null : `Target ${draft.targetProfit} ${currency}`,
+    draft.entryPrice === '' ? null : `Entry ${draft.entryPrice}`,
+    draft.stopPrice === '' ? null : `Stop ${draft.stopPrice}`,
   ].filter((part): part is string => part !== null);
   if (levels.length > 0) lines.push(levels.join(' · '));
 
@@ -174,27 +194,24 @@ export function PlanEditor({
   draft,
   onChange,
   currency,
-  basis,
-  includeLevels = true,
+  includeTarget = true,
 }: {
   tense: 'present' | 'past';
   draft: PlanDraft;
   onChange: (draft: PlanDraft) => void;
   currency: string;
-  /** Money-basis plans ask for amounts; price-basis plans ask for levels. */
-  basis: 'money' | 'price';
   /**
-   * Whether the planned target and risk belong to this editor.
+   * Whether the baseline target belongs to this editor.
    *
-   * Still open already carries a target in the trade core, where it is part of
-   * the position rather than part of the story; offering a second one here would
-   * be two fields for one fact.
+   * Still open carries Target profit in its own main baseline, so offering a
+   * second one here would be two fields for one fact. A historical Fully closed
+   * trade has no baseline until it is reconstructed, and this is where it is.
    */
-  includeLevels?: boolean;
+  includeTarget?: boolean;
 }) {
   const [showChecklist, setShowChecklist] = useState(false);
   const [showLevels, setShowLevels] = useState(
-    draft.plannedRisk !== '' || draft.plannedTarget !== '',
+    draft.entryPrice !== '' || draft.stopPrice !== '' || draft.targetPrice !== '',
   );
   const [showNote, setShowNote] = useState(draft.note !== '' || draft.chartUrl !== '');
 
@@ -291,33 +308,69 @@ export function PlanEditor({
           </div>
 
           {/*
-            PLANNED NUMBERS ARE AN ENTRANCE, NOT A PAIR OF EMPTY BOXES. Two blank
-            fields sitting open say "these are expected of you"; a link says they
-            are there if the trader had them. For a completed trade this is the
-            difference between recording a plan and inventing one.
+            THE BASELINE TARGET, for a trade that has no baseline yet.
+
+            Still open collects this in its own main path, so it passes
+            `includeTarget={false}` and this does not appear twice.
           */}
-          {!includeLevels ? null : showLevels ? (
-            <FieldPair>
+          {includeTarget ? (
+            <div className="max-w-[16rem]">
               <TextField
-                label={basis === 'money' ? 'Planned risk' : 'Planned entry'}
-                {...(basis === 'money' ? { suffix: currency } : {})}
-                value={draft.plannedRisk}
-                onChange={(value) => patch({ plannedRisk: value })}
+                label={`Target profit (${currency})`}
+                optional
+                value={draft.targetProfit}
+                onChange={(value) => patch({ targetProfit: value })}
                 inputMode="decimal"
                 numeric
               />
-              <TextField
-                label={basis === 'money' ? 'Target profit' : 'Target price'}
-                {...(basis === 'money' ? { suffix: currency } : {})}
-                value={draft.plannedTarget}
-                onChange={(value) => patch({ plannedTarget: value })}
-                inputMode="decimal"
-                numeric
-              />
-            </FieldPair>
+            </div>
+          ) : null}
+
+          {/*
+            PRICE LEVELS ARE AN ENTRANCE, NOT A MODE AND NOT THREE EMPTY BOXES.
+
+            They were one half of an Amounts/Prices switch that gated the whole
+            form — and the price branch could not produce a monetary result at
+            all, so choosing it silently changed what the trade could later say.
+            They are optional structured detail about the trade now: recorded
+            when the trader had them, absent when they did not, and never used to
+            infer a result. A monetary risk and target do not prove which level
+            price reached.
+          */}
+          {showLevels ? (
+            <div className="flex min-w-0 flex-col gap-4">
+              <FieldPair>
+                <TextField
+                  label="Entry price"
+                  optional
+                  value={draft.entryPrice}
+                  onChange={(value) => patch({ entryPrice: value })}
+                  inputMode="decimal"
+                  numeric
+                />
+                <TextField
+                  label="Stop price at entry"
+                  optional
+                  value={draft.stopPrice}
+                  onChange={(value) => patch({ stopPrice: value })}
+                  inputMode="decimal"
+                  numeric
+                />
+              </FieldPair>
+              <div className="max-w-[16rem]">
+                <TextField
+                  label="Target price"
+                  optional
+                  value={draft.targetPrice}
+                  onChange={(value) => patch({ targetPrice: value })}
+                  inputMode="decimal"
+                  numeric
+                />
+              </div>
+            </div>
           ) : (
             <ContextualAction onClick={() => setShowLevels(true)}>
-              {basis === 'money' ? 'Add planned amounts' : 'Add planned levels'}
+              Add price levels
             </ContextualAction>
           )}
 
@@ -461,13 +514,28 @@ export function FeelingsEditor({
   );
 }
 
+/*
+  THE SHORTCUTS, AND THE TWO ANSWERS THAT ARE NOT SHORTCUTS.
+
+  `Other` and `Can't determine` mean different things and must never be merged.
+  `Other` is a KNOWN outcome that none of the shortcuts describes — a rule-based
+  exit on a signal, say. `Can't determine` is the honest answer when there is no
+  single defensible result: a trailing stop whose path is unknown, a scale-out
+  schedule, a system with no fixed target, or a price sequence nobody recorded.
+  Collapsing the two would turn "I don't know" into a recorded finding.
+
+  These shortcuts are only valid where the original fixed stop and target
+  remained the applicable rules and the price sequence is known. Anything with
+  rule-required trailing, scaling or mid-trade adjustment needs the trader's own
+  assessment, which is what `Other` and `Can't determine` are for.
+*/
 const RULES_OUTCOME_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'unrecorded', label: 'Not recorded' },
-  { value: 'target', label: 'It would have hit my target' },
-  { value: 'stop', label: 'It would have hit my stop' },
-  { value: 'break_even', label: 'It would have closed at break-even' },
-  { value: 'other', label: 'It would have closed for another reason' },
-  { value: 'no_trade', label: 'I would not have taken it at all' },
+  { value: 'target', label: 'Target hit' },
+  { value: 'stop', label: 'Stop hit' },
+  { value: 'break_even', label: 'Break-even' },
+  { value: 'no_trade', label: 'The rules would not have taken it' },
+  { value: 'other', label: 'Other — a different known outcome' },
   { value: 'unknown', label: "Can't determine" },
 ];
 
@@ -496,12 +564,15 @@ export function ReviewEditor({
   onChange,
   currency,
   actualMoney,
+  riskAtEntry,
 }: {
   draft: ReviewDraft;
   onChange: (draft: ReviewDraft) => void;
   currency: string;
   /** The trader's real result, shown beside the hypothetical for comparison. */
   actualMoney: string;
+  /** The ORIGINAL risk at entry — the one denominator every R on this trade uses. */
+  riskAtEntry: string;
 }) {
   const [view, setView] = useState<'none' | 'rules' | 'management'>('none');
   const patch = (next: Partial<ReviewDraft>) => onChange({ ...draft, ...next });
@@ -546,6 +617,7 @@ export function ReviewEditor({
           patch={patch}
           currency={currency}
           actualMoney={actualMoney}
+          riskAtEntry={riskAtEntry}
         />
       ) : (
         <RuleFollowing draft={draft} patch={patch} />
@@ -559,12 +631,31 @@ function RulesComparison({
   patch,
   currency,
   actualMoney,
+  riskAtEntry,
 }: {
   draft: ReviewDraft;
   patch: (next: Partial<ReviewDraft>) => void;
   currency: string;
   actualMoney: string;
+  riskAtEntry: string;
 }) {
+  /*
+    SYSTEM R USES THE ORIGINAL RISK AT ENTRY, exactly as Actual R does. That
+    shared denominator is the only reason the two figures can be compared at
+    all. An unknown or zero risk yields no System R — never a zero, never an
+    infinity.
+  */
+  const riskNumber = Number(riskAtEntry);
+  const systemMoney = Number(draft.rulesMoney);
+  const systemR =
+    riskAtEntry !== '' &&
+    Number.isFinite(riskNumber) &&
+    riskNumber > 0 &&
+    draft.rulesMoney !== '' &&
+    Number.isFinite(systemMoney)
+      ? systemMoney / riskNumber
+      : null;
+
   const resolvable =
     draft.rulesOutcome !== 'unrecorded' &&
     draft.rulesOutcome !== 'unknown' &&
@@ -572,7 +663,10 @@ function RulesComparison({
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <Field label="What would following your rules have produced?">
+      <Field
+        label="What would following your rules have produced?"
+        hint="Only if your original stop and target were still the rules, and you know which came first."
+      >
         {(id) => (
           <select
             id={id}
@@ -598,6 +692,11 @@ function RulesComparison({
           onChange={(value) => patch({ rulesMoney: value })}
           inputMode="decimal"
           numeric
+          {...(systemR === null
+            ? {}
+            : {
+                hint: `${systemR > 0 ? '+' : ''}${systemR.toFixed(2)}R against your risk at entry`,
+              })}
         />
       ) : null}
 

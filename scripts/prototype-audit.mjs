@@ -36,6 +36,8 @@ const PAGES = [
   { name: 'still-open-filled', path: '/en/prototype/log-trade/at-entry?filled=1' },
   { name: 'partial-exits', path: '/en/prototype/log-trade/after-trade?exits=1' },
   { name: 'exit-editor', path: '/en/prototype/log-trade/after-trade?exits=1&edit=e2' },
+  { name: 'close-trade', path: '/en/prototype/close-trade?trade=t-03' },
+  { name: 'close-trade-partial', path: '/en/prototype/close-trade?trade=t-03&part=1' },
 ];
 
 const findings = [];

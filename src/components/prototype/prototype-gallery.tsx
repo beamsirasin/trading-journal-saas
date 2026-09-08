@@ -160,6 +160,15 @@ const SCREENS: readonly Screen[] = [
     height: 1100,
   },
   {
+    id: 'close-trade',
+    number: '10b',
+    title: 'Close trade · an already-recorded position',
+    note: 'Carries the baseline forward and asks only what happened. Actual R divides by the original risk at entry.',
+    path: '/prototype/close-trade?trade=t-03',
+    width: 1120,
+    height: 1100,
+  },
+  {
     id: 'exit-editor',
     number: '11',
     title: 'Partial exits · active editor',

@@ -73,18 +73,6 @@ const SHOTS = [
     height: 844,
   },
   {
-    name: '05-still-open-target-added',
-    path: '/en/prototype/log-trade/at-entry',
-    width: 1440,
-    height: 1000,
-    full: true,
-    prepare: async (page) => {
-      await page.getByRole('button', { name: 'Add target' }).click();
-      await page.locator('input').last().fill('1000.00');
-      await page.waitForTimeout(200);
-    },
-  },
-  {
     name: '06-still-open-plan-editor-desktop',
     path: '/en/prototype/log-trade/at-entry',
     width: 1440,
@@ -206,6 +194,139 @@ const SHOTS = [
     width: 1440,
     height: 1200,
     full: true,
+  },
+
+  // --- 3b. The baseline, and closing an already-recorded trade ----------------
+  {
+    name: '32-still-open-no-target',
+    path: '/en/prototype/log-trade/at-entry?risk=10',
+    width: 1440,
+    height: 1000,
+    full: true,
+  },
+  {
+    name: '33-still-open-target-r',
+    path: '/en/prototype/log-trade/at-entry?risk=10&target=20',
+    width: 1440,
+    height: 1000,
+    full: true,
+  },
+  {
+    name: '34-open-details-plan-at-entry',
+    path: '/en/prototype/trade-log?trade=t-03',
+    width: 1440,
+    height: 1100,
+  },
+  {
+    name: '35-open-details-plan-at-entry-mobile',
+    path: '/en/prototype/trade-log?trade=t-03',
+    width: 390,
+    height: 844,
+  },
+  {
+    name: '36-close-trade-default',
+    path: '/en/prototype/close-trade?trade=t-03',
+    width: 1440,
+    height: 1100,
+    full: true,
+  },
+  {
+    name: '36b-close-trade-mobile',
+    path: '/en/prototype/close-trade?trade=t-03',
+    width: 390,
+    height: 844,
+  },
+  {
+    name: '37-close-trade-profit-1r',
+    path: '/en/prototype/close-trade?trade=t-03&outcome=profit&amount=10',
+    width: 1440,
+    height: 1100,
+    full: true,
+  },
+  {
+    name: '38-close-trade-loss-1r',
+    path: '/en/prototype/close-trade?trade=t-03&outcome=loss&amount=10',
+    width: 1440,
+    height: 1100,
+    full: true,
+  },
+  {
+    name: '39-close-trade-break-even',
+    path: '/en/prototype/close-trade?trade=t-03&outcome=break_even',
+    width: 1440,
+    height: 1100,
+    full: true,
+  },
+  {
+    name: '40-close-trade-partial-first-exit',
+    path: '/en/prototype/close-trade?trade=t-03&part=1&outcome=profit&amount=3',
+    width: 1440,
+    height: 1100,
+    full: true,
+  },
+  {
+    name: '41-close-trade-missing-risk',
+    path: '/en/prototype/close-trade?trade=t-08&outcome=profit&amount=5',
+    width: 1440,
+    height: 1100,
+    full: true,
+  },
+  {
+    name: '42-review-system-target-hit',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page
+        .getByRole('button', { name: 'What would you repeat or change next time?' })
+        .click();
+      await page.waitForTimeout(200);
+      await page.getByRole('button', { name: 'Compare with your rules' }).click();
+      await page.waitForTimeout(200);
+      await page.getByLabel(/What would following your rules/).selectOption('target');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '43-review-system-stop-hit',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page
+        .getByRole('button', { name: 'What would you repeat or change next time?' })
+        .click();
+      await page.waitForTimeout(200);
+      await page.getByRole('button', { name: 'Compare with your rules' }).click();
+      await page.waitForTimeout(200);
+      await page.getByLabel(/What would following your rules/).selectOption('stop');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '44-review-system-cannot-determine',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page
+        .getByRole('button', { name: 'What would you repeat or change next time?' })
+        .click();
+      await page.waitForTimeout(200);
+      await page.getByRole('button', { name: 'Compare with your rules' }).click();
+      await page.waitForTimeout(200);
+      await page.getByLabel(/What would following your rules/).selectOption('unknown');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '45-historical-fully-closed-still-available',
+    path: '/en/prototype/log-trade',
+    width: 1440,
+    height: 760,
   },
 
   // --- 4. Date and time ------------------------------------------------------

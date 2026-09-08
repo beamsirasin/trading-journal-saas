@@ -110,7 +110,7 @@ export function AfterTradeForm({
           ...EMPTY_PLAN,
           strategy: 'Elliott Wave',
           setup: 'Wave 3 Continuation',
-          plannedTarget: '1000.00',
+          targetProfit: '1000.00',
         }
       : EMPTY_PLAN,
   );
@@ -356,15 +356,7 @@ export function AfterTradeForm({
               id: 'plan',
               question: 'What was your plan?',
               summary: planSummary(plan, 'USD'),
-              children: (
-                <PlanEditor
-                  tense="past"
-                  draft={plan}
-                  onChange={setPlan}
-                  currency="USD"
-                  basis={basis}
-                />
-              ),
+              children: <PlanEditor tense="past" draft={plan} onChange={setPlan} currency="USD" />,
             },
             {
               id: 'feelings',
@@ -382,6 +374,7 @@ export function AfterTradeForm({
                   onChange={setReview}
                   currency="USD"
                   actualMoney={moneyText ?? 'Not recorded'}
+                  riskAtEntry={risk}
                 />
               ),
             },
