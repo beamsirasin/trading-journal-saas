@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
+import { EMPTY_EXIT_PLAN, ExitPlanRow, type ExitPlanDraft } from './exit-plan';
 import {
   Band,
   ChoiceGroup,
@@ -100,6 +101,7 @@ export function AtEntryForm({
     reads `target` without checking this first.
   */
   const [noFixedTarget, setNoFixedTarget] = useState(seedNoTarget);
+  const [exitPlan, setExitPlan] = useState<ExitPlanDraft>(EMPTY_EXIT_PLAN);
 
   const [plan, setPlan] = useState<PlanDraft>(
     filled
@@ -279,7 +281,7 @@ export function AtEntryForm({
                 currency="USD"
                 value={target}
                 onChange={setTarget}
-                {...(noFixedTarget ? { readOut: 'Exit follows my trading rules' } : {})}
+                {...(noFixedTarget ? { readOut: 'No fixed target' } : {})}
                 footer={<NoFixedTargetChoice checked={noFixedTarget} onChange={setNoFixedTarget} />}
               />
             </FieldPair>
@@ -304,6 +306,18 @@ export function AtEntryForm({
                 />
               </div>
             )}
+
+            {/*
+              THE EXIT PLAN IS PART OF THE BASELINE, AND ALWAYS VISIBLE.
+
+              Not conditional on the target: a trade with a fixed target can
+              still have a rule that closes it earlier, and a trade with no
+              target may have no rule either. Sitting it here rather than inside
+              "Trade idea" is deliberate — the idea is the trader's reasoning,
+              this is a structured fact about how the position is to be managed,
+              and only the second one can later support any assessment.
+            */}
+            <ExitPlanRow draft={exitPlan} onChange={setExitPlan} strategyName={plan.strategy} />
           </Band>
         </TaskSurface>
 
@@ -420,20 +434,6 @@ function NoFixedTargetChoice({
           >
             No fixed target
           </span>
-          {/*
-            THE EXPLANATION BELONGS TO THE UNCHECKED STATE ONLY.
-
-            It answers "what does choosing this mean?", which is a question only
-            someone who has not chosen it is asking. Once chosen, the field above
-            states the plan in those exact words — and rendering it in both
-            places put the same sentence on screen twice, sixty pixels apart,
-            which is the duplication this whole treatment replaced.
-          */}
-          {checked ? null : (
-            <span className="text-subtle-foreground block text-xs">
-              Exit follows my trading rules
-            </span>
-          )}
         </span>
       </label>
     </div>

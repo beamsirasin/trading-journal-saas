@@ -930,15 +930,39 @@ export const PROTOTYPE_ACCOUNTS = [
   { id: 'a-2', name: 'Personal · Thai broker', currency: 'THB' },
 ] as const;
 
+/**
+ * SOME STRATEGIES DESCRIBE HOW THEY EXIT. MOST OF THESE DO NOT.
+ *
+ * `exitPlan` is deliberately absent from three of the five. A strategy having a
+ * NAME is not evidence that it has a recorded exit rule, and offering "use the
+ * strategy's exit plan" for a strategy that has never stated one would be
+ * inventing a rule out of a label. Only a strategy carrying real text can be
+ * inherited from.
+ */
 export const PROTOTYPE_STRATEGIES = [
-  { name: 'Elliott Wave', setups: ['Wave 3 Continuation', 'Wave C exhaustion'] },
+  {
+    name: 'Elliott Wave',
+    setups: ['Wave 3 Continuation', 'Wave C exhaustion'],
+    exitPlan: 'Trail beneath structure; exit on RSI invalidation.',
+  },
   { name: 'London Session Reversal', setups: ['Failed breakout of the Asian range'] },
-  { name: 'Mean Reversion', setups: ['Deviation band'] },
+  {
+    name: 'Mean Reversion',
+    setups: ['Deviation band'],
+    exitPlan: 'Close on the return to the mean, or at the session close, whichever comes first.',
+  },
   { name: 'Price Action', setups: ['Liquidity sweep'] },
   {
     name: 'Institutional Order Flow Continuation',
     setups: ['London open sweep and reclaim of the prior day low'],
   },
 ] as const;
+
+/** The strategy's own exit plan text, or `null` when it has never stated one. */
+export function strategyExitPlan(name: string | null): string | null {
+  if (name === null) return null;
+  const strategy = PROTOTYPE_STRATEGIES.find((candidate) => candidate.name === name);
+  return strategy !== undefined && 'exitPlan' in strategy ? strategy.exitPlan : null;
+}
 
 export const PROTOTYPE_TIMEZONE = 'Asia/Bangkok · GMT+7';
