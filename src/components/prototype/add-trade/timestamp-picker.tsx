@@ -17,6 +17,13 @@ import { ToolbarDisclosure } from '@/components/dashboard/toolbar/toolbar-disclo
 import { Button } from '@/components/ui/button';
 
 import { useKeyboardObscuringViewport } from './form-primitives';
+import {
+  formatWheelTime,
+  parseTypedTime,
+  parseWheelTime,
+  TimeWheels,
+  type TimeWheelValue,
+} from './time-wheel';
 
 /**
  * THE TRADE TIMESTAMP CONTROL.
@@ -180,37 +187,53 @@ function TimestampDisclosure({
 }) {
   const [draftDate, setDraftDate] = useState(value?.date ?? PROTOTYPE_TODAY);
   /*
-    HOUR AND MINUTE ARE HELD AS TYPED, NOT AS PARSED.
+    THE TIME DRAFT IS TWO INTEGERS, AND THE WHEEL IS A PICTURE OF THEM.
 
-    They used to be clamped and zero-padded on every keystroke, so the field
-    fought the reader: clearing it to retype snapped straight to "00", a lone
-    "1" became "01" before the "4" could be typed, and typing "9" while
-    replacing "23" produced "09" rather than the "09:xx" the trader was heading
-    for. Worse, an out-of-range entry was silently rewritten into a DIFFERENT
-    valid time rather than being rejected — a picker that quietly changes a
-    timestamp is the one thing a trade record cannot afford.
+    It used to be two strings held exactly as typed, because the number fields
+    fought the reader otherwise — clearing one to retype snapped it to "00",
+    and a lone "1" became "01" before the "4" arrived. The wheel has no such
+    problem: it cannot express a half-finished value, so the draft can be the
+    valid integers themselves and `Apply` needs no normalisation pass to guess
+    what the reader meant.
 
-    Empty, single-digit and half-replaced states are all legal while typing.
-    Normalisation happens on blur and again on Apply, so what is committed is
-    always valid and always something the reader saw.
+    Typing still needs somewhere to hold `25:70` without it becoming a real
+    time, and that is `typedTime` below — a buffer that exists only while the
+    typed fallback is open.
   */
-  const [rawHour, setRawHour] = useState(() => (value?.time ?? '09:00').slice(0, 2));
-  const [rawMinute, setRawMinute] = useState(() => (value?.time ?? '09:00').slice(3, 5));
+  const [time, setTime] = useState<TimeWheelValue>(() => parseWheelTime(value?.time));
   const [month, setMonth] = useState(() => monthOf(value?.date ?? PROTOTYPE_TODAY));
   const [pickingPeriod, setPickingPeriod] = useState(false);
+  /*
+    THE TYPED FALLBACK, AND WHY IT IS A MODE RATHER THAN A HIDDEN GESTURE.
+
+    `null` is the wheel; a string is the typed field, holding exactly what was
+    entered. Making the wheel's centre number secretly editable would summon a
+    phone keyboard on a control whose entire purpose is not needing one, so the
+    reader asks for typing explicitly and returns explicitly.
+  */
+  const [typedTime, setTypedTime] = useState<string | null>(null);
   const [wasOpen, setWasOpen] = useState(open);
+  const typedId = useId();
+  const typedErrorId = useId();
 
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open) {
       const seed = value?.date ?? PROTOTYPE_TODAY;
       setDraftDate(seed);
-      setRawHour((value?.time ?? '09:00').slice(0, 2));
-      setRawMinute((value?.time ?? '09:00').slice(3, 5));
+      setTime(parseWheelTime(value?.time));
       setMonth(monthOf(seed));
       setPickingPeriod(false);
+      setTypedTime(null);
     }
   }
+
+  /*
+    AN INVALID TIME CAN ONLY EXIST WHILE THE TYPED FIELD IS OPEN, and while it
+    does, nothing may be committed. The wheel cannot produce one.
+  */
+  const typedParsed = typedTime === null ? null : parseTypedTime(typedTime);
+  const timeInvalid = typedTime !== null && typedParsed === null;
 
   /*
     APPLY IS NEVER BELOW THE KEYBOARD.
@@ -236,7 +259,13 @@ function TimestampDisclosure({
       <Button
         size="sm"
         className="min-h-11"
-        onClick={() => onApply({ date: draftDate, time: normalizeTime(rawHour, rawMinute) })}
+        /*
+          Blocked, not clamped. While the typed field holds something that is
+          not a time there is nothing to commit, and inventing one is how a
+          trade acquires a timestamp nobody chose.
+        */
+        disabled={timeInvalid}
+        onClick={() => onApply({ date: draftDate, time: formatWheelTime(time) })}
       >
         Apply
       </Button>
@@ -253,48 +282,100 @@ function TimestampDisclosure({
   */
   const timeBlock = (
     <>
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
-        <TimeFields
-          hour={rawHour}
-          minute={rawMinute}
-          onHourChange={setRawHour}
-          onMinuteChange={setRawMinute}
-          onCommit={() => {
-            const [h = '00', m = '00'] = normalizeTime(rawHour, rawMinute).split(':');
-            setRawHour(h);
-            setRawMinute(m);
-          }}
-        />
-
-        <div className="flex min-w-0 shrink-0 gap-2">
-          {/* TWO ACTIONS, TWO MEANINGS. Today moves the DATE and leaves a
-                  carefully typed time alone; Now moves both. Collapsing them is how
-                  an exit time gets silently overwritten. */}
+      <div className="flex min-w-0 flex-col gap-2">
+        {/*
+          THE HEADER ROW CARRIES THE ONE ESCAPE HATCH. `Type time` is quiet on
+          purpose: it is for the trade being written up weeks later where a
+          distant exact minute is faster typed than travelled to, not the
+          ordinary path.
+        */}
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <span className="text-muted-foreground text-xs font-medium">Time</span>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="min-h-11"
-            onClick={() => {
-              setDraftDate(PROTOTYPE_TODAY);
-              setMonth(monthOf(PROTOTYPE_TODAY));
-            }}
+            className="min-h-11 text-xs"
+            onClick={() =>
+              setTypedTime((current) => (current === null ? formatWheelTime(time) : null))
+            }
           >
-            Today
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11"
-            onClick={() => {
-              setDraftDate(PROTOTYPE_TODAY);
-              setRawHour(PROTOTYPE_NOW_TIME.slice(0, 2));
-              setRawMinute(PROTOTYPE_NOW_TIME.slice(3, 5));
-              setMonth(monthOf(PROTOTYPE_TODAY));
-            }}
-          >
-            Now
+            {typedTime === null ? 'Type time' : 'Use wheel'}
           </Button>
         </div>
+
+        {typedTime === null ? (
+          <TimeWheels value={time} onChange={setTime} />
+        ) : (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label htmlFor={typedId} className="sr-only">
+              Time, 24-hour, as HH:MM
+            </label>
+            <input
+              id={typedId}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="HH:MM"
+              value={typedTime}
+              aria-invalid={timeInvalid}
+              aria-describedby={timeInvalid ? typedErrorId : undefined}
+              onChange={(event) => {
+                const next = event.target.value;
+                setTypedTime(next);
+                /*
+                  A valid entry updates the shared draft as it is typed, so
+                  `Use wheel` returns to the time the reader just entered
+                  rather than to the one they were replacing. An invalid one
+                  changes nothing — it stays on screen and blocks Apply.
+                */
+                const parsed = parseTypedTime(next);
+                if (parsed !== null) setTime(parsed);
+              }}
+              className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric aria-[invalid=true]:border-negative h-11 w-28 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
+            />
+            {/* Said, not silently corrected. 25:70 is the reader's to fix. */}
+            {timeInvalid ? (
+              <p id={typedErrorId} className="text-negative text-xs">
+                Enter a 24-hour time as HH:MM, between 00:00 and 23:59.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* TWO ACTIONS, TWO MEANINGS. Today moves the DATE and leaves a carefully
+          chosen time alone; Now moves both. Collapsing them is how an exit time
+          gets silently overwritten. */}
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-11"
+          onClick={() => {
+            setDraftDate(PROTOTYPE_TODAY);
+            setMonth(monthOf(PROTOTYPE_TODAY));
+          }}
+        >
+          Today
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="min-h-11"
+          onClick={() => {
+            setDraftDate(PROTOTYPE_TODAY);
+            setTime(parseWheelTime(PROTOTYPE_NOW_TIME));
+            setMonth(monthOf(PROTOTYPE_TODAY));
+            /*
+              Now is a complete answer, so it also leaves the typed field: an
+              entry that was mid-correction has just been superseded, and
+              leaving `25:7` on screen next to a draft of 14:32 would state two
+              different times at once.
+            */
+            setTypedTime((current) => (current === null ? null : PROTOTYPE_NOW_TIME));
+          }}
+        >
+          Now
+        </Button>
       </div>
       {/* While a keyboard is up the commit row rides the scrolling body, so it
           can be reached inside the visible viewport rather than sitting under a
@@ -325,8 +406,7 @@ function TimestampDisclosure({
         {/* The draft, stated in words, so Apply is never a guess about what the
             grid and the two number fields currently add up to. */}
         <p className="text-foreground numeric text-sm font-medium">
-          {formatCalendarDateLabel(draftDate, LOCALE) ?? draftDate} ·{' '}
-          {normalizeTime(rawHour, rawMinute)}
+          {formatCalendarDateLabel(draftDate, LOCALE) ?? draftDate} · {formatWheelTime(time)}
         </p>
 
         <div className="flex min-w-0 items-center gap-1">
@@ -586,105 +666,4 @@ function PeriodPicker({
       </div>
     </div>
   );
-}
-
-/**
- * Hour and minute, as two numeric fields that let you type.
- *
- * NOT `<input type="time">`, for the same reason the trigger is not
- * `datetime-local`: it is a different widget in every browser and none of them
- * is this product's. Two two-digit fields give a numeric keypad on a phone and
- * are unambiguous about which half is being edited.
- *
- * THEY HOLD WHAT WAS TYPED. Clamping and padding on every keystroke made the
- * field fight the reader — see the note on `rawHour`. `onCommit` fires on blur
- * and normalises; Apply normalises again. Nothing is rewritten mid-word, and
- * nothing invalid is ever committed.
- */
-function TimeFields({
-  hour,
-  minute,
-  onHourChange,
-  onMinuteChange,
-  onCommit,
-}: {
-  hour: string;
-  minute: string;
-  onHourChange: (value: string) => void;
-  onMinuteChange: (value: string) => void;
-  onCommit: () => void;
-}) {
-  const hourId = useId();
-  const minuteId = useId();
-  const invalid = !isTimePartValid(hour, 23) || !isTimePartValid(minute, 59);
-
-  return (
-    <div className="min-w-0">
-      <div className="flex min-w-0 items-end gap-2">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor={hourId} className="text-muted-foreground text-xs font-medium">
-            Hour
-          </label>
-          <input
-            id={hourId}
-            inputMode="numeric"
-            maxLength={2}
-            value={hour}
-            aria-invalid={!isTimePartValid(hour, 23)}
-            onChange={(event) => onHourChange(event.target.value.replace(/\D/g, '').slice(0, 2))}
-            onBlur={onCommit}
-            className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric aria-[invalid=true]:border-negative h-11 w-16 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
-          />
-        </div>
-        <span className="text-muted-foreground pb-3 text-base" aria-hidden="true">
-          :
-        </span>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor={minuteId} className="text-muted-foreground text-xs font-medium">
-            Minute
-          </label>
-          <input
-            id={minuteId}
-            inputMode="numeric"
-            maxLength={2}
-            value={minute}
-            aria-invalid={!isTimePartValid(minute, 59)}
-            onChange={(event) => onMinuteChange(event.target.value.replace(/\D/g, '').slice(0, 2))}
-            onBlur={onCommit}
-            className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric aria-[invalid=true]:border-negative h-11 w-16 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
-          />
-        </div>
-      </div>
-
-      {/* Said, not silently corrected. An out-of-range hour is the reader's to
-          fix; rewriting 25 into 23 would change a timestamp behind their back. */}
-      {invalid ? (
-        <p className="text-negative mt-1 text-xs">Hour must be 0–23 and minute 0–59.</p>
-      ) : null}
-    </div>
-  );
-}
-
-/** `true` while a part is a plausible in-progress or finished entry. */
-function isTimePartValid(raw: string, max: number): boolean {
-  if (raw === '') return true;
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= 0 && value <= max;
-}
-
-/**
- * The committed `HH:MM` for whatever is currently typed.
- *
- * Empty becomes `00`; an out-of-range part is clamped ONLY here, at the moment
- * of commit, and only after the field has had its chance to show the reader
- * that it was out of range.
- */
-function normalizeTime(hour: string, minute: string): string {
-  return `${normalizePart(hour, 23)}:${normalizePart(minute, 59)}`;
-}
-
-function normalizePart(raw: string, max: number): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 2);
-  if (digits === '') return '00';
-  return String(Math.min(Number(digits), max)).padStart(2, '0');
 }
