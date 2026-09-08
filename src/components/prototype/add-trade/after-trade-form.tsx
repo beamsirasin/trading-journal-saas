@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 
+import { cn } from '@/lib/utils';
+
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
-import { ExitsEditor } from './exits-editor';
+import { DEFAULT_EXIT_ROWS, ExitsEditor, latestExitTimestamp, type ExitRow } from './exits-editor';
 import {
   Band,
   BasisToggle,
@@ -17,7 +19,6 @@ import {
   OutcomeChoice,
   PrimaryAmountField,
   QuietAction,
-  ResultSummary,
   TaskSurface,
   TextField,
   type MoneyOutcome,
@@ -37,7 +38,7 @@ import {
   type ReviewDraft,
 } from './journal-editors';
 import { JournalPrompts } from './journal-prompts';
-import { TimestampField, type Timestamp } from './timestamp-picker';
+import { formatTimestamp, TimestampField, type Timestamp } from './timestamp-picker';
 
 /**
  * FULLY CLOSED — the whole finished trade, written up in one sitting.
@@ -90,6 +91,18 @@ export function AfterTradeForm({
 
   const [enteredAt, setEnteredAt] = useState<Timestamp | null>(null);
   const [exitedAt, setExitedAt] = useState<Timestamp | null>(null);
+  const [exitRows, setExitRows] = useState<readonly ExitRow[]>(DEFAULT_EXIT_ROWS);
+
+  /*
+    WITH MULTIPLE EXITS, THE FINAL EXIT TIME IS THE LAST LEG — NOT A FIELD.
+
+    Keeping a per-leg timestamp on every exit AND a separate "final exit time"
+    asks the trader to hold two records in agreement by hand, and gives the form
+    no way to decide which to believe when they drift. The last leg to close is
+    the final exit, by definition, so it is derived and shown rather than asked
+    for again.
+  */
+  const derivedExitAt = latestExitTimestamp(exitRows);
 
   const [plan, setPlan] = useState<PlanDraft>(
     filled
@@ -129,8 +142,6 @@ export function AfterTradeForm({
     (outcome === 'break_even' || pnl !== '');
   const actualR = hasResult ? signedPnl / riskNumber : null;
 
-  const moneyLabel =
-    outcome === 'profit' ? 'Net profit' : outcome === 'loss' ? 'Net loss' : 'Net P&L';
   const moneyText = hasResult ? `${signedPnl > 0 ? '+' : ''}${signedPnl.toFixed(2)} USD` : null;
   const tone = signedPnl > 0 ? 'positive' : signedPnl < 0 ? 'negative' : 'neutral';
 
@@ -151,12 +162,7 @@ export function AfterTradeForm({
       >
         <TaskSurface>
           <Band className="gap-3 py-3.5">
-            <ContextLine
-              account="Live · FTMO 100K"
-              currency="USD"
-              timezone={PROTOTYPE_TIMEZONE}
-              onChange={() => {}}
-            />
+            <ContextLine account="Live · FTMO 100K" currency="USD" onChange={() => {}} />
           </Band>
 
           {/*
@@ -185,27 +191,51 @@ export function AfterTradeForm({
             </FieldPair>
 
             {/*
-              BOTH TIMESTAMPS START UNANSWERED. A historical trade silently dated
-              today is a wrong record that looks like a right one, so neither
-              picker selects anything until the trader does — opening one shows a
-              convenient month, and selects nothing.
+              ONE TIMESTAMP GROUP, TWO COMPACT ROWS.
+
+              They were a `FieldPair`, which on a phone is two full-height fields
+              stacked, each with its own label and each carrying a placeholder
+              that repeated its own label back — "Select entry date and time"
+              under a label reading "Entry time". Roughly 150px of vertical space
+              on the screen that most needs to give it back. One zone note above
+              the pair, short placeholders, and both timestamps still explicit.
+
+              BOTH START UNANSWERED. A historical trade silently dated today is a
+              wrong record that looks like a right one, so neither picker selects
+              anything until the trader does.
             */}
-            <FieldPair>
-              <TimestampField
-                label="Entry time"
-                title="Entry date and time"
-                value={enteredAt}
-                onChange={setEnteredAt}
-                placeholder="Select entry date and time"
-              />
-              <TimestampField
-                label="Final exit time"
-                title="Final exit date and time"
-                value={exitedAt}
-                onChange={setExitedAt}
-                placeholder="Select exit date and time"
-              />
-            </FieldPair>
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="text-subtle-foreground text-xs">Times in {PROTOTYPE_TIMEZONE}</p>
+              <div className="grid min-w-0 gap-2 min-[560px]:grid-cols-2">
+                <TimestampField
+                  label="Entry time"
+                  title="Entry date and time"
+                  value={enteredAt}
+                  onChange={setEnteredAt}
+                  placeholder="Not set"
+                />
+                {multipleExits ? (
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <span className="text-muted-foreground text-xs font-medium">
+                      Final exit time
+                    </span>
+                    <p className="text-foreground numeric flex h-11 min-w-0 items-center text-sm">
+                      {formatTimestamp(derivedExitAt) ?? (
+                        <span className="text-subtle-foreground">From your last exit</span>
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <TimestampField
+                    label="Final exit time"
+                    title="Final exit date and time"
+                    value={exitedAt}
+                    onChange={setExitedAt}
+                    placeholder="Not set"
+                  />
+                )}
+              </div>
+            </div>
           </Band>
 
           {/* GROUP TWO — RESULT. */}
@@ -228,19 +258,34 @@ export function AfterTradeForm({
                 </div>
 
                 {/*
-                  WHEN THE EXITS OWN THE RESULT, THE SINGLE-FIGURE INPUTS GO.
-                  A screenshot caught the cost of leaving them: "Net P&L 400.00"
-                  sat directly above an exits editor totalling +80.00, so the
-                  screen stated two different results for one trade and gave the
-                  reader no way to tell which one would be saved. The legs are
-                  authoritative once there is more than one, so they are the only
-                  place the result is entered.
+                  ONE MONETARY AUTHORITY.
+
+                  The screen used to carry TWO large money figures: the editable
+                  "Net P&L 400.00" and, directly beneath it, a `text-metric`
+                  "Net profit +400.00 USD" restating the same number. Two focal
+                  points for one fact, one of them a control and one of them a
+                  readout, forty pixels apart. The editable amount is the only
+                  large figure now; the outcome word above it supplies the sign
+                  and the label ("Net profit" / "Net loss"), and R is one quiet
+                  line underneath.
+
+                  WHEN THE EXITS OWN THE RESULT the single-figure inputs go
+                  entirely — a screenshot caught "Net P&L 400.00" sitting above an
+                  exits editor totalling +80.00, two different results for one
+                  trade with nothing to say which would be saved.
                 */}
                 {multipleExits ? null : <OutcomeChoice value={outcome} onChange={setOutcome} />}
 
-                {multipleExits || outcome === 'break_even' ? null : (
+                {multipleExits ? null : outcome === 'break_even' ? (
+                  <div className="min-w-0">
+                    <p className="text-muted-foreground text-xs font-medium">Net P&L</p>
+                    <p className="numeric text-foreground text-metric mt-0.5 font-semibold">
+                      0.00 USD
+                    </p>
+                  </div>
+                ) : (
                   <PrimaryAmountField
-                    label="Net P&L"
+                    label={outcome === 'loss' ? 'Net loss' : 'Net profit'}
                     currency="USD"
                     value={pnl}
                     onChange={setPnl}
@@ -248,13 +293,25 @@ export function AfterTradeForm({
                   />
                 )}
 
-                {multipleExits ? null : (
-                  <ResultSummary
-                    money={moneyText}
-                    moneyLabel={moneyLabel}
-                    r={actualR === null ? null : `${actualR > 0 ? '+' : ''}${actualR.toFixed(2)}R`}
-                    tone={tone}
-                  />
+                {/* R IS SECONDARY AND ON ONE LINE. Money is the figure a beginner
+                    can check; R is the one they are learning. */}
+                {multipleExits || actualR === null ? null : (
+                  <p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className="text-muted-foreground text-xs font-medium">Result (R)</span>
+                    <span
+                      className={cn(
+                        'numeric text-base font-semibold',
+                        tone === 'positive'
+                          ? 'text-positive'
+                          : tone === 'negative'
+                            ? 'text-negative'
+                            : 'text-foreground',
+                      )}
+                    >
+                      {actualR > 0 ? '+' : ''}
+                      {actualR.toFixed(2)}R
+                    </span>
+                  </p>
                 )}
               </>
             ) : (
@@ -283,6 +340,8 @@ export function AfterTradeForm({
             {multipleExits ? (
               <ExitsEditor
                 variant="after-trade"
+                rows={exitRows}
+                onRowsChange={setExitRows}
                 initialRisk={risk}
                 currency="USD"
                 initialActiveId={activeExit}
@@ -311,7 +370,6 @@ export function AfterTradeForm({
               id: 'feelings',
               question: 'How did you feel at entry?',
               summary: feelingsSummary(feelings),
-              note: 'Recalled after the trade',
               children: <FeelingsEditor draft={feelings} onChange={setFeelings} recalled />,
             },
             {

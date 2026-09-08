@@ -51,6 +51,7 @@ export interface PrototypeCopy {
   readonly summaryMultipleCurrencies: string;
   readonly summarySelectOneAccount: string;
   /** `{with}` of `{closed}` — coverage of the money aggregate. */
+  readonly summaryClosedScope: string;
   readonly summaryMoneyCoverage: string;
   /** `{with}` of `{closed}` — coverage of the R aggregate. */
   readonly summaryRCoverage: string;
@@ -128,8 +129,9 @@ const EN: PrototypeCopy = {
   summaryNotRecorded: 'Not recorded',
   summaryMultipleCurrencies: 'Multiple currencies',
   summarySelectOneAccount: 'Select one account',
-  summaryMoneyCoverage: '{count} closed {trades} missing P&L',
-  summaryRCoverage: '{count} closed {trades} missing R',
+  summaryClosedScope: 'From {count} {trades}',
+  summaryMoneyCoverage: '{count} missing P&L',
+  summaryRCoverage: '{count} missing R',
   summaryNotRecordedCount: '{count} not recorded',
 
   sortOldest: 'Oldest activity',
@@ -203,8 +205,9 @@ const TH: PrototypeCopy = {
   summaryNotRecorded: 'ไม่ได้บันทึก',
   summaryMultipleCurrencies: 'หลายสกุลเงิน',
   summarySelectOneAccount: 'เลือกบัญชีเดียว',
-  summaryMoneyCoverage: 'ออเดอร์ที่ปิดแล้ว {count} รายการยังไม่มีกำไร/ขาดทุน',
-  summaryRCoverage: 'ออเดอร์ที่ปิดแล้ว {count} รายการยังไม่มีค่า R',
+  summaryClosedScope: 'จากออเดอร์ที่ปิดแล้ว {count} รายการ',
+  summaryMoneyCoverage: 'ยังไม่มีกำไร/ขาดทุน {count} รายการ',
+  summaryRCoverage: 'ยังไม่มีค่า R {count} รายการ',
   summaryNotRecordedCount: 'ไม่ได้บันทึก {count} รายการ',
 
   sortOldest: 'เก่าสุดก่อน',

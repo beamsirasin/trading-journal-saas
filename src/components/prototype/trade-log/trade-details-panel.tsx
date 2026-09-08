@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
+import { executionGapR } from '@/lib/calc/attribution';
 import { cn } from '@/lib/utils';
 import {
   Fact,
@@ -144,25 +145,47 @@ function TradeDetailsBody({
             nothing — which is also why they are not `<Button disabled>`, whose
             styling would have implied the other behaviour.
           */}
+          {/*
+            COMPACT ON A PHONE, LABELLED ON A DESKTOP — AND NEVER SMALLER.
+
+            Two labelled ghost buttons spent roughly 180px of a 390px header on
+            navigation nobody had asked for yet. The labels move to `sr-only`
+            below `sm`, so the buttons become 44px icon targets: the accessible
+            name is unchanged, the touch target is unchanged, the focus ring is
+            unchanged, and both stay in the tab order. Only the visible word is
+            dropped, and only where there is no room for it.
+
+            `aria-disabled`, NOT `disabled`: `disabled` removes an element from
+            the focus order entirely, so at the first and last trade of a page a
+            control silently vanished from the drawer's toolbar mid-review.
+            `aria-disabled` keeps both reachable and announced as unavailable,
+            and the handler simply does nothing.
+          */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
               aria-disabled={onPrevious === null}
-              className={cn(onPrevious === null && 'pointer-events-none opacity-50')}
+              className={cn(
+                'min-h-11 min-w-11 px-2 sm:px-3',
+                onPrevious === null && 'pointer-events-none opacity-50',
+              )}
               onClick={() => onPrevious?.()}
             >
               <ChevronLeft className="size-4" aria-hidden="true" />
-              Previous
+              <span className="sr-only sm:not-sr-only">Previous</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               aria-disabled={onNext === null}
-              className={cn(onNext === null && 'pointer-events-none opacity-50')}
+              className={cn(
+                'min-h-11 min-w-11 px-2 sm:px-3',
+                onNext === null && 'pointer-events-none opacity-50',
+              )}
               onClick={() => onNext?.()}
             >
-              Next
+              <span className="sr-only sm:not-sr-only">Next</span>
               <ChevronRight className="size-4" aria-hidden="true" />
             </Button>
           </div>
@@ -236,7 +259,7 @@ function TradeDetailsBody({
       >
         {tab === 'overview' ? <OverviewTab trade={trade} copy={copy} /> : null}
         {tab === 'execution' ? <ExecutionTab trade={trade} copy={copy} /> : null}
-        {tab === 'review' ? <ReviewTab trade={trade} copy={copy} /> : null}
+        {tab === 'review' ? <ReviewTab trade={trade} /> : null}
       </div>
     </div>
   );
@@ -284,35 +307,56 @@ function ResultBlock({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
 
   return (
     <div className="border-border min-w-0 border-b pb-4">
-      <p className="text-muted-foreground text-xs font-medium">{moneyLabel}</p>
-      <p
-        className={cn(
-          'numeric mt-0.5 font-semibold',
-          money === null ? 'text-subtle-foreground text-base' : cn('text-metric', TONE_CLASS[tone]),
-        )}
-      >
-        {money ?? copy.notRecorded}
-      </p>
+      {/*
+        ONE RESULT GROUP, NOT THREE STACKED FACTS.
 
-      {rValue === null ? null : (
-        <div className="mt-2 min-w-0">
-          <p className="text-muted-foreground text-xs font-medium">Result (R)</p>
+        Money, R and the outcome word were three separately labelled blocks down
+        the left edge, so the reader's eye stepped through them as if they were
+        unrelated. They are one answer: money is the headline, R is its second
+        expression, and both belong on one baseline.
+
+        THE WIN/LOSS WORD IS GONE. `Net profit +420.00 USD` in green above
+        `+2.10R` in green already says "this was a win" three times over; a
+        fourth, in a separate line of its own, added a label and no information.
+        Break-even is the exception and keeps its word, because a small signed
+        number is exactly the case where the sign does NOT tell you which side of
+        the tolerance band the engine put it on.
+      */}
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-6 gap-y-1">
+        <div className="min-w-0">
+          <p className="text-muted-foreground text-xs font-medium">{moneyLabel}</p>
           <p
             className={cn(
-              'numeric mt-0.5 text-base font-semibold',
-              TONE_CLASS[toneForDecimal(trade.actualR)],
+              'numeric mt-0.5 font-semibold',
+              money === null
+                ? 'text-subtle-foreground text-base'
+                : cn('text-metric', TONE_CLASS[tone]),
             )}
           >
-            {rValue}
+            {money ?? copy.notRecorded}
           </p>
         </div>
-      )}
 
-      {trade.outcome === null ? null : (
-        <p className="text-foreground mt-2 text-sm font-medium">
-          {outcomeLabel(copy, trade.outcome)}
-        </p>
-      )}
+        {rValue === null ? null : (
+          <div className="min-w-0">
+            <p className="text-muted-foreground text-xs font-medium">
+              {isPartial ? 'R from closed portion' : 'Result (R)'}
+            </p>
+            <p
+              className={cn(
+                'numeric mt-0.5 text-base font-semibold',
+                TONE_CLASS[toneForDecimal(trade.actualR)],
+              )}
+            >
+              {rValue}
+            </p>
+          </div>
+        )}
+
+        {trade.outcome === 'break_even' ? (
+          <p className="text-foreground text-sm font-medium">{outcomeLabel(copy, trade.outcome)}</p>
+        ) : null}
+      </div>
 
       {/*
         THE RULE COMPARISON, ONE LINE, ONLY WHEN IT EXISTS. Two numbers and the
@@ -332,11 +376,23 @@ function ResultBlock({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
         </p>
       ) : null}
 
-      {/* The span of the trade, in the reader's own zone, stated once. */}
-      <p className="text-subtle-foreground numeric mt-3 min-w-0 text-xs">
-        {trade.enteredAt ?? 'Entry time not recorded'} → {trade.exitedAt ?? 'still open'}
-        <span className="ml-2">{PROTOTYPE_TIMEZONE}</span>
-      </p>
+      {/*
+        ENTERED AND EXITED AS LABELLED FACTS, not a sentence.
+
+        It was one line of run-on prose — `7 Sep 2026, 09:41 → 7 Sep 2026, 14:32
+        Asia/Bangkok · GMT+7` — 60 characters of arrow-joined timestamps that a
+        reader has to parse before they can find either one. Two labelled rows
+        and the zone stated once underneath.
+      */}
+      <dl className="divide-border mt-3 min-w-0 divide-y">
+        <Line label="Entered" value={trade.enteredAt} tone="numeric" />
+        <Line
+          label="Exited"
+          value={trade.exitedAt ?? (trade.lifecycle === 'closed' ? null : 'Still open')}
+          tone="numeric"
+        />
+      </dl>
+      <p className="text-subtle-foreground mt-1 text-xs">{PROTOTYPE_TIMEZONE}</p>
     </div>
   );
 }
@@ -499,13 +555,20 @@ function OverviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCo
         )}
       </Group>
 
-      <Group title="Notes">
-        {trade.notes === null ? (
-          <p className="text-subtle-foreground text-sm">No notes.</p>
+      {/*
+        THE REFLECTIVE NOTE MOVED TO REVIEW; THE CHART STAYED.
+
+        "Size was correct. Took profit into the New York open instead of holding
+        for the measured move" is a judgement about how the trade was managed —
+        it is the same kind of thought as the review note, and sitting it in
+        Overview mixed a retrospective opinion into the tab that answers "what
+        happened". The chart is not an opinion: it is a reference to the trade
+        itself, and it belongs with the facts.
+      */}
+      <Group title="Chart">
+        {trade.chartUrl === null ? (
+          <p className="text-subtle-foreground text-sm">No chart attached.</p>
         ) : (
-          <p className="text-foreground text-sm leading-relaxed">{trade.notes}</p>
-        )}
-        {trade.chartUrl === null ? null : (
           // "View chart", not the raw URL. A 44-character TradingView link is an
           // address, not information: it wraps across two lines, says nothing a
           // reader wants to read, and its only useful property is that it is
@@ -540,7 +603,16 @@ function ExecutionTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeC
         <FactGrid>
           <Fact label="Entry price" value={trade.entryPrice} tone="neutral" omitWhenEmpty />
           <Fact label="Stop loss at entry" value={trade.initialStop} tone="neutral" omitWhenEmpty />
-          <Fact label="Position size" value={trade.positionSize} tone="neutral" omitWhenEmpty />
+          <Fact
+            label="Position size"
+            value={
+              trade.positionSize === null
+                ? null
+                : `${trade.positionSize}${trade.positionSizeUnit === null ? '' : ` ${trade.positionSizeUnit}`}`
+            }
+            tone="neutral"
+            omitWhenEmpty
+          />
           <Fact
             label="Risk at entry"
             value={signedMoney(trade.actualRiskMinor, trade.currency)?.replace('+', '') ?? null}
@@ -610,9 +682,6 @@ function ExecutionTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeC
 
         {isOpenPosition ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="outline" size="sm">
-              Record partial exit
-            </Button>
             {/* Same interpolated-label wrap as the exits editor's
                 "Use remaining X%" — see its note. */}
             <Button
@@ -809,23 +878,34 @@ function EntryChecklistDisclosure({
  * "Your net P&L" and "If you followed your rules" and lets the reader do the
  * subtraction they were always going to do anyway.
  */
-function ReviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCopy }) {
-  const money = signedMoney(trade.netPnlMinor, trade.currency);
+function ReviewTab({ trade }: { trade: PrototypeTrade }) {
+  const gap = trade.systemState === 'resolved' ? executionGapR(trade.actualR, trade.systemR) : null;
+  const differenceR = gap !== null && gap.ok ? signedR(gap.value) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <Group title="What would you repeat or change next time?">
         {trade.reviewNote === null ? (
-          <div className="flex min-w-0 flex-col items-start gap-2">
-            <p className="text-subtle-foreground text-sm">No review note yet.</p>
-            <Button variant="outline" size="sm" className="min-h-11">
-              Add review note
-            </Button>
-          </div>
+          /*
+            THE REFLECTION IS THE PRIMARY ACTION, and the rule comparison below
+            is depth. A beginner opening Review should meet "what would I repeat
+            or change?" as the thing to do — not a hypothetical they have to
+            reconstruct before the tab gives them anything. So this is the filled
+            button on the tab and the comparison is an outline one.
+          */
+          <Button size="sm" className="min-h-11 self-start">
+            Add review note
+          </Button>
         ) : (
           <p className="text-foreground text-sm leading-relaxed">{trade.reviewNote}</p>
         )}
       </Group>
+
+      {trade.notes === null ? null : (
+        <Group title="Notes">
+          <p className="text-foreground text-sm leading-relaxed">{trade.notes}</p>
+        </Group>
+      )}
 
       <Group title="Did you follow your rules?">
         {trade.executionRules.length === 0 ? (
@@ -859,7 +939,7 @@ function ReviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCopy
           */
           <div className="flex min-w-0 flex-col items-start gap-2">
             <p className="text-subtle-foreground text-sm">Not recorded</p>
-            <Button size="sm" className="min-h-11">
+            <Button variant="outline" size="sm" className="min-h-11">
               Compare with your rules
             </Button>
           </div>
@@ -869,19 +949,24 @@ function ReviewTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeCopy
             there is nothing to compare against.
           </p>
         ) : (
+          /*
+            THE DIFFERENCE IS THE POINT OF THE COMPARISON, so it is stated rather
+            than left as arithmetic for the reader. It is a SUBTRACTION of two
+            independently recorded figures, not a third stored fact: neither side
+            is derived from the other, and a missing rule result yields no
+            difference rather than a zero one.
+          */
           <dl className="divide-border min-w-0 divide-y">
-            <Line label="Your net P&L" value={money} tone="numeric" />
-            <Line label="Your result (R)" value={signedR(trade.actualR)} tone="numeric" />
+            <Line label="Your result" value={signedR(trade.actualR)} tone="numeric" />
             <Line
               label="If you followed your rules"
               value={signedR(trade.systemR)}
               tone="numeric"
             />
+            <Line label="Difference" value={differenceR} tone="numeric" />
           </dl>
         )}
       </Group>
-
-      <p className="text-subtle-foreground text-xs">{copy.timezoneNote}</p>
     </div>
   );
 }

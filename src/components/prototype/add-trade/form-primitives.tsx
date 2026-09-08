@@ -62,8 +62,11 @@ export function FormShell({
   footer: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 pt-3 pb-24 sm:px-6 md:pt-10">
-      <div className="mb-1 flex min-w-0 items-center justify-between gap-2 lg:hidden">
+    <div className="mx-auto w-full max-w-[720px] px-4 pt-1 pb-24 sm:px-6 md:pt-10">
+      {/* The icon row overlaps the title's own leading rather than sitting on a
+          line of its own — 44px targets kept, roughly 30px of dead space at the
+          top of every phone screen returned. */}
+      <div className="-mb-1 flex min-w-0 items-center justify-between gap-2 lg:hidden">
         <Button variant="ghost" size="icon" aria-label="Back" className="-ml-2 shrink-0">
           <ChevronLeft className="size-5" aria-hidden="true" />
         </Button>
@@ -79,7 +82,7 @@ export function FormShell({
         of its own; it is one quiet line under the title now, with its escape
         beside it, which is all it ever said.
       */}
-      <div className="mt-1 mb-5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+      <div className="mt-1 mb-3 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 md:mb-5">
         <p className="text-muted-foreground min-w-0 text-sm">{situation}</p>
         {onChangeSituation === undefined ? null : (
           <>
@@ -91,7 +94,7 @@ export function FormShell({
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-4">{children}</div>
+      <div className="flex min-w-0 flex-col gap-3 md:gap-4">{children}</div>
 
       {/*
         THE FOOTER IS A DIRECT CHILD OF THE FORM COLUMN, not of a wrapper.
@@ -147,7 +150,7 @@ export function Band({
   return (
     <section
       className={cn(
-        'flex min-w-0 flex-col gap-4 px-4 py-4 sm:px-5',
+        'flex min-w-0 flex-col gap-3 px-4 py-3.5 sm:gap-4 sm:px-5 sm:py-4',
         divided && 'border-border border-b',
         className,
       )}
@@ -166,19 +169,20 @@ export function Band({
  * of supporting text now, with Change beside it. The account can still be
  * changed; it just no longer opens the page.
  *
- * Currency and timezone ride the same line rather than each claiming a label
- * row. Neither can be ambiguous here: there is one account, and it has one of
- * each.
+ * THE TIMEZONE LEFT THIS LINE. It was the fourth item in a dense run of
+ * metadata — "Live · FTMO 100K · USD · Asia/Bangkok · GMT+7" — and it was ALSO
+ * printed above the timestamp fields, so the same fact appeared twice in one
+ * card. A timezone qualifies timestamps, not accounts, so it now lives with the
+ * fields it changes the meaning of and this line states the account's identity
+ * and its currency.
  */
 export function ContextLine({
   account,
   currency,
-  timezone,
   onChange,
 }: {
   account: string;
   currency: string;
-  timezone: string;
   onChange?: () => void;
 }) {
   return (
@@ -187,8 +191,6 @@ export function ContextLine({
         <span className="text-foreground font-medium">{account}</span>
         <span className="text-subtle-foreground"> · </span>
         {currency}
-        <span className="text-subtle-foreground"> · </span>
-        {timezone}
       </p>
       {onChange === undefined ? null : <QuietAction onClick={onChange}>Change</QuietAction>}
     </div>
@@ -803,7 +805,7 @@ export function FormFooter({
  * changes the visual viewport by 50–90px during ordinary scrolling, and a
  * threshold under that would undock the save button every time someone scrolled.
  */
-function useKeyboardObscuringViewport(): boolean {
+export function useKeyboardObscuringViewport(): boolean {
   const [obscured, setObscured] = useState(false);
 
   useEffect(() => {

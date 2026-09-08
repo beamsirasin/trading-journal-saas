@@ -286,7 +286,22 @@ export interface JournalSummary {
 
 export function summarize(matching: readonly PrototypeTrade[]): JournalSummary {
   const closed = matching.filter((trade) => trade.lifecycle === 'closed');
-  const openCount = matching.filter((trade) => trade.lifecycle === 'open').length;
+
+  /*
+    `openCount` IS THE OPEN TAB'S OWN POPULATION, not a third category beside it.
+
+    `matchesState('open')` admits both 'open' and 'partially_closed' — a
+    position with some of it still running belongs in Open — but this counted
+    only the strictly 'open' ones. So the Open tab listed five trades and its
+    summary said "3 open trades · 2 partially closed", which reads as five
+    trades in a list of five and is off by two anywhere a reader adds it up.
+
+    The headline is the population the tab actually shows; the partially closed
+    figure is a SUBSET breakdown of that same number, not a sibling of it.
+  */
+  const openCount = matching.filter(
+    (trade) => trade.lifecycle === 'open' || trade.lifecycle === 'partially_closed',
+  ).length;
   const partiallyClosedCount = matching.filter(
     (trade) => trade.lifecycle === 'partially_closed',
   ).length;

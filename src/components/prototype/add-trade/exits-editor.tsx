@@ -7,14 +7,16 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-import { Field } from './form-primitives';
+import { Field, OutcomeChoice, type MoneyOutcome } from './form-primitives';
 import { formatTimestamp, TimestampField, type Timestamp } from './timestamp-picker';
 
 export interface ExitRow {
   readonly id: string;
   /** Percent of the ORIGINAL position, as typed. */
   readonly percent: string;
-  /** This leg's OWN net result — never re-weighted by the percentage. */
+  /** What the amount MEANS — the same three words the main result uses. */
+  readonly outcome: MoneyOutcome;
+  /** This leg's OWN result, unsigned. Never re-weighted by the percentage. */
   readonly amount: string;
   readonly at: Timestamp | null;
 }
@@ -28,30 +30,66 @@ export interface ExitRow {
  * and +0.50R against a 100 USD risk at entry — NOT +0.14R, which is what
  * weighting already-realized amounts by their percentage a second time gives.
  * The field is labelled `% of original position closed` rather than `% closed`
- * for exactly that reason: an ambiguous label here is an arithmetic error
- * waiting to be made by the reader instead of by the code.
+ * for exactly that reason.
  *
- * WHAT CHANGED. Every leg used to be a permanently expanded three-input grid,
- * plus a standing empty row waiting to become a fourth and a fifth — roughly
- * 300px of form to state two facts the trader had finished stating. A recorded
- * exit is a SUMMARY ROW now, only the active leg is an editor, and `Record an
- * exit` deliberately opens a new one.
+ * THE SIGN IS ASKED IN WORDS HERE TOO. A leg used to be typed as a signed
+ * number, so recording a losing exit meant knowing to type a minus — the same
+ * inference the main result stopped requiring when the `+/-` toggle was
+ * replaced by Profit / Loss / Break-even. One product should not ask a trader
+ * to learn two different conventions for the same fact, so this uses the same
+ * control and stores the magnitude beside the meaning.
  *
- * "RECORD AN EXIT", NOT "TAKE PROFIT". Exits lose money too, and a generic
- * action named after the good case quietly tells a trader the bad case does not
- * belong here.
+ * `Add exit` / `Update exit`, NOT `Save exit`. Nothing here saves a trade. The
+ * only Save is the one on the main screen, and an action inside a draft that
+ * says "Save" invites a reader to believe their trade is now recorded.
  *
  * AMBER MEANS A REQUIREMENT IS UNMET, NOT THAT WORK IS IN PROGRESS. A position
  * with 60% still open is an ordinary state, styled neutrally. A trade being
- * recorded as fully closed whose legs do not total 100% cannot be saved as it
- * stands — that and over-allocation are the only two things here that earn a
- * warning tone.
+ * recorded as fully closed whose legs do not total 100% is a record that cannot
+ * be saved as it stands.
  */
 
-const DEFAULT_ROWS: readonly ExitRow[] = [
-  { id: 'e1', percent: '25', amount: '-40.00', at: { date: '2026-09-01', time: '12:02' } },
-  { id: 'e2', percent: '35', amount: '120.00', at: { date: '2026-09-01', time: '14:15' } },
+export const DEFAULT_EXIT_ROWS: readonly ExitRow[] = [
+  {
+    id: 'e1',
+    percent: '25',
+    outcome: 'loss',
+    amount: '40.00',
+    at: { date: '2026-09-01', time: '12:02' },
+  },
+  {
+    id: 'e2',
+    percent: '35',
+    outcome: 'profit',
+    amount: '120.00',
+    at: { date: '2026-09-01', time: '14:15' },
+  },
 ];
+
+/** The leg's signed contribution, from its magnitude and its stated meaning. */
+export function signedExitAmount(row: ExitRow): number {
+  if (row.outcome === 'break_even') return 0;
+  const magnitude = Number(row.amount);
+  if (!Number.isFinite(magnitude) || row.amount === '') return Number.NaN;
+  return row.outcome === 'loss' ? -magnitude : magnitude;
+}
+
+/**
+ * The latest recorded exit instant, or `null` while none carries a time.
+ *
+ * THIS IS WHERE A MULTI-EXIT TRADE'S FINAL EXIT TIME COMES FROM. Asking a
+ * trader to maintain per-leg timestamps AND a separate "final exit time" is
+ * asking them to keep two records in agreement by hand, and the form has no way
+ * to tell which one to believe when they drift. The last leg to close IS the
+ * final exit.
+ */
+export function latestExitTimestamp(rows: readonly ExitRow[]): Timestamp | null {
+  const stamped = rows.filter((row): row is ExitRow & { at: Timestamp } => row.at !== null);
+  if (stamped.length === 0) return null;
+  return stamped.reduce((latest, row) =>
+    `${row.at.date}T${row.at.time}` > `${latest.at.date}T${latest.at.time}` ? row : latest,
+  ).at;
+}
 
 /** `40%` where it is whole, `40.5%` where it is not. Never `40.00%`. */
 function formatPercent(value: number): string {
@@ -60,32 +98,34 @@ function formatPercent(value: number): string {
 
 export function ExitsEditor({
   variant = 'after-trade',
-  initialRows,
+  rows,
+  onRowsChange,
   initialRisk = '100.00',
   currency = 'USD',
   /** Opens one leg's editor on arrival, for the active-editor review state. */
   initialActiveId = null,
 }: {
-  /** `after-trade` must reach exactly 100%; `open-position` may stay short of it. */
+  /** `after-trade` reports RECORDING COVERAGE; `open-position` reports LIFECYCLE. */
   variant?: 'after-trade' | 'open-position';
-  initialRows?: readonly ExitRow[];
+  rows: readonly ExitRow[];
+  onRowsChange: (rows: readonly ExitRow[]) => void;
   initialRisk?: string;
   currency?: string;
   initialActiveId?: string | null;
 }) {
-  const [rows, setRows] = useState<readonly ExitRow[]>(initialRows ?? DEFAULT_ROWS);
   const [activeId, setActiveId] = useState<string | null>(initialActiveId);
-  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [draftIds, setDraftIds] = useState<readonly string[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const closed = rows.reduce((total, row) => {
     const value = Number(row.percent);
     return Number.isFinite(value) ? total + value : total;
   }, 0);
-  const stillOpen = 100 - closed;
+  const remainder = 100 - closed;
 
   const realized = rows.reduce((total, row) => {
-    const value = Number(row.amount);
-    return Number.isFinite(value) && row.amount !== '' ? total + value : total;
+    const value = signedExitAmount(row);
+    return Number.isFinite(value) ? total + value : total;
   }, 0);
 
   const riskNumber = Number(initialRisk);
@@ -95,17 +135,34 @@ export function ExitsEditor({
   const overAllocated = closed > 100.005;
   const unresolved = overAllocated || (variant === 'after-trade' && !complete);
 
+  const coverageWord = variant === 'after-trade' ? 'recorded' : 'closed';
+  const remainderWord = variant === 'after-trade' ? 'not recorded' : 'still open';
+
   function update(id: string, patch: Partial<ExitRow>) {
-    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+    onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
   return (
     <div className="border-border min-w-0 rounded-lg border">
       <div className="border-border flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b px-3 py-2.5">
         <h3 className="text-foreground text-sm font-medium">Exits</h3>
+        {/*
+          TWO DIFFERENT QUESTIONS, TWO DIFFERENT VOCABULARIES.
+
+          "40% still open" is a claim about the POSITION — that part of it is
+          still exposed to the market. On a trade the trader has just told us is
+          FULLY CLOSED that claim is false: the position is closed, and what is
+          missing is the record of how. Saying "still open" there silently
+          contradicts the lifecycle they selected one screen earlier.
+
+          A fully closed trade reports RECORDING COVERAGE; an open position
+          reports LIFECYCLE. Same arithmetic, two meanings, never the same words.
+        */}
         <p className="numeric text-muted-foreground text-xs">
-          <span className="text-foreground font-medium">{formatPercent(closed)} closed</span>
-          {stillOpen > 0.005 ? ` · ${formatPercent(stillOpen)} still open` : ''}
+          <span className="text-foreground font-medium">
+            {formatPercent(closed)} {coverageWord}
+          </span>
+          {remainder > 0.005 ? ` · ${formatPercent(remainder)} ${remainderWord}` : ''}
         </p>
       </div>
 
@@ -117,20 +174,22 @@ export function ExitsEditor({
                 index={index}
                 row={row}
                 currency={currency}
-                remainingForRow={stillOpen + (Number(row.percent) || 0)}
+                remainingForRow={remainder + (Number(row.percent) || 0)}
                 canRemove={rows.length > 1}
+                isDraft={draftIds.includes(row.id)}
                 onChange={(patch) => update(row.id, patch)}
                 onRemove={() => {
-                  setRows((current) => current.filter((item) => item.id !== row.id));
+                  onRowsChange(rows.filter((item) => item.id !== row.id));
+                  setDraftIds((current) => current.filter((id) => id !== row.id));
                   setActiveId(null);
-                  setSavedNotice(null);
+                  setNotice(null);
                 }}
-                onSave={() => {
+                onCommit={() => {
                   setActiveId(null);
-                  setSavedNotice(
-                    `Exit saved · ${formatPercent(closed)} closed${
-                      stillOpen > 0.005 ? ` · ${formatPercent(stillOpen)} still open` : ''
-                    }`,
+                  setDraftIds((current) => current.filter((id) => id !== row.id));
+                  setNotice(
+                    `${formatPercent(closed)} ${coverageWord}` +
+                      (remainder > 0.005 ? ` · ${formatPercent(remainder)} ${remainderWord}` : ''),
                   );
                 }}
               />
@@ -141,7 +200,7 @@ export function ExitsEditor({
                 currency={currency}
                 onEdit={() => {
                   setActiveId(row.id);
-                  setSavedNotice(null);
+                  setNotice(null);
                 }}
               />
             )}
@@ -151,25 +210,21 @@ export function ExitsEditor({
 
       {/*
         AT 100% THERE IS NOTHING LEFT TO ALLOCATE, AND THE CONTROL SIMPLY DOES
-        NOT OFFER IT. The previous version kept the action present and disabled
-        with a sentence explaining why — a control whose only function was to be
-        unavailable. Redistribution is still supported: reduce a leg and both the
-        remainder and this action come back.
+        NOT OFFER IT. Redistribution is still supported: reduce a leg and both
+        the remainder and this action come back.
       */}
       {complete ? null : (
         <div className="border-border border-t px-3 py-2">
-          {/* `Button` is `whitespace-nowrap` by design, which is right for the
-              short labels it usually carries. At 200% zoom on a 320px screen this
-              one is 364px of unbreakable row, so it is allowed to wrap. */}
           <Button
             variant="ghost"
             size="sm"
             className="h-auto min-h-11 min-w-0 shrink py-2 text-left whitespace-normal"
             onClick={() => {
               const id = `e${rows.length + 1}-${Date.now()}`;
-              setRows((current) => [...current, { id, percent: '', amount: '', at: null }]);
+              onRowsChange([...rows, { id, percent: '', outcome: 'profit', amount: '', at: null }]);
+              setDraftIds((current) => [...current, id]);
               setActiveId(id);
-              setSavedNotice(null);
+              setNotice(null);
             }}
           >
             <Plus className="size-4" aria-hidden="true" />
@@ -178,9 +233,9 @@ export function ExitsEditor({
         </div>
       )}
 
-      {savedNotice === null ? null : (
+      {notice === null ? null : (
         <p role="status" className="border-border text-muted-foreground border-t px-3 py-2 text-xs">
-          {savedNotice}
+          {notice}
         </p>
       )}
 
@@ -191,13 +246,16 @@ export function ExitsEditor({
         )}
       >
         {/*
-          THE LABEL NAMES THE SCOPE. "Realized so far" left a reader to work out
-          what it was realized FROM; "Net P&L from closed portion" says that this
-          figure belongs only to the part of the position that is no longer
-          running, which is the single most misreadable number on a partial trade.
+          THE LABEL NAMES THE SCOPE, and which scope depends on what kind of
+          remainder this is: unrecorded coverage on a closed trade, or a real
+          open remainder on a running position.
         */}
         <p className="text-muted-foreground text-xs font-medium">
-          {complete ? 'Net P&L' : 'Net P&L from closed portion'}
+          {complete
+            ? 'Net P&L'
+            : variant === 'after-trade'
+              ? 'Net P&L from recorded exits'
+              : 'Net P&L from closed portion'}
         </p>
         <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
           <span
@@ -228,8 +286,8 @@ export function ExitsEditor({
             : complete
               ? `Against ${initialRisk} ${currency} risked at entry.`
               : variant === 'after-trade'
-                ? `${formatPercent(stillOpen)} is unaccounted for. A fully closed trade must total 100%.`
-                : `${formatPercent(stillOpen)} still open.`}
+                ? `${formatPercent(remainder)} of the position has no exit recorded yet. A fully closed trade needs all 100%.`
+                : `${formatPercent(remainder)} of the position is still open.`}
         </p>
       </div>
     </div>
@@ -254,8 +312,8 @@ function ExitSummaryRow({
   currency: string;
   onEdit: () => void;
 }) {
-  const amount = Number(row.amount);
-  const hasAmount = row.amount !== '' && Number.isFinite(amount);
+  const amount = signedExitAmount(row);
+  const hasAmount = Number.isFinite(amount);
 
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-3 py-2.5">
@@ -287,7 +345,6 @@ function ExitSummaryRow({
 
       <div className="flex min-w-0 items-baseline justify-between gap-3">
         <span className="text-muted-foreground numeric min-w-0 truncate text-xs">
-          {/* An explicit, visible fallback — never an estimated event time. */}
           {formatTimestamp(row.at) ?? 'Exit time not recorded'}
         </span>
         <button
@@ -295,13 +352,8 @@ function ExitSummaryRow({
           onClick={onEdit}
           aria-label={`Edit exit ${index + 1}`}
           className={cn(
-            /*
-              THE ::after EXTENSION GIVES HEIGHT, NOT WIDTH. "Edit" at 12px is a
-              22px-wide box, and the audit measures the element's own rect for
-              width — correctly, because a transparent pseudo-element stretched
-              vertically does nothing for a thumb aiming sideways. `px-1.5` is a
-              real 30px target, not a reported one.
-            */
+            // The ::after extension gives height, not width — and the audit
+            // measures the element's own rect. `px-1.5` is a real 30px target.
             'text-primary focus-visible:ring-ring relative shrink-0 rounded-sm px-1.5 text-xs font-medium',
             'underline-offset-4 outline-none hover:underline focus-visible:ring-2',
             'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
@@ -319,12 +371,14 @@ function ExitSummaryRow({
  *
  * IT OPENS ON A QUESTION. "How much did you close?" with `Part of the position`
  * and `All remaining` beside it is answerable without arithmetic — and choosing
- * `All remaining` fills the percentage rather than asking the trader to work out
- * what is left, which is the single most common reason a partial exit gets
- * recorded wrongly.
+ * `All remaining` fills the percentage rather than making the trader work out
+ * what is left, which is the commonest way a partial exit gets recorded wrongly.
  *
- * `Save exit` closes the editor and states what changed. It does not save the
- * TRADE — the trade's own Save is on the main screen and says so.
+ * THE COMMIT ACTION NAMES WHAT IT DOES TO THE LEG, NOT TO THE TRADE. `Add exit`
+ * on a leg that did not exist a moment ago; `Update exit` on one being changed.
+ * It used to say `Save exit`, which is the same word the trade-level action
+ * uses — and a reader who believes the trade has been saved will leave without
+ * saving it.
  */
 function ExitEditorRow({
   index,
@@ -332,9 +386,10 @@ function ExitEditorRow({
   currency,
   remainingForRow,
   canRemove,
+  isDraft,
   onChange,
   onRemove,
-  onSave,
+  onCommit,
 }: {
   index: number;
   row: ExitRow;
@@ -342,9 +397,11 @@ function ExitEditorRow({
   /** What this leg could take without pushing the total past 100%. */
   remainingForRow: number;
   canRemove: boolean;
+  /** Created by `Record an exit` and not yet committed once. */
+  isDraft: boolean;
   onChange: (patch: Partial<ExitRow>) => void;
   onRemove: () => void;
-  onSave: () => void;
+  onCommit: () => void;
 }) {
   const isAllRemaining =
     row.percent !== '' && Math.abs(Number(row.percent) - remainingForRow) < 0.005;
@@ -389,20 +446,28 @@ function ExitEditorRow({
         </div>
       </fieldset>
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 min-[560px]:grid-cols-2">
-        <Field label="% of original position closed">
-          {(id) => (
-            <Input
-              id={id}
-              value={row.percent}
-              inputMode="decimal"
-              placeholder="—"
-              onChange={(event) => onChange({ percent: event.target.value })}
-              className="numeric text-base"
-            />
-          )}
-        </Field>
-        <Field label={`Net P&L for this exit (${currency})`}>
+      <Field label="% of original position closed">
+        {(id) => (
+          <Input
+            id={id}
+            value={row.percent}
+            inputMode="decimal"
+            placeholder="—"
+            onChange={(event) => onChange({ percent: event.target.value })}
+            className="numeric max-w-[10rem] text-base"
+          />
+        )}
+      </Field>
+
+      {/* THE SAME THREE WORDS THE MAIN RESULT USES. One convention per product. */}
+      <OutcomeChoice
+        value={row.outcome}
+        onChange={(outcome) => onChange({ outcome })}
+        legend="Did this exit make or lose money?"
+      />
+
+      {row.outcome === 'break_even' ? null : (
+        <Field label={`${row.outcome === 'loss' ? 'Loss' : 'Profit'} for this exit (${currency})`}>
           {(id) => (
             <Input
               id={id}
@@ -410,18 +475,18 @@ function ExitEditorRow({
               inputMode="decimal"
               placeholder="—"
               onChange={(event) => onChange({ amount: event.target.value })}
-              className="numeric text-base"
+              className="numeric max-w-[12rem] text-base"
             />
           )}
         </Field>
-      </div>
+      )}
 
       <TimestampField
         label="Exit time"
         title="Exit date and time"
         value={row.at}
         onChange={(at) => onChange({ at })}
-        placeholder="Select exit date and time"
+        placeholder="Not set"
       />
 
       <div className="flex min-w-0 items-center justify-end gap-2">
@@ -435,8 +500,8 @@ function ExitEditorRow({
             Remove
           </Button>
         ) : null}
-        <Button size="sm" className="min-h-11" onClick={onSave}>
-          Save exit
+        <Button size="sm" className="min-h-11" onClick={onCommit}>
+          {isDraft ? 'Add exit' : 'Update exit'}
         </Button>
       </div>
     </div>

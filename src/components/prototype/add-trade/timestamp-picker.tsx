@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 
 import {
@@ -15,6 +15,8 @@ import {
 import { cn } from '@/lib/utils';
 import { ToolbarDisclosure } from '@/components/dashboard/toolbar/toolbar-disclosure';
 import { Button } from '@/components/ui/button';
+
+import { useKeyboardObscuringViewport } from './form-primitives';
 
 /**
  * THE TRADE TIMESTAMP CONTROL.
@@ -177,7 +179,23 @@ function TimestampDisclosure({
   trigger: ReactNode;
 }) {
   const [draftDate, setDraftDate] = useState(value?.date ?? PROTOTYPE_TODAY);
-  const [draftTime, setDraftTime] = useState(value?.time ?? '09:00');
+  /*
+    HOUR AND MINUTE ARE HELD AS TYPED, NOT AS PARSED.
+
+    They used to be clamped and zero-padded on every keystroke, so the field
+    fought the reader: clearing it to retype snapped straight to "00", a lone
+    "1" became "01" before the "4" could be typed, and typing "9" while
+    replacing "23" produced "09" rather than the "09:xx" the trader was heading
+    for. Worse, an out-of-range entry was silently rewritten into a DIFFERENT
+    valid time rather than being rejected — a picker that quietly changes a
+    timestamp is the one thing a trade record cannot afford.
+
+    Empty, single-digit and half-replaced states are all legal while typing.
+    Normalisation happens on blur and again on Apply, so what is committed is
+    always valid and always something the reader saw.
+  */
+  const [rawHour, setRawHour] = useState(() => (value?.time ?? '09:00').slice(0, 2));
+  const [rawMinute, setRawMinute] = useState(() => (value?.time ?? '09:00').slice(3, 5));
   const [month, setMonth] = useState(() => monthOf(value?.date ?? PROTOTYPE_TODAY));
   const [pickingPeriod, setPickingPeriod] = useState(false);
   const [wasOpen, setWasOpen] = useState(open);
@@ -187,11 +205,103 @@ function TimestampDisclosure({
     if (open) {
       const seed = value?.date ?? PROTOTYPE_TODAY;
       setDraftDate(seed);
-      setDraftTime(value?.time ?? '09:00');
+      setRawHour((value?.time ?? '09:00').slice(0, 2));
+      setRawMinute((value?.time ?? '09:00').slice(3, 5));
       setMonth(monthOf(seed));
       setPickingPeriod(false);
     }
   }
+
+  /*
+    APPLY IS NEVER BELOW THE KEYBOARD.
+
+    `ToolbarDisclosure` pins its footer to the bottom of a 92dvh sheet, and dvh
+    is a property of the LAYOUT viewport, which a soft keyboard does not shrink.
+    So while the hour and minute fields are being edited — the one moment this
+    panel exists for — the pinned Apply sits underneath the keyboard.
+
+    When the visual viewport reports that something is covering the page, the
+    commit row leaves the pinned footer and joins the scrolling body instead, so
+    it can be scrolled to within the region that is actually visible. Apply is
+    never hidden and never has to be guessed at; on a desktop, and on a phone
+    with no keyboard up, the footer stays pinned exactly as before.
+  */
+  const keyboardOpen = useKeyboardObscuringViewport();
+
+  const commitRow = (
+    <div className="flex min-w-0 items-center justify-end gap-2">
+      <Button variant="ghost" size="sm" className="min-h-11" onClick={() => onOpenChange(false)}>
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        className="min-h-11"
+        onClick={() => onApply({ date: draftDate, time: normalizeTime(rawHour, rawMinute) })}
+      >
+        Apply
+      </Button>
+    </div>
+  );
+
+  /*
+    THE TIME FIELDS AND THE COMMIT ROW, AS ONE BLOCK THAT CAN MOVE.
+
+    Their position depends on whether a keyboard is covering the page, so they
+    are declared once and placed twice rather than duplicated across two
+    branches — two copies of a control holding one piece of state is how the
+    two copies end up disagreeing.
+  */
+  const timeBlock = (
+    <>
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+        <TimeFields
+          hour={rawHour}
+          minute={rawMinute}
+          onHourChange={setRawHour}
+          onMinuteChange={setRawMinute}
+          onCommit={() => {
+            const [h = '00', m = '00'] = normalizeTime(rawHour, rawMinute).split(':');
+            setRawHour(h);
+            setRawMinute(m);
+          }}
+        />
+
+        <div className="flex min-w-0 shrink-0 gap-2">
+          {/* TWO ACTIONS, TWO MEANINGS. Today moves the DATE and leaves a
+                  carefully typed time alone; Now moves both. Collapsing them is how
+                  an exit time gets silently overwritten. */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            onClick={() => {
+              setDraftDate(PROTOTYPE_TODAY);
+              setMonth(monthOf(PROTOTYPE_TODAY));
+            }}
+          >
+            Today
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            onClick={() => {
+              setDraftDate(PROTOTYPE_TODAY);
+              setRawHour(PROTOTYPE_NOW_TIME.slice(0, 2));
+              setRawMinute(PROTOTYPE_NOW_TIME.slice(3, 5));
+              setMonth(monthOf(PROTOTYPE_TODAY));
+            }}
+          >
+            Now
+          </Button>
+        </div>
+      </div>
+      {/* While a keyboard is up the commit row rides the scrolling body, so it
+          can be reached inside the visible viewport rather than sitting under a
+          footer pinned to the layout viewport, which a keyboard does not shrink. */}
+      {keyboardOpen ? <div className="border-border border-t pt-3">{commitRow}</div> : null}
+    </>
+  );
 
   const grid = buildCalendarGrid({
     year: month.year,
@@ -209,31 +319,14 @@ function TimestampDisclosure({
       trigger={trigger}
       align="start"
       popoverClassName="w-[20.5rem]"
-      footer={
-        <div className="flex min-w-0 items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-11"
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            className="min-h-11"
-            onClick={() => onApply({ date: draftDate, time: draftTime })}
-          >
-            Apply
-          </Button>
-        </div>
-      }
+      {...(keyboardOpen ? {} : { footer: commitRow })}
     >
       <div className="flex min-w-0 flex-col gap-3">
         {/* The draft, stated in words, so Apply is never a guess about what the
             grid and the two number fields currently add up to. */}
         <p className="text-foreground numeric text-sm font-medium">
-          {formatCalendarDateLabel(draftDate, LOCALE) ?? draftDate} · {draftTime}
+          {formatCalendarDateLabel(draftDate, LOCALE) ?? draftDate} ·{' '}
+          {normalizeTime(rawHour, rawMinute)}
         </p>
 
         <div className="flex min-w-0 items-center gap-1">
@@ -256,9 +349,23 @@ function TimestampDisclosure({
             type="button"
             aria-expanded={pickingPeriod}
             onClick={() => setPickingPeriod((current) => !current)}
-            className="text-foreground hover:bg-accent focus-visible:ring-ring min-h-9 min-w-0 flex-1 rounded-md text-center text-sm font-semibold outline-none focus-visible:ring-2"
+            className="text-foreground hover:bg-accent focus-visible:ring-ring flex min-h-9 min-w-0 flex-1 items-center justify-center gap-1 rounded-md text-sm font-semibold outline-none focus-visible:ring-2"
           >
             {formatCalendarMonthLabel(month.year, month.month, LOCALE)}
+            {/*
+              THE AFFORDANCE, because the escape from sequential paging was
+              invisible. A month name between two chevrons reads as a caption,
+              not a control — so the one route to a trade from two years ago
+              looked like a label and went unused.
+            */}
+            <ChevronDown
+              className={cn(
+                'text-subtle-foreground size-3.5 shrink-0 transition-transform duration-150',
+                pickingPeriod && 'rotate-180',
+                'motion-reduce:transition-none',
+              )}
+              aria-hidden="true"
+            />
           </button>
           <Button
             variant="ghost"
@@ -272,6 +379,19 @@ function TimestampDisclosure({
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
         </div>
+
+        {/*
+          WHILE A KEYBOARD IS UP, THE TIME COMES FIRST.
+
+          A measured 390x844 phone with a 320px keyboard leaves 524px of visible
+          page. With the calendar above them, the hour field landed at 548px and
+          Apply at 617px — both below the fold, both reachable only by scrolling
+          past a month grid the reader is not currently using. Moving the time
+          fields and the commit row above the calendar puts the two things being
+          used at the top of the scroll region. The calendar is still there,
+          still complete, just no longer between the reader and their own edit.
+        */}
+        {keyboardOpen ? timeBlock : null}
 
         {pickingPeriod ? (
           <PeriodPicker
@@ -290,41 +410,7 @@ function TimestampDisclosure({
           />
         )}
 
-        {/* Hour and minute sit LAST in the body, directly above the pinned
-            commit row, so a phone keyboard opening over them covers the calendar
-            rather than the fields being edited. */}
-        <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
-          <TimeFields value={draftTime} onChange={setDraftTime} />
-
-          <div className="flex min-w-0 shrink-0 gap-2">
-            {/* TWO ACTIONS, TWO MEANINGS. Today moves the DATE and leaves a
-                carefully typed time alone; Now moves both. Collapsing them is how
-                an exit time gets silently overwritten. */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              onClick={() => {
-                setDraftDate(PROTOTYPE_TODAY);
-                setMonth(monthOf(PROTOTYPE_TODAY));
-              }}
-            >
-              Today
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-11"
-              onClick={() => {
-                setDraftDate(PROTOTYPE_TODAY);
-                setDraftTime(PROTOTYPE_NOW_TIME);
-                setMonth(monthOf(PROTOTYPE_TODAY));
-              }}
-            >
-              Now
-            </Button>
-          </div>
-        </div>
+        {keyboardOpen ? null : timeBlock}
       </div>
     </ToolbarDisclosure>
   );
@@ -503,61 +589,101 @@ function PeriodPicker({
 }
 
 /**
- * Hour and minute, as two numeric fields.
+ * Hour and minute, as two numeric fields that let you type.
  *
  * NOT `<input type="time">`, for the same reason the trigger is not
  * `datetime-local`: it is a different widget in every browser and none of them
- * is this product's. Two two-digit fields give a numeric keypad on a phone, take
- * the product's own input styling, and are unambiguous about which half is being
- * edited — which a segmented native control is not.
+ * is this product's. Two two-digit fields give a numeric keypad on a phone and
+ * are unambiguous about which half is being edited.
  *
- * They are inside the panel, above the pinned footer, so a phone keyboard can
- * cover the calendar without ever covering Apply.
+ * THEY HOLD WHAT WAS TYPED. Clamping and padding on every keystroke made the
+ * field fight the reader — see the note on `rawHour`. `onCommit` fires on blur
+ * and normalises; Apply normalises again. Nothing is rewritten mid-word, and
+ * nothing invalid is ever committed.
  */
-function TimeFields({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const [hour = '00', minute = '00'] = value.split(':');
+function TimeFields({
+  hour,
+  minute,
+  onHourChange,
+  onMinuteChange,
+  onCommit,
+}: {
+  hour: string;
+  minute: string;
+  onHourChange: (value: string) => void;
+  onMinuteChange: (value: string) => void;
+  onCommit: () => void;
+}) {
   const hourId = useId();
   const minuteId = useId();
-
-  function commit(nextHour: string, nextMinute: string) {
-    onChange(`${clamp(nextHour, 23)}:${clamp(nextMinute, 59)}`);
-  }
+  const invalid = !isTimePartValid(hour, 23) || !isTimePartValid(minute, 59);
 
   return (
-    <div className="flex min-w-0 items-end gap-2">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <label htmlFor={hourId} className="text-muted-foreground text-xs font-medium">
-          Hour
-        </label>
-        <input
-          id={hourId}
-          inputMode="numeric"
-          value={hour}
-          onChange={(event) => commit(event.target.value, minute)}
-          className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric h-11 w-16 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
-        />
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-end gap-2">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <label htmlFor={hourId} className="text-muted-foreground text-xs font-medium">
+            Hour
+          </label>
+          <input
+            id={hourId}
+            inputMode="numeric"
+            maxLength={2}
+            value={hour}
+            aria-invalid={!isTimePartValid(hour, 23)}
+            onChange={(event) => onHourChange(event.target.value.replace(/\D/g, '').slice(0, 2))}
+            onBlur={onCommit}
+            className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric aria-[invalid=true]:border-negative h-11 w-16 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
+          />
+        </div>
+        <span className="text-muted-foreground pb-3 text-base" aria-hidden="true">
+          :
+        </span>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <label htmlFor={minuteId} className="text-muted-foreground text-xs font-medium">
+            Minute
+          </label>
+          <input
+            id={minuteId}
+            inputMode="numeric"
+            maxLength={2}
+            value={minute}
+            aria-invalid={!isTimePartValid(minute, 59)}
+            onChange={(event) => onMinuteChange(event.target.value.replace(/\D/g, '').slice(0, 2))}
+            onBlur={onCommit}
+            className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric aria-[invalid=true]:border-negative h-11 w-16 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
+          />
+        </div>
       </div>
-      <span className="text-muted-foreground pb-3 text-base" aria-hidden="true">
-        :
-      </span>
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <label htmlFor={minuteId} className="text-muted-foreground text-xs font-medium">
-          Minute
-        </label>
-        <input
-          id={minuteId}
-          inputMode="numeric"
-          value={minute}
-          onChange={(event) => commit(hour, event.target.value)}
-          className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric h-11 w-16 rounded-md border px-3 text-center text-base outline-none focus-visible:ring-[3px]"
-        />
-      </div>
+
+      {/* Said, not silently corrected. An out-of-range hour is the reader's to
+          fix; rewriting 25 into 23 would change a timestamp behind their back. */}
+      {invalid ? (
+        <p className="text-negative mt-1 text-xs">Hour must be 0–23 and minute 0–59.</p>
+      ) : null}
     </div>
   );
 }
 
-/** Keeps a typed hour or minute inside its real range without rejecting a partial entry. */
-function clamp(raw: string, max: number): string {
+/** `true` while a part is a plausible in-progress or finished entry. */
+function isTimePartValid(raw: string, max: number): boolean {
+  if (raw === '') return true;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 && value <= max;
+}
+
+/**
+ * The committed `HH:MM` for whatever is currently typed.
+ *
+ * Empty becomes `00`; an out-of-range part is clamped ONLY here, at the moment
+ * of commit, and only after the field has had its chance to show the reader
+ * that it was out of range.
+ */
+function normalizeTime(hour: string, minute: string): string {
+  return `${normalizePart(hour, 23)}:${normalizePart(minute, 59)}`;
+}
+
+function normalizePart(raw: string, max: number): string {
   const digits = raw.replace(/\D/g, '').slice(0, 2);
   if (digits === '') return '00';
   return String(Math.min(Number(digits), max)).padStart(2, '0');

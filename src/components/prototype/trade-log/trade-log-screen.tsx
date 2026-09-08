@@ -215,6 +215,22 @@ export function TradeLogScreen({
               />
             ) : (
               <>
+                {/*
+                  EACH COMPOSITION DECLARES ITS OWN RANGE — no rule here depends
+                  on which of two variants Tailwind happens to emit last.
+
+                  The mid-width wrapper was `hidden min-[1248px]:hidden md:block`,
+                  which reads as "block from 768, hidden again from 1248" and did
+                  not behave that way: Tailwind orders the named `md` variant and
+                  the arbitrary `min-[1248px]` variant independently, so at 1440
+                  `md:block` was emitted last and won. The table and the journal
+                  rows both rendered — 361px of table directly above 468px of the
+                  same five trades as rows. Measured at 1440 and 1280 before the
+                  fix, and it is exactly what the design review reported seeing.
+
+                  Stacking two arbitrary bounds gives each composition one rule
+                  with both edges in it, so no two can ever be true at once.
+                */}
                 <div className="hidden min-[1248px]:block">
                   <TradeLogTable
                     trades={page}
@@ -224,7 +240,7 @@ export function TradeLogScreen({
                     onSelect={openTrade}
                   />
                 </div>
-                <div className="hidden min-[1248px]:hidden md:block">
+                <div className="hidden min-[768px]:max-[1247px]:block">
                   <TradeLogRows
                     trades={page}
                     copy={copy}
@@ -233,7 +249,7 @@ export function TradeLogScreen({
                     onSelect={openTrade}
                   />
                 </div>
-                <div className="md:hidden">
+                <div className="block min-[768px]:hidden">
                   <TradeLogMobileList
                     trades={page}
                     copy={copy}

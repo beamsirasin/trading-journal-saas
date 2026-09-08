@@ -96,7 +96,30 @@ export function TradeLogSummary({
     );
   }
 
+  /*
+    THE SCOPE LINE NAMES THE POPULATION THE FIGURES ARE ACTUALLY OVER.
+
+    Both aggregates are computed from `lifecycle === 'closed'` only — realized
+    P&L from a partially closed position that is still running is deliberately
+    NOT in them. The strip did not say so, and printed those figures beside a
+    "118 trades" count, so the honest reading of the page was that the totals
+    covered all 118. They cover 111. The label now describes the calculation
+    that is really running, which is the only version of this line worth having.
+
+    Mixed currency and missing P&L stay independent: a mixed-currency money
+    figure suppresses its own total and says so, and the R coverage is reported
+    regardless.
+  */
+  const scope =
+    summary.closedCount === 0
+      ? null
+      : fill(copy.summaryClosedScope, {
+          count: summary.closedCount,
+          trades: summary.closedCount === 1 ? 'closed trade' : 'closed trades',
+        });
+
   const caveats = [
+    scope,
     coverageOf(copy, summary.netPnl, copy.summaryMoneyCoverage),
     coverageOf(copy, summary.totalR, copy.summaryRCoverage),
   ].filter((line): line is string => line !== null);
@@ -188,10 +211,7 @@ function coverageOf(copy: PrototypeCopy, figure: SummaryFigure, template: string
   // "1 closed trades missing R" is not a sentence. The Thai template carries no
   // `{trades}` placeholder — Thai nouns do not inflect for number — so `fill`
   // simply leaves the extra value unused there.
-  return fill(template, {
-    count: figure.missing,
-    trades: figure.missing === 1 ? 'trade' : 'trades',
-  });
+  return fill(template, { count: figure.missing });
 }
 
 const TONE_CLASS = {

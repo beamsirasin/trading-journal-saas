@@ -120,6 +120,16 @@ export interface PrototypeTrade {
   readonly initialStop: string | null;
   readonly exitPrice: string | null;
   readonly positionSize: string | null;
+  /**
+   * What one unit of `positionSize` IS — lots, contracts, coins, shares.
+   *
+   * A bare "2.0000" is not a fact about a trade: two lots of gold, two BTC and
+   * two index contracts are three different positions, and the number alone
+   * cannot be checked against a broker statement. Four decimals everywhere came
+   * from the storage column's precision rather than from anything the
+   * instrument means.
+   */
+  readonly positionSizeUnit: string | null;
 
   /** The ORIGINAL plan. `null` is a legitimate, fully saveable state (spec §G). */
   readonly plan: {
@@ -193,6 +203,7 @@ const BASE: PrototypeTrade = {
   initialStop: null,
   exitPrice: null,
   positionSize: null,
+  positionSizeUnit: null,
   plan: null,
   costs: null,
   confidence: null,
@@ -239,7 +250,8 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     entryPrice: '3421.4500',
     initialStop: '3412.2000',
     exitPrice: '3440.8000',
-    positionSize: '2.0000',
+    positionSize: '2.00',
+    positionSizeUnit: 'lots',
     plan: {
       basis: 'money',
       riskMinor: '20000',
@@ -359,7 +371,8 @@ export const PROTOTYPE_TRADES: readonly PrototypeTrade[] = [
     actualRiskMinor: '20000',
     entryPrice: '3402.1000',
     initialStop: '3392.6000',
-    positionSize: '2.0000',
+    positionSize: '2.00',
+    positionSizeUnit: 'lots',
     plan: {
       basis: 'money',
       riskMinor: '20000',

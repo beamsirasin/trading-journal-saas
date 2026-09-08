@@ -44,27 +44,19 @@ export interface JournalPrompt {
   readonly id: string;
   /** The human question, exactly as the row and the editor header state it. */
   readonly question: string;
-  /** Only what has actually been answered. Empty while the prompt is untouched. */
+  /** Only what has actually been answered. At most two lines are shown. */
   readonly summary: readonly string[];
-  /** A standing qualifier, e.g. "Recalled after the trade". */
-  readonly note?: string;
   readonly children: ReactNode;
 }
 
-export function JournalPrompts({
-  heading = 'Anything useful to add?',
-  prompts,
-}: {
-  heading?: string;
-  prompts: readonly JournalPrompt[];
-}) {
+export function JournalPrompts({ prompts }: { prompts: readonly JournalPrompt[] }) {
   const isDesktop = useIsDesktopViewport();
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = prompts.find((prompt) => prompt.id === activeId) ?? null;
 
   /*
     THE PHONE EDITOR OWNS THE SCREEN, so the page behind it must not scroll
-    underneath. Two scroll containers fighting is the single most common way a
+    underneath. Two scroll containers fighting is the commonest way a
     full-screen editor on a phone loses the reader's place.
   */
   useEffect(() => {
@@ -76,24 +68,48 @@ export function JournalPrompts({
     };
   }, [isDesktop, active]);
 
+  /**
+   * RETURNING PUTS FOCUS BACK ON THE QUESTION IT CAME FROM.
+   *
+   * The editor replaces the prompt list on a desktop and the whole screen on a
+   * phone, so on return there is nothing focused and a keyboard user lands back
+   * at the top of the document with the trade they were part-way through
+   * somewhere below. The row is re-focused on the frame after the state change,
+   * once it exists again.
+   */
+  function close(id: string) {
+    setActiveId(null);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(`[data-journal-prompt="${id}"]`)?.focus();
+    });
+  }
+
   if (active !== null && isDesktop) {
     return (
       <section className="min-w-0">
+        {/*
+          ONE RETURN CONTROL, NAMED FOR WHERE IT GOES.
+
+          It was a `Done` button plus a paragraph explaining that Done returns to
+          the trade and does not save it. Two problems: `Done` is the same word
+          the trade-level Save neighbourhood uses, so the sentence existed to
+          undo the impression the button gave — and a control that needs a
+          sentence to correct it is the wrong control. "Back to trade" says where
+          it goes, so nothing has to say where it does not.
+        */}
         <div className="border-border mb-3 flex min-w-0 items-center justify-between gap-3 border-b pb-2">
           <h2 className="text-foreground min-w-0 text-sm font-semibold">{active.question}</h2>
           <Button
             variant="outline"
             size="sm"
             className="min-h-11 shrink-0"
-            onClick={() => setActiveId(null)}
+            onClick={() => close(active.id)}
           >
-            Done
+            <ChevronLeft className="size-4" aria-hidden="true" />
+            Back to trade
           </Button>
         </div>
         {active.children}
-        <p className="text-subtle-foreground mt-4 text-xs">
-          Done returns to the trade. It does not save it.
-        </p>
       </section>
     );
   }
@@ -102,39 +118,37 @@ export function JournalPrompts({
     <>
       <section className="min-w-0">
         {/*
-          THE HEADING SAYS OPTIONAL ONCE. It is a question rather than a noun so
-          the rows beneath it read as an invitation continuing the same sentence,
-          not as a section of the form the reader has arrived at.
+          A QUIET EYEBROW, NOT A QUESTION ABOUT THE QUESTIONS.
+
+          The heading read "Anything useful to add? · Optional" — a fourth
+          question above three questions, and the only one nobody can answer.
+          The rows say what they are; all this line has to carry is that none of
+          them is required. It is deliberately not "Optional notes": what is
+          behind these rows is a structured plan, a psychology record and a
+          review, and calling that "notes" would undersell it into being skipped.
         */}
-        <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 px-1">
-          <h2 className="text-muted-foreground text-sm">{heading}</h2>
-          <span className="text-subtle-foreground text-xs">Optional</span>
-        </div>
+        <p className="text-subtle-foreground text-label mb-1 px-1 uppercase">Optional</p>
 
         <div className="divide-border border-border divide-y border-t">
           {prompts.map((prompt) => (
             <button
               key={prompt.id}
               type="button"
+              data-journal-prompt={prompt.id}
               onClick={() => setActiveId(prompt.id)}
               className="hover:bg-accent/40 focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 px-1 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:-outline-offset-2"
             >
               <span className="min-w-0 flex-1">
                 <span className="text-foreground block text-sm">{prompt.question}</span>
                 {/*
-                  THE QUALIFIER SITS UNDER THE QUESTION, NOT BESIDE IT.
-
-                  "Recalled after the trade" was a `shrink-0` span on the right of
-                  the row. At 200% text zoom on a 320px screen it is 264px that
-                  cannot yield, so the row pushed the page to 384px of horizontal
-                  scroll — which this design system forbids at every width. It is
-                  a qualifier on the question, so it belongs in the same column as
-                  the question and its answers.
+                  TWO LINES, NEVER MORE. A populated row was printing everything
+                  it held — classification, planned figures and a reason excerpt —
+                  so the answered state was three or four lines per row and the
+                  list of three questions became a wall. The full answer is one
+                  activation away; the row's job is to say the question has been
+                  answered and roughly how.
                 */}
-                {prompt.note === undefined ? null : (
-                  <span className="text-subtle-foreground block text-xs">{prompt.note}</span>
-                )}
-                {prompt.summary.map((line) => (
+                {prompt.summary.slice(0, 2).map((line) => (
                   <span key={line} className="text-muted-foreground block truncate text-xs">
                     {line}
                   </span>
@@ -153,29 +167,34 @@ export function JournalPrompts({
           data-journal-editor={active.id}
           className="bg-background fixed inset-0 z-50 flex flex-col"
         >
+          {/*
+            ONE CONTROL ON A PHONE TOO. It was a back ARROW on the left and a
+            `Done` button on the right — two controls that did the same thing,
+            which is a reader's cue that they must differ somehow. "← Trade"
+            is the single way back, and it is lighter than the filled button it
+            replaces.
+          */}
           <header className="border-border bg-background flex shrink-0 items-center gap-2 border-b px-2 py-2">
-            <Button variant="ghost" size="icon" aria-label="Back" onClick={() => setActiveId(null)}>
-              <ChevronLeft className="size-5" aria-hidden="true" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 shrink-0"
+              onClick={() => close(active.id)}
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />
+              Trade
             </Button>
-            <h2 className="text-foreground min-w-0 flex-1 truncate text-base font-semibold">
+            <h2 className="text-foreground min-w-0 flex-1 truncate text-right text-sm font-semibold">
               {active.question}
             </h2>
-            <Button size="sm" onClick={() => setActiveId(null)} className="min-h-11 shrink-0">
-              Done
-            </Button>
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">{active.children}</div>
-
-          <p className="border-border text-subtle-foreground shrink-0 border-t px-4 py-2 text-xs">
-            Done returns to the trade. It does not save it.
-          </p>
         </div>
       )}
     </>
   );
 }
-
 /**
  * A contextual editor that REPLACES its parent editor's body.
  *

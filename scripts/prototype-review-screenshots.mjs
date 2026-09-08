@@ -130,6 +130,36 @@ const SHOTS = [
     theme: 'light',
   },
   {
+    name: '09c-fully-closed-loss',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      // The radio itself is `sr-only` — the label is the real target, exactly as
+      // it is for a person.
+      await page
+        .locator('label')
+        .filter({ hasText: /^Loss$/ })
+        .click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '09d-fully-closed-break-even',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1200,
+    full: true,
+    prepare: async (page) => {
+      await page
+        .locator('label')
+        .filter({ hasText: /^Break-even$/ })
+        .click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
     name: '10-fully-closed-mobile',
     path: '/en/prototype/log-trade/after-trade',
     width: 390,
@@ -231,6 +261,22 @@ const SHOTS = [
     },
   },
   {
+    name: '18b-partial-exits-complete-coverage',
+    path: '/en/prototype/log-trade/after-trade?exits=1',
+    width: 1440,
+    height: 1300,
+    full: true,
+    prepare: async (page) => {
+      // Bring the two recorded legs to a full 100% so the resolved state — no
+      // warning tone, no coverage remainder — can be judged beside the partial one.
+      await page.getByRole('button', { name: 'Edit exit 2' }).click();
+      await page.waitForTimeout(200);
+      await page.getByRole('button', { name: 'All remaining' }).click();
+      await page.getByRole('button', { name: 'Update exit' }).click();
+      await page.waitForTimeout(250);
+    },
+  },
+  {
     name: '20-partial-exit-active-editor',
     path: '/en/prototype/log-trade/after-trade?exits=1&edit=e2',
     width: 1440,
@@ -256,9 +302,21 @@ const SHOTS = [
   { name: '23-trade-log-mobile', path: '/en/prototype/trade-log', width: 390, height: 844 },
   { name: '23b-trade-log-320', path: '/en/prototype/trade-log', width: 320, height: 800 },
   {
+    name: '21b-still-open-partially-closed',
+    path: '/en/prototype/trade-log?trade=t-04',
+    width: 1440,
+    height: 1100,
+  },
+  {
     name: '24-trade-log-partial-trade',
     path: '/en/prototype/trade-log?state=open',
     width: 1440,
+    height: 900,
+  },
+  {
+    name: '24b-trade-log-open-1280',
+    path: '/en/prototype/trade-log?state=open',
+    width: 1280,
     height: 900,
   },
   {

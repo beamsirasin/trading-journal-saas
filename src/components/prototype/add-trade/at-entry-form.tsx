@@ -34,6 +34,9 @@ import { TimestampField, type Timestamp } from './timestamp-picker';
 
 const RECENT_SYMBOLS = ['XAUUSD', 'NAS100', 'EURUSD'];
 
+/** The prototype's fixed "now", captured once so a screenshot is reproducible. */
+const CAPTURED_NOW = { date: '2026-09-07', time: '14:32' } as const;
+
 /**
  * STILL OPEN — the whole position, or part of it, is still running.
  *
@@ -76,10 +79,7 @@ export function AtEntryForm({
   const [symbol, setSymbol] = useState(filled ? 'XAUUSD' : '');
   const [direction, setDirection] = useState<'long' | 'short' | null>(filled ? 'long' : null);
   const [risk, setRisk] = useState(filled ? '200.00' : '');
-  const [enteredAt, setEnteredAt] = useState<Timestamp | null>({
-    date: '2026-09-07',
-    time: '14:32',
-  });
+  const [enteredAt, setEnteredAt] = useState<Timestamp | null>(CAPTURED_NOW);
 
   const [showTarget, setShowTarget] = useState(filled);
   const [target, setTarget] = useState(filled ? '1000.00' : '');
@@ -122,12 +122,7 @@ export function AtEntryForm({
       >
         <TaskSurface>
           <Band className="gap-3 py-3.5">
-            <ContextLine
-              account="Live · FTMO 100K"
-              currency="USD"
-              timezone={PROTOTYPE_TIMEZONE}
-              onChange={() => {}}
-            />
+            <ContextLine account="Live · FTMO 100K" currency="USD" onChange={() => {}} />
           </Band>
 
           <Band>
@@ -170,16 +165,36 @@ export function AtEntryForm({
               </Field>
             </FieldPair>
 
-            {/* Captured ONCE, on arrival. It does not advance while the reader
-                types, opens an editor or switches basis — and `Now` inside the
-                picker is the deliberate way to refresh it. */}
-            <TimestampField
-              label="Entry time"
-              title="Entry date and time"
-              value={enteredAt}
-              onChange={setEnteredAt}
-              placeholder="Select entry date and time"
-            />
+            {/*
+              THE CAPTURED TIME HAS TO LOOK LIKE A VALUE THAT CAN BE CHANGED.
+
+              Still open covers two situations: a position opened moments ago,
+              and one opened last week that is still running. The convenience of
+              pre-filling "now" serves the first and quietly mis-records the
+              second — a trader writing up Tuesday's position accepts today's
+              timestamp because it was already there and looked settled.
+
+              So the field states that the value came from the clock, and offers
+              the change in the same breath. One short line, not a paragraph, and
+              it disappears the moment the trader picks a different time.
+            */}
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-subtle-foreground mb-1 text-xs">Times in {PROTOTYPE_TIMEZONE}</p>
+              <TimestampField
+                label="Entry time"
+                title="Entry date and time"
+                value={enteredAt}
+                onChange={setEnteredAt}
+                placeholder="Not set"
+              />
+              {enteredAt !== null &&
+              enteredAt.date === CAPTURED_NOW.date &&
+              enteredAt.time === CAPTURED_NOW.time ? (
+                <p className="text-subtle-foreground text-xs">
+                  Set to now. Opened earlier? Change it.
+                </p>
+              ) : null}
+            </div>
           </Band>
 
           {/*

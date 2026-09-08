@@ -435,10 +435,23 @@ export function FeelingsEditor({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-6">
+      {/*
+        THE QUALIFIER IS STATED ONCE, HERE, AND NOT ON THE COLLAPSED ROW.
+
+        It was printed on the prompt row in the trade's main list AND again
+        inside — so a reader met "Recalled after the trade" twice for one fact,
+        and on a 320px screen at 200% zoom the row copy was 264px of
+        non-shrinking text that pushed the page sideways. It is a property of
+        the answers being given, so it belongs where they are given.
+      */}
+      {recalled ? (
+        <p className="text-subtle-foreground text-xs">
+          Recalled after the trade, not captured at entry.
+        </p>
+      ) : null}
       <ConfidenceControl
         value={draft.confidence}
         onChange={(confidence) => onChange({ ...draft, confidence })}
-        {...(recalled ? { note: 'Recalled after the trade' } : {})}
       />
       <EmotionsControl
         value={draft.emotions}
@@ -501,7 +514,9 @@ export function ReviewEditor({
       onBack={() => setView('none')}
       body={
         <div className="flex min-w-0 flex-col gap-5">
-          <Field label="What would you repeat or change next time?">
+          {/* NOT the editor's own question again — that is the header two
+              rows above. A short label, so the textarea still has one. */}
+          <Field label="In your own words">
             {(id) => (
               <textarea
                 id={id}
