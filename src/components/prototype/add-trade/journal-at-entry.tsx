@@ -1,11 +1,12 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, Plus, type LucideIcon } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { ChevronRight, Plus, type LucideIcon } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { useIsDesktopViewport } from '@/hooks/use-is-desktop-viewport';
+
+import { AdaptiveOverlay, OverlayActions } from './adaptive-overlay';
 
 /**
  * JOURNAL AT ENTRY — one shared surface, two places to write.
@@ -14,21 +15,32 @@ import { useIsDesktopViewport } from '@/hooks/use-is-desktop-viewport';
  * eyebrow. Everything about that treatment was quiet: quiet enough that the
  * journal — the reason the product exists — read as a pair of links someone had
  * left at the bottom of a form. Being genuinely optional is not the same as
- * being nearly invisible, and the previous pass over-corrected the earlier
- * mistake of making optional depth look mandatory.
+ * being nearly invisible.
  *
  * SO IT IS A SURFACE, WITH A NAME. `Journal at entry` says what the two areas
  * are for; `Now or later` says the whole thing can wait, which is the one fact
  * that has to survive the promotion. Between them they do the work `OPTIONAL`
  * was doing, without making either area look like a task.
  *
- * IT SITS BETWEEN THE BASELINE AND SAVE, AND STAYS BELOW BOTH. A restrained
- * boundary and a faint ground — stronger than a bare link, quieter than the
- * amounts above it and quieter than the filled Save beneath it.
- *
  * NO COUNTS, NO BADGES, NO STATUS WORDS. An area either shows its invitation or
  * shows what it holds, and the preview IS the status. "Recorded", "Complete",
  * "0 of 2" and their relatives are how an invitation turns back into a chore.
+ *
+ * THE EDITORS NO LONGER REPLACE THE FORM ON A DESKTOP.
+ *
+ * They used to: opening `Trade idea` swapped the whole recording form out for
+ * the editor and offered "Back to trade". Three things were wrong with that.
+ * The trade being written about disappeared while it was being written about,
+ * so the risk and target it referred to could not be checked. The page's height
+ * changed underneath the reader, which on a long form meant the scroll position
+ * afterwards was somewhere new. And there was no way to abandon an edit — every
+ * keystroke went straight into the trade, so "Back to trade" was a one-way
+ * door with no companion.
+ *
+ * Both areas now open the same focused overlay the exit plan uses — a centred
+ * dialog with room to write on a desktop, a modal bottom sheet on a phone — and
+ * both carry `Done` and `Cancel`. The form stays where it was, at the scroll
+ * position it was at, visible behind the overlay.
  */
 
 export interface JournalArea {
@@ -47,59 +59,56 @@ export interface JournalArea {
   readonly label: string;
   /** Shown while the area is untouched. A question, not a noun. */
   readonly invitation: string;
-  /** The focused editor's title. May differ from the area's short name. */
+  /** The overlay's title, and it does not change while the overlay is open. */
   readonly title: string;
+  /** One line under the title saying what this is for. */
+  readonly description: string;
   /** Concise preview lines once it holds something. Empty while untouched. */
   readonly preview: readonly string[];
+  /** The editor, bound to the overlay-local draft — see `useJournalDraft`. */
   readonly children: ReactNode;
+  /** Applies the overlay's edits to the trade. */
+  readonly onDone: () => void;
+  /** Discards them. Escape and the backdrop do this too. */
+  readonly onCancel: () => void;
+}
+
+/**
+ * AN OVERLAY-LOCAL WORKING COPY, so `Cancel` has something to discard.
+ *
+ * The editors write into a draft that is only merged into the trade when `Done`
+ * is pressed. `Cancel`, Escape and the backdrop all put the draft back to what
+ * the trade currently says, which is what makes leaving an overlay safe enough
+ * to do casually — and casually leaving is exactly what someone does when they
+ * opened `Feelings at entry` to see what it asks.
+ *
+ * The re-seed is a RENDER-PHASE adjustment rather than an effect: React's own
+ * documented pattern for "reset state when a prop changes", and the only one
+ * that avoids rendering a stale draft for a frame after the trade moves
+ * underneath it.
+ */
+export function useJournalDraft<T>(
+  committed: T,
+  commit: (value: T) => void,
+): { draft: T; setDraft: (value: T) => void; done: () => void; cancel: () => void } {
+  const [draft, setDraft] = useState(committed);
+  const [seeded, setSeeded] = useState(committed);
+
+  if (seeded !== committed) {
+    setSeeded(committed);
+    setDraft(committed);
+  }
+
+  return {
+    draft,
+    setDraft,
+    done: () => commit(draft),
+    cancel: () => setDraft(committed),
+  };
 }
 
 export function JournalAtEntry({ areas }: { areas: readonly JournalArea[] }) {
-  const isDesktop = useIsDesktopViewport();
   const [activeId, setActiveId] = useState<string | null>(null);
-  const active = areas.find((area) => area.id === activeId) ?? null;
-
-  /* The phone editor owns the screen, so the page behind it must not scroll
-     underneath — two scroll containers fighting is how a full-screen editor
-     loses the reader's place. */
-  useEffect(() => {
-    if (isDesktop || active === null) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [isDesktop, active]);
-
-  /* Returning puts focus back on the area it came from: the editor replaced
-     that area, so on return there is nothing focused and a keyboard user lands
-     at the top of a document they were part-way down. */
-  function close(id: string) {
-    setActiveId(null);
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLButtonElement>(`[data-journal-area="${id}"]`)?.focus();
-    });
-  }
-
-  if (active !== null && isDesktop) {
-    return (
-      <section className="min-w-0">
-        <div className="border-border mb-3 flex min-w-0 items-center justify-between gap-3 border-b pb-2">
-          <h2 className="text-foreground min-w-0 text-sm font-semibold">{active.title}</h2>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-11 shrink-0"
-            onClick={() => close(active.id)}
-          >
-            <ChevronLeft className="size-4" aria-hidden="true" />
-            Back to trade
-          </Button>
-        </div>
-        {active.children}
-      </section>
-    );
-  }
 
   return (
     <>
@@ -123,31 +132,62 @@ export function JournalAtEntry({ areas }: { areas: readonly JournalArea[] }) {
         </div>
       </section>
 
-      {active === null ? null : (
-        <div
-          role="group"
-          aria-label={active.title}
-          data-journal-editor={active.id}
-          className="bg-background fixed inset-0 z-50 flex flex-col"
+      {/*
+        ONE OVERLAY PER AREA, rather than one overlay showing whichever area is
+        active. A shared overlay has to render a title while it is closing, and
+        the only title available then is the next area's or an empty string —
+        so the heading visibly changed during the closing animation. Per-area
+        overlays each keep a stable title for their whole life, which is also
+        what lets each one name its own launcher for focus restoration.
+      */}
+      {areas.map((area) => (
+        <AdaptiveOverlay
+          key={area.id}
+          open={activeId === area.id}
+          onOpenChange={(next) => {
+            if (next) return;
+            // Escape and the backdrop are `Cancel`, not `Done`. An overlay that
+            // silently kept edits on dismissal would make Cancel a lie.
+            area.onCancel();
+            setActiveId(null);
+          }}
+          returnFocusTo={`[data-journal-area="${area.id}"]`}
+          title={area.title}
+          description={area.description}
+          className="sm:max-w-[38rem]"
+          footer={
+            <OverlayActions
+              secondary={
+                <Button
+                  variant="ghost"
+                  className="min-h-11 w-full sm:w-auto"
+                  onClick={() => {
+                    area.onCancel();
+                    setActiveId(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              }
+              primary={
+                <Button
+                  className="min-h-11 w-full sm:w-auto"
+                  onClick={() => {
+                    area.onDone();
+                    setActiveId(null);
+                  }}
+                >
+                  Done
+                </Button>
+              }
+            />
+          }
         >
-          <header className="border-border bg-background flex shrink-0 items-center gap-2 border-b px-2 py-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="min-h-11 shrink-0"
-              onClick={() => close(active.id)}
-            >
-              <ChevronLeft className="size-4" aria-hidden="true" />
-              Trade
-            </Button>
-            <h2 className="text-foreground min-w-0 flex-1 truncate text-right text-sm font-semibold">
-              {active.title}
-            </h2>
-          </header>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">{active.children}</div>
-        </div>
-      )}
+          {/* Mounted only while open, so an abandoned editor is not still
+              holding scroll position or an open sub-control next time. */}
+          {activeId === area.id ? area.children : null}
+        </AdaptiveOverlay>
+      ))}
     </>
   );
 }

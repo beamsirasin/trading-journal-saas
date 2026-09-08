@@ -1,9 +1,7 @@
 'use client';
 
-import { Check, HeartPulse, Lightbulb } from 'lucide-react';
-import { useId, useState } from 'react';
-
-import { cn } from '@/lib/utils';
+import { HeartPulse, Lightbulb } from 'lucide-react';
+import { useState } from 'react';
 
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
@@ -17,11 +15,12 @@ import {
   FormFooter,
   FormShell,
   PrimaryAmountField,
+  QuietAction,
   ResultLine,
   TaskSurface,
   TextField,
 } from './form-primitives';
-import { JournalAtEntry } from './journal-at-entry';
+import { JournalAtEntry, useJournalDraft } from './journal-at-entry';
 import {
   EMPTY_FEELINGS,
   EMPTY_PLAN,
@@ -116,6 +115,17 @@ export function AtEntryForm({
   const [feelings, setFeelings] = useState<FeelingsDraft>(
     filled ? { confidence: 75, emotions: ['calm', 'focused'] } : EMPTY_FEELINGS,
   );
+
+  /*
+    THE JOURNAL EDITORS WRITE TO A WORKING COPY, NOT TO THE TRADE.
+
+    `Done` merges it in; `Cancel` and Escape put it back. The launchers and every
+    derived line below keep reading the COMMITTED value — `plan`, not
+    `idea.draft` — so an abandoned edit never appears in a preview, and the exit
+    plan never inherits from a strategy the trader typed and then discarded.
+  */
+  const idea = useJournalDraft(plan, setPlan);
+  const emotion = useJournalDraft(feelings, setFeelings);
 
   /*
     TARGET R IS DERIVED, AND ONLY WHEN BOTH HALVES EXIST.
@@ -276,13 +286,47 @@ export function AtEntryForm({
                 onChange={setRisk}
                 hint="What the whole position stood to lose if your protective exit was hit."
               />
+              {/*
+                THE FACT IS STATED ONCE, IN ONE CONTROL.
+
+                It used to be stated twice: the field showed a "No fixed target"
+                readout AND kept a checked "No fixed target" option row
+                underneath it, sixty pixels apart, so the answered state
+                announced itself, then announced itself again. Reading it, the
+                honest question was whether the two were the same thing.
+
+                Unanswered, "No fixed target" is a quiet action beside the
+                label — available, not asked. Answered, it is one readout of the
+                input's own height carrying its own way back. Nothing sits
+                beneath either.
+              */}
               <PrimaryAmountField
                 label="Target profit"
                 currency="USD"
                 value={target}
                 onChange={setTarget}
-                {...(noFixedTarget ? { readOut: 'No fixed target' } : {})}
-                footer={<NoFixedTargetChoice checked={noFixedTarget} onChange={setNoFixedTarget} />}
+                {...(noFixedTarget
+                  ? {
+                      readOut: 'No fixed target',
+                      readOutAction: (
+                        <QuietAction onClick={() => setNoFixedTarget(false)}>
+                          Change
+                          {/* The page already has two buttons reading "Change" —
+                              the situation and the account — and a third would
+                              be a list of three identical names to anyone
+                              navigating by button. The word beside it stays one
+                              word; the accessible name says what it changes. */}
+                          <span className="sr-only"> target</span>
+                        </QuietAction>
+                      ),
+                    }
+                  : {
+                      trailing: (
+                        <QuietAction onClick={() => setNoFixedTarget(true)}>
+                          No fixed target
+                        </QuietAction>
+                      ),
+                    })}
               />
             </FieldPair>
 
@@ -339,9 +383,17 @@ export function AtEntryForm({
               Icon: Lightbulb,
               invitation: 'Why did you take this trade?',
               title: 'Trade idea',
+              description: 'Why you took this trade, and anything you want to remember about it.',
               preview: tradeIdeaSummary(plan),
+              onDone: idea.done,
+              onCancel: idea.cancel,
               children: (
-                <PlanEditor tense="present" draft={plan} onChange={setPlan} currency="USD" />
+                <PlanEditor
+                  tense="present"
+                  draft={idea.draft}
+                  onChange={idea.setDraft}
+                  currency="USD"
+                />
               ),
             },
             {
@@ -350,92 +402,15 @@ export function AtEntryForm({
               Icon: HeartPulse,
               invitation: 'How did you feel?',
               title: 'How did you feel at entry?',
+              description: 'Your state at the moment you took it. Nothing here is scored.',
               preview: feelingsSummary(feelings),
-              children: <FeelingsEditor draft={feelings} onChange={setFeelings} />,
+              onDone: emotion.done,
+              onCancel: emotion.cancel,
+              children: <FeelingsEditor draft={emotion.draft} onChange={emotion.setDraft} />,
             },
           ]}
         />
       </FormShell>
     </PrototypeShell>
-  );
-}
-
-/**
- * NO FIXED TARGET — a compact option row, not a settings checkbox.
- *
- * WHAT THE RENDERED PAGE SHOWED. A raw browser checkbox sitting under a 48px
- * amount field: a control from a different visual family, floating unattached
- * beneath the thing it governs, and — with the old readout — printing "No fixed
- * target" twice within sixty pixels. It read as a preference toggle bolted to a
- * trading form.
- *
- * IT IS A ROW THE FULL WIDTH OF THE FIELD ABOVE IT, so the two are visibly one
- * control and one decision. The native input is `peer sr-only` and a styled box
- * carries the check — the same pattern Direction and Profit / Loss already use
- * here, so the selected state looks like every other selected state in the
- * product. Keyboard behaviour, the checked state in the accessibility tree and
- * the label association all still come from the platform.
- *
- * IT STAYS SECONDARY. Smaller type than the amount, no accent until chosen, and
- * one quiet second line. It is not a mode selector and it never asks to be
- * answered before a target can simply be typed — the field above is the short
- * path, and this is the exception beneath it.
- *
- * THE SECOND LINE SAYS WHAT THE PLAN IS, not what it lacks. "Exit follows my
- * trading rules" is the reason a trader picks this, and it keeps the state from
- * reading as an absence. It deliberately stops short of explaining System
- * Result, which is not this screen's job.
- */
-function NoFixedTargetChoice({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="min-w-0">
-      <input
-        id={id}
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="peer sr-only"
-      />
-      <label
-        htmlFor={id}
-        className={cn(
-          'flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2',
-          'peer-focus-visible:ring-ring transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
-          checked
-            ? 'border-primary/40 bg-primary/10'
-            : 'border-input hover:bg-accent/50 bg-transparent',
-        )}
-      >
-        {/* The box is drawn, not native — so it matches the check on every other
-            selected control on this screen rather than the operating system's. */}
-        <span
-          aria-hidden="true"
-          className={cn(
-            'flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors',
-            checked ? 'border-primary bg-primary' : 'border-input bg-background',
-          )}
-        >
-          {checked ? <Check className="text-primary-foreground size-3" strokeWidth={3} /> : null}
-        </span>
-
-        <span className="min-w-0">
-          <span
-            className={cn(
-              'block text-sm',
-              checked ? 'text-foreground font-medium' : 'text-muted-foreground',
-            )}
-          >
-            No fixed target
-          </span>
-        </span>
-      </label>
-    </div>
   );
 }

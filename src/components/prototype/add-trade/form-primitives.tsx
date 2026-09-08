@@ -349,6 +349,7 @@ export function PrimaryAmountField({
   hint,
   trailing,
   readOut,
+  readOutAction,
   footer,
 }: {
   label: string;
@@ -367,7 +368,16 @@ export function PrimaryAmountField({
    * a greyed-out input still looks like somewhere a number belongs.
    */
   readOut?: string;
-  /** A control that belongs under the amount, e.g. the No fixed target choice. */
+  /**
+   * The way back out of a `readOut`, INSIDE the readout rather than beneath it.
+   *
+   * A declared-absent field needs an undo, and the first version put one under
+   * the readout as a second control — so the answered state said "No fixed
+   * target" in the readout and again on the control below it, twice within
+   * sixty pixels. One control, stating the fact once, carrying its own reversal.
+   */
+  readOutAction?: ReactNode;
+  /** A control that belongs under the amount. */
   footer?: ReactNode;
 }) {
   const id = useId();
@@ -417,9 +427,10 @@ export function PrimaryAmountField({
           Direction and Profit/Loss choices use for "this is the selected
           answer". Same height as the input it replaces, so nothing shifts.
         */
-        <div className="border-primary/40 bg-primary/10 flex min-h-[3.5rem] min-w-0 items-center gap-2 rounded-lg border px-3">
+        <div className="border-primary/40 bg-primary/10 flex min-h-[3.5rem] min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2">
           <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
-          <p className="text-foreground min-w-0 text-sm">{readOut}</p>
+          <p className="text-foreground min-w-0 flex-1 text-sm">{readOut}</p>
+          {readOutAction}
         </div>
       )}
 
