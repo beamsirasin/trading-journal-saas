@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -33,6 +33,16 @@ import { useIsDesktopViewport } from '@/hooks/use-is-desktop-viewport';
 
 export interface JournalArea {
   readonly id: string;
+  /**
+   * A quiet visual anchor for the row.
+   *
+   * The two areas were pure text and read as generic navigation links. An icon
+   * in the product's own tinted-square idiom — the one the opening choice cards
+   * already use — gives each a shape to recognise before the label is read.
+   * Secondary by construction: 14px of glyph inside a 28px anchor, beside a
+   * 14px label.
+   */
+  readonly Icon: LucideIcon;
   /** The area's own name — the thing being written about. */
   readonly label: string;
   /** Shown while the area is untouched. A question, not a noun. */
@@ -94,8 +104,8 @@ export function JournalAtEntry({ areas }: { areas: readonly JournalArea[] }) {
   return (
     <>
       <section className="min-w-0">
-        <div className="mb-1.5 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 px-1">
-          <h2 className="text-foreground text-sm font-medium">Journal at entry</h2>
+        <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 px-1">
+          <h2 className="text-label text-muted-foreground uppercase">Journal at entry</h2>
           {/* The one fact the promotion must not cost: none of this is due now. */}
           <p className="text-subtle-foreground text-xs">Now or later</p>
         </div>
@@ -152,11 +162,23 @@ function JournalAreaButton({ area, onOpen }: { area: JournalArea; onOpen: () => 
       data-journal-area={area.id}
       onClick={onOpen}
       className={cn(
-        'flex min-h-[3.75rem] w-full min-w-0 items-center gap-3 px-3 py-3 text-left',
+        'group/area flex min-h-[3.75rem] w-full min-w-0 items-center gap-3 px-3 py-3 text-left',
         'hover:bg-accent/40 focus-visible:ring-ring transition-colors outline-none',
         'focus-visible:ring-2 focus-visible:-outline-offset-2',
       )}
     >
+      {/* The anchor tints toward the accent once the area holds something, so a
+          populated half is recognisable before any text is read. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          'flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors',
+          populated ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+        )}
+      >
+        <area.Icon className="size-3.5" />
+      </span>
+
       <span className="min-w-0 flex-1">
         <span className="text-foreground block text-sm font-medium">{area.label}</span>
         {populated ? (
@@ -172,13 +194,17 @@ function JournalAreaButton({ area, onOpen }: { area: JournalArea; onOpen: () => 
         )}
       </span>
 
-      {/* A plus to start, a chevron to continue. Both subtle: the affordance
-          says the area is live, not that it is owed. */}
-      {populated ? (
-        <ChevronRight className="text-subtle-foreground size-4 shrink-0" aria-hidden="true" />
-      ) : (
-        <Plus className="text-subtle-foreground size-4 shrink-0" aria-hidden="true" />
-      )}
+      {/*
+        A plus to start, a chevron to continue — and both brighten with the row
+        rather than sitting at a fixed grey. The affordance says the area is
+        live, never that it is owed, so there is no badge and no count.
+      */}
+      <span
+        aria-hidden="true"
+        className="text-subtle-foreground group-hover/area:text-foreground shrink-0 transition-colors"
+      >
+        {populated ? <ChevronRight className="size-4" /> : <Plus className="size-4" />}
+      </span>
     </button>
   );
 }

@@ -407,11 +407,20 @@ export function PrimaryAmountField({
           <span className="text-muted-foreground shrink-0 pb-1 text-sm">{currency}</span>
         </div>
       ) : (
-        /* Same box, same height, no input — the field is answered, and the
-           answer is that there is no number. */
-        <p className="border-input bg-muted/40 text-muted-foreground flex min-h-[3.5rem] min-w-0 items-center rounded-lg border px-3 text-base">
-          {readOut}
-        </p>
+        /*
+          AN ANSWERED FIELD, NOT A DISABLED ONE.
+
+          This was a hollow grey box with muted text, which is what a browser
+          draws for a field you are not allowed to use — so a deliberate plan
+          decision rendered as something broken or missing. It carries the
+          accent at low opacity and a check now: the same visual language the
+          Direction and Profit/Loss choices use for "this is the selected
+          answer". Same height as the input it replaces, so nothing shifts.
+        */
+        <div className="border-primary/40 bg-primary/10 flex min-h-[3.5rem] min-w-0 items-center gap-2 rounded-lg border px-3">
+          <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+          <p className="text-foreground min-w-0 text-sm">{readOut}</p>
+        </div>
       )}
 
       {footer}

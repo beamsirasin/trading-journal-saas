@@ -1,5 +1,6 @@
 'use client';
 
+import { Check, HeartPulse, Lightbulb } from 'lucide-react';
 import { useId, useState } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -252,28 +253,36 @@ export function AtEntryForm({
             phone. What "Optional" used to carry is carried precisely now, by the
             No fixed target choice underneath.
           */}
-          <Band divided={false} className="py-5">
+          <Band divided={false} className="gap-3 py-5">
+            {/*
+              THE PAIR HAS A NAME NOW.
+
+              Rendered, the two amounts read as two form inputs that happened to
+              be side by side — nothing said they were one thing. "Plan at entry"
+              is the name the Close trade flow and Trade details already give this
+              same baseline, so naming it here makes one concept read the same
+              way in all three places instead of being a heading in two of them
+              and an unlabelled row in the third.
+            */}
+            <h2 className="text-label text-muted-foreground uppercase">Plan at entry</h2>
+
             <FieldPair>
               <PrimaryAmountField
                 label="Risk at entry"
                 currency="USD"
                 value={risk}
                 onChange={setRisk}
+                hint="What the whole position stood to lose if your protective exit was hit."
               />
               <PrimaryAmountField
                 label="Target profit"
                 currency="USD"
                 value={target}
                 onChange={setTarget}
-                {...(noFixedTarget ? { readOut: 'No fixed target' } : {})}
+                {...(noFixedTarget ? { readOut: 'Exit follows my trading rules' } : {})}
                 footer={<NoFixedTargetChoice checked={noFixedTarget} onChange={setNoFixedTarget} />}
               />
             </FieldPair>
-
-            <p className="text-muted-foreground text-xs leading-relaxed">
-              Risk at entry is what the whole position stood to lose if your protective exit was
-              hit.
-            </p>
 
             {/*
               ONE DERIVED LINE, AND ONLY WHEN IT MEANS SOMETHING.
@@ -285,11 +294,15 @@ export function AtEntryForm({
               one derived figure, secondary to the two amounts it comes from.
             */}
             {targetR === null ? null : (
-              <ResultLine
-                label="Target R"
-                value={`+${targetR.toFixed(2)}R`}
-                detail={`1R = ${riskNumber.toFixed(2)} USD`}
-              />
+              /* A hairline above it, so the figure visibly belongs to the two
+                 amounts rather than floating after them. */
+              <div className="border-border/70 min-w-0 border-t pt-3">
+                <ResultLine
+                  label="Target R"
+                  value={`+${targetR.toFixed(2)}R`}
+                  detail={`1R = ${riskNumber.toFixed(2)} USD`}
+                />
+              </div>
             )}
           </Band>
         </TaskSurface>
@@ -309,6 +322,7 @@ export function AtEntryForm({
             {
               id: 'idea',
               label: 'Trade idea',
+              Icon: Lightbulb,
               invitation: 'Why did you take this trade?',
               title: 'Trade idea',
               preview: tradeIdeaSummary(plan),
@@ -319,6 +333,7 @@ export function AtEntryForm({
             {
               id: 'feelings',
               label: 'Feelings at entry',
+              Icon: HeartPulse,
               invitation: 'How did you feel?',
               title: 'How did you feel at entry?',
               preview: feelingsSummary(feelings),
@@ -332,22 +347,30 @@ export function AtEntryForm({
 }
 
 /**
- * NO FIXED TARGET — a declaration, not a blank.
+ * NO FIXED TARGET — a compact option row, not a settings checkbox.
  *
- * A CHECKBOX, NOT A MODE SELECTOR. A segmented "Fixed target / No fixed target"
- * pair would make the exception a peer of the ordinary case and force a choice
- * before a number could be typed. This leaves entering a target as the shortest
- * path — type it and move on — and puts the exception one deliberate click away,
- * directly beneath the field it speaks for.
+ * WHAT THE RENDERED PAGE SHOWED. A raw browser checkbox sitting under a 48px
+ * amount field: a control from a different visual family, floating unattached
+ * beneath the thing it governs, and — with the old readout — printing "No fixed
+ * target" twice within sixty pixels. It read as a preference toggle bolted to a
+ * trading form.
  *
- * IT IS A REAL `<input type="checkbox">`. Keyboard behaviour, the checked state
- * in the accessibility tree and the label association all come from the platform
- * rather than from a `role` attribute and a keydown handler.
+ * IT IS A ROW THE FULL WIDTH OF THE FIELD ABOVE IT, so the two are visibly one
+ * control and one decision. The native input is `peer sr-only` and a styled box
+ * carries the check — the same pattern Direction and Profit / Loss already use
+ * here, so the selected state looks like every other selected state in the
+ * product. Keyboard behaviour, the checked state in the accessibility tree and
+ * the label association all still come from the platform.
  *
- * REVERSIBLE, AND HONEST WHILE SET. Unchecking restores the typed value exactly
- * as it was; while checked, that value is excluded from every derivation, so
- * nothing downstream can quietly keep using a target the trader has said does
- * not exist.
+ * IT STAYS SECONDARY. Smaller type than the amount, no accent until chosen, and
+ * one quiet second line. It is not a mode selector and it never asks to be
+ * answered before a target can simply be typed — the field above is the short
+ * path, and this is the exception beneath it.
+ *
+ * THE SECOND LINE SAYS WHAT THE PLAN IS, not what it lacks. "Exit follows my
+ * trading rules" is the reason a trader picks this, and it keeps the state from
+ * reading as an absence. It deliberately stops short of explaining System
+ * Result, which is not this screen's job.
  */
 function NoFixedTargetChoice({
   checked,
@@ -358,35 +381,60 @@ function NoFixedTargetChoice({
 }) {
   const id = useId();
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      {/*
-        24px OF BOX, NOT 16.
-
-        The default checkbox is a 16px square, and the ::after extension that
-        every other quiet control here uses does not help: it grows the hit area
-        of the LABEL, while the box itself stays a 16px target. WCAG 2.2 asks for
-        24, the audit measures the element's own rect, and both are right — a
-        transparent pseudo-element on a neighbouring element is not a bigger
-        checkbox. So the checkbox is genuinely bigger, and the label beside it is
-        `text-sm` so the pairing still reads as one control rather than a large
-        box next to fine print.
-      */}
+    <div className="min-w-0">
       <input
         id={id}
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="border-input focus-visible:ring-ring accent-primary size-6 shrink-0 cursor-pointer rounded-sm outline-none focus-visible:ring-2"
+        className="peer sr-only"
       />
       <label
         htmlFor={id}
         className={cn(
-          'relative min-w-0 cursor-pointer text-sm',
-          'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
-          checked ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+          'flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2',
+          'peer-focus-visible:ring-ring transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+          checked
+            ? 'border-primary/40 bg-primary/10'
+            : 'border-input hover:bg-accent/50 bg-transparent',
         )}
       >
-        No fixed target
+        {/* The box is drawn, not native — so it matches the check on every other
+            selected control on this screen rather than the operating system's. */}
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors',
+            checked ? 'border-primary bg-primary' : 'border-input bg-background',
+          )}
+        >
+          {checked ? <Check className="text-primary-foreground size-3" strokeWidth={3} /> : null}
+        </span>
+
+        <span className="min-w-0">
+          <span
+            className={cn(
+              'block text-sm',
+              checked ? 'text-foreground font-medium' : 'text-muted-foreground',
+            )}
+          >
+            No fixed target
+          </span>
+          {/*
+            THE EXPLANATION BELONGS TO THE UNCHECKED STATE ONLY.
+
+            It answers "what does choosing this mean?", which is a question only
+            someone who has not chosen it is asking. Once chosen, the field above
+            states the plan in those exact words — and rendering it in both
+            places put the same sentence on screen twice, sixty pixels apart,
+            which is the duplication this whole treatment replaced.
+          */}
+          {checked ? null : (
+            <span className="text-subtle-foreground block text-xs">
+              Exit follows my trading rules
+            </span>
+          )}
+        </span>
       </label>
     </div>
   );
