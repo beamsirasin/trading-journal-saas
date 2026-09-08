@@ -4,111 +4,111 @@ import { useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
+import {
+  actualR,
+  allocation,
+  cumulativeRealized,
+  lifecycleOf,
+  resultLabel,
+  statusText,
+  type ExitHistory,
+  type ExitRecord,
+} from '../exit-model';
 import { PROTOTYPE_TIMEZONE, type PrototypeTrade } from '../fixtures';
 import { signedMoney } from '../presentation';
 import { PrototypeShell } from '../prototype-shell';
-import {
-  Band,
-  Field,
-  FormFooter,
-  FormShell,
-  OutcomeChoice,
-  PrimaryAmountField,
-  TaskSurface,
-  type MoneyOutcome,
-} from './form-primitives';
-import { TimestampField, type Timestamp } from './timestamp-picker';
+import { ExitFields } from './exit-fields';
+import { Band, FormFooter, FormShell, TaskSurface, type MoneyOutcome } from './form-primitives';
 
 /**
  * CLOSE TRADE — for a position the journal already knows about.
  *
- * THIS IS NOT "LOG A TRADE → FULLY CLOSED", AND THE DIFFERENCE IS THE WHOLE
- * POINT. That flow reconstructs a completed trade that was never journaled: it
- * has to ask for the account, the symbol, the direction, the entry time, the
- * risk and the plan, because nothing knows them. An open trade in the journal
- * has all of that already. Asking for it again would be asking a trader to
- * re-type their own record, and every re-typed field is a chance for the second
- * copy to disagree with the first.
+ * THIS IS NOT "LOG A TRADE → FULLY CLOSED", AND THE DIFFERENCE IS THE POINT.
+ * That flow reconstructs a completed trade that was never journaled: it has to
+ * ask for the account, symbol, direction, entry time, risk and plan, because
+ * nothing knows them. An open trade in the journal has all of that already, and
+ * every re-typed field is a chance for the second copy to disagree with the
+ * first. So the baseline is carried forward read-only and the screen asks one
+ * question: WHAT ACTUALLY HAPPENED?
  *
- * So this screen carries the baseline forward, read-only, and asks exactly one
- * question: WHAT ACTUALLY HAPPENED? How much closed, when, and what it made.
+ * IT RENDERS THE SHARED `ExitFields` AND CALLS THE SHARED `exit-model`. The
+ * Record exit action in Trade details opens this same screen, and the historical
+ * multiple-exits editor renders the same field set against the same functions.
+ * One contract, three views — which is the only way two surfaces recording one
+ * event stay in agreement about what it made.
  *
- * THE DENOMINATOR NEVER MOVES. Actual R is the realized money over the ORIGINAL
- * risk at entry — the figure recorded when the trade began. It does not change
- * because a stop was moved to break-even, tightened, trailed, or because only
- * part of the position closed. A trade that risked 10 and made 5 is +0.50R
- * whether it closed in one exit or four, and there is no "current risk" here to
- * confuse that with.
- *
- * PARTIAL AND FULL ARE DIFFERENT OUTCOMES, NOT DIFFERENT AMOUNTS. Closing all
- * remaining settles the trade; closing part of it leaves the position open with
- * its remaining exposure intact, and the screen says which of the two is about
- * to happen before the trader commits to it.
- *
- * NOTHING HERE RECORDS A SYSTEM RESULT. What following the rules would have
- * produced is a separate judgement, it is optional, and it is never inferred
- * from the exit being recorded on this screen.
+ * THE DENOMINATOR NEVER MOVES. Actual R is realized money over the ORIGINAL risk
+ * at entry. It does not change because a stop was trailed, because only part of
+ * the position closed, or because a fraction happens to be known.
  */
 export function CloseTradeForm({
   trade,
-  /** Opens on the partial branch, for the review state that photographs it. */
+  /** Opens on the partial branch — how Record exit arrives here. */
   partial = false,
-  /** Seeds the amount and its meaning, for the profit / loss / break-even states. */
+  /** Seeds the amount and its meaning, for the review states. */
   seed,
+  /** Seeds the optional fraction, for the state that shows a safe remainder. */
+  seedPercent,
+  /** Pretends an earlier exit exists whose fraction was never recorded. */
+  priorUnknownExit = false,
 }: {
   trade: PrototypeTrade;
   partial?: boolean;
   seed?: { outcome: MoneyOutcome; amount: string };
+  seedPercent?: string;
+  priorUnknownExit?: boolean;
 }) {
-  const [scope, setScope] = useState<'all' | 'part'>(partial ? 'part' : 'all');
-  const [percent, setPercent] = useState('');
-  const [outcome, setOutcome] = useState<MoneyOutcome>(seed?.outcome ?? 'profit');
-  const [amount, setAmount] = useState(seed?.amount ?? '');
-  const [exitedAt, setExitedAt] = useState<Timestamp | null>(null);
-
   const currency = trade.currency;
 
   /*
-    THE BASELINE, AS RECORDED. Read from the trade rather than re-collected, and
-    stated in the same three terms the details panel uses so a reader moving
-    between them is looking at one record and not two descriptions of it.
+    EXITS ALREADY ON THE RECORD. `priorUnknownExit` is the review state that
+    matters most here: an earlier partial exit whose fraction nobody wrote down.
+    Its money still counts; its allocation is simply unknowable, and the screen
+    must not invent one.
   */
+  const priorExits: readonly ExitRecord[] = priorUnknownExit
+    ? [
+        {
+          id: 'prior',
+          scope: 'part',
+          percent: '',
+          outcome: 'profit',
+          amount: '10.00',
+          at: { date: '2026-09-06', time: '17:40' },
+        },
+      ]
+    : [];
+
+  const [exit, setExit] = useState<ExitRecord>({
+    id: 'new',
+    scope: partial ? 'part' : 'all_remaining',
+    percent: seedPercent ?? '',
+    outcome: seed?.outcome ?? 'profit',
+    amount: seed?.amount ?? '',
+    at: null,
+  });
+  const [history, setHistory] = useState<ExitHistory>('unknown');
+
   const riskMinor = trade.actualRiskMinor;
   const riskNumber = riskMinor === null ? Number.NaN : Number(riskMinor) / 100;
-  const hasRisk = Number.isFinite(riskNumber) && riskNumber > 0;
   const targetMinor = trade.plan?.rewardMinor ?? null;
-  const targetR = hasRisk && targetMinor !== null ? Number(targetMinor) / 100 / riskNumber : null;
+  const targetR =
+    Number.isFinite(riskNumber) && riskNumber > 0 && targetMinor !== null
+      ? Number(targetMinor) / 100 / riskNumber
+      : null;
 
-  /* Already realized before this exit — the closed portion of a partial trade. */
-  const alreadyRealized = trade.netPnlMinor === null ? 0 : Number(trade.netPnlMinor) / 100;
-
-  const magnitude = Number(amount);
-  const thisExit =
-    outcome === 'break_even'
-      ? 0
-      : amount !== '' && Number.isFinite(magnitude)
-        ? magnitude * (outcome === 'loss' ? -1 : 1)
-        : Number.NaN;
-  const hasThisExit = Number.isFinite(thisExit);
-
-  const cumulative = hasThisExit ? alreadyRealized + thisExit : Number.NaN;
-  /*
-    ACTUAL R — CUMULATIVE MONEY OVER THE ORIGINAL RISK.
-
-    Not this exit's money over this exit's share of the risk. The percentages
-    describe how much of the position closed; they do not re-weight amounts that
-    are already the realized result of closing it. Weighting twice is how 40% at
-    +80 becomes +0.14R instead of +0.80R.
-
-    With no recorded risk there is no R. Not zero, not infinity — unavailable.
-  */
-  const actualR = hasRisk && hasThisExit ? cumulative / riskNumber : null;
-  const settles = scope === 'all';
+  const allExits = [...priorExits, exit];
+  const realized = cumulativeRealized(allExits);
+  const lifecycle = lifecycleOf(allExits, false);
+  const alloc = allocation(allExits);
+  const r = actualR(realized.total, riskNumber);
+  const label = resultLabel({ lifecycle, history, everyExitPriced: realized.everyExitPriced });
+  const settles = exit.scope === 'all_remaining';
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
       <FormShell
-        title="Close trade"
+        title={settles ? 'Close trade' : 'Record exit'}
         situation={settles ? 'Closing the whole position' : 'Recording a partial exit'}
         footer={
           <FormFooter
@@ -123,12 +123,7 @@ export function CloseTradeForm({
         }
       >
         <TaskSurface>
-          {/*
-            THE TRADE, AS ALREADY RECORDED — a reference, not a form. Nothing
-            here is editable, because nothing here is being asked for: the
-            journal knows all of it, and re-collecting it is how the second copy
-            comes to disagree with the first.
-          */}
+          {/* The trade, as already recorded — a reference, not a form. */}
           <Band className="gap-2 py-3.5">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
               <span className="text-foreground text-base font-semibold">{trade.symbol}</span>
@@ -139,6 +134,11 @@ export function CloseTradeForm({
             <p className="text-muted-foreground text-xs">
               Opened {trade.enteredAt ?? 'time not recorded'} · {trade.accountName} · {currency}
             </p>
+            {priorExits.length === 0 ? null : (
+              <p className="text-subtle-foreground text-xs">
+                1 earlier exit recorded · portion not recorded
+              </p>
+            )}
           </Band>
 
           <Band className="gap-2 py-3.5">
@@ -160,8 +160,6 @@ export function CloseTradeForm({
                     : (signedMoney(targetMinor, currency)?.replace('+', '') ?? null)
                 }
               />
-              {/* Target R is derived, and absent whenever either half is. It is
-                  what the trade was set up to pay — never a result. */}
               <PlanLine
                 label="Target R"
                 value={targetR === null ? null : `+${targetR.toFixed(2)}R`}
@@ -171,94 +169,30 @@ export function CloseTradeForm({
 
           <Band divided={false} className="py-4">
             <h2 className="text-label text-muted-foreground uppercase">What happened</h2>
-
-            <fieldset className="min-w-0">
-              <legend className="text-muted-foreground mb-1.5 text-xs font-medium">
-                How much closed?
-              </legend>
-              <div className="grid min-w-0 grid-cols-2 gap-2">
-                {[
-                  { value: 'all' as const, label: 'All remaining' },
-                  { value: 'part' as const, label: 'Part of position' },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    aria-pressed={scope === option.value}
-                    onClick={() => setScope(option.value)}
-                    className={cn(
-                      'flex min-h-11 items-center justify-center rounded-lg border px-2 text-sm font-medium',
-                      'focus-visible:ring-ring transition-colors outline-none focus-visible:ring-2',
-                      scope === option.value
-                        ? 'border-primary bg-primary/10 text-foreground'
-                        : 'border-input bg-background text-muted-foreground hover:bg-accent',
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            {scope === 'part' ? (
-              <div className="max-w-[14rem]">
-                <Field label="% of original position closed">
-                  {(id) => (
-                    <input
-                      id={id}
-                      value={percent}
-                      inputMode="decimal"
-                      placeholder="—"
-                      onChange={(event) => setPercent(event.target.value)}
-                      className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 numeric h-11 w-full rounded-md border px-3 text-base outline-none focus-visible:ring-[3px]"
-                    />
-                  )}
-                </Field>
-              </div>
-            ) : null}
-
-            <div className="flex min-w-0 flex-col gap-2">
-              <p className="text-subtle-foreground text-xs">Times in {PROTOTYPE_TIMEZONE}</p>
-              <TimestampField
-                label="Exit time"
-                title="Exit date and time"
-                value={exitedAt}
-                onChange={setExitedAt}
-                placeholder="Not set"
-              />
-            </div>
+            <p className="text-subtle-foreground text-xs">Times in {PROTOTYPE_TIMEZONE}</p>
 
             {/*
-              THE SAME THREE WORDS THE REST OF THE PRODUCT USES. Break-even means
-              net zero AFTER the costs attributable to this exit — an exit at the
-              entry price is still a net loss if the fees were real.
+              THE SHARED FIELD SET. Scope, time, meaning, money — then the
+              fraction, last and optional. The percentage used to come first and
+              block everything behind it; a trader who knows an exit made 10 USD
+              but not whether it was 40% or 45% can now record exactly that.
             */}
-            <OutcomeChoice value={outcome} onChange={setOutcome} />
-
-            {outcome === 'break_even' ? (
-              <div className="min-w-0">
-                <p className="text-muted-foreground text-xs font-medium">Net P&L for this exit</p>
-                <p className="numeric text-foreground text-metric mt-0.5 font-semibold">
-                  0.00 {currency}
-                </p>
-              </div>
-            ) : (
-              <PrimaryAmountField
-                label={`Net ${outcome === 'loss' ? 'loss' : 'profit'} for this exit`}
-                currency={currency}
-                value={amount}
-                onChange={setAmount}
-                hint="After fees and other costs"
-              />
-            )}
-
-            <ActualResult
+            <ExitFields
+              exit={exit}
               currency={currency}
-              cumulative={cumulative}
-              actualR={actualR}
-              hasRisk={hasRisk}
-              settles={settles}
-              carriedForward={alreadyRealized !== 0}
+              riskAtEntry={String(riskNumber)}
+              onChange={(patch) => setExit((current) => ({ ...current, ...patch }))}
+            />
+
+            <ExitTotals
+              label={label}
+              total={realized.total}
+              currency={currency}
+              r={r}
+              statusLine={statusText(lifecycle, alloc)}
+              askHistory={lifecycle === 'closed'}
+              history={history}
+              onHistoryChange={setHistory}
             />
           </Band>
         </TaskSurface>
@@ -285,65 +219,88 @@ function PlanLine({ label, value }: { label: string; value: string | null }) {
 }
 
 /**
- * What this exit makes the trade worth so far.
+ * What the trade is worth so far, and what it leaves behind.
  *
- * MONEY LEADS, R FOLLOWS — the same order the rest of the product uses. The
- * label says whether this is the trade's final result or only the part of it
- * that has closed, because those are different claims and a partial trade's
- * figure is the one most likely to be misread as final.
+ * THE LABEL IS COMPUTED, NOT CHOSEN. `resultLabel` decides between "closed
+ * portion", "recorded exits" and "final" from the lifecycle, the exit history
+ * and whether every exit carries an amount — so this component cannot call a
+ * subtotal final by accident, and neither can the exits editor, which asks the
+ * same function.
  *
- * WITH NO RECORDED RISK THERE IS NO R, and the screen says so rather than
- * printing a zero. A real exit is still worth recording without one: the money
- * is a fact, and R is a ratio that needs a denominator nobody supplied.
+ * CLOSURE IS NOT COMPLETENESS. A settled position can still be missing an exit,
+ * so the question is asked rather than assumed, and until it is answered the
+ * figure is labelled a recorded subtotal.
  */
-function ActualResult({
+function ExitTotals({
+  label,
+  total,
   currency,
-  cumulative,
-  actualR,
-  hasRisk,
-  settles,
-  carriedForward,
+  r,
+  statusLine,
+  askHistory,
+  history,
+  onHistoryChange,
 }: {
+  label: string;
+  total: number;
   currency: string;
-  cumulative: number;
-  actualR: number | null;
-  hasRisk: boolean;
-  settles: boolean;
-  carriedForward: boolean;
+  r: number | null;
+  statusLine: string;
+  askHistory: boolean;
+  history: ExitHistory;
+  onHistoryChange: (history: ExitHistory) => void;
 }) {
-  if (!Number.isFinite(cumulative)) return null;
-
-  const tone =
-    cumulative > 0 ? 'text-positive' : cumulative < 0 ? 'text-negative' : 'text-foreground';
+  const tone = total > 0 ? 'text-positive' : total < 0 ? 'text-negative' : 'text-foreground';
 
   return (
     <div className="border-border min-w-0 border-t pt-3">
-      <p className="text-muted-foreground text-xs font-medium">
-        {settles ? 'Actual result' : 'Net P&L from closed portion'}
-      </p>
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
       <p className={cn('numeric mt-0.5 text-base font-semibold', tone)}>
-        {cumulative > 0 ? '+' : ''}
-        {cumulative.toFixed(2)} {currency}
+        {total > 0 ? '+' : ''}
+        {total.toFixed(2)} {currency}
       </p>
 
       <p className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
         <span className="text-muted-foreground text-xs font-medium">Actual R</span>
-        {actualR === null ? (
-          <span className="text-subtle-foreground text-sm">
-            {hasRisk ? 'Not available' : 'Needs a recorded risk at entry'}
-          </span>
+        {r === null ? (
+          <span className="text-subtle-foreground text-sm">Needs a recorded risk at entry</span>
         ) : (
           <span className={cn('numeric text-base font-semibold', tone)}>
-            {actualR > 0 ? '+' : ''}
-            {actualR.toFixed(2)}R
+            {r > 0 ? '+' : ''}
+            {r.toFixed(2)}R
           </span>
         )}
       </p>
 
-      {carriedForward ? (
-        <p className="text-subtle-foreground mt-1 text-xs">
-          Includes what this trade had already realized.
-        </p>
+      {/* The words the allocation can actually support, and no percentage it
+          cannot. */}
+      <p className="text-subtle-foreground mt-1 text-xs">After this exit · {statusLine}</p>
+
+      {askHistory ? (
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-muted-foreground text-xs">Are all exits recorded?</span>
+          {[
+            { value: 'complete' as const, label: 'Yes' },
+            { value: 'incomplete' as const, label: 'No' },
+            { value: 'unknown' as const, label: 'Not sure' },
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={history === option.value}
+              onClick={() => onHistoryChange(option.value)}
+              className={cn(
+                'focus-visible:ring-ring relative rounded-full border px-2.5 py-1 text-xs outline-none focus-visible:ring-2',
+                'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
+                history === option.value
+                  ? 'border-primary bg-primary/10 text-foreground font-medium'
+                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       ) : null}
     </div>
   );

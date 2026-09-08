@@ -329,6 +329,121 @@ const SHOTS = [
     height: 760,
   },
 
+  // --- 3c. The unified exit model --------------------------------------------
+  {
+    name: '46-exit-part-percentage-unanswered',
+    path: '/en/prototype/close-trade?trade=t-03&part=1&outcome=profit&amount=10',
+    width: 1440,
+    height: 1300,
+    full: true,
+  },
+  {
+    name: '47-exit-part-percentage-40-safe-remainder',
+    path: '/en/prototype/close-trade?trade=t-03&part=1&outcome=profit&amount=10&percent=40',
+    width: 1440,
+    height: 1300,
+    full: true,
+  },
+  {
+    name: '48-exit-all-remaining-after-unknown-prior',
+    path: '/en/prototype/close-trade?trade=t-03&prior=1&outcome=profit&amount=5',
+    width: 1440,
+    height: 1300,
+    full: true,
+  },
+  {
+    name: '49-exit-closed-history-complete-final',
+    path: '/en/prototype/close-trade?trade=t-03&prior=1&outcome=profit&amount=5',
+    width: 1440,
+    height: 1300,
+    full: true,
+    prepare: async (page) => {
+      // The trader confirms the exit history is finished — only then may the
+      // figure be called Final net P&L.
+      await page.getByRole('button', { name: 'Yes', exact: true }).click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '50-exit-closed-history-incomplete-subtotal',
+    path: '/en/prototype/close-trade?trade=t-03&prior=1&outcome=profit&amount=5',
+    width: 1440,
+    height: 1300,
+    full: true,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'No', exact: true }).click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '51-close-trade-mobile-partial',
+    path: '/en/prototype/close-trade?trade=t-03&part=1&outcome=profit&amount=10',
+    width: 390,
+    height: 844,
+  },
+  {
+    name: '52-historical-baseline-with-target',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1300,
+    full: true,
+    prepare: async (page) => {
+      await page.getByLabel('Risk at entry (USD)').fill('10');
+      await page.getByLabel('Target profit (USD)').fill('20');
+      await page.getByLabel(/Final net profit/).fill('10');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '53-historical-baseline-no-target',
+    path: '/en/prototype/log-trade/after-trade',
+    width: 1440,
+    height: 1300,
+    full: true,
+    prepare: async (page) => {
+      await page.getByLabel('Risk at entry (USD)').fill('10');
+      await page.getByLabel(/Final net profit/).fill('10');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '54-historical-multiple-exits',
+    path: '/en/prototype/log-trade/after-trade?exits=1',
+    width: 1440,
+    height: 1500,
+    full: true,
+  },
+  {
+    name: '55-historical-multiple-exits-percentage-unanswered',
+    path: '/en/prototype/log-trade/after-trade?exits=1&edit=e2',
+    width: 1440,
+    height: 1700,
+    full: true,
+    prepare: async (page) => {
+      // Clear the fraction on the open exit: the record stays valid, and the
+      // header stops claiming a cumulative allocation it can no longer support.
+      await page.getByLabel('Portion of original position closed').fill('');
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '56-historical-closed-exit-history-incomplete',
+    path: '/en/prototype/log-trade/after-trade?exits=1',
+    width: 1440,
+    height: 1500,
+    full: true,
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'No', exact: true }).click();
+      await page.waitForTimeout(200);
+    },
+  },
+  {
+    name: '57-details-record-exit-shared-flow',
+    path: '/en/prototype/trade-log?trade=t-04&tab=execution',
+    width: 1440,
+    height: 1100,
+  },
+
   // --- 4. Date and time ------------------------------------------------------
   {
     name: '15-timestamp-picker-desktop',

@@ -18,9 +18,12 @@ const OUTCOMES: readonly MoneyOutcome[] = ['profit', 'loss', 'break_even'];
  * every field, whether it was asking or reminding.
  *
  *   ?trade=<id>    which open position is being closed (required)
- *   ?part=1        opens on the partial branch
+ *   ?part=1        opens on the partial branch — how Record exit arrives here
  *   ?outcome=…     profit | loss | break_even, to seed the result state
  *   ?amount=…      the magnitude that goes with it
+ *   ?percent=…     seeds the OPTIONAL fraction, for the safe-remainder state
+ *   ?prior=1       pretends an earlier exit exists whose fraction was never
+ *                  recorded, so the unknowable-allocation case can be reviewed
  */
 export default async function CloseTradePrototypePage({
   searchParams,
@@ -39,10 +42,14 @@ export default async function CloseTradePrototypePage({
   const outcome = OUTCOMES.find((candidate) => candidate === one('outcome'));
   const amount = one('amount');
 
+  const percent = one('percent');
+
   return (
     <CloseTradeForm
       trade={trade}
       partial={one('part') === '1'}
+      priorUnknownExit={one('prior') === '1'}
+      {...(percent === null ? {} : { seedPercent: percent })}
       {...(outcome === undefined
         ? {}
         : { seed: { outcome, amount: outcome === 'break_even' ? '' : (amount ?? '') } })}

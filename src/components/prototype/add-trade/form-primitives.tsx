@@ -367,15 +367,30 @@ export function PrimaryAmountField({
         {trailing}
       </div>
 
-      <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex min-w-0 items-center gap-2 rounded-lg border px-3 focus-within:ring-[3px]">
+      {/*
+        THE CURRENCY YIELDS ITS LINE BEFORE THE FIELD YIELDS ITS WIDTH.
+
+        The row was `flex` with the code `shrink-0` beside a `flex-1 min-w-0`
+        input — which is correct at ordinary sizes and collapses at the extreme:
+        at 200% text zoom on a 320px screen the code took the row and left the
+        input 18px, a field whose own value could not be read. `flex-wrap` plus a
+        floor on the input means the code drops beneath it instead. It costs
+        nothing at any width where both fit, which is every width a reader is
+        likely to be at.
+      */}
+      <div className="border-input bg-background focus-within:border-ring focus-within:ring-ring/50 flex min-w-0 flex-wrap items-center gap-x-2 rounded-lg border px-3 py-1 focus-within:ring-[3px]">
         <input
           id={id}
           value={value}
           inputMode="decimal"
           onChange={(event) => onChange(event.target.value)}
-          className="numeric text-foreground h-14 min-w-0 flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl"
+          // The floor is PX, not REM: a rem floor scales with the root font size, which
+          // is exactly what 200% text zoom changes — so it grew to 224px and pushed
+          // the page sideways. 112px keeps the value readable without ever
+          // outgrowing the box that holds it.
+          className="numeric text-foreground h-12 w-full min-w-[112px] flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl"
         />
-        <span className="text-muted-foreground shrink-0 text-sm">{currency}</span>
+        <span className="text-muted-foreground shrink-0 pb-1 text-sm">{currency}</span>
       </div>
 
       {hint === undefined ? null : (

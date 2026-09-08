@@ -669,7 +669,9 @@ function ExecutionTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeC
         title="Exits"
         {...(isOpenPosition
           ? {
-              description: `${closedPercentLabel(trade.closedBps)} recorded · ${closedPercentLabel(remainingBps)} remaining`,
+              // An OPEN position reports lifecycle, not recording coverage —
+              // see `statusText` in `exit-model.ts`.
+              description: `${closedPercentLabel(trade.closedBps)} closed · ${closedPercentLabel(remainingBps)} remaining`,
             }
           : {})}
       >
@@ -724,16 +726,20 @@ function ExecutionTab({ trade, copy }: { trade: PrototypeTrade; copy: PrototypeC
           </ol>
         )}
 
+        {/*
+          RECORD EXIT OPENS THE SHARED CLOSE FLOW, on its partial branch.
+
+          It was a pair of local buttons that did nothing and implied a second,
+          competing partial-exit model. There is one exit flow now: the same
+          fields, the same arithmetic and the same optional fraction, whether a
+          trader arrives from here or from the trade's own Close trade action.
+          `part=1` only chooses the initial answer — they can switch to
+          All remaining if this exit closes the rest.
+        */}
         {isOpenPosition ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {/* Same interpolated-label wrap as the exits editor's
-                "Use remaining X%" — see its note. */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-auto min-h-11 min-w-0 shrink py-2 text-left whitespace-normal"
-            >
-              Close remaining {closedPercentLabel(remainingBps)}
+            <Button variant="outline" size="sm" asChild>
+              <a href={`../close-trade?trade=${trade.id}&part=1`}>Record exit</a>
             </Button>
           </div>
         ) : null}
