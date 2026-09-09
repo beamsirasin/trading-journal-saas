@@ -538,6 +538,30 @@ describe('after adoption, every route back out', () => {
     expect(reconciliation(corrected)).toBe('matched');
   });
 
+  it('follows the subtotal when a priced exit is added and the history stays complete', () => {
+    /*
+      ADDING A LEG IS EDITING THE AUTHORITATIVE SOURCE, NOT OVERRIDING IT. The
+      basis is intact — still declared complete, still every leg priced — so the
+      source is untouched and the result moves with it. Flipping to
+      `manual_total` here would freeze the trade at a figure its own
+      reconstruction no longer supports.
+    */
+    const added = applyExits(adopted, [...adopted.exits, exit({ id: 'e3', amount: '50.00' })]);
+    expect(added.finalSource).toBe('exit_history');
+    expect(finalNetPnl(added)).toBe(450);
+    expect(derivedActualR(added)).toBe(2.25);
+    expect(reconciliation(added)).toBe('matched');
+  });
+
+  it('follows the subtotal when an exit is removed and the history stays complete', () => {
+    const [first] = adopted.exits;
+    const removed = applyExits(adopted, first === undefined ? [] : [first]);
+    expect(removed.finalSource).toBe('exit_history');
+    expect(finalNetPnl(removed)).toBe(100);
+    expect(derivedActualR(removed)).toBe(0.5);
+    expect(reconciliation(removed)).toBe('matched');
+  });
+
   it('re-derives the outcome word when a correction crosses zero', () => {
     const flipped = applyExits(adopted, [
       exit({ id: 'e1', outcome: 'loss', amount: '100.00' }),
@@ -571,17 +595,26 @@ describe('after adoption, every route back out', () => {
     expect(finalNetPnl(overridden)).not.toBe(780);
   });
 
-  it('stops claiming exit provenance when completeness is withdrawn', () => {
-    for (const history of ['unknown', 'incomplete'] as const) {
-      const withdrawn = applyExitHistory(adopted, history);
-      // The money survives: deleting what a person accepted because a
-      // neighbouring answer changed destroys their input.
-      expect(finalNetPnl(withdrawn)).toBe(400);
-      // But it no longer claims a complete reconstruction stands behind it.
-      expect(finalPnlSource(withdrawn)).toBe('manual_total');
-      expect(exitHistoryStatus(withdrawn)).toBe(history);
-      expect(reconciliation(withdrawn)).toBe('unreconciled');
-    }
+  it('stops claiming exit provenance when the history is declared incomplete', () => {
+    const withdrawn = applyExitHistory(adopted, 'incomplete');
+    // The money survives: deleting what a person accepted because a
+    // neighbouring answer changed destroys their input.
+    expect(finalNetPnl(withdrawn)).toBe(400);
+    expect(withdrawn.finalAmount).toBe('400.00');
+    expect(withdrawn.outcome).toBe('profit');
+    // But it no longer claims a complete reconstruction stands behind it.
+    expect(finalPnlSource(withdrawn)).toBe('manual_total');
+    expect(exitHistoryStatus(withdrawn)).toBe('incomplete');
+    expect(reconciliation(withdrawn)).toBe('unreconciled');
+  });
+
+  it('stops claiming exit provenance when completeness becomes unknown', () => {
+    const withdrawn = applyExitHistory(adopted, 'unknown');
+    expect(finalNetPnl(withdrawn)).toBe(400);
+    expect(withdrawn.finalAmount).toBe('400.00');
+    expect(finalPnlSource(withdrawn)).toBe('manual_total');
+    expect(exitHistoryStatus(withdrawn)).toBe('unknown');
+    expect(reconciliation(withdrawn)).toBe('unreconciled');
   });
 
   it('stops claiming exit provenance when a leg loses its amount', () => {
