@@ -1,6 +1,6 @@
 'use client';
 
-import { HeartPulse, Lightbulb, NotebookPen } from 'lucide-react';
+import { HeartPulse, Lightbulb, NotebookPen, Scale } from 'lucide-react';
 import { useState } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -27,6 +27,15 @@ import {
 import { money, type ExitRecord } from '../exit-model';
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
+import {
+  assessmentDependencies,
+  confirmAssessment,
+  EMPTY_SYSTEM_ASSESSMENT,
+  needsReview,
+  systemAssessmentSummary,
+  type AssessmentContext,
+  type SystemAssessmentDraft,
+} from '../system-assessment';
 import { EMPTY_EXIT_PLAN, ExitPlanRow, type ExitPlanDraft } from './exit-plan';
 import { DEFAULT_EXIT_ROWS, ExitsEditor } from './exits-editor';
 import {
@@ -59,6 +68,7 @@ import {
   type PlanDraft,
   type ReviewDraft,
 } from './journal-editors';
+import { SystemAssessmentEditor } from './system-assessment-editor';
 import { formatTimestamp, TimestampField } from './timestamp-picker';
 import { TradeIdeaOverlay } from './trade-idea-overlay';
 
@@ -181,11 +191,58 @@ export function AfterTradeForm({
       : EMPTY_REVIEW,
   );
 
+  /*
+    THE SYSTEM ASSESSMENT AND ITS DEPENDENCIES.
+
+    The context is the PLAN ONLY — strategy, setup, the adopted exit plan and the
+    two planned figures. The actual result is deliberately not in it and cannot
+    reach the assessment, which is what makes "never inferred from the actual
+    result" a property of the wiring rather than a rule somebody has to remember.
+
+    `planProvenance` is DERIVED rather than asked. This whole path records a
+    finished trade, so any plan on it was written down afterwards — that is
+    `reconstructed_later` by construction, and `unknown` when no plan exists at
+    all. A questionnaire asking the trader to confirm what the form already knows
+    would be three seconds spent to learn nothing.
+  */
+  const [system, setSystem] = useState<SystemAssessmentDraft>(EMPTY_SYSTEM_ASSESSMENT);
+  const assessmentContext: AssessmentContext = {
+    strategy: plan.strategy,
+    setup: plan.setup,
+    exitPlan,
+    riskAtEntry: trade.riskAtEntry,
+    targetProfit: trade.noFixedTarget ? '' : trade.targetProfit,
+  };
+  const assessmentNeedsReview = needsReview(system, assessmentContext);
+
   /* Overlay-local working copies, so Cancel and Escape have something to
      discard — the same contract the Still open path established. */
   const idea = useJournalDraft(plan, setPlan);
   const emotion = useJournalDraft(feelings, setFeelings);
   const reflection = useJournalDraft(review, setReview);
+  const assessment = useJournalDraft(system, (next) =>
+    /*
+      DONE CAPTURES WHAT THE ASSESSMENT RESTED ON, at the moment it is committed
+      — so a later edit to the strategy or the exit plan can be detected as a
+      change rather than silently redefining what was already concluded.
+    */
+    setSystem(
+      next.status === 'not_assessed'
+        ? next
+        : {
+            ...next,
+            dependencies: assessmentDependencies(assessmentContext, next.basis),
+            /*
+              DERIVED, NOT ASKED. Every plan on this path was written down after
+              the trade finished, so an assessment resting on one is a
+              reconstruction; with no plan recorded there is nothing to have
+              reconstructed. Asking the trader to confirm either would be a
+              question whose answer the form already holds.
+            */
+            planProvenance: exitPlan.source === 'none' ? 'unknown' : 'reconstructed_later',
+          },
+    ),
+  );
 
   /*
     EVERY FIGURE BELOW IS DERIVED FROM `trade`. None is stored, none is editable
@@ -709,6 +766,47 @@ export function AfterTradeForm({
               onCancel: reflection.cancel,
               children: (
                 <ReflectionEditor draft={reflection.draft} onChange={reflection.setDraft} />
+              ),
+            },
+            {
+              id: 'system',
+              label: 'System assessment',
+              Icon: Scale,
+              invitation: 'What would following your rules have produced?',
+              title: 'System assessment',
+              description:
+                'What the rules that applied to this trade would have produced — separately from what you did.',
+              /*
+                THE STALE MARK RIDES ON THE PREVIEW, not on a badge. The launcher
+                pattern's rule is that the preview IS the status; a second
+                indicator would be the one place in this surface where an area
+                announces an obligation.
+
+                IT GOES FIRST, AND THAT IS NOT A STYLE CHOICE. The launcher
+                renders at most TWO preview lines. Appended last, the mark was
+                the third line of a fully answered assessment — so it rendered
+                for a half-answered one and vanished for a complete one, which is
+                exactly backwards: the more the trader had entered, the less
+                likely they were to be told it no longer applied. Found by
+                driving the state in a browser; the DOM test that "covered" it
+                had only ever produced a one-line summary.
+              */
+              preview: assessmentNeedsReview
+                ? ['Needs review', ...systemAssessmentSummary(system, assessmentContext)]
+                : systemAssessmentSummary(system, assessmentContext),
+              onDone: assessment.done,
+              onCancel: assessment.cancel,
+              children: (
+                <SystemAssessmentEditor
+                  draft={assessment.draft}
+                  onChange={assessment.setDraft}
+                  context={assessmentContext}
+                  currency={CURRENCY}
+                  stale={assessmentNeedsReview}
+                  onConfirm={() =>
+                    assessment.setDraft(confirmAssessment(assessment.draft, assessmentContext))
+                  }
+                />
               ),
             },
           ]}

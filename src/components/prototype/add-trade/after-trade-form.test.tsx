@@ -328,19 +328,25 @@ describe('journal and review', () => {
     expect(screen.getAllByText('Exit plan')).toHaveLength(1);
   });
 
-  it('shows no System assessment anywhere in this pass — including inside Reflection', () => {
-    // NOT AN AT-REST CHECK ALONE. The previous Review kept the rule comparison
-    // one row deeper, so a surface-only assertion passed while opening the row
-    // put "Compare with your rules" and a counterfactual result in front of the
-    // trader. The editor is opened here for that reason.
+  it('keeps System assessment out of the Reflection editor', () => {
+    /*
+      SUPERSEDED IN SCOPE, PRESERVED IN INTENT.
+
+      Pass 1 asserted System assessment appeared NOWHERE, which was right while
+      it was unbuilt. It exists now, as its own launcher — so what still has to
+      hold is the SEPARATION: opening Reflection must present one question about
+      what the trader learned, and nothing about what the rules would have
+      produced. The old Review editor kept the rule comparison one row deeper
+      inside Reflection, which is exactly the conflation this checks against.
+    */
     openBlank();
     fireEvent.click(screen.getByRole('button', { name: /Reflection/ }));
 
     expect(screen.getByLabelText('In your own words')).toBeInTheDocument();
-    expect(screen.queryByText(/System assessment/i)).toBeNull();
+    expect(screen.queryByText('Would your rules have taken this trade?')).toBeNull();
+    expect(screen.queryByText('What would have closed the trade?')).toBeNull();
+    expect(screen.queryByText('Did you follow your plan?')).toBeNull();
     expect(screen.queryByText(/Compare with your rules/i)).toBeNull();
-    expect(screen.queryByText(/follow(ed)? your rules/i)).toBeNull();
-    expect(screen.queryByText(/would have produced/i)).toBeNull();
     expect(screen.queryByText(/If you followed your rules/i)).toBeNull();
   });
 
@@ -545,5 +551,300 @@ describe('two closing times', () => {
     ).toBeInTheDocument();
     // The trader's own Final exit time is untouched.
     expect(screen.getByRole('button', { name: 'Final exit time' })).toHaveTextContent('14:32');
+  });
+});
+
+/**
+ * SYSTEM ASSESSMENT ON THE SCREEN — the second Review launcher.
+ *
+ * The semantics are proved in `system-assessment.test.ts`. These prove the
+ * trader can reach them, that the short path is genuinely short, and that
+ * nothing about the assessment leaks into the trade's own result or into
+ * Reflection.
+ */
+describe('the System assessment launcher', () => {
+  const openAssessment = () =>
+    fireEvent.click(screen.getByRole('button', { name: /System assessment/ }));
+  const done = () => fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+  it('sits beside Reflection under Review, and starts as an invitation', () => {
+    openBlank();
+    expect(screen.getByText('Review')).toBeInTheDocument();
+    expect(screen.getByText('Reflection')).toBeInTheDocument();
+    expect(screen.getByText('System assessment')).toBeInTheDocument();
+    expect(screen.getByText('What would following your rules have produced?')).toBeInTheDocument();
+    // Untouched means silent: no badge, no count, no "needs review".
+    expect(screen.queryByText('Needs review')).toBeNull();
+  });
+
+  it('never blocks the save', () => {
+    const onSave = vi.fn();
+    show({ onSave });
+    identify();
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens on one question with three answers', () => {
+    openBlank();
+    openAssessment();
+    expect(screen.getByText('Would your rules have taken this trade?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "No — the setup wasn't valid" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Can't determine" })).toBeInTheDocument();
+    // Nothing further is exposed until the first question is answered.
+    expect(screen.queryByText('What would have closed the trade?')).toBeNull();
+  });
+
+  it('completes as no_trade in one answer, and states what that means', () => {
+    openBlank();
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: "No — the setup wasn't valid" }));
+
+    expect(screen.getByText(/no system result to compare against/)).toBeInTheDocument();
+    // No resolution, and emphatically no System R of zero.
+    expect(screen.queryByText('What would have closed the trade?')).toBeNull();
+    expect(screen.queryByText(/0\.00R/)).toBeNull();
+
+    done();
+    expect(screen.getByText('Your rules would not have taken this trade')).toBeInTheDocument();
+  });
+
+  it('completes as cannot determine without inventing a figure', () => {
+    openBlank();
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: "Can't determine" }));
+    expect(screen.getByText(/Nothing is assumed/)).toBeInTheDocument();
+    expect(screen.queryByText(/R$/)).toBeNull();
+
+    done();
+    expect(screen.getByText('Can’t determine what the rules would have done')).toBeInTheDocument();
+    // Distinct from never having been asked.
+    expect(screen.queryByText('What would following your rules have produced?')).toBeNull();
+  });
+
+  it('asks for the rule before any magnitude, and never preselects one', () => {
+    openBlank();
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+
+    expect(screen.getByText('What would have closed the trade?')).toBeInTheDocument();
+    expect(
+      screen.getByText('The rule that would have fired first — not where price happened to go.'),
+    ).toBeInTheDocument();
+    for (const label of ['Target hit', 'Stop hit', 'Trailing exit']) {
+      expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
+    }
+    // No magnitude offered until a rule is named.
+    expect(screen.queryByText('Where does the result come from?')).toBeNull();
+  });
+
+  it('does not turn a recorded target into a system result on its own', () => {
+    // The plan says target 1000 over risk 200 — Target R is +5.00R and visible
+    // on the page. It becomes the system result only after two explicit choices.
+    show({ filled: true });
+    expect(screen.getByText('+5.00R')).toBeInTheDocument();
+
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    expect(screen.queryByText('System R')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    expect(screen.queryByText('System R')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    expect(screen.getByText(/System R/)).toBeInTheDocument();
+  });
+
+  it('keeps an unknown cost unknown, and withholds the comparison', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+
+    // The cost field is empty and says so — never a prefilled zero.
+    const cost = screen.getByLabelText(/Costs if you followed your rules/);
+    expect(cost).toHaveValue('');
+    expect(cost).toHaveAttribute('placeholder', 'Unknown');
+
+    expect(screen.getByText('System R (gross)')).toBeInTheDocument();
+    expect(
+      screen.getByText('Gross only — not compared with your actual result, which is after costs.'),
+    ).toBeInTheDocument();
+  });
+
+  it('produces a net figure and an outcome once the cost is given', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    fireEvent.change(screen.getByLabelText(/Costs if you followed your rules/), {
+      target: { value: '0.2' },
+    });
+
+    expect(screen.getByText('System R')).toBeInTheDocument();
+    expect(screen.getByText('+4.80R')).toBeInTheDocument();
+    expect(screen.getByText(/System win/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Gross only — not compared with your actual result, which is after costs.',
+      ),
+    ).toBeNull();
+  });
+
+  it('records a system loss the trader followed', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop hit' }));
+    fireEvent.click(screen.getByRole('button', { name: /Your initial stop/ }));
+    fireEvent.change(screen.getByLabelText(/Costs if you followed your rules/), {
+      target: { value: '0' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Followed' }));
+    expect(screen.getByText(/System loss/)).toBeInTheDocument();
+    done();
+
+    expect(screen.getByText('System -1.00R')).toBeInTheDocument();
+    expect(screen.getByText('Followed your plan')).toBeInTheDocument();
+    // The trade's own +400.00 result is untouched by any of it.
+    expect(screen.getByLabelText('Final net profit')).toHaveValue('400.00');
+  });
+
+  it('records a system win the trader did not follow', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    fireEvent.change(screen.getByLabelText(/Costs if you followed your rules/), {
+      target: { value: '0' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Not followed' }));
+    done();
+
+    expect(screen.getByText('System +5.00R')).toBeInTheDocument();
+    expect(screen.getByText('Did not follow your plan')).toBeInTheDocument();
+  });
+
+  it('asks adherence even when the system result cannot be determined', () => {
+    // Not knowing what the rules would have produced says nothing about whether
+    // the trader followed them.
+    openBlank();
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: "Can't determine" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Partly' }));
+    done();
+
+    expect(screen.getByText('Can’t determine what the rules would have done')).toBeInTheDocument();
+    expect(screen.getByText('Partly followed your plan')).toBeInTheDocument();
+  });
+
+  it('states that a reconstructed plan is a reconstruction', () => {
+    openBlank();
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: "Can't determine" }));
+    expect(screen.getByText(/No exit plan is recorded for this trade/)).toBeInTheDocument();
+  });
+
+  it('marks the assessment for review when a rule it rested on changes', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    done();
+    expect(screen.getByText('System +5.00R gross')).toBeInTheDocument();
+    expect(screen.queryByText('Needs review')).toBeNull();
+
+    // The risk this assessment divided by is corrected afterwards.
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+
+    expect(screen.getByText('Needs review')).toBeInTheDocument();
+    // Preserved, not erased — and it still computes, against the new figure.
+    expect(screen.getByText('System +10.00R gross')).toBeInTheDocument();
+  });
+
+  it('shows the review mark even on a fully answered assessment', () => {
+    /*
+      THE LAUNCHER RENDERS TWO PREVIEW LINES AND NO MORE.
+
+      With the mark appended last, a complete assessment — a system figure AND an
+      adherence answer — pushed it off the end, so the trader was told their
+      assessment was stale only while it was half finished. The more they had
+      entered, the less likely they were to hear that it no longer applied.
+      Ordering is load-bearing here, which is why this asserts the fully answered
+      case specifically.
+    */
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Not followed' }));
+    done();
+
+    // Two lines of real content before anything is stale.
+    expect(screen.getByText('System +5.00R gross')).toBeInTheDocument();
+    expect(screen.getByText('Did not follow your plan')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    expect(screen.getByText('Needs review')).toBeInTheDocument();
+  });
+
+  it('settles again when the trader confirms it still applies', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    done();
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    expect(screen.getByText('Needs review')).toBeInTheDocument();
+
+    openAssessment();
+    expect(screen.getByText(/kept, but it is not counted until you confirm/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'This still applies' }));
+    done();
+    expect(screen.queryByText('Needs review')).toBeNull();
+  });
+
+  it('does not mark it stale when the reflection changes', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    done();
+
+    fireEvent.click(screen.getByRole('button', { name: /Reflection/ }));
+    fireEvent.change(screen.getByLabelText('In your own words'), {
+      target: { value: 'A completely different conclusion.' },
+    });
+    done();
+    expect(screen.queryByText('Needs review')).toBeNull();
+  });
+});
+
+describe('Reflection and System assessment complete independently', () => {
+  it('leaves System assessment inviting after Reflection is written', () => {
+    show({ filled: true });
+    // The seeded draft already holds a reflection.
+    expect(
+      screen.getByText('Wait for the candle close next time rather than anticipating it.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('What would following your rules have produced?')).toBeInTheDocument();
+  });
+
+  it('leaves Reflection inviting after System assessment is answered', () => {
+    openBlank();
+    fireEvent.click(screen.getByRole('button', { name: /System assessment/ }));
+    fireEvent.click(screen.getByRole('button', { name: "No — the setup wasn't valid" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(screen.getByText('Your rules would not have taken this trade')).toBeInTheDocument();
+    expect(screen.getByText('What would you repeat or change next time?')).toBeInTheDocument();
   });
 });
