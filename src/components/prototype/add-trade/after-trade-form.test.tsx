@@ -629,10 +629,8 @@ describe('the System assessment launcher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
 
     expect(screen.getByText('What would have closed the trade?')).toBeInTheDocument();
-    expect(
-      screen.getByText('The rule that would have fired first — not where price happened to go.'),
-    ).toBeInTheDocument();
-    for (const label of ['Target hit', 'Stop hit', 'Trailing exit']) {
+    expect(screen.getByText(/The rule that would have fired first/)).toBeInTheDocument();
+    for (const label of ['Target hit', 'Initial stop hit', 'Trailing exit']) {
       expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
     }
     // No magnitude offered until a rule is named.
@@ -698,7 +696,7 @@ describe('the System assessment launcher', () => {
     show({ filled: true });
     openAssessment();
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Stop hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Initial stop hit' }));
     fireEvent.click(screen.getByRole('button', { name: /Your initial stop/ }));
     fireEvent.change(screen.getByLabelText(/Costs if you followed your rules/), {
       target: { value: '0' },
@@ -746,7 +744,10 @@ describe('the System assessment launcher', () => {
     openBlank();
     openAssessment();
     fireEvent.click(screen.getByRole('button', { name: "Can't determine" }));
-    expect(screen.getByText(/No exit plan is recorded for this trade/)).toBeInTheDocument();
+    expect(screen.getByText('Were these rules in place before you entered?')).toBeInTheDocument();
+    expect(
+      screen.getByText('Unanswered — this assessment is recorded without a claim either way.'),
+    ).toBeInTheDocument();
   });
 
   it('marks the assessment for review when a rule it rested on changes', () => {
@@ -763,8 +764,37 @@ describe('the System assessment launcher', () => {
     fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
 
     expect(screen.getByText('Needs review')).toBeInTheDocument();
-    // Preserved, not erased — and it still computes, against the new figure.
-    expect(screen.getByText('System +10.00R gross')).toBeInTheDocument();
+    /*
+      THE CONFIRMED FIGURE SURVIVES; THE RECOMPUTED ONE DOES NOT REPLACE IT.
+
+      Halving the risk would make today's inputs calculate +10.00R, and an
+      earlier version printed exactly that — a system result nobody had assessed,
+      arrived at by editing a plan field. The preview reports what the trader
+      confirmed, labelled as previous, and the recomputed figure appears only
+      inside the editor as context.
+    */
+    expect(screen.getByText('Previously confirmed: +5.00R gross')).toBeInTheDocument();
+    expect(screen.queryByText('System +10.00R gross')).toBeNull();
+  });
+
+  it('offers the recomputed figure inside the editor, never as the result', () => {
+    show({ filled: true });
+    openAssessment();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Target hit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Your recorded target' }));
+    done();
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+
+    openAssessment();
+    expect(
+      screen.getByText(
+        'The plan information used by this assessment has changed. It has been kept, but it is not counted until you confirm it still applies.',
+      ),
+    ).toBeInTheDocument();
+    // Stated in the launcher preview AND in the editor, deliberately.
+    expect(screen.getAllByText(/Previously confirmed:/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Current inputs would calculate/)).toBeInTheDocument();
   });
 
   it('shows the review mark even on a fully answered assessment', () => {

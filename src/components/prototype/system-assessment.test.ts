@@ -13,9 +13,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { ExitPlanDraft } from './add-trade/exit-plan';
 import {
-  assessmentDependencies,
+  analyticsEligibility,
   comparability,
   confirmAssessment,
+  confirmedGrossR,
+  confirmedNetR,
+  confirmedOutcome,
+  currentGrossR,
   EMPTY_SYSTEM_ASSESSMENT,
   executionGapR,
   isResolved,
@@ -44,7 +48,7 @@ const CONTEXT: AssessmentContext = {
   targetProfit: '1000.00',
 };
 
-/** An assessment as the editor would leave it, before dependencies are captured. */
+/** An assessment as Done would leave it: entered, then confirmed. */
 function assessed(overrides: Partial<SystemAssessmentDraft> = {}): SystemAssessmentDraft {
   const draft: SystemAssessmentDraft = {
     ...EMPTY_SYSTEM_ASSESSMENT,
@@ -53,7 +57,7 @@ function assessed(overrides: Partial<SystemAssessmentDraft> = {}): SystemAssessm
     basis: 'plan_target',
     ...overrides,
   };
-  return { ...draft, dependencies: assessmentDependencies(CONTEXT, draft.basis) };
+  return confirmAssessment(draft, CONTEXT);
 }
 
 describe('the four states, and the two that must not merge', () => {
@@ -351,11 +355,10 @@ describe('a dependency that moves marks the assessment for review', () => {
   });
 
   it('rests no_trade on the rules that forbade the trade', () => {
-    const forbidden: SystemAssessmentDraft = {
-      ...EMPTY_SYSTEM_ASSESSMENT,
-      status: 'no_trade',
-      dependencies: assessmentDependencies(CONTEXT, null),
-    };
+    const forbidden = confirmAssessment(
+      { ...EMPTY_SYSTEM_ASSESSMENT, status: 'no_trade' },
+      CONTEXT,
+    );
     expect(needsReview(forbidden, CONTEXT)).toBe(false);
     expect(needsReview(forbidden, { ...CONTEXT, setup: 'Wave C exhaustion' })).toBe(true);
   });
@@ -370,5 +373,180 @@ describe('a dependency that moves marks the assessment for review', () => {
 
   it('never flags an unassessed trade', () => {
     expect(needsReview(EMPTY_SYSTEM_ASSESSMENT, { ...CONTEXT, strategy: 'Anything' })).toBe(false);
+  });
+});
+
+describe('provenance describes the rules, not the typing', () => {
+  it('does not become reconstructed merely because the record was entered late', () => {
+    /*
+      THE INFERENCE THIS REPLACED. An earlier version reasoned "historical
+      recording path, therefore the rules were reconstructed" — but a trader
+      typing in notes they wrote before entering has a plan that applied AT
+      ENTRY and merely late data entry. The two events are routinely weeks apart
+      and in either order.
+    */
+    const late = confirmAssessment(
+      { ...EMPTY_SYSTEM_ASSESSMENT, status: 'cannot_determine' },
+      CONTEXT,
+    );
+    expect(late.planProvenance).toBe('unknown');
+  });
+
+  it('stays unknown while the prototype holds no evidence either way', () => {
+    // No creation times on saved plans, no strategy versioning — nothing here
+    // can establish when the rules came into force.
+    expect(EMPTY_SYSTEM_ASSESSMENT.planProvenance).toBe('unknown');
+    expect(assessed().planProvenance).toBe('unknown');
+    expect(assessed({ basis: 'custom_r', grossRInput: '2' }).planProvenance).toBe('unknown');
+  });
+
+  it('records at_entry when the rules are established as having applied', () => {
+    const proven = assessed({ planProvenance: 'at_entry' });
+    expect(proven.planProvenance).toBe('at_entry');
+    // Confirming does not overwrite what was established.
+    expect(confirmAssessment(proven, CONTEXT).planProvenance).toBe('at_entry');
+  });
+
+  it('records reconstructed_later only when that is what the trader states', () => {
+    const stated = assessed({ planProvenance: 'reconstructed_later' });
+    expect(stated.planProvenance).toBe('reconstructed_later');
+    expect(confirmAssessment(stated, CONTEXT).planProvenance).toBe('reconstructed_later');
+  });
+});
+
+describe('only the INITIAL stop is worth −1R', () => {
+  it('resolves the initial stop to −1R', () => {
+    expect(systemGrossR(assessed({ reason: 'stop_hit', basis: 'plan_stop' }), CONTEXT)).toBe(-1);
+  });
+
+  it('refuses −1R for a stop the rules had moved', () => {
+    /*
+      −1R IS ARITHMETIC ONLY FOR THE STOP THAT RISK AT ENTRY MEASURES. A trailing
+      stop, a break-even stop, or any rule-tightened stop has travelled, and −1R
+      would then misstate the counterfactual by however far it moved. The pairing
+      is enforced in the model, so no form can reach it by accident.
+    */
+    for (const reason of ['trailing_exit', 'break_even_rule', 'rule_exit', 'time_exit'] as const) {
+      const moved = assessed({ reason, basis: 'plan_stop' });
+      expect(systemGrossR(moved, CONTEXT)).toBeNull();
+      expect(systemGrossR(moved, CONTEXT)).not.toBe(-1);
+    }
+  });
+
+  it('holds the same guard for the other plan-derived bases', () => {
+    expect(
+      systemGrossR(assessed({ reason: 'trailing_exit', basis: 'plan_target' }), CONTEXT),
+    ).toBeNull();
+    expect(systemGrossR(assessed({ reason: 'stop_hit', basis: 'break_even' }), CONTEXT)).toBeNull();
+  });
+
+  it('leaves the trader’s own figure available for a moved stop', () => {
+    const trailed = assessed({ reason: 'trailing_exit', basis: 'custom_r', grossRInput: '-0.4' });
+    expect(systemGrossR(trailed, CONTEXT)).toBe(-0.4);
+  });
+});
+
+describe('a confirmed counterfactual is frozen until it is re-confirmed', () => {
+  /* Confirmed at +5R: target 1000 over risk 200. */
+  const confirmed = assessed({ basis: 'plan_target', costR: '0' });
+  /* The historical target is later corrected, which would imply +10R. */
+  const movedContext: AssessmentContext = { ...CONTEXT, targetProfit: '2000.00' };
+
+  it('keeps the confirmed figure when the inputs would now imply another', () => {
+    expect(confirmedNetR(confirmed)).toBe(5);
+    expect(needsReview(confirmed, movedContext)).toBe(true);
+
+    // The confirmed result does not move. Nobody assessed +10R.
+    expect(confirmedGrossR(confirmed)).toBe(5);
+    expect(confirmedNetR(confirmed)).toBe(5);
+    expect(confirmedOutcome(confirmed)).toBe('win');
+  });
+
+  it('exposes what the current inputs would calculate, as context only', () => {
+    expect(currentGrossR(confirmed, movedContext)).toBe(10);
+    // Available to show, and never the confirmed result.
+    expect(confirmedGrossR(confirmed)).not.toBe(currentGrossR(confirmed, movedContext));
+  });
+
+  it('reports the confirmed figure in the preview, labelled as previous', () => {
+    expect(systemAssessmentSummary(confirmed, CONTEXT)).toEqual(['System +5.00R']);
+    expect(systemAssessmentSummary(confirmed, movedContext)).toEqual([
+      'Previously confirmed: +5.00R',
+    ]);
+  });
+
+  it('withholds a stale assessment from trusted analytics', () => {
+    expect(analyticsEligibility(confirmed, CONTEXT)).toBe('eligible');
+    expect(analyticsEligibility(confirmed, movedContext)).toBe('needs_review');
+    // And no Execution Gap is produced against a stale counterfactual.
+    expect(executionGapR(1.5, confirmed, CONTEXT)).toBeCloseTo(-3.5, 10);
+    expect(executionGapR(1.5, confirmed, movedContext)).toBeNull();
+  });
+
+  it('promotes the new figure only on an explicit reconfirmation', () => {
+    const reconfirmed = confirmAssessment(confirmed, movedContext);
+    expect(needsReview(reconfirmed, movedContext)).toBe(false);
+    expect(confirmedNetR(reconfirmed)).toBe(10);
+    expect(analyticsEligibility(reconfirmed, movedContext)).toBe('eligible');
+    expect(systemAssessmentSummary(reconfirmed, movedContext)).toEqual(['System +10.00R']);
+  });
+
+  it('preserves everything the trader entered while stale', () => {
+    // Staleness is a review requirement, not data deletion.
+    const withAdherence = assessed({ basis: 'plan_target', costR: '0', adherence: 'partly' });
+    expect(needsReview(withAdherence, movedContext)).toBe(true);
+    expect(withAdherence.reason).toBe('target_hit');
+    expect(withAdherence.basis).toBe('plan_target');
+    expect(withAdherence.adherence).toBe('partly');
+    expect(withAdherence.confirmed?.grossR).toBe(5);
+    expect(withAdherence.confirmed?.dependencies.targetProfit).toBe('1000.00');
+  });
+
+  it('freezes a no_trade finding the same way', () => {
+    const forbidden = confirmAssessment(
+      { ...EMPTY_SYSTEM_ASSESSMENT, status: 'no_trade' },
+      CONTEXT,
+    );
+    expect(analyticsEligibility(forbidden, CONTEXT)).toBe('no_trade');
+    // A stale finding is no more trustworthy than a stale magnitude.
+    expect(analyticsEligibility(forbidden, { ...CONTEXT, setup: 'Wave C exhaustion' })).toBe(
+      'needs_review',
+    );
+  });
+});
+
+describe('analytics eligibility, stated rather than left to the reporting layer', () => {
+  it('admits only a confirmed, net, current assessment', () => {
+    expect(analyticsEligibility(assessed({ basis: 'plan_target', costR: '0' }), CONTEXT)).toBe(
+      'eligible',
+    );
+  });
+
+  it('separates a gross-only confirmation from an eligible one', () => {
+    expect(analyticsEligibility(assessed({ basis: 'plan_target' }), CONTEXT)).toBe('gross_only');
+  });
+
+  it('reports the unassessed and the undeterminable as unavailable', () => {
+    expect(analyticsEligibility(EMPTY_SYSTEM_ASSESSMENT, CONTEXT)).toBe('not_available');
+    expect(
+      analyticsEligibility(
+        confirmAssessment({ ...EMPTY_SYSTEM_ASSESSMENT, status: 'cannot_determine' }, CONTEXT),
+        CONTEXT,
+      ),
+    ).toBe('not_available');
+  });
+
+  it('reports an unconfirmed but entered assessment as unavailable', () => {
+    // Entered in the editor and never committed: nothing has been confirmed, so
+    // there is nothing for analytics to read.
+    const uncommitted: SystemAssessmentDraft = {
+      ...EMPTY_SYSTEM_ASSESSMENT,
+      status: 'assessed',
+      reason: 'target_hit',
+      basis: 'plan_target',
+      costR: '0',
+    };
+    expect(analyticsEligibility(uncommitted, CONTEXT)).toBe('not_available');
+    expect(confirmedNetR(uncommitted)).toBeNull();
   });
 });

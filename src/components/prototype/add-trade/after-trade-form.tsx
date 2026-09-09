@@ -28,7 +28,6 @@ import { money, type ExitRecord } from '../exit-model';
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
 import {
-  assessmentDependencies,
   confirmAssessment,
   EMPTY_SYSTEM_ASSESSMENT,
   needsReview,
@@ -226,22 +225,20 @@ export function AfterTradeForm({
       — so a later edit to the strategy or the exit plan can be detected as a
       change rather than silently redefining what was already concluded.
     */
-    setSystem(
-      next.status === 'not_assessed'
-        ? next
-        : {
-            ...next,
-            dependencies: assessmentDependencies(assessmentContext, next.basis),
-            /*
-              DERIVED, NOT ASKED. Every plan on this path was written down after
-              the trade finished, so an assessment resting on one is a
-              reconstruction; with no plan recorded there is nothing to have
-              reconstructed. Asking the trader to confirm either would be a
-              question whose answer the form already holds.
-            */
-            planProvenance: exitPlan.source === 'none' ? 'unknown' : 'reconstructed_later',
-          },
-    ),
+    /*
+      DONE IS A CONFIRMATION. It freezes the result and the facts it rested on,
+      so a later plan edit is detectable as a change rather than silently
+      recomputing what the trader concluded.
+
+      PROVENANCE IS NOT SET HERE, and that is the correction. This form used to
+      write `reconstructed_later` whenever a plan existed, reasoning from the
+      recording route — but when the record was TYPED says nothing about when the
+      PLAN was made, and notes written before entry and entered afterwards are
+      `at_entry`. The prototype holds no evidence either way: the plan library
+      has no creation times and there is no strategy versioning here. So it stays
+      whatever the trader stated, and `unknown` when they have not.
+    */
+    setSystem(confirmAssessment(next, assessmentContext)),
   );
 
   /*

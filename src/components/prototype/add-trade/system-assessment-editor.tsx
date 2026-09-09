@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 
 import {
   comparability,
+  confirmedGrossR,
+  confirmedNetR,
+  currentGrossR,
   systemCostR,
   systemGrossR,
   systemNetR,
@@ -12,6 +15,7 @@ import {
   type Adherence,
   type AssessmentContext,
   type AssessmentStatus,
+  type PlanProvenance,
   type SystemAssessmentDraft,
   type SystemBasis,
   type SystemExitReason,
@@ -54,14 +58,32 @@ const STATUS_OPTIONS: readonly { value: AssessmentStatus; label: string }[] = [
   { value: 'cannot_determine', label: "Can't determine" },
 ];
 
+/**
+ * "INITIAL STOP HIT", NOT "STOP HIT" — the narrowing matters more than it reads.
+ *
+ * The generic wording invited a trader whose stop had been trailed up, or moved
+ * to break-even, to select it — and the plan-derived basis behind it answers
+ * −1R, which is true only of the stop that Risk at entry measures. A stop that
+ * travelled resolves somewhere else entirely. The label says which stop it means
+ * and the model refuses the pairing anyway (`basisMatchesReason`), so the two
+ * defences are independent.
+ *
+ * The enum VALUE stays `stop_hit` for production compatibility; only the
+ * semantics the trader is offered have narrowed.
+ */
 const REASON_OPTIONS: readonly { value: SystemExitReason; label: string }[] = [
   { value: 'target_hit', label: 'Target hit' },
-  { value: 'stop_hit', label: 'Stop hit' },
+  { value: 'stop_hit', label: 'Initial stop hit' },
   { value: 'break_even_rule', label: 'Break-even rule' },
   { value: 'trailing_exit', label: 'Trailing exit' },
   { value: 'time_exit', label: 'Time or session exit' },
   { value: 'rule_exit', label: 'Another rule' },
   { value: 'manual_system_valid_exit', label: 'A judgement the rules allow' },
+];
+
+const PROVENANCE_OPTIONS: readonly { value: PlanProvenance; label: string }[] = [
+  { value: 'at_entry', label: 'Yes, before I entered' },
+  { value: 'reconstructed_later', label: "No, I've worked them out since" },
 ];
 
 const ADHERENCE_OPTIONS: readonly { value: Adherence; label: string }[] = [
@@ -176,6 +198,12 @@ export function SystemAssessmentEditor({
   const compare = comparability(draft, context);
   const bases = basisOptions(draft.reason, context);
 
+  /* The frozen result the trader actually confirmed, and what today's figures
+     would produce — kept apart deliberately. See the stale block below. */
+  const confirmedNet = confirmedNetR(draft);
+  const confirmedShown = confirmedNet ?? confirmedGrossR(draft);
+  const currentShown = currentGrossR(draft, context);
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
       {/*
@@ -186,12 +214,42 @@ export function SystemAssessmentEditor({
         until they say it still stands. Deleting it would destroy real work over
         a one-character edit.
       */}
+      {/*
+        THE CONFIRMED RESULT AND THE CURRENT ONE, SIDE BY SIDE AND LABELLED.
+
+        What the trader confirmed is stated as what it is — previously confirmed
+        — and what today's plan figures would produce is offered beneath it as
+        context, in plain words that never call it the system result. Only "This
+        still applies" promotes it. Presenting the recomputed number alone, as an
+        earlier version did, meant editing a historical target silently turned a
+        confirmed +5R into +10R that nobody had assessed.
+      */}
       {stale ? (
         <div className="border-warning/40 bg-warning/5 flex min-w-0 flex-col gap-2 rounded-lg border p-3">
           <p className="text-warning text-sm leading-relaxed">
-            Your strategy, setup or exit plan changed after you made this assessment. It has been
-            kept, but it is not counted until you confirm it still applies.
+            The plan information used by this assessment has changed. It has been kept, but it is
+            not counted until you confirm it still applies.
           </p>
+          {confirmedShown === null ? null : (
+            <p className="text-foreground text-sm">
+              Previously confirmed:{' '}
+              <span className="numeric font-semibold">
+                {confirmedShown > 0 ? '+' : ''}
+                {confirmedShown.toFixed(2)}R
+              </span>
+              {confirmedNet === null ? ' gross' : ''}
+            </p>
+          )}
+          {currentShown === null || currentShown === confirmedShown ? null : (
+            <p className="text-muted-foreground text-sm">
+              Current inputs would calculate{' '}
+              <span className="numeric font-medium">
+                {currentShown > 0 ? '+' : ''}
+                {currentShown.toFixed(2)}R
+              </span>
+              .
+            </p>
+          )}
           {onConfirm === undefined ? null : (
             <Button size="sm" variant="outline" className="min-h-11 self-start" onClick={onConfirm}>
               This still applies
@@ -234,7 +292,7 @@ export function SystemAssessmentEditor({
         <>
           <Chips
             legend="What would have closed the trade?"
-            hint="The rule that would have fired first — not where price happened to go."
+            hint="The rule that would have fired first — not where price happened to go. “Initial stop” means the stop your Risk at entry was measured against; a stop you moved or trailed is one of the others."
             options={REASON_OPTIONS}
             value={draft.reason}
             onChange={(reason) =>
@@ -363,17 +421,35 @@ export function SystemAssessmentEditor({
       </div>
 
       {/*
-        PROVENANCE, STATED ONCE AND NOT ASKED. On this path the plan was written
-        down after the trade finished, so any assessment resting on it is a
-        reconstruction. Saying so costs one line and stops the record from
-        reading as though the rules had been captured at entry.
+        PROVENANCE IS ASKED, BECAUSE NOTHING HERE CAN ESTABLISH IT.
+
+        IT USED TO BE DERIVED, AND THE DERIVATION WAS WRONG: "this is the
+        historical path, so the rules were reconstructed". When a record was
+        TYPED says nothing about when its PLAN was made — a trader entering notes
+        they wrote before the trade has rules that applied at entry and merely
+        late data entry. The prototype holds no evidence either way (the plan
+        library has no creation times and there is no strategy versioning here),
+        so the one party who knows is asked, once, and `unknown` stands until
+        they answer.
+
+        It sits last because it qualifies the assessment rather than forming part
+        of it, and it never blocks anything.
       */}
       {draft.status === 'not_assessed' ? null : (
-        <InlineNote>
-          {draft.planProvenance === 'reconstructed_later'
-            ? 'Based on rules you recorded after the trade, so this is your reconstruction rather than a measurement.'
-            : 'No exit plan is recorded for this trade, so this is your own assessment.'}
-        </InlineNote>
+        <div className="border-border min-w-0 border-t pt-5">
+          <Chips
+            legend="Were these rules in place before you entered?"
+            hint="About the rules themselves, not about when you typed them in."
+            options={PROVENANCE_OPTIONS}
+            value={draft.planProvenance === 'unknown' ? null : draft.planProvenance}
+            onChange={(planProvenance) => patch({ planProvenance })}
+          />
+          {draft.planProvenance === 'unknown' ? (
+            <InlineNote>
+              Unanswered — this assessment is recorded without a claim either way.
+            </InlineNote>
+          ) : null}
+        </div>
       )}
     </div>
   );

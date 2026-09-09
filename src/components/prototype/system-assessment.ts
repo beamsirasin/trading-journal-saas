@@ -121,15 +121,21 @@ export type SystemBasis = (typeof SYSTEM_BASES)[number];
 export type ResolutionSource = 'trader_assessed' | 'price_geometry';
 
 /**
- * WHETHER THE RULES USED AS EVIDENCE WERE THE RULES IN FORCE.
+ * WHETHER THE RULES USED AS EVIDENCE WERE THE RULES IN FORCE AT ENTRY.
  *
- * `at_entry` — the plan was recorded when the trade was opened.
- * `reconstructed_later` — the trader wrote it down afterwards, from memory.
- * `unknown` — no plan is recorded at all.
+ * `at_entry` — the plan existed and applied when the trade was opened. Notes
+ *              made before entry and typed into TradeChemist afterwards are
+ *              still `at_entry`: the PLAN is what this describes, not the
+ *              typing.
+ * `reconstructed_later` — the trader worked out afterwards what they believe
+ *              applied.
+ * `unknown` — provenance cannot be established.
  *
- * A historical trade written up today is `reconstructed_later` by construction,
- * and that is not a defect — it is the ordinary state of this whole recording
- * path. What it must never do is pass as `at_entry`.
+ * IT IS NEVER DERIVED FROM WHEN THE RECORD WAS TYPED. That inference — "this is
+ * the historical path, so the rules must be reconstructed" — conflates the
+ * moment of writing with the moment of deciding, and they are routinely weeks
+ * apart in opposite directions. `unknown` is the honest default and the one this
+ * prototype can actually support.
  */
 export type PlanProvenance = 'at_entry' | 'reconstructed_later' | 'unknown';
 
@@ -185,18 +191,58 @@ export interface SystemAssessmentDraft {
    * trader's behalf, in the direction that flatters the system.
    */
   readonly costR: string;
+  /**
+   * WHERE THE RULES CAME FROM — never derived from the recording route.
+   *
+   * IT WAS DERIVED, AND THAT WAS WRONG. An earlier version set
+   * `reconstructed_later` whenever this historical path had a plan on it,
+   * reasoning that a trade written up after it closed must have had its rules
+   * written up then too. Those are different events. A trader can be typing in
+   * notes they made before they entered — the plan existed at entry and only the
+   * TYPING is late. Reading the second fact off the first manufactures a
+   * provenance claim from a timestamp that says nothing about it.
+   *
+   * THE PROTOTYPE HAS NO AUTOMATIC EVIDENCE FOR THIS. The exit-plan library has
+   * no creation times, there is no strategy versioning here, and a plan existing
+   * in the library today proves nothing about what applied last month — which is
+   * exactly why Pass 1 stopped inheriting strategy defaults. So it stays
+   * `unknown` unless the trader states otherwise, and a caller that DOES hold
+   * evidence (a pinned strategy version predating entry, an applicable saved
+   * snapshot) may set it directly.
+   */
   readonly planProvenance: PlanProvenance;
   readonly resolutionSource: ResolutionSource;
   readonly adherence: Adherence;
-  /** Captured at completion; `null` while nothing has been assessed. */
-  readonly dependencies: AssessmentDependencies | null;
   /**
-   * The trader has re-confirmed the assessment after a dependency moved.
+   * THE CONFIRMED COUNTERFACTUAL — a FROZEN result, not a live recomputation.
    *
-   * Cleared whenever a new dependency change is detected, so confirming once
-   * does not silence every future change.
+   * THE BUG THIS SHAPE EXISTS TO PREVENT. Reading the figure live meant that
+   * editing the historical target from 1000 to 2000 silently turned a confirmed
+   * `+5R` system result into `+10R`, and the launcher printed the new number as
+   * though the trader had assessed it. Nobody assessed it. A counterfactual is a
+   * judgement about which rule would have fired, made against a particular set
+   * of plan facts; change the facts and the judgement has not been re-made, it
+   * has merely been re-arithmetic'd.
+   *
+   * So the result is captured at confirmation and stays captured. The live
+   * figure is still computed — the editor needs it, and "current inputs would
+   * calculate +10.00R" is genuinely useful — but it is never the confirmed
+   * result and is never labelled as one.
+   *
+   * `null` while nothing has been confirmed. `grossR: null` inside it is
+   * correct for `no_trade` and `cannot_determine`, which are confirmed findings
+   * with no magnitude.
    */
-  readonly confirmedDependencies: AssessmentDependencies | null;
+  readonly confirmed: ConfirmedAssessment | null;
+}
+
+export interface ConfirmedAssessment {
+  /** The gross figure as it stood when confirmed. `null` for the findings. */
+  readonly grossR: number | null;
+  /** The cost as it stood when confirmed. `null` is UNKNOWN, never zero. */
+  readonly costR: number | null;
+  /** What the assessment rested on at that moment. */
+  readonly dependencies: AssessmentDependencies;
 }
 
 export const EMPTY_SYSTEM_ASSESSMENT: SystemAssessmentDraft = {
@@ -208,9 +254,8 @@ export const EMPTY_SYSTEM_ASSESSMENT: SystemAssessmentDraft = {
   costR: '',
   planProvenance: 'unknown',
   resolutionSource: 'trader_assessed',
+  confirmed: null,
   adherence: 'not_answered',
-  dependencies: null,
-  confirmedDependencies: null,
 };
 
 /** The plan facts an assessment could rest on, as the trade currently states them. */
@@ -280,14 +325,11 @@ function sameDependencies(a: AssessmentDependencies, b: AssessmentDependencies):
  * marking it stale for either would train the trader to dismiss the signal.
  */
 export function needsReview(draft: SystemAssessmentDraft, context: AssessmentContext): boolean {
-  if (draft.status === 'not_assessed') return false;
-  if (draft.dependencies === null) return false;
-  const current = assessmentDependencies(context, draft.basis);
-  if (sameDependencies(draft.dependencies, current)) return false;
-  if (draft.confirmedDependencies !== null) {
-    return !sameDependencies(draft.confirmedDependencies, current);
-  }
-  return true;
+  if (draft.confirmed === null) return false;
+  return !sameDependencies(
+    draft.confirmed.dependencies,
+    assessmentDependencies(context, draft.basis),
+  );
 }
 
 /** Records that the trader has re-checked the assessment against today's facts. */
@@ -295,7 +337,96 @@ export function confirmAssessment(
   draft: SystemAssessmentDraft,
   context: AssessmentContext,
 ): SystemAssessmentDraft {
-  return { ...draft, confirmedDependencies: assessmentDependencies(context, draft.basis) };
+  if (draft.status === 'not_assessed') return { ...draft, confirmed: null };
+  return {
+    ...draft,
+    confirmed: {
+      /* FROZEN HERE, at the moment of confirmation, against the facts as they
+         stand now. This is the only place a confirmed result is ever written. */
+      grossR: systemGrossR(draft, context),
+      costR: systemCostR(draft),
+      dependencies: assessmentDependencies(context, draft.basis),
+    },
+  };
+}
+
+/**
+ * THE AUTHORITATIVE SYSTEM RESULT — frozen, and never the live recomputation.
+ *
+ * Everything downstream of the editor reads these: the launcher preview, the
+ * eligibility verdict, any future comparison with Actual R. The `system*R`
+ * functions above stay live because the EDITOR needs to show the trader what
+ * their current inputs produce; the moment that figure leaves the editor without
+ * being confirmed, it is a number nobody assessed.
+ */
+export function confirmedGrossR(draft: SystemAssessmentDraft): number | null {
+  return draft.confirmed?.grossR ?? null;
+}
+
+export function confirmedNetR(draft: SystemAssessmentDraft): number | null {
+  const confirmed = draft.confirmed;
+  if (confirmed === null) return null;
+  if (confirmed.grossR === null || confirmed.costR === null) return null;
+  return confirmed.grossR - confirmed.costR;
+}
+
+export function confirmedOutcome(draft: SystemAssessmentDraft): OutcomeValue | null {
+  const net = confirmedNetR(draft);
+  if (net === null) return null;
+  const classified = classifyOutcome(net.toFixed(4));
+  return classified.ok ? classified.value : null;
+}
+
+/**
+ * WHAT THE CURRENT PLAN FACTS WOULD PRODUCE, for a stale assessment.
+ *
+ * Shown as context — "current inputs would calculate +10.00R" — and never as the
+ * system result. It exists so a trader can see WHY the assessment needs
+ * re-checking without having to re-derive it themselves, and it becomes
+ * authoritative only by passing through `confirmAssessment`.
+ */
+export function currentGrossR(
+  draft: SystemAssessmentDraft,
+  context: AssessmentContext,
+): number | null {
+  return systemGrossR(draft, context);
+}
+
+/**
+ * WHETHER THIS ASSESSMENT MAY ENTER TRUSTED SYSTEM-VS-ACTUAL ANALYTICS.
+ *
+ * STATED NOW, THOUGH REPORTS ARE NOT BEING BUILT, because leaving it to the
+ * reporting layer is how a stale counterfactual ends up inside an average with
+ * nothing recording that it was stale. The verdict belongs with the semantics,
+ * not with whoever draws the chart.
+ *
+ * `eligible`      — confirmed, net of a known cost, and nothing it rested on has
+ *                   moved. The only state that may enter a paired comparison.
+ * `needs_review`  — confirmed, but a dependency has changed since. Excluded
+ *                   until reconfirmed; the assessment itself is untouched.
+ * `gross_only`    — confirmed with no cost estimate. Real, reportable as a gross
+ *                   figure, and never subtracted from a net Actual R.
+ * `no_trade`      — a confirmed finding. Belongs in a no-trade rate and in every
+ *                   monetary metric; belongs in no paired comparison, because
+ *                   there is no counterfactual result to differ from.
+ * `not_available` — not assessed, cannot determine, or confirmed with no
+ *                   magnitude at all.
+ */
+export type SystemAnalyticsEligibility =
+  'eligible' | 'needs_review' | 'gross_only' | 'no_trade' | 'not_available';
+
+export function analyticsEligibility(
+  draft: SystemAssessmentDraft,
+  context: AssessmentContext,
+): SystemAnalyticsEligibility {
+  if (draft.confirmed === null) return 'not_available';
+  // Checked BEFORE the shape of the result: a stale `no_trade` is no more
+  // trustworthy than a stale magnitude.
+  if (needsReview(draft, context)) return 'needs_review';
+  if (draft.status === 'no_trade') return 'no_trade';
+  if (draft.status !== 'assessed') return 'not_available';
+  if (confirmedGrossR(draft) === null) return 'not_available';
+  return confirmedNetR(draft) === null ? 'gross_only' : 'eligible';
 }
 
 /**
@@ -305,18 +436,41 @@ export function confirmAssessment(
  * the rules would have closed the trade flat, which is a known zero. Every other
  * absence is `null`.
  */
+/**
+ * A PLAN-DERIVED BASIS IS VALID ONLY UNDER THE RULE IT DESCRIBES.
+ *
+ * `plan_stop` YIELDS −1R BECAUSE THE STOP IN QUESTION IS THE INITIAL ONE — the
+ * stop that Risk at entry measures. That is what makes −1R arithmetic rather
+ * than an assumption. It is emphatically NOT true of "some stop was hit": a
+ * trailing stop, a stop moved to break-even, or any rule-tightened stop resolves
+ * somewhere else entirely, and −1R would then understate or overstate the
+ * counterfactual by however far the stop had travelled.
+ *
+ * So the pairing is enforced here rather than left to the UI. A `trailing_exit`
+ * carrying a `plan_stop` basis yields `null`, not −1R, whatever a form might
+ * have allowed — the same defence applies to `plan_target` and `break_even`.
+ */
+function basisMatchesReason(basis: SystemBasis, reason: SystemExitReason | null): boolean {
+  if (basis === 'plan_target') return reason === 'target_hit';
+  if (basis === 'plan_stop') return reason === 'stop_hit';
+  if (basis === 'break_even') return reason === 'break_even_rule';
+  return true;
+}
+
 export function systemGrossR(
   draft: SystemAssessmentDraft,
   context: AssessmentContext,
 ): number | null {
   if (draft.status !== 'assessed' || draft.basis === null) return null;
+  if (!basisMatchesReason(draft.basis, draft.reason)) return null;
   const risk = money(context.riskAtEntry);
 
   switch (draft.basis) {
     case 'break_even':
       return 0;
-    /* Hitting the initial stop is exactly −1R: that is what R MEANS. Not an
-       assumption about the instrument, and not read from any price. */
+    /* The INITIAL stop is exactly −1R: that is what R MEANS. Not an assumption
+       about the instrument, not read from any price, and — via
+       `basisMatchesReason` — not reachable from a moved or trailing stop. */
     case 'plan_stop':
       return -1;
     case 'plan_target': {
@@ -424,7 +578,11 @@ export function executionGapR(
   context: AssessmentContext,
 ): number | null {
   if (actualR === null) return null;
-  const net = systemNetR(draft, context);
+  /* THE CONFIRMED FIGURE, AND ONLY WHEN IT IS ELIGIBLE. A gap computed from the
+     live recomputation would silently move every time a plan field was edited,
+     reporting a comparison against a counterfactual nobody had assessed. */
+  if (analyticsEligibility(draft, context) !== 'eligible') return null;
+  const net = confirmedNetR(draft);
   return net === null ? null : actualR - net;
 }
 
@@ -445,18 +603,24 @@ export function systemAssessmentSummary(
 ): readonly string[] {
   const lines: string[] = [];
 
+  /*
+    THE CONFIRMED RESULT, NEVER THE LIVE ONE. A stale assessment shows what the
+    trader actually confirmed, labelled as previous — the recomputed figure is
+    context for the editor, not a system result the launcher may report.
+  */
+  const stale = needsReview(draft, context);
   if (draft.status === 'no_trade') lines.push('Your rules would not have taken this trade');
   else if (draft.status === 'cannot_determine')
     lines.push('Can’t determine what the rules would have done');
   else if (draft.status === 'assessed') {
-    const gross = systemGrossR(draft, context);
-    const net = systemNetR(draft, context);
+    const gross = confirmedGrossR(draft);
+    const net = confirmedNetR(draft);
     const shown = net ?? gross;
-    lines.push(
+    const figure =
       shown === null
         ? 'Assessed'
-        : `System ${shown > 0 ? '+' : ''}${shown.toFixed(2)}R${net === null ? ' gross' : ''}`,
-    );
+        : `System ${shown > 0 ? '+' : ''}${shown.toFixed(2)}R${net === null ? ' gross' : ''}`;
+    lines.push(stale && shown !== null ? `Previously confirmed: ${figure.slice(7)}` : figure);
   }
 
   if (draft.adherence !== 'not_answered') {
