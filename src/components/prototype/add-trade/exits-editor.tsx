@@ -23,6 +23,7 @@ import {
   type ExitRecord,
 } from '../exit-model';
 import { ExitFields } from './exit-fields';
+import { QuietAction } from './form-primitives';
 import { formatTimestamp } from './timestamp-picker';
 
 /**
@@ -79,6 +80,23 @@ export const DEFAULT_EXIT_ROWS: readonly ExitRecord[] = [
 export interface SupportingRole {
   readonly total: number | null;
   readonly reconciliation: ReconciliationStatus;
+  /**
+   * The trade's result IS this reconstruction — the trader adopted it.
+   *
+   * The panel then drops the "Matches final result" line: with the result
+   * sourced from these legs the two figures are the same number by
+   * construction, and announcing that they agree invites the reader to believe
+   * two independent figures were compared.
+   */
+  readonly sourced: boolean;
+  /**
+   * Offered ONLY when a complete, fully priced history has no result to
+   * contradict. Absent otherwise, so the action cannot appear beside a partial
+   * sum or over a figure the trader already stated.
+   */
+  readonly onAdopt?: () => void;
+  /** Sends the trader to the existing final-result field rather than a dialog. */
+  readonly onEditFinalResult?: () => void;
 }
 
 export function ExitsEditor({
@@ -232,46 +250,66 @@ export function ExitsEditor({
             unresolved || conflicting ? 'bg-warning/5' : 'bg-muted/30',
           )}
         >
-          <p className="text-muted-foreground text-xs font-medium">{label}</p>
-          <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <span
-              className={cn(
-                'numeric text-base font-semibold',
-                realized.total > 0
-                  ? 'text-positive'
-                  : realized.total < 0
-                    ? 'text-negative'
-                    : 'text-foreground',
-              )}
-            >
-              {realized.total > 0 ? '+' : ''}
-              {realized.total.toFixed(2)} {currency}
-            </span>
-            {/*
-            NO SECOND R IN THE SUPPORTING ROLE. The page's Actual R comes from
-            the authoritative whole-trade result; an R derived here from a
-            possibly partial subtotal would be a second, quieter answer to the
-            same question, and a reader has no way to tell which one is the
-            trade's.
+          {/*
+            IN CONFLICT THE COMPARISON OWNS BOTH FIGURES, so this standalone
+            subtotal stands down.
+
+            Rendered, the panel printed "Recorded exits subtotal +80.00 USD" and
+            then, four lines below, "Recorded exits subtotal +80.00 USD" again
+            inside the comparison — the same label and the same number twice
+            within one small box. A reader checking two figures against each
+            other should not first have to work out whether they are looking at
+            two or three.
           */}
-            {supporting !== undefined ? null : r === null ? (
-              <span className="text-subtle-foreground text-xs">
-                Actual R needs a recorded risk at entry
-              </span>
-            ) : (
-              <span className="numeric text-muted-foreground text-sm">
-                · {r > 0 ? '+' : ''}
-                {r.toFixed(2)}R
-              </span>
-            )}
-          </div>
+          {conflicting ? null : (
+            <>
+              <p className="text-muted-foreground text-xs font-medium">{label}</p>
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
+                <span
+                  className={cn(
+                    'numeric text-base font-semibold',
+                    realized.total > 0
+                      ? 'text-positive'
+                      : realized.total < 0
+                        ? 'text-negative'
+                        : 'text-foreground',
+                  )}
+                >
+                  {realized.total > 0 ? '+' : ''}
+                  {realized.total.toFixed(2)} {currency}
+                </span>
+                {/*
+                  NO SECOND R IN THE SUPPORTING ROLE. The page's Actual R comes
+                  from the authoritative whole-trade result; an R derived here
+                  from a possibly partial subtotal would be a second, quieter
+                  answer to the same question, and a reader has no way to tell
+                  which one is the trade's.
+                */}
+                {supporting !== undefined ? null : r === null ? (
+                  <span className="text-subtle-foreground text-xs">
+                    Actual R needs a recorded risk at entry
+                  </span>
+                ) : (
+                  <span className="numeric text-muted-foreground text-sm">
+                    · {r > 0 ? '+' : ''}
+                    {r.toFixed(2)}R
+                  </span>
+                )}
+              </div>
+            </>
+          )}
 
           {supporting === undefined ? null : (
             <ReconciliationLine
               status={supporting.reconciliation}
               historyStatus={exitHistoryStatusOf(realized.exitCount, history)}
               total={supporting.total}
+              subtotal={realized.total}
               currency={currency}
+              sourced={supporting.sourced}
+              {...(supporting.onEditFinalResult === undefined
+                ? {}
+                : { onEditFinalResult: supporting.onEditFinalResult })}
             />
           )}
 
@@ -307,6 +345,45 @@ export function ExitsEditor({
                   {option.label}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/*
+            THE PROMOTION, AND IT IS ALWAYS AN ACTIVATION.
+
+            It appears only where a complete, fully priced reconstruction stands
+            beside a result nobody has stated — the one place where adopting it
+            adds information rather than replacing some. It is a real button
+            rather than a quiet link because it changes what the trade's money IS,
+            and it names the figure it would install so nobody has to press it to
+            find out.
+
+            NOT OFFERED FOR A PARTIAL SUBTOTAL. `onAdopt` is absent whenever a leg
+            is unpriced, so "Use +100.00 USD as final result" cannot appear over a
+            history that is missing a term — the offer that would do the most
+            damage is the one the model refuses to hand over.
+          */}
+          {supporting?.onAdopt === undefined ? null : (
+            <div className="mt-2.5 flex min-w-0 flex-col items-start gap-1">
+              {/*
+                OUTLINED, NOT FILLED. Rendered as a filled button it was a second
+                primary action of the same weight as Save, in a panel the page's
+                hierarchy puts BELOW the result — two blue blocks, and no way to
+                tell which one finishes the task. Outlined it is unmistakably a
+                control and unmistakably not the page's main one.
+              */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-h-11 max-w-full"
+                onClick={supporting.onAdopt}
+              >
+                Use {realized.total > 0 ? '+' : ''}
+                {realized.total.toFixed(2)} {currency} as final result
+              </Button>
+              <p className="text-subtle-foreground text-xs leading-relaxed">
+                Your recorded exits become this trade&rsquo;s result. You can change it afterwards.
+              </p>
             </div>
           )}
 
@@ -354,21 +431,36 @@ function ReconciliationLine({
   status,
   historyStatus,
   total,
+  subtotal,
   currency,
+  sourced,
+  onEditFinalResult,
 }: {
   status: ReconciliationStatus;
   historyStatus: ExitHistoryStatus;
+  /** The trade's authoritative result. */
   total: number | null;
+  /** What the recorded legs come to — the same figure printed above. */
+  subtotal: number;
   currency: string;
+  sourced: boolean;
+  onEditFinalResult?: () => void;
 }) {
   if (status === 'not_applicable' || total === null) return null;
   const figure = `${total > 0 ? '+' : ''}${total.toFixed(2)} ${currency}`;
 
   if (status === 'matched') {
+    /*
+      WHEN THE RESULT IS SOURCED HERE, THERE IS NOTHING TO MATCH IT AGAINST.
+
+      "Adds up to your final result" beside an adopted figure compares a number
+      with itself and invites the reader to believe two exist. The subtotal IS
+      the result in that state, and the section above already says where it came
+      from.
+    */
+    if (sourced) return null;
     return (
-      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-        Adds up to your final result of {figure}.
-      </p>
+      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">Matches final result.</p>
     );
   }
 
@@ -388,11 +480,47 @@ function ReconciliationLine({
     );
   }
 
+  /*
+    THE CONFLICT SHOWS BOTH FIGURES AND PICKS NEITHER.
+
+    The trader has said this reconstruction is whole, and it does not come to the
+    total they stated. One of the two is wrong and nothing on the record says
+    which — a mistyped leg, a mistyped total and a leg that never happened all
+    look identical from here. So both numbers are put side by side, the sentence
+    names no culprit, and the two ways out go to the two things that could be
+    corrected. Nothing is overwritten by either.
+  */
   return (
-    <p className="text-warning mt-1 text-xs leading-relaxed">
-      These exits do not add up to your final result of {figure}, and you have marked the history
-      complete. One of the two needs correcting.
-    </p>
+    <div className="mt-2 flex min-w-0 flex-col gap-1.5">
+      <dl className="divide-border/60 border-warning/30 min-w-0 divide-y border-y">
+        <div className="flex min-w-0 items-baseline justify-between gap-3 py-1.5">
+          <dt className="text-muted-foreground text-xs">Final result</dt>
+          <dd className="numeric text-foreground text-sm font-semibold">{figure}</dd>
+        </div>
+        <div className="flex min-w-0 items-baseline justify-between gap-3 py-1.5">
+          <dt className="text-muted-foreground text-xs">Recorded exits subtotal</dt>
+          <dd className="numeric text-foreground text-sm font-semibold">
+            {subtotal > 0 ? '+' : ''}
+            {subtotal.toFixed(2)} {currency}
+          </dd>
+        </div>
+      </dl>
+      <p className="text-warning text-xs leading-relaxed">
+        These values don&rsquo;t match. Review the final result or the recorded exits.
+      </p>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+        {onEditFinalResult === undefined ? null : (
+          <QuietAction onClick={onEditFinalResult}>Edit final result</QuietAction>
+        )}
+        <QuietAction
+          onClick={() => {
+            document.querySelector<HTMLButtonElement>('[data-exit-edit]')?.focus();
+          }}
+        >
+          Review exits
+        </QuietAction>
+      </div>
+    </div>
   );
 }
 
@@ -454,6 +582,7 @@ function ExitSummaryRow({
         <button
           type="button"
           onClick={onEdit}
+          data-exit-edit={index + 1}
           aria-label={`Edit exit ${index + 1}`}
           className={cn(
             'text-primary focus-visible:ring-ring relative shrink-0 rounded-sm px-1.5 text-xs font-medium',

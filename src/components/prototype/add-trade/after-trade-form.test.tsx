@@ -297,7 +297,9 @@ describe('exit details are a disclosure, never a second mode', () => {
     // A +400.00 total against +80.00 of legs, declared complete, is two
     // statements that cannot both be true.
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
-    expect(screen.getByText(/do not add up to your final result/)).toBeInTheDocument();
+    expect(
+      screen.getByText('These values don’t match. Review the final result or the recorded exits.'),
+    ).toBeInTheDocument();
   });
 });
 
@@ -348,5 +350,200 @@ describe('journal and review', () => {
     expect(
       screen.getByText('Wait for the candle close next time rather than anticipating it.'),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * PASS 2 ON THE SCREEN — the promotion, and the states around it.
+ *
+ * The model proves the transitions; these prove the trader can reach them, and
+ * that the offer never appears where taking it would be wrong.
+ */
+describe('promoting a reconstruction into the result', () => {
+  /** Opens the exit details on a blank trade and records legs by hand. */
+  function recordExits(amounts: readonly string[]) {
+    fireEvent.click(screen.getByRole('button', { name: /Add exit details/ }));
+    for (const amount of amounts) {
+      fireEvent.click(screen.getByRole('button', { name: 'Record an exit' }));
+      if (amount !== '') {
+        fireEvent.change(screen.getByLabelText('Net profit for this exit'), {
+          target: { value: amount },
+        });
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Add exit' }));
+    }
+  }
+
+  const declareComplete = () => fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+  const adoptAction = () => screen.queryByRole('button', { name: /as final result/ });
+
+  it('offers nothing until the trader declares the history complete', () => {
+    openBlank();
+    identify();
+    recordExits(['100.00', '300.00']);
+
+    // The legs come to +400 and nobody has said they are all of them.
+    expect(screen.getByText('+400.00 USD')).toBeInTheDocument();
+    expect(adoptAction()).toBeNull();
+
+    declareComplete();
+    expect(adoptAction()).toBeInTheDocument();
+    expect(adoptAction()).toHaveTextContent('Use +400.00 USD as final result');
+  });
+
+  it('leaves the result unknown while the offer sits there unaccepted', () => {
+    const onSave = vi.fn();
+    show({ onSave });
+    identify();
+    recordExits(['100.00', '300.00']);
+    declareComplete();
+
+    fireEvent.click(saveButton());
+    // Offered is not answered: the trade saves with no result at all.
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      finalSource: 'manual_total',
+      finalAmount: '',
+      outcome: null,
+    });
+  });
+
+  it('makes the reconstruction the result, and says so', () => {
+    const onSave = vi.fn();
+    show({ onSave });
+    identify();
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '200' } });
+    recordExits(['100.00', '300.00']);
+    declareComplete();
+    fireEvent.click(adoptAction() as HTMLElement);
+
+    // The figure, its provenance, and an Actual R derived from it.
+    expect(screen.getByText('From your recorded exits, which you marked complete.'));
+    expect(screen.getByText('Final net profit')).toBeInTheDocument();
+    expect(screen.getByText('+2.00R')).toBeInTheDocument();
+    // The outcome is no longer a separate choice that could contradict it.
+    expect(screen.queryByRole('radio', { name: 'Profit' })).toBeNull();
+
+    fireEvent.click(saveButton());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ finalSource: 'exit_history' });
+  });
+
+  it('never offers a partial sum as a whole-trade result', () => {
+    openBlank();
+    identify();
+    // The second leg's amount is left blank.
+    recordExits(['100.00', '']);
+    declareComplete();
+
+    expect(adoptAction()).toBeNull();
+    expect(screen.queryByText(/Use \+100\.00 USD as final result/)).toBeNull();
+  });
+
+  it('never offers to overwrite a result the trader already stated', () => {
+    openBlank();
+    identify();
+    fireEvent.click(screen.getByRole('radio', { name: 'Profit' }));
+    fireEvent.change(screen.getByLabelText('Final net profit'), { target: { value: '9' } });
+    recordExits(['100.00', '300.00']);
+    declareComplete();
+
+    expect(adoptAction()).toBeNull();
+  });
+
+  it('hands an adopted figure back for manual editing, and changes its source', () => {
+    const onSave = vi.fn();
+    show({ onSave });
+    identify();
+    recordExits(['100.00', '300.00']);
+    declareComplete();
+    fireEvent.click(adoptAction() as HTMLElement);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit final result' }));
+    // Opens on the figure they accepted, in the field that now owns it.
+    expect(screen.getByLabelText('Final net profit')).toHaveValue('400.00');
+    expect(screen.getByRole('radio', { name: 'Profit' })).toBeChecked();
+
+    fireEvent.click(saveButton());
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      finalSource: 'manual_total',
+      finalAmount: '400.00',
+    });
+  });
+});
+
+describe('a declared-complete contradiction', () => {
+  function conflicted() {
+    show({ filled: true, exits: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+  }
+
+  it('shows both figures and names neither as the wrong one', () => {
+    conflicted();
+    expect(screen.getByText('Final result')).toBeInTheDocument();
+    expect(screen.getAllByText('+400.00 USD').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('+80.00 USD').length).toBeGreaterThan(0);
+    expect(
+      screen.getByText('These values don’t match. Review the final result or the recorded exits.'),
+    ).toBeInTheDocument();
+
+    // No verdict, and no invented reconciling amount.
+    expect(screen.queryByText(/wrong/i)).toBeNull();
+    expect(screen.queryByText(/should equal/i)).toBeNull();
+    expect(screen.queryByText(/320/)).toBeNull();
+    expect(screen.queryByText(/480/)).toBeNull();
+  });
+
+  it('offers a route to each of the two things that could be corrected', () => {
+    conflicted();
+    expect(screen.getByRole('button', { name: 'Edit final result' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review exits' })).toBeInTheDocument();
+  });
+
+  it('blocks the save until one of them is resolved', () => {
+    const onSave = vi.fn();
+    show({ filled: true, exits: true, onSave });
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+
+    fireEvent.click(saveButton());
+    expect(onSave).not.toHaveBeenCalled();
+    expect(
+      screen.getAllByText(
+        'These values don’t match. Review the final result or the recorded exits.',
+      ).length,
+    ).toBeGreaterThan(0);
+
+    // Withdrawing the completeness claim makes it an ordinary partial history.
+    fireEvent.click(screen.getByRole('button', { name: 'No' }));
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not block the ordinary incomplete states', () => {
+    const onSave = vi.fn();
+    show({ filled: true, exits: true, onSave });
+    // Unanswered completeness, with figures that plainly differ.
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('two closing times', () => {
+  it('surfaces the disagreement without changing either', () => {
+    /*
+      The seeded draft closes at 14:32 and its exit legs are partial, so nothing
+      is said. Marking the later leg as the one that closed the position creates
+      two closing times, and neither may be silently preferred.
+    */
+    show({ filled: true, exits: true });
+    expect(screen.queryByText(/exit that closed the position/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit exit 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'All remaining' }));
+
+    expect(
+      screen.getByText(/exit that closed the position \(2026-09-01 14:15\)/),
+    ).toBeInTheDocument();
+    // The trader's own Final exit time is untouched.
+    expect(screen.getByRole('button', { name: 'Final exit time' })).toHaveTextContent('14:32');
   });
 });

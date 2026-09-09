@@ -54,15 +54,22 @@ import {
 /**
  * HOW THE AUTHORITATIVE FINAL RESULT WAS ESTABLISHED.
  *
- * `manual_total` — the trader stated the whole-trade net result directly. It is
- * the only source this pass can produce, and the one the product is built
- * around: a trader reads one figure off a broker statement far more reliably
- * than they reconstruct six legs.
+ * `manual_total` — the trader stated the whole-trade net result directly. The
+ * ordinary case, and the one the product is built around: a trader reads one
+ * figure off a broker statement far more reliably than they reconstruct six
+ * legs.
  *
- * `exit_history` — the total was ADOPTED from a complete recorded exit history.
- * Reserved, and deliberately unreachable until the reconciliation pass: adopting
- * a subtotal as a final result is a claim about completeness, and completeness
- * is something only the trader can assert (see `ExitHistoryStatus`).
+ * `exit_history` — the trader ADOPTED a complete recorded exit history as the
+ * result. Reachable only through `adoptExitSubtotal`, only from an explicit
+ * activation, and only when the history is declared complete with every leg
+ * priced.
+ *
+ * IT IS STORED, NOT INFERRED, AND THAT IS THE WHOLE POINT. Two records can carry
+ * the identical `+400.00` and mean different things — one is a figure the trader
+ * read off a statement, the other is a sum they accepted as standing for the
+ * trade. Deriving the source from the numbers would make those two
+ * indistinguishable, which is exactly how a reconstruction quietly becomes a
+ * measurement.
  */
 export type FinalPnlSource = 'manual_total' | 'exit_history';
 
@@ -125,12 +132,23 @@ export interface ClosedTradeDraft {
   /** An explicit answer — "this trade had no fixed target" — not a blank. */
   readonly noFixedTarget: boolean;
 
-  /** Realized truth. `outcome === null` means nobody has said profit or loss. */
+  /**
+   * WHERE THE AUTHORITATIVE RESULT COMES FROM — and therefore which fields below
+   * are meaningful.
+   *
+   * `manual_total`: `outcome` and `finalAmount` carry the result, and the exits
+   * are supporting detail. `exit_history`: the complete exit reconstruction
+   * carries it, and `outcome`/`finalAmount` are EMPTY. The two are never
+   * populated at once, so there is never a second copy of the money to drift.
+   */
+  readonly finalSource: FinalPnlSource;
+
+  /** Realized truth, while the source is manual. `null` means nobody has said. */
   readonly outcome: MoneyOutcome | null;
   /** The WHOLE trade's net result, unsigned as typed. `''` is unknown. */
   readonly finalAmount: string;
 
-  /** Supporting detail only. Never summed into the final result. */
+  /** Supporting detail — unless explicitly adopted. Never summed into a total. */
   readonly exits: readonly ExitRecord[];
   /** The trader's own answer to "are all exits recorded?". */
   readonly exitHistory: ExitHistory;
@@ -144,6 +162,7 @@ export const EMPTY_CLOSED_TRADE: ClosedTradeDraft = {
   riskAtEntry: '',
   targetProfit: '',
   noFixedTarget: false,
+  finalSource: 'manual_total',
   outcome: null,
   finalAmount: '',
   exits: [],
@@ -153,17 +172,45 @@ export const EMPTY_CLOSED_TRADE: ClosedTradeDraft = {
 /**
  * THE AUTHORITATIVE RESULT FOR THE WHOLE TRADE, or `null` when it is unknown.
  *
- * `null` is not zero and never becomes zero. Break-even is a KNOWN zero and is
- * the only way a zero gets in here. The recorded exits are not consulted: their
- * subtotal is a different figure answering a different question.
+ * ONE FIGURE, FROM ONE DECLARED SOURCE. `null` is not zero and never becomes
+ * zero; break-even is a KNOWN zero and the only way a zero gets in here.
+ *
+ * WHEN THE SOURCE IS `exit_history` THIS READS THE SUBTOTAL LIVE, rather than a
+ * copy taken at the moment of adoption. Copying would have produced the exact
+ * failure this pass exists to prevent: a trader adopts +400, corrects a leg to
+ * +90, and the trade goes on reporting +400 with a reconstruction underneath it
+ * that no longer says so. Adoption changes WHICH FIELD IS AUTHORITATIVE, not
+ * which number is written down — a state transition rather than a copy between
+ * two independent truths.
+ *
+ * The two sources are never both populated: `adoptExitSubtotal` clears the
+ * manual fields and `beginManualEdit` writes them back, so there is never a
+ * second copy of the money sitting somewhere to drift out of agreement.
  */
 export function finalNetPnl(draft: ClosedTradeDraft): number | null {
+  if (draft.finalSource === 'exit_history') return exitSubtotal(draft);
   return signedAmount(draft.outcome, draft.finalAmount);
 }
 
 /** How that figure was established, or `null` while there is no figure. */
 export function finalPnlSource(draft: ClosedTradeDraft): FinalPnlSource | null {
-  return finalNetPnl(draft) === null ? null : 'manual_total';
+  return finalNetPnl(draft) === null ? null : draft.finalSource;
+}
+
+/**
+ * THE OUTCOME WORD FOR THE AUTHORITATIVE RESULT.
+ *
+ * While the source is manual it is the trader's own choice — the word decides
+ * the sign of what they typed. Once the exit history is authoritative the word
+ * FOLLOWS the adopted figure, because a trader cannot meaningfully be asked to
+ * classify a sum they did not type, and a stored `profit` sitting beside an
+ * adopted −80.00 is a contradiction the record should not be able to hold.
+ */
+export function derivedOutcome(draft: ClosedTradeDraft): MoneyOutcome | null {
+  if (draft.finalSource === 'manual_total') return draft.outcome;
+  const total = exitSubtotal(draft);
+  if (total === null) return null;
+  return cents(total) > 0 ? 'profit' : cents(total) < 0 ? 'loss' : 'break_even';
 }
 
 /**
@@ -229,6 +276,111 @@ export function reconciliation(draft: ClosedTradeDraft): ReconciliationStatus {
   if (final === null || subtotal === null) return 'not_applicable';
 
   return cents(final) === cents(subtotal) ? 'matched' : 'conflict';
+}
+
+/**
+ * WHETHER A COMPLETE RECONSTRUCTION MAY BE OFFERED AS THE RESULT.
+ *
+ * THREE CONDITIONS, ALL NECESSARY. The trader has declared the history COMPLETE;
+ * every leg carries an amount, so the subtotal is a whole figure rather than a
+ * partial one; and there is no authoritative result yet, because adoption fills
+ * a gap and never overwrites something the trader already stated.
+ *
+ * A DECLARED-COMPLETE HISTORY WITH A BLANK LEG IS NOT OFFERABLE. `+100` and an
+ * unpriced leg is not a `+100` trade — `exitSubtotal` returns `null` rather than
+ * a smaller number, so nothing here can offer it. That is the single most
+ * dangerous thing this control could do, and the guard is one line because the
+ * subtotal already refuses to be partial.
+ */
+export function canAdoptExitSubtotal(draft: ClosedTradeDraft): boolean {
+  if (exitHistoryStatus(draft) !== 'complete') return false;
+  if (exitSubtotal(draft) === null) return false;
+  return finalNetPnl(draft) === null;
+}
+
+/**
+ * ADOPT THE COMPLETE RECONSTRUCTION AS THE TRADE'S RESULT.
+ *
+ * Only ever from an explicit activation — nothing in this file calls it, and no
+ * arithmetic reaches it. The manual fields are CLEARED rather than filled with
+ * the subtotal: leaving a copy behind would recreate the two-truths problem one
+ * layer down, where the copy is invisible and drifts silently.
+ */
+export function adoptExitSubtotal(draft: ClosedTradeDraft): ClosedTradeDraft {
+  if (!canAdoptExitSubtotal(draft)) return draft;
+  return { ...draft, finalSource: 'exit_history', outcome: null, finalAmount: '' };
+}
+
+/**
+ * TAKE THE ADOPTED FIGURE BACK INTO MANUAL EDITING.
+ *
+ * The money the trader accepted is written into the manual fields as it stands,
+ * so the field they are about to edit opens on the value they adopted rather
+ * than empty. That is not fabrication: it is the figure this record already
+ * asserted, moved into the slot that now owns it.
+ *
+ * THE SOURCE FLIPS AT THE SAME INSTANT. A record cannot go on claiming its money
+ * came from a complete reconstruction once a person has started typing over it —
+ * and once it is `manual_total`, the reconstruction underneath becomes something
+ * to reconcile AGAINST rather than the thing being reported.
+ */
+export function beginManualEdit(draft: ClosedTradeDraft): ClosedTradeDraft {
+  if (draft.finalSource === 'manual_total') return draft;
+  const adopted = finalNetPnl(draft);
+  const outcome = derivedOutcome(draft);
+  return {
+    ...draft,
+    finalSource: 'manual_total',
+    outcome,
+    finalAmount: adopted === null ? '' : Math.abs(adopted).toFixed(2),
+  };
+}
+
+/**
+ * A COMPLETENESS ANSWER, APPLIED SAFELY.
+ *
+ * Leaving `complete` while the exit history is the authoritative source would
+ * strand the record: its money would be sourced from a reconstruction it no
+ * longer claims is whole. Deleting the money instead is worse — the trader
+ * accepted that figure, and a form that silently empties a result because a
+ * neighbouring answer changed has destroyed something a person entered.
+ *
+ * So the figure is KEPT and its provenance is corrected: it becomes the trader's
+ * own stated total, and the exits go back to being supporting detail. Nothing is
+ * invented, nothing is lost, and no record survives claiming a completeness it
+ * has just withdrawn.
+ */
+export function applyExitHistory(draft: ClosedTradeDraft, history: ExitHistory): ClosedTradeDraft {
+  const next = { ...draft, exitHistory: history };
+  if (draft.finalSource !== 'exit_history') return next;
+  if (exitHistoryStatusOf(next.exits.length, history) === 'complete') return next;
+  return beginManualEdit(next);
+}
+
+/**
+ * AN EXIT EDIT, APPLIED SAFELY.
+ *
+ * While the reconstruction is the source, changing it MOVES THE RESULT — that is
+ * what having chosen it as the source means, and `finalNetPnl` reads it live so
+ * Actual R and the outcome word follow without anything being recomputed here.
+ *
+ * The exception is an edit that destroys the basis: a leg blanked, or the last
+ * leg removed, leaves no whole subtotal to be authoritative. Same treatment as a
+ * withdrawn completeness answer — keep the money the trader accepted, correct
+ * its provenance to manual, and let the remaining legs be supporting detail.
+ */
+export function applyExits(
+  draft: ClosedTradeDraft,
+  exits: readonly ExitRecord[],
+): ClosedTradeDraft {
+  if (draft.finalSource !== 'exit_history') return { ...draft, exits };
+
+  const next = { ...draft, exits };
+  const stillWhole = exitHistoryStatus(next) === 'complete' && exitSubtotal(next) !== null;
+  if (stillWhole) return next;
+
+  // Materialise from the draft as it stood, BEFORE the basis was destroyed.
+  return { ...beginManualEdit(draft), exits };
 }
 
 /** The position is closed because this path says so — not because of the legs. */
@@ -328,6 +480,7 @@ export type IssueField =
   | 'outcome'
   | 'finalAmount'
   | 'exitedAt'
+  | 'exitTime'
   | 'exits'
   | 'reconciliation';
 
@@ -439,12 +592,53 @@ export function validateClosedTrade(draft: ClosedTradeDraft): readonly Validatio
     });
   }
 
+  /*
+    A DECLARED-COMPLETE HISTORY THAT DOES NOT ADD UP NOW BLOCKS THE SAVE.
+
+    IT WAS A WARNING IN PASS 1, AND THAT WAS THE WEAKER READING. The Pass 1
+    rule — never refuse a real trade for missing information — is untouched and
+    still governs every other state here: `not_recorded`, `unknown` and
+    `incomplete` all save freely, because each is an honest description of a
+    partly remembered trade. A `conflict` is not one of those. The trader has
+    ASSERTED that the reconstruction is whole, and a whole reconstruction that
+    disagrees with the total it claims to compose is two contradictory statements
+    about the same money. Saving it would put a record into the journal that is
+    guaranteed wrong in one of two places, with nothing recording which.
+
+    The refusal names both figures and neither verdict — see the message. It is
+    the trader's to resolve, and either side may be the one that is wrong.
+  */
   if (reconciliation(draft) === 'conflict') {
     issues.push({
       field: 'reconciliation',
+      severity: 'error',
+      message: 'These values don’t match. Review the final result or the recorded exits.',
+    });
+  }
+
+  /*
+    TWO CLOSING TIMES, AND NO GROUNDS TO PREFER EITHER.
+
+    An `All remaining` leg says when the position finished; so does the Final exit
+    time field. When both exist and disagree, one of them is wrong and the record
+    cannot tell which — so it says so and changes nothing. A form that silently
+    took the leg's time would overwrite something the trader typed; one that
+    silently kept the field would ignore something they recorded.
+
+    A WARNING, NOT A REFUSAL. Unlike a monetary conflict this costs no money and
+    misstates no result; it is a detail to reconcile, and a trader who cannot
+    remember which is right must still be able to save the trade.
+  */
+  const closingLegTime = finalExitTimeFromExits(draft.exits);
+  if (
+    closingLegTime !== null &&
+    draft.exitedAt !== null &&
+    instant(closingLegTime) !== instant(draft.exitedAt)
+  ) {
+    issues.push({
+      field: 'exitTime',
       severity: 'warning',
-      message:
-        'Your recorded exits do not add up to the final result, and the history is marked complete. One of the two needs correcting.',
+      message: `Your final exit time and the exit that closed the position (${closingLegTime.date} ${closingLegTime.time}) are different.`,
     });
   }
 

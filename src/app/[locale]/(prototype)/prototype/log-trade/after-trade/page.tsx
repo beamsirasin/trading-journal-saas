@@ -18,6 +18,10 @@ export const metadata: Metadata = { title: 'Prototype · Fully closed' };
  * `?filled=1` renders a part-finished draft, and together with `?exits=1` gives
  * the case this pass exists for — an authoritative whole-trade result standing
  * beside a supporting exit history that does not add up to it.
+ *
+ * `?reconstruct=1` is the state Pass 2 exists for: a complete, fully priced
+ * reconstruction standing where no whole-trade figure was ever known, with the offer to adopt
+ * it one activation away and the result still UNKNOWN until it is taken.
  */
 export default async function AfterTradePrototypePage({
   searchParams,
@@ -31,6 +35,7 @@ export default async function AfterTradePrototypePage({
       exits={params['exits'] === '1'}
       activeExit={typeof edit === 'string' && edit !== '' ? edit : null}
       filled={params['filled'] === '1'}
+      reconstruct={params['reconstruct'] === '1'}
     />
   );
 }

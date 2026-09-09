@@ -3,10 +3,18 @@
 import { HeartPulse, Lightbulb, NotebookPen } from 'lucide-react';
 import { useState } from 'react';
 
+import { cn } from '@/lib/utils';
+
 import {
+  adoptExitSubtotal,
+  applyExitHistory,
+  applyExits,
+  beginManualEdit,
   blockingIssues,
+  canAdoptExitSubtotal,
   canSave,
   derivedActualR,
+  derivedOutcome,
   derivedTargetR,
   EMPTY_CLOSED_TRADE,
   finalExitTimeFromExits,
@@ -96,6 +104,8 @@ export function AfterTradeForm({
   activeExit = null,
   /** A part-finished draft, for the review state that shows populated summaries. */
   filled = false,
+  /** A complete, fully priced reconstruction with no stated result — the Pass 2 flow. */
+  reconstruct = false,
   /**
    * THE SEAM A REAL SAVE WOULD USE.
    *
@@ -110,6 +120,7 @@ export function AfterTradeForm({
   exits?: boolean;
   activeExit?: string | null;
   filled?: boolean;
+  reconstruct?: boolean;
   onSave?: (trade: ClosedTradeDraft) => void;
 }) {
   /*
@@ -122,7 +133,9 @@ export function AfterTradeForm({
     function of the same record the save would carry, so the screen cannot show
     one thing and store another.
   */
-  const [trade, setTrade] = useState<ClosedTradeDraft>(() => seedTrade({ exits, filled }));
+  const [trade, setTrade] = useState<ClosedTradeDraft>(() =>
+    seedTrade({ exits, filled, reconstruct }),
+  );
   const patch = (next: Partial<ClosedTradeDraft>) =>
     setTrade((current) => ({ ...current, ...next }));
 
@@ -143,7 +156,7 @@ export function AfterTradeForm({
   */
   const [attempted, setAttempted] = useState(false);
 
-  const [exitsOpen, setExitsOpen] = useState(exits);
+  const [exitsOpen, setExitsOpen] = useState(exits || reconstruct);
   const [exitPlan, setExitPlan] = useState<ExitPlanDraft>(EMPTY_EXIT_PLAN);
 
   const [plan, setPlan] = useState<PlanDraft>(
@@ -195,7 +208,24 @@ export function AfterTradeForm({
     because until then it is not missing — it is simply not filled in yet, which
     on this form is the ordinary state of nearly everything.
   */
+  /*
+    THE RESULT'S OWN PROVENANCE DECIDES WHAT THE SECTION SHOWS. An adopted figure
+    is a readout with a way back to typing; a stated one is the ordinary
+    outcome-plus-amount pair.
+  */
+  const adoptedResult = trade.finalSource === 'exit_history';
+  const adoptedOutcome = derivedOutcome(trade);
+  const adoptedLabel =
+    adoptedOutcome === 'profit'
+      ? 'Final net profit'
+      : adoptedOutcome === 'loss'
+        ? 'Final net loss'
+        : adoptedOutcome === 'break_even'
+          ? 'Final net P&L'
+          : null;
+
   const timeError = issueFor(issues, 'exitedAt');
+  const exitTimeNote = issueFor(issues, 'exitTime');
   const riskError = issueFor(issues, 'riskAtEntry');
   const targetError = issueFor(issues, 'targetProfit');
   const amountError = issueFor(issues, 'finalAmount') ?? issueFor(issues, 'outcome');
@@ -339,6 +369,16 @@ export function AfterTradeForm({
               {timeError === null ? null : (
                 <InlineNote tone="error">{timeError.message}</InlineNote>
               )}
+
+              {/*
+                TWO CLOSING TIMES, AND NEITHER IS OVERWRITTEN. Stated beside the
+                fields it concerns, with no suggestion of which is right — the
+                record has no grounds to prefer either, and it costs no money, so
+                it does not refuse the save.
+              */}
+              {exitTimeNote === null ? null : (
+                <InlineNote tone="warning">{exitTimeNote.message}</InlineNote>
+              )}
             </div>
           </Band>
 
@@ -441,34 +481,77 @@ export function AfterTradeForm({
           <Band divided={false} className="py-4">
             <h2 className="text-label text-muted-foreground uppercase">Actual result</h2>
 
-            <OutcomeChoice
-              value={trade.outcome}
-              onChange={(outcome) => patch({ outcome })}
-              legend="How did the trade finish?"
-            />
+            {/*
+              WHEN THE RECONSTRUCTION IS THE SOURCE, THERE IS NOTHING TO CHOOSE.
 
-            {trade.outcome === null ? (
-              <InlineNote>
-                Leave this unanswered if you don’t know the final figure. It stays unrecorded rather
-                than becoming zero.
-              </InlineNote>
-            ) : trade.outcome === 'break_even' ? (
-              /* Break-even is a KNOWN zero, stated as one. It is the only route
-                 to a zero on this screen; a blank amount is not one. */
-              <div className="min-w-0">
-                <p className="text-muted-foreground text-xs font-medium">Final net P&amp;L</p>
-                <p className="numeric text-foreground text-metric mt-0.5 font-semibold">
-                  0.00 {CURRENCY}
+              An outcome selector beside an adopted figure would let a trader mark
+              `Profit` over an adopted −80.00, and the record would carry both.
+              The word FOLLOWS the money here, the amount is a readout of the
+              subtotal it comes from, and the way back to typing is one action
+              that changes the source at the same instant — see `beginManualEdit`.
+            */}
+            {adoptedResult ? (
+              <div className="flex min-w-0 flex-col gap-2">
+                <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p className="text-muted-foreground text-xs font-medium">
+                    {adoptedLabel ?? 'Final net P&L'}
+                  </p>
+                  <QuietAction onClick={() => setTrade(beginManualEdit(trade))}>
+                    Edit final result
+                  </QuietAction>
+                </div>
+                <p
+                  className={cn(
+                    'numeric text-metric font-semibold',
+                    tone === 'positive'
+                      ? 'text-positive'
+                      : tone === 'negative'
+                        ? 'text-negative'
+                        : 'text-foreground',
+                  )}
+                >
+                  {finalPnl === null
+                    ? '—'
+                    : `${finalPnl > 0 ? '+' : ''}${finalPnl.toFixed(2)} ${CURRENCY}`}
                 </p>
+                {/* Provenance, stated plainly. A figure that came from a
+                    reconstruction must never look like one read off a statement. */}
+                <InlineNote>From your recorded exits, which you marked complete.</InlineNote>
               </div>
             ) : (
-              <PrimaryAmountField
-                label={trade.outcome === 'loss' ? 'Final net loss' : 'Final net profit'}
-                currency={CURRENCY}
-                value={trade.finalAmount}
-                onChange={(finalAmount) => patch({ finalAmount })}
-                hint="For the whole trade, after fees and other costs."
-              />
+              <>
+                <OutcomeChoice
+                  value={trade.outcome}
+                  onChange={(outcome) => patch({ outcome })}
+                  legend="How did the trade finish?"
+                />
+
+                {trade.outcome === null ? (
+                  <InlineNote>
+                    Leave this unanswered if you don’t know the final figure. It stays unrecorded
+                    rather than becoming zero.
+                  </InlineNote>
+                ) : trade.outcome === 'break_even' ? (
+                  /* Break-even is a KNOWN zero, stated as one. It is the only route
+                     to a zero on this screen; a blank amount is not one. */
+                  <div className="min-w-0">
+                    <p className="text-muted-foreground text-xs font-medium">Final net P&amp;L</p>
+                    <p className="numeric text-foreground text-metric mt-0.5 font-semibold">
+                      0.00 {CURRENCY}
+                    </p>
+                  </div>
+                ) : (
+                  <div data-final-amount className="min-w-0">
+                    <PrimaryAmountField
+                      label={trade.outcome === 'loss' ? 'Final net loss' : 'Final net profit'}
+                      currency={CURRENCY}
+                      value={trade.finalAmount}
+                      onChange={(finalAmount) => patch({ finalAmount })}
+                      hint="For the whole trade, after fees and other costs."
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             {amountError === null ? null : (
@@ -510,13 +593,41 @@ export function AfterTradeForm({
             {exitsOpen ? (
               <ExitsEditor
                 rows={trade.exits}
-                onRowsChange={(nextExits) => patch({ exits: nextExits })}
+                /*
+                  EVERY EXIT EDIT GOES THROUGH THE MODEL'S TRANSITION, not
+                  straight into state. While the reconstruction is the source, an
+                  edit that destroys its basis — a blanked leg, the last leg
+                  removed — has to keep the money the trader accepted and correct
+                  its provenance, and that decision belongs in one tested place
+                  rather than in an `onChange`.
+                */
+                onRowsChange={(nextExits) => setTrade(applyExits(trade, nextExits))}
                 riskAtEntry={trade.riskAtEntry}
                 currency={CURRENCY}
                 declaredClosed
                 history={trade.exitHistory}
-                onHistoryChange={(exitHistory) => patch({ exitHistory })}
-                supporting={{ total: finalPnl, reconciliation: reconciliation(trade) }}
+                onHistoryChange={(exitHistory) => setTrade(applyExitHistory(trade, exitHistory))}
+                supporting={{
+                  total: finalPnl,
+                  reconciliation: reconciliation(trade),
+                  sourced: trade.finalSource === 'exit_history',
+                  ...(canAdoptExitSubtotal(trade)
+                    ? { onAdopt: () => setTrade(adoptExitSubtotal(trade)) }
+                    : {}),
+                  onEditFinalResult: () => {
+                    /*
+                      THE ACTION GOES TO THE EXISTING EDITOR RATHER THAN OPENING A
+                      NEW ONE. On a long form the field under discussion is
+                      usually off-screen, and a dialog to fix a number that
+                      already has a field is one modal too many.
+                    */
+                    const input = document.querySelector<HTMLInputElement>(
+                      '[data-final-amount] input',
+                    );
+                    input?.scrollIntoView({ block: 'center' });
+                    input?.focus();
+                  },
+                }}
                 {...(activeExit === null ? {} : { initialActiveId: activeExit })}
               />
             ) : null}
@@ -615,7 +726,50 @@ export function AfterTradeForm({
  * populated screen without typing one, and every one of them is reachable only
  * by an explicit URL — no default path renders a pre-filled trade.
  */
-function seedTrade({ exits, filled }: { exits: boolean; filled: boolean }): ClosedTradeDraft {
+function seedTrade({
+  exits,
+  filled,
+  reconstruct,
+}: {
+  exits: boolean;
+  filled: boolean;
+  reconstruct: boolean;
+}): ClosedTradeDraft {
+  /*
+    THE STATE PASS 2 EXISTS FOR: a trader who never knew the whole-trade figure,
+    reconstructed the legs instead, and has said that is all of them. The result
+    is still UNKNOWN here — the offer to adopt it is one activation away, and
+    arriving in this state must never look like arriving with an answer.
+  */
+  if (reconstruct) {
+    return {
+      ...EMPTY_CLOSED_TRADE,
+      symbol: 'XAUUSD',
+      direction: 'long',
+      enteredAt: { date: '2026-09-01', time: '09:41' },
+      riskAtEntry: '200.00',
+      exitHistory: 'complete',
+      exits: [
+        {
+          id: 'e1',
+          scope: 'part',
+          percent: '40',
+          outcome: 'profit',
+          amount: '100.00',
+          at: { date: '2026-09-01', time: '12:02' },
+        },
+        {
+          id: 'e2',
+          scope: 'all_remaining',
+          percent: '',
+          outcome: 'profit',
+          amount: '300.00',
+          at: { date: '2026-09-01', time: '14:15' },
+        },
+      ],
+    };
+  }
+
   const seededExits: readonly ExitRecord[] = exits ? DEFAULT_EXIT_ROWS : [];
   if (!filled) return { ...EMPTY_CLOSED_TRADE, exits: seededExits };
 

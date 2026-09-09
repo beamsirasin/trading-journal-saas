@@ -12,10 +12,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  adoptExitSubtotal,
+  applyExitHistory,
+  applyExits,
+  beginManualEdit,
   blockingIssues,
+  canAdoptExitSubtotal,
   canSave,
   completenessNote,
   derivedActualR,
+  derivedOutcome,
   derivedTargetR,
   EMPTY_CLOSED_TRADE,
   exitHistoryStatus,
@@ -202,10 +208,24 @@ describe('the authoritative total and its supporting exits', () => {
   it('calls a difference a conflict only when the history is asserted complete', () => {
     const asserted = { ...partial, exitHistory: 'complete' as const };
     expect(reconciliation(asserted)).toBe('conflict');
-    const warning = issueFor(validateClosedTrade(asserted), 'reconciliation');
-    expect(warning?.severity).toBe('warning');
-    // Stated, but never a reason to refuse a real trade.
-    expect(canSave(asserted)).toBe(true);
+
+    /*
+      PASS 2 DELIBERATELY SUPERSEDES THE PASS 1 SEVERITY HERE.
+
+      Pass 1 made this a warning under its own rule — never refuse a real trade
+      for missing information. That rule still governs every other state: a
+      history that is `not_recorded`, `unknown` or `incomplete` saves freely.
+      A conflict is not missing information. The trader has ASSERTED the
+      reconstruction is whole, so the record now holds two contradictory
+      statements about the same money, and one of them is guaranteed wrong with
+      nothing to say which.
+    */
+    const issue = issueFor(validateClosedTrade(asserted), 'reconciliation');
+    expect(issue?.severity).toBe('error');
+    expect(issue?.message).toBe(
+      'These values don’t match. Review the final result or the recorded exits.',
+    );
+    expect(canSave(asserted)).toBe(false);
   });
 
   it('cannot know a subtotal while any leg is unpriced', () => {
@@ -375,5 +395,278 @@ describe('what may be saved', () => {
     expect(canSave(legs('40'))).toBe(true);
     expect(canSave(legs('0'))).toBe(false);
     expect(canSave(legs('140'))).toBe(false);
+  });
+});
+
+/**
+ * PASS 2 — PROMOTING A RECONSTRUCTION INTO THE RESULT, AND EVERY ROUTE BACK OUT.
+ *
+ * The whole risk of this pass is that supporting detail becomes the trade's
+ * money without anybody saying so, or goes on being the trade's money after it
+ * has stopped supporting that claim. These cases walk the state machine in both
+ * directions and check that no transition creates, merges, overwrites or
+ * silently reconciles a monetary truth.
+ */
+describe('adopting a complete exit history', () => {
+  const complete = (...amounts: readonly string[]): ClosedTradeDraft => ({
+    ...IDENTIFIED,
+    exits: amounts.map((amount, index) => exit({ id: `e${index + 1}`, amount })),
+    exitHistory: 'complete',
+  });
+
+  it('offers adoption only when the history is complete and whole', () => {
+    expect(canAdoptExitSubtotal(complete('100.00', '300.00'))).toBe(true);
+
+    // Not declared complete, however neatly it adds up.
+    expect(canAdoptExitSubtotal({ ...complete('100.00', '300.00'), exitHistory: 'unknown' })).toBe(
+      false,
+    );
+    expect(
+      canAdoptExitSubtotal({ ...complete('100.00', '300.00'), exitHistory: 'incomplete' }),
+    ).toBe(false);
+    expect(canAdoptExitSubtotal(IDENTIFIED)).toBe(false);
+  });
+
+  it('refuses to offer a partial sum as a whole-trade result', () => {
+    /*
+      THE MOST DANGEROUS OFFER THIS CONTROL COULD MAKE. `+100` beside an unpriced
+      leg is not a `+100` trade, and an action reading "Use +100.00 USD as final
+      result" would invite the trader to make it one.
+    */
+    const blankLeg = complete('100.00', '');
+    expect(exitSubtotal(blankLeg)).toBeNull();
+    expect(canAdoptExitSubtotal(blankLeg)).toBe(false);
+    expect(reconciliation(blankLeg)).toBe('not_applicable');
+    // A preserved declaration, not a fault: complete-with-a-gap still saves.
+    expect(exitHistoryStatus(blankLeg)).toBe('complete');
+    expect(canSave(blankLeg)).toBe(true);
+  });
+
+  it('never offers to overwrite a result the trader already stated', () => {
+    const stated = {
+      ...complete('100.00', '300.00'),
+      outcome: 'profit' as const,
+      finalAmount: '9.00',
+    };
+    expect(canAdoptExitSubtotal(stated)).toBe(false);
+  });
+
+  it('leaves the result unknown until the offer is actually taken', () => {
+    const offerable = complete('100.00', '300.00');
+    expect(exitSubtotal(offerable)).toBe(400);
+    // Being offerable is not being answered.
+    expect(finalNetPnl(offerable)).toBeNull();
+    expect(finalPnlSource(offerable)).toBeNull();
+    expect(metricEligibility(offerable).money).toBe(false);
+  });
+
+  it('makes the reconstruction authoritative, and says where the figure came from', () => {
+    const adopted = adoptExitSubtotal(complete('100.00', '300.00'));
+    expect(finalNetPnl(adopted)).toBe(400);
+    expect(finalPnlSource(adopted)).toBe('exit_history');
+    expect(reconciliation(adopted)).toBe('matched');
+    // No second copy of the money left behind to drift.
+    expect(adopted.finalAmount).toBe('');
+    expect(adopted.outcome).toBeNull();
+  });
+
+  it('derives the outcome word from the adopted figure', () => {
+    expect(derivedOutcome(adoptExitSubtotal(complete('100.00', '300.00')))).toBe('profit');
+    expect(
+      derivedOutcome(
+        adoptExitSubtotal({
+          ...complete(),
+          exits: [exit({ id: 'e1', outcome: 'loss', amount: '80.00' })],
+        }),
+      ),
+    ).toBe('loss');
+    expect(
+      derivedOutcome(
+        adoptExitSubtotal({
+          ...complete(),
+          exits: [
+            exit({ id: 'e1', amount: '50.00' }),
+            exit({ id: 'e2', outcome: 'loss', amount: '50.00' }),
+          ],
+        }),
+      ),
+    ).toBe('break_even');
+  });
+
+  it('derives Actual R from the adopted figure when the risk is known', () => {
+    const adopted = adoptExitSubtotal({ ...complete('100.00', '300.00'), riskAtEntry: '200.00' });
+    expect(derivedActualR(adopted)).toBe(2);
+    expect(metricEligibility(adopted)).toMatchObject({ money: true, r: true });
+  });
+
+  it('invents no Actual R when the risk was never recorded', () => {
+    const adopted = adoptExitSubtotal(complete('100.00', '300.00'));
+    expect(derivedActualR(adopted)).toBeNull();
+    expect(metricEligibility(adopted)).toMatchObject({ money: true, r: false });
+  });
+
+  it('keeps the reconstruction underneath, unchanged', () => {
+    const before = complete('100.00', '300.00');
+    const adopted = adoptExitSubtotal(before);
+    expect(adopted.exits).toEqual(before.exits);
+    expect(exitHistoryStatus(adopted)).toBe('complete');
+    expect(exitSubtotal(adopted)).toBe(400);
+  });
+});
+
+describe('after adoption, every route back out', () => {
+  const adopted = adoptExitSubtotal({
+    ...IDENTIFIED,
+    riskAtEntry: '200.00',
+    exits: [exit({ id: 'e1', amount: '100.00' }), exit({ id: 'e2', amount: '300.00' })],
+    exitHistory: 'complete',
+  });
+
+  it('tracks its own reconstruction when a leg is corrected', () => {
+    /*
+      The source is still the exit history, so the result IS the exit history. A
+      stale +400 sitting over a reconstruction that now says +390 is precisely
+      the drift a copy-on-adopt would have produced.
+    */
+    const corrected = applyExits(adopted, [
+      exit({ id: 'e1', amount: '90.00' }),
+      exit({ id: 'e2', amount: '300.00' }),
+    ]);
+    expect(finalNetPnl(corrected)).toBe(390);
+    expect(finalPnlSource(corrected)).toBe('exit_history');
+    expect(derivedActualR(corrected)).toBe(1.95);
+    expect(reconciliation(corrected)).toBe('matched');
+  });
+
+  it('re-derives the outcome word when a correction crosses zero', () => {
+    const flipped = applyExits(adopted, [
+      exit({ id: 'e1', outcome: 'loss', amount: '100.00' }),
+      exit({ id: 'e2', outcome: 'loss', amount: '300.00' }),
+    ]);
+    expect(finalNetPnl(flipped)).toBe(-400);
+    expect(derivedOutcome(flipped)).toBe('loss');
+  });
+
+  it('becomes the trader’s own total the moment they edit the amount', () => {
+    const editing = beginManualEdit(adopted);
+    expect(editing.finalSource).toBe('manual_total');
+    // Opens on the figure they accepted rather than empty: the record already
+    // asserted it, and it has only moved into the field that now owns it.
+    expect(editing.finalAmount).toBe('400.00');
+    expect(editing.outcome).toBe('profit');
+    expect(finalNetPnl(editing)).toBe(400);
+    expect(finalPnlSource(editing)).toBe('manual_total');
+  });
+
+  it('reconciles a manually overridden amount against the reconstruction again', () => {
+    const same = beginManualEdit(adopted);
+    expect(reconciliation(same)).toBe('matched');
+
+    const overridden = { ...same, finalAmount: '380.00' };
+    expect(finalNetPnl(overridden)).toBe(380);
+    expect(finalPnlSource(overridden)).toBe('manual_total');
+    expect(exitSubtotal(overridden)).toBe(400);
+    expect(reconciliation(overridden)).toBe('conflict');
+    // And the two figures are never combined into 780.
+    expect(finalNetPnl(overridden)).not.toBe(780);
+  });
+
+  it('stops claiming exit provenance when completeness is withdrawn', () => {
+    for (const history of ['unknown', 'incomplete'] as const) {
+      const withdrawn = applyExitHistory(adopted, history);
+      // The money survives: deleting what a person accepted because a
+      // neighbouring answer changed destroys their input.
+      expect(finalNetPnl(withdrawn)).toBe(400);
+      // But it no longer claims a complete reconstruction stands behind it.
+      expect(finalPnlSource(withdrawn)).toBe('manual_total');
+      expect(exitHistoryStatus(withdrawn)).toBe(history);
+      expect(reconciliation(withdrawn)).toBe('unreconciled');
+    }
+  });
+
+  it('stops claiming exit provenance when a leg loses its amount', () => {
+    const broken = applyExits(adopted, [
+      exit({ id: 'e1', amount: '100.00' }),
+      exit({ id: 'e2', amount: '' }),
+    ]);
+    expect(finalNetPnl(broken)).toBe(400);
+    expect(finalPnlSource(broken)).toBe('manual_total');
+    // Never the partial +100 a blank-as-zero reading would have produced.
+    expect(finalNetPnl(broken)).not.toBe(100);
+    expect(exitSubtotal(broken)).toBeNull();
+    expect(reconciliation(broken)).toBe('not_applicable');
+  });
+
+  it('stops claiming exit provenance when the last leg is removed', () => {
+    const emptied = applyExits(adopted, []);
+    expect(finalNetPnl(emptied)).toBe(400);
+    expect(finalPnlSource(emptied)).toBe('manual_total');
+    expect(exitHistoryStatus(emptied)).toBe('not_recorded');
+    expect(reconciliation(emptied)).toBe('not_applicable');
+  });
+
+  it('leaves a manually sourced record alone through the same edits', () => {
+    const manual = { ...IDENTIFIED, outcome: 'profit' as const, finalAmount: '400.00' };
+    expect(applyExitHistory(manual, 'incomplete').finalAmount).toBe('400.00');
+    expect(applyExits(manual, [exit({ id: 'e1', amount: '10.00' })]).finalSource).toBe(
+      'manual_total',
+    );
+  });
+});
+
+describe('two closing times', () => {
+  const closing = { date: '2026-09-01', time: '14:15' };
+
+  it('surfaces a disagreement rather than choosing a side', () => {
+    const draft = {
+      ...IDENTIFIED,
+      exitedAt: { date: '2026-09-01', time: '16:00' },
+      exits: [exit({ id: 'e1', scope: 'all_remaining', amount: '10.00', at: closing })],
+    };
+    const issue = issueFor(validateClosedTrade(draft), 'exitTime');
+    expect(issue?.severity).toBe('warning');
+    expect(issue?.message).toContain('14:15');
+    // Neither value is altered, and a real trade is not refused over it.
+    expect(draft.exitedAt).toEqual({ date: '2026-09-01', time: '16:00' });
+    expect(canSave(draft)).toBe(true);
+  });
+
+  it('says nothing when they agree', () => {
+    const draft = {
+      ...IDENTIFIED,
+      exitedAt: closing,
+      exits: [exit({ id: 'e1', scope: 'all_remaining', amount: '10.00', at: closing })],
+    };
+    expect(issueFor(validateClosedTrade(draft), 'exitTime')).toBeNull();
+  });
+
+  it('says nothing when only a partial leg carries a time', () => {
+    const draft = {
+      ...IDENTIFIED,
+      exitedAt: { date: '2026-09-01', time: '16:00' },
+      exits: [exit({ id: 'e1', amount: '10.00', at: closing })],
+    };
+    expect(finalExitTimeFromExits(draft.exits)).toBeNull();
+    expect(issueFor(validateClosedTrade(draft), 'exitTime')).toBeNull();
+  });
+});
+
+describe('what a conflict does and does not block', () => {
+  const legs = [exit({ id: 'e1', amount: '380.00' })];
+  const stated = { ...IDENTIFIED, outcome: 'profit' as const, finalAmount: '400.00', exits: legs };
+
+  it('blocks the save only for a declared-complete contradiction', () => {
+    expect(reconciliation({ ...stated, exitHistory: 'complete' })).toBe('conflict');
+    expect(canSave({ ...stated, exitHistory: 'complete' })).toBe(false);
+  });
+
+  it('never blocks the ordinary incomplete historical states', () => {
+    expect(canSave({ ...stated, exitHistory: 'unknown' })).toBe(true);
+    expect(canSave({ ...stated, exitHistory: 'incomplete' })).toBe(true);
+    expect(canSave({ ...IDENTIFIED, outcome: 'profit', finalAmount: '400.00' })).toBe(true);
+    // Declared complete but not monetarily comparable is not a contradiction.
+    expect(
+      canSave({ ...stated, exits: [exit({ id: 'e1', amount: '' })], exitHistory: 'complete' }),
+    ).toBe(true);
   });
 });
