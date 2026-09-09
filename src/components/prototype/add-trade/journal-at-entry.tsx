@@ -112,16 +112,52 @@ export function useJournalDraft<T>(
   };
 }
 
+/**
+ * JOURNAL AT ENTRY — the surface, under its own name.
+ *
+ * "Journal at entry" DESCRIBES THE SUBJECT, NOT THE MOMENT OF TYPING. A trader
+ * writing up last Tuesday's finished trade is still recording what they thought
+ * at entry; the name says which instant is being remembered, and the historical
+ * path uses this same surface for exactly that reason.
+ */
 export function JournalAtEntry({ areas }: { areas: readonly JournalArea[] }) {
+  return <LauncherSurface heading="Journal at entry" aside="Now or later" areas={areas} />;
+}
+
+/**
+ * THE LAUNCHER SURFACE ITSELF — one boundary, one or more places to write.
+ *
+ * IT IS SHARED RATHER THAN COPIED because the Fully closed path needs a second
+ * one: Review, holding Reflection, and later Reflection AND System assessment
+ * side by side. A second implementation would have been two surfaces that
+ * gradually stopped looking alike, and the second of them would have had to
+ * relearn the overlay, the working copy, the focus restoration and the rule
+ * that a preview is the only status an area ever shows.
+ *
+ * REVIEW IS A SEPARATE SURFACE, NOT A THIRD AREA IN THE JOURNAL. What the trader
+ * thought at entry and what they concluded afterwards are different kinds of
+ * truth about a trade, recorded at different times and read for different
+ * reasons; merging them would make "how did you feel?" and "what would you
+ * change?" look like two halves of one question.
+ */
+export function LauncherSurface({
+  heading,
+  aside,
+  areas,
+}: {
+  heading: string;
+  /** The one fact the promotion must not cost: none of this is due now. */
+  aside?: string;
+  areas: readonly JournalArea[];
+}) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   return (
     <>
       <section className="min-w-0">
         <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 px-1">
-          <h2 className="text-label text-muted-foreground uppercase">Journal at entry</h2>
-          {/* The one fact the promotion must not cost: none of this is due now. */}
-          <p className="text-subtle-foreground text-xs">Now or later</p>
+          <h2 className="text-label text-muted-foreground uppercase">{heading}</h2>
+          {aside === undefined ? null : <p className="text-subtle-foreground text-xs">{aside}</p>}
         </div>
 
         {/*
@@ -129,8 +165,19 @@ export function JournalAtEntry({ areas }: { areas: readonly JournalArea[] }) {
           between the halves — side by side where there is room, stacked where
           there is not. Two outlined cards would read as two separate things to
           deal with, which is the impression this area exists to avoid.
+
+          A SINGLE AREA TAKES THE WHOLE WIDTH. Splitting into columns before
+          there is a second area would leave Reflection sitting in half a row
+          with an empty half beside it, which reads as a missing thing rather
+          than as a complete one.
         */}
-        <div className="border-border bg-muted/20 divide-border grid min-w-0 divide-y overflow-hidden rounded-xl border min-[560px]:grid-cols-2 min-[560px]:divide-x min-[560px]:divide-y-0">
+        <div
+          className={cn(
+            'border-border bg-muted/20 divide-border grid min-w-0 divide-y overflow-hidden rounded-xl border',
+            areas.length > 1 &&
+              'min-[560px]:grid-cols-2 min-[560px]:divide-x min-[560px]:divide-y-0',
+          )}
+        >
           {areas.map((area) => (
             <JournalAreaButton key={area.id} area={area} onOpen={() => setActiveId(area.id)} />
           ))}

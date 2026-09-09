@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
+import type { ReconciliationStatus } from '../closed-trade';
 import {
   actualR,
   allocation,
@@ -18,7 +19,7 @@ import {
   type ExitRecord,
 } from '../exit-model';
 import { ExitFields } from './exit-fields';
-import { formatTimestamp, type Timestamp } from './timestamp-picker';
+import { formatTimestamp } from './timestamp-picker';
 
 /**
  * THE EXITS EDITOR — recorded exits READ; only one exit EDITS.
@@ -60,19 +61,20 @@ export const DEFAULT_EXIT_ROWS: readonly ExitRecord[] = [
 ];
 
 /**
- * The latest recorded exit instant, or `null` while none carries a time.
+ * WHAT THE HISTORICAL PATH PASSES IN WHEN THE EXITS ARE ONLY SUPPORTING DETAIL.
  *
- * THIS IS WHERE A MULTI-EXIT TRADE'S FINAL EXIT TIME COMES FROM. Asking a trader
- * to maintain per-exit timestamps AND a separate "final exit time" is asking
- * them to keep two records in agreement by hand, and the form has no way to tell
- * which to believe when they drift.
+ * On the Fully closed path the trade already has an authoritative whole-trade
+ * result, so these legs describe HOW that total was reached rather than deciding
+ * what it is. In that role the panel must not print its own Actual R — a second
+ * R on the same screen, derived from a possibly partial subtotal, is two answers
+ * to one question — and its total is labelled a subtotal, never a result.
+ *
+ * `total` is the authoritative figure, for stating the relationship in words.
+ * Nothing here adds it to anything.
  */
-export function latestExitTimestamp(rows: readonly ExitRecord[]): Timestamp | null {
-  const stamped = rows.filter((row): row is ExitRecord & { at: Timestamp } => row.at !== null);
-  if (stamped.length === 0) return null;
-  return stamped.reduce((latest, row) =>
-    `${row.at.date}T${row.at.time}` > `${latest.at.date}T${latest.at.time}` ? row : latest,
-  ).at;
+export interface SupportingRole {
+  readonly total: number | null;
+  readonly reconciliation: ReconciliationStatus;
 }
 
 export function ExitsEditor({
@@ -86,6 +88,8 @@ export function ExitsEditor({
   history = 'unknown',
   onHistoryChange,
   initialActiveId = null,
+  /** Present when these legs support an authoritative total rather than being it. */
+  supporting,
 }: {
   rows: readonly ExitRecord[];
   onRowsChange: (rows: readonly ExitRecord[]) => void;
@@ -95,6 +99,7 @@ export function ExitsEditor({
   history?: ExitHistory;
   onHistoryChange?: (history: ExitHistory) => void;
   initialActiveId?: string | null;
+  supporting?: SupportingRole;
 }) {
   const [activeId, setActiveId] = useState<string | null>(initialActiveId);
   const [draftIds, setDraftIds] = useState<readonly string[]>([]);
@@ -105,14 +110,21 @@ export function ExitsEditor({
   const risk = Number(riskAtEntry);
   const r = actualR(realized.total, risk);
 
-  const label = resultLabel({
-    lifecycle,
-    history,
-    everyExitPriced: realized.everyExitPriced,
-  });
+  /*
+    IN THE SUPPORTING ROLE THE TOTAL IS A SUBTOTAL, AND SAYS SO.
+
+    `resultLabel` decides between "Final net P&L" and a recorded subtotal for a
+    panel that OWNS the result. Here the result is owned elsewhere, so no wording
+    this panel produces may sound like one.
+  */
+  const label =
+    supporting === undefined
+      ? resultLabel({ lifecycle, history, everyExitPriced: realized.everyExitPriced })
+      : 'Recorded exits subtotal';
   /* The ONE amber case: the trader says the position is closed AND says the
      exit history is missing something. Not a missing percentage. */
   const unresolved = lifecycle === 'closed' && history === 'incomplete';
+  const conflicting = supporting?.reconciliation === 'conflict';
 
   function update(id: string, patch: Partial<ExitRecord>) {
     onRowsChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -201,82 +213,155 @@ export function ExitsEditor({
         </div>
       )}
 
-      <div
-        className={cn(
-          'border-border min-w-0 border-t px-3 py-2.5',
-          unresolved ? 'bg-warning/5' : 'bg-muted/30',
-        )}
-      >
-        <p className="text-muted-foreground text-xs font-medium">{label}</p>
-        <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
-          <span
-            className={cn(
-              'numeric text-base font-semibold',
-              realized.total > 0
-                ? 'text-positive'
-                : realized.total < 0
-                  ? 'text-negative'
-                  : 'text-foreground',
-            )}
-          >
-            {realized.total > 0 ? '+' : ''}
-            {realized.total.toFixed(2)} {currency}
-          </span>
-          {r === null ? (
-            <span className="text-subtle-foreground text-xs">
-              Actual R needs a recorded risk at entry
-            </span>
-          ) : (
-            <span className="numeric text-muted-foreground text-sm">
-              · {r > 0 ? '+' : ''}
-              {r.toFixed(2)}R
-            </span>
-          )}
-        </div>
+      {/*
+        NO LEGS, NO FOOTER — AND ESPECIALLY NO `+0.00`.
 
-        {/*
+        An empty exit history is the ordinary state of a trade recorded from its
+        final result, and summing nothing to zero would put a fabricated figure
+        under a panel the trader has only just opened. Nothing is stated until
+        something has been recorded.
+      */}
+      {realized.exitCount === 0 ? null : (
+        <div
+          className={cn(
+            'border-border min-w-0 border-t px-3 py-2.5',
+            unresolved || conflicting ? 'bg-warning/5' : 'bg-muted/30',
+          )}
+        >
+          <p className="text-muted-foreground text-xs font-medium">{label}</p>
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <span
+              className={cn(
+                'numeric text-base font-semibold',
+                realized.total > 0
+                  ? 'text-positive'
+                  : realized.total < 0
+                    ? 'text-negative'
+                    : 'text-foreground',
+              )}
+            >
+              {realized.total > 0 ? '+' : ''}
+              {realized.total.toFixed(2)} {currency}
+            </span>
+            {/*
+            NO SECOND R IN THE SUPPORTING ROLE. The page's Actual R comes from
+            the authoritative whole-trade result; an R derived here from a
+            possibly partial subtotal would be a second, quieter answer to the
+            same question, and a reader has no way to tell which one is the
+            trade's.
+          */}
+            {supporting !== undefined ? null : r === null ? (
+              <span className="text-subtle-foreground text-xs">
+                Actual R needs a recorded risk at entry
+              </span>
+            ) : (
+              <span className="numeric text-muted-foreground text-sm">
+                · {r > 0 ? '+' : ''}
+                {r.toFixed(2)}R
+              </span>
+            )}
+          </div>
+
+          {supporting === undefined ? null : (
+            <ReconciliationLine
+              status={supporting.reconciliation}
+              total={supporting.total}
+              currency={currency}
+            />
+          )}
+
+          {/*
           THE QUESTION IS ASKED, NOT ASSUMED.
 
           Whether every exit has been written down is something only the trader
-          knows, and §10 is explicit that a suspicion is not a finding. So the
-          control asks — and until it is answered the total is labelled as a
-          recorded subtotal rather than as a final result.
+          knows, and a suspicion is not a finding. So the control asks — and
+          until it is answered nothing on this panel claims the history is
+          finished, however neatly the amounts happen to add up.
         */}
-        {onHistoryChange === undefined || lifecycle !== 'closed' ? null : (
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-muted-foreground text-xs">Are all exits recorded?</span>
-            {[
-              { value: 'complete' as const, label: 'Yes' },
-              { value: 'incomplete' as const, label: 'No' },
-              { value: 'unknown' as const, label: 'Not sure' },
-            ].map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={history === option.value}
-                onClick={() => onHistoryChange(option.value)}
-                className={cn(
-                  'focus-visible:ring-ring relative rounded-full border px-2.5 py-1 text-xs outline-none focus-visible:ring-2',
-                  'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
-                  history === option.value
-                    ? 'border-primary bg-primary/10 text-foreground font-medium'
-                    : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        )}
+          {onHistoryChange === undefined || lifecycle !== 'closed' ? null : (
+            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-muted-foreground text-xs">Are all exits recorded?</span>
+              {[
+                { value: 'complete' as const, label: 'Yes' },
+                { value: 'incomplete' as const, label: 'No' },
+                { value: 'unknown' as const, label: 'Not sure' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={history === option.value}
+                  onClick={() => onHistoryChange(option.value)}
+                  className={cn(
+                    'focus-visible:ring-ring relative rounded-full border px-2.5 py-1 text-xs outline-none focus-visible:ring-2',
+                    'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
+                    history === option.value
+                      ? 'border-primary bg-primary/10 text-foreground font-medium'
+                      : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-        {unresolved ? (
-          <p className="text-warning mt-1 text-xs leading-relaxed">
-            Closed · Exit history incomplete. The total above is what has been recorded, not the
-            whole result.
-          </p>
-        ) : null}
-      </div>
+          {unresolved ? (
+            <p className="text-warning mt-1 text-xs leading-relaxed">
+              Closed · Exit history incomplete. The total above is what has been recorded, not the
+              whole result.
+            </p>
+          ) : null}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * HOW THE RECORDED LEGS STAND AGAINST THE TRADE'S OWN RESULT.
+ *
+ * IT NEVER PRESENTS A DIFFERENCE AS A SUM, and it never presents an agreement as
+ * completeness. Two legs adding to the final total prove that those two legs add
+ * to the final total — the trade may still have had a third, which is why the
+ * matched wording says what it compared and stops.
+ *
+ * A DIFFERENCE IS ORDINARY UNLESS THE TRADER SAID OTHERWISE. Somebody who knows
+ * their trade made 15 and can only remember one 10 leg has recorded two true
+ * facts; the missing 5 is unrecorded history, not an error, and certainly not a
+ * leg for the app to invent. Only "the history is complete AND it does not add
+ * up" is a contradiction, and only that one is amber.
+ */
+function ReconciliationLine({
+  status,
+  total,
+  currency,
+}: {
+  status: ReconciliationStatus;
+  total: number | null;
+  currency: string;
+}) {
+  if (status === 'not_applicable' || total === null) return null;
+  const figure = `${total > 0 ? '+' : ''}${total.toFixed(2)} ${currency}`;
+
+  if (status === 'matched') {
+    return (
+      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+        Adds up to your final result of {figure}.
+      </p>
+    );
+  }
+  if (status === 'unreconciled') {
+    return (
+      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+        Your final result stays {figure}. The difference is exit history you have not recorded.
+      </p>
+    );
+  }
+  return (
+    <p className="text-warning mt-1 text-xs leading-relaxed">
+      These exits do not add up to your final result of {figure}, and you have marked the history
+      complete. One of the two needs correcting.
+    </p>
   );
 }
 

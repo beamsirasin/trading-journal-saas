@@ -87,8 +87,22 @@ export const EMPTY_EXIT_PLAN: ExitPlanDraft = {
 export function effectiveExitPlan(
   chosen: ExitPlanDraft,
   strategyName: string | null,
+  /**
+   * WHETHER TODAY'S STRATEGY DEFAULT MAY STAND IN FOR THIS TRADE'S PLAN.
+   *
+   * `true` on the live path, where the trade is being opened now and the
+   * strategy's current default IS the plan in force. `false` on the historical
+   * path, and that is not a styling choice: a trade that closed last month was
+   * managed under whatever rule applied then, and quietly stamping this month's
+   * default onto it manufactures a plan the trader never stated — one that would
+   * then be available to judge their execution against. They may still CHOOSE
+   * the saved plan, which records an explicit `saved` source and reads as the
+   * decision it is.
+   */
+  inheritStrategyDefault = true,
 ): { draft: ExitPlanDraft; inherited: boolean } {
   if (chosen.source !== 'none') return { draft: chosen, inherited: false };
+  if (!inheritStrategyDefault) return { draft: chosen, inherited: false };
 
   const fallback = strategyDefaultPlan(strategyName);
   if (fallback === null) return { draft: chosen, inherited: false };
@@ -137,13 +151,20 @@ export function ExitPlanRow({
   onChange,
   /** The strategy currently chosen in the trade idea, if any. */
   strategyName,
+  /** `false` on the historical path — see `effectiveExitPlan`. */
+  inheritStrategyDefault = true,
 }: {
   draft: ExitPlanDraft;
   onChange: (draft: ExitPlanDraft) => void;
   strategyName: string | null;
+  inheritStrategyDefault?: boolean;
 }) {
   const library = useExitPlanLibrary();
-  const { draft: effective, inherited } = effectiveExitPlan(draft, strategyName);
+  const { draft: effective, inherited } = effectiveExitPlan(
+    draft,
+    strategyName,
+    inheritStrategyDefault,
+  );
 
   const [open, setOpen] = useState(false);
   /*

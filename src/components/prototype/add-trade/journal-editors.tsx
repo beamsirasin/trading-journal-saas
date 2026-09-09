@@ -184,6 +184,21 @@ export function reviewSummary(draft: ReviewDraft): readonly string[] {
   return lines;
 }
 
+/**
+ * REFLECTION ALONE — what the trader concluded, and nothing about the rules.
+ *
+ * SEPARATE FROM `reviewSummary` ON PURPOSE. That one previews a Review that also
+ * holds a rule-based comparison, and says so. Reflection is post-outcome
+ * learning on its own terms: a trader who writes one honest sentence has
+ * completed it, and its preview must never imply that a second, unrelated
+ * question is still owed. When System assessment arrives it becomes its OWN
+ * launcher with its OWN preview beside this one — completing either will never
+ * be read as completing the other.
+ */
+export function reflectionSummary(draft: ReviewDraft): readonly string[] {
+  return draft.note.trim() === '' ? [] : [excerpt(draft.note)];
+}
+
 function excerpt(text: string): string {
   const trimmed = text.trim();
   return trimmed.length <= 64 ? trimmed : `${trimmed.slice(0, 63)}…`;
@@ -547,6 +562,46 @@ export function FeelingsEditor({
         value={draft.emotions}
         onChange={(emotions) => onChange({ ...draft, emotions })}
       />
+    </div>
+  );
+}
+
+/**
+ * REFLECTION — one question, one box, and nothing else in it.
+ *
+ * WHAT IT DELIBERATELY DOES NOT CONTAIN. No rule comparison, no "did you follow
+ * your rules?", no counterfactual result. Those are System assessment, they are
+ * a later pass, and folding them in here is what made the previous Review editor
+ * charge the most technical idea in the product as the price of writing one
+ * honest sentence. Reflection is what the trader learned; System assessment is
+ * what the rules would have produced. They are answered at different moments,
+ * from different evidence, and one being done never means the other is.
+ *
+ * It writes ONLY `note`. `followedRules`, `rulesOutcome` and `rulesMoney` stay
+ * on the draft untouched — the shape the second launcher will fill.
+ */
+export function ReflectionEditor({
+  draft,
+  onChange,
+}: {
+  draft: ReviewDraft;
+  onChange: (draft: ReviewDraft) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {/* NOT the editor's own question again — that is the overlay's title. */}
+      <Field label="In your own words">
+        {(id) => (
+          <textarea
+            id={id}
+            rows={5}
+            value={draft.note}
+            onChange={(event) => onChange({ ...draft, note: event.target.value })}
+            placeholder="One honest sentence is enough."
+            className="border-input bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/50 min-h-32 w-full rounded-md border px-3 py-2 text-base outline-none focus-visible:ring-[3px]"
+          />
+        )}
+      </Field>
     </div>
   );
 }

@@ -351,6 +351,7 @@ export function PrimaryAmountField({
   readOut,
   readOutAction,
   footer,
+  size = 'primary',
 }: {
   label: string;
   currency: string;
@@ -379,12 +380,31 @@ export function PrimaryAmountField({
   readOutAction?: ReactNode;
   /** A control that belongs under the amount. */
   footer?: ReactNode;
+  /**
+   * `compact` KEEPS THE CONTROL AND GIVES UP THE SIZE.
+   *
+   * The Fully closed page carries two of these groups: the plan-at-entry
+   * baseline and the realized result. At full size they are the same figure
+   * three times over and the page has no subject; asking the plan pair to be
+   * ordinary text fields instead would cost the one affordance that pair needs —
+   * the "No fixed target" readout, which only this field can render. So the
+   * baseline stays this field at a smaller type size and the final result keeps
+   * the emphasis. Same control, same states, same declaration; less ink.
+   */
+  size?: 'primary' | 'compact';
 }) {
   const id = useId();
+  const compact = size === 'compact';
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <Label htmlFor={id} className="text-foreground text-sm font-medium">
+        <Label
+          htmlFor={id}
+          className={cn(
+            'font-medium',
+            compact ? 'text-muted-foreground text-xs' : 'text-foreground text-sm',
+          )}
+        >
           {label}
         </Label>
         {trailing}
@@ -412,7 +432,10 @@ export function PrimaryAmountField({
             // is exactly what 200% text zoom changes — so it grew to 224px and pushed
             // the page sideways. 112px keeps the value readable without ever
             // outgrowing the box that holds it.
-            className="numeric text-foreground h-12 w-full min-w-[112px] flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl"
+            className={cn(
+              'numeric text-foreground w-full min-w-[112px] flex-1 bg-transparent leading-none outline-none',
+              compact ? 'h-9 text-base' : 'h-12 text-[1.375rem] sm:text-2xl',
+            )}
           />
           <span className="text-muted-foreground shrink-0 pb-1 text-sm">{currency}</span>
         </div>
@@ -427,7 +450,12 @@ export function PrimaryAmountField({
           Direction and Profit/Loss choices use for "this is the selected
           answer". Same height as the input it replaces, so nothing shifts.
         */
-        <div className="border-primary/40 bg-primary/10 flex min-h-[3.5rem] min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2">
+        <div
+          className={cn(
+            'border-primary/40 bg-primary/10 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-3 py-2',
+            compact ? 'min-h-11' : 'min-h-[3.5rem]',
+          )}
+        >
           <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
           <p className="text-foreground min-w-0 flex-1 text-sm">{readOut}</p>
           {readOutAction}
@@ -466,13 +494,18 @@ export type MoneyOutcome = 'profit' | 'loss' | 'break_even';
  * still derived from the resulting R against the break-even tolerance band, and
  * a trade entered as a `profit` of a few cents can still classify as break-even.
  * The two must not be conflated, and nothing here writes the classification.
+ *
+ * `null` IS A REAL STARTING STATE, and on the historical path it is the only
+ * honest one. A preselected `Profit` on a form for a trade that finished last
+ * week is the app answering a question about the trader's money on their behalf;
+ * nothing is selected until they select it.
  */
 export function OutcomeChoice({
   value,
   onChange,
   legend = 'Was this a profit or a loss?',
 }: {
-  value: MoneyOutcome;
+  value: MoneyOutcome | null;
   onChange: (value: MoneyOutcome) => void;
   legend?: string;
 }) {
@@ -753,6 +786,39 @@ export function ResultSummary({
   );
 }
 
+/**
+ * A short line beneath a control, in one of three registers.
+ *
+ * `quiet` is guidance — "leave anything you don't remember blank". `warning` is
+ * something established that the record should say out loud. `error` is the one
+ * that stops a Save. Keeping all three in one component is what stops an ordinary
+ * unrecorded field from drifting into looking like a fault: the register has to
+ * be chosen deliberately, and the default is the harmless one.
+ */
+export function InlineNote({
+  children,
+  tone = 'quiet',
+}: {
+  children: ReactNode;
+  tone?: 'quiet' | 'warning' | 'error';
+}) {
+  return (
+    <p
+      className={cn(
+        'min-w-0 text-xs leading-relaxed',
+        tone === 'error'
+          ? 'text-negative'
+          : tone === 'warning'
+            ? 'text-warning'
+            : 'text-subtle-foreground',
+      )}
+      {...(tone === 'error' ? { role: 'alert' } : {})}
+    >
+      {children}
+    </p>
+  );
+}
+
 export function ResultLine({
   label,
   value,
@@ -803,11 +869,24 @@ export function FormFooter({
   helper,
   secondary,
   sticky = false,
+  disabled = false,
+  /**
+   * WHAT IS ACTUALLY WRONG, BESIDE THE CONTROL THAT REFUSES.
+   *
+   * A disabled button with no explanation is a dead end, and on a long form the
+   * offending field is usually off-screen. These are the blocking issues in the
+   * trader's words — never a count, and never a list of what is merely missing:
+   * an unrecorded risk, target, time or result is a saveable state and does not
+   * appear here.
+   */
+  blockedBy = [],
 }: {
   action: string;
   helper: string;
   secondary?: string;
   sticky?: boolean;
+  disabled?: boolean;
+  blockedBy?: readonly string[];
 }) {
   /*
     THE DOCKED SAVE RELEASES ITSELF WHEN THE KEYBOARD NEEDS THE ROOM.
@@ -839,8 +918,15 @@ export function FormFooter({
           'bg-background/95 border-border sticky bottom-0 -mx-4 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none',
       )}
     >
+      {blockedBy.length === 0 ? null : (
+        <ul className="text-negative flex min-w-0 list-none flex-col gap-1 text-xs">
+          {blockedBy.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
+      )}
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <Button size="lg" className="min-h-12 w-full sm:w-auto">
+        <Button size="lg" className="min-h-12 w-full sm:w-auto" disabled={disabled}>
           {action}
         </Button>
         {secondary === undefined ? null : (

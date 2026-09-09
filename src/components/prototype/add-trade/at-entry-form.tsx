@@ -3,6 +3,7 @@
 import { HeartPulse, Lightbulb } from 'lucide-react';
 import { useState } from 'react';
 
+import { money, targetR } from '../exit-model';
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
 import { EMPTY_EXIT_PLAN, ExitPlanRow, type ExitPlanDraft } from './exit-plan';
@@ -139,12 +140,8 @@ export function AtEntryForm({
     A zero or unrecorded risk yields `null`, never a zero and never an infinity.
   */
   const riskNumber = Number(risk);
-  const targetNumber = Number(target);
-  const hasRisk = risk !== '' && Number.isFinite(riskNumber) && riskNumber > 0;
-  const targetR =
-    !noFixedTarget && hasRisk && target !== '' && Number.isFinite(targetNumber)
-      ? targetNumber / riskNumber
-      : null;
+  const reward = noFixedTarget ? null : money(target);
+  const targetRValue = reward === null ? null : targetR(reward, riskNumber);
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
@@ -339,13 +336,13 @@ export function AtEntryForm({
               the trader has already answered. No reward:risk ratio beside it:
               one derived figure, secondary to the two amounts it comes from.
             */}
-            {targetR === null ? null : (
+            {targetRValue === null ? null : (
               /* A hairline above it, so the figure visibly belongs to the two
                  amounts rather than floating after them. */
               <div className="border-border/70 min-w-0 border-t pt-3">
                 <ResultLine
                   label="Target R"
-                  value={`+${targetR.toFixed(2)}R`}
+                  value={`+${targetRValue.toFixed(2)}R`}
                   detail={`1R = ${riskNumber.toFixed(2)} USD`}
                 />
               </div>

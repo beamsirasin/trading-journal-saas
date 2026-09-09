@@ -1,13 +1,26 @@
 'use client';
 
+import { HeartPulse, Lightbulb, NotebookPen } from 'lucide-react';
 import { useState } from 'react';
 
-import { cn } from '@/lib/utils';
-
-import { actualR as deriveActualR, type ExitHistory, type ExitRecord } from '../exit-model';
+import {
+  blockingIssues,
+  canSave,
+  derivedActualR,
+  derivedTargetR,
+  EMPTY_CLOSED_TRADE,
+  finalExitTimeFromExits,
+  finalNetPnl,
+  issueFor,
+  reconciliation,
+  validateClosedTrade,
+  type ClosedTradeDraft,
+} from '../closed-trade';
+import { money, type ExitRecord } from '../exit-model';
 import { PROTOTYPE_TIMEZONE } from '../fixtures';
 import { PrototypeShell } from '../prototype-shell';
-import { DEFAULT_EXIT_ROWS, ExitsEditor, latestExitTimestamp } from './exits-editor';
+import { EMPTY_EXIT_PLAN, ExitPlanRow, type ExitPlanDraft } from './exit-plan';
+import { DEFAULT_EXIT_ROWS, ExitsEditor } from './exits-editor';
 import {
   Band,
   ChoiceGroup,
@@ -16,62 +29,68 @@ import {
   FieldPair,
   FormFooter,
   FormShell,
+  InlineNote,
   OutcomeChoice,
   PrimaryAmountField,
   QuietAction,
   ResultLine,
   TaskSurface,
   TextField,
-  type MoneyOutcome,
 } from './form-primitives';
+import { JournalAtEntry, LauncherSurface, useJournalDraft } from './journal-at-entry';
 import {
   EMPTY_FEELINGS,
   EMPTY_PLAN,
   EMPTY_REVIEW,
   FeelingsEditor,
   feelingsSummary,
-  PlanEditor,
-  planSummary,
-  ReviewEditor,
-  reviewSummary,
+  ReflectionEditor,
+  reflectionSummary,
+  tradeIdeaSummary,
   type FeelingsDraft,
   type PlanDraft,
   type ReviewDraft,
 } from './journal-editors';
-import { JournalPrompts } from './journal-prompts';
-import { formatTimestamp, TimestampField, type Timestamp } from './timestamp-picker';
+import { formatTimestamp, TimestampField } from './timestamp-picker';
+import { TradeIdeaOverlay } from './trade-idea-overlay';
+
+const CURRENCY = 'USD';
 
 /**
- * FULLY CLOSED — the whole finished trade, written up in one sitting.
+ * FULLY CLOSED — a finished trade, written up from memory.
  *
- * THE MENTAL MODEL THIS PASS CORRECTED. The previous composition read "the
- * result, and everything else is hidden somewhere". That is a defensible
- * reading of "After trade" and the wrong one: a trader journaling a completed
- * trade is reconstructing the WHOLE trade — what was traded, which way, when it
- * opened and closed, what was risked, what it made, and what they thought about
- * it. So the screen shows two compact factual groups, THE TRADE and RESULT,
- * and the result is prominent because it is known, not because the rest was
- * demoted.
+ * WHAT THIS PASS CORRECTED, AND IT IS NOT A LAYOUT PROBLEM.
  *
- * MONEY LEADS; R FOLLOWS. `+2.00R` was the largest figure on the screen, which
- * is right for a trader fluent in R and useless to everyone else. `Net profit
- * +400.00 USD` is the headline now, with `Result (R)` beneath it — a beginner
- * can verify the first against their broker statement and learn the second by
- * watching it move.
+ * The previous version opened with a symbol, a direction, a 200.00 risk and a
+ * 400.00 profit already in the fields. Every one of those was a fact about a
+ * trade nobody had described yet. A historical form's hardest requirement is
+ * that it hold "I do not remember" without turning it into a number, and a form
+ * that starts pre-filled has already failed it before the trader types anything.
+ * Everything starts unrecorded now, and unrecorded stays unrecorded through
+ * derivation, validation and Save.
  *
- * NO PLUS/MINUS TOGGLE. The sign is asked in words — Profit, Loss, Break-even —
- * because a beginner should never have to discover an icon-only control in order
- * to record a losing trade, and because a form that silently defaults to
- * "profit" will happily save someone's worst trade as a win.
+ * THE SECOND AND WORSE ONE: "It closed in more than one exit" REMOVED the
+ * whole-trade result and made the reconstructed legs the trade's money. So a
+ * trader who knew their trade made 15 and could recall one 10 leg ended up with
+ * a 10 trade. The authoritative figure is the FINAL WHOLE-TRADE NET P&L — the
+ * number on the broker statement, the one a person actually knows — and exit
+ * detail is now a disclosure UNDER it that never replaces it, never adds to it,
+ * and never claims to be complete on its own. See `closed-trade.ts`.
  *
- * NOTHING IS RECONSTRUCTED FROM THE RESULT. The plan starts blank and stays
- * blank unless the trader actually had one; the rule-based comparison is never
- * seeded from the exit. An exit price says where the position closed, not which
- * rule would have fired first, and a form that guesses turns a counterfactual
- * into a copy of the actual.
+ * READING ORDER, NOT EQUAL WEIGHT. The trade, the plan at entry, the actual
+ * result, the journal, the review, save. One column. The result carries the
+ * emphasis because it is the one figure this screen exists to capture; the plan
+ * baseline is the same two controls the Still open path uses, at a smaller size,
+ * so the page has a subject rather than three competing headlines.
+ *
+ * NOTHING IS RECONSTRUCTED FROM ANYTHING ELSE. The plan is not inferred from the
+ * result, the strategy's current exit plan is not stamped onto a trade that
+ * closed under an older one, the final exit time is not taken from whichever leg
+ * happens to be latest, and the exit history is never called complete because
+ * the arithmetic happens to work out.
  */
 export function AfterTradeForm({
-  /** Opens the multiple-exits editor on arrival, for the partial-exit review states. */
+  /** Opens the exit-details disclosure with recorded legs, for the review states. */
   exits = false,
   /** Which leg opens as the active editor, for the active-editor review state. */
   activeExit = null,
@@ -82,42 +101,43 @@ export function AfterTradeForm({
   activeExit?: string | null;
   filled?: boolean;
 }) {
-  const [symbol, setSymbol] = useState('XAUUSD');
-  const [direction, setDirection] = useState<'long' | 'short' | null>('long');
-  const [risk, setRisk] = useState('200.00');
-  const [target, setTarget] = useState('');
-  const [pnl, setPnl] = useState('400.00');
-  const [outcome, setOutcome] = useState<MoneyOutcome>('profit');
-  const [multipleExits, setMultipleExits] = useState(exits);
-
-  const [enteredAt, setEnteredAt] = useState<Timestamp | null>(null);
-  const [exitedAt, setExitedAt] = useState<Timestamp | null>(null);
-  const [exitRows, setExitRows] = useState<readonly ExitRecord[]>(DEFAULT_EXIT_ROWS);
   /*
-    WHETHER EVERY EXIT IS WRITTEN DOWN IS ASKED, NOT ASSUMED. A trade the trader
-    declared closed can still be missing an exit, and the total must not be
-    called "final" until they say it is complete — see `resultLabel`.
-  */
-  const [exitHistory, setExitHistory] = useState<ExitHistory>('unknown');
+    ONE DRAFT, AND THE MODEL OWNS ITS MEANING.
 
+    The screen used to keep eight independent `useState` values and re-derive the
+    result inline from whichever of them happened to be in scope. Holding the
+    record in the shape `closed-trade.ts` defines means every figure on the page
+    — the result, both R values, the reconciliation, what may be saved — is a
+    function of the same record the save would carry, so the screen cannot show
+    one thing and store another.
+  */
+  const [trade, setTrade] = useState<ClosedTradeDraft>(() => seedTrade({ exits, filled }));
   /*
-    WITH MULTIPLE EXITS, THE FINAL EXIT TIME IS THE LAST LEG — NOT A FIELD.
+    NOTHING IS WRONG WITH A FORM NOBODY HAS TOUCHED.
 
-    Keeping a per-leg timestamp on every exit AND a separate "final exit time"
-    asks the trader to hold two records in agreement by hand, and gives the form
-    no way to decide which to believe when they drift. The last leg to close is
-    the final exit, by definition, so it is derived and shown rather than asked
-    for again.
+    Save is refused from the first render, because a trade with no symbol and no
+    direction is not a record. But rendering "Enter the symbol you traded" beside
+    an empty field the reader has not reached yet is the form telling somebody
+    off for arriving, and on a phone it put two red lines in the docked bar of a
+    screen where nothing had been typed. The refusal is visible in the disabled
+    control; the reasons appear once there is something to have got wrong.
   */
-  const derivedExitAt = latestExitTimestamp(exitRows);
+  const [touched, setTouched] = useState(false);
+  const patch = (next: Partial<ClosedTradeDraft>) => {
+    setTouched(true);
+    setTrade((current) => ({ ...current, ...next }));
+  };
+
+  const [exitsOpen, setExitsOpen] = useState(exits);
+  const [exitPlan, setExitPlan] = useState<ExitPlanDraft>(EMPTY_EXIT_PLAN);
 
   const [plan, setPlan] = useState<PlanDraft>(
     filled
       ? {
           ...EMPTY_PLAN,
+          reason: 'Third push out of the London range, with the 4H trend.',
           strategy: 'Elliott Wave',
           setup: 'Wave 3 Continuation',
-          targetProfit: '1000.00',
         }
       : EMPTY_PLAN,
   );
@@ -129,34 +149,41 @@ export function AfterTradeForm({
       ? {
           ...EMPTY_REVIEW,
           note: 'Wait for the candle close next time rather than anticipating it.',
-          followedRules: 'met',
         }
       : EMPTY_REVIEW,
   );
 
+  /* Overlay-local working copies, so Cancel and Escape have something to
+     discard — the same contract the Still open path established. */
+  const idea = useJournalDraft(plan, setPlan);
+  const emotion = useJournalDraft(feelings, setFeelings);
+  const reflection = useJournalDraft(review, setReview);
+
   /*
-    THE SIGN COMES FROM THE WORD THE TRADER CHOSE, and break-even is a real zero
-    rather than a typed one. This is INPUT MEANING only: the engine still
-    classifies the outcome from the resulting R against its own tolerance band,
-    and a "profit" of a few cents can still classify as break-even.
+    EVERY FIGURE BELOW IS DERIVED FROM `trade`. None is stored, none is editable
+    on its own, and none can disagree with the money and risk it comes from.
   */
-  const signedPnl = outcome === 'break_even' ? 0 : Number(pnl) * (outcome === 'loss' ? -1 : 1);
-  const riskNumber = Number(risk);
-  const amountKnown = Number.isFinite(signedPnl) && (outcome === 'break_even' || pnl !== '');
+  const finalPnl = finalNetPnl(trade);
+  const actualRValue = derivedActualR(trade);
+  const targetRValue = derivedTargetR(trade);
+  const riskValue = money(trade.riskAtEntry);
+  const issues = validateClosedTrade(trade);
+  const blocking = blockingIssues(trade);
+  const suggestedExitTime = finalExitTimeFromExits(trade.exits);
 
-  /* Actual R divides by the ORIGINAL risk at entry, through the shared model —
-     the same function the exits editor and the Close trade flow call. */
-  const actualRValue = amountKnown ? deriveActualR(signedPnl, riskNumber) : null;
+  const timeError = issueFor(issues, 'exitedAt');
+  const riskError = issueFor(issues, 'riskAtEntry');
+  const targetError = issueFor(issues, 'targetProfit');
+  const amountError = issueFor(issues, 'finalAmount') ?? issueFor(issues, 'outcome');
 
-  /* Target R is derived, and only when both halves exist. It is not a result. */
-  const targetNumber = Number(target);
-  const targetR =
-    target !== '' && Number.isFinite(targetNumber) && Number.isFinite(riskNumber) && riskNumber > 0
-      ? targetNumber / riskNumber
-      : null;
-
-  const moneyText = amountKnown ? `${signedPnl > 0 ? '+' : ''}${signedPnl.toFixed(2)} USD` : null;
-  const tone = signedPnl > 0 ? 'positive' : signedPnl < 0 ? 'negative' : 'neutral';
+  const tone =
+    finalPnl === null
+      ? 'neutral'
+      : finalPnl > 0
+        ? 'positive'
+        : finalPnl < 0
+          ? 'negative'
+          : 'neutral';
 
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
@@ -168,32 +195,38 @@ export function AfterTradeForm({
         footer={
           <FormFooter
             action="Save closed trade"
-            helper="You can add your plan, your review and the rule comparison later."
+            helper="Save what you remember. Anything left blank stays blank — you can fill it in later."
             sticky
+            disabled={!canSave(trade)}
+            blockedBy={touched ? blocking.map((issue) => issue.message) : []}
           />
         }
       >
         <TaskSurface>
           <Band className="gap-3 py-3.5">
-            <ContextLine account="Live · FTMO 100K" currency="USD" onChange={() => {}} />
+            <ContextLine account="Live · FTMO 100K" currency={CURRENCY} onChange={() => {}} />
           </Band>
 
           {/*
-            GROUP ONE — THE TRADE. What was traded, which way, and when it ran.
-            It comes first because a completed trade is a thing that happened,
-            and a screen that opens on its P&L is a receipt rather than a journal
-            entry.
+            ONE — THE TRADE. What was traded, which way, and when it ran. It
+            comes first because a completed trade is a thing that happened, and a
+            screen that opens on its P&L is a receipt rather than a journal entry.
           */}
           <Band>
             <h2 className="text-label text-muted-foreground uppercase">The trade</h2>
             <FieldPair>
-              <TextField label="Symbol" value={symbol} onChange={setSymbol} placeholder="XAUUSD" />
+              <TextField
+                label="Symbol"
+                value={trade.symbol}
+                onChange={(symbol) => patch({ symbol })}
+                placeholder="e.g. XAUUSD"
+              />
               <Field label="Direction">
                 {() => (
                   <ChoiceGroup
                     legend="Direction"
-                    value={direction}
-                    onChange={setDirection}
+                    value={trade.direction}
+                    onChange={(direction) => patch({ direction })}
                     options={[
                       { value: 'long', label: 'Long' },
                       { value: 'short', label: 'Short' },
@@ -204,18 +237,16 @@ export function AfterTradeForm({
             </FieldPair>
 
             {/*
-              ONE TIMESTAMP GROUP, TWO COMPACT ROWS.
+              BOTH TIMESTAMPS BEGIN UNRECORDED, AND THAT IS THE WHOLE POINT.
 
-              They were a `FieldPair`, which on a phone is two full-height fields
-              stacked, each with its own label and each carrying a placeholder
-              that repeated its own label back — "Select entry date and time"
-              under a label reading "Entry time". Roughly 150px of vertical space
-              on the screen that most needs to give it back. One zone note above
-              the pair, short placeholders, and both timestamps still explicit.
+              A historical trade silently dated today is a wrong record that
+              looks like a right one: nothing downstream can tell a genuine
+              timestamp from a default the trader accepted because it was already
+              there. "Not set" is a state the analytics can exclude; today's date
+              is a state they cannot.
 
-              BOTH START UNANSWERED. A historical trade silently dated today is a
-              wrong record that looks like a right one, so neither picker selects
-              anything until the trader does.
+              Side by side where there is room, stacked where there is not — one
+              zone note above the pair rather than a timezone on each.
             */}
             <div className="flex min-w-0 flex-col gap-2">
               <p className="text-subtle-foreground text-xs">Times in {PROTOTYPE_TIMEZONE}</p>
@@ -223,182 +254,303 @@ export function AfterTradeForm({
                 <TimestampField
                   label="Entry time"
                   title="Entry date and time"
-                  value={enteredAt}
-                  onChange={setEnteredAt}
+                  value={trade.enteredAt}
+                  onChange={(enteredAt) => patch({ enteredAt })}
                   placeholder="Not set"
                 />
-                {multipleExits ? (
-                  <div className="flex min-w-0 flex-col gap-1.5">
-                    <span className="text-muted-foreground text-xs font-medium">
-                      Final exit time
-                    </span>
-                    <p className="text-foreground numeric flex h-11 min-w-0 items-center text-sm">
-                      {formatTimestamp(derivedExitAt) ?? (
-                        <span className="text-subtle-foreground">From your last exit</span>
-                      )}
-                    </p>
-                  </div>
-                ) : (
-                  <TimestampField
-                    label="Final exit time"
-                    title="Final exit date and time"
-                    value={exitedAt}
-                    onChange={setExitedAt}
-                    placeholder="Not set"
-                  />
-                )}
+                <TimestampField
+                  label="Final exit time"
+                  title="Final exit date and time"
+                  value={trade.exitedAt}
+                  onChange={(exitedAt) => patch({ exitedAt })}
+                  placeholder="Not set"
+                />
               </div>
+
+              {/*
+                A LEG'S TIME MAY STAND FOR THE TRADE'S ONLY IF THAT LEG CLOSED IT.
+
+                The previous version REPLACED this field with a read-only line
+                derived from the latest recorded exit — whatever that exit was.
+                On a partly reconstructed history the latest recorded leg is
+                routinely a partial one, so the trade acquired a final exit time
+                that was really a mid-trade timestamp, and the trader had no
+                field left to correct it in.
+
+                An `All remaining` leg is the one exit that says nothing was left
+                afterwards. Its time is offered, once, as something to accept.
+              */}
+              {suggestedExitTime === null ||
+              (trade.exitedAt !== null &&
+                trade.exitedAt.date === suggestedExitTime.date &&
+                trade.exitedAt.time === suggestedExitTime.time) ? null : (
+                <QuietAction onClick={() => patch({ exitedAt: suggestedExitTime })}>
+                  Use {formatTimestamp(suggestedExitTime)} — your exit that closed the position
+                </QuietAction>
+              )}
+
+              {timeError === null ? null : (
+                <InlineNote tone="error">{timeError.message}</InlineNote>
+              )}
             </div>
           </Band>
 
-          {/* GROUP TWO — RESULT. */}
           {/*
-            PLAN AT ENTRY — the same baseline the Still open path collects, in the
-            same three terms. A historical trade has no baseline until someone
-            reconstructs one, so it is asked for here rather than assumed; the
-            target stays optional, and Target R appears only when both halves
-            exist.
+            TWO — PLAN AT ENTRY. The same baseline the Still open path collects,
+            in the same three terms and through the same controls, at a smaller
+            size so it does not compete with the result below it.
 
-            THE AMOUNTS / PRICES SWITCH IS GONE from this path too. It asked for a
-            representation before a single figure had been entered, and its two
-            branches were not equivalent — the price branch could not produce a
-            monetary result at all. Price levels live in "What was your plan?" as
-            optional structured detail, and are never a prerequisite.
+            A HISTORICAL PLAN IS RECONSTRUCTED, NOT ASSUMED. Nothing here is
+            seeded, nothing is inferred from the result, and the trade's exit plan
+            does not inherit the strategy's CURRENT default — a trade managed
+            last month under an older rule must not be stamped with this month's
+            and then judged against it.
           */}
           <Band>
-            <h2 className="text-label text-muted-foreground uppercase">Plan at entry</h2>
+            <div className="flex min-w-0 flex-col gap-1">
+              <h2 className="text-label text-muted-foreground uppercase">Plan at entry</h2>
+              <InlineNote>
+                Record what applied when you entered; leave anything you don’t remember blank.
+              </InlineNote>
+            </div>
+
             <FieldPair>
-              <TextField
-                label="Risk at entry (USD)"
-                value={risk}
-                onChange={setRisk}
-                inputMode="decimal"
-                numeric
+              <PrimaryAmountField
+                size="compact"
+                label="Risk at entry"
+                currency={CURRENCY}
+                value={trade.riskAtEntry}
+                onChange={(riskAtEntry) => patch({ riskAtEntry })}
+                hint="What the whole position stood to lose if your protective exit was hit."
               />
-              <TextField
-                label="Target profit (USD)"
-                optional
-                value={target}
-                onChange={setTarget}
-                inputMode="decimal"
-                numeric
+              {/*
+                THREE STATES, NOT TWO — the same control, and the same rule, as
+                Still open. A blank target means "not answered"; No fixed target
+                is a complete answer about the plan. The typed value is kept so
+                the choice is reversible, and is excluded from Target R while the
+                declaration stands.
+              */}
+              <PrimaryAmountField
+                size="compact"
+                label="Target profit"
+                currency={CURRENCY}
+                value={trade.targetProfit}
+                onChange={(targetProfit) => patch({ targetProfit })}
+                {...(trade.noFixedTarget
+                  ? {
+                      readOut: 'No fixed target',
+                      readOutAction: (
+                        <QuietAction onClick={() => patch({ noFixedTarget: false })}>
+                          Change
+                          <span className="sr-only"> target</span>
+                        </QuietAction>
+                      ),
+                    }
+                  : {
+                      trailing: (
+                        <QuietAction onClick={() => patch({ noFixedTarget: true })}>
+                          No fixed target
+                        </QuietAction>
+                      ),
+                    })}
               />
             </FieldPair>
-            {targetR === null ? null : (
-              <ResultLine label="Target R" value={`+${targetR.toFixed(2)}R`} />
+
+            {riskError === null ? null : <InlineNote tone="error">{riskError.message}</InlineNote>}
+            {targetError === null ? null : (
+              <InlineNote tone="error">{targetError.message}</InlineNote>
             )}
+
+            {/*
+              ONE DERIVED LINE, AND ONLY WHEN BOTH HALVES EXIST. Target profit
+              over risk at entry. Absent while either is unrecorded and absent
+              when there is no fixed target — never `0.00R`, which would state a
+              plan that pays nothing.
+            */}
+            {targetRValue === null ? null : (
+              <div className="border-border/70 min-w-0 border-t pt-3">
+                <ResultLine
+                  label="Target R"
+                  value={`+${targetRValue.toFixed(2)}R`}
+                  {...(riskValue === null
+                    ? {}
+                    : { detail: `1R = ${riskValue.toFixed(2)} ${CURRENCY}` })}
+                />
+              </div>
+            )}
+
+            <ExitPlanRow
+              draft={exitPlan}
+              onChange={setExitPlan}
+              strategyName={plan.strategy}
+              inheritStrategyDefault={false}
+            />
           </Band>
 
+          {/*
+            THREE — ACTUAL RESULT. The strongest figure on the page, and the one
+            authority on what this trade made.
+          */}
           <Band divided={false} className="py-4">
             <h2 className="text-label text-muted-foreground uppercase">Actual result</h2>
 
-            {/*
-              ONE MONETARY AUTHORITY, AND NEVER BOTH AT ONCE.
+            <OutcomeChoice
+              value={trade.outcome}
+              onChange={(outcome) => patch({ outcome })}
+              legend="How did the trade finish?"
+            />
 
-              With multiple exits the exits ARE the result, so the whole-trade
-              amount is not collected: adding a total to the amounts that compose
-              it would count the same money twice. With a single close the total
-              is collected directly and no percentage is required — a trade that
-              closed once has nothing to allocate.
-            */}
-            {multipleExits ? null : (
-              <>
-                <OutcomeChoice value={outcome} onChange={setOutcome} />
-
-                {outcome === 'break_even' ? (
-                  <div className="min-w-0">
-                    <p className="text-muted-foreground text-xs font-medium">Final net P&L</p>
-                    <p className="numeric text-foreground text-metric mt-0.5 font-semibold">
-                      0.00 USD
-                    </p>
-                  </div>
-                ) : (
-                  <PrimaryAmountField
-                    label={outcome === 'loss' ? 'Final net loss' : 'Final net profit'}
-                    currency="USD"
-                    value={pnl}
-                    onChange={setPnl}
-                    hint="After fees and other costs"
-                  />
-                )}
-
-                {actualRValue === null ? null : (
-                  <p className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                    <span className="text-muted-foreground text-xs font-medium">Actual R</span>
-                    <span
-                      className={cn(
-                        'numeric text-base font-semibold',
-                        tone === 'positive'
-                          ? 'text-positive'
-                          : tone === 'negative'
-                            ? 'text-negative'
-                            : 'text-foreground',
-                      )}
-                    >
-                      {actualRValue > 0 ? '+' : ''}
-                      {actualRValue.toFixed(2)}R
-                    </span>
-                  </p>
-                )}
-              </>
+            {trade.outcome === null ? (
+              <InlineNote>
+                Leave this unanswered if you don’t know the final figure. It stays unrecorded rather
+                than becoming zero.
+              </InlineNote>
+            ) : trade.outcome === 'break_even' ? (
+              /* Break-even is a KNOWN zero, stated as one. It is the only route
+                 to a zero on this screen; a blank amount is not one. */
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-xs font-medium">Final net P&amp;L</p>
+                <p className="numeric text-foreground text-metric mt-0.5 font-semibold">
+                  0.00 {CURRENCY}
+                </p>
+              </div>
+            ) : (
+              <PrimaryAmountField
+                label={trade.outcome === 'loss' ? 'Final net loss' : 'Final net profit'}
+                currency={CURRENCY}
+                value={trade.finalAmount}
+                onChange={(finalAmount) => patch({ finalAmount })}
+                hint="For the whole trade, after fees and other costs."
+              />
             )}
 
-            <div className="flex min-w-0">
-              <QuietAction
-                expanded={multipleExits}
-                onClick={() => setMultipleExits((current) => !current)}
-              >
-                {multipleExits ? 'It closed in one exit' : 'It closed in more than one exit'}
-              </QuietAction>
-            </div>
+            {amountError === null ? null : (
+              <InlineNote tone="error">{amountError.message}</InlineNote>
+            )}
 
             {/*
-              THE HISTORICAL PATH DECLARES THE POSITION CLOSED, so the editor is
-              told so: a half-reconstructed exit history must never report the
-              trade as open again, and it must never print "40% still open"
-              against a lifecycle the trader has already settled.
+              ACTUAL R IS DERIVED FROM THAT FIGURE AND THE RISK ABOVE IT, on every
+              render. Editing the risk moves it; an unrecorded risk removes it.
+              UNAVAILABLE IS SILENCE OR A SENTENCE, NEVER `0.00R`.
             */}
-            {multipleExits ? (
+            {actualRValue === null ? (
+              finalPnl === null || riskValue !== null ? null : (
+                <InlineNote>Actual R needs your risk at entry.</InlineNote>
+              )
+            ) : (
+              <ResultLine
+                label="Actual R"
+                value={`${actualRValue > 0 ? '+' : ''}${actualRValue.toFixed(2)}R`}
+                tone={tone}
+              />
+            )}
+
+            {/*
+              FOUR — EXIT DETAIL, AS A DISCLOSURE UNDER THE RESULT.
+
+              Not a second recording mode and not a replacement for the figure
+              above. A trader who closed in parts can describe how; the total they
+              already stated remains the trade's result whatever those parts add
+              up to, and no empty leg stands open until they ask for one.
+            */}
+            <div className="flex min-w-0 flex-col gap-1">
+              <QuietAction expanded={exitsOpen} onClick={() => setExitsOpen((open) => !open)}>
+                {exitsOpen ? 'Hide exit details' : 'Add exit details'}
+              </QuietAction>
+              {exitsOpen ? null : <InlineNote>If you closed in parts.</InlineNote>}
+            </div>
+
+            {exitsOpen ? (
               <ExitsEditor
-                rows={exitRows}
-                onRowsChange={setExitRows}
-                riskAtEntry={risk}
-                currency="USD"
+                rows={trade.exits}
+                onRowsChange={(nextExits) => patch({ exits: nextExits })}
+                riskAtEntry={trade.riskAtEntry}
+                currency={CURRENCY}
                 declaredClosed
-                history={exitHistory}
-                onHistoryChange={setExitHistory}
+                history={trade.exitHistory}
+                onHistoryChange={(exitHistory) => patch({ exitHistory })}
+                supporting={{ total: finalPnl, reconciliation: reconciliation(trade) }}
                 {...(activeExit === null ? {} : { initialActiveId: activeExit })}
               />
             ) : null}
           </Band>
         </TaskSurface>
 
-        <JournalPrompts
-          prompts={[
+        {/*
+          FIVE — JOURNAL AT ENTRY. The same surface, the same two areas and the
+          same editors as Still open. "At entry" names the moment being
+          REMEMBERED, not the moment of typing, which is exactly why a historical
+          trade belongs in it.
+        */}
+        <JournalAtEntry
+          areas={[
             {
-              id: 'plan',
-              question: 'What was your plan?',
-              summary: planSummary(plan, 'USD'),
-              children: <PlanEditor tense="past" draft={plan} onChange={setPlan} currency="USD" />,
+              id: 'idea',
+              label: 'Trade idea',
+              Icon: Lightbulb,
+              invitation: 'Why did you take this trade?',
+              title: 'Trade idea',
+              description: 'Why you took this trade, and anything you want to remember about it.',
+              preview: tradeIdeaSummary(plan),
+              onDone: idea.done,
+              onCancel: idea.cancel,
+              children: null,
+              renderOverlay: ({ open, onOpenChange }) => (
+                <TradeIdeaOverlay
+                  open={open}
+                  onOpenChange={onOpenChange}
+                  draft={idea.draft}
+                  onChange={idea.setDraft}
+                  onDone={idea.done}
+                  onCancel={idea.cancel}
+                />
+              ),
             },
             {
               id: 'feelings',
-              question: 'How did you feel at entry?',
-              summary: feelingsSummary(feelings),
-              children: <FeelingsEditor draft={feelings} onChange={setFeelings} recalled />,
-            },
-            {
-              id: 'review',
-              question: 'What would you repeat or change next time?',
-              summary: reviewSummary(review),
+              label: 'Feelings at entry',
+              Icon: HeartPulse,
+              invitation: 'How did you feel?',
+              title: 'How did you feel at entry?',
+              description:
+                'Describe how you felt when you entered, rather than how the outcome feels now.',
+              preview: feelingsSummary(feelings),
+              onDone: emotion.done,
+              onCancel: emotion.cancel,
               children: (
-                <ReviewEditor
-                  draft={review}
-                  onChange={setReview}
-                  currency="USD"
-                  actualMoney={moneyText ?? 'Not recorded'}
-                  riskAtEntry={risk}
-                />
+                <FeelingsEditor draft={emotion.draft} onChange={emotion.setDraft} recalled />
+              ),
+            },
+          ]}
+        />
+
+        {/*
+          SIX — REVIEW. Its own surface, because what the trader thought at entry
+          and what they concluded afterwards are different kinds of truth, learned
+          at different moments.
+
+          IT HOLDS ONE LAUNCHER IN THIS PASS. System assessment — what following
+          the rules would have produced — becomes a SECOND launcher beside this
+          one, which is why Review is a surface now rather than a single row:
+          adding it later moves nothing, and completing either will never be read
+          as completing the other.
+        */}
+        <LauncherSurface
+          heading="Review"
+          aside="Now or later"
+          areas={[
+            {
+              id: 'reflection',
+              label: 'Reflection',
+              Icon: NotebookPen,
+              invitation: 'What would you repeat or change next time?',
+              title: 'Reflection',
+              description: 'What this trade taught you, in your own words.',
+              preview: reflectionSummary(review),
+              onDone: reflection.done,
+              onCancel: reflection.cancel,
+              children: (
+                <ReflectionEditor draft={reflection.draft} onChange={reflection.setDraft} />
               ),
             },
           ]}
@@ -406,4 +558,30 @@ export function AfterTradeForm({
       </FormShell>
     </PrototypeShell>
   );
+}
+
+/**
+ * THE REVIEW STATES, AND THE ONE THAT IS NOT A REVIEW STATE.
+ *
+ * `EMPTY_CLOSED_TRADE` is what a trader actually opens: nothing filled, no
+ * timestamp, no outcome selected. The seeds exist so a reviewer can see a
+ * populated screen without typing one, and every one of them is reachable only
+ * by an explicit URL — no default path renders a pre-filled trade.
+ */
+function seedTrade({ exits, filled }: { exits: boolean; filled: boolean }): ClosedTradeDraft {
+  const seededExits: readonly ExitRecord[] = exits ? DEFAULT_EXIT_ROWS : [];
+  if (!filled) return { ...EMPTY_CLOSED_TRADE, exits: seededExits };
+
+  return {
+    ...EMPTY_CLOSED_TRADE,
+    symbol: 'XAUUSD',
+    direction: 'long',
+    enteredAt: { date: '2026-09-01', time: '09:41' },
+    exitedAt: { date: '2026-09-01', time: '14:32' },
+    riskAtEntry: '200.00',
+    targetProfit: '1000.00',
+    outcome: 'profit',
+    finalAmount: '400.00',
+    exits: seededExits,
+  };
 }

@@ -57,13 +57,27 @@ export interface ExitRecord {
  */
 export type ExitHistory = 'complete' | 'incomplete' | 'unknown';
 
+/**
+ * THE SIGN COMES FROM THE WORD, AND A BLANK STAYS UNKNOWN.
+ *
+ * ONE IMPLEMENTATION, because two different things are recorded this way — an
+ * exit leg's own proceeds, and a whole trade's final net result — and a second
+ * copy is a second chance for a blank to quietly become a zero. `break_even` is
+ * a KNOWN zero. An empty amount is not a zero and not a break-even; it is the
+ * absence of an answer, and this is the only place that distinction is drawn.
+ */
+export function signedAmount(outcome: MoneyOutcome | null, amount: string): number | null {
+  if (outcome === 'break_even') return 0;
+  if (outcome === null) return null;
+  if (amount === '') return null;
+  const magnitude = Number(amount);
+  if (!Number.isFinite(magnitude)) return null;
+  return outcome === 'loss' ? -magnitude : magnitude;
+}
+
 /** This exit's signed contribution, or `null` while its amount is unanswered. */
 export function signedExitAmount(exit: ExitRecord): number | null {
-  if (exit.outcome === 'break_even') return 0;
-  if (exit.amount === '') return null;
-  const magnitude = Number(exit.amount);
-  if (!Number.isFinite(magnitude)) return null;
-  return exit.outcome === 'loss' ? -magnitude : magnitude;
+  return signedAmount(exit.outcome, exit.amount);
 }
 
 export interface RealizedTotal {
@@ -98,6 +112,24 @@ export function actualR(realized: number, riskAtEntry: number): number | null {
   if (!Number.isFinite(realized)) return null;
   if (!Number.isFinite(riskAtEntry) || riskAtEntry <= 0) return null;
   return realized / riskAtEntry;
+}
+
+/**
+ * Target R — the planned reward over the ORIGINAL risk at entry.
+ *
+ * IT LIVES BESIDE `actualR` BECAUSE IT SHARES ITS DENOMINATOR RULE. The two
+ * ratios are only comparable because they divide by the same frozen baseline,
+ * and a second implementation of "what counts as a usable risk" is exactly how
+ * they stop being. Both recording paths call this one function.
+ *
+ * IT IS NOT A RESULT AND NEVER BECOMES ONE — it says what the trade was set up
+ * to pay, not what it paid. `null` whenever either half is missing or the risk
+ * is non-positive: never zero, never infinity.
+ */
+export function targetR(targetProfit: number, riskAtEntry: number): number | null {
+  if (!Number.isFinite(targetProfit)) return null;
+  if (!Number.isFinite(riskAtEntry) || riskAtEntry <= 0) return null;
+  return targetProfit / riskAtEntry;
 }
 
 /** Parses a money string to a number, or `null` when it says nothing. */
