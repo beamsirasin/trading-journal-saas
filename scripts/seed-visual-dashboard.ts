@@ -15,6 +15,7 @@ import type {
   TradeStatus,
 } from '@/lib/trades/constants';
 
+import { describeTarget, requireDeveloperDatabaseWrite } from './database-safety.mjs';
 import {
   assertVisualSeedSafety,
   buildVisualTradeBlueprints,
@@ -86,7 +87,23 @@ function metricValue(metric: { readonly status: string; readonly value?: unknown
 }
 
 async function main(): Promise<void> {
+  /*
+    TWO GATES, ASKING DIFFERENT QUESTIONS, BOTH BEFORE ANY CONNECTION OPENS.
+
+    `assertVisualSeedSafety` asks whether this RUN was intended — an explicit
+    `ALLOW_VISUAL_FIXTURE_SEED`, and no production classification from
+    `NODE_ENV`/`VERCEL_ENV`. On a developer machine both of those are usually
+    unset, so it says nothing at all about which DATABASE the run would write to.
+
+    `requireDeveloperDatabaseWrite` asks that second question. A laptop whose
+    `.env.local` points at a deployment branch passes every check above and would
+    have inserted fixture trades into it.
+  */
+  const writeTarget = requireDeveloperDatabaseWrite(process.env, {
+    operation: 'the visual-dashboard fixture seed',
+  });
   const target = assertVisualSeedSafety(process.env);
+  console.log(`[seed] writing to ${describeTarget(writeTarget)}`);
   const targetEmail = (process.env.VISUAL_TEST_EMAIL ?? VISUAL_FIXTURE_EMAIL).trim().toLowerCase();
   console.log(
     safeJson({

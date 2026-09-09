@@ -52,6 +52,8 @@ import nextEnv from '@next/env';
 import postgres from 'postgres';
 import { uuidv7 } from 'uuidv7';
 
+import { describeTarget, requireDeveloperDatabaseWrite } from './database-safety.mjs';
+
 const { loadEnvConfig } = nextEnv;
 loadEnvConfig(process.cwd());
 
@@ -112,6 +114,33 @@ if (options.note !== undefined && options.note.length > 500) {
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined || databaseUrl.trim() === '') {
   usageError('DATABASE_URL is not set.');
+}
+
+/*
+  `--yes` CONFIRMS THE PERSON. IT DOES NOT CONFIRM THE DATABASE.
+
+  The existing dry-run gate asks "is this the right user?" — it echoes the
+  resolved email precisely so a human can check. It says nothing about which
+  database the grant would land in, so a correct `--yes` against a deployment
+  branch is exactly as convincing as a correct `--yes` against a personal one.
+  The two gates are independent and both must pass to write.
+
+  The dry run itself stays reachable: it only reads, and its whole purpose is to
+  be run before deciding anything.
+*/
+if (options.yes) {
+  try {
+    const target = requireDeveloperDatabaseWrite(process.env, {
+      operation: `platform-admin ${command}`,
+    });
+    console.error(`[platform-admin] target: ${describeTarget(target)}`);
+  } catch (error) {
+    /* This script reports failures as a prefixed line and exit 1, never as a
+       stack trace — an operator reading a refusal should see the reason, not
+       a file path and a caret. */
+    console.error(`[platform-admin] ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 }
 
 const sql = postgres(databaseUrl, { max: 1 });

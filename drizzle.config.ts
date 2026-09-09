@@ -1,6 +1,7 @@
 import { loadEnvConfig } from '@next/env';
 import { defineConfig } from 'drizzle-kit';
 
+import { describeTarget, requireDeveloperDatabaseWrite } from './scripts/database-safety.mjs';
 import { resolveMigrationUrl } from './src/config/migration-env';
 
 /**
@@ -36,6 +37,34 @@ import { resolveMigrationUrl } from './src/config/migration-env';
 loadEnvConfig(process.cwd());
 
 const { source: migrationUrlSource, url } = resolveMigrationUrl(process.env);
+
+/**
+ * THE GUARD LIVES IN THE CONFIG, NOT IN A PACKAGE SCRIPT.
+ *
+ * A `db:migrate` wrapper would protect exactly one spelling of the command and
+ * nothing else: `npx drizzle-kit migrate`, a stale shell alias, or an editor's
+ * task runner would all walk straight past it. Every drizzle-kit subcommand
+ * loads THIS file to find its credentials, so a refusal here is one drizzle-kit
+ * cannot be invoked around — the guard sits on the execution path rather than
+ * beside it.
+ *
+ * ONLY THE SUBCOMMANDS THAT REACH A DATABASE ARE GATED. `generate` and `check`
+ * read schema files and the migration journal on disk; making a developer
+ * configure write access to produce a SQL file would be ceremony that teaches
+ * people to set the acknowledgement permanently and stop reading it.
+ * `migrate`, `push`, `drop` and `studio` all touch a live database — `studio`
+ * emphatically so, since it is a full read/write editor.
+ */
+const WRITE_CAPABLE_SUBCOMMANDS = new Set(['migrate', 'push', 'drop', 'studio']);
+const subcommand = process.argv.find((argument) => WRITE_CAPABLE_SUBCOMMANDS.has(argument));
+
+if (subcommand !== undefined) {
+  const target = requireDeveloperDatabaseWrite(process.env, {
+    operation: `drizzle-kit ${subcommand}`,
+    variableName: migrationUrlSource,
+  });
+  console.log(`[drizzle.config] ${subcommand} target: ${describeTarget(target)}`);
+}
 
 // Never logs the URL itself (it carries a password) — only which variable
 // resolved, so a fallback to DATABASE_URL is visible rather than silent.

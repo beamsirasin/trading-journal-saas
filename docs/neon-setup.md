@@ -57,6 +57,8 @@ Vercel has three environment scopes: **Development**, **Preview**, **Production*
 | Preview      | The development/staging branch — **never** production                                                  |
 | Development  | Not typically used (developers run `docker compose up -d` locally instead — see the migration runbook) |
 
+**Local development must also declare its environment.** Set `DATABASE_ENVIRONMENT=development` and `DEVELOPER_DATABASE_WRITE_ACK` in `.env.local` — without them `db:migrate`, `db:studio`, `seed:visual-dashboard` and `platform-admin --yes` all refuse to run. A personal Neon branch is a legitimate development database; the guard reads the declaration rather than the hostname. See [migration-runbook.md](migration-runbook.md#database-write-safety).
+
 **Never reuse the production database for local development or for tests.** A bug in a local script or a test run against the wrong `DATABASE_URL` should never be able to touch real user data.
 
 ## Backup and restore

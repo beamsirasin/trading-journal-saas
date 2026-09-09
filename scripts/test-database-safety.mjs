@@ -1,36 +1,16 @@
+/**
+ * TEST-DATABASE SAFETY — unchanged behaviour, shared parsing.
+ *
+ * The URL parsing and identity normalization this file introduced now live in
+ * `database-safety.mjs`, because the developer-write guard needs exactly the
+ * same two functions and a second copy would be two definitions of "the same
+ * database" that could drift apart. Nothing about the rules below moved: this
+ * module still owns what makes a test database disposable, and its exported
+ * contract is byte-for-byte what its ten e2e callers already rely on.
+ */
+import { normalizedDatabaseIdentity, parsePostgresUrl } from './database-safety.mjs';
+
 export const TEST_DATABASE_ACKNOWLEDGEMENT = 'I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE';
-
-function parsePostgresUrl(value, variableName) {
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${variableName} must be a valid PostgreSQL URL.`);
-  }
-
-  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
-    throw new Error(`${variableName} must use the postgres:// or postgresql:// scheme.`);
-  }
-
-  const databaseName = decodeURIComponent(url.pathname.replace(/^\//, ''));
-  if (databaseName === '') {
-    throw new Error(`${variableName} must name a database.`);
-  }
-
-  return { url, databaseName };
-}
-
-function normalizedDatabaseIdentity(value, variableName) {
-  const { url, databaseName } = parsePostgresUrl(value, variableName);
-  const hostname = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname.toLowerCase())
-    ? 'loopback'
-    : url.hostname.toLowerCase();
-  const port = url.port === '' ? '5432' : url.port;
-
-  // Credentials and query parameters can differ while still addressing the
-  // same database. They are deliberately excluded from the comparison.
-  return `${hostname}:${port}/${databaseName.toLowerCase()}`;
-}
 
 export function validateTestDatabaseEnvironment(env = process.env) {
   const testUrl = env.TEST_DATABASE_URL;

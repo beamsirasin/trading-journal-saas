@@ -25,6 +25,38 @@ How schema changes move from a developer's machine to every environment this pro
 
 **Never run `drizzle-kit push`** against any shared environment (local Docker excluded, since nothing there is shared). It diffs and applies without writing a migration file — no artefact to review, no way to roll back deliberately. CLAUDE.md §5 forbids this outright.
 
+## Database write safety
+
+Every command that can write to a database refuses to run until `.env.local` says what the target database is for. Two variables:
+
+```bash
+DATABASE_ENVIRONMENT=development
+DEVELOPER_DATABASE_WRITE_ACK=I_UNDERSTAND_THIS_DATABASE_ACCEPTS_DEVELOPER_WRITES
+```
+
+`DATABASE_ENVIRONMENT` is **declared, never detected.** A personal Neon branch is a remote host and is a perfectly good development database; a deployment database reached through a tunnel is `localhost` and is not. A hostname says where a database lives, never what it is for — so `scripts/database-safety.mjs` reads the declaration rather than guessing, and an unconfigured machine writes to nothing.
+
+| Command                             | Guarded?                                              |
+| ----------------------------------- | ----------------------------------------------------- |
+| `pnpm db:migrate`                   | Yes                                                   |
+| `pnpm db:studio`                    | Yes — Studio is a read/**write** editor, not a viewer |
+| `pnpm seed:visual-dashboard`        | Yes — in addition to `ALLOW_VISUAL_FIXTURE_SEED`      |
+| `pnpm platform-admin … --yes`       | Yes — in addition to the dry-run/`--yes` confirmation |
+| `pnpm db:generate`, `pnpm db:check` | No — neither touches a database                       |
+
+The guard lives in `drizzle.config.ts` rather than in a package script, so `npx drizzle-kit migrate` and any shell alias are covered too: every drizzle-kit subcommand loads that file to find its credentials.
+
+It also refuses configurations that contradict themselves — `DATABASE_URL` and `DATABASE_MIGRATION_URL` naming _different_ databases (Neon's pooled and direct endpoints of one branch are fine; they differ only by hostname), or the development database being the same one `TEST_DATABASE_URL` is entitled to destroy.
+
+`DEVELOPER_DATABASE_WRITE_ACK` authorizes `development` **only**. It can never authorize `preview` or `production`: those belong to their deployments, and a production schema migration is a separate, reviewed step that no command in this repository performs today. `PRODUCTION_DATABASE_WRITE_ACKNOWLEDGEMENT` exists in the module as the extensibility point for that future step and is deliberately wired to nothing.
+
+Choose one of:
+
+- **Local Docker** — `docker compose up -d`, then point both URLs at `127.0.0.1:5432`.
+- **A personal Neon branch** — cheap, copy-on-write, and never the production or preview branch. See [`docs/neon-setup.md`](neon-setup.md).
+
+Never point `.env.local` at a deployment branch for casual development. No message from these guards ever prints a connection string or a password — only a variable name, an environment category, a `loopback`/`remote` host class and a database name.
+
 ## Local development
 
 ```bash
