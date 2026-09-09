@@ -6,7 +6,11 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
-import type { ReconciliationStatus } from '../closed-trade';
+import {
+  exitHistoryStatusOf,
+  type ExitHistoryStatus,
+  type ReconciliationStatus,
+} from '../closed-trade';
 import {
   actualR,
   allocation,
@@ -265,6 +269,7 @@ export function ExitsEditor({
           {supporting === undefined ? null : (
             <ReconciliationLine
               status={supporting.reconciliation}
+              historyStatus={exitHistoryStatusOf(realized.exitCount, history)}
               total={supporting.total}
               currency={currency}
             />
@@ -305,7 +310,13 @@ export function ExitsEditor({
             </div>
           )}
 
-          {unresolved ? (
+          {/*
+            IN THE SUPPORTING ROLE THIS SENTENCE WOULD BE FALSE. It says the
+            total above is "not the whole result", which is true when this panel
+            owns the money and wrong when the trade has its own authoritative
+            figure sitting above it. `ReconciliationLine` speaks for that case.
+          */}
+          {unresolved && supporting === undefined ? (
             <p className="text-warning mt-1 text-xs leading-relaxed">
               Closed · Exit history incomplete. The total above is what has been recorded, not the
               whole result.
@@ -318,25 +329,35 @@ export function ExitsEditor({
 }
 
 /**
- * HOW THE RECORDED LEGS STAND AGAINST THE TRADE'S OWN RESULT.
+ * HOW THE RECORDED LEGS STAND BESIDE THE TRADE'S OWN RESULT.
  *
- * IT NEVER PRESENTS A DIFFERENCE AS A SUM, and it never presents an agreement as
- * completeness. Two legs adding to the final total prove that those two legs add
- * to the final total — the trade may still have had a third, which is why the
- * matched wording says what it compared and stops.
+ * THE SENTENCE THIS PASS DELETED, AND WHY IT WAS WRONG.
  *
- * A DIFFERENCE IS ORDINARY UNLESS THE TRADER SAID OTHERWISE. Somebody who knows
- * their trade made 15 and can only remember one 10 leg has recorded two true
- * facts; the missing 5 is unrecorded history, not an error, and certainly not a
- * leg for the app to invent. Only "the history is complete AND it does not add
- * up" is a contradiction, and only that one is amber.
+ *   "Your final result stays +400.00 USD. The difference is exit history you
+ *    have not recorded."
+ *
+ * The first sentence is true. The second is an inference the record does not
+ * support. A gap between an authoritative total and a partial subtotal has
+ * several honest explanations — an unrecorded leg, a mistyped leg, a mistyped
+ * total, costs the trader netted into one figure and not the other — and the app
+ * has no way to tell them apart. Naming one of them makes an unrecorded exit the
+ * app's finding rather than the trader's statement, and it is the same family of
+ * error as calling a history complete because the arithmetic worked out: reading
+ * a cause out of a subtraction.
+ *
+ * SO AN UNDECLARED HISTORY GETS TWO FACTS AND NO STORY. The subtotal is already
+ * labelled above; this states that the trade's result is unchanged by it, and
+ * stops. When the trader has ESTABLISHED that exits are missing, that is their
+ * claim and it may be repeated back to them.
  */
 function ReconciliationLine({
   status,
+  historyStatus,
   total,
   currency,
 }: {
   status: ReconciliationStatus;
+  historyStatus: ExitHistoryStatus;
   total: number | null;
   currency: string;
 }) {
@@ -350,13 +371,23 @@ function ReconciliationLine({
       </p>
     );
   }
+
   if (status === 'unreconciled') {
+    // The trader's own claim, repeated back — not the app's diagnosis.
+    if (historyStatus === 'incomplete') {
+      return (
+        <p className="text-warning mt-1 text-xs leading-relaxed">
+          You have said some exits are missing. Final result remains {figure}.
+        </p>
+      );
+    }
     return (
       <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-        Your final result stays {figure}. The difference is exit history you have not recorded.
+        Final result remains {figure}.
       </p>
     );
   }
+
   return (
     <p className="text-warning mt-1 text-xs leading-relaxed">
       These exits do not add up to your final result of {figure}, and you have marked the history

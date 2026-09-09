@@ -82,18 +82,22 @@ export type ExitHistoryStatus = 'not_recorded' | 'unknown' | 'incomplete' | 'com
 /**
  * WHETHER THE SUPPORTING EXITS AGREE WITH THE AUTHORITATIVE TOTAL.
  *
- * `not_applicable` — nothing to compare: no final total, no legs, or a leg whose
- *                    amount is blank, which makes the subtotal itself unknowable
- *                    rather than smaller.
- * `matched`        — they agree to the cent. THIS IS NOT COMPLETENESS. Two legs
- *                    that happen to sum to the total prove only that they sum to
- *                    the total; the trade may still have had a third.
- * `unreconciled`   — they differ, and the record already accounts for it: the
- *                    trader has said the history is incomplete, or has not said.
- *                    An expected difference, not a contradiction.
- * `conflict`       — they differ while the trader asserts the history is
- *                    COMPLETE. Two statements that cannot both be true, and the
- *                    only one of the four surfaced as a problem.
+ * RECONCILIATION IS GATED ON THE TRADER'S CLAIM, NOT ON THE ARITHMETIC. Only a
+ * history the trader has declared COMPLETE can reconcile at all, because only a
+ * complete history is one the total is supposed to equal. Legs that happen to
+ * sum to the total while the history is undeclared prove that those legs sum to
+ * the total — nothing more, and certainly not that they are all of them.
+ *
+ * `not_applicable` — nothing to compare: no legs, no authoritative total, or a
+ *                    leg whose amount is blank, which makes the subtotal itself
+ *                    unknowable rather than smaller.
+ * `unreconciled`   — legs exist and the history is `unknown` or `incomplete`.
+ *                    Whether the figures agree is not asked, because an
+ *                    undeclared history has nothing to be measured against.
+ * `matched`        — declared COMPLETE and agrees to the cent.
+ * `conflict`       — declared COMPLETE and does not. Two statements that cannot
+ *                    both be true, and the only one of the four surfaced as a
+ *                    problem.
  */
 export type ReconciliationStatus = 'not_applicable' | 'matched' | 'unreconciled' | 'conflict';
 
@@ -182,17 +186,49 @@ function cents(value: number): number {
   return Math.round(value * 100);
 }
 
+/**
+ * THE FOUR STATES, EXACTLY.
+ *
+ *   not_recorded  no exit details have been entered
+ *   unknown       details exist; the trader has not said whether they are all of
+ *                 them
+ *   incomplete    the trader states that further exits are missing
+ *   complete      the trader states that every exit is recorded
+ *
+ * `not_recorded` is the only one derived, and it is derived from a COUNT rather
+ * than from any figure. The other three are the trader's own answer, carried
+ * through untouched. No arithmetic on this page can move a record between them —
+ * in particular nothing promotes `unknown` to `complete`.
+ */
+export function exitHistoryStatusOf(exitCount: number, history: ExitHistory): ExitHistoryStatus {
+  return exitCount === 0 ? 'not_recorded' : history;
+}
+
 export function exitHistoryStatus(draft: ClosedTradeDraft): ExitHistoryStatus {
-  if (draft.exits.length === 0) return 'not_recorded';
-  return draft.exitHistory;
+  return exitHistoryStatusOf(draft.exits.length, draft.exitHistory);
 }
 
 export function reconciliation(draft: ClosedTradeDraft): ReconciliationStatus {
+  const status = exitHistoryStatus(draft);
+  if (status === 'not_recorded') return 'not_applicable';
+
+  /*
+    THE COMPARISON IS ONLY ASKED ONCE THE TRADER HAS CLAIMED COMPLETENESS.
+
+    An `unknown` or `incomplete` history is not a failed reconciliation — it is
+    an unattempted one. Reaching for the arithmetic first is how a coincidence
+    ("these two legs happen to sum to the total") turns into a finding, which is
+    precisely the inference this model exists to refuse.
+  */
+  if (status !== 'complete') return 'unreconciled';
+
   const final = finalNetPnl(draft);
   const subtotal = exitSubtotal(draft);
+  // Declared complete, but with nothing to measure: no authoritative total, or a
+  // leg whose amount is blank, which makes the subtotal unknowable not smaller.
   if (final === null || subtotal === null) return 'not_applicable';
-  if (cents(final) === cents(subtotal)) return 'matched';
-  return exitHistoryStatus(draft) === 'complete' ? 'conflict' : 'unreconciled';
+
+  return cents(final) === cents(subtotal) ? 'matched' : 'conflict';
 }
 
 /** The position is closed because this path says so — not because of the legs. */

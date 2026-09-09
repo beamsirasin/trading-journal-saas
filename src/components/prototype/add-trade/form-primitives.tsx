@@ -869,15 +869,27 @@ export function FormFooter({
   helper,
   secondary,
   sticky = false,
-  disabled = false,
   /**
-   * WHAT IS ACTUALLY WRONG, BESIDE THE CONTROL THAT REFUSES.
+   * THE SAVE IS ALWAYS PRESSABLE, AND THAT IS THE POINT.
    *
-   * A disabled button with no explanation is a dead end, and on a long form the
-   * offending field is usually off-screen. These are the blocking issues in the
-   * trader's words — never a count, and never a list of what is merely missing:
-   * an unrecorded risk, target, time or result is a saveable state and does not
-   * appear here.
+   * IT WAS DISABLED WHILE THE SYMBOL AND DIRECTION WERE BLANK. Three things were
+   * wrong with that. A disabled button is removed from the tab order, so a
+   * keyboard or screen-reader user meets a control that is simply not there and
+   * is told nothing about why. It cannot be pressed, so the one gesture that
+   * would explain the refusal is the gesture it forbids. And on a form whose
+   * whole premise is that most fields may be left blank, a dead Save is the
+   * screen's loudest signal that blank is a problem — the opposite of what this
+   * path means.
+   *
+   * So it stays live, the attempt is what reveals the reasons, and the reasons
+   * name fields rather than counting them.
+   */
+  onAction,
+  /**
+   * WHAT IS ACTUALLY WRONG — shown only once the trader has attempted the save.
+   *
+   * Never a count, and never a list of what is merely unrecorded: an unknown
+   * risk, target, time or result is a saveable state and never appears here.
    */
   blockedBy = [],
 }: {
@@ -885,9 +897,10 @@ export function FormFooter({
   helper: string;
   secondary?: string;
   sticky?: boolean;
-  disabled?: boolean;
+  onAction?: () => void;
   blockedBy?: readonly string[];
 }) {
+  const blockedId = useId();
   /*
     THE DOCKED SAVE RELEASES ITSELF WHEN THE KEYBOARD NEEDS THE ROOM.
 
@@ -918,15 +931,30 @@ export function FormFooter({
           'bg-background/95 border-border sticky bottom-0 -mx-4 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none',
       )}
     >
+      {/*
+        DESCRIBED BY, NOT ANNOUNCED — because the fields already announced.
+
+        This list REPEATS what the field-level notes say, so making it a second
+        live region would read every reason twice: once from the field that owns
+        it and once from here. The fields do the announcing (each states a
+        different problem); this is the summary the Save button points at, so a
+        reader who tabs back to it hears why it did not save rather than meeting
+        an unexplained control.
+      */}
       {blockedBy.length === 0 ? null : (
-        <ul className="text-negative flex min-w-0 list-none flex-col gap-1 text-xs">
+        <ul id={blockedId} className="text-negative flex min-w-0 list-none flex-col gap-1 text-xs">
           {blockedBy.map((message) => (
             <li key={message}>{message}</li>
           ))}
         </ul>
       )}
       <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <Button size="lg" className="min-h-12 w-full sm:w-auto" disabled={disabled}>
+        <Button
+          size="lg"
+          className="min-h-12 w-full sm:w-auto"
+          {...(onAction === undefined ? {} : { onClick: onAction })}
+          {...(blockedBy.length === 0 ? {} : { 'aria-describedby': blockedId })}
+        >
           {action}
         </Button>
         {secondary === undefined ? null : (

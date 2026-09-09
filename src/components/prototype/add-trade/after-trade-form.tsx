@@ -96,10 +96,21 @@ export function AfterTradeForm({
   activeExit = null,
   /** A part-finished draft, for the review state that shows populated summaries. */
   filled = false,
+  /**
+   * THE SEAM A REAL SAVE WOULD USE.
+   *
+   * The prototype persists nothing, but "was this record accepted?" is a
+   * question about the FORM rather than about storage, and it needs an
+   * observable answer or nothing can check that a minimal historical trade
+   * actually gets through. It is called with the record exactly as the model
+   * holds it — unknowns still unknown — and only when nothing blocks.
+   */
+  onSave = () => {},
 }: {
   exits?: boolean;
   activeExit?: string | null;
   filled?: boolean;
+  onSave?: (trade: ClosedTradeDraft) => void;
 }) {
   /*
     ONE DRAFT, AND THE MODEL OWNS ITS MEANING.
@@ -112,21 +123,25 @@ export function AfterTradeForm({
     one thing and store another.
   */
   const [trade, setTrade] = useState<ClosedTradeDraft>(() => seedTrade({ exits, filled }));
-  /*
-    NOTHING IS WRONG WITH A FORM NOBODY HAS TOUCHED.
-
-    Save is refused from the first render, because a trade with no symbol and no
-    direction is not a record. But rendering "Enter the symbol you traded" beside
-    an empty field the reader has not reached yet is the form telling somebody
-    off for arriving, and on a phone it put two red lines in the docked bar of a
-    screen where nothing had been typed. The refusal is visible in the disabled
-    control; the reasons appear once there is something to have got wrong.
-  */
-  const [touched, setTouched] = useState(false);
-  const patch = (next: Partial<ClosedTradeDraft>) => {
-    setTouched(true);
+  const patch = (next: Partial<ClosedTradeDraft>) =>
     setTrade((current) => ({ ...current, ...next }));
-  };
+
+  /*
+    NOTHING IS WRONG WITH A FORM NOBODY HAS TOUCHED — AND THE ATTEMPT IS WHAT
+    ASKS.
+
+    Two versions of this were wrong before this one. The first printed "Enter the
+    symbol you traded" and "Choose Long or Short" on arrival, which is a form
+    telling somebody off for opening it — and on a phone that was two red lines
+    in the docked bar of a screen where nothing had been typed. The second
+    revealed them on the first keystroke anywhere, so typing a symbol produced a
+    complaint about direction before the reader had reached it.
+
+    Pressing Save is the only unambiguous statement that the trader considers the
+    record finished, so it is the only thing that asks the required questions. A
+    missing symbol is not a mistake until somebody tries to save without one.
+  */
+  const [attempted, setAttempted] = useState(false);
 
   const [exitsOpen, setExitsOpen] = useState(exits);
   const [exitPlan, setExitPlan] = useState<ExitPlanDraft>(EMPTY_EXIT_PLAN);
@@ -171,10 +186,21 @@ export function AfterTradeForm({
   const blocking = blockingIssues(trade);
   const suggestedExitTime = finalExitTimeFromExits(trade.exits);
 
+  /*
+    TWO KINDS OF MESSAGE, ON TWO DIFFERENT CLOCKS.
+
+    A WRONG VALUE speaks at once: a risk of `0` or a signed amount is something
+    the trader has just typed, and waiting until Save to mention it would let
+    them keep building on it. A MISSING REQUIRED FIELD waits for the attempt,
+    because until then it is not missing — it is simply not filled in yet, which
+    on this form is the ordinary state of nearly everything.
+  */
   const timeError = issueFor(issues, 'exitedAt');
   const riskError = issueFor(issues, 'riskAtEntry');
   const targetError = issueFor(issues, 'targetProfit');
   const amountError = issueFor(issues, 'finalAmount') ?? issueFor(issues, 'outcome');
+  const symbolError = attempted ? issueFor(issues, 'symbol') : null;
+  const directionError = attempted ? issueFor(issues, 'direction') : null;
 
   const tone =
     finalPnl === null
@@ -197,8 +223,12 @@ export function AfterTradeForm({
             action="Save closed trade"
             helper="Save what you remember. Anything left blank stays blank — you can fill it in later."
             sticky
-            disabled={!canSave(trade)}
-            blockedBy={touched ? blocking.map((issue) => issue.message) : []}
+            onAction={() => {
+              setAttempted(true);
+              if (!canSave(trade)) return;
+              onSave(trade);
+            }}
+            blockedBy={attempted ? blocking.map((issue) => issue.message) : []}
           />
         }
       >
@@ -214,26 +244,43 @@ export function AfterTradeForm({
           */}
           <Band>
             <h2 className="text-label text-muted-foreground uppercase">The trade</h2>
+            {/*
+              THE REQUIRED PAIR STATES ITS OWN PROBLEM, WHERE THE PROBLEM IS.
+
+              The footer summarises; these two are what the trader has to act on,
+              and on a long form the footer can be a screen away from the field
+              it is talking about. Both appear only after an attempted save.
+            */}
             <FieldPair>
-              <TextField
-                label="Symbol"
-                value={trade.symbol}
-                onChange={(symbol) => patch({ symbol })}
-                placeholder="e.g. XAUUSD"
-              />
-              <Field label="Direction">
-                {() => (
-                  <ChoiceGroup
-                    legend="Direction"
-                    value={trade.direction}
-                    onChange={(direction) => patch({ direction })}
-                    options={[
-                      { value: 'long', label: 'Long' },
-                      { value: 'short', label: 'Short' },
-                    ]}
-                  />
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <TextField
+                  label="Symbol"
+                  value={trade.symbol}
+                  onChange={(symbol) => patch({ symbol })}
+                  placeholder="e.g. XAUUSD"
+                />
+                {symbolError === null ? null : (
+                  <InlineNote tone="error">{symbolError.message}</InlineNote>
                 )}
-              </Field>
+              </div>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Field label="Direction">
+                  {() => (
+                    <ChoiceGroup
+                      legend="Direction"
+                      value={trade.direction}
+                      onChange={(direction) => patch({ direction })}
+                      options={[
+                        { value: 'long', label: 'Long' },
+                        { value: 'short', label: 'Short' },
+                      ]}
+                    />
+                  )}
+                </Field>
+                {directionError === null ? null : (
+                  <InlineNote tone="error">{directionError.message}</InlineNote>
+                )}
+              </div>
             </FieldPair>
 
             {/*

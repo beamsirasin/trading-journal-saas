@@ -9,7 +9,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import en from '../../../../messages/en.json';
 import { AfterTradeForm } from './after-trade-form';
@@ -77,39 +77,81 @@ describe('a historical form opens knowing nothing', () => {
 });
 
 describe('saving a partly remembered trade', () => {
-  it('refuses only while the identity is missing', () => {
+  it('shows no validation noise on an untouched form', () => {
     openBlank();
-    expect(saveButton()).toBeDisabled();
-    identify();
+    expect(screen.queryByText('Enter the symbol you traded.')).toBeNull();
+    expect(screen.queryByText('Choose Long or Short.')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('stays pressable rather than going dead while fields are blank', () => {
+    // A disabled Save leaves the keyboard with nothing to reach and says, on a
+    // form built around blanks, that blank is a fault.
+    openBlank();
     expect(saveButton()).toBeEnabled();
   });
 
-  it('does not tell the trader off before they have touched anything', () => {
-    // The refusal is in the control. The reasons wait until there is something
-    // the trader could have got wrong — an untouched form has nothing.
+  it('does not complain while the trader is still filling the form in', () => {
     openBlank();
-    expect(saveButton()).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'XAUUSD' } });
+    // Direction is not yet missing — it is simply not reached.
+    expect(screen.queryByText('Choose Long or Short.')).toBeNull();
+  });
+
+  it('blocks an attempted save and then names the fields', () => {
+    const onSave = vi.fn();
+    show({ onSave });
+
+    fireEvent.click(saveButton());
+    expect(onSave).not.toHaveBeenCalled();
+    // Twice each, deliberately: beside the field to act on, and in the footer
+    // summary beside the control that refused.
+    expect(screen.getAllByText('Enter the symbol you traded.')).toHaveLength(2);
+    expect(screen.getAllByText('Choose Long or Short.')).toHaveLength(2);
+    // Each field announces its own problem; the Save button points at the
+    // summary, so tabbing back to it explains the refusal.
+    expect(screen.getAllByRole('alert')).toHaveLength(2);
+    expect(saveButton()).toHaveAttribute('aria-describedby');
+  });
+
+  it('saves once the required fields are corrected, however much stays unknown', () => {
+    const onSave = vi.fn();
+    show({ onSave });
+
+    fireEvent.click(saveButton());
+    expect(onSave).not.toHaveBeenCalled();
+
+    identify();
     expect(screen.queryByText('Enter the symbol you traded.')).toBeNull();
     expect(screen.queryByText('Choose Long or Short.')).toBeNull();
 
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'XAUUSD' } });
-    expect(screen.getByText('Choose Long or Short.')).toBeInTheDocument();
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledTimes(1);
+    // Saved with the unknowns still unknown — not zeroed, not dated.
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({
+      symbol: 'XAUUSD',
+      direction: 'long',
+      enteredAt: null,
+      exitedAt: null,
+      riskAtEntry: '',
+      targetProfit: '',
+      outcome: null,
+      finalAmount: '',
+      exits: [],
+    });
   });
 
-  it('saves with no time, no risk, no target, no result and no journal', () => {
-    openBlank();
-    identify();
-    expect(saveButton()).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Entry time' })).toHaveTextContent('Not set');
-    expect(screen.queryByText(/Actual R/)).toBeNull();
-  });
-
-  it('states what blocks a save, and never states what is merely unrecorded', () => {
-    openBlank();
+  it('states a wrong value at once, and refuses the save that follows', () => {
+    // A typed-invalid value is not a missing one: the trader has just entered it
+    // and should not build on it until Save to find out.
+    const onSave = vi.fn();
+    show({ onSave });
     identify();
     fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '0' } });
-    expect(saveButton()).toBeDisabled();
-    expect(screen.getAllByText(/Risk at entry must be above zero/).length).toBeGreaterThan(0);
+
+    expect(screen.getByText(/Risk at entry must be above zero/)).toBeInTheDocument();
+    fireEvent.click(saveButton());
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
 
@@ -216,9 +258,46 @@ describe('exit details are a disclosure, never a second mode', () => {
     expect(screen.getByLabelText('Final net profit')).toHaveValue('400.00');
     expect(screen.getByText('Recorded exits subtotal')).toBeInTheDocument();
     expect(screen.getByText('+80.00 USD')).toBeInTheDocument();
-    expect(screen.getByText(/Your final result stays \+400\.00 USD/)).toBeInTheDocument();
+    expect(screen.getByText('Final result remains +400.00 USD.')).toBeInTheDocument();
     // 480 is the sum nobody may produce.
     expect(screen.queryByText(/480/)).toBeNull();
+  });
+
+  it('does not explain a difference it cannot account for', () => {
+    /*
+      THE SENTENCE THIS TEST EXISTS TO KEEP OUT.
+
+      "The difference is exit history you have not recorded" reads a CAUSE out of
+      a subtraction. An unrecorded leg is one explanation; a mistyped leg, a
+      mistyped total and costs netted into one figure but not the other are
+      others, and nothing on the record distinguishes them. Until the trader says
+      exits are missing, the app states two figures and no story.
+    */
+    show({ filled: true, exits: true });
+    expect(screen.queryByText(/exit history you have not recorded/i)).toBeNull();
+    expect(screen.queryByText(/The difference is/i)).toBeNull();
+    expect(screen.queryByText(/incomplete/i)).toBeNull();
+    expect(screen.queryByText(/missing/i)).toBeNull();
+  });
+
+  it('repeats the trader’s own claim once they establish exits are missing', () => {
+    show({ filled: true, exits: true });
+    fireEvent.click(screen.getByRole('button', { name: 'No' }));
+
+    expect(
+      screen.getByText('You have said some exits are missing. Final result remains +400.00 USD.'),
+    ).toBeInTheDocument();
+    // Still never a fabricated leg and never a combined figure.
+    expect(screen.getByText('+80.00 USD')).toBeInTheDocument();
+    expect(screen.queryByText(/480/)).toBeNull();
+  });
+
+  it('claims a reconciliation only when the trader declares the history complete', () => {
+    show({ filled: true, exits: true });
+    // A +400.00 total against +80.00 of legs, declared complete, is two
+    // statements that cannot both be true.
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    expect(screen.getByText(/do not add up to your final result/)).toBeInTheDocument();
   });
 });
 

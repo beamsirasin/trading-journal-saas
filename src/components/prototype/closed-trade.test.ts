@@ -160,9 +160,43 @@ describe('the authoritative total and its supporting exits', () => {
     expect(finalNetPnl(moreLegs)).toBe(15);
   });
 
-  it('calls a difference unreconciled while the history is admittedly unfinished', () => {
+  /*
+    THE MAPPING, EXACTLY. Reconciliation is gated on the trader's completeness
+    claim, never on the arithmetic:
+
+      not_recorded         -> not_applicable
+      unknown / incomplete -> unreconciled
+      complete + matching  -> matched
+      complete + differing -> conflict
+  */
+  it('does not attempt a reconciliation while the history is undeclared', () => {
     expect(reconciliation(partial)).toBe('unreconciled');
     expect(reconciliation({ ...partial, exitHistory: 'unknown' })).toBe('unreconciled');
+  });
+
+  it('reconciles only once the trader declares the history complete', () => {
+    const adds = {
+      ...IDENTIFIED,
+      outcome: 'profit' as const,
+      finalAmount: '15.00',
+      exits: [exit({ id: 'e1', amount: '10.00' }), exit({ id: 'e2', amount: '5.00' })],
+    };
+    // The figures agree. That is arithmetic, and it reconciles nothing on its own.
+    expect(exitSubtotal(adds)).toBe(15);
+    expect(reconciliation(adds)).toBe('unreconciled');
+
+    expect(reconciliation({ ...adds, exitHistory: 'complete' })).toBe('matched');
+  });
+
+  it('never lets agreeing figures promote unknown to complete', () => {
+    const adds = {
+      ...IDENTIFIED,
+      outcome: 'profit' as const,
+      finalAmount: '15.00',
+      exits: [exit({ id: 'e1', amount: '10.00' }), exit({ id: 'e2', amount: '5.00' })],
+    };
+    expect(exitHistoryStatus(adds)).toBe('unknown');
+    expect(completenessNote(adds)).toBeNull();
   });
 
   it('calls a difference a conflict only when the history is asserted complete', () => {
@@ -174,23 +208,21 @@ describe('the authoritative total and its supporting exits', () => {
     expect(canSave(asserted)).toBe(true);
   });
 
-  it('does NOT mark the history complete merely because the legs add up', () => {
-    const adds = {
-      ...IDENTIFIED,
-      outcome: 'profit' as const,
-      finalAmount: '15.00',
-      exits: [exit({ id: 'e1', amount: '10.00' }), exit({ id: 'e2', amount: '5.00' })],
-    };
-    expect(reconciliation(adds)).toBe('matched');
-    // Matching is arithmetic. Completeness is a claim only the trader can make.
-    expect(exitHistoryStatus(adds)).toBe('unknown');
-    expect(completenessNote(adds)).toBeNull();
-  });
-
   it('cannot know a subtotal while any leg is unpriced', () => {
     const unpriced = { ...partial, exits: [...partial.exits, exit({ id: 'e2' })] };
     expect(exitSubtotal(unpriced)).toBeNull();
-    expect(reconciliation(unpriced)).toBe('not_applicable');
+    // Even asserted complete: an unknowable subtotal is not a failed comparison.
+    expect(reconciliation({ ...unpriced, exitHistory: 'complete' })).toBe('not_applicable');
+  });
+
+  it('has nothing to reconcile against while the final result is unknown', () => {
+    const noTotal = {
+      ...IDENTIFIED,
+      exits: [exit({ id: 'e1', amount: '10.00' })],
+      exitHistory: 'complete' as const,
+    };
+    expect(finalNetPnl(noTotal)).toBeNull();
+    expect(reconciliation(noTotal)).toBe('not_applicable');
   });
 
   it('has no subtotal at all when no exits were recorded', () => {
@@ -212,8 +244,22 @@ describe('a missing exit history is not an open position and not a defect', () =
   it('reports no exits as not_recorded, and says nothing about it', () => {
     expect(exitHistoryStatus(IDENTIFIED)).toBe('not_recorded');
     expect(completenessNote(IDENTIFIED)).toBeNull();
+    expect(reconciliation(IDENTIFIED)).toBe('not_applicable');
     // Not opening the disclosure establishes nothing, so nothing is claimed.
     expect(completenessNote({ ...IDENTIFIED, exitHistory: 'incomplete' })).toBeNull();
+  });
+
+  it('carries the four states exactly as the trader left them', () => {
+    const withLeg = (history: 'unknown' | 'incomplete' | 'complete') => ({
+      ...IDENTIFIED,
+      exits: [exit({ id: 'e1', amount: '10.00' })],
+      exitHistory: history,
+    });
+    // `not_recorded` is the one derived state, and it is derived from a COUNT.
+    expect(exitHistoryStatus(IDENTIFIED)).toBe('not_recorded');
+    expect(exitHistoryStatus(withLeg('unknown'))).toBe('unknown');
+    expect(exitHistoryStatus(withLeg('incomplete'))).toBe('incomplete');
+    expect(exitHistoryStatus(withLeg('complete'))).toBe('complete');
   });
 
   it('states incompleteness only once the trader has established it', () => {

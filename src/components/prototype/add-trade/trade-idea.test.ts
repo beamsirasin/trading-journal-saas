@@ -61,4 +61,20 @@ describe('Strategy changes and Exit-plan inheritance', () => {
       inherited: false,
     });
   });
+
+  it('never lends the strategy default to a historical trade', () => {
+    /*
+      A trade that closed last month was managed under whatever rule applied
+      then. Stamping today's default onto it manufactures a plan the trader never
+      stated — and one that would then be available to judge their execution
+      against. Still open inherits (the default IS the rule in force); Fully
+      closed does not.
+    */
+    expect(effectiveExitPlan(EMPTY_EXIT_PLAN, 'Elliott Wave', false)).toEqual({
+      draft: EMPTY_EXIT_PLAN,
+      inherited: false,
+    });
+    // The live path is unchanged by that argument's existence.
+    expect(effectiveExitPlan(EMPTY_EXIT_PLAN, 'Elliott Wave', true).inherited).toBe(true);
+  });
 });
