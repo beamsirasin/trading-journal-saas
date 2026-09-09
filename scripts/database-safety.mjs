@@ -29,6 +29,8 @@
  * class and at most a database name.
  */
 
+import { createHash } from 'node:crypto';
+
 /** Set in `.env.local` to authorize developer-initiated writes. */
 export const DEVELOPER_DATABASE_WRITE_ACKNOWLEDGEMENT =
   'I_UNDERSTAND_THIS_DATABASE_ACCEPTS_DEVELOPER_WRITES';
@@ -71,16 +73,73 @@ export function parsePostgresUrl(value, variableName) {
   return { url, databaseName };
 }
 
+/**
+ * CANONICAL HOST — the pooled/direct distinction removed, everything else kept.
+ *
+ * Neon publishes two hostnames per compute endpoint that differ by exactly one
+ * suffix on the first label:
+ *
+ *   direct  ep-quiet-brook-12345.<region>.aws.neon.tech
+ *   pooled  ep-quiet-brook-12345-pooler.<region>.aws.neon.tech
+ *
+ * They are one database and must compare equal, because the documented setup
+ * points the application at the pooled endpoint and migrations at the direct
+ * one. Stripping that suffix is a canonicalization of a published naming
+ * convention — no endpoint id, project id or region is hardcoded, so a
+ * developer's brand-new personal branch canonicalizes correctly on the first
+ * run.
+ *
+ * Every other part of the hostname survives. That is the whole point: two
+ * DIFFERENT endpoints, or two different regions, or two different projects,
+ * stay different identities even when the database inside them shares a name.
+ */
+function canonicalHost(hostname) {
+  const lower = hostname.toLowerCase();
+  if (LOOPBACK_HOSTS.includes(lower)) return 'loopback';
+  const [first, ...rest] = lower.split('.');
+  return [first.replace(/-pooler$/, ''), ...rest].join('.');
+}
+
+/**
+ * THE TARGET'S IDENTITY: canonical host, port and database name.
+ *
+ * WHAT THIS REPLACED, AND WHY THE PREVIOUS VERSION WAS DANGEROUS. The
+ * app-vs-migration consistency check compared the database NAME alone, because
+ * comparing raw hostnames would have rejected Neon's pooled/direct pair. That
+ * traded away host identity entirely to solve a one-suffix problem, and it let
+ * the worst realistic misconfiguration through: `DATABASE_URL` on one Neon
+ * branch and `DATABASE_MIGRATION_URL` on another, both holding a database called
+ * `tradechemist`, would have been accepted as one target — DDL landing on a
+ * branch the application never reads.
+ *
+ * THE PORT IS PART OF THE IDENTITY, defaulting to 5432 when absent. Two
+ * PostgreSQL servers on `localhost:5432` and `localhost:5433` are genuinely
+ * different databases — a Docker container beside a native install is an
+ * ordinary developer setup — and collapsing them would be the same class of
+ * error as collapsing two Neon branches. Neon's pooled and direct endpoints both
+ * use 5432, so including the port costs that case nothing.
+ *
+ * Credentials and query parameters are excluded: a password rotation or an
+ * `sslmode` change does not make it a different database, and an identity that
+ * moved when a password did could not be written down in `.env.local` at all.
+ */
 export function normalizedDatabaseIdentity(value, variableName) {
   const { url, databaseName } = parsePostgresUrl(value, variableName);
-  const hostname = LOOPBACK_HOSTS.includes(url.hostname.toLowerCase())
-    ? 'loopback'
-    : url.hostname.toLowerCase();
   const port = url.port === '' ? '5432' : url.port;
+  return `${canonicalHost(url.hostname)}:${port}/${databaseName.toLowerCase()}`;
+}
 
-  // Credentials and query parameters can differ while still addressing the
-  // same database. They are deliberately excluded from the comparison.
-  return `${hostname}:${port}/${databaseName.toLowerCase()}`;
+/**
+ * A SHORT, NON-SECRET FINGERPRINT OF A TARGET, for `.env.local` to pin.
+ *
+ * Hashed rather than stored verbatim so pasting one into a shared file, a chat
+ * message or a CI log discloses no hostname. It is derived only from the
+ * canonical identity above — never from a password — so it is stable across
+ * credential rotation and reproducible on any machine holding the same URL.
+ */
+export function databaseTargetFingerprint(value, variableName) {
+  const identity = normalizedDatabaseIdentity(value, variableName);
+  return `db1_${createHash('sha256').update(identity).digest('hex').slice(0, 16)}`;
 }
 
 /** `loopback` or `remote` — never the hostname itself. */
@@ -177,13 +236,14 @@ export function requireDeveloperDatabaseWrite(env = process.env, { operation, va
   const migrationRaw = required(env, 'DATABASE_MIGRATION_URL');
   const appRaw = required(env, 'DATABASE_URL');
   if (migrationRaw !== null && appRaw !== null) {
-    const migrationName = parsePostgresUrl(migrationRaw, 'DATABASE_MIGRATION_URL').databaseName;
-    const appName = parsePostgresUrl(appRaw, 'DATABASE_URL').databaseName;
-    if (migrationName.toLowerCase() !== appName.toLowerCase()) {
+    const migrationIdentity = normalizedDatabaseIdentity(migrationRaw, 'DATABASE_MIGRATION_URL');
+    const appIdentity = normalizedDatabaseIdentity(appRaw, 'DATABASE_URL');
+    if (migrationIdentity !== appIdentity) {
       throw new Error(
-        `Refusing ${label}: DATABASE_URL and DATABASE_MIGRATION_URL name different databases ` +
-          `("${appName}" and "${migrationName}"). They must address one database — on Neon that is the ` +
-          'pooled and direct endpoint of the same branch.',
+        `Refusing ${label}: DATABASE_URL and DATABASE_MIGRATION_URL address different databases.\n` +
+          `Application target ${databaseTargetFingerprint(appRaw, 'DATABASE_URL')}, migration target ` +
+          `${databaseTargetFingerprint(migrationRaw, 'DATABASE_MIGRATION_URL')}.\n` +
+          'They must be one database — on Neon, the pooled and direct endpoints of the SAME branch.',
       );
     }
   }
@@ -199,10 +259,52 @@ export function requireDeveloperDatabaseWrite(env = process.env, { operation, va
     }
   }
 
-  return { environment, databaseName, host: hostClass(url), variable: urlVariable };
+  /*
+    THE PINNED TARGET — the check that survives a swapped URL.
+
+    Everything above validates the SHAPE of the configuration. None of it
+    notices the failure that actually happens: a developer pastes a different
+    connection string over `DATABASE_URL` — to reproduce something, to check a
+    report — and leaves `DATABASE_ENVIRONMENT=development` and the
+    acknowledgement exactly where they were. Every declaration still says
+    "development" because nobody edited the declarations.
+
+    So the approved target is written down once, as a fingerprint, and compared.
+    A swapped URL produces a different fingerprint and is refused, whatever the
+    flags around it still claim.
+  */
+  const expected = required(env, 'DEVELOPER_DATABASE_TARGET_ID');
+  const actual = databaseTargetFingerprint(raw, urlVariable);
+  if (expected === null) {
+    throw new Error(
+      `Refusing ${label}: DEVELOPER_DATABASE_TARGET_ID is not set, so no database has been approved for ` +
+        'developer writes.\n' +
+        `The database currently configured has target id ${actual}.\n` +
+        'Confirm that is your own development database — not a deployment branch — then set ' +
+        `DEVELOPER_DATABASE_TARGET_ID=${actual} in .env.local.\n` +
+        'See docs/migration-runbook.md — Database write safety.',
+    );
+  }
+  if (expected !== actual) {
+    throw new Error(
+      `Refusing ${label}: configured database does not match the approved development write target.\n` +
+        `Approved ${expected}, configured ${actual}.\n` +
+        'Either the connection URL changed or the approved target is stale. Re-confirm which database this ' +
+        'should be before updating DEVELOPER_DATABASE_TARGET_ID.',
+    );
+  }
+
+  return {
+    environment,
+    databaseName,
+    host: hostClass(url),
+    variable: urlVariable,
+    targetId: actual,
+  };
 }
 
 /** A one-line, credential-free summary for a script to print before it writes. */
-export function describeTarget({ environment, databaseName, host }) {
-  return `database "${databaseName}" (${host}, declared ${environment})`;
+export function describeTarget({ environment, databaseName, host, targetId }) {
+  const pinned = targetId === undefined ? '' : `, target ${targetId}`;
+  return `database "${databaseName}" (${host}, declared ${environment}${pinned})`;
 }

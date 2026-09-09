@@ -27,11 +27,12 @@ How schema changes move from a developer's machine to every environment this pro
 
 ## Database write safety
 
-Every command that can write to a database refuses to run until `.env.local` says what the target database is for. Two variables:
+Every command that can write to a database refuses to run until `.env.local` says what the target database is for, and which specific database was approved. Three variables:
 
 ```bash
 DATABASE_ENVIRONMENT=development
 DEVELOPER_DATABASE_WRITE_ACK=I_UNDERSTAND_THIS_DATABASE_ACCEPTS_DEVELOPER_WRITES
+DEVELOPER_DATABASE_TARGET_ID=db1_xxxxxxxxxxxxxxxx
 ```
 
 `DATABASE_ENVIRONMENT` is **declared, never detected.** A personal Neon branch is a remote host and is a perfectly good development database; a deployment database reached through a tunnel is `localhost` and is not. A hostname says where a database lives, never what it is for — so `scripts/database-safety.mjs` reads the declaration rather than guessing, and an unconfigured machine writes to nothing.
@@ -46,7 +47,15 @@ DEVELOPER_DATABASE_WRITE_ACK=I_UNDERSTAND_THIS_DATABASE_ACCEPTS_DEVELOPER_WRITES
 
 The guard lives in `drizzle.config.ts` rather than in a package script, so `npx drizzle-kit migrate` and any shell alias are covered too: every drizzle-kit subcommand loads that file to find its credentials.
 
-It also refuses configurations that contradict themselves — `DATABASE_URL` and `DATABASE_MIGRATION_URL` naming _different_ databases (Neon's pooled and direct endpoints of one branch are fine; they differ only by hostname), or the development database being the same one `TEST_DATABASE_URL` is entitled to destroy.
+### The approved target
+
+The first two variables describe INTENT, and intent survives a pasted connection string: swap `DATABASE_URL` to another branch to check something, leave the flags untouched, and every declaration still says "development". `DEVELOPER_DATABASE_TARGET_ID` pins the specific database that was approved, so a swapped URL is refused whatever the flags around it still claim.
+
+It is a non-secret fingerprint of **canonical host, port and database name** — never the password, so rotating credentials does not change it. To obtain it, run any guarded command with it unset: the refusal prints the id of the database currently configured. Confirm that is your own development database, then paste it in.
+
+Identity is canonicalized so that Neon's pooled and direct endpoints of one branch compare **equal**, while two different endpoints — or regions, or projects — stay **different even when the database inside them shares a name**. A `-pooler` suffix is stripped from the first hostname label; nothing else about the host is discarded. Ports are part of the identity (an absent port means 5432), so `localhost:5432` and `localhost:5433` are correctly two different databases.
+
+It also refuses configurations that contradict themselves — `DATABASE_URL` and `DATABASE_MIGRATION_URL` addressing _different_ databases (compared by full canonical identity, not by database name: two Neon branches can both hold a database called `tradechemist`), or the development database being the same one `TEST_DATABASE_URL` is entitled to destroy.
 
 `DEVELOPER_DATABASE_WRITE_ACK` authorizes `development` **only**. It can never authorize `preview` or `production`: those belong to their deployments, and a production schema migration is a separate, reviewed step that no command in this repository performs today. `PRODUCTION_DATABASE_WRITE_ACKNOWLEDGEMENT` exists in the module as the extensibility point for that future step and is deliberately wired to nothing.
 
