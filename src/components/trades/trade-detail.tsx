@@ -66,7 +66,7 @@ export function TradeDetail({
             />
           ),
           entry: <EntrySnapshotSection trade={trade} canWrite={canWrite} />,
-          review: <ReviewSection trade={trade} canWrite={canWrite} />,
+          review: <ReviewSection trade={trade} timezone={timezone} canWrite={canWrite} />,
         }}
       />
     </article>

@@ -1,5 +1,6 @@
 import { useTranslations } from 'next-intl';
 
+import { tradeSystemAssessmentEligibility } from '@/lib/trades/system-assessment-view';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { HeroMetric } from '@/components/product/summary-primitives';
 import { IdentityCorrectionDialog } from '@/components/trades/trade-correction-actions';
@@ -107,7 +108,8 @@ export function TradeOverviewHeader({
           value={system.value}
           supporting={system.supporting}
         />
-        {trade.executionGapR === null ? null : (
+        {trade.executionGapR === null ||
+        tradeSystemAssessmentEligibility(trade) === 'needs_review' ? null : (
           <HeroMetric label={t('field.executionGap')} value={formatR(trade.executionGapR) ?? '—'} />
         )}
       </div>

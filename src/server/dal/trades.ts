@@ -11,8 +11,10 @@ import type {
   ActualResultMode,
   MistakeSeverity,
   OutcomeValue,
+  PlanAdherence,
   RuleCheckStatus,
   SystemExitReason,
+  SystemPlanProvenance,
   SystemResolutionKind,
   SystemStatus,
   TradeAttentionKind,
@@ -578,6 +580,7 @@ export interface TradeDetail {
   readonly strategyId: string | null;
   /** The pinned Strategy Version's own name — see the module's historical-label rule. `null` when unclassified. */
   readonly strategyName: string | null;
+  readonly strategyVersionId: string | null;
   readonly strategyVersionNumber: number | null;
   /** Whether the LIVE Strategy (not this Trade's pinned Version) is archived today — a truthful disclosure, never a reason to hide the pinned historical label. `false` when unclassified (nothing to disclose). */
   readonly strategyIsArchived: boolean;
@@ -585,6 +588,7 @@ export interface TradeDetail {
   readonly setupId: string | null;
   /** The pinned Setup Version snapshot's own name — see the module's historical-label rule. `null` when unclassified. */
   readonly setupName: string | null;
+  readonly setupVersionId: string | null;
   /** Whether the LIVE Setup is archived today — see `strategyIsArchived`. */
   readonly setupIsArchived: boolean;
   /** First-assignment timing (Phase 14B/14C) — `null` exactly when `strategyId` is `null`. Never "last changed at". */
@@ -659,11 +663,15 @@ export interface TradeDetail {
   readonly systemGrossRInput: string | null;
   readonly systemExitedAt: string | null;
   readonly systemExitReason: SystemExitReason | null;
+  readonly systemGrossR: string | null;
   /** NULL means the cost was never estimated — see `trades.system_cost_r`. */
   readonly systemCostR: string | null;
   readonly systemR: string | null;
   readonly systemOutcome: OutcomeValue | null;
   readonly systemResolvedAt: string | null;
+  readonly systemDependencySnapshot: unknown;
+  readonly systemPlanProvenance: SystemPlanProvenance | null;
+  readonly planAdherence: PlanAdherence | null;
   /**
    * `Actual R − System R` (CLAUDE.md §6/§12, Phase 13H's locked sign) —
    * derived on read via the same pure `executionGapR` the calc engine's
@@ -837,10 +845,12 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       tradingAccountIsArchived: row.tradingAccountIsArchived,
       strategyId: trade.strategyId,
       strategyName: row.strategyVersionName,
+      strategyVersionId: trade.strategyVersionId,
       strategyVersionNumber: row.strategyVersionNumber,
       strategyIsArchived: row.strategyIsArchived ?? false,
       setupId: trade.setupId,
       setupName: row.setupVersionName,
+      setupVersionId: trade.setupVersionId,
       setupIsArchived: row.setupIsArchived ?? false,
       strategyAssignedAt: dateToIso(trade.strategyAssignedAt),
       setupAssignedAt: dateToIso(trade.setupAssignedAt),
@@ -905,10 +915,14 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       systemGrossRInput: trade.systemGrossRInput,
       systemExitedAt: dateToIso(trade.systemExitedAt),
       systemExitReason: trade.systemExitReason as SystemExitReason | null,
+      systemGrossR: trade.systemGrossR,
       systemCostR: trade.systemCostR,
       systemR: trade.systemR,
       systemOutcome: trade.systemOutcome as OutcomeValue | null,
       systemResolvedAt: dateToIso(trade.systemResolvedAt),
+      systemDependencySnapshot: trade.systemDependencySnapshot,
+      systemPlanProvenance: trade.systemPlanProvenance as SystemPlanProvenance | null,
+      planAdherence: trade.planAdherence as PlanAdherence | null,
       executionGapR: gap.ok ? gap.value : null,
 
       setupConditionState,

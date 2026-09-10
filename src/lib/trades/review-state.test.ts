@@ -102,7 +102,7 @@ describe('the review vocabulary stays in step with the attention vocabulary', ()
 
   it('sends each actionable state to a tab that can actually clear it', () => {
     expect(TRADE_REVIEW_STATE_TAB.needs_details).toBe('execution');
-    expect(TRADE_REVIEW_STATE_TAB.needs_system_result).toBe('plan');
+    expect(TRADE_REVIEW_STATE_TAB.needs_system_result).toBe('review');
     expect(TRADE_REVIEW_STATE_TAB.unclassified).toBe('plan');
     expect(TRADE_REVIEW_STATE_TAB.needs_review).toBe('review');
   });

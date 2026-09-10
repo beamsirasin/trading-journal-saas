@@ -5,11 +5,8 @@ import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actio
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
-import {
-  CorrectSystemDialog,
-  MarkSystemNoTradeDialog,
-  ResolveSystemDialog,
-} from '@/components/trades/trade-system-actions';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 function SystemPlan({ trade, canWrite }: { trade: TradeDetailModel; canWrite: boolean }) {
   const t = useTranslations('trades');
@@ -123,17 +120,19 @@ function resolutionSummary(
   }
 }
 
-/** SYSTEM owns both the entry-time System Plan and the independent eventual System Outcome. */
+/** Read-only System Plan/outcome surface; assessment writes live only in Review. */
 export function SystemSection({
   trade,
   timezone,
   locale,
   canWrite,
+  onOpenAssessment,
 }: {
   trade: TradeDetailModel;
   timezone: string;
   locale: string;
   canWrite: boolean;
+  onOpenAssessment?: () => void;
 }) {
   const t = useTranslations('trades');
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
@@ -160,39 +159,31 @@ export function SystemSection({
                 {t('detail.systemOutcome.pending')}
               </p>
             </div>
-            {canWrite ? (
-              <div className="flex flex-wrap gap-2">
-                <ResolveSystemDialog trade={trade} timezone={timezone} />
-                <MarkSystemNoTradeDialog tradeId={trade.tradeId} />
-              </div>
-            ) : null}
           </>
         ) : trade.systemStatus === 'no_trade' ? (
           <>
             <p className="font-medium">{t('detail.systemOutcome.noTrade')}</p>
-            {canWrite ? (
-              <div>
-                <CorrectSystemDialog trade={trade} timezone={timezone} />
-              </div>
-            ) : null}
           </>
+        ) : trade.systemStatus === 'cannot_determine' ? (
+          <p className="font-medium">{t('status.system.cannot_determine')}</p>
         ) : (
           <>
             <div className="flex flex-wrap items-baseline gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs">{t('field.systemR')}</span>
+                <span className="text-muted-foreground text-xs">
+                  {trade.systemR === null
+                    ? t('lifecycle.system.assessment.gross')
+                    : t('field.systemR')}
+                </span>
                 <span className="text-metric numeric">
-                  {formatR(trade.systemR) ?? t('common.notAvailable')}
+                  {formatR(trade.systemR ?? trade.systemGrossR) ?? t('common.notAvailable')}
                 </span>
               </div>
-              <TradeOutcomeBadge outcome={trade.systemOutcome} />
+              {trade.systemOutcome === null ? null : (
+                <TradeOutcomeBadge outcome={trade.systemOutcome} />
+              )}
             </div>
             <p className="text-sm font-medium">{resolutionSummary(trade, t)}</p>
-            {canWrite ? (
-              <div>
-                <CorrectSystemDialog trade={trade} timezone={timezone} />
-              </div>
-            ) : null}
             <details className="border-border border-t pt-3">
               <summary className="text-muted-foreground hover:text-foreground min-h-11 cursor-pointer py-2 text-sm font-medium">
                 {t('detail.systemOutcome.details')}
@@ -213,7 +204,7 @@ export function SystemSection({
                 />
                 <DetailRow
                   label={t('field.systemCostR')}
-                  value={formatR(trade.systemCostR) ?? '—'}
+                  value={formatR(trade.systemCostR) ?? t('lifecycle.system.assessment.notRecorded')}
                 />
                 <DetailRow
                   label={t('field.systemResolvedAt')}
@@ -223,6 +214,22 @@ export function SystemSection({
             </details>
           </>
         )}
+
+        {canWrite ? (
+          <div>
+            {onOpenAssessment === undefined ? (
+              <Button asChild variant="outline">
+                <Link href={`/app/trades?trade=${trade.tradeId}&section=review`}>
+                  {t('lifecycle.system.assessment.openInReview')}
+                </Link>
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" onClick={onOpenAssessment}>
+                {t('lifecycle.system.assessment.openInReview')}
+              </Button>
+            )}
+          </div>
+        ) : null}
       </section>
     </section>
   );

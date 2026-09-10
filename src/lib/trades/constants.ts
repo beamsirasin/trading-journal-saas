@@ -43,11 +43,18 @@ export const EXIT_REASON_MAX_LENGTH = 500;
  * these was the exact stale-design defect Phase 07A's audit found in the
  * original phase-document sketch.
  */
-export const SYSTEM_STATUSES = ['pending', 'resolved', 'no_trade'] as const;
+export const SYSTEM_STATUSES = ['pending', 'resolved', 'no_trade', 'cannot_determine'] as const;
 export type SystemStatus = (typeof SYSTEM_STATUSES)[number];
 export function isSystemStatus(value: unknown): value is SystemStatus {
   return typeof value === 'string' && (SYSTEM_STATUSES as readonly string[]).includes(value);
 }
+
+/** User-stated assessment metadata introduced with the confirmed System snapshot. */
+export const SYSTEM_PLAN_PROVENANCES = ['at_entry', 'reconstructed_later', 'unknown'] as const;
+export type SystemPlanProvenance = (typeof SYSTEM_PLAN_PROVENANCES)[number];
+
+export const PLAN_ADHERENCE_VALUES = ['followed', 'partly', 'not_followed'] as const;
+export type PlanAdherence = (typeof PLAN_ADHERENCE_VALUES)[number];
 
 /**
  * THE FIVE NEEDS ATTENTION BUCKETS, NAMED IN ONE PLACE.

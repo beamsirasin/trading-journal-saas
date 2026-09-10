@@ -1090,7 +1090,8 @@
       "system": {
         "pending": "Pending",
         "resolved": "Resolved",
-        "no_trade": "No trade"
+        "no_trade": "No trade",
+        "cannot_determine": "Can't determine"
       },
       "outcome": {
         "win": "Win",
@@ -1460,7 +1461,67 @@
         "previewCost": "Cost",
         "previewSystem": "System",
         "costHint": "Enter System Cost R directly. System R is calculated by the server.",
-        "correctionNoTradeWarning": "Saving will replace the resolved rule-based result with No trade. The actual execution remains unchanged."
+        "correctionNoTradeWarning": "Saving will replace the resolved rule-based result with No trade. The actual execution remains unchanged.",
+        "assessment": {
+          "title": "System assessment",
+          "description": "Record what the rules that applied to this trade would have produced, separately from what you actually did.",
+          "invitation": "What would following your rules have produced?",
+          "reflectionTitle": "Reflection",
+          "reflectionPrompt": "What would you repeat or change next time?",
+          "takenQuestion": "Would your rules have taken this trade?",
+          "answerYes": "Yes",
+          "answerNo": "No — the setup wasn't valid",
+          "answerCannot": "Can't determine",
+          "closedQuestion": "What would have closed the trade?",
+          "reason": {
+            "target_hit": "Plan target",
+            "stop_hit": "Initial stop hit",
+            "break_even_rule": "Break-even rule",
+            "trailing_exit": "Trailing exit",
+            "time_exit": "Time/session rule",
+            "rule_exit": "Another rule",
+            "manual_system_valid_exit": "Other system-valid exit"
+          },
+          "customR": "Custom R",
+          "customRHint": "Enter the gross result in R. This is never copied from Actual R.",
+          "exitPrice": "System exit price",
+          "exitTime": "System exit time",
+          "cost": "Trading costs",
+          "costHint": "Optional, in R. Leave blank when costs were not recorded.",
+          "notRecorded": "Not recorded",
+          "gross": "Gross System R",
+          "net": "Net System R",
+          "grossOnly": "Gross result only",
+          "grossOnlyHint": "Costs are not recorded, so this is a gross result only. Net System R and Execution Gap are not claimed.",
+          "provenanceQuestion": "Were these rules in place before you entered?",
+          "provenanceHint": "About the rules themselves, not about when you typed them in.",
+          "provenance": {
+            "at_entry": "Yes — in place at entry",
+            "reconstructed_later": "Reconstructed later",
+            "unknown": "Can't confirm"
+          },
+          "adherenceQuestion": "Did you follow your plan?",
+          "adherenceHint": "Optional and independent of whether the trade won or lost. Select the same answer again to clear it.",
+          "adherence": {
+            "followed": "Followed",
+            "partly": "Partly",
+            "not_followed": "Did not follow"
+          },
+          "needsReview": "Needs review",
+          "previousR": "Previously confirmed: {r}",
+          "previousGrossR": "Previously confirmed: {r} gross",
+          "previousFinding": "Previously confirmed finding",
+          "currentR": "Current inputs would calculate {r}",
+          "staleHint": "Plan information changed. The previous result remains confirmed until you explicitly reconfirm it.",
+          "stillApplies": "This still applies",
+          "confirm": "Confirm assessment",
+          "cancel": "Cancel",
+          "saving": "Saving…",
+          "assessed": "Assessed",
+          "chooseAnswer": "Choose whether your rules would have taken this trade.",
+          "completeResolution": "Complete the rule-based result before confirming.",
+          "openInReview": "Open System assessment in Review"
+        }
       },
       "rules": {
         "statusFor": "Rule status for {title}"
@@ -1870,7 +1931,7 @@
     },
     "systemReason": {
       "target_hit": "Target hit",
-      "stop_hit": "Stop hit",
+      "stop_hit": "Initial stop hit",
       "break_even_rule": "Break-even rule",
       "trailing_exit": "Trailing exit",
       "time_exit": "Time exit",
@@ -2019,6 +2080,7 @@
           "gap": "Execution Gap",
           "systemPending": "The system result has not been recorded yet, so there is nothing to compare your execution against.",
           "systemNoTrade": "The rules would not have permitted this Trade, so there is no system result to compare against.",
+          "systemNeedsReview": "The confirmed System assessment needs review after its plan information changed, so Execution Gap is withheld.",
           "actualIncomplete": "This Trade is not closed yet, so your final result is not settled and cannot be compared.",
           "unavailable": "A comparison needs both a settled result and a recorded system result. One of them is missing."
         },

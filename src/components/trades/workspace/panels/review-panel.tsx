@@ -36,7 +36,15 @@ import { PanelSection } from '@/components/trades/workspace/panel-primitives';
  * entry-time truth (`emotions_recorded_at` distinguishing "none selected" from
  * "never recorded") are untouched.
  */
-export function TradeReviewPanel({ trade, canWrite }: { trade: TradeDetail; canWrite: boolean }) {
+export function TradeReviewPanel({
+  trade,
+  timezone,
+  canWrite,
+}: {
+  trade: TradeDetail;
+  timezone: string;
+  canWrite: boolean;
+}) {
   const t = useTranslations('trades.workspace.details');
   const tTrades = useTranslations('trades');
   const quadrant = deriveTradeAttributionQuadrant(trade);
@@ -64,7 +72,7 @@ export function TradeReviewPanel({ trade, canWrite }: { trade: TradeDetail; canW
         )}
       </PanelSection>
 
-      <ReviewSection trade={trade} canWrite={canWrite} />
+      <ReviewSection trade={trade} timezone={timezone} canWrite={canWrite} />
 
       <PanelSection
         title={tTrades('lifecycle.reflection.emotions')}

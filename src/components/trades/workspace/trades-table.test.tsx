@@ -218,7 +218,11 @@ describe('TradesTable — opening a Trade', () => {
 describe('TradesTable — the Review column', () => {
   const cases = [
     { overrides: { status: 'planned' as const }, label: 'Needs details', tab: 'execution' },
-    { overrides: { systemStatus: 'pending' as const }, label: 'Needs system result', tab: 'plan' },
+    {
+      overrides: { systemStatus: 'pending' as const },
+      label: 'Needs system result',
+      tab: 'review',
+    },
     { overrides: { strategyName: null }, label: 'Unclassified', tab: 'plan' },
     { overrides: { hasReviewNotes: false }, label: 'Needs review', tab: 'review' },
   ];

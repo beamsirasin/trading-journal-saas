@@ -45,7 +45,7 @@ export function parseTradeDetailSection(value: string | undefined): TradeDetailS
 /** The minimal Trade fields the status derivation below reads — a narrow view onto `TradeDetail` (`server/dal/trades.ts`), never the whole model, so this stays independently testable with small fixtures. */
 export interface TradeSectionStatusInput {
   readonly status: 'planned' | 'open' | 'closed' | 'canceled';
-  readonly systemStatus: 'pending' | 'resolved' | 'no_trade';
+  readonly systemStatus: 'pending' | 'resolved' | 'no_trade' | 'cannot_determine';
   readonly strategyId: string | null;
   readonly setupId: string | null;
   readonly setupConditionState: 'recorded' | 'not_recorded' | 'not_configured';
@@ -75,12 +75,7 @@ export function deriveTradeSectionStatuses(
           ? 'needs_attention'
           : 'not_recorded'; // canceled — factual, never an error
 
-  const system: StatusKind =
-    trade.systemStatus === 'resolved'
-      ? 'complete'
-      : trade.systemStatus === 'pending'
-        ? 'needs_attention'
-        : 'not_recorded'; // no_trade — factual, never an error
+  const system: StatusKind = trade.systemStatus === 'pending' ? 'needs_attention' : 'complete';
 
   const strategy: StatusKind =
     trade.strategyId !== null && trade.setupId !== null

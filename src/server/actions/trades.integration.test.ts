@@ -81,6 +81,7 @@ const {
   correctTradeIdentityAction,
   createCompletedTradeAction,
   createTradeAction,
+  markSystemCannotDetermineAction,
   markSystemNoTradeAction,
   openTradeAction,
   removeTradeMistakeAction,
@@ -750,10 +751,47 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(result);
     });
 
-    it('marks no_trade', async () => {
+    it('marks no_trade with no System R and persists assessment metadata', async () => {
       const { tradeId } = await createdTrade();
-      const result = await markSystemNoTradeAction({ tradeId });
+      const result = await markSystemNoTradeAction({
+        tradeId,
+        systemPlanProvenance: 'reconstructed_later',
+        planAdherence: 'partly',
+      });
       expect(result).toMatchObject({ ok: true, data: { tradeId, systemStatus: 'no_trade' } });
+      const [stored] = await getTestDb().select().from(trades).where(eq(trades.id, tradeId));
+      expect(stored).toMatchObject({
+        systemStatus: 'no_trade',
+        systemGrossR: null,
+        systemR: null,
+        systemOutcome: null,
+        systemPlanProvenance: 'reconstructed_later',
+        planAdherence: 'partly',
+      });
+      expect(stored?.systemDependencySnapshot).not.toBeNull();
+    });
+
+    it('marks cannot_determine through the existing service and persists assessment metadata', async () => {
+      const { tradeId } = await createdTrade();
+      const result = await markSystemCannotDetermineAction({
+        tradeId,
+        systemPlanProvenance: 'unknown',
+        planAdherence: 'not_followed',
+      });
+      expect(result).toMatchObject({
+        ok: true,
+        data: { tradeId, systemStatus: 'cannot_determine' },
+      });
+      const [stored] = await getTestDb().select().from(trades).where(eq(trades.id, tradeId));
+      expect(stored).toMatchObject({
+        systemStatus: 'cannot_determine',
+        systemGrossR: null,
+        systemR: null,
+        systemOutcome: null,
+        systemPlanProvenance: 'unknown',
+        planAdherence: 'not_followed',
+      });
+      expect(stored?.systemDependencySnapshot).not.toBeNull();
     });
 
     it('corrects a resolved System result to no_trade, then back to resolved', async () => {

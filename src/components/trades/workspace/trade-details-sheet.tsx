@@ -90,6 +90,13 @@ export function TradeDetailsSheet({
     router.push(listHref(), { scroll: false });
   }
 
+  function openSystemAssessment() {
+    setActive('review');
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('[data-system-assessment-launcher]')?.focus();
+    });
+  }
+
   return (
     <Sheet
       open
@@ -187,6 +194,7 @@ export function TradeDetailsSheet({
               locale={locale}
               canWrite={canWrite}
               classificationOptions={classificationOptions}
+              onOpenSystemAssessment={openSystemAssessment}
             />
           ) : active === 'execution' ? (
             <TradeExecutionPanel
@@ -196,7 +204,7 @@ export function TradeDetailsSheet({
               canWrite={canWrite}
             />
           ) : active === 'review' ? (
-            <TradeReviewPanel trade={trade} canWrite={canWrite} />
+            <TradeReviewPanel trade={trade} timezone={timezone} canWrite={canWrite} />
           ) : active === 'chart' ? (
             <TradeChartPanel trade={trade} />
           ) : (

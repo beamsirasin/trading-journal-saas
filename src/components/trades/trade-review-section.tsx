@@ -7,6 +7,7 @@ import {
   TradeRulesEditor,
 } from '@/components/trades/trade-discipline-editors';
 import { TradeReviewNotesEditor } from '@/components/trades/trade-reflection-editor';
+import { SystemAssessmentLauncher } from '@/components/trades/trade-system-assessment';
 
 /**
  * REVIEW — Phase 15E. Answers "what happened in my execution, and what did
@@ -17,7 +18,15 @@ import { TradeReviewNotesEditor } from '@/components/trades/trade-reflection-edi
  * Checklist never appears here — it stays exclusively in Entry Snapshot.
  * No combined Discipline Score exists or is introduced.
  */
-export function ReviewSection({ trade, canWrite }: { trade: TradeDetailModel; canWrite: boolean }) {
+export function ReviewSection({
+  trade,
+  timezone,
+  canWrite,
+}: {
+  trade: TradeDetailModel;
+  timezone: string;
+  canWrite: boolean;
+}) {
   const t = useTranslations('trades');
 
   return (
@@ -50,12 +59,22 @@ export function ReviewSection({ trade, canWrite }: { trade: TradeDetailModel; ca
         </div>
       </SubSection>
 
-      <SubSection title={t('lifecycle.reflection.reviewNotes')}>
+      <SubSection title={t('lifecycle.system.assessment.reflectionTitle')}>
+        <p className="text-muted-foreground text-sm">
+          {t('lifecycle.system.assessment.reflectionPrompt')}
+        </p>
         <TradeReviewNotesEditor
           tradeId={trade.tradeId}
           reviewNotes={trade.reviewNotes}
           canWrite={canWrite}
         />
+      </SubSection>
+
+      <SubSection title={t('lifecycle.system.assessment.title')}>
+        <p className="text-muted-foreground text-sm">
+          {t('lifecycle.system.assessment.invitation')}
+        </p>
+        <SystemAssessmentLauncher trade={trade} timezone={timezone} canWrite={canWrite} />
       </SubSection>
     </section>
   );

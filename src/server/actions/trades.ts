@@ -24,6 +24,7 @@ import {
   CorrectTradeIdentitySchema,
   CreateCompletedTradeSchema,
   CreateTradeSchema,
+  MarkSystemCannotDetermineSchema,
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
   RemoveTradeMistakeSchema,
@@ -60,6 +61,7 @@ import {
   correctTradeExecution,
   correctTradeIdentity,
   createTrade,
+  markSystemCannotDetermine,
   markSystemNoTrade,
   openTrade,
   resolveSystemTrade,
@@ -700,11 +702,40 @@ export async function markSystemNoTradeAction(
   if (!ctx.ok) return ctx;
 
   try {
-    const { tradeId } = parsed.data;
-    const result = await markSystemNoTrade(ctx.workspaceId, ctx.userId, tradeId);
+    const { tradeId, ...metadata } = parsed.data;
+    const result = await markSystemNoTrade(ctx.workspaceId, ctx.userId, tradeId, metadata);
     if (!result.ok) return serviceFailure(result.code);
     revalidateTradeRoutes();
     return { ok: true, data: { tradeId, systemStatus: 'no_trade' } };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export interface MarkSystemCannotDetermineData {
+  readonly tradeId: string;
+  readonly systemStatus: Extract<SystemStatus, 'cannot_determine'>;
+}
+
+export type MarkSystemCannotDetermineActionResult =
+  TradeActionResult<MarkSystemCannotDetermineData>;
+
+/** Records an assessed dead end through the existing Pass 5A service. */
+export async function markSystemCannotDetermineAction(
+  input: unknown,
+): Promise<MarkSystemCannotDetermineActionResult> {
+  const parsed = MarkSystemCannotDetermineSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+
+  try {
+    const { tradeId, ...metadata } = parsed.data;
+    const result = await markSystemCannotDetermine(ctx.workspaceId, ctx.userId, tradeId, metadata);
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return { ok: true, data: { tradeId, systemStatus: 'cannot_determine' } };
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
   }
@@ -716,7 +747,7 @@ export async function markSystemNoTradeAction(
 
 export interface CorrectSystemResolutionData {
   readonly tradeId: string;
-  readonly systemStatus: Extract<SystemStatus, 'resolved' | 'no_trade'>;
+  readonly systemStatus: Extract<SystemStatus, 'resolved' | 'no_trade' | 'cannot_determine'>;
 }
 
 export type CorrectSystemResolutionActionResult = TradeActionResult<CorrectSystemResolutionData>;

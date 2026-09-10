@@ -20,11 +20,13 @@ import {
   isConfidenceStep,
   MISTAKE_NOTE_MAX_LENGTH,
   NOTES_MAX_LENGTH,
+  PLAN_ADHERENCE_VALUES,
   RESOLVABLE_SYSTEM_EXIT_REASONS,
   REVIEW_NOTES_MAX_LENGTH,
   RULE_CHECK_STATUSES,
   SESSION_MAX_LENGTH,
   SYMBOL_MAX_LENGTH,
+  SYSTEM_PLAN_PROVENANCES,
   TIMEFRAME_MAX_LENGTH,
   TRADE_DIRECTIONS,
   TRADINGVIEW_URL_MAX_LENGTH,
@@ -141,6 +143,11 @@ const optionalSystemCostField = () =>
     .union([decimalField(), z.literal(''), z.null()])
     .optional()
     .transform((value) => (value === '' || value === undefined ? null : value));
+
+const systemAssessmentMetadata = {
+  systemPlanProvenance: z.enum(SYSTEM_PLAN_PROVENANCES).optional(),
+  planAdherence: z.enum(PLAN_ADHERENCE_VALUES).nullable().optional(),
+} as const;
 /** Tri-state, decimal-valued — see {@link patchableTextField}'s doc comment for the presence convention. */
 const patchableDecimalField = () =>
   z.string().regex(SIGNED_DECIMAL_PATTERN).max(DECIMAL_MAX_LENGTH).nullable().optional();
@@ -712,9 +719,10 @@ export type CorrectTradeExecutionActionData = z.output<typeof CorrectTradeExecut
 
 const PriceSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     resolutionKind: z.literal('price_exit'),
     systemExitPrice: decimalField(),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     /** `setup_invalidated` excluded at the schema layer — a closed-set membership check, not a formula (see `markSystemNoTradeAction` for that transition instead). */
     systemExitReason: resolvableSystemExitReasonField(),
     systemCostR: optionalSystemCostField(),
@@ -723,33 +731,37 @@ const PriceSystemResolutionSchema = z
 
 const MoneyTargetSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     resolutionKind: z.literal('money_target'),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
 
 const MoneyStopSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     resolutionKind: z.literal('money_stop'),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
 
 const MoneyBreakEvenSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     resolutionKind: z.literal('money_break_even'),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
 
 const MoneyCustomSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     resolutionKind: z.literal('money_custom'),
     systemGrossRInput: decimalField(),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
@@ -881,9 +893,17 @@ export type CreateCompletedTradeActionData = z.output<typeof CreateCompletedTrad
 // 9. markSystemNoTrade
 // ---------------------------------------------------------------------------
 
-export const MarkSystemNoTradeSchema = z.object({ tradeId: uuidField() }).strict();
+export const MarkSystemNoTradeSchema = z
+  .object({ tradeId: uuidField(), ...systemAssessmentMetadata })
+  .strict();
 export type MarkSystemNoTradeActionInput = z.input<typeof MarkSystemNoTradeSchema>;
 export type MarkSystemNoTradeActionData = z.output<typeof MarkSystemNoTradeSchema>;
+
+export const MarkSystemCannotDetermineSchema = z
+  .object({ tradeId: uuidField(), ...systemAssessmentMetadata })
+  .strict();
+export type MarkSystemCannotDetermineActionInput = z.input<typeof MarkSystemCannotDetermineSchema>;
+export type MarkSystemCannotDetermineActionData = z.output<typeof MarkSystemCannotDetermineSchema>;
 
 // ---------------------------------------------------------------------------
 // 10. correctSystemResolution
@@ -891,11 +911,12 @@ export type MarkSystemNoTradeActionData = z.output<typeof MarkSystemNoTradeSchem
 
 const CorrectPriceSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     tradeId: uuidField(),
     target: z.literal('resolved'),
     resolutionKind: z.literal('price_exit'),
     systemExitPrice: decimalField(),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemExitReason: resolvableSystemExitReasonField(),
     systemCostR: optionalSystemCostField(),
   })
@@ -903,41 +924,45 @@ const CorrectPriceSystemResolutionSchema = z
 
 const CorrectMoneyTargetSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     tradeId: uuidField(),
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_target'),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
 
 const CorrectMoneyStopSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     tradeId: uuidField(),
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_stop'),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
 
 const CorrectMoneyBreakEvenSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     tradeId: uuidField(),
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_break_even'),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
 
 const CorrectMoneyCustomSystemResolutionSchema = z
   .object({
+    ...systemAssessmentMetadata,
     tradeId: uuidField(),
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_custom'),
     systemGrossRInput: decimalField(),
-    systemExitedAt: instantField(),
+    systemExitedAt: instantField().nullable(),
     systemCostR: optionalSystemCostField(),
   })
   .strict();
@@ -952,8 +977,17 @@ const CorrectSystemResolutionToResolvedSchema = z.discriminatedUnion('resolution
 
 const CorrectSystemResolutionToNoTradeSchema = z
   .object({
+    ...systemAssessmentMetadata,
     tradeId: uuidField(),
     target: z.literal('no_trade'),
+  })
+  .strict();
+
+const CorrectSystemResolutionToCannotDetermineSchema = z
+  .object({
+    ...systemAssessmentMetadata,
+    tradeId: uuidField(),
+    target: z.literal('cannot_determine'),
   })
   .strict();
 
@@ -966,6 +1000,7 @@ const CorrectSystemResolutionToNoTradeSchema = z
 export const CorrectSystemResolutionSchema = z.union([
   CorrectSystemResolutionToResolvedSchema,
   CorrectSystemResolutionToNoTradeSchema,
+  CorrectSystemResolutionToCannotDetermineSchema,
 ]);
 export type CorrectSystemResolutionActionInput = z.input<typeof CorrectSystemResolutionSchema>;
 export type CorrectSystemResolutionActionData = z.output<typeof CorrectSystemResolutionSchema>;

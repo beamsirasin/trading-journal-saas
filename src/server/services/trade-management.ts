@@ -23,6 +23,8 @@ import {
   isTradeDirection,
   type ActualResultMode,
   type OutcomeValue,
+  type PlanAdherence,
+  type SystemPlanProvenance,
   type SystemResolutionKind,
   type TradeStatus,
 } from '@/lib/trades/constants';
@@ -1949,7 +1951,12 @@ export async function correctTradeExecution(
 // 8. resolveSystemTrade
 // ---------------------------------------------------------------------------
 
-interface SystemResolveCommonInput {
+export interface SystemAssessmentMetadataInput {
+  readonly systemPlanProvenance?: SystemPlanProvenance | undefined;
+  readonly planAdherence?: PlanAdherence | null | undefined;
+}
+
+interface SystemResolveCommonInput extends SystemAssessmentMetadataInput {
   /**
    * NULL where the resolution's meaning does not depend on an instant. A
    * counterfactual does not need a fabricated closing time to have a magnitude;
@@ -2198,6 +2205,8 @@ export async function resolveSystemTradeInTx(
         plannedEntry: trade.plannedEntry,
         plannedStop: trade.plannedStop,
       }),
+      systemPlanProvenance: input.systemPlanProvenance ?? trade.systemPlanProvenance,
+      planAdherence: input.planAdherence === undefined ? trade.planAdherence : input.planAdherence,
       calcVersion: prepared.value.calcVersion,
       updatedAt: new Date(),
     })
@@ -2281,6 +2290,7 @@ export async function markSystemCannotDetermineInTx(
   trade: TradeRow,
   clock: Clock,
   emitAudit: boolean,
+  metadata: SystemAssessmentMetadataInput = {},
 ): Promise<MarkSystemCannotDetermineResult> {
   if (trade.systemStatus === 'cannot_determine') return { ok: true };
   if (trade.systemStatus !== 'pending') {
@@ -2311,6 +2321,9 @@ export async function markSystemCannotDetermineInTx(
         plannedEntry: trade.plannedEntry,
         plannedStop: trade.plannedStop,
       }),
+      systemPlanProvenance: metadata.systemPlanProvenance ?? trade.systemPlanProvenance,
+      planAdherence:
+        metadata.planAdherence === undefined ? trade.planAdherence : metadata.planAdherence,
       updatedAt: new Date(),
     })
     .where(eq(trades.id, tradeId));
@@ -2337,6 +2350,7 @@ export async function markSystemNoTradeInTx(
   trade: TradeRow,
   clock: Clock,
   emitAudit: boolean,
+  metadata: SystemAssessmentMetadataInput = {},
 ): Promise<MarkSystemNoTradeResult> {
   if (trade.systemStatus === 'no_trade') return { ok: true };
   if (trade.systemStatus !== 'pending') {
@@ -2377,6 +2391,9 @@ export async function markSystemNoTradeInTx(
         plannedEntry: trade.plannedEntry,
         plannedStop: trade.plannedStop,
       }),
+      systemPlanProvenance: metadata.systemPlanProvenance ?? trade.systemPlanProvenance,
+      planAdherence:
+        metadata.planAdherence === undefined ? trade.planAdherence : metadata.planAdherence,
       updatedAt: new Date(),
     })
     .where(eq(trades.id, tradeId));
@@ -2399,12 +2416,22 @@ export async function markSystemCannotDetermine(
   workspaceId: string,
   userId: string,
   tradeId: string,
+  metadata: SystemAssessmentMetadataInput = {},
   clock: Clock = systemClock,
 ): Promise<MarkSystemCannotDetermineResult> {
   return getDb().transaction(async (tx) => {
     const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
     if (!ctx.ok) return ctx;
-    return markSystemCannotDetermineInTx(tx, workspaceId, userId, tradeId, ctx.trade, clock, true);
+    return markSystemCannotDetermineInTx(
+      tx,
+      workspaceId,
+      userId,
+      tradeId,
+      ctx.trade,
+      clock,
+      true,
+      metadata,
+    );
   });
 }
 
@@ -2412,12 +2439,22 @@ export async function markSystemNoTrade(
   workspaceId: string,
   userId: string,
   tradeId: string,
+  metadata: SystemAssessmentMetadataInput = {},
   clock: Clock = systemClock,
 ): Promise<MarkSystemNoTradeResult> {
   return getDb().transaction(async (tx) => {
     const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
     if (!ctx.ok) return ctx;
-    return markSystemNoTradeInTx(tx, workspaceId, userId, tradeId, ctx.trade, clock, true);
+    return markSystemNoTradeInTx(
+      tx,
+      workspaceId,
+      userId,
+      tradeId,
+      ctx.trade,
+      clock,
+      true,
+      metadata,
+    );
   });
 }
 
@@ -2426,7 +2463,10 @@ export async function markSystemNoTrade(
 // ---------------------------------------------------------------------------
 
 export type CorrectSystemResolutionInput =
-  (ResolveSystemTradeInput & { readonly target: 'resolved' }) | { readonly target: 'no_trade' };
+  | (ResolveSystemTradeInput & { readonly target: 'resolved' })
+  | (SystemAssessmentMetadataInput & {
+      readonly target: 'no_trade' | 'cannot_determine';
+    });
 
 export type CorrectSystemResolutionResult =
   | { readonly ok: true }
@@ -2442,13 +2482,13 @@ export type CorrectSystemResolutionResult =
     };
 
 /**
- * The explicit correction path for the System axis, covering exactly three
- * transitions: `resolved -> resolved` (corrected primitive inputs),
- * `resolved -> no_trade`, and `no_trade -> resolved`. Never reverts terminal
- * System state to `pending` — that target does not exist in
+ * The explicit correction/reconfirmation path for the System axis. It moves
+ * among the three terminal findings (`resolved`, `no_trade`, and
+ * `cannot_determine`) and never reverts terminal System state to `pending` —
+ * that target does not exist in
  * {@link CorrectSystemResolutionInput}'s type, so it is structurally
  * unreachable, not merely runtime-checked. Requires `system_status` to
- * already be `resolved` or `no_trade` — a `pending` Trade has nothing to
+ * already be terminal — a `pending` Trade has nothing to
  * correct yet and must use `resolveSystemTrade`/`markSystemNoTrade` instead.
  */
 export async function correctSystemResolution(
@@ -2465,22 +2505,28 @@ export async function correctSystemResolution(
     if (!ctx.ok) return ctx;
     const { trade } = ctx;
 
-    if (trade.systemStatus !== 'resolved' && trade.systemStatus !== 'no_trade') {
+    if (
+      trade.systemStatus !== 'resolved' &&
+      trade.systemStatus !== 'no_trade' &&
+      trade.systemStatus !== 'cannot_determine'
+    ) {
       return { ok: false, code: 'invalid_system_status_transition' };
     }
 
     const previousStatus = trade.systemStatus;
 
-    if (input.target === 'no_trade') {
+    if (input.target !== 'resolved') {
+      const findingStatus = input.target;
+      const findingReason = findingStatus === 'no_trade' ? 'setup_invalidated' : null;
       await tx
         .update(trades)
         .set({
-          systemStatus: 'no_trade',
+          systemStatus: findingStatus,
           systemResolutionKind: null,
           systemExitPrice: null,
           systemGrossRInput: null,
           systemExitedAt: null,
-          systemExitReason: 'setup_invalidated',
+          systemExitReason: findingReason,
           /*
             NOT `'0'`. A no_trade finding has no cost because it has no trade,
             and the old zero here was schema-mandated filler from when the
@@ -2493,7 +2539,7 @@ export async function correctSystemResolution(
           systemOutcome: null,
           systemDependencySnapshot: buildSystemDependencySnapshot({
             systemResolutionKind: null,
-            systemExitReason: 'setup_invalidated',
+            systemExitReason: findingReason,
             strategyVersionId: trade.strategyVersionId,
             setupVersionId: trade.setupVersionId,
             plannedRiskMinor: trade.plannedRiskMinor,
@@ -2501,6 +2547,9 @@ export async function correctSystemResolution(
             plannedEntry: trade.plannedEntry,
             plannedStop: trade.plannedStop,
           }),
+          systemPlanProvenance: input.systemPlanProvenance ?? trade.systemPlanProvenance,
+          planAdherence:
+            input.planAdherence === undefined ? trade.planAdherence : input.planAdherence,
           updatedAt: new Date(),
         })
         .where(eq(trades.id, tradeId));
@@ -2514,7 +2563,7 @@ export async function correctSystemResolution(
         metadata: {
           tradeId,
           previousStatus,
-          newStatus: 'no_trade',
+          newStatus: findingStatus,
           changedFields: [
             'systemStatus',
             'systemResolutionKind',
@@ -2568,6 +2617,9 @@ export async function correctSystemResolution(
           plannedEntry: trade.plannedEntry,
           plannedStop: trade.plannedStop,
         }),
+        systemPlanProvenance: input.systemPlanProvenance ?? trade.systemPlanProvenance,
+        planAdherence:
+          input.planAdherence === undefined ? trade.planAdherence : input.planAdherence,
         calcVersion: prepared.value.calcVersion,
         updatedAt: new Date(),
       })

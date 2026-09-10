@@ -34,10 +34,12 @@ const base: TradeDetailModel = {
   tradingAccountIsArchived: false,
   strategyId: 's',
   strategyName: 'Pinned Breakout',
+  strategyVersionId: 'sv',
   strategyVersionNumber: 4,
   strategyIsArchived: false,
   setupId: 'x',
   setupName: 'Pinned Retest',
+  setupVersionId: 'xv',
   setupIsArchived: false,
   strategyAssignedAt: '2026-08-08T00:00:00.000Z',
   setupAssignedAt: '2026-08-08T00:00:00.000Z',
@@ -88,10 +90,14 @@ const base: TradeDetailModel = {
   systemExitPrice: null,
   systemExitedAt: null,
   systemExitReason: null,
+  systemGrossR: null,
   systemCostR: '0.0000',
   systemR: null,
   systemOutcome: null,
   systemResolvedAt: null,
+  systemDependencySnapshot: null,
+  systemPlanProvenance: null,
+  planAdherence: null,
   setupConditionState: 'not_recorded',
   setupConditionChecks: [],
   ruleChecks: [
@@ -674,13 +680,24 @@ describe('TradeDetail', () => {
       expect(screen.queryByRole('button', { name: 'Add Strategy' })).not.toBeInTheDocument();
     });
 
-    it('shows System-lifecycle actions only on the System section', () => {
+    it('routes the old System section to the single assessment editor in Review', () => {
       renderDetail(base, 'system', true);
-      expect(screen.getByRole('button', { name: 'Record System Outcome' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Mark no trade' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Open System assessment in Review' }),
+      ).toHaveAttribute('href', expect.stringContaining('section=review'));
+      expect(
+        screen.queryByRole('button', { name: 'Record System Outcome' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Mark no trade' })).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Add execution details & Open' }),
       ).not.toBeInTheDocument();
+    });
+
+    it('shows the production System assessment launcher only in Review', () => {
+      renderDetail(base, 'review', true);
+      expect(screen.getByRole('button', { name: /System assessment/ })).toBeInTheDocument();
+      expect(screen.getByText('What would you repeat or change next time?')).toBeInTheDocument();
     });
 
     it('shows classification actions only on the Strategy & Setup section', () => {

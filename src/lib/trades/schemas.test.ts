@@ -12,6 +12,7 @@ import {
   CorrectTradeIdentitySchema,
   CreateCompletedTradeSchema,
   CreateTradeSchema,
+  MarkSystemCannotDetermineSchema,
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
   RemoveTradeMistakeSchema,
@@ -183,6 +184,40 @@ describe('trades/schemas — valid input', () => {
       systemCostR: '0.0500',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('keeps an unrecorded System cost null and accepts assessment metadata', () => {
+    const result = ResolveSystemTradeSchema.safeParse({
+      tradeId: uuid1,
+      resolutionKind: 'money_stop',
+      systemExitedAt: null,
+      systemCostR: '',
+      systemPlanProvenance: 'unknown',
+      planAdherence: 'partly',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.systemCostR).toBeNull();
+      expect(result.data.systemExitedAt).toBeNull();
+      expect(result.data.planAdherence).toBe('partly');
+    }
+  });
+
+  it('validates cannot_determine separately from no_trade', () => {
+    expect(
+      MarkSystemCannotDetermineSchema.safeParse({
+        tradeId: uuid1,
+        systemPlanProvenance: 'reconstructed_later',
+        planAdherence: 'not_followed',
+      }).success,
+    ).toBe(true);
+    expect(
+      MarkSystemNoTradeSchema.safeParse({
+        tradeId: uuid1,
+        systemPlanProvenance: 'unknown',
+        planAdherence: null,
+      }).success,
+    ).toBe(true);
   });
 
   it('CreateCompletedTradeSchema accepts Price completion and optional resolved System outcome', () => {

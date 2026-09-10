@@ -77,11 +77,12 @@ describe('deriveTradeSectionStatuses — system', () => {
       'needs_attention',
     );
   });
-  it('is not_recorded (never error) for no_trade', () => {
-    expect(deriveTradeSectionStatuses({ ...base, systemStatus: 'no_trade' }).system).toBe(
-      'not_recorded',
-    );
-  });
+  it.each(['no_trade', 'cannot_determine'] as const)(
+    'is complete for the assessed finding %s',
+    (systemStatus) => {
+      expect(deriveTradeSectionStatuses({ ...base, systemStatus }).system).toBe('complete');
+    },
+  );
 });
 
 describe('deriveTradeSectionStatuses — strategy & setup', () => {

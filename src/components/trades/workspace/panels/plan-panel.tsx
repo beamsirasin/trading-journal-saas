@@ -28,10 +28,9 @@ import { Badge } from '@/components/ui/badge';
  * exists to make legible. It is also why the Review column's "Needs system
  * result" state opens this tab.
  *
- * `SystemSection` is reused verbatim rather than reimplemented: it already
- * owns the System Plan prices, the Money-vs-Price plan basis disclosure, the
- * System Outcome, and every mutation that changes them. A second rendering of
- * the same fields in a sheet would be a second place for them to drift.
+ * `SystemSection` remains the read surface for the System Plan and confirmed
+ * outcome. Its one action routes to Review, where the assessment editor now
+ * lives; no second write surface remains here.
  */
 export function TradePlanPanel({
   trade,
@@ -39,12 +38,14 @@ export function TradePlanPanel({
   locale,
   canWrite,
   classificationOptions,
+  onOpenSystemAssessment,
 }: {
   trade: TradeDetail;
   timezone: string;
   locale: string;
   canWrite: boolean;
   classificationOptions: readonly TradeCreateStrategyOption[];
+  onOpenSystemAssessment: () => void;
 }) {
   const t = useTranslations('trades.workspace.details');
   const tTrades = useTranslations('trades');
@@ -120,11 +121,17 @@ export function TradePlanPanel({
       </PanelSection>
 
       {/*
-        The System Plan's own prices, the plan basis, the System Outcome and
-        every action that resolves it — owned entirely by the existing section.
+        The System Plan and confirmed outcome remain readable here. Assessment
+        writes route to Review.
       */}
       <div className="border-border border-t pt-5">
-        <SystemSection trade={trade} timezone={timezone} locale={locale} canWrite={canWrite} />
+        <SystemSection
+          trade={trade}
+          timezone={timezone}
+          locale={locale}
+          canWrite={canWrite}
+          onOpenAssessment={onOpenSystemAssessment}
+        />
       </div>
     </div>
   );

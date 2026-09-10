@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { deriveTradeResult } from '@/lib/trades/result';
+import { tradeSystemAssessmentEligibility } from '@/lib/trades/system-assessment-view';
 import { cn } from '@/lib/utils';
 import type { TradeDetail } from '@/server/dal/trades';
 import { formatR, formatTradeDay, formatTradeMoney } from '@/components/trades/trade-format';
@@ -151,18 +152,21 @@ function Hero({
  */
 function SystemComparison({ trade }: { trade: TradeDetail }) {
   const t = useTranslations('trades.workspace.details');
+  const eligibility = tradeSystemAssessmentEligibility(trade);
 
-  if (trade.executionGapR === null) {
+  if (trade.executionGapR === null || eligibility === 'needs_review') {
     // Say which side is missing. "Not available" alone leaves the reader with
     // no idea whether to resolve a System outcome or to close a position.
     const reason =
-      trade.systemStatus === 'no_trade'
-        ? 'systemNoTrade'
-        : trade.systemStatus !== 'resolved'
-          ? 'systemPending'
-          : trade.status !== 'closed'
-            ? 'actualIncomplete'
-            : 'unavailable';
+      eligibility === 'needs_review'
+        ? 'systemNeedsReview'
+        : trade.systemStatus === 'no_trade'
+          ? 'systemNoTrade'
+          : trade.systemStatus !== 'resolved'
+            ? 'systemPending'
+            : trade.status !== 'closed'
+              ? 'actualIncomplete'
+              : 'unavailable';
     return (
       <p
         data-trade-comparison="unavailable"

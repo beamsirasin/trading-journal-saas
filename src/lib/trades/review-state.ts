@@ -46,7 +46,7 @@ export type TradeReviewState = (typeof TRADE_REVIEW_STATES)[number];
 /** The minimal projection this derivation reads — never the whole Trade. */
 export interface TradeReviewStateInput {
   readonly status: 'planned' | 'open' | 'closed' | 'canceled';
-  readonly systemStatus: 'pending' | 'resolved' | 'no_trade';
+  readonly systemStatus: 'pending' | 'resolved' | 'no_trade' | 'cannot_determine';
   readonly strategyName: string | null;
   readonly hasReviewNotes: boolean;
 }
@@ -64,13 +64,13 @@ export function deriveTradeReviewState(trade: TradeReviewStateInput): TradeRevie
  * actionable Review cell lands on the tab that can clear it, rather than on a
  * generic overview the reader then has to navigate out of.
  *
- * Execution owns "this Trade was never entered". Plan owns both the System
- * counterfactual and the Strategy/Setup classification, which is where those
- * two live in this product's IA. Review owns the Post-Trade Review note.
+ * Execution owns "this Trade was never entered". Review owns both the System
+ * assessment and the independent reflection; Plan owns Strategy/Setup
+ * classification.
  */
 export const TRADE_REVIEW_STATE_TAB: Record<TradeReviewState, TradeDetailsTab> = {
   needs_details: 'execution',
-  needs_system_result: 'plan',
+  needs_system_result: 'review',
   unclassified: 'plan',
   needs_review: 'review',
   reviewed: 'overview',

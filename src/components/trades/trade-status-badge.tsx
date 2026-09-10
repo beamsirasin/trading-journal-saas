@@ -14,6 +14,7 @@ const SYSTEM_VARIANT: Record<SystemStatus, BadgeVariant> = {
   pending: 'warning',
   resolved: 'positive',
   no_trade: 'neutral',
+  cannot_determine: 'neutral',
 };
 
 export function TradeStatusBadge({ status }: { status: TradeStatus }) {
