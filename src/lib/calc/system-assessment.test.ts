@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSystemDependencySnapshot,
   changedDependency,
+  currentSystemGrossRPreview,
   isTrustedSystemComparison,
   parseSystemDependencySnapshot,
   systemAnalyticsEligibility,
@@ -145,6 +146,107 @@ describe('analytics eligibility', () => {
     expect(moved.systemGrossR).toBe('5.0000');
   });
 
+  it('reports the current +10R preview separately from the frozen +5R confirmation', () => {
+    const confirmed = eligible();
+    const preview = currentSystemGrossRPreview({
+      systemStatus: confirmed.systemStatus,
+      systemResolutionKind: 'money_target',
+      direction: 'long',
+      plannedEntry: null,
+      plannedStop: null,
+      plannedRiskMinor: 10_000n,
+      plannedRewardMinor: 100_000n,
+      systemExitPrice: null,
+      systemGrossRInput: '5.0000',
+    });
+
+    expect(preview).toEqual({ ok: true, value: '10.0000' });
+    expect(confirmed.systemGrossR).toBe('5.0000');
+    expect(confirmed.systemR).toBe('4.8000');
+    expect(confirmed.systemOutcome).toBe('win');
+  });
+
+  it('stales only resolution bases that actually read a moved risk', () => {
+    for (const [systemResolutionKind, systemExitReason, expected] of [
+      ['money_target', 'target_hit', 'needs_review'],
+      ['money_stop', 'stop_hit', 'needs_review'],
+      ['money_break_even', 'break_even_rule', 'needs_review'],
+      ['money_custom', 'manual_system_valid_exit', 'eligible'],
+      ['price_exit', 'target_hit', 'eligible'],
+    ] as const) {
+      const atConfirmation = deps({
+        systemResolutionKind,
+        systemExitReason,
+        plannedEntry: systemResolutionKind === 'price_exit' ? '1.1000' : null,
+        plannedStop: systemResolutionKind === 'price_exit' ? '1.0900' : null,
+      });
+      const assessment = eligible({
+        current: atConfirmation,
+        systemDependencySnapshot: buildSystemDependencySnapshot(atConfirmation),
+      });
+
+      expect(
+        systemAnalyticsEligibility({
+          ...assessment,
+          current: { ...atConfirmation, plannedRiskMinor: 20_000n },
+        }),
+      ).toBe(expected);
+    }
+  });
+
+  it('does not stale a custom-R assessment when only the target changes', () => {
+    const atConfirmation = deps({
+      systemResolutionKind: 'money_custom',
+      systemExitReason: 'manual_system_valid_exit',
+    });
+    const assessment = eligible({
+      current: atConfirmation,
+      systemDependencySnapshot: buildSystemDependencySnapshot(atConfirmation),
+    });
+    expect(
+      systemAnalyticsEligibility({
+        ...assessment,
+        current: { ...atConfirmation, plannedRewardMinor: 100_000n },
+      }),
+    ).toBe('eligible');
+  });
+
+  it('stales a custom-R assessment when its Money Plan is replaced by a Price Plan', () => {
+    const atConfirmation = deps({
+      systemResolutionKind: 'money_custom',
+      systemExitReason: 'manual_system_valid_exit',
+      plannedEntry: null,
+      plannedStop: null,
+    });
+    const assessment = eligible({
+      current: atConfirmation,
+      systemDependencySnapshot: buildSystemDependencySnapshot(atConfirmation),
+    });
+    expect(
+      systemAnalyticsEligibility({
+        ...assessment,
+        current: {
+          ...atConfirmation,
+          plannedRiskMinor: null,
+          plannedRewardMinor: null,
+          plannedEntry: '1.1000000000',
+          plannedStop: '1.0950000000',
+        },
+      }),
+    ).toBe('needs_review');
+  });
+
+  it('ignores reflection and Actual P&L because neither is a System dependency', () => {
+    const confirmed = eligible();
+    const editedOutsideSystem = {
+      ...confirmed,
+      reviewNotes: 'A corrected reflection',
+      netPnlMinor: 12_500n,
+      actualR: '1.2500',
+    };
+    expect(systemAnalyticsEligibility(editedOutsideSystem)).toBe('eligible');
+  });
+
   it('checks staleness BEFORE the result shape, so a stale no_trade is excluded too', () => {
     const finding = eligible({
       systemStatus: 'no_trade',
@@ -158,10 +260,23 @@ describe('analytics eligibility', () => {
     ).toBe('needs_review');
   });
 
-  it('never admits pending or cannot_determine', () => {
-    for (const systemStatus of ['pending', 'cannot_determine'] as const) {
-      expect(systemAnalyticsEligibility(eligible({ systemStatus }))).toBe('not_available');
-    }
+  it('never admits pending and keeps a current cannot_determine unavailable', () => {
+    expect(systemAnalyticsEligibility(eligible({ systemStatus: 'pending' }))).toBe('not_available');
+    expect(systemAnalyticsEligibility(eligible({ systemStatus: 'cannot_determine' }))).toBe(
+      'not_available',
+    );
+  });
+
+  it('marks cannot_determine needs_review when its rule dependencies move', () => {
+    const finding = eligible({
+      systemStatus: 'cannot_determine',
+      systemGrossR: null,
+      systemR: null,
+      systemOutcome: null,
+    });
+    expect(
+      systemAnalyticsEligibility({ ...finding, current: deps({ setupVersionId: null }) }),
+    ).toBe('needs_review');
   });
 
   it('keeps cannot_determine distinct from pending in the record itself', () => {

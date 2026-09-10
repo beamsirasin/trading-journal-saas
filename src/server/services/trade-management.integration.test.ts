@@ -1,7 +1,11 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { systemAnalyticsEligibility } from '@/lib/calc/system-assessment';
+import {
+  currentSystemGrossRPreview,
+  isTrustedSystemComparison,
+  systemAnalyticsEligibility,
+} from '@/lib/calc/system-assessment';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import type { SystemResolutionKind } from '@/lib/trades/constants';
 import {
@@ -222,6 +226,66 @@ describe('trade-management (real database)', () => {
   async function readTrade(tradeId: string) {
     const [row] = await db.select().from(trades).where(eq(trades.id, tradeId));
     return row;
+  }
+
+  /** Asks the domain layer what analytics may do with the row as stored. */
+  function eligibilityFor(row: Awaited<ReturnType<typeof readTrade>>) {
+    if (row === undefined) throw new Error('trade row missing');
+    return systemAnalyticsEligibility({
+      systemStatus: row.systemStatus,
+      systemResolvedAt: row.systemResolvedAt,
+      systemDependencySnapshot: row.systemDependencySnapshot,
+      systemGrossR: row.systemGrossR,
+      systemR: row.systemR,
+      systemOutcome: row.systemOutcome,
+      current: {
+        systemResolutionKind: row.systemResolutionKind as SystemResolutionKind | null,
+        systemExitReason: row.systemExitReason,
+        strategyVersionId: row.strategyVersionId,
+        setupVersionId: row.setupVersionId,
+        plannedRiskMinor: row.plannedRiskMinor,
+        plannedRewardMinor: row.plannedRewardMinor,
+        plannedEntry: row.plannedEntry,
+        plannedStop: row.plannedStop,
+      },
+    });
+  }
+
+  function trustedComparisonFor(row: Awaited<ReturnType<typeof readTrade>>) {
+    if (row === undefined) throw new Error('trade row missing');
+    return isTrustedSystemComparison({
+      systemStatus: row.systemStatus,
+      systemResolvedAt: row.systemResolvedAt,
+      systemDependencySnapshot: row.systemDependencySnapshot,
+      systemGrossR: row.systemGrossR,
+      systemR: row.systemR,
+      systemOutcome: row.systemOutcome,
+      current: {
+        systemResolutionKind: row.systemResolutionKind as SystemResolutionKind | null,
+        systemExitReason: row.systemExitReason,
+        strategyVersionId: row.strategyVersionId,
+        setupVersionId: row.setupVersionId,
+        plannedRiskMinor: row.plannedRiskMinor,
+        plannedRewardMinor: row.plannedRewardMinor,
+        plannedEntry: row.plannedEntry,
+        plannedStop: row.plannedStop,
+      },
+    });
+  }
+
+  function currentGrossPreviewFor(row: Awaited<ReturnType<typeof readTrade>>) {
+    if (row === undefined) throw new Error('trade row missing');
+    return currentSystemGrossRPreview({
+      systemStatus: row.systemStatus,
+      systemResolutionKind: row.systemResolutionKind as SystemResolutionKind | null,
+      direction: row.direction,
+      plannedEntry: row.plannedEntry,
+      plannedStop: row.plannedStop,
+      plannedRiskMinor: row.plannedRiskMinor,
+      plannedRewardMinor: row.plannedRewardMinor,
+      systemExitPrice: row.systemExitPrice,
+      systemGrossRInput: row.systemGrossRInput,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1282,7 +1346,7 @@ describe('trade-management (real database)', () => {
       expect(after).toEqual(before);
     });
 
-    it('recomputes a resolved System result when Entry/Stop change', async () => {
+    it('freezes a resolved System result when Entry/Stop change', async () => {
       const { tradeId } = await createPlanned();
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
         resolutionKind: 'price_exit',
@@ -1300,8 +1364,8 @@ describe('trade-management (real database)', () => {
       });
       expect(result.ok).toBe(true);
       const afterRow = await readTrade(tradeId);
-      // systemGrossR = (1.11 - 1.105) / (1.105 - 1.095) = 0.005 / 0.010 = 0.5
-      expect(afterRow?.systemR).toBe('0.5000');
+      expect(afterRow?.systemR).toBe('2.0000');
+      expect(afterRow?.systemDependencySnapshot).toEqual(beforeRow?.systemDependencySnapshot);
     });
 
     it('does NOT recompute the resolved System result when only Target changes', async () => {
@@ -1401,7 +1465,7 @@ describe('trade-management (real database)', () => {
       expect(after).toEqual(before);
     });
 
-    it('rejects clearing the Price plan while the System result is already resolved (system_requires_price_plan)', async () => {
+    it('switches a resolved Price plan to Money while freezing the confirmed System result', async () => {
       const { tradeId } = await createPlanned();
       const resolved = await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
         resolutionKind: 'price_exit',
@@ -1425,9 +1489,22 @@ describe('trade-management (real database)', () => {
         plannedRiskMinor: 1000n,
         plannedRewardMinor: 2000n,
       });
-      expect(result).toMatchObject({ ok: false, code: 'system_requires_price_plan' });
+      expect(result.ok).toBe(true);
       const after = await readTrade(tradeId);
-      expect(after).toEqual(before);
+      expect(after).toMatchObject({
+        plannedEntry: null,
+        plannedStop: null,
+        plannedTarget: null,
+        plannedRiskMinor: 1000n,
+        plannedRewardMinor: 2000n,
+        plannedR: '2.0000',
+        systemGrossR: before?.systemGrossR,
+        systemR: before?.systemR,
+        systemOutcome: before?.systemOutcome,
+      });
+      expect(after?.systemDependencySnapshot).toEqual(before?.systemDependencySnapshot);
+      expect(eligibilityFor(after)).toBe('needs_review');
+      expect(currentGrossPreviewFor(after)).toEqual({ ok: false, reason: 'missing_input' });
     });
   });
 
@@ -1459,7 +1536,7 @@ describe('trade-management (real database)', () => {
       expect(row?.direction).toBe('long'); // rejected atomically — nothing persisted
     });
 
-    it('a Direction correction supplied together with corrected Entry/Stop recomputes planned_r (target-less) and system_r when resolved', async () => {
+    it('a Direction/Entry/Stop correction recomputes planned_r but freezes a confirmed System result', async () => {
       const fw = await freshFramework();
       // No Target, so the correction cannot also trip an
       // invalid_target_direction failure — isolates the Direction/Entry/Stop
@@ -1494,16 +1571,15 @@ describe('trade-management (real database)', () => {
       });
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.changedFields).toEqual(
-        expect.arrayContaining(['direction', 'plannedStop', 'systemR']),
-      );
+      expect(result.changedFields).toEqual(expect.arrayContaining(['direction', 'plannedStop']));
+      expect(result.changedFields).not.toContain('systemR');
 
       const row = await readTrade(created.tradeId);
       expect(row?.direction).toBe('short');
       expect(row?.plannedR).toBeNull(); // still target-less
-      // systemGrossR (short) = (entry - exit) / (stop - entry) = (1.10-1.11)/(1.105-1.10) = -2.0000
-      expect(row?.systemR).toBe('-2.0000');
-      expect(row?.systemOutcome).toBe('loss');
+      expect(row?.systemR).toBe('2.0000');
+      expect(row?.systemOutcome).toBe('win');
+      expect(row?.systemDependencySnapshot).toEqual(beforeRow?.systemDependencySnapshot);
     });
 
     it('a Symbol-only correction never touches planned_r/system_r', async () => {
@@ -2531,29 +2607,6 @@ describe('trade-management (real database)', () => {
     // Pass 5A — unknown cost, cannot_determine, and the frozen snapshot
     // -----------------------------------------------------------------------
 
-    /** Asks the domain layer what analytics may do with the row as stored. */
-    function eligibilityFor(row: Awaited<ReturnType<typeof readTrade>>) {
-      if (row === undefined) throw new Error('trade row missing');
-      return systemAnalyticsEligibility({
-        systemStatus: row.systemStatus,
-        systemResolvedAt: row.systemResolvedAt,
-        systemDependencySnapshot: row.systemDependencySnapshot,
-        systemGrossR: row.systemGrossR,
-        systemR: row.systemR,
-        systemOutcome: row.systemOutcome,
-        current: {
-          systemResolutionKind: row.systemResolutionKind as SystemResolutionKind | null,
-          systemExitReason: row.systemExitReason,
-          strategyVersionId: row.strategyVersionId,
-          setupVersionId: row.setupVersionId,
-          plannedRiskMinor: row.plannedRiskMinor,
-          plannedRewardMinor: row.plannedRewardMinor,
-          plannedEntry: row.plannedEntry,
-          plannedStop: row.plannedStop,
-        },
-      });
-    }
-
     it('records a resolution whose cost is unknown as gross-only, not as zero-cost', async () => {
       const { tradeId } = await createPlanned();
       const result = await resolveSystemTrade(
@@ -2575,16 +2628,8 @@ describe('trade-management (real database)', () => {
       expect(eligibilityFor(row)).toBe('gross_only');
     });
 
-    it('lets a gross-only resolution still have its plan corrected', async () => {
-      /*
-        THE REGRESSION A NULLABLE COST NEARLY INTRODUCED.
-
-        `composeSystemResolve`/`composeSystemResolveV2` both refuse a NULL cost
-        — rightly, since inventing a zero there is the fiction the column was
-        made nullable to prevent. Routing this recompute through them turned
-        "the cost is unknown" into "the plan can never be edited again", so a
-        trader who left the cost blank was stranded on any typo in Entry/Stop.
-      */
+    it('freezes a gross-only resolution while its corrected plan becomes a preview', async () => {
+      // Unknown cost stays unknown, and the old gross result stays historical.
       const { tradeId } = await createPlanned();
       await resolveSystemTrade(
         workspaceId,
@@ -2599,19 +2644,16 @@ describe('trade-management (real database)', () => {
       expect(result.ok).toBe(true);
 
       const row = await readTrade(tradeId);
-      // (1.11 - 1.105) / (1.105 - 1.095) = 0.5 — and still no invented cost.
-      expect(row?.systemGrossR).toBe('0.5000');
+      // The confirmed figure stays 2R; current geometry is previewed below.
+      expect(row?.systemGrossR).toBe('2.0000');
       expect(row?.systemCostR).toBeNull();
       expect(row?.systemR).toBeNull();
+      expect(eligibilityFor(row)).toBe('needs_review');
+      expect(currentGrossPreviewFor(row)).toEqual({ ok: true, value: '0.5000' });
     });
 
-    it('keeps gross and net in step when a plan edit moves a resolved result', async () => {
-      /*
-        `systemR = systemGrossR − systemCostR` is the locked formula, and both
-        halves are STORED. A recompute that wrote the net and left the gross
-        behind would put one row's own columns into arithmetic disagreement —
-        a state no CHECK forbids and no reader can detect.
-      */
+    it('keeps confirmed gross and net frozen when a plan edit moves current inputs', async () => {
+      // The confirmed payload remains internally coherent and frozen together.
       const { tradeId } = await createPlanned();
       await resolveSystemTrade(
         workspaceId,
@@ -2627,13 +2669,165 @@ describe('trade-management (real database)', () => {
         plannedEntry: '1.1050000000',
       });
       expect(result.ok).toBe(true);
-      expect(result.ok && result.changedFields).toContain('systemGrossR');
+      expect(result.ok && result.changedFields).not.toContain('systemGrossR');
 
       const after = await readTrade(tradeId);
-      expect(after?.systemGrossR).toBe('0.5000');
-      expect(after?.systemR).toBe('0.4000');
+      expect(after?.systemGrossR).toBe('2.0000');
+      expect(after?.systemR).toBe('1.9000');
       expect(after?.systemCostR).toBe('0.1000');
+      expect(after?.systemOutcome).toBe(before?.systemOutcome);
+      expect(after?.systemDependencySnapshot).toEqual(before?.systemDependencySnapshot);
     });
+
+    it('freezes +5R target confirmation, previews +10R, and promotes it only on reconfirmation', async () => {
+      const { tradeId } = await createMoneyOnly(50n);
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'money_target',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0.1000',
+      });
+      const confirmed = await readTrade(tradeId);
+      expect(confirmed).toMatchObject({
+        systemGrossRInput: '5.0000',
+        systemGrossR: '5.0000',
+        systemR: '4.9000',
+        systemOutcome: 'win',
+      });
+      expect(eligibilityFor(confirmed)).toBe('eligible');
+      expect(trustedComparisonFor(confirmed)).toBe(true);
+
+      await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedRewardMinor: 100n,
+      });
+      const stale = await readTrade(tradeId);
+      expect(stale).toMatchObject({
+        plannedR: '10.0000',
+        systemGrossRInput: '5.0000',
+        systemGrossR: '5.0000',
+        systemR: '4.9000',
+        systemOutcome: 'win',
+      });
+      expect(stale?.systemDependencySnapshot).toEqual(confirmed?.systemDependencySnapshot);
+      expect(eligibilityFor(stale)).toBe('needs_review');
+      expect(trustedComparisonFor(stale)).toBe(false);
+      expect(currentGrossPreviewFor(stale)).toEqual({ ok: true, value: '10.0000' });
+
+      await expect(
+        correctSystemResolution(workspaceId, actorUserId, tradeId, {
+          target: 'resolved',
+          resolutionKind: 'money_target',
+          systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+          systemCostR: '0.1000',
+        }),
+      ).resolves.toMatchObject({ ok: true });
+
+      const reconfirmed = await readTrade(tradeId);
+      expect(reconfirmed).toMatchObject({
+        systemGrossRInput: '10.0000',
+        systemGrossR: '10.0000',
+        systemR: '9.9000',
+        systemOutcome: 'win',
+      });
+      expect(reconfirmed?.systemDependencySnapshot).not.toEqual(
+        confirmed?.systemDependencySnapshot,
+      );
+      expect(eligibilityFor(reconfirmed)).toBe('eligible');
+      expect(trustedComparisonFor(reconfirmed)).toBe(true);
+    });
+
+    it('does not stale a custom-R confirmation when only the target changes', async () => {
+      const { tradeId } = await createMoneyOnly(50n);
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'money_custom',
+        systemGrossRInput: '2.7500',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0.2500',
+      });
+      const confirmed = await readTrade(tradeId);
+
+      await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedRewardMinor: 100n,
+      });
+      const after = await readTrade(tradeId);
+      expect(after).toMatchObject({
+        systemGrossRInput: '2.7500',
+        systemGrossR: '2.7500',
+        systemR: '2.5000',
+      });
+      expect(after?.systemDependencySnapshot).toEqual(confirmed?.systemDependencySnapshot);
+      expect(eligibilityFor(after)).toBe('eligible');
+      expect(currentGrossPreviewFor(after)).toEqual({ ok: true, value: '2.7500' });
+    });
+
+    it('stales but does not rewrite custom-R when the Money Plan switches to Price', async () => {
+      const { tradeId } = await createMoneyOnly(50n);
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, {
+        resolutionKind: 'money_custom',
+        systemGrossRInput: '2.7500',
+        systemExitedAt: new Date('2026-08-01T12:00:00Z'),
+        systemCostR: '0.2500',
+      });
+      const confirmed = await readTrade(tradeId);
+
+      await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        systemPlanBasis: 'price',
+        plannedEntry: '1.1000000000',
+        plannedStop: '1.0950000000',
+        plannedTarget: '1.1100000000',
+      });
+      const after = await readTrade(tradeId);
+      expect(after).toMatchObject({
+        systemGrossRInput: '2.7500',
+        systemGrossR: '2.7500',
+        systemR: '2.5000',
+      });
+      expect(after?.systemDependencySnapshot).toEqual(confirmed?.systemDependencySnapshot);
+      expect(eligibilityFor(after)).toBe('needs_review');
+      expect(currentGrossPreviewFor(after)).toEqual({
+        ok: false,
+        reason: 'invalid_planned_risk',
+      });
+    });
+
+    it.each(['no_trade', 'cannot_determine'] as const)(
+      'preserves a %s finding and its metadata when late classification makes it stale',
+      async (finding) => {
+        const fw = await freshFramework();
+        const created = await createTrade(workspaceId, actorUserId, {
+          mutationKey: crypto.randomUUID(),
+          tradingAccountId: fw.tradingAccountId,
+          symbol: 'EURUSD',
+          direction: 'long',
+          plannedRiskMinor: 10n,
+          plannedRewardMinor: 50n,
+        });
+        if (!created.ok) throw new Error('create failed');
+
+        if (finding === 'no_trade') {
+          await markSystemNoTrade(workspaceId, actorUserId, created.tradeId);
+        } else {
+          await markSystemCannotDetermine(workspaceId, actorUserId, created.tradeId);
+        }
+        await db
+          .update(trades)
+          .set({ systemPlanProvenance: 'unknown', planAdherence: 'partly' })
+          .where(eq(trades.id, created.tradeId));
+        const confirmed = await readTrade(created.tradeId);
+
+        await assignTradeClassification(workspaceId, actorUserId, created.tradeId, {
+          strategyId: fw.strategyId,
+        });
+        const stale = await readTrade(created.tradeId);
+        expect(stale).toMatchObject({
+          systemStatus: finding,
+          systemResolvedAt: confirmed?.systemResolvedAt,
+          systemDependencySnapshot: confirmed?.systemDependencySnapshot,
+          systemPlanProvenance: 'unknown',
+          planAdherence: 'partly',
+        });
+        expect(eligibilityFor(stale)).toBe('needs_review');
+      },
+    );
 
     it('flags a plan edit for re-assessment instead of quietly banking the new figure', async () => {
       const { tradeId } = await createPlanned();

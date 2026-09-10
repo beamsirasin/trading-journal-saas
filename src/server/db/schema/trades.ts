@@ -610,6 +610,13 @@ export const trades = pgTable(
       remains the locked formula; what changed is that its right-hand side may be
       unknown instead of silently zero.
 
+      CONFIRMED RESULTS ARE HISTORICAL. The resolution-specific clauses validate
+      the confirmed payload against itself (Money gross input = frozen gross;
+      frozen net = gross - cost; outcome classifies that net). They deliberately
+      do not require mutable current Plan columns to keep matching. Dependency
+      snapshots and `systemAnalyticsEligibility` own that comparison, so a Plan
+      edit can make a confirmation stale without rewriting or invalidating it.
+
       `system_exited_at` IS NO LONGER REQUIRED TO RESOLVE. A counterfactual does
       not need a fabricated closing instant to have a magnitude. It is still
       required where the resolution's own meaning depends on a time — a
@@ -651,6 +658,7 @@ export const trades = pgTable(
         AND ${table.systemExitReason} IS NOT NULL
         AND ${table.systemExitReason} <> 'setup_invalidated'
         AND ${table.systemResolvedAt} IS NOT NULL
+        AND ${table.systemResolutionKind} IS NOT NULL
         AND ${table.systemGrossR} IS NOT NULL
         AND (
           ${table.systemExitReason} <> 'time_exit'
@@ -661,6 +669,15 @@ export const trades = pgTable(
             ${table.systemCostR} IS NOT NULL
             AND ${table.systemR} IS NOT NULL
             AND ${table.systemOutcome} IS NOT NULL
+            AND ${table.systemR} = ${table.systemGrossR} - ${table.systemCostR}
+            AND (
+              (${table.systemR} > 0.0500 AND ${table.systemOutcome} = 'win')
+              OR (${table.systemR} < -0.0500 AND ${table.systemOutcome} = 'loss')
+              OR (
+                ${table.systemR} BETWEEN -0.0500 AND 0.0500
+                AND ${table.systemOutcome} = 'break_even'
+              )
+            )
           ) OR (
             ${table.systemCostR} IS NULL
             AND ${table.systemR} IS NULL
@@ -670,43 +687,33 @@ export const trades = pgTable(
         AND (
           (
             ${table.systemResolutionKind} = 'price_exit'
-            AND ${table.plannedEntry} IS NOT NULL
-            AND ${table.plannedStop} IS NOT NULL
             AND ${table.systemExitPrice} IS NOT NULL
             AND ${table.systemGrossRInput} IS NULL
           ) OR (
             ${table.systemResolutionKind} = 'money_target'
-            AND ${table.plannedEntry} IS NULL
-            AND ${table.plannedStop} IS NULL
-            AND ${table.plannedRiskMinor} IS NOT NULL
-            AND ${table.plannedRewardMinor} IS NOT NULL
-            AND ${table.plannedR} IS NOT NULL
             AND ${table.systemExitPrice} IS NULL
-            AND ${table.systemGrossRInput} = ${table.plannedR}
+            AND ${table.systemGrossRInput} IS NOT NULL
+            AND ${table.systemGrossRInput} = ${table.systemGrossR}
             AND ${table.systemExitReason} = 'target_hit'
           ) OR (
             ${table.systemResolutionKind} = 'money_stop'
-            AND ${table.plannedEntry} IS NULL
-            AND ${table.plannedStop} IS NULL
-            AND ${table.plannedRiskMinor} IS NOT NULL
             AND ${table.systemExitPrice} IS NULL
+            AND ${table.systemGrossRInput} IS NOT NULL
             AND ${table.systemGrossRInput} = -1
+            AND ${table.systemGrossR} = ${table.systemGrossRInput}
             AND ${table.systemExitReason} = 'stop_hit'
           ) OR (
             ${table.systemResolutionKind} = 'money_break_even'
-            AND ${table.plannedEntry} IS NULL
-            AND ${table.plannedStop} IS NULL
-            AND ${table.plannedRiskMinor} IS NOT NULL
             AND ${table.systemExitPrice} IS NULL
+            AND ${table.systemGrossRInput} IS NOT NULL
             AND ${table.systemGrossRInput} = 0
+            AND ${table.systemGrossR} = ${table.systemGrossRInput}
             AND ${table.systemExitReason} = 'break_even_rule'
           ) OR (
             ${table.systemResolutionKind} = 'money_custom'
-            AND ${table.plannedEntry} IS NULL
-            AND ${table.plannedStop} IS NULL
-            AND ${table.plannedRiskMinor} IS NOT NULL
             AND ${table.systemExitPrice} IS NULL
             AND ${table.systemGrossRInput} IS NOT NULL
+            AND ${table.systemGrossR} = ${table.systemGrossRInput}
             AND ${table.systemExitReason} = 'manual_system_valid_exit'
           )
         )

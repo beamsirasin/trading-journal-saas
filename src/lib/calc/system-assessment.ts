@@ -24,6 +24,9 @@
 
 import type { SystemResolutionKind, SystemStatus } from '@/lib/trades/constants';
 
+import { resolveSystemGrossR, type ResolveSystemGrossRInput } from './trade';
+import type { CalcResult } from './types';
+
 /**
  * WHAT A CONFIRMED ASSESSMENT RESTED ON — basis-scoped, never the whole Trade.
  *
@@ -205,13 +208,61 @@ export interface SystemEligibilityInput {
   readonly current: SystemDependencyInput;
 }
 
+/**
+ * Whether the confirmed resolution kind is still supported by the current Plan
+ * representation. Value-level dependencies remain basis-scoped in the snapshot:
+ * for example, changing Money Risk does not alter a typed custom R. Losing the
+ * Money representation altogether is different — that old resolution can no
+ * longer be explicitly reconfirmed against the current Price-only Plan.
+ */
+function resolutionPlanIsCurrent(current: SystemDependencyInput): boolean {
+  if (current.systemResolutionKind === 'price_exit') {
+    return current.plannedEntry !== null && current.plannedStop !== null;
+  }
+  if (current.systemResolutionKind?.startsWith('money_')) {
+    return (
+      current.plannedEntry === null &&
+      current.plannedStop === null &&
+      current.plannedRiskMinor !== null
+    );
+  }
+  return true;
+}
+
+/**
+ * The current-input counterpart to the frozen confirmed gross result.
+ *
+ * This is deliberately a read-only preview. It delegates every calculation to
+ * the canonical engine in `trade.ts`, returns `null` for findings with no
+ * magnitude, and has no persistence side effect. A caller may show the result
+ * as "current inputs would calculate ...", but only the explicit System
+ * resolution/correction services may promote it into confirmed columns.
+ */
+export interface CurrentSystemGrossRPreviewInput extends Omit<
+  ResolveSystemGrossRInput,
+  'resolutionKind'
+> {
+  readonly systemStatus: SystemStatus | string;
+  readonly systemResolutionKind: SystemResolutionKind | null;
+}
+
+export function currentSystemGrossRPreview(
+  input: CurrentSystemGrossRPreviewInput,
+): CalcResult<string> | null {
+  const { systemStatus, systemResolutionKind, ...current } = input;
+  if (systemStatus !== 'resolved' || systemResolutionKind === null) return null;
+  return resolveSystemGrossR({ ...current, resolutionKind: systemResolutionKind });
+}
+
 export function systemAnalyticsEligibility(
   input: SystemEligibilityInput,
 ): SystemAnalyticsEligibility {
-  if (input.systemStatus === 'pending' || input.systemStatus === 'cannot_determine') {
-    return 'not_available';
-  }
-  if (input.systemStatus !== 'resolved' && input.systemStatus !== 'no_trade') {
+  if (input.systemStatus === 'pending') return 'not_available';
+  if (
+    input.systemStatus !== 'resolved' &&
+    input.systemStatus !== 'no_trade' &&
+    input.systemStatus !== 'cannot_determine'
+  ) {
     return 'not_available';
   }
   // Never confirmed, or confirmed before dependency snapshots existed.
@@ -219,10 +270,12 @@ export function systemAnalyticsEligibility(
   const confirmed = parseSystemDependencySnapshot(input.systemDependencySnapshot);
   if (confirmed === null) return 'not_available';
 
+  if (!resolutionPlanIsCurrent(input.current)) return 'needs_review';
   const current = buildSystemDependencySnapshot(input.current);
   if (changedDependency(confirmed, current) !== null) return 'needs_review';
 
   if (input.systemStatus === 'no_trade') return 'no_trade';
+  if (input.systemStatus === 'cannot_determine') return 'not_available';
   if (input.systemR !== null && input.systemOutcome !== null) return 'eligible';
   return input.systemGrossR === null ? 'not_available' : 'gross_only';
 }

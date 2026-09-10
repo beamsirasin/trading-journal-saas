@@ -3,7 +3,6 @@ import 'server-only';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
-import { CALC_VERSION } from '@/config/trade-calc';
 import { buildSystemDependencySnapshot } from '@/lib/calc/system-assessment';
 import {
   composePlannedR,
@@ -11,11 +10,8 @@ import {
   composeSystemResolveGrossOnly,
   composeSystemResolveV2,
   composeTraderCloseV2,
-  type ResolveSystemGrossRInput,
-  type SystemResolveGrossOnlySnapshot,
-  type SystemResolveV2Snapshot,
 } from '@/lib/calc/trade';
-import type { CalcFailureReason, CalcResult } from '@/lib/calc/types';
+import type { CalcFailureReason } from '@/lib/calc/types';
 import { authorizeWorkspaceMutation, type MutationDenialReason } from '@/lib/entitlements/resolve';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import type { SetupConditionAnswer } from '@/lib/setup-conditions/snapshots';
@@ -976,39 +972,6 @@ export async function createTrade(
 // 2. updateTradePlan
 // ---------------------------------------------------------------------------
 
-/**
- * Re-derives an ALREADY-RESOLVED System result after one of its inputs moved,
- * without deciding on the trader's behalf what an unknown cost was.
- *
- * Two things this exists to stop, both of which the nullable `system_cost_r`
- * introduced:
- *
- *  1. `composeSystemResolveV2` and the V1 `composeSystemResolve` both refuse a
- *     NULL cost (`missing_input`) — correctly, since inventing a zero there is
- *     the exact fiction the column was made nullable to prevent. But a caller
- *     that routes a gross-only resolution through them turns "the cost is
- *     unknown" into "this Trade's plan can no longer be edited at all",
- *     stranding the trader on a typo they cannot fix.
- *  2. `system_gross_r` is the stored gross half of the locked
- *     `systemR = systemGrossR − systemCostR`. A recompute that writes the net
- *     and leaves the gross behind puts those two columns into arithmetic
- *     disagreement in the row itself — a state no CHECK forbids and no reader
- *     can detect.
- *
- * The dependency snapshot is deliberately NOT refreshed by callers of this
- * helper: the figures move to stay internally consistent, but nobody has
- * re-assessed them, so `systemAnalyticsEligibility` keeps reporting
- * `needs_review` until a human re-confirms through the correction path.
- */
-function recomposeResolvedSystem(
-  params: ResolveSystemGrossRInput & { readonly systemCostR: string | null },
-): CalcResult<SystemResolveV2Snapshot | SystemResolveGrossOnlySnapshot> {
-  const { systemCostR, ...gross } = params;
-  return systemCostR === null
-    ? composeSystemResolveGrossOnly(gross)
-    : composeSystemResolveV2({ ...gross, systemCostR });
-}
-
 export interface UpdateTradePlanInput extends PlanFieldsPatch {
   /** Omit to edit the current basis; supply to explicitly switch basis. */
   readonly systemPlanBasis?: SystemPlanBasis;
@@ -1035,8 +998,7 @@ export type UpdateTradePlanResult =
         | 'invalid_plan'
         | 'invalid_plan_authority'
         | 'no_plan_representation'
-        | 'planned_r_mismatch'
-        | 'system_requires_price_plan';
+        | 'planned_r_mismatch';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -1044,11 +1006,11 @@ export type UpdateTradePlanResult =
  * Plan and context fields are never gated by Trade status — a Trade remains
  * a correctable measurement record at every lifecycle stage (CLAUDE.md
  * A7/`docs/data-dictionary.md`). Recomputes `planned_r` whenever entry/stop/
- * target participate in this edit, and `system_r`/`system_outcome` whenever
- * entry or stop actually change AND System is `resolved` (Target never
- * affects the System formula) — see the correction/recalculation matrix in
- * the locked Phase 08B decisions. All validation happens before any write,
- * so an invalid correction is rejected atomically with nothing persisted.
+ * target participate in this edit. A confirmed System result is historical
+ * truth: this path never rewrites its gross/net/outcome or dependency snapshot.
+ * A dependency divergence is derived as `needs_review`; only explicit System
+ * correction re-confirms against current inputs. All validation happens before
+ * any write, so an invalid correction is rejected atomically.
  */
 export async function updateTradePlan(
   workspaceId: string,
@@ -1132,11 +1094,6 @@ export async function updateTradePlan(
     }
 
     let plannedR = trade.plannedR;
-    let systemR = trade.systemR;
-    let systemOutcome = trade.systemOutcome;
-    let systemGrossRInput = trade.systemGrossRInput;
-    let systemGrossR = trade.systemGrossR;
-    let calcVersionBump = false;
 
     if (resolved.planFieldsTouched) {
       // The Founder-UAT "minimum plan validity" floor — an edit must never
@@ -1158,52 +1115,6 @@ export async function updateTradePlan(
       if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
       if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
       plannedR = composed.value.plannedR;
-
-      if (trade.systemStatus === 'resolved') {
-        if (trade.systemResolutionKind === 'price_exit' && resolved.entryOrStopChanged) {
-          if (resolved.plannedEntry === null || resolved.plannedStop === null) {
-            return { ok: false, code: 'system_requires_price_plan' };
-          }
-          const composedSystem = recomposeResolvedSystem({
-            resolutionKind: 'price_exit',
-            direction: trade.direction,
-            plannedEntry: resolved.plannedEntry,
-            plannedStop: resolved.plannedStop,
-            systemExitPrice: trade.systemExitPrice,
-            systemCostR: trade.systemCostR,
-          });
-          if (!composedSystem.ok) {
-            return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
-          }
-          systemGrossR = composedSystem.value.grossSystemR;
-          systemR = composedSystem.value.systemR;
-          systemOutcome = composedSystem.value.systemOutcome;
-          calcVersionBump = true;
-        } else if (trade.systemResolutionKind !== 'price_exit') {
-          // Price becomes canonical as soon as complete geometry exists; a
-          // Money result cannot be silently reinterpreted as Price-derived.
-          if (hasPricePlan) return { ok: false, code: 'invalid_plan' };
-          if (trade.systemResolutionKind === 'money_target') {
-            const composedSystem = recomposeResolvedSystem({
-              resolutionKind: 'money_target',
-              direction: trade.direction,
-              plannedEntry: null,
-              plannedStop: null,
-              plannedRiskMinor: resolved.plannedRiskMinor,
-              plannedRewardMinor: resolved.plannedRewardMinor,
-              systemCostR: trade.systemCostR,
-            });
-            if (!composedSystem.ok) {
-              return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
-            }
-            systemGrossRInput = composedSystem.value.grossSystemR;
-            systemGrossR = composedSystem.value.grossSystemR;
-            systemR = composedSystem.value.systemR;
-            systemOutcome = composedSystem.value.systemOutcome;
-            calcVersionBump = true;
-          }
-        }
-      }
     }
 
     const nextTimeframe =
@@ -1237,9 +1148,6 @@ export async function updateTradePlan(
     if (nextTradingviewUrl !== trade.tradingviewUrl) changedFields.push('tradingviewUrl');
     if (nextNotes !== trade.notes) changedFields.push('notes');
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
-    if (systemGrossRInput !== trade.systemGrossRInput) changedFields.push('systemGrossRInput');
-    if (systemGrossR !== trade.systemGrossR) changedFields.push('systemGrossR');
-    if (systemR !== trade.systemR) changedFields.push('systemR');
 
     if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
 
@@ -1259,11 +1167,6 @@ export async function updateTradePlan(
         tradingviewUrl: nextTradingviewUrl,
         notes: nextNotes,
         plannedR,
-        systemGrossRInput,
-        systemGrossR,
-        systemR,
-        systemOutcome,
-        ...(calcVersionBump ? { calcVersion: CALC_VERSION } : {}),
         updatedAt: new Date(),
       })
       .where(eq(trades.id, tradeId));
@@ -1317,8 +1220,7 @@ export type CorrectTradeIdentityResult =
         | 'blank_symbol'
         | 'invalid_direction'
         | 'invalid_plan'
-        | 'planned_r_mismatch'
-        | 'system_requires_price_plan';
+        | 'planned_r_mismatch';
       readonly calcReason?: CalcFailureReason;
     };
 
@@ -1330,7 +1232,9 @@ export type CorrectTradeIdentityResult =
  * entirely, unlike any Plan-field edit), so it deserves its own explicit,
  * narrowly-scoped entry point. Actual R never recomputes here — it does not
  * depend on Direction (CLAUDE.md §6: Actual R divides authoritative
- * bigints, never prices).
+ * bigints, never prices). Confirmed System fields never recompute here either:
+ * a price dependency change makes their frozen snapshot stale until explicit
+ * System reconfirmation.
  */
 export async function correctTradeIdentity(
   workspaceId: string,
@@ -1357,10 +1261,6 @@ export async function correctTradeIdentity(
     let nextEntry = trade.plannedEntry;
     let nextStop = trade.plannedStop;
     let plannedR = trade.plannedR;
-    let systemR = trade.systemR;
-    let systemOutcome = trade.systemOutcome;
-    let systemGrossR = trade.systemGrossR;
-    let calcVersionBump = false;
 
     const directionChanged = input.direction !== undefined && input.direction !== trade.direction;
     const entryStopTouched = input.plannedEntry !== undefined || input.plannedStop !== undefined;
@@ -1405,34 +1305,6 @@ export async function correctTradeIdentity(
       if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
       if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
       plannedR = composed.value.plannedR;
-
-      if (trade.systemStatus === 'resolved') {
-        if (trade.systemResolutionKind === 'price_exit') {
-          if (nextEntry === null || nextStop === null) {
-            return { ok: false, code: 'system_requires_price_plan' };
-          }
-          const composedSystem = recomposeResolvedSystem({
-            resolutionKind: 'price_exit',
-            direction: nextDirection,
-            plannedEntry: nextEntry,
-            plannedStop: nextStop,
-            systemExitPrice: trade.systemExitPrice,
-            systemCostR: trade.systemCostR,
-          });
-          if (!composedSystem.ok) {
-            return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
-          }
-          systemGrossR = composedSystem.value.grossSystemR;
-          systemR = composedSystem.value.systemR;
-          systemOutcome = composedSystem.value.systemOutcome;
-          calcVersionBump = true;
-        } else if (nextEntry !== null || nextStop !== null) {
-          // Adding Price geometry changes the canonical System authority and
-          // therefore requires an explicit System correction, never an
-          // automatic reinterpretation of a Money result.
-          return { ok: false, code: 'invalid_plan' };
-        }
-      }
     }
 
     const changedFields: string[] = [];
@@ -1441,8 +1313,6 @@ export async function correctTradeIdentity(
     if (nextEntry !== trade.plannedEntry) changedFields.push('plannedEntry');
     if (nextStop !== trade.plannedStop) changedFields.push('plannedStop');
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
-    if (systemGrossR !== trade.systemGrossR) changedFields.push('systemGrossR');
-    if (systemR !== trade.systemR) changedFields.push('systemR');
 
     if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
 
@@ -1454,10 +1324,6 @@ export async function correctTradeIdentity(
         plannedEntry: nextEntry,
         plannedStop: nextStop,
         plannedR,
-        systemGrossR,
-        systemR,
-        systemOutcome,
-        ...(calcVersionBump ? { calcVersion: CALC_VERSION } : {}),
         updatedAt: new Date(),
       })
       .where(eq(trades.id, tradeId));

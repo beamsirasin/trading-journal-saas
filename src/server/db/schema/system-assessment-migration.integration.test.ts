@@ -26,6 +26,12 @@ const migrationFiles = readdirSync(drizzleDirectory)
   .sort();
 const migrationName = migrationFiles.find((name) => name.startsWith('0017_')) ?? '0017_missing.sql';
 const migrationSql = readFileSync(join(drizzleDirectory, migrationName), 'utf8');
+const correctiveMigrationName =
+  migrationFiles.find((name) => name.startsWith('0018_')) ?? '0018_missing.sql';
+const correctiveMigrationSql = readFileSync(
+  join(drizzleDirectory, correctiveMigrationName),
+  'utf8',
+);
 const raw = postgres(resolveTestDatabaseUrl(), { max: 1, prepare: false });
 
 async function applySource(sql: Sql, source: string) {
@@ -42,11 +48,11 @@ async function applyThrough(sql: Sql, lastIndex: number) {
   }
 }
 
-async function beginIsolatedSchema() {
+async function beginIsolatedSchema(lastIndex = 17) {
   await raw.unsafe('BEGIN');
   await raw.unsafe('DROP SCHEMA public CASCADE');
   await raw.unsafe('CREATE SCHEMA public');
-  await applyThrough(raw, 17);
+  await applyThrough(raw, lastIndex);
 }
 
 /** Minimal owning rows, so a `trades` INSERT has something to reference. */
@@ -76,6 +82,11 @@ let tradeCounter = 0;
 async function insertTrade(
   scaffolding: { workspaceId: string; accountId: string },
   systemColumns: Record<string, string>,
+  plan: { risk: string; reward: string; r: string } = {
+    risk: '10000',
+    reward: '50000',
+    r: `'5.0000'`,
+  },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   tradeCounter += 1;
   const id = `00000000-0000-4000-8000-${String(100 + tradeCounter).padStart(12, '0')}`;
@@ -99,7 +110,7 @@ async function insertTrade(
          status, planned_risk_minor, planned_reward_minor, planned_r
          ${names.length > 0 ? ', ' + names.join(', ') : ''})
        VALUES ('${id}', '${scaffolding.workspaceId}', '${id}', '${scaffolding.accountId}',
-         'XAUUSD', 'long', 'planned', 10000, 50000, '5.0000'
+         'XAUUSD', 'long', 'planned', ${plan.risk}, ${plan.reward}, ${plan.r}
          ${values.length > 0 ? ', ' + values.join(', ') : ''})`,
     );
     await raw.unsafe(`RELEASE SAVEPOINT ${savepoint}`);
@@ -141,6 +152,64 @@ describe('migration 0017 — System Assessment schema', () => {
     expect(migrationSql).not.toMatch(/DROP COLUMN "followed_plan"/);
     // Nothing unrelated rides along.
     expect(migrationSql).not.toMatch(/trade_exits|emotion|mistake|billing/i);
+  });
+
+  it('adds one CHECK-only corrective migration after 0017', () => {
+    expect(migrationFiles.filter((name) => Number(name.slice(0, 4)) === 18)).toEqual([
+      correctiveMigrationName,
+    ]);
+    expect(correctiveMigrationSql).toMatch(
+      /DROP CONSTRAINT "trades_system_status_consistency_check"/,
+    );
+    expect(correctiveMigrationSql).toMatch(
+      /ADD CONSTRAINT "trades_system_status_consistency_check"/,
+    );
+    expect(correctiveMigrationSql).not.toMatch(/\bUPDATE\b|ADD COLUMN|DROP COLUMN/i);
+    expect(correctiveMigrationSql).not.toMatch(/system_gross_r_input" = "trades"\."planned_r"/);
+  });
+
+  it('0018 accepts stale confirmed truth and rejects contradictory confirmed payloads', async () => {
+    await beginIsolatedSchema(18);
+    try {
+      const scaffolding = await seedScaffolding();
+      const snapshot =
+        `jsonb_build_object('v', 1, 'resolutionKind', 'money_target', ` +
+        `'exitReason', 'target_hit', 'plannedRiskMinor', '10000', ` +
+        `'plannedRewardMinor', '50000')`;
+
+      const stale = await insertTrade(
+        scaffolding,
+        { ...RESOLVED_NET, system_dependency_snapshot: snapshot },
+        { risk: '10000', reward: '100000', r: `'10.0000'` },
+      );
+      expect(stale.ok).toBe(true);
+
+      const mismatchedGross = await insertTrade(scaffolding, {
+        ...RESOLVED_NET,
+        system_gross_r_input: `'6.0000'`,
+      });
+      expect(mismatchedGross.ok).toBe(false);
+
+      const mismatchedNet = await insertTrade(scaffolding, {
+        ...RESOLVED_NET,
+        system_r: `'4.7000'`,
+      });
+      expect(mismatchedNet.ok).toBe(false);
+
+      const mismatchedOutcome = await insertTrade(scaffolding, {
+        ...RESOLVED_NET,
+        system_outcome: `'loss'`,
+      });
+      expect(mismatchedOutcome.ok).toBe(false);
+
+      const missingKind = await insertTrade(scaffolding, {
+        ...RESOLVED_NET,
+        system_resolution_kind: 'NULL',
+      });
+      expect(missingKind.ok).toBe(false);
+    } finally {
+      await raw.unsafe('ROLLBACK');
+    }
   });
 
   it('backfills gross R by arithmetic and never touches a resolved row’s cost', async () => {
