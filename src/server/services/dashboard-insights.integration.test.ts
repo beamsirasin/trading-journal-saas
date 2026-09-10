@@ -229,6 +229,8 @@ async function populate(params: {
           systemExitedAt: new Date(exitedAt.getTime() + 30 * 60_000),
           systemExitReason: 'manual_system_valid_exit',
           systemResolvedAt: new Date(exitedAt.getTime() + 45 * 60_000),
+          systemGrossR: '1.0000',
+          systemCostR: '0.0000',
           systemR: '1.0000',
           systemOutcome: 'win',
         })

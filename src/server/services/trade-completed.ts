@@ -144,10 +144,13 @@ function preflightCompletedInput(
   }
 
   if (input.systemResult?.status === 'resolved') {
+    // A System exit instant is optional now; when absent there is no
+    // chronology to check, and inventing one to check would be the defect.
     const systemExitedAt = input.systemResult.systemExitedAt;
     if (
-      systemExitedAt.getTime() < input.enteredAt.getTime() ||
-      systemExitedAt.getTime() > now.getTime()
+      systemExitedAt !== null &&
+      (systemExitedAt.getTime() < input.enteredAt.getTime() ||
+        systemExitedAt.getTime() > now.getTime())
     ) {
       return { ok: false, code: 'invalid_completed_trade_time' };
     }

@@ -53,9 +53,9 @@ function completeSource(): WorkspaceExportSource {
   ) as unknown as WorkspaceExportSource;
 }
 
-describe('workspace export schema-v6 registry', () => {
+describe('workspace export schema-v7 registry', () => {
   it('defines the complete normalized dataset and CSV inventory once', () => {
-    expect(WORKSPACE_EXPORT_SCHEMA_VERSION).toBe(6);
+    expect(WORKSPACE_EXPORT_SCHEMA_VERSION).toBe(7);
     expect(WORKSPACE_EXPORT_REGISTRY.map(({ name }) => name)).toEqual([
       'workspace',
       'trading_accounts',
@@ -120,7 +120,7 @@ describe('workspace export schema-v6 registry', () => {
         ],
       },
     });
-    expect(envelope.schemaVersion).toBe(6);
+    expect(envelope.schemaVersion).toBe(7);
     expect(envelope.exportedAt).toBe('2026-08-09T12:34:56.789Z');
     expect(envelope.scope).toEqual({ type: 'workspace', workspaceId: 'workspace-a' });
     expect(envelope.data.trades[0]?.actualInitialRiskMinor).toBe('10000000000000001');
@@ -207,7 +207,7 @@ describe('workspace CSV security and parity', () => {
       expect(strFromU8(archived)).toBe(contents.slice(1));
     }
     expect(JSON.parse(strFromU8(archive['manifest.json'] as Uint8Array))).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
       productVersion: '0.1.0',
       nullRepresentation: 'empty CSV field',
     });
@@ -249,5 +249,40 @@ describe('workspace export 5,000-Trade generation target', () => {
     console.info(
       `workspace-export-5000 envelope_ms=${envelopeMs.toFixed(1)} json_ms=${jsonMs.toFixed(1)} zip_ms=${zipMs.toFixed(1)} runtime_ms=${runtimeMs.toFixed(1)} json_bytes=${Buffer.byteLength(json)} zip_bytes=${zip.byteLength}`,
     );
+  });
+});
+
+describe('schema v7 — the System Assessment columns', () => {
+  const tradeColumns = () =>
+    WORKSPACE_EXPORT_REGISTRY.find((dataset) => dataset.name === 'trades')?.columns.map(
+      (definition) => definition.csvHeader,
+    ) ?? [];
+
+  it('exposes everything needed to reconstruct an assessment outside the product', () => {
+    // `system_status` already carried the status, so `cannot_determine` needs no
+    // new column — it is a new VALUE in an exported one.
+    for (const header of [
+      'system_status',
+      'system_gross_r',
+      'system_cost_r',
+      'system_r',
+      'system_outcome',
+      'system_plan_provenance',
+      'plan_adherence',
+    ]) {
+      expect(tradeColumns()).toContain(header);
+    }
+  });
+
+  it('keeps followed_plan for existing consumers', () => {
+    // Superseded by `plan_adherence`, dropped in a later cleanup migration —
+    // never silently removed from an export contract consumers already parse.
+    expect(tradeColumns()).toContain('followed_plan');
+  });
+
+  it('does not export the internal dependency snapshot', () => {
+    // A staleness mechanism, not user data, and the registry has no JSON column
+    // kind to carry it honestly.
+    expect(tradeColumns()).not.toContain('system_dependency_snapshot');
   });
 });

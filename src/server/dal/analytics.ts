@@ -1809,7 +1809,13 @@ export async function getCalendarMonthRecords(
         eq(trades.systemStatus, 'resolved'),
         isNotNull(trades.systemR),
         isNotNull(trades.systemOutcome),
-        isNotNull(trades.systemExitedAt),
+        /*
+          NO `system_exited_at` GATE. The formula here is `actualR - systemR`
+          and the range is anchored to Actual `exited_at` (CLAUDE.md §6 — the
+          paired population has one date contract, deliberately). Requiring a
+          System exit instant was metadata-completeness, not a formula need, and
+          it would now exclude resolutions that legitimately have no instant.
+        */
         gte(trades.exitedAt, window.start),
         lt(trades.exitedAt, window.end),
       ),
@@ -1874,7 +1880,8 @@ export async function getDayReviewRecords(
             eq(trades.systemStatus, 'resolved'),
             isNotNull(trades.systemR),
             isNotNull(trades.systemOutcome),
-            isNotNull(trades.systemExitedAt),
+            // Same reasoning as the paired window above: R comparison needs the
+            // R, not a System exit instant.
           ];
 
   const rows = await db

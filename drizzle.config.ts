@@ -2,6 +2,7 @@ import { loadEnvConfig } from '@next/env';
 import { defineConfig } from 'drizzle-kit';
 
 import { describeTarget, requireDeveloperDatabaseWrite } from './scripts/database-safety.mjs';
+import { validateTestDatabaseEnvironment } from './scripts/test-database-safety.mjs';
 import { resolveMigrationUrl } from './src/config/migration-env';
 
 /**
@@ -36,8 +37,6 @@ import { resolveMigrationUrl } from './src/config/migration-env';
 
 loadEnvConfig(process.cwd());
 
-const { source: migrationUrlSource, url } = resolveMigrationUrl(process.env);
-
 /**
  * THE GUARD LIVES IN THE CONFIG, NOT IN A PACKAGE SCRIPT.
  *
@@ -58,12 +57,47 @@ const { source: migrationUrlSource, url } = resolveMigrationUrl(process.env);
 const WRITE_CAPABLE_SUBCOMMANDS = new Set(['migrate', 'push', 'drop', 'studio']);
 const subcommand = process.argv.find((argument) => WRITE_CAPABLE_SUBCOMMANDS.has(argument));
 
-if (subcommand !== undefined) {
-  const target = requireDeveloperDatabaseWrite(process.env, {
-    operation: `drizzle-kit ${subcommand}`,
-    variableName: migrationUrlSource,
-  });
-  console.log(`[drizzle.config] ${subcommand} target: ${describeTarget(target)}`);
+/**
+ * THE DISPOSABLE TEST DATABASE IS A DIFFERENT TARGET UNDER A DIFFERENT GUARD.
+ *
+ * `requireDeveloperDatabaseWrite` pins exactly ONE approved database — the
+ * developer's own — and refuses every other, the test database included, whose
+ * identity is REQUIRED to differ from `DATABASE_URL`. That refusal is right for
+ * a developer migration and wrong for `pnpm db:test:prepare`, whose entire job
+ * is bringing the disposable database up to the committed migrations. Without
+ * this branch the guard blocked that script outright, and the integration suite
+ * went on running against whatever schema predated the guard — passing on the
+ * old shape and failing the moment a migration added a column.
+ *
+ * The marker below only SELECTS which guard applies; it authorizes nothing.
+ * `validateTestDatabaseEnvironment` independently proves the target names an
+ * unmistakably disposable database, carries the disposable acknowledgement, and
+ * is neither the database `DATABASE_URL` nor `DATABASE_MIGRATION_URL` addresses.
+ * Setting the marker by hand against a real database still gets refused.
+ */
+const preparingDisposableTestDatabase = process.env.DRIZZLE_TEST_DATABASE_MIGRATION === '1';
+
+let migrationUrlSource: string;
+let url: string;
+
+if (preparingDisposableTestDatabase) {
+  const guarded = validateTestDatabaseEnvironment(process.env);
+  migrationUrlSource = 'TEST_DATABASE_URL';
+  url = guarded.testUrl;
+  if (subcommand !== undefined) {
+    console.log(
+      `[drizzle.config] ${subcommand} target: disposable test database at ${guarded.hostname}`,
+    );
+  }
+} else {
+  ({ source: migrationUrlSource, url } = resolveMigrationUrl(process.env));
+  if (subcommand !== undefined) {
+    const target = requireDeveloperDatabaseWrite(process.env, {
+      operation: `drizzle-kit ${subcommand}`,
+      variableName: migrationUrlSource,
+    });
+    console.log(`[drizzle.config] ${subcommand} target: ${describeTarget(target)}`);
+  }
 }
 
 // Never logs the URL itself (it carries a password) — only which variable

@@ -523,6 +523,28 @@ export interface SystemResolveV2Snapshot extends SystemResolveSnapshot {
   readonly systemCostR: string;
 }
 
+/**
+ * A System resolution whose GROSS result is known and whose COST is not.
+ *
+ * WHY THIS SHAPE EXISTS. `system_cost_r` was `NOT NULL DEFAULT 0`, so every
+ * resolution that nobody costed was silently recorded as costing nothing — and
+ * a zero-cost counterfactual compared against a net Actual R overstates the
+ * Execution Gap by roughly the cost of trading, invisibly and always in the same
+ * direction. Unknown is now unknown: the gross figure is real and is kept, the
+ * net figure does not exist, and neither does the outcome verdict.
+ *
+ * NO OUTCOME WITHOUT A NET FIGURE. Whether `+0.04R` gross is a win or a
+ * break-even depends entirely on the cost nobody estimated, so `system_outcome`
+ * stays NULL rather than being classified from the gross number.
+ */
+export interface SystemResolveGrossOnlySnapshot {
+  readonly grossSystemR: string;
+  readonly systemCostR: null;
+  readonly systemR: null;
+  readonly systemOutcome: null;
+  readonly calcVersion: number;
+}
+
 /** The complete, atomic System-resolve snapshot — only valid once `system_status` is genuinely `resolved` (see {@link resolveSystemR}). */
 export function composeSystemResolve(
   direction: string | null | undefined,
@@ -542,6 +564,27 @@ export function composeSystemResolve(
   });
 }
 
+/**
+ * Mode-aware System snapshot composition where the cost is UNKNOWN.
+ *
+ * Shares `resolveSystemGrossR` with the costed path — the gross arithmetic is
+ * identical and there is no second engine here. All that differs is the refusal
+ * to invent the half nobody supplied.
+ */
+export function composeSystemResolveGrossOnly(
+  params: ResolveSystemGrossRInput,
+): CalcResult<SystemResolveGrossOnlySnapshot> {
+  const grossResult = resolveSystemGrossR(params);
+  if (!grossResult.ok) return grossResult;
+  return calcOk({
+    grossSystemR: grossResult.value,
+    systemCostR: null,
+    systemR: null,
+    systemOutcome: null,
+    calcVersion: CALC_VERSION,
+  });
+}
+
 /** Mode-aware Journal V2 System snapshot composition. */
 export function composeSystemResolveV2(
   params: ResolveSystemGrossRInput & { readonly systemCostR: string | null | undefined },
@@ -550,6 +593,9 @@ export function composeSystemResolveV2(
   if (!grossResult.ok) return grossResult;
 
   if (params.systemCostR === null || params.systemCostR === undefined) {
+    // A caller that genuinely has no cost estimate wants
+    // `composeSystemResolveGrossOnly`; reaching HERE with no cost is a caller
+    // bug, not a user's unknown.
     return calcErr('missing_input');
   }
   const costDecimal = parseCalcDecimal(params.systemCostR);

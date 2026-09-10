@@ -301,6 +301,8 @@ async function createTradeRow(
           systemExitedAt,
           systemExitReason: 'target_hit',
           systemResolvedAt: new Date('2026-08-02T00:00:00Z'),
+          systemGrossR: '2.0000',
+          systemCostR: '0.0000',
           systemR: '2.0000',
           systemOutcome: 'win',
         }

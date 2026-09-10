@@ -405,7 +405,8 @@ describe('Phase 07B trade domain (real database)', () => {
       const fw = await createFramework();
       const [row] = await insertTrade(basePlannedTrade(fw));
       expect(row?.systemStatus).toBe('pending');
-      expect(row?.systemCostR).toBe('0.0000');
+      // Nothing is known about a pending assessment's cost, and 0 said otherwise.
+      expect(row?.systemCostR).toBeNull();
     });
 
     it('accepts a resolved System outcome with all required fields, including System R and outcome', async () => {
@@ -415,6 +416,7 @@ describe('Phase 07B trade domain (real database)', () => {
         systemStatus: 'resolved',
         systemResolutionKind: 'price_exit',
         systemCostR: '0.2000',
+        systemGrossR: '2.0000',
         systemExitPrice: '1.1100000000',
         systemExitedAt: new Date('2026-01-02T00:00:00Z'),
         systemExitReason: 'target_hit',
@@ -443,6 +445,7 @@ describe('Phase 07B trade domain (real database)', () => {
         systemExitedAt: new Date('2026-01-02T00:00:00Z'),
         systemExitReason: 'target_hit',
         systemCostR: '0.1000',
+        systemGrossR: '5.0000',
         systemResolvedAt: new Date('2026-01-02T00:00:00Z'),
         systemR: '4.9000',
         systemOutcome: 'win',
@@ -470,6 +473,7 @@ describe('Phase 07B trade domain (real database)', () => {
         systemExitedAt: new Date('2026-01-02T00:00:00Z'),
         systemExitReason: 'stop_hit',
         systemCostR: '0.1000',
+        systemGrossR: '-1.0000',
         systemResolvedAt: new Date('2026-01-02T00:00:00Z'),
         systemR: '-1.1000',
         systemOutcome: 'loss',
@@ -485,7 +489,7 @@ describe('Phase 07B trade domain (real database)', () => {
       ).rejects.toMatchObject({ cause: { code: '23514' } });
     });
 
-    it('accepts a no_trade System outcome with setup_invalidated, no exit price, and zero system_cost_r', async () => {
+    it('accepts a no_trade System outcome with setup_invalidated, no exit price, and no system_cost_r', async () => {
       const fw = await createFramework();
       const [row] = await insertTrade({
         ...basePlannedTrade(fw),
@@ -495,7 +499,7 @@ describe('Phase 07B trade domain (real database)', () => {
       });
       expect(row?.systemStatus).toBe('no_trade');
       expect(row?.systemExitPrice).toBeNull();
-      expect(row?.systemCostR).toBe('0.0000');
+      expect(row?.systemCostR).toBeNull();
     });
 
     it('rejects pending with a non-null terminal field', async () => {

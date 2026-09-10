@@ -258,6 +258,8 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
           systemExitedAt,
           systemExitReason: 'target_hit' as const,
           systemResolvedAt: new Date('2026-08-02T00:00:00Z'),
+          systemGrossR: input.systemR ?? '2.0000',
+          systemCostR: '0.0000',
           systemR: input.systemR ?? '2.0000',
           systemOutcome: input.systemOutcome ?? 'win',
         }

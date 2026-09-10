@@ -75,6 +75,17 @@ export const AUDIT_ACTIONS = [
   'trade.corrected',
   'trade.system_resolved',
   'trade.system_no_trade',
+  /*
+    One new action, not a subsystem. `cannot_determine` is a distinct terminal
+    System conclusion — the trader assessed the Trade and the evidence does not
+    support a result — so it needs its own entry for the same reason
+    `system_no_trade` does: an audit trail that recorded it as "resolved" or
+    omitted it entirely could not later distinguish it from a Trade nobody
+    looked at. Reconfirmation after a dependency change reuses
+    `trade.system_resolved`, because that is exactly what it is: resolving the
+    System result again, against the facts as they now stand.
+  */
+  'trade.system_cannot_determine',
   'trade.rule_check_updated',
   'trade.mistake_added',
   'trade.mistake_removed',

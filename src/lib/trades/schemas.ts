@@ -124,6 +124,23 @@ const SIGNED_DECIMAL_PATTERN = /^[+-]?\d+(\.\d+)?$/;
 const DECIMAL_MAX_LENGTH = 32;
 
 const decimalField = () => z.string().regex(SIGNED_DECIMAL_PATTERN).max(DECIMAL_MAX_LENGTH);
+
+/**
+ * SYSTEM COST R — OPTIONAL, AND AN EMPTY STRING MEANS UNKNOWN.
+ *
+ * The form posts every field it renders, so an untouched cost arrives as `''`
+ * rather than as an absent key. Both mean the same thing and both normalize to
+ * `null`: the counterfactual's cost was never estimated, so `system_r` and
+ * `system_outcome` do not exist and the pair is reported gross-only.
+ *
+ * `'0'` remains perfectly valid and now means what it says — a considered "this
+ * would have cost nothing" — because it can no longer arrive by default.
+ */
+const optionalSystemCostField = () =>
+  z
+    .union([decimalField(), z.literal(''), z.null()])
+    .optional()
+    .transform((value) => (value === '' || value === undefined ? null : value));
 /** Tri-state, decimal-valued — see {@link patchableTextField}'s doc comment for the presence convention. */
 const patchableDecimalField = () =>
   z.string().regex(SIGNED_DECIMAL_PATTERN).max(DECIMAL_MAX_LENGTH).nullable().optional();
@@ -700,7 +717,7 @@ const PriceSystemResolutionSchema = z
     systemExitedAt: instantField(),
     /** `setup_invalidated` excluded at the schema layer — a closed-set membership check, not a formula (see `markSystemNoTradeAction` for that transition instead). */
     systemExitReason: resolvableSystemExitReasonField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -708,7 +725,7 @@ const MoneyTargetSystemResolutionSchema = z
   .object({
     resolutionKind: z.literal('money_target'),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -716,7 +733,7 @@ const MoneyStopSystemResolutionSchema = z
   .object({
     resolutionKind: z.literal('money_stop'),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -724,7 +741,7 @@ const MoneyBreakEvenSystemResolutionSchema = z
   .object({
     resolutionKind: z.literal('money_break_even'),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -733,7 +750,7 @@ const MoneyCustomSystemResolutionSchema = z
     resolutionKind: z.literal('money_custom'),
     systemGrossRInput: decimalField(),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -880,7 +897,7 @@ const CorrectPriceSystemResolutionSchema = z
     systemExitPrice: decimalField(),
     systemExitedAt: instantField(),
     systemExitReason: resolvableSystemExitReasonField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -890,7 +907,7 @@ const CorrectMoneyTargetSystemResolutionSchema = z
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_target'),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -900,7 +917,7 @@ const CorrectMoneyStopSystemResolutionSchema = z
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_stop'),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -910,7 +927,7 @@ const CorrectMoneyBreakEvenSystemResolutionSchema = z
     target: z.literal('resolved'),
     resolutionKind: z.literal('money_break_even'),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 
@@ -921,7 +938,7 @@ const CorrectMoneyCustomSystemResolutionSchema = z
     resolutionKind: z.literal('money_custom'),
     systemGrossRInput: decimalField(),
     systemExitedAt: instantField(),
-    systemCostR: decimalField(),
+    systemCostR: optionalSystemCostField(),
   })
   .strict();
 

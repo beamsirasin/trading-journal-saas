@@ -35,8 +35,12 @@ export interface ExecutionComparisonTradePoint {
   readonly tradeId: string;
   /** Actual `exited_at`, ISO-8601 UTC. The comparison timestamp. */
   readonly exitedAt: string;
-  /** System `system_exited_at`, ISO-8601 UTC. Metadata only — never a range gate. */
-  readonly systemExitedAt: string;
+  /**
+   * System `system_exited_at`, ISO-8601 UTC, or NULL when the resolution
+   * recorded no instant. Metadata only — never a range gate, never a sort key,
+   * and never a reason to exclude a pair whose R figures are both present.
+   */
+  readonly systemExitedAt: string | null;
   readonly systemR: string;
   readonly actualR: string;
   /** Canonical `actualR - systemR` for this Trade. */
@@ -233,7 +237,7 @@ interface PreparedPair {
   readonly tradeId: string;
   readonly exitedAt: string;
   readonly exitedAtInstant: Date;
-  readonly systemExitedAt: string;
+  readonly systemExitedAt: string | null;
   readonly systemR: string;
   readonly actualR: string;
 }
@@ -284,7 +288,14 @@ export function composeExecutionComparison(
     // Eligibility already proved these non-null; the checks keep that fact
     // local rather than asserting it with a cast.
     const { actualExitedAt, systemExitedAt, actualR, systemR } = record;
-    if (actualExitedAt === null || systemExitedAt === null) return integrity(summary, exclusions);
+    /*
+      ONLY WHAT THE FORMULA NEEDS IS AN INTEGRITY CONCERN.
+
+      A missing System exit instant used to fail the whole card. It is metadata:
+      the pair still has both R figures and a valid Actual exit to be anchored
+      and ordered by, so the comparison is computable and correct without it.
+    */
+    if (actualExitedAt === null) return integrity(summary, exclusions);
     if (actualR === null || systemR === null) return integrity(summary, exclusions);
     const instant = new Date(actualExitedAt);
     if (Number.isNaN(instant.getTime())) return integrity(summary, exclusions);

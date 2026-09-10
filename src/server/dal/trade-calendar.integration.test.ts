@@ -181,6 +181,8 @@ async function insertTrade(
               systemExitedAt: overrides.systemExitedAt ?? new Date('2026-08-01T11:00:00Z'),
               systemExitReason: 'target_hit',
               systemResolvedAt: new Date('2026-08-02T00:00:00Z'),
+              systemGrossR: overrides.systemR ?? '2.0000',
+              systemCostR: '0.0000',
               systemR: overrides.systemR ?? '2.0000',
               systemOutcome: 'win',
             }

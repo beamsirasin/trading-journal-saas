@@ -9,7 +9,7 @@ import { strToU8, zipSync } from 'fflate';
  * already treated every `id`/`timestamp` kind as null-safe before this
  * version (null-checked first), so this bump is purely additive.
  */
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 6 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 7 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -260,6 +260,7 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('systemExitedAt', 'system_exited_at', 'timestamp'),
       column('systemExitReason', 'system_exit_reason', 'text'),
       column('systemCostR', 'system_cost_r', 'decimal'),
+      column('systemGrossR', 'system_gross_r', 'decimal'),
       column('systemResolvedAt', 'system_resolved_at', 'timestamp'),
       column('plannedR', 'planned_r', 'decimal'),
       column('actualR', 'actual_r', 'decimal'),
@@ -268,7 +269,9 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('systemOutcome', 'system_outcome', 'text'),
       column('calcVersion', 'calc_version', 'integer'),
       column('status', 'status', 'text'),
+      column('systemPlanProvenance', 'system_plan_provenance', 'text'),
       column('followedPlan', 'followed_plan', 'boolean'),
+      column('planAdherence', 'plan_adherence', 'text'),
       column('deletedAt', 'deleted_at', 'timestamp'),
       column('createdAt', 'created_at', 'timestamp'),
       column('updatedAt', 'updated_at', 'timestamp'),

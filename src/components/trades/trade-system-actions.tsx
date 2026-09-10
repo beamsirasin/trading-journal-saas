@@ -78,7 +78,19 @@ function ResolvedFields({
       ? (trade.systemGrossRInput ?? '')
       : '',
   );
-  const [costInput, setCostInput] = useState(terminal ? trade.systemCostR : '0');
+  /*
+    UNKNOWN IS NOW A REAL ANSWER, SO THE FIELD NO LONGER PRE-FILLS ZERO.
+
+    It defaulted to `'0'` and was marked required, which meant an untouched field
+    recorded "following the rules would have cost nothing" — a claim the app was
+    making on the trader's behalf, in the direction that flatters the strategy.
+    Blank now submits as unknown: the gross figure is kept, net R and the outcome
+    verdict are withheld, and the pair is never compared against a net Actual R.
+
+    Minimal adaptation only. The accepted System Assessment editor replaces this
+    surface in Pass 5B.
+  */
+  const [costInput, setCostInput] = useState(terminal ? (trade.systemCostR ?? '') : '');
 
   const grossPreview = hasPricePlan
     ? null
@@ -180,12 +192,13 @@ function ResolvedFields({
         label={t('field.systemCostR')}
         hint={t('lifecycle.system.costHint')}
       >
+        {/* No longer `required`: blank is the honest answer when the cost was
+            never estimated, and the schema reads it as unknown. */}
         <FormInput
           id={`${prefix}-cost`}
           name="systemCostR"
           value={costInput}
           onChange={(event) => setCostInput(event.target.value)}
-          required
         />
       </TradeField>
       {!hasPricePlan ? (

@@ -40,8 +40,20 @@ export function isComparisonEligible(trade: ComparisonEligibleTradeInput): boole
     trade.actualExitedAt !== null &&
     trade.systemStatus === 'resolved' &&
     trade.systemR !== null &&
-    trade.systemOutcome !== null &&
-    trade.systemExitedAt !== null
+    trade.systemOutcome !== null
+    /*
+      `systemExitedAt` IS NO LONGER REQUIRED HERE.
+
+      Every figure this population feeds is `actualR - systemR`, and its range
+      and ordering are anchored to Actual `exited_at` alone (CLAUDE.md §6). The
+      System exit instant rode along as metadata, and requiring it excluded
+      resolutions that legitimately have none — a target-hit counterfactual has
+      a magnitude whether or not anyone recorded when it would have closed.
+
+      It still gates the SYSTEM-AXIS populations, which bucket by it. Those
+      predicates are deliberately untouched; see `systemCompleteCondition` in
+      `src/server/dal/analytics.ts`.
+    */
   );
 }
 

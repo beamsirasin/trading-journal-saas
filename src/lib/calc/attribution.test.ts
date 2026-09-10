@@ -159,7 +159,20 @@ describe('isComparisonEligible / selectComparisonEligible', () => {
     expect(isComparisonEligible({ ...base, actualExitedAt: null })).toBe(false);
     expect(isComparisonEligible({ ...base, systemR: null })).toBe(false);
     expect(isComparisonEligible({ ...base, systemOutcome: null })).toBe(false);
-    expect(isComparisonEligible({ ...base, systemExitedAt: null })).toBe(false);
+    /*
+      SUPERSEDED IN PASS 5A, DELIBERATELY.
+
+      A missing System exit instant used to disqualify a pair. Every figure this
+      population feeds is `actualR - systemR`, and its range and ordering are
+      anchored to Actual `exited_at` alone (CLAUDE.md §6) — the System instant
+      rode along as metadata. Requiring it excluded resolutions that legitimately
+      have none: a target-hit counterfactual has a magnitude whether or not
+      anyone recorded when it would have closed.
+
+      The SYSTEM-AXIS populations, which bucket BY that instant, still require
+      it — see `systemCompleteCondition` in `src/server/dal/analytics.ts`.
+    */
+    expect(isComparisonEligible({ ...base, systemExitedAt: null })).toBe(true);
     expect(isComparisonEligible({ ...base, status: 'open' })).toBe(false);
     expect(isComparisonEligible({ ...base, systemStatus: 'pending' })).toBe(false);
     expect(isComparisonEligible({ ...base, deletedAt: new Date() })).toBe(false);

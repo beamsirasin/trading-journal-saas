@@ -74,7 +74,16 @@ describe('System result lifecycle controls', () => {
         systemExitPrice: '120',
         systemExitedAt: expect.stringMatching(/Z$/),
         systemExitReason: 'target_hit',
-        systemCostR: '0',
+        /*
+          UNTOUCHED MEANS UNKNOWN, NOT ZERO.
+
+          The field used to pre-fill '0' and be required, so every resolution
+          nobody costed recorded a cost of nothing — and a zero-cost
+          counterfactual against a net Actual R overstates the Execution Gap by
+          the cost of trading. Blank now submits as unknown, the server keeps the
+          gross figure, and no net comparison is produced.
+        */
+        systemCostR: '',
       }),
     );
   });
@@ -105,9 +114,17 @@ describe('System result lifecycle controls', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Record System Outcome' }));
     expect(screen.queryByLabelText('System exit price')).not.toBeInTheDocument();
-    expect(screen.getAllByText('5.0000R')).toHaveLength(2);
+    /*
+      GROSS KNOWN, COST UNKNOWN, FINAL UNAVAILABLE.
+
+      The cost field no longer pre-fills '0', so on arrival the preview shows the
+      gross figure ONCE and an em-dash for both the cost and the final System R.
+      It previously showed `5.0000R` twice — gross, and a "final" that was only
+      final because an untouched default had been read as a real zero.
+    */
+    expect(screen.getAllByText('5.0000R')).toHaveLength(1);
     const cost = screen.getByLabelText('System Cost R');
-    await user.clear(cost);
+    expect(cost).toHaveValue('');
     await user.type(cost, '0.10');
     expect(screen.getByText('4.9000R')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Confirm resolved result' }));

@@ -157,9 +157,11 @@ export interface SystemResolveRetryFields {
   readonly systemResolutionKind: string;
   readonly systemExitPrice: string | null;
   readonly systemGrossRInput: string | null;
-  readonly systemExitedAt: Date;
+  /** NULL where the resolution needs no instant — matched null-to-null. */
+  readonly systemExitedAt: Date | null;
   readonly systemExitReason: string;
-  readonly systemCostR: string;
+  /** NULL means unknown — an idempotent retry must match unknown-to-unknown too. */
+  readonly systemCostR: string | null;
 }
 
 /** The System-axis equivalent of {@link matchesCloseRetry}, for `resolveSystemTrade`. */
@@ -171,7 +173,7 @@ export function matchesSystemResolveRetry(
     current.systemResolutionKind === requested.systemResolutionKind &&
     current.systemExitPrice === requested.systemExitPrice &&
     current.systemGrossRInput === requested.systemGrossRInput &&
-    current.systemExitedAt.getTime() === requested.systemExitedAt.getTime() &&
+    (current.systemExitedAt?.getTime() ?? null) === (requested.systemExitedAt?.getTime() ?? null) &&
     current.systemExitReason === requested.systemExitReason &&
     current.systemCostR === requested.systemCostR
   );

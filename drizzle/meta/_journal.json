@@ -120,6 +120,13 @@
       "when": 1787242559521,
       "tag": "0016_optional_trade_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788984761071,
+      "tag": "0017_futuristic_xorn",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,9 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { systemAnalyticsEligibility } from '@/lib/calc/system-assessment';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
+import type { SystemResolutionKind } from '@/lib/trades/constants';
 import {
   auditLogs,
   strategies,
@@ -35,6 +37,7 @@ import {
   correctTradeExecution,
   correctTradeIdentity,
   createTrade,
+  markSystemCannotDetermine,
   markSystemNoTrade,
   openTrade,
   resolveSystemTrade,
@@ -2385,7 +2388,15 @@ describe('trade-management (real database)', () => {
       expect(row?.systemStatus).toBe('no_trade');
       expect(row?.systemExitReason).toBe('setup_invalidated');
       expect(row?.systemR).toBeNull();
-      expect(row?.systemCostR).toBe('0.0000');
+      /*
+        SUPERSEDED BY MIGRATION 0017. This asserted '0.0000' only because
+        `system_cost_r` was NOT NULL DEFAULT 0 and a no_trade row had to put
+        SOMETHING there. A finding that the rules forbade the Trade has no cost
+        because it has no trade, and the rewritten consistency CHECK now
+        requires the column to be NULL for exactly that reason.
+      */
+      expect(row?.systemCostR).toBeNull();
+      expect(row?.systemGrossR).toBeNull();
     });
 
     it('System may resolve while the Trade is still planned', async () => {
@@ -2514,6 +2525,195 @@ describe('trade-management (real database)', () => {
       await resolveSystemTrade(workspaceId, actorUserId, tradeId, resolveInput());
       const result = await markSystemNoTrade(workspaceId, actorUserId, tradeId);
       expect(result).toMatchObject({ ok: false, code: 'invalid_system_status_transition' });
+    });
+
+    // -----------------------------------------------------------------------
+    // Pass 5A — unknown cost, cannot_determine, and the frozen snapshot
+    // -----------------------------------------------------------------------
+
+    /** Asks the domain layer what analytics may do with the row as stored. */
+    function eligibilityFor(row: Awaited<ReturnType<typeof readTrade>>) {
+      if (row === undefined) throw new Error('trade row missing');
+      return systemAnalyticsEligibility({
+        systemStatus: row.systemStatus,
+        systemResolvedAt: row.systemResolvedAt,
+        systemDependencySnapshot: row.systemDependencySnapshot,
+        systemGrossR: row.systemGrossR,
+        systemR: row.systemR,
+        systemOutcome: row.systemOutcome,
+        current: {
+          systemResolutionKind: row.systemResolutionKind as SystemResolutionKind | null,
+          systemExitReason: row.systemExitReason,
+          strategyVersionId: row.strategyVersionId,
+          setupVersionId: row.setupVersionId,
+          plannedRiskMinor: row.plannedRiskMinor,
+          plannedRewardMinor: row.plannedRewardMinor,
+          plannedEntry: row.plannedEntry,
+          plannedStop: row.plannedStop,
+        },
+      });
+    }
+
+    it('records a resolution whose cost is unknown as gross-only, not as zero-cost', async () => {
+      const { tradeId } = await createPlanned();
+      const result = await resolveSystemTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        resolveInput({ systemCostR: null }),
+      );
+      expect(result).toMatchObject({ ok: true, systemR: null, systemOutcome: null });
+
+      const row = await readTrade(tradeId);
+      // The counterfactual itself is fully known — only its cost is not.
+      expect(row?.systemGrossR).toBe('2.0000');
+      expect(row?.systemCostR).toBeNull();
+      expect(row?.systemR).toBeNull();
+      expect(row?.systemOutcome).toBeNull();
+      // Gross System R against a NET Actual R would overstate the Execution Gap
+      // by exactly the cost of trading, so the row is readable but never paired.
+      expect(eligibilityFor(row)).toBe('gross_only');
+    });
+
+    it('lets a gross-only resolution still have its plan corrected', async () => {
+      /*
+        THE REGRESSION A NULLABLE COST NEARLY INTRODUCED.
+
+        `composeSystemResolve`/`composeSystemResolveV2` both refuse a NULL cost
+        — rightly, since inventing a zero there is the fiction the column was
+        made nullable to prevent. Routing this recompute through them turned
+        "the cost is unknown" into "the plan can never be edited again", so a
+        trader who left the cost blank was stranded on any typo in Entry/Stop.
+      */
+      const { tradeId } = await createPlanned();
+      await resolveSystemTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        resolveInput({ systemCostR: null }),
+      );
+
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: '1.1050000000',
+      });
+      expect(result.ok).toBe(true);
+
+      const row = await readTrade(tradeId);
+      // (1.11 - 1.105) / (1.105 - 1.095) = 0.5 — and still no invented cost.
+      expect(row?.systemGrossR).toBe('0.5000');
+      expect(row?.systemCostR).toBeNull();
+      expect(row?.systemR).toBeNull();
+    });
+
+    it('keeps gross and net in step when a plan edit moves a resolved result', async () => {
+      /*
+        `systemR = systemGrossR − systemCostR` is the locked formula, and both
+        halves are STORED. A recompute that wrote the net and left the gross
+        behind would put one row's own columns into arithmetic disagreement —
+        a state no CHECK forbids and no reader can detect.
+      */
+      const { tradeId } = await createPlanned();
+      await resolveSystemTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        resolveInput({ systemCostR: '0.1000' }),
+      );
+      const before = await readTrade(tradeId);
+      expect(before?.systemGrossR).toBe('2.0000');
+      expect(before?.systemR).toBe('1.9000');
+
+      const result = await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: '1.1050000000',
+      });
+      expect(result.ok).toBe(true);
+      expect(result.ok && result.changedFields).toContain('systemGrossR');
+
+      const after = await readTrade(tradeId);
+      expect(after?.systemGrossR).toBe('0.5000');
+      expect(after?.systemR).toBe('0.4000');
+      expect(after?.systemCostR).toBe('0.1000');
+    });
+
+    it('flags a plan edit for re-assessment instead of quietly banking the new figure', async () => {
+      const { tradeId } = await createPlanned();
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, resolveInput());
+      expect(eligibilityFor(await readTrade(tradeId))).toBe('eligible');
+
+      await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: '1.1050000000',
+      });
+      /*
+        The snapshot is deliberately NOT refreshed by the recompute: a figure
+        arithmetically consistent with a plan nobody re-assessed is exactly the
+        hindsight fiction the snapshot exists to catch. It stays out of trusted
+        comparison until a human confirms it.
+      */
+      expect(eligibilityFor(await readTrade(tradeId))).toBe('needs_review');
+    });
+
+    it('re-confirmation promotes a fresh snapshot and readmits the Trade', async () => {
+      const { tradeId } = await createPlanned();
+      await resolveSystemTrade(workspaceId, actorUserId, tradeId, resolveInput());
+      const confirmed = await readTrade(tradeId);
+      await updateTradePlan(workspaceId, actorUserId, tradeId, {
+        plannedEntry: '1.1050000000',
+      });
+      expect(eligibilityFor(await readTrade(tradeId))).toBe('needs_review');
+
+      const corrected = await correctSystemResolution(workspaceId, actorUserId, tradeId, {
+        target: 'resolved',
+        ...resolveInput(),
+      });
+      expect(corrected.ok).toBe(true);
+
+      const after = await readTrade(tradeId);
+      expect(eligibilityFor(after)).toBe('eligible');
+      expect(after?.systemDependencySnapshot).not.toEqual(confirmed?.systemDependencySnapshot);
+    });
+
+    it('records cannot_determine as an answered question with no result at all', async () => {
+      const { tradeId } = await createPlanned();
+      const result = await markSystemCannotDetermine(workspaceId, actorUserId, tradeId);
+      expect(result.ok).toBe(true);
+
+      const row = await readTrade(tradeId);
+      expect(row?.systemStatus).toBe('cannot_determine');
+      // Somebody looked and could not tell — the timestamp is what separates
+      // this from `pending`, which records that nobody has looked yet.
+      expect(row?.systemResolvedAt).not.toBeNull();
+      expect(row?.systemDependencySnapshot).not.toBeNull();
+      expect(row?.systemGrossR).toBeNull();
+      expect(row?.systemCostR).toBeNull();
+      expect(row?.systemR).toBeNull();
+      expect(row?.systemOutcome).toBeNull();
+      expect(row?.systemExitReason).toBeNull();
+      expect(eligibilityFor(row)).toBe('not_available');
+
+      const [audit] = await db
+        .select()
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.entityId, tradeId),
+            eq(auditLogs.action, 'trade.system_cannot_determine'),
+          ),
+        );
+      expect(audit).toBeDefined();
+    });
+
+    it('cannot_determine is idempotent but never overwrites a real finding', async () => {
+      const { tradeId } = await createPlanned();
+      await markSystemCannotDetermine(workspaceId, actorUserId, tradeId);
+      expect((await markSystemCannotDetermine(workspaceId, actorUserId, tradeId)).ok).toBe(true);
+
+      const { tradeId: resolvedId } = await createPlanned();
+      await resolveSystemTrade(workspaceId, actorUserId, resolvedId, resolveInput());
+      expect(await markSystemCannotDetermine(workspaceId, actorUserId, resolvedId)).toMatchObject({
+        ok: false,
+        code: 'invalid_system_status_transition',
+      });
+      expect((await readTrade(resolvedId))?.systemR).toBe('2.0000');
     });
   });
 

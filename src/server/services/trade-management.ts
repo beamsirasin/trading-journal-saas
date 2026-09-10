@@ -4,14 +4,18 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
 import { CALC_VERSION } from '@/config/trade-calc';
+import { buildSystemDependencySnapshot } from '@/lib/calc/system-assessment';
 import {
   composePlannedR,
   composeRealizedActual,
-  composeSystemResolve,
+  composeSystemResolveGrossOnly,
   composeSystemResolveV2,
   composeTraderCloseV2,
+  type ResolveSystemGrossRInput,
+  type SystemResolveGrossOnlySnapshot,
+  type SystemResolveV2Snapshot,
 } from '@/lib/calc/trade';
-import type { CalcFailureReason } from '@/lib/calc/types';
+import type { CalcFailureReason, CalcResult } from '@/lib/calc/types';
 import { authorizeWorkspaceMutation, type MutationDenialReason } from '@/lib/entitlements/resolve';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import type { SetupConditionAnswer } from '@/lib/setup-conditions/snapshots';
@@ -972,6 +976,39 @@ export async function createTrade(
 // 2. updateTradePlan
 // ---------------------------------------------------------------------------
 
+/**
+ * Re-derives an ALREADY-RESOLVED System result after one of its inputs moved,
+ * without deciding on the trader's behalf what an unknown cost was.
+ *
+ * Two things this exists to stop, both of which the nullable `system_cost_r`
+ * introduced:
+ *
+ *  1. `composeSystemResolveV2` and the V1 `composeSystemResolve` both refuse a
+ *     NULL cost (`missing_input`) — correctly, since inventing a zero there is
+ *     the exact fiction the column was made nullable to prevent. But a caller
+ *     that routes a gross-only resolution through them turns "the cost is
+ *     unknown" into "this Trade's plan can no longer be edited at all",
+ *     stranding the trader on a typo they cannot fix.
+ *  2. `system_gross_r` is the stored gross half of the locked
+ *     `systemR = systemGrossR − systemCostR`. A recompute that writes the net
+ *     and leaves the gross behind puts those two columns into arithmetic
+ *     disagreement in the row itself — a state no CHECK forbids and no reader
+ *     can detect.
+ *
+ * The dependency snapshot is deliberately NOT refreshed by callers of this
+ * helper: the figures move to stay internally consistent, but nobody has
+ * re-assessed them, so `systemAnalyticsEligibility` keeps reporting
+ * `needs_review` until a human re-confirms through the correction path.
+ */
+function recomposeResolvedSystem(
+  params: ResolveSystemGrossRInput & { readonly systemCostR: string | null },
+): CalcResult<SystemResolveV2Snapshot | SystemResolveGrossOnlySnapshot> {
+  const { systemCostR, ...gross } = params;
+  return systemCostR === null
+    ? composeSystemResolveGrossOnly(gross)
+    : composeSystemResolveV2({ ...gross, systemCostR });
+}
+
 export interface UpdateTradePlanInput extends PlanFieldsPatch {
   /** Omit to edit the current basis; supply to explicitly switch basis. */
   readonly systemPlanBasis?: SystemPlanBasis;
@@ -1098,6 +1135,7 @@ export async function updateTradePlan(
     let systemR = trade.systemR;
     let systemOutcome = trade.systemOutcome;
     let systemGrossRInput = trade.systemGrossRInput;
+    let systemGrossR = trade.systemGrossR;
     let calcVersionBump = false;
 
     if (resolved.planFieldsTouched) {
@@ -1126,16 +1164,18 @@ export async function updateTradePlan(
           if (resolved.plannedEntry === null || resolved.plannedStop === null) {
             return { ok: false, code: 'system_requires_price_plan' };
           }
-          const composedSystem = composeSystemResolve(
-            trade.direction,
-            resolved.plannedEntry,
-            resolved.plannedStop,
-            trade.systemExitPrice,
-            trade.systemCostR,
-          );
+          const composedSystem = recomposeResolvedSystem({
+            resolutionKind: 'price_exit',
+            direction: trade.direction,
+            plannedEntry: resolved.plannedEntry,
+            plannedStop: resolved.plannedStop,
+            systemExitPrice: trade.systemExitPrice,
+            systemCostR: trade.systemCostR,
+          });
           if (!composedSystem.ok) {
             return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
           }
+          systemGrossR = composedSystem.value.grossSystemR;
           systemR = composedSystem.value.systemR;
           systemOutcome = composedSystem.value.systemOutcome;
           calcVersionBump = true;
@@ -1144,7 +1184,7 @@ export async function updateTradePlan(
           // Money result cannot be silently reinterpreted as Price-derived.
           if (hasPricePlan) return { ok: false, code: 'invalid_plan' };
           if (trade.systemResolutionKind === 'money_target') {
-            const composedSystem = composeSystemResolveV2({
+            const composedSystem = recomposeResolvedSystem({
               resolutionKind: 'money_target',
               direction: trade.direction,
               plannedEntry: null,
@@ -1157,6 +1197,7 @@ export async function updateTradePlan(
               return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
             }
             systemGrossRInput = composedSystem.value.grossSystemR;
+            systemGrossR = composedSystem.value.grossSystemR;
             systemR = composedSystem.value.systemR;
             systemOutcome = composedSystem.value.systemOutcome;
             calcVersionBump = true;
@@ -1197,6 +1238,7 @@ export async function updateTradePlan(
     if (nextNotes !== trade.notes) changedFields.push('notes');
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
     if (systemGrossRInput !== trade.systemGrossRInput) changedFields.push('systemGrossRInput');
+    if (systemGrossR !== trade.systemGrossR) changedFields.push('systemGrossR');
     if (systemR !== trade.systemR) changedFields.push('systemR');
 
     if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
@@ -1218,6 +1260,7 @@ export async function updateTradePlan(
         notes: nextNotes,
         plannedR,
         systemGrossRInput,
+        systemGrossR,
         systemR,
         systemOutcome,
         ...(calcVersionBump ? { calcVersion: CALC_VERSION } : {}),
@@ -1316,6 +1359,7 @@ export async function correctTradeIdentity(
     let plannedR = trade.plannedR;
     let systemR = trade.systemR;
     let systemOutcome = trade.systemOutcome;
+    let systemGrossR = trade.systemGrossR;
     let calcVersionBump = false;
 
     const directionChanged = input.direction !== undefined && input.direction !== trade.direction;
@@ -1367,16 +1411,18 @@ export async function correctTradeIdentity(
           if (nextEntry === null || nextStop === null) {
             return { ok: false, code: 'system_requires_price_plan' };
           }
-          const composedSystem = composeSystemResolve(
-            nextDirection,
-            nextEntry,
-            nextStop,
-            trade.systemExitPrice,
-            trade.systemCostR,
-          );
+          const composedSystem = recomposeResolvedSystem({
+            resolutionKind: 'price_exit',
+            direction: nextDirection,
+            plannedEntry: nextEntry,
+            plannedStop: nextStop,
+            systemExitPrice: trade.systemExitPrice,
+            systemCostR: trade.systemCostR,
+          });
           if (!composedSystem.ok) {
             return { ok: false, code: 'invalid_plan', calcReason: composedSystem.reason };
           }
+          systemGrossR = composedSystem.value.grossSystemR;
           systemR = composedSystem.value.systemR;
           systemOutcome = composedSystem.value.systemOutcome;
           calcVersionBump = true;
@@ -1395,6 +1441,7 @@ export async function correctTradeIdentity(
     if (nextEntry !== trade.plannedEntry) changedFields.push('plannedEntry');
     if (nextStop !== trade.plannedStop) changedFields.push('plannedStop');
     if (plannedR !== trade.plannedR) changedFields.push('plannedR');
+    if (systemGrossR !== trade.systemGrossR) changedFields.push('systemGrossR');
     if (systemR !== trade.systemR) changedFields.push('systemR');
 
     if (changedFields.length === 0) return { ok: true, changedFields: [], plannedR };
@@ -1407,6 +1454,7 @@ export async function correctTradeIdentity(
         plannedEntry: nextEntry,
         plannedStop: nextStop,
         plannedR,
+        systemGrossR,
         systemR,
         systemOutcome,
         ...(calcVersionBump ? { calcVersion: CALC_VERSION } : {}),
@@ -2036,8 +2084,15 @@ export async function correctTradeExecution(
 // ---------------------------------------------------------------------------
 
 interface SystemResolveCommonInput {
-  readonly systemExitedAt: Date;
-  readonly systemCostR: string;
+  /**
+   * NULL where the resolution's meaning does not depend on an instant. A
+   * counterfactual does not need a fabricated closing time to have a magnitude;
+   * only a `time_exit` genuinely does, which the schema's consistency CHECK
+   * enforces.
+   */
+  readonly systemExitedAt: Date | null;
+  /** NULL = the cost was never estimated. Never coerced to zero. */
+  readonly systemCostR: string | null;
 }
 
 export type ResolveSystemTradeInput =
@@ -2054,15 +2109,25 @@ export type ResolveSystemTradeInput =
       readonly systemGrossRInput: string;
     });
 
+/**
+ * TWO SHAPES, AND THE DIFFERENCE IS WHETHER THE COST IS KNOWN.
+ *
+ * `systemGrossR` is always present — the gross figure is what the resolution
+ * produces, and it is frozen so a later engine change cannot rewrite a result a
+ * trader confirmed. When the cost is unknown, `systemR` and `systemOutcome` are
+ * NULL together: a net figure does not exist, and classifying an outcome from a
+ * gross number would answer a question the record cannot answer.
+ */
 type PreparedSystemResolution = {
   readonly systemResolutionKind: SystemResolutionKind;
   readonly systemExitPrice: string | null;
   readonly systemGrossRInput: string | null;
-  readonly systemExitedAt: Date;
+  readonly systemExitedAt: Date | null;
   readonly systemExitReason: string;
-  readonly systemCostR: string;
-  readonly systemR: string;
-  readonly systemOutcome: OutcomeValue;
+  readonly systemGrossR: string;
+  readonly systemCostR: string | null;
+  readonly systemR: string | null;
+  readonly systemOutcome: OutcomeValue | null;
   readonly calcVersion: number;
 };
 
@@ -2107,7 +2172,7 @@ function prepareSystemResolution(
     return { ok: false, code: 'invalid_system_status_transition' };
   }
 
-  const composed = composeSystemResolveV2({
+  const grossInput = {
     resolutionKind: input.resolutionKind,
     direction: trade.direction,
     plannedEntry: trade.plannedEntry,
@@ -2116,14 +2181,35 @@ function prepareSystemResolution(
     plannedRewardMinor: trade.plannedRewardMinor,
     systemExitPrice: input.resolutionKind === 'price_exit' ? input.systemExitPrice : null,
     systemGrossRInput: input.resolutionKind === 'money_custom' ? input.systemGrossRInput : null,
-    systemCostR: input.systemCostR,
-  });
+  };
+
+  /*
+    ONE ENGINE, TWO ENDINGS. Both branches derive the gross figure through the
+    same `resolveSystemGrossR`; the costed one goes on to subtract and classify,
+    the uncosted one stops. Nothing here invents a zero to make the second branch
+    look like the first.
+  */
+  const composed =
+    input.systemCostR === null
+      ? composeSystemResolveGrossOnly(grossInput)
+      : composeSystemResolveV2({ ...grossInput, systemCostR: input.systemCostR });
   if (!composed.ok) {
     return {
       ok: false,
       code: 'invalid_system_status_transition',
       calcReason: composed.reason,
     };
+  }
+
+  const exitReason =
+    input.resolutionKind === 'price_exit'
+      ? input.systemExitReason
+      : MONEY_SYSTEM_EXIT_REASON[input.resolutionKind];
+
+  // A time-based exit is the one resolution whose own meaning needs an instant.
+  // Mirrors `trades_system_status_consistency_check` rather than trusting it.
+  if (exitReason === 'time_exit' && input.systemExitedAt === null) {
+    return { ok: false, code: 'invalid_system_exit_reason' };
   }
 
   return {
@@ -2133,10 +2219,8 @@ function prepareSystemResolution(
       systemExitPrice: input.resolutionKind === 'price_exit' ? input.systemExitPrice : null,
       systemGrossRInput: input.resolutionKind === 'price_exit' ? null : composed.value.grossSystemR,
       systemExitedAt: input.systemExitedAt,
-      systemExitReason:
-        input.resolutionKind === 'price_exit'
-          ? input.systemExitReason
-          : MONEY_SYSTEM_EXIT_REASON[input.resolutionKind],
+      systemExitReason: exitReason,
+      systemGrossR: composed.value.grossSystemR,
       systemCostR: composed.value.systemCostR,
       systemR: composed.value.systemR,
       systemOutcome: composed.value.systemOutcome,
@@ -2146,7 +2230,12 @@ function prepareSystemResolution(
 }
 
 export type ResolveSystemTradeResult =
-  | { readonly ok: true; readonly systemR: string; readonly systemOutcome: OutcomeValue }
+  | {
+      readonly ok: true;
+      /** NULL when the cost was unknown — the result is gross-only. */
+      readonly systemR: string | null;
+      readonly systemOutcome: OutcomeValue | null;
+    }
   | {
       readonly ok: false;
       readonly code:
@@ -2220,10 +2309,29 @@ export async function resolveSystemTradeInTx(
       systemGrossRInput: prepared.value.systemGrossRInput,
       systemExitedAt: prepared.value.systemExitedAt,
       systemExitReason: prepared.value.systemExitReason,
+      systemGrossR: prepared.value.systemGrossR,
       systemCostR: prepared.value.systemCostR,
       systemResolvedAt: clock.now(),
       systemR: prepared.value.systemR,
       systemOutcome: prepared.value.systemOutcome,
+      /*
+        THE FACTS THIS RESULT RESTS ON, FROZEN BESIDE IT.
+
+        Captured at confirmation so a later plan edit is DETECTABLE rather than
+        silently re-arithmetic'd into a figure nobody assessed. Basis-scoped —
+        a `money_custom` resolution records no planned target, because it did
+        not read one. See `src/lib/calc/system-assessment.ts`.
+      */
+      systemDependencySnapshot: buildSystemDependencySnapshot({
+        systemResolutionKind: prepared.value.systemResolutionKind,
+        systemExitReason: prepared.value.systemExitReason,
+        strategyVersionId: trade.strategyVersionId,
+        setupVersionId: trade.setupVersionId,
+        plannedRiskMinor: trade.plannedRiskMinor,
+        plannedRewardMinor: trade.plannedRewardMinor,
+        plannedEntry: trade.plannedEntry,
+        plannedStop: trade.plannedStop,
+      }),
       calcVersion: prepared.value.calcVersion,
       updatedAt: new Date(),
     })
@@ -2278,6 +2386,83 @@ export type MarkSystemNoTradeResult =
     };
 
 /** `pending -> no_trade` only. An exact repeat (already `no_trade`) is a safe no-op. */
+export type MarkSystemCannotDetermineResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly code: WorkspaceAccessDenial | 'trade_not_found' | 'invalid_system_status_transition';
+    };
+
+/**
+ * "I ASSESSED THIS AND THE RULES CANNOT BE RECONSTRUCTED" — a finding, not a gap.
+ *
+ * `cannot_determine` IS NOT `pending`, and the distinction is the point. Pending
+ * means nobody has looked; this means somebody did, and the evidence does not
+ * support a System result. Collapsing them would turn every documented dead end
+ * back into an open question and every open question into a documented dead end.
+ *
+ * NOTHING IS INVENTED. No gross R, no net R, no outcome, no resolution kind —
+ * the whole result payload stays NULL. What it DOES carry is assessment
+ * metadata: a confirmation timestamp and the dependency snapshot, because the
+ * conclusion rests on the rules that were pinned when it was reached, and
+ * re-classifying the Trade should send it back for review.
+ */
+export async function markSystemCannotDetermineInTx(
+  tx: Executor,
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  trade: TradeRow,
+  clock: Clock,
+  emitAudit: boolean,
+): Promise<MarkSystemCannotDetermineResult> {
+  if (trade.systemStatus === 'cannot_determine') return { ok: true };
+  if (trade.systemStatus !== 'pending') {
+    return { ok: false, code: 'invalid_system_status_transition' };
+  }
+
+  await tx
+    .update(trades)
+    .set({
+      systemStatus: 'cannot_determine',
+      systemResolutionKind: null,
+      systemExitPrice: null,
+      systemGrossRInput: null,
+      systemExitedAt: null,
+      systemExitReason: null,
+      systemCostR: null,
+      systemResolvedAt: clock.now(),
+      systemGrossR: null,
+      systemR: null,
+      systemOutcome: null,
+      systemDependencySnapshot: buildSystemDependencySnapshot({
+        systemResolutionKind: null,
+        systemExitReason: null,
+        strategyVersionId: trade.strategyVersionId,
+        setupVersionId: trade.setupVersionId,
+        plannedRiskMinor: trade.plannedRiskMinor,
+        plannedRewardMinor: trade.plannedRewardMinor,
+        plannedEntry: trade.plannedEntry,
+        plannedStop: trade.plannedStop,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(trades.id, tradeId));
+
+  if (emitAudit) {
+    await insertAuditLog(tx, {
+      action: 'trade.system_cannot_determine',
+      workspaceId,
+      actorUserId: userId,
+      entityType: 'trade',
+      entityId: tradeId,
+      metadata: { tradeId, previousStatus: 'pending', newStatus: 'cannot_determine' },
+    });
+  }
+
+  return { ok: true };
+}
+
 export async function markSystemNoTradeInTx(
   tx: Executor,
   workspaceId: string,
@@ -2301,10 +2486,31 @@ export async function markSystemNoTradeInTx(
       systemGrossRInput: null,
       systemExitedAt: null,
       systemExitReason: 'setup_invalidated',
-      systemCostR: '0',
+      // NULL, not '0'. There is no counterfactual execution to attribute a cost
+      // to, and a zero here would read as a costed result of nothing.
+      systemCostR: null,
       systemResolvedAt: clock.now(),
+      systemGrossR: null,
       systemR: null,
       systemOutcome: null,
+      /*
+        A FINDING IS A COMPLETED ASSESSMENT, so it records what it rested on.
+
+        `no_trade` says the pinned Strategy and Setup would not have permitted
+        the trade — that conclusion is only as current as those versions, so
+        re-classifying the Trade must flag it for review rather than leave a
+        stale verdict looking settled.
+      */
+      systemDependencySnapshot: buildSystemDependencySnapshot({
+        systemResolutionKind: null,
+        systemExitReason: 'setup_invalidated',
+        strategyVersionId: trade.strategyVersionId,
+        setupVersionId: trade.setupVersionId,
+        plannedRiskMinor: trade.plannedRiskMinor,
+        plannedRewardMinor: trade.plannedRewardMinor,
+        plannedEntry: trade.plannedEntry,
+        plannedStop: trade.plannedStop,
+      }),
       updatedAt: new Date(),
     })
     .where(eq(trades.id, tradeId));
@@ -2321,6 +2527,19 @@ export async function markSystemNoTradeInTx(
   }
 
   return { ok: true };
+}
+
+export async function markSystemCannotDetermine(
+  workspaceId: string,
+  userId: string,
+  tradeId: string,
+  clock: Clock = systemClock,
+): Promise<MarkSystemCannotDetermineResult> {
+  return getDb().transaction(async (tx) => {
+    const ctx = await acquireTradeWriteContext(tx, { workspaceId, userId, tradeId, clock });
+    if (!ctx.ok) return ctx;
+    return markSystemCannotDetermineInTx(tx, workspaceId, userId, tradeId, ctx.trade, clock, true);
+  });
 }
 
 export async function markSystemNoTrade(
@@ -2396,10 +2615,26 @@ export async function correctSystemResolution(
           systemGrossRInput: null,
           systemExitedAt: null,
           systemExitReason: 'setup_invalidated',
-          systemCostR: '0',
+          /*
+            NOT `'0'`. A no_trade finding has no cost because it has no trade,
+            and the old zero here was schema-mandated filler from when the
+            column could not be NULL — the shape migration 0017 removed.
+          */
+          systemCostR: null,
           systemResolvedAt: clock.now(),
+          systemGrossR: null,
           systemR: null,
           systemOutcome: null,
+          systemDependencySnapshot: buildSystemDependencySnapshot({
+            systemResolutionKind: null,
+            systemExitReason: 'setup_invalidated',
+            strategyVersionId: trade.strategyVersionId,
+            setupVersionId: trade.setupVersionId,
+            plannedRiskMinor: trade.plannedRiskMinor,
+            plannedRewardMinor: trade.plannedRewardMinor,
+            plannedEntry: trade.plannedEntry,
+            plannedStop: trade.plannedStop,
+          }),
           updatedAt: new Date(),
         })
         .where(eq(trades.id, tradeId));
@@ -2420,8 +2655,10 @@ export async function correctSystemResolution(
             'systemExitPrice',
             'systemGrossRInput',
             'systemExitReason',
+            'systemGrossR',
             'systemR',
             'systemOutcome',
+            'systemDependencySnapshot',
           ],
         },
       });
@@ -2440,10 +2677,31 @@ export async function correctSystemResolution(
         systemGrossRInput: prepared.value.systemGrossRInput,
         systemExitedAt: prepared.value.systemExitedAt,
         systemExitReason: prepared.value.systemExitReason,
+        systemGrossR: prepared.value.systemGrossR,
         systemCostR: prepared.value.systemCostR,
         systemResolvedAt: clock.now(),
         systemR: prepared.value.systemR,
         systemOutcome: prepared.value.systemOutcome,
+        /*
+          A CORRECTION IS A RE-CONFIRMATION, so it promotes a FRESH snapshot.
+
+          This is the one path by which a Trade flagged `needs_review` returns
+          to trusted comparison: a human has looked at the moved dependency and
+          said what the System result is against it. Carrying the old snapshot
+          forward would leave the Trade flagged forever; omitting the snapshot
+          entirely — as this path did before — leaves a resolved row that
+          analytics cannot trust at all.
+        */
+        systemDependencySnapshot: buildSystemDependencySnapshot({
+          systemResolutionKind: prepared.value.systemResolutionKind,
+          systemExitReason: prepared.value.systemExitReason,
+          strategyVersionId: trade.strategyVersionId,
+          setupVersionId: trade.setupVersionId,
+          plannedRiskMinor: trade.plannedRiskMinor,
+          plannedRewardMinor: trade.plannedRewardMinor,
+          plannedEntry: trade.plannedEntry,
+          plannedStop: trade.plannedStop,
+        }),
         calcVersion: prepared.value.calcVersion,
         updatedAt: new Date(),
       })
@@ -2466,9 +2724,11 @@ export async function correctSystemResolution(
           'systemGrossRInput',
           'systemExitedAt',
           'systemExitReason',
+          'systemGrossR',
           'systemCostR',
           'systemR',
           'systemOutcome',
+          'systemDependencySnapshot',
         ],
         resolutionKind: prepared.value.systemResolutionKind,
       },

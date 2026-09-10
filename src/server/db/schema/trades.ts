@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -261,7 +262,44 @@ export const trades = pgTable(
      * the System result; pinned to exactly `0` while `pending` or
      * `no_trade` (see `trades_system_status_consistency_check`).
      */
-    systemCostR: numeric('system_cost_r', { precision: 12, scale: 4 }).notNull().default('0'),
+    /**
+     * NULLABLE SINCE MIGRATION 0017, AND THE NULL IS THE POINT.
+     *
+     * It was `NOT NULL DEFAULT 0`, so a resolution nobody costed recorded a cost
+     * of nothing — and the resolve dialog pre-filled `0`, which means a stored
+     * zero could equally be a considered estimate or an untouched default. A
+     * zero-cost counterfactual compared against a net Actual R overstates the
+     * Execution Gap by roughly the cost of trading, invisibly and always in the
+     * trader's disfavour.
+     *
+     * NULL now means UNKNOWN: `system_gross_r` holds the real gross figure,
+     * `system_r` and `system_outcome` stay NULL, and the pair is reported as
+     * gross-only rather than compared. A stored `0` written from here on is a
+     * genuine "I know it cost nothing".
+     */
+    systemCostR: numeric('system_cost_r', { precision: 12, scale: 4 }),
+    /**
+     * The FROZEN confirmed gross result, before cost.
+     *
+     * Persisted rather than recomputed because it is the half of the
+     * counterfactual that survives an unknown cost — and because a later engine
+     * fix must not silently rewrite a figure a trader confirmed, the same reason
+     * `system_r` and `actual_r` are persisted snapshots.
+     */
+    systemGrossR: numeric('system_gross_r', { precision: 12, scale: 4 }),
+    /**
+     * The basis-scoped facts the confirmed assessment rested on — see
+     * `src/lib/calc/system-assessment.ts`. Structured rather than hashed so a
+     * divergence can name the field that moved.
+     */
+    systemDependencySnapshot: jsonb('system_dependency_snapshot'),
+    /**
+     * Whether the rules used as evidence were the rules IN FORCE at entry.
+     * Never inferred from when the record was typed, and never inferred from a
+     * version timestamp alone — explicit applicability is required before
+     * claiming `at_entry`. NULL and `unknown` are both honest.
+     */
+    systemPlanProvenance: text('system_plan_provenance'),
     systemResolvedAt: timestamp('system_resolved_at', { withTimezone: true }),
 
     // -------------------------------------------------------------------
@@ -281,7 +319,22 @@ export const trades = pgTable(
     // Lifecycle
     // -------------------------------------------------------------------
     status: text('status').notNull().default('planned'),
+    /**
+     * LEGACY, KEPT FOR EXPORT COMPATIBILITY. Superseded by `plan_adherence`,
+     * which can express `partly`; a boolean cannot, and `partly` is the honest
+     * answer for most real trades. No production path writes this column. It is
+     * dropped in a later cleanup migration, never here.
+     */
     followedPlan: boolean('followed_plan'),
+    /**
+     * DID THE TRADER FOLLOW THEIR PLAN — a SEPARATE AXIS from the System result.
+     *
+     * NULL means not answered. Never inferred from the actual result, the System
+     * result, a win/loss, or `no_trade`: a system loss faithfully followed and a
+     * system win ignored are both ordinary records, and neither is derivable
+     * from the other.
+     */
+    planAdherence: text('plan_adherence'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -387,7 +440,7 @@ export const trades = pgTable(
     check('trades_status_check', sql`${table.status} IN ('planned', 'open', 'closed', 'canceled')`),
     check(
       'trades_system_status_check',
-      sql`${table.systemStatus} IN ('pending', 'resolved', 'no_trade')`,
+      sql`${table.systemStatus} IN ('pending', 'resolved', 'no_trade', 'cannot_determine')`,
     ),
     check(
       'trades_system_resolution_kind_check',
@@ -415,7 +468,26 @@ export const trades = pgTable(
       sql`${table.confidence} IS NULL OR ${table.confidence} IN (0, 25, 50, 75, 100)`,
     ),
     check('trades_calc_version_check', sql`${table.calcVersion} > 0`),
-    check('trades_system_cost_r_check', sql`${table.systemCostR} >= 0`),
+    // NULL is UNKNOWN and always permitted; a supplied cost is still never
+    // negative. Migration 0017 relaxed the NOT NULL, not this bound.
+    check(
+      'trades_system_cost_r_check',
+      sql`${table.systemCostR} IS NULL OR ${table.systemCostR} >= 0`,
+    ),
+    check(
+      'trades_system_plan_provenance_check',
+      sql`${table.systemPlanProvenance} IS NULL OR ${table.systemPlanProvenance} IN (
+        'at_entry', 'reconstructed_later', 'unknown'
+      )`,
+    ),
+    // A separate axis from the System result, and from `followed_plan`, which
+    // cannot express `partly`. NULL means not answered.
+    check(
+      'trades_plan_adherence_check',
+      sql`${table.planAdherence} IS NULL OR ${table.planAdherence} IN (
+        'followed', 'partly', 'not_followed'
+      )`,
+    ),
     check(
       'trades_actual_initial_risk_minor_check',
       sql`${table.actualInitialRiskMinor} IS NULL OR ${table.actualInitialRiskMinor} > 0`,
@@ -511,43 +583,90 @@ export const trades = pgTable(
       )`,
     ),
 
-    // System-status consistency — the three states are mutually exclusive
-    // and each requires/forbids an exact set of terminal fields, including
-    // `system_cost_r` itself. `systemR = systemGrossR - systemCostR` is a
-    // locked formula (Phase 07B correction): `system_cost_r` is a
-    // user-supplied cost estimate attributable to the counterfactual System
-    // execution, expressed directly in R, supplied only when RESOLVING the
-    // System result — it is meaningless while `pending` (nothing has been
-    // resolved yet) or under `no_trade` (there is no counterfactual
-    // execution to attribute a cost to), so both of those states pin it to
-    // exactly zero rather than merely allowing it. `resolved` additionally
-    // requires `system_r`/`system_outcome` to be present — unlike an
-    // earlier draft of this constraint, resolving the System result and
-    // computing its R/outcome are not allowed to be two separable steps;
-    // the column-level `trades_system_cost_r_check` (`>= 0`, unconditional)
-    // still applies to every row regardless of status.
+    /*
+      SYSTEM-STATUS CONSISTENCY — organized by SEMANTIC GROUP, not by "every
+      System column must be NULL".
+
+      Two groups, and conflating them was the flaw in the previous version:
+
+        RESULT PAYLOAD      resolution kind, exit price, gross R input, exit
+                            reason, gross R, cost R, net R, outcome. Only a
+                            `resolved` row has one.
+        ASSESSMENT METADATA confirmation timestamp, dependency snapshot,
+                            provenance, adherence. A COMPLETED assessment has
+                            these whatever its conclusion — including `no_trade`
+                            and `cannot_determine`, which are findings rather
+                            than absences and must be able to record what they
+                            rested on and when they were confirmed.
+
+      Requiring every System column to be NULL outside `resolved` would erase
+      that metadata and make a considered "the rules would not have taken this"
+      indistinguishable from a trade nobody has looked at.
+
+      COST IS NULLABLE AND NULL MEANS UNKNOWN (migration 0017). A resolved row is
+      therefore in exactly one of two shapes: NET (cost known, so `system_r` and
+      `system_outcome` exist) or GROSS-ONLY (cost unknown, so both are NULL and
+      `system_gross_r` carries the figure). `systemR = systemGrossR - systemCostR`
+      remains the locked formula; what changed is that its right-hand side may be
+      unknown instead of silently zero.
+
+      `system_exited_at` IS NO LONGER REQUIRED TO RESOLVE. A counterfactual does
+      not need a fabricated closing instant to have a magnitude. It is still
+      required where the resolution's own meaning depends on a time — a
+      `time_exit` without one describes nothing.
+
+      `plan_adherence` and `system_plan_provenance` are deliberately NOT
+      constrained by `system_status`: adherence is an independent axis about the
+      trader, and both carry their own value CHECKs above.
+    */
     check(
       'trades_system_status_consistency_check',
       sql`(
         ${table.systemStatus} = 'pending'
-        AND ${table.systemCostR} = 0
+        AND ${table.systemCostR} IS NULL
         AND ${table.systemResolutionKind} IS NULL
         AND ${table.systemExitPrice} IS NULL
         AND ${table.systemGrossRInput} IS NULL
         AND ${table.systemExitedAt} IS NULL
         AND ${table.systemExitReason} IS NULL
         AND ${table.systemResolvedAt} IS NULL
+        AND ${table.systemGrossR} IS NULL
+        AND ${table.systemR} IS NULL
+        AND ${table.systemOutcome} IS NULL
+        AND ${table.systemDependencySnapshot} IS NULL
+      ) OR (
+        ${table.systemStatus} = 'cannot_determine'
+        AND ${table.systemCostR} IS NULL
+        AND ${table.systemResolutionKind} IS NULL
+        AND ${table.systemExitPrice} IS NULL
+        AND ${table.systemGrossRInput} IS NULL
+        AND ${table.systemExitedAt} IS NULL
+        AND ${table.systemExitReason} IS NULL
+        AND ${table.systemResolvedAt} IS NOT NULL
+        AND ${table.systemGrossR} IS NULL
         AND ${table.systemR} IS NULL
         AND ${table.systemOutcome} IS NULL
       ) OR (
         ${table.systemStatus} = 'resolved'
-        AND ${table.systemCostR} >= 0
-        AND ${table.systemExitedAt} IS NOT NULL
         AND ${table.systemExitReason} IS NOT NULL
         AND ${table.systemExitReason} <> 'setup_invalidated'
         AND ${table.systemResolvedAt} IS NOT NULL
-        AND ${table.systemR} IS NOT NULL
-        AND ${table.systemOutcome} IS NOT NULL
+        AND ${table.systemGrossR} IS NOT NULL
+        AND (
+          ${table.systemExitReason} <> 'time_exit'
+          OR ${table.systemExitedAt} IS NOT NULL
+        )
+        AND (
+          (
+            ${table.systemCostR} IS NOT NULL
+            AND ${table.systemR} IS NOT NULL
+            AND ${table.systemOutcome} IS NOT NULL
+          ) OR (
+            ${table.systemCostR} IS NULL
+            AND ${table.systemR} IS NULL
+            AND ${table.systemOutcome} IS NULL
+          )
+        )
         AND (
           (
             ${table.systemResolutionKind} = 'price_exit'
@@ -593,13 +712,14 @@ export const trades = pgTable(
         )
       ) OR (
         ${table.systemStatus} = 'no_trade'
-        AND ${table.systemCostR} = 0
+        AND ${table.systemCostR} IS NULL
         AND ${table.systemResolutionKind} IS NULL
         AND ${table.systemExitPrice} IS NULL
         AND ${table.systemGrossRInput} IS NULL
         AND ${table.systemExitedAt} IS NULL
         AND ${table.systemExitReason} = 'setup_invalidated'
         AND ${table.systemResolvedAt} IS NOT NULL
+        AND ${table.systemGrossR} IS NULL
         AND ${table.systemR} IS NULL
         AND ${table.systemOutcome} IS NULL
       )`,

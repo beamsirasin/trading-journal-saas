@@ -10,6 +10,7 @@ import {
   composePlannedR,
   composeRealizedActual,
   composeSystemResolve,
+  composeSystemResolveGrossOnly,
   composeSystemResolveV2,
   composeTraderClose,
   composeTraderCloseV2,
@@ -936,6 +937,7 @@ describe('no monetary price-derived P&L (regression protection)', () => {
         'composePlanned',
         'composePlannedR',
         'composeRealizedActual',
+        'composeSystemResolveGrossOnly',
         'composeSystemResolve',
         'composeSystemResolveV2',
         'composeTraderClose',
@@ -956,5 +958,57 @@ describe('no monetary price-derived P&L (regression protection)', () => {
 
   it('actualR takes only two bigint account-currency inputs — no price, quantity, or multiplier parameter', () => {
     expect(actualR.length).toBe(2);
+  });
+});
+
+describe('composeSystemResolveGrossOnly — an unknown cost stays unknown', () => {
+  const moneyPlan = {
+    resolutionKind: 'money_target' as const,
+    direction: 'long',
+    plannedEntry: null,
+    plannedStop: null,
+    plannedRiskMinor: 10000n,
+    plannedRewardMinor: 50000n,
+    systemExitPrice: null,
+    systemGrossRInput: null,
+  };
+
+  it('produces the gross figure and refuses to invent the rest', () => {
+    const result = composeSystemResolveGrossOnly(moneyPlan);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.grossSystemR).toBe('5.0000');
+    // Never a zero cost, never a net figure derived from one.
+    expect(result.value.systemCostR).toBeNull();
+    expect(result.value.systemR).toBeNull();
+    // And no outcome verdict: whether +0.04R gross is a win or a break-even
+    // depends entirely on the cost nobody estimated.
+    expect(result.value.systemOutcome).toBeNull();
+  });
+
+  it('agrees with the costed path on the gross half', () => {
+    const gross = composeSystemResolveGrossOnly(moneyPlan);
+    const costed = composeSystemResolveV2({ ...moneyPlan, systemCostR: '0.2000' });
+    expect(gross.ok && costed.ok).toBe(true);
+    if (!gross.ok || !costed.ok) return;
+    // One engine: the gross arithmetic is shared, not reimplemented.
+    expect(gross.value.grossSystemR).toBe(costed.value.grossSystemR);
+    expect(costed.value.systemR).toBe('4.8000');
+  });
+
+  it('resolves an INITIAL stop to exactly -1R', () => {
+    const stop = composeSystemResolveGrossOnly({
+      ...moneyPlan,
+      resolutionKind: 'money_stop',
+      plannedRewardMinor: null,
+    });
+    expect(stop.ok).toBe(true);
+    if (!stop.ok) return;
+    expect(stop.value.grossSystemR).toBe('-1.0000');
+  });
+
+  it('still refuses a plan it cannot compute a gross figure from', () => {
+    const noPlan = composeSystemResolveGrossOnly({ ...moneyPlan, plannedRiskMinor: null });
+    expect(noPlan.ok).toBe(false);
   });
 });

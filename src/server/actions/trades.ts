@@ -640,8 +640,13 @@ export async function correctTradeExecutionAction(
 export interface ResolveSystemTradeData {
   readonly tradeId: string;
   readonly systemStatus: Extract<SystemStatus, 'resolved'>;
-  readonly systemR: string;
-  readonly systemOutcome: OutcomeValue;
+  /**
+   * NULL when the System cost was left unknown — the resolution is gross-only.
+   * The gross figure is persisted on the Trade; a net R and an outcome verdict
+   * do not exist until somebody estimates the cost.
+   */
+  readonly systemR: string | null;
+  readonly systemOutcome: OutcomeValue | null;
 }
 
 export type ResolveSystemTradeActionResult = TradeActionResult<ResolveSystemTradeData>;

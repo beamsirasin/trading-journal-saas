@@ -659,7 +659,8 @@ export interface TradeDetail {
   readonly systemGrossRInput: string | null;
   readonly systemExitedAt: string | null;
   readonly systemExitReason: SystemExitReason | null;
-  readonly systemCostR: string;
+  /** NULL means the cost was never estimated — see `trades.system_cost_r`. */
+  readonly systemCostR: string | null;
   readonly systemR: string | null;
   readonly systemOutcome: OutcomeValue | null;
   readonly systemResolvedAt: string | null;
