@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,7 @@ export function ExitsEditor({
   history = 'unknown',
   onHistoryChange,
   initialActiveId = null,
+  onEditingChange,
   /** Present when these legs support an authoritative total rather than being it. */
   supporting,
 }: {
@@ -121,10 +122,16 @@ export function ExitsEditor({
   history?: ExitHistory;
   onHistoryChange?: (history: ExitHistory) => void;
   initialActiveId?: string | null;
+  /** Lets a parent yield its mobile-global action to this local editor. */
+  onEditingChange?: (editing: boolean) => void;
   supporting?: SupportingRole;
 }) {
   const [activeId, setActiveId] = useState<string | null>(initialActiveId);
   const [draftIds, setDraftIds] = useState<readonly string[]>([]);
+
+  useEffect(() => {
+    onEditingChange?.(activeId !== null);
+  }, [activeId, onEditingChange]);
 
   const realized = cumulativeRealized(rows);
   const alloc = allocation(rows);

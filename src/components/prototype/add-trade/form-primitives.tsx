@@ -536,7 +536,7 @@ export function OutcomeChoice({
               <label
                 htmlFor={id}
                 className={cn(
-                  'flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 text-sm font-medium',
+                  'flex h-full min-h-12 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1 py-1 text-center text-sm leading-tight font-medium sm:min-h-11 sm:gap-1.5 sm:px-2',
                   'peer-focus-visible:ring-ring transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
                   checked
                     ? 'border-primary bg-primary/10 text-foreground'
@@ -546,7 +546,7 @@ export function OutcomeChoice({
                 {checked ? (
                   <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
                 ) : null}
-                <span className="min-w-0 truncate">{option.label}</span>
+                <span className="min-w-0 whitespace-normal">{option.label}</span>
               </label>
             </div>
           );
@@ -869,6 +869,7 @@ export function FormFooter({
   helper,
   secondary,
   sticky = false,
+  suppressWhileMobileSubtaskActive = false,
   /**
    * THE SAVE IS ALWAYS PRESSABLE, AND THAT IS THE POINT.
    *
@@ -897,6 +898,7 @@ export function FormFooter({
   helper: string;
   secondary?: string;
   sticky?: boolean;
+  suppressWhileMobileSubtaskActive?: boolean;
   onAction?: () => void;
   blockedBy?: readonly string[];
 }) {
@@ -925,8 +927,10 @@ export function FormFooter({
   return (
     <div
       data-form-footer={docked ? 'docked' : 'inline'}
+      data-mobile-suppressed={suppressWhileMobileSubtaskActive ? 'true' : 'false'}
       className={cn(
         'mt-2 flex min-w-0 flex-col gap-2',
+        suppressWhileMobileSubtaskActive && 'max-lg:hidden',
         docked &&
           'bg-background/95 border-border sticky bottom-0 -mx-4 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none',
       )}

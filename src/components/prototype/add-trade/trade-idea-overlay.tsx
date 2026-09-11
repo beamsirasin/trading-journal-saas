@@ -36,6 +36,7 @@ export function TradeIdeaOverlay({
   onChange,
   onDone,
   onCancel,
+  reasonPrompt = 'Why are you taking this trade?',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -43,6 +44,8 @@ export function TradeIdeaOverlay({
   onChange: (draft: PlanDraft) => void;
   onDone: () => void;
   onCancel: () => void;
+  /** Keeps the shared editor truthful in both live and retrospective flows. */
+  reasonPrompt?: string;
 }) {
   const isDesktop = useIsDesktopViewport();
   const [view, setView] = useState<View>('idea');
@@ -259,6 +262,7 @@ export function TradeIdeaOverlay({
         <TradeIdeaView
           draft={draft}
           onChange={onChange}
+          reasonPrompt={reasonPrompt}
           onOpenStrategy={openStrategyPicker}
           onOpenChart={openChartAttachment}
           strategyLauncherRef={strategyLauncherRef}
@@ -305,6 +309,7 @@ export function TradeIdeaOverlay({
 function TradeIdeaView({
   draft,
   onChange,
+  reasonPrompt,
   onOpenStrategy,
   onOpenChart,
   strategyLauncherRef,
@@ -312,6 +317,7 @@ function TradeIdeaView({
 }: {
   draft: PlanDraft;
   onChange: (draft: PlanDraft) => void;
+  reasonPrompt: string;
   onOpenStrategy: () => void;
   onOpenChart: () => void;
   strategyLauncherRef: React.RefObject<HTMLButtonElement | null>;
@@ -319,7 +325,7 @@ function TradeIdeaView({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <Field label="Why are you taking this trade?">
+      <Field label={reasonPrompt}>
         {(id) => (
           <textarea
             id={id}

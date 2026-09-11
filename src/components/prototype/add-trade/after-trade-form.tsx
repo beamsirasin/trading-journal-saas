@@ -166,6 +166,7 @@ export function AfterTradeForm({
   const [attempted, setAttempted] = useState(false);
 
   const [exitsOpen, setExitsOpen] = useState(exits || reconstruct);
+  const [exitEditorActive, setExitEditorActive] = useState(activeExit !== null);
   const [exitPlan, setExitPlan] = useState<ExitPlanDraft>(EMPTY_EXIT_PLAN);
 
   const [plan, setPlan] = useState<PlanDraft>(
@@ -307,6 +308,7 @@ export function AfterTradeForm({
             action="Save closed trade"
             helper="Save what you remember. Anything left blank stays blank — you can fill it in later."
             sticky
+            suppressWhileMobileSubtaskActive={exitEditorActive}
             onAction={() => {
               setAttempted(true);
               if (!canSave(trade)) return;
@@ -638,7 +640,13 @@ export function AfterTradeForm({
               up to, and no empty leg stands open until they ask for one.
             */}
             <div className="flex min-w-0 flex-col gap-1">
-              <QuietAction expanded={exitsOpen} onClick={() => setExitsOpen((open) => !open)}>
+              <QuietAction
+                expanded={exitsOpen}
+                onClick={() => {
+                  setExitsOpen((open) => !open);
+                  if (exitsOpen) setExitEditorActive(false);
+                }}
+              >
                 {exitsOpen ? 'Hide exit details' : 'Add exit details'}
               </QuietAction>
               {exitsOpen ? null : <InlineNote>If you closed in parts.</InlineNote>}
@@ -682,6 +690,7 @@ export function AfterTradeForm({
                     input?.focus();
                   },
                 }}
+                onEditingChange={setExitEditorActive}
                 {...(activeExit === null ? {} : { initialActiveId: activeExit })}
               />
             ) : null}
@@ -715,6 +724,7 @@ export function AfterTradeForm({
                   onChange={idea.setDraft}
                   onDone={idea.done}
                   onCancel={idea.cancel}
+                  reasonPrompt="Why did you take this trade?"
                 />
               ),
             },
