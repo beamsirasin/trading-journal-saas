@@ -1221,7 +1221,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Exit Price').fill('120');
     await expect(page.getByText('+2.00R')).toBeVisible();
     await expect(page.getByText('Win', { exact: true })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'System Outcome' })).toHaveValue('pending');
+    await expect(page.getByRole('combobox', { name: 'System Outcome' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Save Completed Trade' }).click();
 
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
@@ -1238,6 +1238,8 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('+3.00R')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'System Outcome' })).toBeVisible();
     await expect(page.getByText("The System result hasn't been recorded yet.")).toBeVisible();
+    await openTradeSection(page, 'review');
+    await expect(page.getByRole('button', { name: /System assessment/ })).toBeVisible();
     await openTradeSection(page, 'entry');
     await expect(page.getByText('Recorded retrospectively', { exact: true })).toBeVisible();
 

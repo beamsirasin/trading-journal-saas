@@ -351,79 +351,16 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     );
   });
 
-  it('preselects the System outcome the exit already settled, and yields it the moment the trader chooses', () => {
+  it('does not expose the legacy create-time System Outcome control in either mode', () => {
+    const { unmount } = renderForm();
+    expect(screen.queryByRole('combobox', { name: 'System Outcome' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'System Outcome' })).not.toBeInTheDocument();
+    unmount();
+
     renderAfterTrade();
-    chooseAfterTradeWithTarget();
-    chooseBasis('Actual result by', 'Price');
-    fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
-    fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
-
-    const systemOutcome = screen.getByRole('combobox', { name: 'System Outcome' });
-    // Plan target 130. An exit at 135 is past it, so the System reached its
-    // target — read off the exit, not guessed.
-    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '135' } });
-    expect(systemOutcome).toHaveValue('target');
-    expect(document.querySelector('[data-system-preselected]')).not.toBeNull();
-
-    // Past the stop instead.
-    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '85' } });
-    expect(systemOutcome).toHaveValue('stop');
-
-    // The trader disagrees. From here the field is theirs, and a later
-    // keystroke in the exit must not take it back.
-    fireEvent.change(systemOutcome, { target: { value: 'break_even' } });
-    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '135' } });
-    expect(systemOutcome).toHaveValue('break_even');
-    expect(document.querySelector('[data-system-preselected]')).toBeNull();
-  });
-
-  it('leaves an exit between the stop and the target for review, and says why', () => {
-    renderAfterTrade();
-    chooseAfterTradeWithTarget();
-    chooseBasis('Actual result by', 'Price');
-    fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '100' } });
-    fireEvent.change(screen.getByLabelText('Actual Initial Stop'), { target: { value: '90' } });
-    // Between the stop (90) and the target (130): the exit cannot say what
-    // the System would have done, and the form must not invent it —
-    // CLAUDE.md §1 keeps system outcome independent of actual profit.
-    fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '120' } });
-
-    expect(screen.getByRole('combobox', { name: 'System Outcome' })).toHaveValue('pending');
-    expect(document.querySelector('[data-system-not-inferable]')).not.toBeNull();
-  });
-
-  it('does not explain a reading it never attempted', () => {
-    // A Money result has no stop and no target to read an exit against, so
-    // 'your exit landed between the stop and the target' would be describing
-    // an attempt nobody made. A reason must match the attempt.
-    renderAfterTrade();
-    chooseAfterTradeWithTarget();
-    chooseBasis('Actual result by', 'Money');
-    fireEvent.change(screen.getByLabelText('Initial Risk'), { target: { value: '100' } });
-    fireEvent.change(screen.getByLabelText('Realized P&L'), { target: { value: '150' } });
-
-    expect(screen.getByRole('combobox', { name: 'System Outcome' })).toHaveValue('pending');
-    expect(document.querySelector('[data-system-not-inferable]')).toBeNull();
-  });
-
-  it('offers the way back when there is no target to read the outcome against', () => {
-    renderAfterTrade();
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Long' }));
-    chooseBasis('Plan by', 'Price');
-    fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
-    fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
-    fireEvent.change(screen.getByLabelText('Exited At'), { target: { value: '2026-08-23T12:00' } });
-    fireEvent.change(screen.getByLabelText('Entered At'), {
-      target: { value: '2026-08-23T10:00' },
-    });
     fireEvent.click(screen.getByRole('button', { name: 'Result' }));
-
-    // No target: the sentence explains the gap AND carries the way to close
-    // it, rather than leaving the reader to find the panel themselves.
-    expect(document.querySelector('[data-system-no-target]')).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Add a target' }));
-    expect(screen.getByLabelText(/^Take Profit/)).toBeVisible();
+    expect(screen.queryByRole('combobox', { name: 'System Outcome' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'System Outcome' })).not.toBeInTheDocument();
   });
 
   it('keeps System Plan and Actual Result basis independent in After Trade', () => {
@@ -467,11 +404,13 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     });
     expect(payload).not.toHaveProperty('actualResultMode');
     expect(payload).not.toHaveProperty('actualEntry');
+    expect(payload).not.toHaveProperty('systemResult');
+    expect(payload).not.toHaveProperty('systemCostR');
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=018f0000-0000-7000-8000-000000000099');
   });
 
-  it('saves a simple Price Actual as one 100% exit with Pending System outcome', async () => {
+  it('saves a Price Actual without creating any System result or implicit cost', async () => {
     createCompletedTradeActionMock.mockResolvedValue({
       ok: true,
       data: {
@@ -507,7 +446,11 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
       actualInitialStop: '90',
       exits: [{ closedBps: 10_000, exitPrice: '120' }],
     });
-    expect(createCompletedTradeActionMock.mock.calls[0]![0]).not.toHaveProperty('systemResult');
+    const payload = createCompletedTradeActionMock.mock.calls[0]![0];
+    expect(payload).not.toHaveProperty('systemResult');
+    expect(payload).not.toHaveProperty('systemCostR');
+    expect(payload).not.toHaveProperty('systemR');
+    expect(payload).not.toHaveProperty('systemOutcome');
   });
 
   it('supports a Price Plan with Money Actual without double weighting P&L', async () => {
@@ -614,20 +557,6 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     });
   });
 
-  it('disables the Target preset until the selected System Plan has a target', () => {
-    renderAfterTrade();
-    chooseAfterTrade();
-
-    const systemOutcome = screen.getByRole('combobox', { name: 'System Outcome' });
-    expect(systemOutcome).toHaveValue('pending');
-    expect(screen.getByRole('option', { name: 'Target reached' })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'The trade' }));
-    fireEvent.change(screen.getByLabelText(/^Take Profit/), { target: { value: '130' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Result' }));
-    expect(screen.getByRole('option', { name: 'Target reached' })).toBeEnabled();
-  });
-
   it('starts pristine in each mode, which is what the old in-form reset guaranteed', () => {
     /*
       The form used to clear every timing-specific field when the toggle
@@ -640,9 +569,6 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
     chooseBasis('Actual result by', 'Price');
     fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '101' } });
     fireEvent.change(screen.getByLabelText('Exit Price'), { target: { value: '111' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'System Outcome' }), {
-      target: { value: 'custom' },
-    });
     unmount();
 
     renderForm();

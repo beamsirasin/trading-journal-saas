@@ -334,6 +334,19 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       expect(revalidatePath).not.toHaveBeenCalledWith(expect.stringContaining('/trades/new'));
       assertJsonSerializable(result);
 
+      const createdTrade = await db.query.trades.findFirst({
+        where: eq(trades.id, result.data.tradeId),
+      });
+      expect(createdTrade).toMatchObject({
+        systemStatus: 'pending',
+        systemCostR: null,
+        systemResolutionKind: null,
+        systemGrossR: null,
+        systemR: null,
+        systemOutcome: null,
+        systemDependencySnapshot: null,
+      });
+
       const events = await db
         .select()
         .from(auditLogs)
@@ -1016,6 +1029,23 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         },
       });
       assertJsonSerializable(first);
+      if (!first.ok) return;
+
+      const createdTrade = await db.query.trades.findFirst({
+        where: eq(trades.id, first.data.tradeId),
+      });
+      expect(createdTrade).toMatchObject({
+        status: 'closed',
+        actualR: '2.0000',
+        traderOutcome: 'win',
+        systemStatus: 'pending',
+        systemCostR: null,
+        systemResolutionKind: null,
+        systemGrossR: null,
+        systemR: null,
+        systemOutcome: null,
+        systemDependencySnapshot: null,
+      });
 
       const replay = await createCompletedTradeAction(input);
       expect(replay).toEqual({

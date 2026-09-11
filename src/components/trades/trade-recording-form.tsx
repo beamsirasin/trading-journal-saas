@@ -50,7 +50,6 @@ import { TradePlanVsActual, type PlanVsActualRow } from './trade-plan-vs-actual'
 type Basis = 'price' | 'money';
 type Panel = 'trade' | 'result' | 'setup' | 'context';
 type Direction = '' | 'long' | 'short';
-type SystemChoice = 'pending' | 'target' | 'stop' | 'break_even' | 'custom' | 'no_trade';
 type ErrorMap = Record<string, string>;
 
 interface Values {
@@ -78,8 +77,6 @@ interface Values {
   confirmationNotes: string;
   tradingviewUrl: string;
   notes: string;
-  customSystemExit: string;
-  customSystemR: string;
 }
 
 interface ExitDraft {
@@ -275,8 +272,6 @@ function emptyValues(tradingAccountId: string): Values {
     confirmationNotes: '',
     tradingviewUrl: '',
     notes: '',
-    customSystemExit: '',
-    customSystemR: '',
   };
 }
 
@@ -409,9 +404,6 @@ export function TradeRecordingForm({
   const [advancedOpening, setAdvancedOpening] = useState(false);
   const [openingBasis, setOpeningBasis] = useState<Basis>('money');
   const [partialExits, setPartialExits] = useState(false);
-  const [systemChoice, setSystemChoice] = useState<SystemChoice>('pending');
-  /** Set the first time the trader uses the System Outcome select themselves. */
-  const [systemChoiceTouched, setSystemChoiceTouched] = useState(false);
   const [errors, setErrors] = useState<ErrorMap>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -489,17 +481,15 @@ export function TradeRecordingForm({
     THE SAFE-RESET THAT USED TO LIVE HERE IS NOW STRUCTURAL.
 
     `changeTiming` cleared every field that stops meaning anything when the
-    recording situation changes — the exit, the actual opening, the System
-    choice, the exit legs. It existed because the toggle could flip a live
-    form. It cannot any more: changing the mode leaves this route for the
-    choice step, so the form unmounts and the next one mounts pristine. The
-    guarantee is the same and there is no longer a partial-reset path to keep
-    correct alongside it.
+    recording situation changes — the exit, the actual opening, the exit legs.
+    It existed because the toggle could flip a live form. It cannot any more:
+    changing the mode leaves this route for the choice step, so the form
+    unmounts and the next one mounts pristine. The guarantee is the same and
+    there is no longer a partial-reset path to keep correct alongside it.
   */
 
   function changePlanBasis(next: Basis) {
     setPlanBasis(next);
-    setSystemChoice('pending');
     setValues((current) => ({
       ...current,
       plannedEntry: '',
@@ -508,8 +498,6 @@ export function TradeRecordingForm({
       plannedPositionSize: '',
       plannedRisk: '',
       plannedReward: '',
-      customSystemExit: '',
-      customSystemR: '',
     }));
   }
 
@@ -617,9 +605,6 @@ export function TradeRecordingForm({
     values.simpleExit,
   ]);
 
-  const targetAvailable =
-    planBasis === 'price' ? values.plannedTarget.trim() !== '' : values.plannedReward.trim() !== '';
-
   /*
     THE PLAN AND THE RESULT DO NOT HAVE TO BE RECORDED THE SAME WAY.
 
@@ -685,75 +670,6 @@ export function TradeRecordingForm({
   /** Exit legs the trader has actually filled in — an empty row is not one. */
   const recordedExitCount = exits.filter((leg) => leg.value.trim() !== '').length;
 
-  /*
-    WHAT THE SYSTEM WOULD HAVE DONE, WHERE THE EXIT ALREADY SAYS IT.
-
-    A long that exited at or beyond its planned target reached the target; one
-    that exited at or beyond its planned stop was stopped out. Anything
-    between the two is genuinely unknowable from the exit alone, and a form
-    that guesses there would be putting words in the trader's mouth about the
-    one field this product exists to keep independent (CLAUDE.md §1: system
-    outcome is never derived from actual profit).
-
-    THIS IS A FORM DEFAULT AND NOTHING MORE. It seeds the select; the trader
-    can change it; `submit()` sends `systemChoice` exactly as it always did.
-  */
-  const systemInference = useMemo<{
-    readonly applicable: boolean;
-    readonly choice: SystemChoice | null;
-  }>(() => {
-    const no = { applicable: false, choice: null } as const;
-    if (timing !== 'after_trade') return no;
-    // Reading an exit against a stop and a target is a PRICE comparison. A
-    // Money plan states neither, so there is nothing to read and no reason to
-    // explain — a "your exit landed between the stop and the target" sentence
-    // on a form with no stop and no target describes an attempt nobody made.
-    if (planBasis !== 'price' || actualBasis !== 'price') return no;
-    if (values.direction === '') return no;
-    // Several legs at several prices are several answers; the single-exit
-    // case is the only one where one price settles it.
-    if (partialExits) return no;
-    const exit = Number(values.simpleExit.trim());
-    const stop = Number(values.plannedStop.trim());
-    const target = Number(values.plannedTarget.trim());
-    if (values.simpleExit.trim() === '' || !Number.isFinite(exit)) return no;
-    if (values.plannedStop.trim() === '' || !Number.isFinite(stop)) return no;
-    const long = values.direction === 'long';
-    if (values.plannedTarget.trim() !== '' && Number.isFinite(target)) {
-      if (long ? exit >= target : exit <= target) return { applicable: true, choice: 'target' };
-    }
-    if (long ? exit <= stop : exit >= stop) return { applicable: true, choice: 'stop' };
-    // Between the two: genuinely unknowable from the exit, and saying so is
-    // the honest answer.
-    return { applicable: true, choice: null };
-  }, [
-    actualBasis,
-    partialExits,
-    planBasis,
-    timing,
-    values.direction,
-    values.plannedStop,
-    values.plannedTarget,
-    values.simpleExit,
-  ]);
-  const inferredSystemChoice = systemInference.choice;
-
-  /*
-    THE ONE VALUE THIS FIELD HAS, derived rather than pushed into state.
-
-    An effect that wrote the inference into `systemChoice` would leave a
-    render in which the select shows one thing and `submit()` would send
-    another, and it would fight the trader's own edit on the next keystroke in
-    the exit field. Deriving it means there is exactly one answer at any
-    instant, and `systemChoiceTouched` — latched the moment the trader uses
-    the select — hands ownership over permanently.
-
-    Every read below goes through this, INCLUDING `submit()`: the trader who
-    accepts the preselection by not touching it sends the preselected value,
-    which is the whole point of preselecting.
-  */
-  const effectiveSystemChoice: SystemChoice =
-    systemChoiceTouched || inferredSystemChoice === null ? systemChoice : inferredSystemChoice;
   const panels: Panel[] =
     timing === 'at_entry' ? ['trade', 'setup', 'context'] : ['trade', 'result', 'setup', 'context'];
 
@@ -840,13 +756,6 @@ export function TradeRecordingForm({
       }
       if (actualPreview === null || !actualPreview.ok)
         next.actualResult = r('validation.actualResult');
-      if (effectiveSystemChoice === 'target' && !targetAvailable)
-        next.systemChoice = r('validation.targetUnavailable');
-      if (
-        effectiveSystemChoice === 'custom' &&
-        (planBasis === 'price' ? values.customSystemExit : values.customSystemR).trim() === ''
-      )
-        next.systemChoice = r('validation.customSystem');
     } else if (advancedOpening) {
       if (openingBasis === 'price') {
         if (values.actualEntry.trim() === '') next.actualEntry = r('validation.actualEntry');
@@ -874,7 +783,6 @@ export function TradeRecordingForm({
             'simpleExit',
             'exits',
             'actualResult',
-            'systemChoice',
             'exitedAt',
           ].includes(key),
         )
@@ -1004,51 +912,6 @@ export function TradeRecordingForm({
         exitedAt: legTime.ok ? legTime.value : undefined,
       };
     });
-    const systemResult = (() => {
-      if (effectiveSystemChoice === 'pending') return undefined;
-      if (effectiveSystemChoice === 'no_trade') return { status: 'no_trade' as const };
-      if (planBasis === 'price') {
-        const price =
-          effectiveSystemChoice === 'target'
-            ? values.plannedTarget
-            : effectiveSystemChoice === 'stop'
-              ? values.plannedStop
-              : effectiveSystemChoice === 'break_even'
-                ? values.plannedEntry
-                : values.customSystemExit;
-        const reason =
-          effectiveSystemChoice === 'target'
-            ? 'target_hit'
-            : effectiveSystemChoice === 'stop'
-              ? 'stop_hit'
-              : effectiveSystemChoice === 'break_even'
-                ? 'break_even_rule'
-                : 'manual_system_valid_exit';
-        return {
-          status: 'resolved' as const,
-          resolutionKind: 'price_exit' as const,
-          systemExitPrice: price,
-          systemExitedAt: exited.ok ? exited.value : '',
-          systemExitReason: reason,
-          systemCostR: '0',
-        };
-      }
-      const resolutionKind =
-        effectiveSystemChoice === 'target'
-          ? 'money_target'
-          : effectiveSystemChoice === 'stop'
-            ? 'money_stop'
-            : effectiveSystemChoice === 'break_even'
-              ? 'money_break_even'
-              : 'money_custom';
-      return {
-        status: 'resolved' as const,
-        resolutionKind,
-        ...(resolutionKind === 'money_custom' ? { systemGrossRInput: values.customSystemR } : {}),
-        systemExitedAt: exited.ok ? exited.value : '',
-        systemCostR: '0',
-      };
-    })();
     const result = await createCompletedTradeAction({
       ...common,
       recordingTiming: 'after_trade',
@@ -1063,7 +926,6 @@ export function TradeRecordingForm({
       enteredAt: entered.ok ? entered.value : '',
       exitedAt: exited.ok ? exited.value : '',
       exits: completedExits,
-      ...(systemResult === undefined ? {} : { systemResult }),
     });
     setPending(false);
     if (!result.ok) return mapServerErrors(result);
@@ -1100,7 +962,6 @@ export function TradeRecordingForm({
     simpleExit: actualBasis === 'price' ? r('exitPrice') : r('realizedPnl'),
     exits: r('partialExits'),
     actualResult: r('actualResult'),
-    systemChoice: r('systemOutcome'),
   };
   const outstanding = Object.keys(collectErrors())
     .map((key) => outstandingFieldLabels[key])
@@ -1821,91 +1682,6 @@ export function TradeRecordingForm({
                   <div className="text-muted-foreground text-xs uppercase">{r('result')}</div>
                   <strong>{r(`outcome.${outcomeKey(actualPreview.value.traderOutcome)}`)}</strong>
                 </div>
-              ) : null}
-            </section>
-
-            <section
-              className="border-border grid gap-5 border-t pt-8"
-              aria-labelledby="system-outcome-title"
-            >
-              <div>
-                <h2 id="system-outcome-title" className="text-base font-semibold">
-                  {r('systemOutcome')}
-                </h2>
-                <p className="text-muted-foreground mt-1 text-sm">{r('systemOutcomeHelp')}</p>
-              </div>
-              <PlanField id="system-choice" label={r('systemOutcome')} error={errors.systemChoice}>
-                <NativeSelect
-                  id="system-choice"
-                  value={effectiveSystemChoice}
-                  onChange={(event) => {
-                    // From here on the trader owns this field: no later
-                    // inference may overwrite what they chose.
-                    setSystemChoiceTouched(true);
-                    setSystemChoice(event.target.value as SystemChoice);
-                  }}
-                >
-                  <option value="pending">{r('system.pending')}</option>
-                  <option value="target" disabled={!targetAvailable}>
-                    {r('system.target')}
-                  </option>
-                  <option value="stop">{r('system.stop')}</option>
-                  <option value="break_even">{r('system.breakEven')}</option>
-                  <option value="custom">{r('system.custom')}</option>
-                  <option value="no_trade">{r('system.noTrade')}</option>
-                </NativeSelect>
-              </PlanField>
-              {/*
-                WHY THE FIELD READS THE WAY IT DOES — three different answers,
-                never collapsed into one. Either the exit already settled it,
-                or it could not, and the reason it could not is the actionable
-                part: no target on the plan is a thing the trader can go and
-                fix, so that sentence carries the way back to fix it.
-              */}
-              {inferredSystemChoice !== null && !systemChoiceTouched ? (
-                <p data-system-preselected="" className="text-muted-foreground text-xs">
-                  {r('systemPreselected')}
-                </p>
-              ) : !targetAvailable ? (
-                <p data-system-no-target="" className="text-muted-foreground text-xs">
-                  {r('targetUnavailable')}{' '}
-                  {timing === 'after_trade' ? r('systemNoTargetToInfer') : null}{' '}
-                  <button
-                    type="button"
-                    className="text-foreground underline underline-offset-2"
-                    onClick={() => openPanel('trade')}
-                  >
-                    {r('addTargetLink')}
-                  </button>
-                </p>
-              ) : systemInference.applicable && effectiveSystemChoice === 'pending' ? (
-                <p data-system-not-inferable="" className="text-muted-foreground text-xs">
-                  {r('systemNotInferable')}
-                </p>
-              ) : null}
-              {effectiveSystemChoice === 'custom' ? (
-                <details open className="border-border rounded-lg border p-4">
-                  <summary className="cursor-pointer text-sm font-semibold">
-                    {r('customSystem')}
-                  </summary>
-                  <div className="mt-4">
-                    {planBasis === 'price' ? (
-                      <TextField
-                        id="custom-system-exit"
-                        label={r('systemExitPrice')}
-                        value={values.customSystemExit}
-                        onChange={(value) => setField('customSystemExit', value)}
-                      />
-                    ) : (
-                      <TextField
-                        id="custom-system-r"
-                        label={r('systemGrossR')}
-                        value={values.customSystemR}
-                        onChange={(value) => setField('customSystemR', value)}
-                      />
-                    )}
-                  </div>
-                </details>
               ) : null}
             </section>
           </div>
