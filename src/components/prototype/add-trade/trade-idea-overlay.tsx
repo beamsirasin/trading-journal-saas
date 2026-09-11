@@ -36,7 +36,8 @@ export function TradeIdeaOverlay({
   onChange,
   onDone,
   onCancel,
-  reasonPrompt = 'Why are you taking this trade?',
+  reasonPrompt,
+  ideaDescription,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,7 +46,9 @@ export function TradeIdeaOverlay({
   onDone: () => void;
   onCancel: () => void;
   /** Keeps the shared editor truthful in both live and retrospective flows. */
-  reasonPrompt?: string;
+  reasonPrompt: string;
+  /** The same lifecycle-aware tense for the editor's introductory sentence. */
+  ideaDescription: string;
 }) {
   const isDesktop = useIsDesktopViewport();
   const [view, setView] = useState<View>('idea');
@@ -179,7 +182,7 @@ export function TradeIdeaOverlay({
 
   const description =
     view === 'idea'
-      ? 'Why you took this trade, and anything you want to remember about it.'
+      ? ideaDescription
       : view === 'chart'
         ? 'Paste a chart link or upload an image from this device.'
         : isDesktop

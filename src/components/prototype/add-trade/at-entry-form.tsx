@@ -15,6 +15,7 @@ import {
   FieldPair,
   FormFooter,
   FormShell,
+  InlineNote,
   PrimaryAmountField,
   QuietAction,
   ResultLine,
@@ -38,6 +39,18 @@ const RECENT_SYMBOLS = ['XAUUSD', 'NAS100', 'EURUSD'];
 
 /** The prototype's fixed "now", captured once so a screenshot is reproducible. */
 const CAPTURED_NOW = { date: '2026-09-07', time: '14:32' } as const;
+
+export interface AtEntryDraft {
+  readonly symbol: string;
+  readonly direction: 'long' | 'short' | null;
+  readonly riskAtEntry: string;
+  readonly enteredAt: Timestamp | null;
+  readonly targetProfit: string;
+  readonly noFixedTarget: boolean;
+  readonly exitPlan: ExitPlanDraft;
+  readonly tradeIdea: PlanDraft;
+  readonly feelings: FeelingsDraft;
+}
 
 /**
  * STILL OPEN — the whole position, or part of it, is still running.
@@ -79,12 +92,16 @@ export function AtEntryForm({
   seedTarget,
   /** Opens on the explicit No fixed target state, so it can be reviewed directly. */
   seedNoTarget = false,
+  /** Prototype seam: production persistence remains outside this presentation surface. */
+  onSave = () => {},
 }: {
   filled?: boolean;
   seedRisk?: string;
   seedTarget?: string;
   seedNoTarget?: boolean;
+  onSave?: (draft: AtEntryDraft) => void;
 }) {
+  const [attempted, setAttempted] = useState(false);
   const [symbol, setSymbol] = useState(filled ? 'XAUUSD' : '');
   const [direction, setDirection] = useState<'long' | 'short' | null>(filled ? 'long' : null);
   const [risk, setRisk] = useState(seedRisk ?? (filled ? '200.00' : ''));
@@ -143,6 +160,34 @@ export function AtEntryForm({
   const reward = noFixedTarget ? null : money(target);
   const targetRValue = reward === null ? null : targetR(reward, riskNumber);
 
+  /*
+    THE SHORT PATH'S THREE ANSWERS, ON THE SAME CLOCK AS FULLY CLOSED.
+
+    Missing values are not errors until Save says the trader is finished. A
+    value that has been supplied but cannot be true speaks immediately, as it
+    does on Fully closed. Deriving these messages from the current values means
+    correcting one field clears only that field without another submit attempt.
+  */
+  const symbolIssue = symbol.trim() === '' ? 'Enter the symbol you are trading.' : null;
+  const directionIssue = direction === null ? 'Choose Long or Short.' : null;
+  const riskIssue =
+    risk.trim() === ''
+      ? 'Enter your risk at entry.'
+      : money(risk) === null || Number(risk) <= 0
+        ? 'Risk at entry must be above zero.'
+        : null;
+  const targetIssue =
+    !noFixedTarget && target.trim() !== '' && (money(target) === null || Number(target) <= 0)
+      ? 'Target profit must be above zero, or leave it blank.'
+      : null;
+  const blocking = [symbolIssue, directionIssue, riskIssue, targetIssue].filter(
+    (issue): issue is string => issue !== null,
+  );
+
+  const symbolError = attempted ? symbolIssue : null;
+  const directionError = attempted ? directionIssue : null;
+  const riskError = risk.trim() === '' && !attempted ? null : riskIssue;
+
   return (
     <PrototypeShell active="trades" chrome="desktop-only">
       <FormShell
@@ -155,6 +200,22 @@ export function AtEntryForm({
             action="Save open trade"
             helper="You can add exits and review later."
             sticky
+            onAction={() => {
+              setAttempted(true);
+              if (blocking.length > 0) return;
+              onSave({
+                symbol,
+                direction,
+                riskAtEntry: risk,
+                enteredAt,
+                targetProfit: target,
+                noFixedTarget,
+                exitPlan,
+                tradeIdea: plan,
+                feelings,
+              });
+            }}
+            blockedBy={attempted ? blocking : []}
           />
         }
       >
@@ -172,6 +233,7 @@ export function AtEntryForm({
                   onChange={setSymbol}
                   placeholder="e.g. XAUUSD"
                 />
+                {symbolError === null ? null : <InlineNote tone="error">{symbolError}</InlineNote>}
                 {/* Recent symbols as one-tap chips. On a phone this is the
                     difference between typing six characters and pressing once. */}
                 <div className="flex min-w-0 flex-wrap gap-1.5">
@@ -188,19 +250,24 @@ export function AtEntryForm({
                 </div>
               </div>
 
-              <Field label="Direction">
-                {() => (
-                  <ChoiceGroup
-                    legend="Direction"
-                    value={direction}
-                    onChange={setDirection}
-                    options={[
-                      { value: 'long', label: 'Long' },
-                      { value: 'short', label: 'Short' },
-                    ]}
-                  />
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Field label="Direction">
+                  {() => (
+                    <ChoiceGroup
+                      legend="Direction"
+                      value={direction}
+                      onChange={setDirection}
+                      options={[
+                        { value: 'long', label: 'Long' },
+                        { value: 'short', label: 'Short' },
+                      ]}
+                    />
+                  )}
+                </Field>
+                {directionError === null ? null : (
+                  <InlineNote tone="error">{directionError}</InlineNote>
                 )}
-              </Field>
+              </div>
             </FieldPair>
 
             {/*
@@ -282,6 +349,9 @@ export function AtEntryForm({
                 value={risk}
                 onChange={setRisk}
                 hint="What the whole position stood to lose if your protective exit was hit."
+                {...(riskError === null
+                  ? {}
+                  : { footer: <InlineNote tone="error">{riskError}</InlineNote> })}
               />
               {/*
                 THE FACT IS STATED ONCE, IN ONE CONTROL.
@@ -302,6 +372,9 @@ export function AtEntryForm({
                 currency="USD"
                 value={target}
                 onChange={setTarget}
+                {...(targetIssue === null
+                  ? {}
+                  : { footer: <InlineNote tone="error">{targetIssue}</InlineNote> })}
                 {...(noFixedTarget
                   ? {
                       readOut: 'No fixed target',
@@ -378,9 +451,10 @@ export function AtEntryForm({
               id: 'idea',
               label: 'Trade idea',
               Icon: Lightbulb,
-              invitation: 'Why did you take this trade?',
+              invitation: 'Why are you taking this trade?',
               title: 'Trade idea',
-              description: 'Why you took this trade, and anything you want to remember about it.',
+              description:
+                'Why you are taking this trade, and anything you want to remember about it.',
               preview: tradeIdeaSummary(plan),
               onDone: idea.done,
               onCancel: idea.cancel,
@@ -393,6 +467,8 @@ export function AtEntryForm({
                   onChange={idea.setDraft}
                   onDone={idea.done}
                   onCancel={idea.cancel}
+                  reasonPrompt="Why are you taking this trade?"
+                  ideaDescription="Why you are taking this trade, and anything you want to remember about it."
                 />
               ),
             },

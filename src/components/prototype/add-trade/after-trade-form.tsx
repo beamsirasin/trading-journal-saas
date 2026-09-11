@@ -725,6 +725,7 @@ export function AfterTradeForm({
                   onDone={idea.done}
                   onCancel={idea.cancel}
                   reasonPrompt="Why did you take this trade?"
+                  ideaDescription="Why you took this trade, and anything you want to remember about it."
                 />
               ),
             },
