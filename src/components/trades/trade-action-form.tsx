@@ -23,9 +23,13 @@ export function TradeField({
     <div className="grid gap-2">
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
+      {hint ? (
+        <p id={`${id}-hint`} className="text-muted-foreground text-xs">
+          {hint}
+        </p>
+      ) : null}
       {error ? (
-        <p className="text-destructive text-sm" role="alert">
+        <p id={`${id}-error`} className="text-destructive text-sm" role="alert">
           {error}
         </p>
       ) : null}
@@ -51,15 +55,18 @@ export function NativeSelect(props: React.ComponentProps<'select'>) {
 }
 
 export function ActionFeedback({
+  id,
   message,
   success,
 }: {
+  id?: string;
   message: string | null;
   success?: boolean;
 }) {
   if (message === null) return null;
   return (
     <p
+      id={id}
       role={success ? 'status' : 'alert'}
       className={success ? 'text-success text-sm' : 'text-destructive text-sm'}
     >

@@ -2,7 +2,7 @@
 
 import { ChevronRight, Plus, Scale } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 
 import { currentSystemGrossRPreview } from '@/lib/calc/system-assessment';
 import {
@@ -40,6 +40,7 @@ import { useRouter } from '@/i18n/navigation';
 
 type Answer = '' | 'yes' | 'no_trade' | 'cannot_determine';
 type CloseChoice = '' | SystemExitReason | 'custom_r';
+type FeedbackTarget = 'answer' | 'resolution' | 'action';
 
 const PRICE_REASONS: readonly SystemExitReason[] = [
   'target_hit',
@@ -85,41 +86,56 @@ function currentConfirmedPreview(trade: TradeDetail): string | null {
 }
 
 function ChoiceGroup<T extends string>({
+  name,
   legend,
   value,
   options,
   onChange,
+  describedBy,
+  invalid = false,
 }: {
+  name: string;
   legend: string;
-  value: T | '';
+  value: T;
   options: readonly { value: T; label: string; disabled?: boolean }[];
   onChange: (value: T) => void;
+  describedBy?: string | undefined;
+  invalid?: boolean;
 }) {
   return (
-    <fieldset className="grid min-w-0 gap-2">
+    <fieldset
+      className="grid min-w-0 gap-2"
+      aria-describedby={describedBy}
+      aria-invalid={invalid || undefined}
+    >
       <legend className="mb-1 text-sm font-medium">{legend}</legend>
       <div className="grid min-w-0 gap-2 sm:grid-cols-2">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={cn(
-              'border-input bg-background flex min-h-12 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm',
-              'has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-2',
-              value === option.value && 'border-primary bg-primary/5',
-              option.disabled && 'cursor-not-allowed opacity-50',
-            )}
-          >
-            <input
-              type="radio"
-              className="size-4 shrink-0"
-              checked={value === option.value}
-              disabled={option.disabled}
-              readOnly
-              onClick={() => onChange(option.value)}
-            />
-            <span className="min-w-0 leading-snug">{option.label}</span>
-          </label>
-        ))}
+        {options.map((option) => {
+          const id = `${name}-${option.value || 'unanswered'}`;
+          return (
+            <label
+              key={option.value || 'unanswered'}
+              htmlFor={id}
+              className={cn(
+                'border-input bg-background flex min-h-12 min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm',
+                'has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-2',
+                value === option.value && 'border-primary bg-primary/5',
+                option.disabled && 'cursor-not-allowed opacity-50',
+              )}
+            >
+              <input
+                id={id}
+                name={name}
+                type="radio"
+                className="size-4 shrink-0"
+                checked={value === option.value}
+                disabled={option.disabled}
+                onChange={() => onChange(option.value)}
+              />
+              <span className="min-w-0 leading-snug">{option.label}</span>
+            </label>
+          );
+        })}
       </div>
     </fieldset>
   );
@@ -183,9 +199,11 @@ export function SystemAssessmentLauncher({
   const t = useTranslations('trades.lifecycle.system.assessment');
   const tErrors = useTranslations('trades');
   const router = useRouter();
+  const launcherRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedbackTarget, setFeedbackTarget] = useState<FeedbackTarget | null>(null);
   const [answer, setAnswer] = useState<Answer>(() => initialAnswer(trade));
   const [choice, setChoice] = useState<CloseChoice>(() => initialCloseChoice(trade));
   const [exitPrice, setExitPrice] = useState(trade.systemExitPrice ?? '');
@@ -227,6 +245,7 @@ export function SystemAssessmentLauncher({
     setProvenance(trade.systemPlanProvenance ?? 'unknown');
     setAdherence(trade.planAdherence ?? '');
     setFeedback(null);
+    setFeedbackTarget(null);
     setOpen(true);
   }
 
@@ -246,10 +265,21 @@ export function SystemAssessmentLauncher({
     if (!pending) setOpen(false);
   }
 
+  function clearFeedback() {
+    if (feedback === null) return;
+    setFeedback(null);
+    setFeedbackTarget(null);
+  }
+
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
-    if (answer === '') return setFeedback(t('chooseAnswer'));
+    setFeedbackTarget(null);
+    if (answer === '') {
+      setFeedback(t('chooseAnswer'));
+      setFeedbackTarget('answer');
+      return;
+    }
 
     const metadata = {
       systemPlanProvenance: provenance,
@@ -279,7 +309,11 @@ export function SystemAssessmentLauncher({
     startTransition(async () => {
       const result = await action;
       const code = actionErrorCode(result);
-      if (code !== null) return setFeedback(tErrors(`errors.${code}`));
+      if (code !== null) {
+        setFeedback(tErrors(`errors.${code}`));
+        setFeedbackTarget('action');
+        return;
+      }
       setOpen(false);
       router.refresh();
     });
@@ -292,6 +326,7 @@ export function SystemAssessmentLauncher({
   ): Promise<unknown> | null {
     if (choice === '' || calculationInput === null || !preview?.ok) {
       setFeedback(t('completeResolution'));
+      setFeedbackTarget('resolution');
       return null;
     }
     const data = new FormData(form);
@@ -300,6 +335,7 @@ export function SystemAssessmentLauncher({
       const time = datetimeLocalToIso(String(data.get('systemExitedAt') ?? ''), timezone);
       if (!time.ok) {
         setFeedback(tErrors('lifecycle.validation.time'));
+        setFeedbackTarget('resolution');
         return null;
       }
       systemExitedAt = time.value;
@@ -341,12 +377,17 @@ export function SystemAssessmentLauncher({
     choice !== 'target_hit' &&
     choice !== 'stop_hit' &&
     choice !== 'break_even_rule';
+  const resolutionDescription =
+    feedbackTarget === 'resolution' ? 'system-assessment-feedback' : undefined;
 
   return (
     <>
       <button
+        ref={launcherRef}
         type="button"
         data-system-assessment-launcher
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={openEditor}
         className="border-border bg-muted/20 hover:bg-accent/40 focus-visible:ring-ring flex min-h-16 w-full min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left outline-none focus-visible:ring-2"
       >
@@ -356,7 +397,7 @@ export function SystemAssessmentLauncher({
             launcherLines.length ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
           )}
         >
-          <Scale className="size-4" />
+          <Scale className="size-4" aria-hidden="true" />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">{t('title')}</span>
@@ -371,16 +412,17 @@ export function SystemAssessmentLauncher({
           )}
         </span>
         {launcherLines.length ? (
-          <ChevronRight className="size-4 shrink-0" />
+          <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
         ) : (
-          <Plus className="size-4 shrink-0" />
+          <Plus className="size-4 shrink-0" aria-hidden="true" />
         )}
       </button>
 
       <TradeAdaptiveOverlay
         open={open}
         onOpenChange={(next) => (next ? openEditor() : closeOverlay())}
-        returnFocusTo="[data-system-assessment-launcher]"
+        returnFocusRef={launcherRef}
+        closeLabel={t('close')}
         title={t('title')}
         description={t('description')}
         footer={
@@ -424,10 +466,14 @@ export function SystemAssessmentLauncher({
             </div>
           ) : null}
 
-          <ChoiceGroup<Exclude<Answer, ''>>
+          <ChoiceGroup<Answer>
+            name="system-assessment-taken"
             legend={t('takenQuestion')}
             value={answer}
+            describedBy={feedbackTarget === 'answer' ? 'system-assessment-feedback' : undefined}
+            invalid={feedbackTarget === 'answer'}
             onChange={(next) => {
+              clearFeedback();
               setAnswer(next);
               if (next !== 'yes') setChoice('');
             }}
@@ -441,17 +487,28 @@ export function SystemAssessmentLauncher({
           {answer === 'yes' ? (
             <>
               <ChoiceGroup<CloseChoice>
+                name="system-assessment-close"
                 legend={t('closedQuestion')}
                 value={choice}
-                onChange={setChoice}
+                onChange={(next) => {
+                  clearFeedback();
+                  setChoice(next);
+                }}
+                describedBy={resolutionDescription}
+                invalid={feedbackTarget === 'resolution'}
                 options={closeOptions}
               />
               {needsExitPrice ? (
                 <TradeField id="system-assessment-exit" label={t('exitPrice')}>
                   <FormInput
                     id="system-assessment-exit"
+                    aria-describedby={resolutionDescription}
+                    aria-invalid={feedbackTarget === 'resolution' || undefined}
                     value={exitPrice}
-                    onChange={(event) => setExitPrice(event.target.value)}
+                    onChange={(event) => {
+                      clearFeedback();
+                      setExitPrice(event.target.value);
+                    }}
                     inputMode="decimal"
                     required
                   />
@@ -465,8 +522,17 @@ export function SystemAssessmentLauncher({
                 >
                   <FormInput
                     id="system-assessment-gross"
+                    aria-describedby={
+                      resolutionDescription === undefined
+                        ? 'system-assessment-gross-hint'
+                        : `system-assessment-gross-hint ${resolutionDescription}`
+                    }
+                    aria-invalid={feedbackTarget === 'resolution' || undefined}
                     value={grossR}
-                    onChange={(event) => setGrossR(event.target.value)}
+                    onChange={(event) => {
+                      clearFeedback();
+                      setGrossR(event.target.value);
+                    }}
                     inputMode="decimal"
                     required
                   />
@@ -480,14 +546,24 @@ export function SystemAssessmentLauncher({
                     timezone={timezone}
                     instant={trade.systemExitedAt}
                     required
+                    describedBy={resolutionDescription}
+                    onValueChange={clearFeedback}
                   />
                 </TradeField>
               ) : null}
               <TradeField id="system-assessment-cost" label={t('cost')} hint={t('costHint')}>
                 <FormInput
                   id="system-assessment-cost"
+                  aria-describedby={
+                    resolutionDescription === undefined
+                      ? 'system-assessment-cost-hint'
+                      : `system-assessment-cost-hint ${resolutionDescription}`
+                  }
                   value={costR}
-                  onChange={(event) => setCostR(event.target.value)}
+                  onChange={(event) => {
+                    clearFeedback();
+                    setCostR(event.target.value);
+                  }}
                   inputMode="decimal"
                   placeholder={t('notRecorded')}
                 />
@@ -495,12 +571,13 @@ export function SystemAssessmentLauncher({
               {preview?.ok ? (
                 <div
                   className="bg-muted/40 grid min-w-0 gap-1 rounded-lg border p-3 text-sm"
-                  aria-live="polite"
                   data-system-assessment-preview
                 >
                   <div className="flex min-w-0 justify-between gap-3">
                     <span className="text-muted-foreground">{t('gross')}</span>
-                    <span className="numeric shrink-0">{formatR(preview.value.grossSystemR)}</span>
+                    <span className="numeric min-w-0 text-right break-all">
+                      {formatR(preview.value.grossSystemR)}
+                    </span>
                   </div>
                   {preview.value.systemCostR === null ? (
                     <p className="text-muted-foreground text-xs">{t('grossOnlyHint')}</p>
@@ -508,47 +585,62 @@ export function SystemAssessmentLauncher({
                     <>
                       <div className="flex min-w-0 justify-between gap-3">
                         <span className="text-muted-foreground">{t('cost')}</span>
-                        <span className="numeric shrink-0">
+                        <span className="numeric min-w-0 text-right break-all">
                           -{formatR(preview.value.systemCostR)?.replace('+', '')}
                         </span>
                       </div>
                       <div className="flex min-w-0 justify-between gap-3 font-semibold">
                         <span>{t('net')}</span>
-                        <span className="numeric shrink-0">{formatR(preview.value.systemR)}</span>
+                        <span className="numeric min-w-0 text-right break-all">
+                          {formatR(preview.value.systemR)}
+                        </span>
                       </div>
                     </>
                   )}
                 </div>
-              ) : choice === '' ? null : (
-                <p className="text-destructive text-sm">{t('completeResolution')}</p>
-              )}
+              ) : null}
             </>
           ) : null}
 
           <ChoiceGroup<SystemPlanProvenance>
+            name="system-assessment-provenance"
             legend={t('provenanceQuestion')}
             value={provenance}
-            onChange={setProvenance}
+            onChange={(next) => {
+              clearFeedback();
+              setProvenance(next);
+            }}
+            describedBy="system-assessment-provenance-hint"
             options={[
               { value: 'at_entry', label: t('provenance.at_entry') },
               { value: 'reconstructed_later', label: t('provenance.reconstructed_later') },
               { value: 'unknown', label: t('provenance.unknown') },
             ]}
           />
-          <p className="text-muted-foreground -mt-3 text-xs">{t('provenanceHint')}</p>
+          <p id="system-assessment-provenance-hint" className="text-muted-foreground -mt-3 text-xs">
+            {t('provenanceHint')}
+          </p>
 
-          <ChoiceGroup<PlanAdherence>
+          <ChoiceGroup<PlanAdherence | ''>
+            name="system-assessment-adherence"
             legend={t('adherenceQuestion')}
             value={adherence}
-            onChange={(next) => setAdherence(adherence === next ? '' : next)}
+            onChange={(next) => {
+              clearFeedback();
+              setAdherence(next);
+            }}
+            describedBy="system-assessment-adherence-hint"
             options={[
               { value: 'followed', label: t('adherence.followed') },
               { value: 'partly', label: t('adherence.partly') },
               { value: 'not_followed', label: t('adherence.not_followed') },
+              { value: '', label: t('adherence.unanswered') },
             ]}
           />
-          <p className="text-muted-foreground -mt-3 text-xs">{t('adherenceHint')}</p>
-          <ActionFeedback message={feedback} />
+          <p id="system-assessment-adherence-hint" className="text-muted-foreground -mt-3 text-xs">
+            {t('adherenceHint')}
+          </p>
+          <ActionFeedback id="system-assessment-feedback" message={feedback} />
         </form>
       </TradeAdaptiveOverlay>
     </>

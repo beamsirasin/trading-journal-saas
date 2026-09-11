@@ -11,6 +11,8 @@ export function TradeDateTimeInput({
   timezone,
   instant,
   required,
+  describedBy,
+  onValueChange,
 }: {
   id: string;
   name: string;
@@ -18,6 +20,8 @@ export function TradeDateTimeInput({
   /** A stored UTC instant, or null to populate the current instant after hydration. */
   instant: string | null;
   required?: boolean;
+  describedBy?: string | undefined;
+  onValueChange?: () => void;
 }) {
   const [value, setValue] = useState(() => instantToDatetimeLocal(instant, timezone));
 
@@ -35,8 +39,12 @@ export function TradeDateTimeInput({
       name={name}
       type="datetime-local"
       value={value}
-      onChange={(event) => setValue(event.target.value)}
+      onChange={(event) => {
+        setValue(event.target.value);
+        onValueChange?.();
+      }}
       required={required}
+      aria-describedby={describedBy}
     />
   );
 }

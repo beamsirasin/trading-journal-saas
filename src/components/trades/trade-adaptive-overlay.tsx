@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 
 import { cn } from '@/lib/utils';
 import {
@@ -40,7 +40,8 @@ export function TradeAdaptiveOverlay({
   description,
   footer,
   children,
-  returnFocusTo,
+  returnFocusRef,
+  closeLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,7 +49,8 @@ export function TradeAdaptiveOverlay({
   description: string;
   footer: ReactNode;
   children: ReactNode;
-  returnFocusTo?: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
+  closeLabel: string;
 }) {
   const desktop = useIsDesktopViewport();
   const keyboardOpen = useKeyboardObscuresViewport();
@@ -57,15 +59,15 @@ export function TradeAdaptiveOverlay({
   useEffect(() => {
     const closed = wasOpen.current && !open;
     wasOpen.current = open;
-    if (!closed || returnFocusTo === undefined) return;
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(returnFocusTo)?.focus());
-  }, [open, returnFocusTo]);
+    if (!closed) return;
+    requestAnimationFrame(() => returnFocusRef?.current?.focus());
+  }, [open, returnFocusRef]);
 
   if (desktop) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          closeLabel="Close"
+          closeLabel={closeLabel}
           className="flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-[38rem] flex-col gap-0 overflow-hidden p-0"
         >
           <DialogHeader className="shrink-0 px-6 pt-6 pr-14 pb-3 text-left">
@@ -83,7 +85,11 @@ export function TradeAdaptiveOverlay({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" closeLabel="Close" className="max-h-[92dvh] gap-0 rounded-t-2xl">
+      <SheetContent
+        side="bottom"
+        closeLabel={closeLabel}
+        className="max-h-[92dvh] gap-0 rounded-t-2xl"
+      >
         <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pr-14 pb-3">
           <SheetTitle>{title}</SheetTitle>
         </SheetHeader>

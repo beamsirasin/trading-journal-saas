@@ -1501,11 +1501,12 @@
             "unknown": "Can't confirm"
           },
           "adherenceQuestion": "Did you follow your plan?",
-          "adherenceHint": "Optional and independent of whether the trade won or lost. Select the same answer again to clear it.",
+          "adherenceHint": "Optional and independent of whether the trade won or lost.",
           "adherence": {
             "followed": "Followed",
             "partly": "Partly",
-            "not_followed": "Did not follow"
+            "not_followed": "Did not follow",
+            "unanswered": "Unanswered"
           },
           "needsReview": "Needs review",
           "previousR": "Previously confirmed: {r}",
@@ -1516,6 +1517,7 @@
           "stillApplies": "This still applies",
           "confirm": "Confirm assessment",
           "cancel": "Cancel",
+          "close": "Close",
           "saving": "Saving…",
           "assessed": "Assessed",
           "chooseAnswer": "Choose whether your rules would have taken this trade.",

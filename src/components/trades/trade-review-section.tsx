@@ -71,9 +71,6 @@ export function ReviewSection({
       </SubSection>
 
       <SubSection title={t('lifecycle.system.assessment.title')}>
-        <p className="text-muted-foreground text-sm">
-          {t('lifecycle.system.assessment.invitation')}
-        </p>
         <SystemAssessmentLauncher trade={trade} timezone={timezone} canWrite={canWrite} />
       </SubSection>
     </section>

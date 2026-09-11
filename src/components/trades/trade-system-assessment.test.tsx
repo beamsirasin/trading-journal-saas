@@ -232,6 +232,7 @@ describe('production System assessment', () => {
     ['Followed', 'followed'],
     ['Partly', 'partly'],
     ['Did not follow', 'not_followed'],
+    ['Unanswered', null],
   ] as const)('persists adherence %s', async (label, value) => {
     const dialog = await open();
     await userEvent.click(dialog.getByLabelText("No — the setup wasn't valid"));
@@ -296,11 +297,135 @@ describe('production System assessment', () => {
     expect(dialog.getByText('Previously confirmed: +5.00R')).toBeInTheDocument();
     expect(dialog.getByText('Current inputs would calculate +10.00R')).toBeInTheDocument();
     expect(correctSystemResolutionAction).not.toHaveBeenCalled();
-    await userEvent.click(dialog.getByRole('button', { name: 'This still applies' }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(correctSystemResolutionAction).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: /System assessment/ }));
+    const reopened = within(screen.getByRole('dialog'));
+    expect(reopened.getByText('Previously confirmed: +5.00R')).toBeInTheDocument();
+    expect(reopened.getByText('Current inputs would calculate +10.00R')).toBeInTheDocument();
+    await userEvent.click(reopened.getByRole('button', { name: 'This still applies' }));
     await waitFor(() =>
       expect(correctSystemResolutionAction).toHaveBeenCalledWith(
         expect.objectContaining({ target: 'resolved', resolutionKind: 'money_target' }),
       ),
     );
   });
+
+  it.each(['no_trade', 'cannot_determine'] as const)(
+    'reopens the confirmed %s finding without inventing a resolution',
+    async (systemStatus) => {
+      const label = systemStatus === 'no_trade' ? "No — the setup wasn't valid" : "Can't determine";
+      const dialog = await open(
+        trade({ systemStatus, systemResolvedAt: '2026-09-01T01:00:00.000Z' }),
+      );
+      expect(dialog.getByLabelText(label)).toBeChecked();
+      expect(dialog.queryByText('What would have closed the trade?')).not.toBeInTheDocument();
+    },
+  );
+
+  it('cancels untouched and stale drafts without writing, restores focus, and resets on reopen', async () => {
+    const value = trade();
+    show(value);
+    const launcher = screen.getByRole('button', { name: /System assessment/ });
+    await userEvent.click(launcher);
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(dialog.getByLabelText('Yes'));
+    await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(launcher).toHaveFocus());
+    expect(resolveSystemTradeAction).not.toHaveBeenCalled();
+
+    await userEvent.click(launcher);
+    const reopened = within(screen.getByRole('dialog'));
+    expect(reopened.getByLabelText('Yes')).not.toBeChecked();
+    expect(reopened.queryByText('What would have closed the trade?')).not.toBeInTheDocument();
+  });
+
+  it('keeps validation quiet until submit, associates it, and clears it after correction', async () => {
+    const dialog = await open();
+    await userEvent.click(dialog.getByLabelText('Yes'));
+    expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(dialog.getByRole('button', { name: 'Confirm assessment' }));
+    const error = dialog.getByRole('alert');
+    expect(error).toHaveTextContent('Complete the rule-based result before confirming.');
+    expect(
+      dialog.getByRole('group', { name: 'What would have closed the trade?' }),
+    ).toHaveAttribute('aria-describedby', error.id);
+    await userEvent.click(dialog.getByLabelText('Initial stop hit'));
+    expect(dialog.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('uses named native radio groups and associates visible helper text', async () => {
+    const dialog = await open();
+    const yes = dialog.getByLabelText('Yes');
+    expect(yes).toHaveAttribute('name', 'system-assessment-taken');
+    expect(yes.id).not.toBe('');
+    expect(yes.closest('label')).toHaveAttribute('for', yes.id);
+    expect(dialog.getByRole('group', { name: 'Did you follow your plan?' })).toHaveAttribute(
+      'aria-describedby',
+      'system-assessment-adherence-hint',
+    );
+    expect(
+      dialog.getByRole('group', { name: 'Were these rules in place before you entered?' }),
+    ).toHaveAttribute('aria-describedby', 'system-assessment-provenance-hint');
+
+    await userEvent.click(yes);
+    await userEvent.click(dialog.getByLabelText('Initial stop hit'));
+    expect(dialog.getByLabelText('Trading costs')).toHaveAttribute(
+      'aria-describedby',
+      'system-assessment-cost-hint',
+    );
+  });
+
+  it('moves between unknown and known cost without losing gross truth', async () => {
+    const dialog = await open();
+    await userEvent.click(dialog.getByLabelText('Yes'));
+    await userEvent.click(dialog.getByLabelText('Plan target'));
+    const cost = dialog.getByLabelText('Trading costs');
+    expect(dialog.getByText(/gross result only/i)).toBeInTheDocument();
+    await userEvent.type(cost, '0.25');
+    expect(dialog.getByText('+4.75R')).toBeInTheDocument();
+    await userEvent.clear(cost);
+    expect(dialog.getByText(/gross result only/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Partly', 'partly', 'unknown'],
+    ['Reconstructed later', 'followed', 'reconstructed_later'],
+  ] as const)(
+    'corrects assessment metadata through %s without changing the confirmed resolution',
+    async (label, expectedAdherence, expectedProvenance) => {
+      const dialog = await open(
+        trade({
+          systemStatus: 'resolved',
+          systemResolutionKind: 'price_exit',
+          systemExitPrice: '150',
+          systemExitReason: 'target_hit',
+          systemGrossR: '5.0000',
+          systemCostR: '0.0000',
+          systemR: '5.0000',
+          systemOutcome: 'win',
+          systemPlanProvenance: 'unknown',
+          planAdherence: 'followed',
+        }),
+      );
+      await userEvent.click(dialog.getByLabelText(label));
+      await userEvent.click(dialog.getByRole('button', { name: 'Confirm assessment' }));
+      await waitFor(() =>
+        expect(correctSystemResolutionAction).toHaveBeenCalledWith(
+          expect.objectContaining({
+            target: 'resolved',
+            resolutionKind: 'price_exit',
+            systemExitPrice: '150',
+            systemExitReason: 'target_hit',
+            planAdherence: expectedAdherence,
+            systemPlanProvenance: expectedProvenance,
+          }),
+        ),
+      );
+    },
+  );
 });
