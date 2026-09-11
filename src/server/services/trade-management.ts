@@ -1495,6 +1495,7 @@ export async function openTrade(
 
 export interface CloseTradeInput {
   readonly actualExit: string;
+  /** Authoritative final net P&L for the whole Trade, not only the remaining Exit leg. */
   readonly netPnlMinor: bigint;
   readonly exitedAt: Date;
   readonly grossPnlMinor?: bigint | null;
@@ -1577,9 +1578,22 @@ export async function closeTrade(
       .from(tradeExits)
       .where(eq(tradeExits.tradeId, tradeId))
       .orderBy(asc(tradeExits.sequence), asc(tradeExits.id));
-    const alreadyClosedBps = existingExits.reduce((sum, exit) => sum + exit.closedBps, 0);
-    const remainingBps = 10_000 - alreadyClosedBps;
+    const priorActual = composeRealizedActual({
+      actualResultMode: 'money',
+      direction: trade.direction,
+      actualEntry: trade.actualEntry,
+      actualInitialStop: trade.actualInitialStop,
+      actualInitialRiskMinor: trade.actualInitialRiskMinor,
+      exits: existingExits,
+    });
+    if (!priorActual.ok)
+      return { ok: false, code: 'invalid_status_transition', calcReason: priorActual.reason };
+    if (priorActual.value.realizedPnlMinor === null) {
+      return { ok: false, code: 'invalid_status_transition' };
+    }
+    const remainingBps = 10_000 - priorActual.value.closedBps;
     if (remainingBps <= 0) return { ok: false, code: 'invalid_status_transition' };
+    const remainingPnlMinor = input.netPnlMinor - priorActual.value.realizedPnlMinor;
     const [newExit] = await tx
       .insert(tradeExits)
       .values({
@@ -1588,7 +1602,7 @@ export async function closeTrade(
         sequence: existingExits.reduce((max, exit) => Math.max(max, exit.sequence), 0) + 1,
         closedBps: remainingBps,
         exitPrice: input.actualExit,
-        realizedPnlMinor: input.netPnlMinor,
+        realizedPnlMinor: remainingPnlMinor,
         exitedAt: input.exitedAt,
       })
       .returning();
@@ -1604,7 +1618,6 @@ export async function closeTrade(
     });
     if (!composed.ok)
       return { ok: false, code: 'invalid_status_transition', calcReason: composed.reason };
-    const netPnlMinor = allExits.reduce((sum, exit) => sum + (exit.realizedPnlMinor ?? 0n), 0n);
     const chronologicalFinal = [...allExits].sort(
       (a, b) =>
         b.exitedAt.getTime() - a.exitedAt.getTime() ||
@@ -1616,7 +1629,7 @@ export async function closeTrade(
       .update(trades)
       .set({
         actualExit: chronologicalFinal.exitPrice,
-        netPnlMinor,
+        netPnlMinor: input.netPnlMinor,
         exitedAt: chronologicalFinal.exitedAt,
         grossPnlMinor: input.grossPnlMinor ?? trade.grossPnlMinor,
         commissionMinor: input.commissionMinor ?? trade.commissionMinor,

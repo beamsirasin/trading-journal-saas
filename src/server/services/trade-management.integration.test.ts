@@ -1813,9 +1813,163 @@ describe('trade-management (real database)', () => {
       const row = await readTrade(tradeId);
       expect(row?.status).toBe('closed');
       // actualR = 7500 / 5000 = 1.5000
+      expect(row?.netPnlMinor).toBe(7500n);
       expect(row?.actualR).toBe('1.5000');
       expect(row?.traderOutcome).toBe('win');
       expect(row?.calcVersion).toBe(1);
+      const exits = await db.select().from(tradeExits).where(eq(tradeExits.tradeId, tradeId));
+      expect(exits.map((exit) => [exit.closedBps, exit.realizedPnlMinor])).toEqual([
+        [10_000, 7500n],
+      ]);
+    });
+
+    it('treats netPnlMinor as the authoritative whole-Trade total after a partial Exit', async () => {
+      const { tradeId } = await createOpen();
+      const partial = await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 2_500,
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+      expect(partial).toMatchObject({ ok: true, status: 'open' });
+
+      const result = await closeTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        closeInput({ netPnlMinor: 400n }),
+      );
+      expect(result).toMatchObject({ ok: true, actualR: '0.0800', traderOutcome: 'win' });
+
+      const row = await readTrade(tradeId);
+      expect(row).toMatchObject({
+        status: 'closed',
+        netPnlMinor: 400n,
+        actualR: '0.0800',
+        traderOutcome: 'win',
+      });
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, tradeId))
+        .orderBy(asc(tradeExits.sequence));
+      expect(exits.map((exit) => [exit.closedBps, exit.realizedPnlMinor])).toEqual([
+        [2_500, 100n],
+        [7_500, 300n],
+      ]);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+    });
+
+    it('uses exact minor-unit subtraction across multiple partial Exits', async () => {
+      const { tradeId } = await createOpen();
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 2_000,
+        realizedPnlMinor: 101n,
+        exitedAt: new Date('2026-08-01T11:00:00Z'),
+      });
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 3_000,
+        realizedPnlMinor: -37n,
+        exitedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+
+      const result = await closeTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        closeInput({ netPnlMinor: 311n }),
+      );
+      expect(result).toMatchObject({ ok: true, actualR: '0.0622', traderOutcome: 'win' });
+
+      const row = await readTrade(tradeId);
+      expect(row).toMatchObject({ netPnlMinor: 311n, actualR: '0.0622', traderOutcome: 'win' });
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, tradeId))
+        .orderBy(asc(tradeExits.sequence));
+      expect(exits.map((exit) => [exit.closedBps, exit.realizedPnlMinor])).toEqual([
+        [2_000, 101n],
+        [3_000, -37n],
+        [5_000, 247n],
+      ]);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+    });
+
+    it('stores a losing whole-Trade total when prior realized P&L was profitable', async () => {
+      const { tradeId } = await createOpen();
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 4_000,
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+
+      const result = await closeTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        closeInput({ netPnlMinor: -400n }),
+      );
+      expect(result).toMatchObject({ ok: true, actualR: '-0.0800', traderOutcome: 'loss' });
+
+      const row = await readTrade(tradeId);
+      expect(row).toMatchObject({
+        netPnlMinor: -400n,
+        actualR: '-0.0800',
+        traderOutcome: 'loss',
+      });
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, tradeId))
+        .orderBy(asc(tradeExits.sequence));
+      expect(exits.map((exit) => [exit.closedBps, exit.realizedPnlMinor])).toEqual([
+        [4_000, 100n],
+        [6_000, -500n],
+      ]);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+    });
+
+    it('stores a break-even whole-Trade total after a profitable partial Exit', async () => {
+      const { tradeId } = await createOpen();
+      await addTradeExit(workspaceId, actorUserId, tradeId, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 4_000,
+        realizedPnlMinor: 100n,
+        exitedAt: new Date('2026-08-01T12:00:00Z'),
+      });
+
+      const result = await closeTrade(
+        workspaceId,
+        actorUserId,
+        tradeId,
+        closeInput({ netPnlMinor: 0n }),
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        actualR: '0.0000',
+        traderOutcome: 'break_even',
+      });
+
+      const row = await readTrade(tradeId);
+      expect(row).toMatchObject({
+        netPnlMinor: 0n,
+        actualR: '0.0000',
+        traderOutcome: 'break_even',
+      });
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, tradeId))
+        .orderBy(asc(tradeExits.sequence));
+      expect(exits.map((exit) => [exit.closedBps, exit.realizedPnlMinor])).toEqual([
+        [4_000, 100n],
+        [6_000, -100n],
+      ]);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
     });
 
     it('an exact retry against an already-closed Trade returns success without rewriting', async () => {
