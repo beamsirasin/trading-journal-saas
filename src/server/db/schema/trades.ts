@@ -758,7 +758,10 @@ export const trades = pgTable(
     ),
 
     // Trade-execution-status consistency — each status requires/forbids an
-    // exact set of actual-execution fields. `canceled` is deliberately
+    // exact set of actual-execution fields. A historical Money result may
+    // know its authoritative final P&L (and therefore its sign outcome) while
+    // lacking monetary risk; that one shape keeps Actual R null without
+    // discarding the known outcome. `canceled` is deliberately
     // unconstrained in shape (a Trade may be canceled from `planned` with
     // nothing filled in, or from `open` with partial data already present);
     // exclusion from Trader metrics is a query-level filter
@@ -803,6 +806,16 @@ export const trades = pgTable(
           (
             ${table.actualR} IS NULL
             AND ${table.traderOutcome} IS NULL
+          ) OR (
+            ${table.actualResultMode} = 'money'
+            AND ${table.actualInitialRiskMinor} IS NULL
+            AND ${table.netPnlMinor} IS NOT NULL
+            AND ${table.actualR} IS NULL
+            AND (
+              (${table.netPnlMinor} > 0 AND ${table.traderOutcome} = 'win')
+              OR (${table.netPnlMinor} < 0 AND ${table.traderOutcome} = 'loss')
+              OR (${table.netPnlMinor} = 0 AND ${table.traderOutcome} = 'break_even')
+            )
           ) OR (
             ${table.actualR} IS NOT NULL
             AND ${table.traderOutcome} IS NOT NULL

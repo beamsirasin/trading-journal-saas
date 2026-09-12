@@ -100,7 +100,10 @@ describe('migration 0019 - historical trade persistence (real database)', () => 
     ['zero exits', {}],
     ['NULL entry timestamp', { exitedAt: new Date('2026-08-01T11:00:00Z') }],
     ['NULL final exit timestamp', { enteredAt: new Date('2026-08-01T10:00:00Z') }],
-    ['NULL risk', { netPnlMinor: 125n, finalPnlSource: 'manual_total' }],
+    [
+      'NULL risk with known P&L and sign-derived outcome',
+      { netPnlMinor: 125n, finalPnlSource: 'manual_total', traderOutcome: 'win' as const },
+    ],
     ['NULL final P&L', { actualInitialRiskMinor: 500n }],
   ])('allows a closed Trade with %s', async (_label, overrides) => {
     await expect(insertClosed(overrides)).resolves.toMatchObject({ status: 'closed' });
