@@ -110,7 +110,8 @@ export function TradesTable({
               calc engine, marked as such so it is never mistaken for a settled
               result. Nothing in this file divides, sums or averages.
             */
-            const isRealized = trade.status === 'open' && trade.closedBps > 0;
+            const isRealized =
+              trade.status === 'open' && trade.closedBps !== null && trade.closedBps > 0;
             const rValue = trade.status === 'closed' ? trade.actualR : trade.realizedRToDate;
             const plannedRr = formatPlannedRr(trade.plannedR);
             /*

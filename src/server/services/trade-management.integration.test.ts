@@ -1857,7 +1857,7 @@ describe('trade-management (real database)', () => {
         [2_500, 100n],
         [7_500, 300n],
       ]);
-      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps!, 0)).toBe(10_000);
     });
 
     it('uses exact minor-unit subtraction across multiple partial Exits', async () => {
@@ -1895,7 +1895,7 @@ describe('trade-management (real database)', () => {
         [3_000, -37n],
         [5_000, 247n],
       ]);
-      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps!, 0)).toBe(10_000);
     });
 
     it('stores a losing whole-Trade total when prior realized P&L was profitable', async () => {
@@ -1930,7 +1930,7 @@ describe('trade-management (real database)', () => {
         [4_000, 100n],
         [6_000, -500n],
       ]);
-      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps!, 0)).toBe(10_000);
     });
 
     it('stores a break-even whole-Trade total after a profitable partial Exit', async () => {
@@ -1969,7 +1969,7 @@ describe('trade-management (real database)', () => {
         [4_000, 100n],
         [6_000, -100n],
       ]);
-      expect(exits.reduce((sum, exit) => sum + exit.closedBps, 0)).toBe(10_000);
+      expect(exits.reduce((sum, exit) => sum + exit.closedBps!, 0)).toBe(10_000);
     });
 
     it('an exact retry against an already-closed Trade returns success without rewriting', async () => {
@@ -2029,7 +2029,7 @@ describe('trade-management (real database)', () => {
         exitPrice: exit.exitPrice,
         realizedPnlMinor: -2000n,
         exitReason: null,
-        exitedAt: exit.exitedAt,
+        exitedAt: exit.exitedAt!,
       });
       expect(result.ok).toBe(true);
       const row = await readTrade(tradeId);
@@ -2193,10 +2193,10 @@ describe('trade-management (real database)', () => {
       for (const [index, exitPrice] of ['110', '130', '150'].entries()) {
         const exit = exits[index]!;
         const corrected = await correctTradeExit(workspaceId, actorUserId, tradeId, exit.id, {
-          closedBps: exit.closedBps,
+          closedBps: exit.closedBps!,
           exitPrice,
           exitReason: exit.exitReason,
-          exitedAt: exit.exitedAt,
+          exitedAt: exit.exitedAt!,
         });
         expect(corrected).toMatchObject({ ok: true, status: 'closed', closedBps: 10_000 });
       }
@@ -2205,7 +2205,7 @@ describe('trade-management (real database)', () => {
         await correctTradeExit(workspaceId, actorUserId, tradeId, exits[0]!.id, {
           closedBps: 4_999,
           exitPrice: '110',
-          exitedAt: exits[0]!.exitedAt,
+          exitedAt: exits[0]!.exitedAt!,
         }),
       ).toMatchObject({ ok: false, code: 'invalid_closed_bps' });
       expect((await readTrade(tradeId))?.status).toBe('closed');
@@ -2296,7 +2296,7 @@ describe('trade-management (real database)', () => {
       expect([a, b].filter((result) => result.ok)).toHaveLength(1);
       expect([a, b].filter((result) => !result.ok)).toHaveLength(1);
       const exits = await db.select().from(tradeExits).where(eq(tradeExits.tradeId, tradeId));
-      expect(exits.reduce((total, exit) => total + exit.closedBps, 0)).toBe(10_000);
+      expect(exits.reduce((total, exit) => total + exit.closedBps!, 0)).toBe(10_000);
       expect(exits).toHaveLength(2);
     }, 60_000);
   });
@@ -3112,7 +3112,7 @@ describe('trade-management (real database)', () => {
         exitPrice: exit.exitPrice,
         realizedPnlMinor: 8000n,
         exitReason: exit.exitReason,
-        exitedAt: exit.exitedAt,
+        exitedAt: exit.exitedAt!,
       });
       expect(corrected.ok).toBe(true);
 

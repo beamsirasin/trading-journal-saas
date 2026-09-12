@@ -38,7 +38,7 @@ function scope(
 
 function trade(
   tradeId: string,
-  actualExitedAt: string,
+  actualExitedAt: string | null,
   netPnlMinor: bigint | string | null,
   baseCurrency = 'USD',
 ): ModeledBalanceTradeInput {
@@ -184,6 +184,13 @@ describe('range and completeness semantics', () => {
         trade('historical-price-mode', '2026-05-01T00:00:00Z', null),
         trade('visible-money', '2026-08-15T00:00:00Z', 10_000n),
       ],
+    });
+    expect(result).toMatchObject({ status: 'unavailable', reason: 'incomplete_money_history' });
+  });
+
+  it('does not claim complete modeled history when a closed Trade has unknown chronology', () => {
+    const result = compose({
+      trades: [trade('undated-historical-close', null, 10_000n)],
     });
     expect(result).toMatchObject({ status: 'unavailable', reason: 'incomplete_money_history' });
   });

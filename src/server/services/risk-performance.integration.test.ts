@@ -421,6 +421,32 @@ describe('Risk Performance PostgreSQL boundary', () => {
     });
   });
 
+  it('includes undated closed history and reports unknowable chronology as unavailable', async () => {
+    const fixture = await createFixture();
+    const accountId = await createAccount(fixture.workspaceId, 'Undated history');
+    await activate(fixture.userId, accountId);
+    await db.insert(trades).values({
+      workspaceId: fixture.workspaceId,
+      tradingAccountId: accountId,
+      mutationKey: crypto.randomUUID(),
+      symbol: 'HISTORY',
+      direction: 'long',
+      status: 'closed',
+      netPnlMinor: 10_000n,
+      finalPnlSource: 'manual_total',
+    });
+
+    const raw = await getRiskPerformanceRawData({ tradingAccountId: accountId }, READ_OPTIONS);
+    expect(raw).toMatchObject({
+      ok: true,
+      data: { trades: [{ actualExitedAt: null, netPnlMinor: 10_000n }] },
+    });
+    await expect(getRiskPerformanceData(filters(accountId), READ_OPTIONS)).resolves.toMatchObject({
+      ok: true,
+      data: { status: 'unavailable', reason: 'incomplete_money_history' },
+    });
+  });
+
   it('validates Strategy/Setup identities but never applies them to balance values', async () => {
     const fixture = await createFixture();
     const accountId = await createAccount(fixture.workspaceId, 'Filtered');

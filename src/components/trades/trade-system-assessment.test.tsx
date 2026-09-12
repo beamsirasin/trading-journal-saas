@@ -77,6 +77,8 @@ function trade(overrides: Partial<TradeDetail> = {}): TradeDetail {
     feesMinor: '0',
     swapMinor: '0',
     netPnlMinor: '999999',
+    exitHistoryCompleteness: null,
+    finalPnlSource: null,
     actualR: '99.0000',
     traderOutcome: 'win',
     enteredAt: null,

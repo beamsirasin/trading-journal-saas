@@ -36,6 +36,18 @@ export function isActualResultMode(value: unknown): value is ActualResultMode {
 export const CLOSED_BPS_TOTAL = 10_000;
 export const EXIT_REASON_MAX_LENGTH = 500;
 
+/** Declared knowledge about a historical closed Trade's supporting exit history. */
+export const EXIT_HISTORY_COMPLETENESS_VALUES = ['unknown', 'incomplete', 'complete'] as const;
+export type ExitHistoryCompleteness = (typeof EXIT_HISTORY_COMPLETENESS_VALUES)[number];
+
+/** Provenance of the canonical whole-Trade `net_pnl_minor`; NULL remains legacy unknown. */
+export const FINAL_PNL_SOURCES = ['manual_total', 'exit_history'] as const;
+export type FinalPnlSource = (typeof FINAL_PNL_SOURCES)[number];
+
+/** Optional future historical-exit scope; legacy and live exit rows remain NULL. */
+export const EXIT_SCOPES = ['part', 'all_remaining'] as const;
+export type ExitScope = (typeof EXIT_SCOPES)[number];
+
 /**
  * The System axis's own lifecycle, independent of `TRADE_STATUSES`. `pending`
  * (no System R/outcome yet) is distinct from `no_trade` (the approved

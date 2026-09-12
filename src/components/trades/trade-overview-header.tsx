@@ -24,7 +24,7 @@ function actualHero(
     };
   }
   if (trade.status === 'open') {
-    if (trade.closedBps > 0) {
+    if (trade.closedBps !== null && trade.closedBps > 0 && trade.remainingBps !== null) {
       return {
         value: formatR(trade.realizedRToDate) ?? '—',
         supporting: t('detail.overview.remainingPercent', { percent: trade.remainingBps / 100 }),

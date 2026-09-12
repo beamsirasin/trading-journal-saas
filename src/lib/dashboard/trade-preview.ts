@@ -22,11 +22,11 @@ export type TradeQuickPreviewTab = (typeof TRADE_PREVIEW_TABS)[number];
 export interface TradeQuickPreviewExit {
   readonly exitId: string;
   readonly sequence: number;
-  readonly closedBps: number;
+  readonly closedBps: number | null;
   readonly exitPrice: string | null;
   readonly realizedPnlMinor: string | null;
   readonly exitReason: string | null;
-  readonly exitedAt: string;
+  readonly exitedAt: string | null;
 }
 
 /**
@@ -77,8 +77,8 @@ export interface TradeQuickPreviewModel {
   readonly emotions: readonly { readonly key: string; readonly label: string }[];
 
   readonly exits: readonly TradeQuickPreviewExit[];
-  readonly closedBps: number;
-  readonly remainingBps: number;
+  readonly closedBps: number | null;
+  readonly remainingBps: number | null;
 
   readonly tradingviewUrl: string | null;
   readonly hasChartAttachment: boolean;

@@ -25,6 +25,7 @@ const exit = {
   exitId: '018f0000-0000-7000-8000-000000000002',
   sequence: 1,
   closedBps: 2_500,
+  exitScope: null,
   exitPrice: '120.0000000000',
   realizedPnlMinor: null,
   exitReason: 'First target',

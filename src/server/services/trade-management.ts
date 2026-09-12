@@ -161,8 +161,14 @@ export type WorkspaceAccessDenial = 'workspace_access_denied' | MutationDenialRe
 
 export type TradeServiceTradeRow = typeof trades.$inferSelect;
 type TradeRow = TradeServiceTradeRow;
+type ExitRow = typeof tradeExits.$inferSelect;
+type CompleteExecutionExit = ExitRow & { readonly closedBps: number; readonly exitedAt: Date };
 type StrategyRow = typeof strategies.$inferSelect;
 type StrategyVersionRow = typeof strategyVersions.$inferSelect;
+
+function isCompleteExecutionExit(exit: ExitRow): exit is CompleteExecutionExit {
+  return exit.closedBps !== null && exit.exitedAt !== null;
+}
 
 // ---------------------------------------------------------------------------
 // Shared lock/membership/authorization helpers
@@ -1578,6 +1584,9 @@ export async function closeTrade(
       .from(tradeExits)
       .where(eq(tradeExits.tradeId, tradeId))
       .orderBy(asc(tradeExits.sequence), asc(tradeExits.id));
+    if (!existingExits.every(isCompleteExecutionExit)) {
+      return { ok: false, code: 'invalid_status_transition' };
+    }
     const priorActual = composeRealizedActual({
       actualResultMode: 'money',
       direction: trade.direction,
@@ -1607,6 +1616,9 @@ export async function closeTrade(
       })
       .returning();
     if (newExit === undefined) throw new Error('closeTrade: Exit insert returned no row');
+    if (!isCompleteExecutionExit(newExit)) {
+      throw new Error('closeTrade: strict Exit insert returned incomplete row');
+    }
     const allExits = [...existingExits, newExit];
     const composed = composeTraderCloseV2({
       actualResultMode: 'money',
@@ -1842,7 +1854,9 @@ export async function correctTradeExecution(
     }
     if (
       nextEnteredAt === null ||
-      exits.some((exit) => exit.exitedAt.getTime() < nextEnteredAt.getTime())
+      exits.some(
+        (exit) => exit.exitedAt === null || exit.exitedAt.getTime() < nextEnteredAt.getTime(),
+      )
     ) {
       return { ok: false, code: 'invalid_exit_time' };
     }
@@ -1860,6 +1874,9 @@ export async function correctTradeExecution(
     let calcVersion = trade.calcVersion;
 
     if (exits.length > 0) {
+      if (!exits.every(isCompleteExecutionExit)) {
+        return { ok: false, code: 'invalid_execution_context' };
+      }
       const calculation = {
         actualResultMode: nextActualResultMode,
         direction: trade.direction,

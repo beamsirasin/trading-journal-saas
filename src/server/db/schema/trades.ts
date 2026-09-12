@@ -238,6 +238,10 @@ export const trades = pgTable(
       .notNull()
       .default(sql`0`),
     netPnlMinor: bigint('net_pnl_minor', { mode: 'bigint' }),
+    /** Declared historical exit knowledge. NULL preserves legacy-unknown provenance. */
+    exitHistoryCompleteness: text('exit_history_completeness'),
+    /** Provenance of canonical whole-Trade final P&L. NULL preserves legacy unknown. */
+    finalPnlSource: text('final_pnl_source'),
     enteredAt: timestamp('entered_at', { withTimezone: true }),
     exitedAt: timestamp('exited_at', { withTimezone: true }),
 
@@ -436,6 +440,27 @@ export const trades = pgTable(
     check(
       'trades_actual_result_mode_check',
       sql`${table.actualResultMode} IS NULL OR ${table.actualResultMode} IN ('price', 'money')`,
+    ),
+    check(
+      'trades_exit_history_completeness_check',
+      sql`${table.exitHistoryCompleteness} IS NULL OR ${table.exitHistoryCompleteness} IN (
+        'unknown', 'incomplete', 'complete'
+      )`,
+    ),
+    check(
+      'trades_final_pnl_source_check',
+      sql`${table.finalPnlSource} IS NULL OR ${table.finalPnlSource} IN (
+        'manual_total', 'exit_history'
+      )`,
+    ),
+    check(
+      'trades_historical_execution_metadata_check',
+      sql`(
+        ${table.exitHistoryCompleteness} IS NULL AND ${table.finalPnlSource} IS NULL
+      ) OR (
+        ${table.status} = 'closed'
+        AND (${table.finalPnlSource} IS NULL OR ${table.netPnlMinor} IS NOT NULL)
+      )`,
     ),
     check('trades_status_check', sql`${table.status} IN ('planned', 'open', 'closed', 'canceled')`),
     check(
@@ -774,23 +799,35 @@ export const trades = pgTable(
         )
       ) OR (
         ${table.status} = 'closed'
-        AND ${table.actualResultMode} IS NOT NULL
-        AND ${table.enteredAt} IS NOT NULL
-        AND ${table.exitedAt} IS NOT NULL
-        AND ${table.actualR} IS NOT NULL
-        AND ${table.traderOutcome} IS NOT NULL
         AND (
           (
-            ${table.actualResultMode} = 'price'
-            AND ${table.actualEntry} IS NOT NULL
-            AND ${table.actualInitialStop} IS NOT NULL
-            AND ${table.actualInitialRiskMinor} IS NULL
-            AND ${table.netPnlMinor} IS NULL
-            AND ${table.actualExit} IS NOT NULL
+            ${table.actualR} IS NULL
+            AND ${table.traderOutcome} IS NULL
           ) OR (
-            ${table.actualResultMode} = 'money'
-            AND ${table.actualInitialRiskMinor} IS NOT NULL
-            AND ${table.netPnlMinor} IS NOT NULL
+            ${table.actualR} IS NOT NULL
+            AND ${table.traderOutcome} IS NOT NULL
+            AND (
+              (${table.actualR} > 0.0500 AND ${table.traderOutcome} = 'win')
+              OR (${table.actualR} < -0.0500 AND ${table.traderOutcome} = 'loss')
+              OR (
+                ${table.actualR} BETWEEN -0.0500 AND 0.0500
+                AND ${table.traderOutcome} = 'break_even'
+              )
+            )
+            AND (
+              (
+                ${table.actualResultMode} = 'price'
+                AND ${table.actualEntry} IS NOT NULL
+                AND ${table.actualInitialStop} IS NOT NULL
+                AND ${table.actualInitialRiskMinor} IS NULL
+                AND ${table.netPnlMinor} IS NULL
+                AND ${table.actualExit} IS NOT NULL
+              ) OR (
+                ${table.actualResultMode} = 'money'
+                AND ${table.actualInitialRiskMinor} IS NOT NULL
+                AND ${table.netPnlMinor} IS NOT NULL
+              )
+            )
           )
         )
       ) OR (

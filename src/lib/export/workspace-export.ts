@@ -8,8 +8,11 @@ import { strToU8, zipSync } from 'fflate';
  * represent. No column was removed or reinterpreted; `serializeValue`
  * already treated every `id`/`timestamp` kind as null-safe before this
  * version (null-checked first), so this bump is purely additive.
+ *
+ * v8 adds nullable historical exit-completeness/P&L provenance and exit
+ * scope. No financial column is removed or reinterpreted.
  */
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 7 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 8 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -251,6 +254,8 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('feesMinor', 'fees_minor', 'bigint'),
       column('swapMinor', 'swap_minor', 'bigint'),
       column('netPnlMinor', 'net_pnl_minor', 'bigint'),
+      column('exitHistoryCompleteness', 'exit_history_completeness', 'text'),
+      column('finalPnlSource', 'final_pnl_source', 'text'),
       column('enteredAt', 'entered_at', 'timestamp'),
       column('exitedAt', 'exited_at', 'timestamp'),
       column('systemStatus', 'system_status', 'text'),
@@ -286,6 +291,7 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('tradeId', 'trade_id', 'id'),
       column('sequence', 'sequence', 'integer'),
       column('closedBps', 'closed_bps', 'integer'),
+      column('exitScope', 'exit_scope', 'text'),
       column('exitPrice', 'exit_price', 'decimal'),
       column('realizedPnlMinor', 'realized_pnl_minor', 'bigint'),
       column('exitReason', 'exit_reason', 'user_text'),

@@ -124,10 +124,13 @@ function ExecutionTimeline({
       at: exit.exitedAt,
       // A leg that closes the whole remainder is still just a leg; the
       // percentage says which it was without a second vocabulary for it.
-      title: t('timeline.exit', {
-        sequence: exit.sequence,
-        percent: (exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2),
-      }),
+      title:
+        exit.closedBps === null
+          ? tTrades('lifecycle.execution.exitNumber', { sequence: exit.sequence })
+          : t('timeline.exit', {
+              sequence: exit.sequence,
+              percent: (exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2),
+            }),
       lines,
     });
   }

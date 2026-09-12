@@ -9,7 +9,7 @@ export const RISK_PERFORMANCE_WIDGET_IDS = ['account.balance', 'risk.drawdown'] 
 export interface ModeledBalanceTradeInput {
   readonly tradeId: string;
   /** The canonical Actual realization instant: `trades.exited_at`, never an Exit-leg/System/bookkeeping timestamp. */
-  readonly actualExitedAt: Date | string;
+  readonly actualExitedAt: Date | string | null;
   /** Authoritative Trade-level Actual result. Already net; costs must not be subtracted again. */
   readonly netPnlMinor: bigint | string | null;
   /** The Account currency that gives the stored minor units meaning. */
@@ -215,6 +215,9 @@ export function composeRiskPerformance(input: ComposeRiskPerformanceInput): Risk
       return { status: 'integrity_error', scope, reason: 'invalid_money_data' };
     }
     seenTradeIds.add(trade.tradeId);
+    if (trade.actualExitedAt === null) {
+      return { status: 'unavailable', scope, reason: 'incomplete_money_history' };
+    }
     const timestamp = canonicalTimestamp(trade.actualExitedAt);
     if (timestamp === null) {
       return { status: 'integrity_error', scope, reason: 'invalid_actual_exit_timestamp' };

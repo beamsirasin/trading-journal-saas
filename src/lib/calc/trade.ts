@@ -138,7 +138,7 @@ export function actualR(
 }
 
 export interface ActualExitLegInput {
-  readonly closedBps: number;
+  readonly closedBps: number | null;
   readonly exitPrice?: string | null;
   readonly realizedPnlMinor?: bigint | null;
 }
@@ -164,10 +164,16 @@ export function composeRealizedActual(params: {
 
   let closedBps = 0;
   for (const exit of params.exits) {
-    if (!Number.isSafeInteger(exit.closedBps) || exit.closedBps <= 0 || exit.closedBps > 10_000) {
+    const allocation = exit.closedBps;
+    if (
+      allocation === null ||
+      !Number.isSafeInteger(allocation) ||
+      allocation <= 0 ||
+      allocation > 10_000
+    ) {
       return calcErr('invalid_closed_bps');
     }
-    closedBps += exit.closedBps;
+    closedBps += allocation;
     if (closedBps > 10_000) return calcErr('invalid_closed_bps');
   }
 
@@ -207,6 +213,7 @@ export function composeRealizedActual(params: {
     ) {
       return calcErr('invalid_exit_shape');
     }
+    if (exit.closedBps === null) return calcErr('invalid_closed_bps');
     const exitPrice = parseCalcDecimal(exit.exitPrice);
     if (exitPrice === null) return calcErr('invalid_decimal');
     const legR =

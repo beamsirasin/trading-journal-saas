@@ -56,7 +56,7 @@ export function ActualSection({
   }
 
   const isClosed = trade.status === 'closed';
-  const isPartial = !isClosed && trade.closedBps > 0;
+  const isPartial = !isClosed && trade.closedBps !== null && trade.closedBps > 0;
   const positionStatus = isClosed
     ? t('status.execution.closed')
     : isPartial
@@ -97,7 +97,7 @@ export function ActualSection({
         </h4>
         <dl className="divide-border divide-y">
           <DetailRow label={t('detail.actualGroups.positionStatus')} value={positionStatus} />
-          {isPartial ? (
+          {isPartial && trade.remainingBps !== null ? (
             <DetailRow label={t('field.remainingPercent')} value={`${trade.remainingBps / 100}%`} />
           ) : null}
           {trade.netPnlMinor === null ? null : (
@@ -157,7 +157,7 @@ export function ActualSection({
             <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
             <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
             <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
-            {trade.exits.length === 0 ? null : (
+            {trade.exits.length === 0 || trade.closedBps === null ? null : (
               <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
             )}
             {trade.exitedAt === null ? null : (
@@ -174,10 +174,12 @@ export function ActualSection({
               <h5 className="font-semibold">
                 {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
               </h5>
-              <p>
-                {t('field.closedPercent')}:{' '}
-                {(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%
-              </p>
+              {exit.closedBps === null ? null : (
+                <p>
+                  {t('field.closedPercent')}:{' '}
+                  {(exit.closedBps / 100).toFixed(exit.closedBps % 100 === 0 ? 0 : 2)}%
+                </p>
+              )}
               {exit.exitPrice === null ? null : (
                 <p>
                   {t('field.exit')}: {exit.exitPrice}
@@ -197,7 +199,9 @@ export function ActualSection({
                 </p>
               )}
             </div>
-            {canWrite ? <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} /> : null}
+            {canWrite && exit.closedBps !== null && exit.exitedAt !== null ? (
+              <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} />
+            ) : null}
           </article>
         ))}
       </section>
@@ -213,7 +217,9 @@ export function ActualSection({
             ) : (
               <>
                 <AddExitDialog trade={trade} timezone={timezone} />
-                <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
+                {trade.remainingBps === null ? null : (
+                  <AddExitDialog trade={trade} timezone={timezone} closeRemaining />
+                )}
                 <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
               </>
             )}

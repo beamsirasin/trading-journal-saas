@@ -56,7 +56,8 @@ export function TradesMobileList({
       {trades.map((trade) => {
         const isSelected = selectedTradeId === trade.tradeId;
         const reviewState = deriveTradeReviewState(trade);
-        const isRealized = trade.status === 'open' && trade.closedBps > 0;
+        const isRealized =
+          trade.status === 'open' && trade.closedBps !== null && trade.closedBps > 0;
         const rValue = trade.status === 'closed' ? trade.actualR : trade.realizedRToDate;
         const formattedR = formatR(rValue);
         const netPnl = formatTradeMoney(trade.netPnlMinor, trade.tradingAccountBaseCurrency);

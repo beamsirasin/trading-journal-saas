@@ -308,11 +308,11 @@ describe('Phase 07B trade domain (real database)', () => {
       ).rejects.toMatchObject({ cause: { code: '23514' } });
     });
 
-    it('rejects a closed trade missing required actual data', async () => {
+    it('treats closed as lifecycle state without requiring complete historical actual data', async () => {
       const fw = await createFramework();
       await expect(
         insertTrade({ ...basePlannedTrade(fw), status: 'closed' }),
-      ).rejects.toMatchObject({ cause: { code: '23514' } });
+      ).resolves.toMatchObject([{ status: 'closed', actualR: null, netPnlMinor: null }]);
     });
   });
 

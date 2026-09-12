@@ -79,6 +79,8 @@ const base: TradeDetailModel = {
   feesMinor: '0',
   swapMinor: '0',
   netPnlMinor: null,
+  exitHistoryCompleteness: null,
+  finalPnlSource: null,
   actualR: null,
   traderOutcome: null,
   exits: [],

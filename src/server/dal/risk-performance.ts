@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, asc, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
 import type { AnalyticsFilterInput } from '@/lib/analytics/filters';
 import type { ModeledBalanceTradeInput } from '@/lib/dashboard/risk-performance';
@@ -66,7 +66,9 @@ export async function getRiskPerformanceRawData(
       tradeId: trades.id,
       // Preserve PostgreSQL's microsecond precision. JavaScript Date would
       // truncate it to milliseconds and could falsely group distinct closes.
-      actualExitedAt: sql<string>`to_char(${trades.exitedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+      actualExitedAt: sql<
+        string | null
+      >`to_char(${trades.exitedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       netPnlMinor: trades.netPnlMinor,
     })
     .from(trades)
@@ -76,8 +78,7 @@ export async function getRiskPerformanceRawData(
         eq(trades.tradingAccountId, account.id),
         eq(trades.status, 'closed'),
         isNull(trades.deletedAt),
-        isNotNull(trades.exitedAt),
-        lt(trades.exitedAt, asOf),
+        or(isNull(trades.exitedAt), lt(trades.exitedAt, asOf)),
       ),
     )
     .orderBy(asc(trades.exitedAt));

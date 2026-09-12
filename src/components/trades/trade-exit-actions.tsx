@@ -43,7 +43,8 @@ function percentToBps(value: string): number | null {
   return bps >= 1 && bps <= 10_000 ? bps : null;
 }
 
-function bpsToPercent(value: number): string {
+function bpsToPercent(value: number | null): string {
+  if (value === null) return '';
   return (value / 100).toFixed(value % 100 === 0 ? 0 : value % 10 === 0 ? 1 : 2);
 }
 

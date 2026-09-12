@@ -49,7 +49,7 @@ export function TradeDetailsHeader({
   );
   const netPnl = formatTradeMoney(trade.netPnlMinor, trade.tradingAccountBaseCurrency);
   const actualR = formatR(trade.status === 'closed' ? trade.actualR : trade.realizedRToDate);
-  const isRealized = trade.status === 'open' && trade.closedBps > 0;
+  const isRealized = trade.status === 'open' && trade.closedBps !== null && trade.closedBps > 0;
 
   // Symbol, then account, then the three context facts that are actually
   // recorded. A Trade with no session and no timeframe simply says less

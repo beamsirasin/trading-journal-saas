@@ -9,6 +9,9 @@ import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots
 import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
 import type {
   ActualResultMode,
+  ExitHistoryCompleteness,
+  ExitScope,
+  FinalPnlSource,
   MistakeSeverity,
   OutcomeValue,
   PlanAdherence,
@@ -78,6 +81,11 @@ function minorToString(value: bigint | null): string | null {
 
 function dateToIso(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
+}
+
+function knownClosedBps(exits: readonly { readonly closedBps: number | null }[]): number | null {
+  if (exits.some((exit) => exit.closedBps === null)) return null;
+  return exits.reduce((total, exit) => total + (exit.closedBps ?? 0), 0);
 }
 
 /**
@@ -153,8 +161,8 @@ export interface TradeListItem {
    * `open` Trade; a `closed` Trade's authoritative final figure is `actualR`
    * above, not this pair.
    */
-  readonly closedBps: number;
-  readonly remainingBps: number;
+  readonly closedBps: number | null;
+  readonly remainingBps: number | null;
   /**
    * Realized R to date for a partially-exited `open` Trade, derived
    * in-process via `composeRealizedActual` from the same batched Exit read
@@ -461,9 +469,9 @@ export async function listWorkspaceTrades(
   return {
     items: pageRows.map((row) => {
       const exits = exitsByTradeId.get(row.tradeId) ?? [];
-      const closedBps = exits.reduce((total, exit) => total + exit.closedBps, 0);
+      const closedBps = knownClosedBps(exits);
       const realizedRToDate =
-        row.status === 'open' && closedBps > 0
+        row.status === 'open' && closedBps !== null && closedBps > 0
           ? (() => {
               const realized = composeRealizedActual({
                 actualResultMode: row.actualResultMode,
@@ -498,7 +506,7 @@ export async function listWorkspaceTrades(
         systemOutcome: row.systemOutcome as OutcomeValue | null,
         hasReviewNotes: row.hasReviewNotes,
         closedBps,
-        remainingBps: 10_000 - closedBps,
+        remainingBps: closedBps === null ? null : 10_000 - closedBps,
         realizedRToDate,
         setupConditionMetCount: conditionCounts?.met ?? null,
         setupConditionTotalCount: conditionCounts?.total ?? null,
@@ -641,6 +649,8 @@ export interface TradeDetail {
   readonly feesMinor: string;
   readonly swapMinor: string;
   readonly netPnlMinor: string | null;
+  readonly exitHistoryCompleteness: ExitHistoryCompleteness | null;
+  readonly finalPnlSource: FinalPnlSource | null;
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly enteredAt: string | null;
@@ -648,14 +658,15 @@ export interface TradeDetail {
   readonly exits: readonly {
     readonly exitId: string;
     readonly sequence: number;
-    readonly closedBps: number;
+    readonly closedBps: number | null;
+    readonly exitScope: ExitScope | null;
     readonly exitPrice: string | null;
     readonly realizedPnlMinor: string | null;
     readonly exitReason: string | null;
-    readonly exitedAt: string;
+    readonly exitedAt: string | null;
   }[];
-  readonly closedBps: number;
-  readonly remainingBps: number;
+  readonly closedBps: number | null;
+  readonly remainingBps: number | null;
   readonly realizedRToDate: string | null;
 
   readonly systemExitPrice: string | null;
@@ -832,7 +843,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
           actualInitialRiskMinor: trade.actualInitialRiskMinor,
           exits: exitRows,
         });
-  const closedBps = exitRows.reduce((total, exit) => total + exit.closedBps, 0);
+  const closedBps = knownClosedBps(exitRows);
   const gap = executionGapR(trade.actualR, trade.systemR);
 
   return {
@@ -893,6 +904,8 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       feesMinor: trade.feesMinor.toString(),
       swapMinor: trade.swapMinor.toString(),
       netPnlMinor: minorToString(trade.netPnlMinor),
+      exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,
+      finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
       actualR: trade.actualR,
       traderOutcome: trade.traderOutcome as OutcomeValue | null,
       enteredAt: dateToIso(trade.enteredAt),
@@ -901,13 +914,14 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
         exitId: exit.id,
         sequence: exit.sequence,
         closedBps: exit.closedBps,
+        exitScope: exit.exitScope as ExitScope | null,
         exitPrice: exit.exitPrice,
         realizedPnlMinor: minorToString(exit.realizedPnlMinor),
         exitReason: exit.exitReason,
-        exitedAt: exit.exitedAt.toISOString(),
+        exitedAt: dateToIso(exit.exitedAt),
       })),
       closedBps,
-      remainingBps: 10_000 - closedBps,
+      remainingBps: closedBps === null ? null : 10_000 - closedBps,
       realizedRToDate: realized?.ok ? realized.value.realizedR : null,
 
       systemExitPrice: trade.systemExitPrice,

@@ -14,8 +14,11 @@ import { trades } from '@/server/db/schema';
  */
 export function entryContextAnalyticsEligible(): SQL {
   return sql`(
-    ${trades.exitedAt} is null
-    or date_trunc('milliseconds', ${trades.createdAt})
-      <= date_trunc('milliseconds', ${trades.exitedAt})
+    ${trades.status} <> 'closed'
+    or (
+      ${trades.exitedAt} is not null
+      and date_trunc('milliseconds', ${trades.createdAt})
+        <= date_trunc('milliseconds', ${trades.exitedAt})
+    )
   )`;
 }

@@ -330,12 +330,14 @@ function ExecutionsPanel({
   const t = useTranslations('dashboard.tradePreview');
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <p className="text-muted-foreground text-xs">
-        {t('closedPortion', {
-          closed: (trade.closedBps / 100).toFixed(2),
-          remaining: (trade.remainingBps / 100).toFixed(2),
-        })}
-      </p>
+      {trade.closedBps === null || trade.remainingBps === null ? null : (
+        <p className="text-muted-foreground text-xs">
+          {t('closedPortion', {
+            closed: (trade.closedBps / 100).toFixed(2),
+            remaining: (trade.remainingBps / 100).toFixed(2),
+          })}
+        </p>
+      )}
       <ul data-trade-preview-exits={trade.exits.length} className="flex flex-col gap-2">
         {trade.exits.map((exit) => (
           <li key={exit.exitId} className="border-border rounded-lg border p-3">
@@ -343,9 +345,11 @@ function ExecutionsPanel({
               <span className="text-sm font-semibold">
                 {t('legLabel', { sequence: exit.sequence })}
               </span>
-              <span className="numeric text-muted-foreground text-xs">
-                {(exit.closedBps / 100).toFixed(2)}%
-              </span>
+              {exit.closedBps === null ? null : (
+                <span className="numeric text-muted-foreground text-xs">
+                  {(exit.closedBps / 100).toFixed(2)}%
+                </span>
+              )}
             </div>
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
               <Fact label={t('exitPrice')} value={exit.exitPrice} />

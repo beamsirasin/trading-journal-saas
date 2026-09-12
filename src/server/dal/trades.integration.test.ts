@@ -5,6 +5,7 @@ import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-to
 import {
   mistakeTypes,
   strategySetupVersions,
+  tradeExits,
   trades,
   tradingAccounts,
   userPreferences,
@@ -1352,6 +1353,60 @@ describe('trades DAL (real database)', () => {
         journalDateRange: wideRange,
       });
       expect(nonMatchingAccount.items.some((item) => item.symbol === 'ACCOUNTSCOPED')).toBe(false);
+    });
+  });
+
+  describe('historical nullable execution reads', () => {
+    it('serializes unknown exit allocation and timestamp without crashing or inventing values', async () => {
+      const { workspaceId } = await freshWorkspace();
+      const tradingAccountId = await createAccount(db, workspaceId);
+      const [trade] = await db
+        .insert(trades)
+        .values({
+          workspaceId,
+          tradingAccountId,
+          mutationKey: crypto.randomUUID(),
+          symbol: 'HISTORY',
+          direction: 'long',
+          status: 'closed',
+          exitHistoryCompleteness: 'incomplete',
+        })
+        .returning({ id: trades.id });
+      if (trade === undefined) throw new Error('historical Trade insert failed');
+      await db.insert(tradeExits).values({
+        workspaceId,
+        tradeId: trade.id,
+        mutationKey: crypto.randomUUID(),
+        sequence: 1,
+        exitScope: 'part',
+      });
+
+      const result = await getWorkspaceTradeDetail(trade.id);
+      expect(result).toMatchObject({
+        ok: true,
+        trade: {
+          exitedAt: null,
+          closedBps: null,
+          remainingBps: null,
+          exitHistoryCompleteness: 'incomplete',
+          finalPnlSource: null,
+          exits: [
+            {
+              closedBps: null,
+              exitScope: 'part',
+              exitedAt: null,
+              exitPrice: null,
+              realizedPnlMinor: null,
+            },
+          ],
+        },
+      });
+
+      const page = await listWorkspaceTrades({});
+      expect(page.items.find((item) => item.tradeId === trade.id)).toMatchObject({
+        closedBps: null,
+        remainingBps: null,
+      });
     });
   });
 });

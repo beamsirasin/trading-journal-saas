@@ -540,7 +540,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       workspaceId: seeded.workspace.id,
       source,
     });
-    expect(envelope.schemaVersion).toBe(7);
+    expect(envelope.schemaVersion).toBe(8);
     expect(envelope.data.emotion_types.find((row) => row.id === calm.id)).toMatchObject({
       key: 'calm',
       isSystem: true,
@@ -596,12 +596,17 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       workspaceId: seeded.workspace.id,
       source,
     });
-    expect(envelope.data.trades[0]?.actualResultMode).toBe('money');
+    expect(envelope.data.trades[0]).toMatchObject({
+      actualResultMode: 'money',
+      exitHistoryCompleteness: null,
+      finalPnlSource: null,
+    });
     expect(envelope.data.trade_exits).toEqual([
       expect.objectContaining({
         tradeId: seeded.trade.id,
         sequence: 1,
         closedBps: 10_000,
+        exitScope: null,
         realizedPnlMinor: '15000',
         exitReason: 'Exported final leg',
       }),
@@ -760,7 +765,7 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     const clock = createFixedClock(NOW);
     const json = await prepareCurrentWorkspaceExport('json', { clock });
     const csv = await prepareCurrentWorkspaceExport('csv', { clock });
-    expect(JSON.parse(json.body as string).schemaVersion).toBe(7);
+    expect(JSON.parse(json.body as string).schemaVersion).toBe(8);
     expect(csv.body).toBeInstanceOf(Uint8Array);
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
@@ -787,11 +792,11 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(events).toEqual([
       {
         action: 'data.exported',
-        metadata: { format: 'json', scope: 'workspace', schemaVersion: 7 },
+        metadata: { format: 'json', scope: 'workspace', schemaVersion: 8 },
       },
       {
         action: 'data.exported',
-        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 7 },
+        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 8 },
       },
     ]);
     expect(JSON.stringify(events)).not.toMatch(/พื้นที่ทำงาน|ทองคำ|@example/);

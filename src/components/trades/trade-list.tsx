@@ -54,12 +54,12 @@ function ActualSummary({ trade, t }: { trade: TradeListView; t: Translation }) {
     return (
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
         <LabeledStatus kind="active" label={t('status.execution.open')} />
-        {trade.closedBps > 0 ? (
+        {trade.closedBps !== null && trade.closedBps > 0 && trade.remainingBps !== null ? (
           <span className="text-muted-foreground text-xs">
             {t('list.remainingPercent', { percent: trade.remainingBps / 100 })}
           </span>
         ) : null}
-        {trade.closedBps > 0 ? (
+        {trade.closedBps !== null && trade.closedBps > 0 ? (
           <RValue value={trade.realizedRToDate} label={t('list.realized')} />
         ) : null}
       </div>

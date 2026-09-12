@@ -17,6 +17,11 @@ export type TradeExecutionTx = Parameters<Parameters<Database['transaction']>[0]
 type Tx = TradeExecutionTx;
 type TradeRow = typeof trades.$inferSelect;
 type ExitRow = typeof tradeExits.$inferSelect;
+type CompleteExecutionExit = ExitRow & { readonly closedBps: number; readonly exitedAt: Date };
+
+function isCompleteExecutionExit(exit: ExitRow): exit is CompleteExecutionExit {
+  return exit.closedBps !== null && exit.exitedAt !== null;
+}
 
 export interface AddTradeExitInput {
   readonly mutationKey: string;
@@ -66,7 +71,7 @@ function calculationInput(trade: typeof trades.$inferSelect, exits: readonly Exi
   };
 }
 
-function finalExit(exits: readonly ExitRow[]): ExitRow {
+function finalExit(exits: readonly CompleteExecutionExit[]): CompleteExecutionExit {
   return [...exits].sort(
     (a, b) =>
       b.exitedAt.getTime() - a.exitedAt.getTime() ||
@@ -96,6 +101,9 @@ async function persistAggregate(
   exits: readonly ExitRow[],
   now: Date,
 ) {
+  if (!exits.every(isCompleteExecutionExit)) {
+    return { ok: false as const, reason: 'invalid_exit_shape' as const };
+  }
   const realized = composeRealizedActual(calculationInput(trade, exits));
   if (!realized.ok) return realized;
   const isFinal = realized.value.closedBps === CLOSED_BPS_TOTAL;
@@ -199,6 +207,9 @@ export async function addTradeExitInTx(
   }
 
   const exits = await currentExits(tx, tradeId);
+  if (!exits.every(isCompleteExecutionExit)) {
+    return { ok: false, code: 'invalid_exit_shape' };
+  }
   const alreadyClosed = exits.reduce((total, exit) => total + exit.closedBps, 0);
   const remaining = CLOSED_BPS_TOTAL - alreadyClosed;
   const closedBps = options.closeRemaining === true ? remaining : input.closedBps;
@@ -327,6 +338,9 @@ export async function correctTradeExit(
       updatedAt: clock.now(),
     };
     const allExits = exits.map((exit) => (exit.id === exitId ? corrected : exit));
+    if (!allExits.every(isCompleteExecutionExit)) {
+      return { ok: false, code: 'invalid_exit_shape' };
+    }
     const total = allExits.reduce((sum, exit) => sum + exit.closedBps, 0);
     if (
       !Number.isSafeInteger(input.closedBps) ||
