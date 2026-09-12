@@ -16,7 +16,9 @@ import {
 import { hasNoControlOrHtmlCharacters } from '../trading-accounts/validation';
 import {
   CONFIRMATION_NOTES_MAX_LENGTH,
+  EXIT_HISTORY_COMPLETENESS_VALUES,
   EXIT_REASON_MAX_LENGTH,
+  EXIT_SCOPES,
   isConfidenceStep,
   MISTAKE_NOTE_MAX_LENGTH,
   NOTES_MAX_LENGTH,
@@ -229,6 +231,29 @@ const instantField = () =>
     }
     return result.value;
   });
+
+/** Historical forms post blank optional fields as `''`; preserve absence, normalize blank to NULL. */
+const nullableInstantField = () =>
+  z.preprocess((value) => (value === '' ? null : value), instantField().nullable().optional());
+
+/** Historical Money input with exact `bigint` transport; blank is unknown, never zero. */
+const nullableSignedMinorField = () =>
+  z.preprocess((value) => (value === '' ? null : value), signedMinorField().nullable().optional());
+
+const nullablePositiveMinorField = () =>
+  z.preprocess(
+    (value) => (value === '' ? null : value),
+    positiveMinorField().nullable().optional(),
+  );
+
+const nullableDecimalField = () =>
+  z.preprocess((value) => (value === '' ? null : value), decimalField().nullable().optional());
+
+const nullableClosedBpsField = () =>
+  z.preprocess(
+    (value) => (value === '' ? null : value),
+    z.number().int().min(1).max(10_000).nullable().optional(),
+  );
 
 const directionField = () => z.enum(TRADE_DIRECTIONS);
 const checkStatusField = () => z.enum(RULE_CHECK_STATUSES);
@@ -782,39 +807,52 @@ export type ResolveSystemTradeActionData = z.output<typeof ResolveSystemTradeSch
 
 const CompletedTradeExitSchema = z
   .object({
-    closedBps: z.number().int().min(1).max(10_000),
-    exitPrice: decimalField().nullable().optional(),
-    realizedPnlMinor: signedMinorField().nullable().optional(),
+    closedBps: nullableClosedBpsField(),
+    exitScope: z.preprocess(
+      (value) => (value === '' ? null : value),
+      z.enum(EXIT_SCOPES).nullable().optional(),
+    ),
+    exitPrice: nullableDecimalField(),
+    realizedPnlMinor: nullableSignedMinorField(),
     exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
-    /** Omitted legs inherit the completed Trade's canonical `exitedAt`. */
-    exitedAt: instantField().optional(),
+    exitedAt: nullableInstantField(),
   })
-  .strict();
-
-const CompletedSystemResultSchema = z.union([
-  z.object({ status: z.literal('no_trade') }).strict(),
-  z.discriminatedUnion('resolutionKind', [
-    PriceSystemResolutionSchema.extend({ status: z.literal('resolved') }),
-    MoneyTargetSystemResolutionSchema.extend({ status: z.literal('resolved') }),
-    MoneyStopSystemResolutionSchema.extend({ status: z.literal('resolved') }),
-    MoneyBreakEvenSystemResolutionSchema.extend({ status: z.literal('resolved') }),
-    MoneyCustomSystemResolutionSchema.extend({ status: z.literal('resolved') }),
-  ]),
-]);
+  .strict()
+  .refine(
+    (exit) =>
+      exit.closedBps != null ||
+      exit.exitScope != null ||
+      exit.exitPrice != null ||
+      exit.realizedPnlMinor != null ||
+      exit.exitedAt != null,
+    { message: 'empty_historical_exit' },
+  );
 
 const CompletedTradeObjectSchema = CreateTradeObjectSchema.omit({
   recordingTiming: true,
   systemPlanBasis: true,
   actualResultMode: true,
+  actualEntry: true,
+  actualInitialStop: true,
+  actualInitialRiskMinor: true,
+  actualPositionSize: true,
   enteredAt: true,
 }).extend({
   recordingTiming: z.literal('after_trade'),
-  systemPlanBasis: z.enum(SYSTEM_PLAN_BASES),
+  systemPlanBasis: z.enum(SYSTEM_PLAN_BASES).nullable().optional(),
   actualResultBasis: z.enum(SYSTEM_PLAN_BASES),
-  enteredAt: instantField(),
-  exitedAt: instantField(),
-  exits: z.array(CompletedTradeExitSchema).min(1),
-  systemResult: CompletedSystemResultSchema.optional(),
+  actualEntry: nullableDecimalField(),
+  actualInitialStop: nullableDecimalField(),
+  actualInitialRiskMinor: nullablePositiveMinorField(),
+  actualPositionSize: nullableDecimalField(),
+  enteredAt: nullableInstantField(),
+  exitedAt: nullableInstantField(),
+  finalPnlMinor: nullableSignedMinorField(),
+  exitHistoryCompleteness: z
+    .union([z.enum(EXIT_HISTORY_COMPLETENESS_VALUES), z.literal(''), z.null()])
+    .optional()
+    .transform((value) => (value === '' || value === null ? undefined : value)),
+  exits: z.array(CompletedTradeExitSchema).optional().default([]),
 });
 
 export const CreateCompletedTradeSchema = applyPlanShapeRefinements(CompletedTradeObjectSchema)
@@ -842,9 +880,8 @@ export const CreateCompletedTradeSchema = applyPlanShapeRefinements(CompletedTra
       });
     }
 
-    const hasPriceContext = data.actualEntry != null && data.actualInitialStop != null;
     const hasPartialPriceContext = (data.actualEntry == null) !== (data.actualInitialStop == null);
-    if (hasPartialPriceContext || (data.actualResultBasis === 'price' && !hasPriceContext)) {
+    if (hasPartialPriceContext) {
       context.addIssue({
         code: 'custom',
         message: 'incomplete_actual_price_context',
@@ -858,32 +895,39 @@ export const CreateCompletedTradeSchema = applyPlanShapeRefinements(CompletedTra
         path: ['actualInitialRiskMinor'],
       });
     }
-    if (data.actualResultBasis === 'money' && data.actualInitialRiskMinor == null) {
+    if (data.actualInitialRiskMinor != null && data.actualInitialRiskMinor <= 0n) {
       context.addIssue({
         code: 'custom',
-        message: 'money_mode_requires_risk',
+        message: 'invalid_initial_risk',
         path: ['actualInitialRiskMinor'],
       });
     }
 
+    if (data.actualResultBasis === 'price' && data.finalPnlMinor != null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'price_mode_forbids_money_result',
+        path: ['finalPnlMinor'],
+      });
+    }
     for (const [index, exit] of data.exits.entries()) {
       if (
-        data.actualResultBasis === 'price' &&
-        (exit.exitPrice == null || exit.realizedPnlMinor != null)
+        (data.actualResultBasis === 'price' && exit.realizedPnlMinor != null) ||
+        (data.actualResultBasis === 'money' && exit.exitPrice != null)
       ) {
         context.addIssue({
           code: 'custom',
-          message: 'invalid_price_exit',
+          message: 'conflicting_exit_evidence',
           path: ['exits', index],
         });
       }
-      if (data.actualResultBasis === 'money' && exit.realizedPnlMinor == null) {
-        context.addIssue({
-          code: 'custom',
-          message: 'invalid_money_exit',
-          path: ['exits', index],
-        });
-      }
+    }
+    if (data.exits.length === 0 && data.exitHistoryCompleteness !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'exit_completeness_requires_history',
+        path: ['exitHistoryCompleteness'],
+      });
     }
   });
 export type CreateCompletedTradeActionInput = z.input<typeof CreateCompletedTradeSchema>;

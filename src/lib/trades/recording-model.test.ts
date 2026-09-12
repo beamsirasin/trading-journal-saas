@@ -67,6 +67,12 @@ describe('recording model foundation', () => {
     expect(validateCompletedTradeTimestamps({ enteredAt: now, exitedAt: now, now })).toEqual({
       ok: true,
     });
+    expect(validateCompletedTradeTimestamps({ enteredAt: null, exitedAt: null, now })).toEqual({
+      ok: true,
+    });
+    expect(validateCompletedTradeTimestamps({ enteredAt: null, exitedAt: now, now })).toEqual({
+      ok: true,
+    });
     expect(
       validateCompletedTradeTimestamps({
         enteredAt: new Date('2026-08-23T11:00:00.001Z'),
@@ -81,6 +87,13 @@ describe('recording model foundation', () => {
         now,
       }),
     ).toEqual({ ok: false, code: 'exited_in_future' });
+    expect(
+      validateCompletedTradeTimestamps({
+        enteredAt: new Date('2026-08-23T12:00:00.001Z'),
+        exitedAt: null,
+        now,
+      }),
+    ).toEqual({ ok: false, code: 'entered_in_future' });
   });
 
   it('marks retrospective recording only when later by at least one observable millisecond', () => {

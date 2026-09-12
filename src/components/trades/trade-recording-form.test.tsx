@@ -469,6 +469,7 @@ describe('TradeRecordingForm — Phase 15G.5D recording UX', () => {
       systemPlanBasis: 'price',
       actualResultBasis: 'money',
       actualInitialRiskMinor: '1000',
+      finalPnlMinor: '1400',
       exits: [{ closedBps: 10_000, realizedPnlMinor: '1400' }],
     });
   });

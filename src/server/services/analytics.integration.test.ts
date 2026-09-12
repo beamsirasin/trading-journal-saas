@@ -32,6 +32,7 @@ import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { closeDb } from '../db/client';
 import { createCompletedTrade } from './trade-completed';
+import { resolveSystemTrade } from './trade-management';
 
 type MockSession = {
   user: { id: string; name: string; email: string; emailVerified: boolean; image: null };
@@ -1633,20 +1634,26 @@ describe('analytics service (real PostgreSQL)', () => {
       plannedRewardMinor: 400n,
       actualResultBasis: 'money',
       actualInitialRiskMinor: 100n,
+      finalPnlMinor: 300n,
       enteredAt: new Date('2026-08-01T09:00:00.000Z'),
       exitedAt,
       exits: [{ closedBps: 10_000, realizedPnlMinor: 300n }],
       confidence: 100,
       emotionKeys: [emotion.key],
-      systemResult: {
-        status: 'resolved',
+    });
+    if (!completedAfterTrade.ok) throw new Error(completedAfterTrade.code);
+    expect(completedAfterTrade.recordedRetrospectively).toBe(true);
+    const systemResolution = await resolveSystemTrade(
+      workspaceId,
+      userId,
+      completedAfterTrade.tradeId,
+      {
         resolutionKind: 'money_target',
         systemExitedAt: new Date('2026-08-01T11:00:00.000Z'),
         systemCostR: '0',
       },
-    });
-    if (!completedAfterTrade.ok) throw new Error(completedAfterTrade.code);
-    expect(completedAfterTrade.recordedRetrospectively).toBe(true);
+    );
+    if (!systemResolution.ok) throw new Error(systemResolution.code);
     const retrospectiveResolvedId = completedAfterTrade.tradeId;
     const retrospectivePendingId = await createTrade(workspaceId, {
       accountId,

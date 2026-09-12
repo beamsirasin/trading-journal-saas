@@ -74,21 +74,29 @@ export function validateNewWritePlanAuthority(
   return { ok: true, systemPlanBasis };
 }
 
-export type CompletedTradeTimestampError = 'entered_after_exited' | 'exited_in_future';
+export type CompletedTradeTimestampError =
+  'entered_after_exited' | 'entered_in_future' | 'exited_in_future';
 
 export type CompletedTradeTimestampResult =
   { readonly ok: true } | { readonly ok: false; readonly code: CompletedTradeTimestampError };
 
 /** Future completed-create invariant. Zero-duration Trades are valid. */
 export function validateCompletedTradeTimestamps(input: {
-  readonly enteredAt: Date;
-  readonly exitedAt: Date;
+  readonly enteredAt: Date | null;
+  readonly exitedAt: Date | null;
   readonly now: Date;
 }): CompletedTradeTimestampResult {
-  if (input.enteredAt.getTime() > input.exitedAt.getTime()) {
+  if (
+    input.enteredAt !== null &&
+    input.exitedAt !== null &&
+    input.enteredAt.getTime() > input.exitedAt.getTime()
+  ) {
     return { ok: false, code: 'entered_after_exited' };
   }
-  if (input.exitedAt.getTime() > input.now.getTime()) {
+  if (input.enteredAt !== null && input.enteredAt.getTime() > input.now.getTime()) {
+    return { ok: false, code: 'entered_in_future' };
+  }
+  if (input.exitedAt !== null && input.exitedAt.getTime() > input.now.getTime()) {
     return { ok: false, code: 'exited_in_future' };
   }
   return { ok: true };

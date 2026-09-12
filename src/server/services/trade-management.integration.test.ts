@@ -3787,10 +3787,11 @@ describe('trade-management (real database)', () => {
           ? {
               actualEntry: '1.1000000000',
               actualInitialStop: '1.0950000000',
-              exits: [{ closedBps: 10_000, exitPrice: '1.1100000000' }],
+              exits: [{ closedBps: 10_000, exitPrice: '1.1100000000', exitedAt }],
             }
           : {
               actualInitialRiskMinor: 5_000n,
+              finalPnlMinor: 10_000n,
               exits: [{ closedBps: 10_000, realizedPnlMinor: 10_000n }],
             }),
         enteredAt,
@@ -3828,31 +3829,38 @@ describe('trade-management (real database)', () => {
       },
     );
 
-    it('persists partial exits, resolves System, emits one truthful event, and replays exactly', async () => {
+    it('keeps manual total authoritative over incomplete supporting exits, System pending, and replays exactly', async () => {
       const fw = await freshFramework();
       const input = completedInput(fw, 'price', 'money', {
-        actualInitialRiskMinor: 5_000n,
         exits: [
           { closedBps: 4_000, realizedPnlMinor: 2_000n },
-          { closedBps: 6_000, realizedPnlMinor: 8_000n },
+          { closedBps: 2_000, realizedPnlMinor: 1_500n },
         ],
-        systemResult: {
-          status: 'resolved',
-          resolutionKind: 'price_exit',
-          systemExitPrice: '1.1100000000',
-          systemExitReason: 'target_hit',
-          systemExitedAt: new Date(Date.now() - 90 * 60 * 1000),
-          systemCostR: '0.1',
-        },
+        finalPnlMinor: 10_000n,
+        actualInitialRiskMinor: null,
+        exitHistoryCompleteness: 'incomplete',
       });
       const first = await createCompletedTrade(workspaceId, actorUserId, input);
-      expect(first).toMatchObject({ ok: true, systemStatus: 'resolved', alreadyCreated: false });
+      expect(first).toMatchObject({
+        ok: true,
+        systemStatus: 'pending',
+        alreadyCreated: false,
+        actualR: null,
+        traderOutcome: 'win',
+      });
       if (!first.ok) return;
       const replay = await createCompletedTrade(workspaceId, actorUserId, input);
       expect(replay).toEqual({ ...first, alreadyCreated: true });
 
       const exits = await db.select().from(tradeExits).where(eq(tradeExits.tradeId, first.tradeId));
       expect(exits).toHaveLength(2);
+      const trade = await readTrade(first.tradeId);
+      expect(trade).toMatchObject({
+        netPnlMinor: 10_000n,
+        finalPnlSource: 'manual_total',
+        exitHistoryCompleteness: 'incomplete',
+      });
+      expect(exits.reduce((sum, exit) => sum + (exit.realizedPnlMinor ?? 0n), 0n)).toBe(3_500n);
       const events = await db.select().from(auditLogs).where(eq(auditLogs.entityId, first.tradeId));
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
@@ -3860,13 +3868,13 @@ describe('trade-management (real database)', () => {
         metadata: expect.objectContaining({
           newStatus: 'closed',
           recordingTiming: 'after_trade',
-          systemStatus: 'resolved',
+          systemStatus: 'pending',
           exitCount: 2,
         }),
       });
     });
 
-    it('rolls back the entire graph on invalid Exit, System resolution, or coverage', async () => {
+    it('rolls back the entire graph on an invalid Exit or excessive known coverage', async () => {
       const fw = await freshFramework();
       const invalidExit = completedInput(fw, 'price', 'price', {
         exits: [{ closedBps: 10_000, realizedPnlMinor: 5_000n }],
@@ -3876,23 +3884,11 @@ describe('trade-management (real database)', () => {
         code: 'invalid_exit_shape',
       });
 
-      const invalidSystem = completedInput(fw, 'money', 'price', {
-        systemResult: {
-          status: 'resolved',
-          resolutionKind: 'price_exit',
-          systemExitPrice: '1.11',
-          systemExitReason: 'target_hit',
-          systemExitedAt: new Date(Date.now() - 90 * 60 * 1000),
-          systemCostR: '0',
-        },
-      });
-      expect(await createCompletedTrade(workspaceId, actorUserId, invalidSystem)).toMatchObject({
-        ok: false,
-        code: 'system_requires_price_plan',
-      });
-
       const invalidCoverage = completedInput(fw, 'price', 'price', {
-        exits: [{ closedBps: 9_999, exitPrice: '1.11' }],
+        exits: [
+          { closedBps: 9_999, exitPrice: '1.11' },
+          { closedBps: 2, exitPrice: '1.12' },
+        ],
       });
       expect(await createCompletedTrade(workspaceId, actorUserId, invalidCoverage)).toMatchObject({
         ok: false,
@@ -3901,14 +3897,181 @@ describe('trade-management (real database)', () => {
       const rows = await db
         .select()
         .from(trades)
-        .where(
-          inArray(trades.mutationKey, [
-            invalidExit.mutationKey,
-            invalidSystem.mutationKey,
-            invalidCoverage.mutationKey,
-          ]),
-        );
+        .where(inArray(trades.mutationKey, [invalidExit.mutationKey, invalidCoverage.mutationKey]));
       expect(rows).toHaveLength(0);
+    });
+
+    it.each([
+      ['entry unknown', null, new Date(Date.now() - 60 * 60 * 1000)],
+      ['final exit unknown', new Date(Date.now() - 2 * 60 * 60 * 1000), null],
+      ['both timestamps unknown', null, null],
+    ] as const)(
+      'persists %s without inventing a timestamp',
+      async (_label, enteredAt, exitedAt) => {
+        const fw = await freshFramework();
+        const result = await createCompletedTrade(
+          workspaceId,
+          actorUserId,
+          completedInput(fw, 'money', 'money', {
+            enteredAt,
+            exitedAt,
+            actualInitialRiskMinor: null,
+            finalPnlMinor: 400n,
+            exits: [],
+          }),
+        );
+        expect(result).toMatchObject({ ok: true, actualR: null, traderOutcome: 'win' });
+        if (!result.ok) return;
+        const row = await readTrade(result.tradeId);
+        expect(row?.enteredAt).toEqual(enteredAt);
+        expect(row?.exitedAt).toEqual(exitedAt);
+        expect(row).toMatchObject({
+          netPnlMinor: 400n,
+          finalPnlSource: 'manual_total',
+          exitHistoryCompleteness: null,
+        });
+        expect(
+          await db.select().from(tradeExits).where(eq(tradeExits.tradeId, result.tradeId)),
+        ).toEqual([]);
+      },
+    );
+
+    it('persists unknown P&L as unknown outcome/R even when risk is known', async () => {
+      const fw = await freshFramework();
+      const result = await createCompletedTrade(
+        workspaceId,
+        actorUserId,
+        completedInput(fw, 'money', 'money', {
+          finalPnlMinor: null,
+          exits: [],
+        }),
+      );
+      expect(result).toMatchObject({ ok: true, actualR: null, traderOutcome: null });
+      if (!result.ok) return;
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        netPnlMinor: null,
+        finalPnlSource: null,
+        actualInitialRiskMinor: 5_000n,
+        actualR: null,
+        traderOutcome: null,
+      });
+    });
+
+    it('persists sparse incomplete exits without replacing the authoritative manual total', async () => {
+      const fw = await freshFramework();
+      const legExitedAt = new Date(Date.now() - 90 * 60 * 1000);
+      const input = completedInput(fw, 'money', 'money', {
+        exitedAt: null,
+        actualInitialRiskMinor: null,
+        finalPnlMinor: 400n,
+        exitHistoryCompleteness: 'incomplete',
+        exits: [
+          { exitScope: 'part', realizedPnlMinor: 100n, exitedAt: legExitedAt },
+          { closedBps: 2_500, realizedPnlMinor: 150n },
+        ],
+      });
+      const result = await createCompletedTrade(workspaceId, actorUserId, input);
+      expect(result).toMatchObject({ ok: true, actualR: null, traderOutcome: 'win' });
+      if (!result.ok) return;
+      expect(await readTrade(result.tradeId)).toMatchObject({
+        netPnlMinor: 400n,
+        finalPnlSource: 'manual_total',
+        exitHistoryCompleteness: 'incomplete',
+        exitedAt: null,
+      });
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, result.tradeId))
+        .orderBy(tradeExits.sequence);
+      expect(exits).toMatchObject([
+        { closedBps: null, exitScope: 'part', realizedPnlMinor: 100n, exitedAt: legExitedAt },
+        { closedBps: 2_500, exitScope: null, realizedPnlMinor: 150n, exitedAt: null },
+      ]);
+    });
+
+    it('persists explicit completeness only, rejects a complete conflict, and never auto-adopts exits', async () => {
+      const fw = await freshFramework();
+      const implicit = await createCompletedTrade(
+        workspaceId,
+        actorUserId,
+        completedInput(fw, 'money', 'money', {
+          finalPnlMinor: 250n,
+          actualInitialRiskMinor: 100n,
+          exits: [{ closedBps: 10_000, realizedPnlMinor: 250n }],
+        }),
+      );
+      expect(implicit).toMatchObject({ ok: true, actualR: '2.5000', traderOutcome: 'win' });
+      if (!implicit.ok) return;
+      expect(await readTrade(implicit.tradeId)).toMatchObject({
+        exitHistoryCompleteness: 'unknown',
+        netPnlMinor: 250n,
+      });
+
+      const matching = await createCompletedTrade(
+        workspaceId,
+        actorUserId,
+        completedInput(fw, 'money', 'money', {
+          finalPnlMinor: -25n,
+          actualInitialRiskMinor: 100n,
+          exitHistoryCompleteness: 'complete',
+          exits: [
+            { closedBps: 4_000, realizedPnlMinor: 75n },
+            { closedBps: 6_000, realizedPnlMinor: -100n },
+          ],
+        }),
+      );
+      expect(matching).toMatchObject({ ok: true, actualR: '-0.2500', traderOutcome: 'loss' });
+
+      const conflictInput = completedInput(fw, 'money', 'money', {
+        finalPnlMinor: 400n,
+        exitHistoryCompleteness: 'complete',
+        exits: [
+          { closedBps: 5_000, realizedPnlMinor: 100n },
+          { closedBps: 5_000, realizedPnlMinor: 150n },
+        ],
+      });
+      expect(await createCompletedTrade(workspaceId, actorUserId, conflictInput)).toEqual({
+        ok: false,
+        code: 'historical_exit_conflict',
+      });
+      expect(
+        await db.query.trades.findFirst({
+          where: eq(trades.mutationKey, conflictInput.mutationKey),
+        }),
+      ).toBeUndefined();
+
+      const noAdoption = await createCompletedTrade(
+        workspaceId,
+        actorUserId,
+        completedInput(fw, 'money', 'money', {
+          finalPnlMinor: null,
+          exitHistoryCompleteness: 'complete',
+          exits: [
+            { closedBps: 4_000, realizedPnlMinor: 100n },
+            { closedBps: 6_000, realizedPnlMinor: 150n },
+          ],
+        }),
+      );
+      expect(noAdoption).toMatchObject({ ok: true, actualR: null, traderOutcome: null });
+      if (!noAdoption.ok) return;
+      expect(await readTrade(noAdoption.tradeId)).toMatchObject({
+        netPnlMinor: null,
+        finalPnlSource: null,
+        exitHistoryCompleteness: 'complete',
+      });
+    });
+
+    it('rejects an empty historical Exit shell before writing', async () => {
+      const fw = await freshFramework();
+      const input = completedInput(fw, 'money', 'money', { exits: [{}] });
+      expect(await createCompletedTrade(workspaceId, actorUserId, input)).toEqual({
+        ok: false,
+        code: 'invalid_exit_shape',
+      });
+      expect(
+        await db.query.trades.findFirst({ where: eq(trades.mutationKey, input.mutationKey) }),
+      ).toBeUndefined();
     });
 
     it('denies a foreign actor and leaves no Trade behind', async () => {

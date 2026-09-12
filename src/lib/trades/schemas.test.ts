@@ -220,18 +220,8 @@ describe('trades/schemas — valid input', () => {
     ).toBe(true);
   });
 
-  it('CreateCompletedTradeSchema accepts Price completion and optional resolved System outcome', () => {
-    const result = CreateCompletedTradeSchema.safeParse({
-      ...baseCompletedInput(),
-      systemResult: {
-        status: 'resolved',
-        resolutionKind: 'price_exit',
-        systemExitPrice: '1.1100000000',
-        systemExitedAt: '2026-08-01T11:00:00Z',
-        systemExitReason: 'target_hit',
-        systemCostR: '0.05',
-      },
-    });
+  it('CreateCompletedTradeSchema accepts Price completion without a create-time System result', () => {
+    const result = CreateCompletedTradeSchema.safeParse(baseCompletedInput());
     expect(result.success).toBe(true);
   });
 
@@ -251,13 +241,64 @@ describe('trades/schemas — valid input', () => {
       plannedRewardMinor: '10000',
       actualResultBasis: 'money',
       actualInitialRiskMinor: '5000',
+      finalPnlMinor: '10000',
+      exitHistoryCompleteness: 'complete',
       exits: [
         { closedBps: 4000, realizedPnlMinor: '3000', exitedAt: '2026-08-01T11:00:00Z' },
         { closedBps: 6000, realizedPnlMinor: '7000' },
       ],
-      systemResult: { status: 'no_trade' },
     });
     expect(result.success).toBe(true);
+  });
+
+  it('normalizes blank historical facts to NULL without converting zero', () => {
+    const result = CreateCompletedTradeSchema.safeParse({
+      ...baseCompletedInput(),
+      systemPlanBasis: 'price',
+      actualResultBasis: 'money',
+      actualEntry: null,
+      actualInitialStop: null,
+      actualInitialRiskMinor: null,
+      enteredAt: '',
+      exitedAt: '',
+      finalPnlMinor: '0',
+      exits: [{ exitScope: 'part', realizedPnlMinor: '' }],
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data).toMatchObject({
+      enteredAt: null,
+      exitedAt: null,
+      finalPnlMinor: 0n,
+      exits: [{ exitScope: 'part', realizedPnlMinor: null }],
+    });
+  });
+
+  it('accepts zero exits and sparse exits, but rejects an empty exit shell', () => {
+    expect(
+      CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), exits: [] }).success,
+    ).toBe(true);
+    expect(
+      CreateCompletedTradeSchema.safeParse({
+        ...baseCompletedInput(),
+        actualResultBasis: 'money',
+        actualEntry: null,
+        actualInitialStop: null,
+        exits: [{ exitScope: null, exitedAt: '2026-08-01T11:00:00Z' }],
+      }).success,
+    ).toBe(true);
+    expect(
+      CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), exits: [{}] }).success,
+    ).toBe(false);
+  });
+
+  it('does not allow create-time System assessment input', () => {
+    expect(
+      CreateCompletedTradeSchema.safeParse({
+        ...baseCompletedInput(),
+        systemResult: { status: 'no_trade' },
+      }).success,
+    ).toBe(false);
   });
 
   it('CreateCompletedTradeSchema rejects At Entry, mixed Actual authority, and unknown fields', () => {

@@ -26,6 +26,7 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'completed_trade_path_required',
   'invalid_completed_trade_time',
   'invalid_completed_exit_coverage',
+  'historical_exit_conflict',
   'completed_trade_replay_conflict',
   'no_plan_representation',
   'planned_r_mismatch',
@@ -111,6 +112,7 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'completed_trade_path_required',
   'invalid_completed_trade_time',
   'invalid_completed_exit_coverage',
+  'historical_exit_conflict',
   'completed_trade_replay_conflict',
   'no_plan_representation',
   'planned_r_mismatch',
@@ -173,6 +175,7 @@ export function mapServiceErrorToPublicCode(
     case 'completed_trade_path_required':
     case 'invalid_completed_trade_time':
     case 'invalid_completed_exit_coverage':
+    case 'historical_exit_conflict':
     case 'completed_trade_replay_conflict':
     case 'no_plan_representation':
     case 'planned_r_mismatch':

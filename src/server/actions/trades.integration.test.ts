@@ -1002,6 +1002,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
   describe('createCompletedTradeAction', () => {
     function completedPayload(fw: Framework, overrides: Record<string, unknown> = {}) {
       const exitedAt = new Date(Date.now() - 60 * 60 * 1000);
+      const exitedAtIso = exitedAt.toISOString();
       return baseCreateInput(fw, {
         recordingTiming: 'after_trade',
         systemPlanBasis: 'price',
@@ -1009,8 +1010,8 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         actualEntry: '1.1000000000',
         actualInitialStop: '1.0950000000',
         enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000).toISOString(),
-        exitedAt: exitedAt.toISOString(),
-        exits: [{ closedBps: 10_000, exitPrice: '1.1100000000' }],
+        exitedAt: exitedAtIso,
+        exits: [{ closedBps: 10_000, exitPrice: '1.1100000000', exitedAt: exitedAtIso }],
         ...overrides,
       });
     }
@@ -1053,6 +1054,39 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         data: { ...(first.ok ? first.data : {}), alreadyCreated: true },
       });
       assertJsonSerializable(replay);
+    });
+
+    it('normalizes blank historical facts and returns nullable R without fabricating data', async () => {
+      const { fw } = await freshFixture();
+      const result = await createCompletedTradeAction(
+        completedPayload(fw, {
+          actualResultBasis: 'money',
+          actualEntry: '',
+          actualInitialStop: '',
+          actualInitialRiskMinor: '',
+          enteredAt: '',
+          exitedAt: '',
+          finalPnlMinor: '400',
+          exits: [],
+        }),
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        data: { actualR: null, traderOutcome: 'win', recordedRetrospectively: false },
+      });
+      assertJsonSerializable(result);
+      if (!result.ok) return;
+      expect(
+        await db.query.trades.findFirst({ where: eq(trades.id, result.data.tradeId) }),
+      ).toMatchObject({
+        enteredAt: null,
+        exitedAt: null,
+        actualInitialRiskMinor: null,
+        netPnlMinor: 400n,
+        finalPnlSource: 'manual_total',
+        actualR: null,
+        traderOutcome: 'win',
+      });
     });
 
     it('rejects unknown fields and malformed coverage at the strict boundary', async () => {

@@ -919,6 +919,10 @@ export function TradeRecordingForm({
       actualEntry: actualBasis === 'price' ? values.actualEntry : null,
       actualInitialStop: actualBasis === 'price' ? values.actualStop : null,
       actualInitialRiskMinor: actualBasis === 'money' && actualRisk?.ok ? actualRisk.value : null,
+      finalPnlMinor:
+        actualBasis === 'money' && !partialExits
+          ? (completedExits[0]?.realizedPnlMinor ?? null)
+          : null,
       actualPositionSize:
         actualBasis === 'price' && values.actualPositionSize.trim() !== ''
           ? values.actualPositionSize

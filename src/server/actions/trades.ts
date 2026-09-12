@@ -297,8 +297,8 @@ export interface CreateCompletedTradeData {
   readonly tradeId: string;
   readonly alreadyCreated: boolean;
   readonly status: 'closed';
-  readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
   readonly systemStatus: SystemStatus;
   readonly systemR: string | null;
   readonly systemOutcome: OutcomeValue | null;
