@@ -5,6 +5,7 @@ import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-to
 import {
   auditLogs,
   tradeEmotions,
+  tradeExits,
   trades,
   tradingAccounts,
   userPreferences,
@@ -74,6 +75,8 @@ vi.mock('@/server/auth/dal', () => {
 });
 
 const {
+  adoptHistoricalExitSubtotalAction,
+  applyHistoricalExitHistoryCorrectionAction,
   attachTradeMistakeAction,
   cancelTradeAction,
   closeTradeAction,
@@ -81,6 +84,7 @@ const {
   correctTradeIdentityAction,
   createCompletedTradeAction,
   createTradeAction,
+  editHistoricalFinalResultAction,
   markSystemCannotDetermineAction,
   markSystemNoTradeAction,
   openTradeAction,
@@ -1104,6 +1108,74 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       ).toBeUndefined();
       expect(revalidatePath).not.toHaveBeenCalled();
       assertJsonSerializable(result);
+    });
+
+    it('exposes serializable explicit adoption, correction, and manual-ownership actions', async () => {
+      const { fw } = await freshFixture();
+      const created = await createCompletedTradeAction(
+        completedPayload(fw, {
+          actualResultBasis: 'money',
+          actualEntry: '',
+          actualInitialStop: '',
+          actualInitialRiskMinor: '200',
+          finalPnlMinor: '',
+          exitHistoryCompleteness: 'complete',
+          exits: [
+            { closedBps: 4000, exitScope: 'part', realizedPnlMinor: '100', exitedAt: '' },
+            {
+              closedBps: 6000,
+              exitScope: 'all_remaining',
+              realizedPnlMinor: '300',
+              exitedAt: '',
+            },
+          ],
+        }),
+      );
+      if (!created.ok) throw new Error('historical action fixture failed');
+
+      const adopted = await adoptHistoricalExitSubtotalAction({ tradeId: created.data.tradeId });
+      expect(adopted).toMatchObject({
+        ok: true,
+        data: {
+          tradeId: created.data.tradeId,
+          netPnlMinor: '400',
+          finalPnlSource: 'exit_history',
+          exitSubtotalMinor: '400',
+          reconciliation: 'matched',
+          actualR: '2.0000',
+          traderOutcome: 'win',
+        },
+      });
+      assertJsonSerializable(adopted);
+
+      const exits = await db
+        .select()
+        .from(tradeExits)
+        .where(eq(tradeExits.tradeId, created.data.tradeId))
+        .orderBy(tradeExits.sequence);
+      const corrected = await applyHistoricalExitHistoryCorrectionAction({
+        tradeId: created.data.tradeId,
+        exitHistoryCompleteness: 'complete',
+        exits: [
+          { exitId: exits[0]!.id, closedBps: 4000, realizedPnlMinor: '-100' },
+          { exitId: exits[1]!.id, closedBps: 6000, realizedPnlMinor: '100' },
+        ],
+      });
+      expect(corrected).toMatchObject({
+        ok: true,
+        data: { netPnlMinor: '0', finalPnlSource: 'exit_history', traderOutcome: 'break_even' },
+      });
+      assertJsonSerializable(corrected);
+
+      const manual = await editHistoricalFinalResultAction({
+        tradeId: created.data.tradeId,
+        finalPnlMinor: '0',
+      });
+      expect(manual).toMatchObject({
+        ok: true,
+        data: { netPnlMinor: '0', finalPnlSource: 'manual_total', reconciliation: 'matched' },
+      });
+      assertJsonSerializable(manual);
     });
   });
 

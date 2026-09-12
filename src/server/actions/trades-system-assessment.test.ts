@@ -27,6 +27,11 @@ vi.mock('@/server/services/trade-execution', () => ({
   closeRemainingTrade: vi.fn(),
   correctTradeExit: vi.fn(),
 }));
+vi.mock('@/server/services/trade-historical-execution', () => ({
+  adoptHistoricalExitSubtotal: vi.fn(),
+  applyHistoricalExitHistoryCorrection: vi.fn(),
+  editHistoricalFinalResult: vi.fn(),
+}));
 vi.mock('@/server/services/trade-management', () => ({
   assignTradeClassification: vi.fn(),
   cancelTrade: vi.fn(),

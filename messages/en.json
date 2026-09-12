@@ -1966,6 +1966,7 @@
       "invalid_completed_trade_time": "Entry, exit, and System times must be chronological and cannot be in the future.",
       "invalid_completed_exit_coverage": "Known exit allocations must be valid and cannot exceed 100% of the position.",
       "historical_exit_conflict": "The final result does not match the subtotal of the complete exit history. Resolve the conflict before saving.",
+      "exit_history_not_adoptable": "Only a complete exit history with every result recorded can be used as the final result.",
       "completed_trade_replay_conflict": "This completed-Trade request conflicts with an existing unfinished Trade. Start again with a new request.",
       "no_plan_representation": "This change would leave the Trade with no Plan at all. Enter a Price plan (Entry/Stop) or a Money plan (planned risk), or cancel this edit.",
       "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",

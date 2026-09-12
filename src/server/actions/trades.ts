@@ -13,6 +13,8 @@ import {
 } from '@/lib/trades/errors';
 import {
   AddTradeExitSchema,
+  AdoptHistoricalExitSubtotalSchema,
+  ApplyHistoricalExitHistoryCorrectionSchema,
   AssignTradeClassificationSchema,
   AttachTradeMistakeSchema,
   CancelTradeSchema,
@@ -24,6 +26,7 @@ import {
   CorrectTradeIdentitySchema,
   CreateCompletedTradeSchema,
   CreateTradeSchema,
+  EditHistoricalFinalResultSchema,
   MarkSystemCannotDetermineSchema,
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
@@ -53,6 +56,12 @@ import {
   closeRemainingTrade,
   correctTradeExit,
 } from '@/server/services/trade-execution';
+import {
+  adoptHistoricalExitSubtotal,
+  applyHistoricalExitHistoryCorrection,
+  editHistoricalFinalResult,
+  type HistoricalExecutionMutationData,
+} from '@/server/services/trade-historical-execution';
 import {
   assignTradeClassification,
   cancelTrade,
@@ -357,6 +366,112 @@ export async function createCompletedTradeAction(
         recordedRetrospectively: result.recordedRetrospectively,
       },
     };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1b. historical closed-Money provenance transitions
+// ---------------------------------------------------------------------------
+
+export interface HistoricalExecutionMutationActionData {
+  readonly tradeId: string;
+  readonly netPnlMinor: string | null;
+  readonly finalPnlSource: HistoricalExecutionMutationData['finalPnlSource'];
+  readonly exitHistoryCompleteness: HistoricalExecutionMutationData['exitHistoryCompleteness'];
+  readonly exitSubtotalMinor: string | null;
+  readonly reconciliation: HistoricalExecutionMutationData['reconciliation'];
+  readonly canAdoptExitSubtotal: boolean;
+  readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+}
+
+export type HistoricalExecutionMutationActionResult =
+  TradeActionResult<HistoricalExecutionMutationActionData>;
+
+function historicalExecutionSuccess(
+  data: HistoricalExecutionMutationData,
+): HistoricalExecutionMutationActionResult {
+  return {
+    ok: true,
+    data: {
+      tradeId: data.tradeId,
+      netPnlMinor: data.netPnlMinor?.toString() ?? null,
+      finalPnlSource: data.finalPnlSource,
+      exitHistoryCompleteness: data.exitHistoryCompleteness,
+      exitSubtotalMinor: data.exitSubtotalMinor?.toString() ?? null,
+      reconciliation: data.reconciliation,
+      canAdoptExitSubtotal: data.canAdoptExitSubtotal,
+      actualR: data.actualR,
+      traderOutcome: data.traderOutcome,
+    },
+  };
+}
+
+export async function adoptHistoricalExitSubtotalAction(
+  input: unknown,
+): Promise<HistoricalExecutionMutationActionResult> {
+  const parsed = AdoptHistoricalExitSubtotalSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+
+  try {
+    const result = await adoptHistoricalExitSubtotal(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.tradeId,
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return historicalExecutionSuccess(result);
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export async function editHistoricalFinalResultAction(
+  input: unknown,
+): Promise<HistoricalExecutionMutationActionResult> {
+  const parsed = EditHistoricalFinalResultSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+
+  try {
+    const result = await editHistoricalFinalResult(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.tradeId,
+      parsed.data.finalPnlMinor ?? null,
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return historicalExecutionSuccess(result);
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+export async function applyHistoricalExitHistoryCorrectionAction(
+  input: unknown,
+): Promise<HistoricalExecutionMutationActionResult> {
+  const parsed = ApplyHistoricalExitHistoryCorrectionSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+
+  try {
+    const result = await applyHistoricalExitHistoryCorrection(
+      ctx.workspaceId,
+      ctx.userId,
+      parsed.data.tradeId,
+      asServiceInput(parsed.data),
+    );
+    if (!result.ok) return serviceFailure(result.code);
+    revalidateTradeRoutes();
+    return historicalExecutionSuccess(result);
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
   }

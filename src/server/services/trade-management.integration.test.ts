@@ -34,6 +34,11 @@ import {
 import { createCompletedTrade, type CreateCompletedTradeInput } from './trade-completed';
 import { addTradeExit, closeRemainingTrade, correctTradeExit } from './trade-execution';
 import {
+  adoptHistoricalExitSubtotal,
+  applyHistoricalExitHistoryCorrection,
+  editHistoricalFinalResult,
+} from './trade-historical-execution';
+import {
   assignTradeClassification,
   cancelTrade,
   closeTrade,
@@ -4059,6 +4064,260 @@ describe('trade-management (real database)', () => {
         netPnlMinor: null,
         finalPnlSource: null,
         exitHistoryCompleteness: 'complete',
+      });
+    });
+
+    describe('historical exit adoption and provenance-safe corrections', () => {
+      async function createAdoptable(
+        overrides: Partial<CreateCompletedTradeInput> = {},
+      ): Promise<string> {
+        const fw = await freshFramework();
+        const result = await createCompletedTrade(
+          workspaceId,
+          actorUserId,
+          completedInput(fw, 'money', 'money', {
+            finalPnlMinor: null,
+            exitHistoryCompleteness: 'complete',
+            exits: [
+              { closedBps: 4_000, exitScope: 'part', realizedPnlMinor: 100n },
+              { closedBps: 6_000, exitScope: 'all_remaining', realizedPnlMinor: 300n },
+            ],
+            ...overrides,
+          }),
+        );
+        if (!result.ok) throw new Error(`historical create failed: ${result.code}`);
+        return result.tradeId;
+      }
+
+      async function readExits(tradeId: string) {
+        return db
+          .select()
+          .from(tradeExits)
+          .where(eq(tradeExits.tradeId, tradeId))
+          .orderBy(tradeExits.sequence);
+      }
+
+      it('adopts the exact subtotal and derives outcome/R without changing final exit time', async () => {
+        const explicitFinalTime = new Date(Date.now() - 30 * 60 * 1000);
+        const legTime = new Date(explicitFinalTime.getTime() - 10 * 60 * 1000);
+        const tradeId = await createAdoptable({
+          exitedAt: explicitFinalTime,
+          actualInitialRiskMinor: 200n,
+          exits: [
+            { closedBps: 4_000, realizedPnlMinor: 100n, exitedAt: legTime },
+            { closedBps: 6_000, realizedPnlMinor: 300n },
+          ],
+        });
+
+        const result = await adoptHistoricalExitSubtotal(workspaceId, actorUserId, tradeId);
+        expect(result).toMatchObject({
+          ok: true,
+          netPnlMinor: 400n,
+          finalPnlSource: 'exit_history',
+          exitSubtotalMinor: 400n,
+          reconciliation: 'matched',
+          actualR: '2.0000',
+          traderOutcome: 'win',
+        });
+        expect(await readTrade(tradeId)).toMatchObject({
+          netPnlMinor: 400n,
+          finalPnlSource: 'exit_history',
+          actualR: '2.0000',
+          traderOutcome: 'win',
+          exitedAt: explicitFinalTime,
+        });
+      });
+
+      it.each([
+        ['unknown', 'unknown', [{ closedBps: 10_000, realizedPnlMinor: 400n }]],
+        ['incomplete', 'incomplete', [{ closedBps: 10_000, realizedPnlMinor: 400n }]],
+        ['unpriced', 'complete', [{ closedBps: 10_000, realizedPnlMinor: null }]],
+      ] as const)(
+        'refuses adoption from %s supporting evidence',
+        async (_label, completeness, exits) => {
+          const tradeId = await createAdoptable({
+            exitHistoryCompleteness: completeness,
+            exits,
+          });
+          expect(await adoptHistoricalExitSubtotal(workspaceId, actorUserId, tradeId)).toEqual({
+            ok: false,
+            code: 'exit_history_not_adoptable',
+          });
+          expect(await readTrade(tradeId)).toMatchObject({
+            netPnlMinor: null,
+            finalPnlSource: null,
+          });
+        },
+      );
+
+      it('follows edits, additions, and removals while the adopted basis remains valid', async () => {
+        const tradeId = await createAdoptable({ actualInitialRiskMinor: 100n });
+        expect((await adoptHistoricalExitSubtotal(workspaceId, actorUserId, tradeId)).ok).toBe(
+          true,
+        );
+        let exits = await readExits(tradeId);
+
+        const edited = await applyHistoricalExitHistoryCorrection(
+          workspaceId,
+          actorUserId,
+          tradeId,
+          {
+            exitHistoryCompleteness: 'complete',
+            exits: [
+              { exitId: exits[0]!.id, closedBps: 4_000, realizedPnlMinor: -200n },
+              { exitId: exits[1]!.id, closedBps: 6_000, realizedPnlMinor: 100n },
+            ],
+          },
+        );
+        expect(edited).toMatchObject({
+          ok: true,
+          netPnlMinor: -100n,
+          finalPnlSource: 'exit_history',
+          actualR: '-1.0000',
+          traderOutcome: 'loss',
+        });
+
+        const added = await applyHistoricalExitHistoryCorrection(
+          workspaceId,
+          actorUserId,
+          tradeId,
+          {
+            exitHistoryCompleteness: 'complete',
+            exits: [
+              { exitId: exits[0]!.id, closedBps: 3_000, realizedPnlMinor: -200n },
+              { exitId: exits[1]!.id, closedBps: 5_000, realizedPnlMinor: 100n },
+              { closedBps: 2_000, exitScope: 'part', realizedPnlMinor: 100n },
+            ],
+          },
+        );
+        expect(added).toMatchObject({ ok: true, netPnlMinor: 0n, traderOutcome: 'break_even' });
+        exits = await readExits(tradeId);
+
+        const removed = await applyHistoricalExitHistoryCorrection(
+          workspaceId,
+          actorUserId,
+          tradeId,
+          {
+            exitHistoryCompleteness: 'complete',
+            exits: [
+              { exitId: exits[0]!.id, closedBps: 4_000, realizedPnlMinor: -200n },
+              { exitId: exits[2]!.id, closedBps: 6_000, realizedPnlMinor: 100n },
+            ],
+          },
+        );
+        expect(removed).toMatchObject({ ok: true, netPnlMinor: -100n, traderOutcome: 'loss' });
+        expect(await readExits(tradeId)).toHaveLength(2);
+      });
+
+      it.each([
+        ['incomplete', 'incomplete', [{ closedBps: 4_000, realizedPnlMinor: 100n }]],
+        ['unknown', 'unknown', [{ closedBps: 4_000, realizedPnlMinor: 100n }]],
+        ['unpriced', 'complete', [{ closedBps: 10_000, realizedPnlMinor: null }]],
+      ] as const)(
+        'freezes the adopted result when history becomes %s',
+        async (_label, completeness, next) => {
+          const tradeId = await createAdoptable();
+          expect((await adoptHistoricalExitSubtotal(workspaceId, actorUserId, tradeId)).ok).toBe(
+            true,
+          );
+          const exits = await readExits(tradeId);
+          const result = await applyHistoricalExitHistoryCorrection(
+            workspaceId,
+            actorUserId,
+            tradeId,
+            {
+              exitHistoryCompleteness: completeness,
+              exits: next.map((exit, index) => ({
+                ...exit,
+                ...(exits[index] === undefined ? {} : { exitId: exits[index].id }),
+              })),
+            },
+          );
+          expect(result).toMatchObject({
+            ok: true,
+            netPnlMinor: 400n,
+            finalPnlSource: 'manual_total',
+          });
+          expect(await readTrade(tradeId)).toMatchObject({
+            netPnlMinor: 400n,
+            finalPnlSource: 'manual_total',
+          });
+        },
+      );
+
+      it('manual ownership survives later exit equality and complete conflicts block atomically', async () => {
+        const tradeId = await createAdoptable();
+        expect((await adoptHistoricalExitSubtotal(workspaceId, actorUserId, tradeId)).ok).toBe(
+          true,
+        );
+        expect(
+          await editHistoricalFinalResult(workspaceId, actorUserId, tradeId, 400n),
+        ).toMatchObject({
+          ok: true,
+          finalPnlSource: 'manual_total',
+          reconciliation: 'matched',
+        });
+        const exits = await readExits(tradeId);
+        expect(
+          await applyHistoricalExitHistoryCorrection(workspaceId, actorUserId, tradeId, {
+            exitHistoryCompleteness: 'complete',
+            exits: [
+              { exitId: exits[0]!.id, closedBps: 5_000, realizedPnlMinor: 150n },
+              { exitId: exits[1]!.id, closedBps: 5_000, realizedPnlMinor: 250n },
+            ],
+          }),
+        ).toMatchObject({ ok: true, netPnlMinor: 400n, finalPnlSource: 'manual_total' });
+
+        const conflict = await applyHistoricalExitHistoryCorrection(
+          workspaceId,
+          actorUserId,
+          tradeId,
+          {
+            exitHistoryCompleteness: 'complete',
+            exits: [
+              { exitId: exits[0]!.id, closedBps: 5_000, realizedPnlMinor: 150n },
+              { exitId: exits[1]!.id, closedBps: 5_000, realizedPnlMinor: 249n },
+            ],
+          },
+        );
+        expect(conflict).toEqual({ ok: false, code: 'historical_exit_conflict' });
+        expect(await readTrade(tradeId)).toMatchObject({ netPnlMinor: 400n });
+        expect((await readExits(tradeId)).map((exit) => exit.realizedPnlMinor)).toEqual([
+          150n,
+          250n,
+        ]);
+      });
+
+      it('contains the historical mutations to closed Money trades', async () => {
+        const fw = await freshFramework();
+        const price = await createCompletedTrade(
+          workspaceId,
+          actorUserId,
+          completedInput(fw, 'price', 'price'),
+        );
+        if (!price.ok) throw new Error('price create failed');
+        expect(await adoptHistoricalExitSubtotal(workspaceId, actorUserId, price.tradeId)).toEqual({
+          ok: false,
+          code: 'invalid_execution_context',
+        });
+
+        const open = await createTrade(
+          workspaceId,
+          actorUserId,
+          basePlanInput(fw, {
+            mutationKey: crypto.randomUUID(),
+            actualResultMode: 'money',
+            actualInitialRiskMinor: 100n,
+            enteredAt: new Date(Date.now() - 60_000),
+          }),
+        );
+        if (!open.ok) throw new Error('open create failed');
+        expect(
+          await editHistoricalFinalResult(workspaceId, actorUserId, open.tradeId, 100n),
+        ).toEqual({
+          ok: false,
+          code: 'invalid_status_transition',
+        });
       });
     });
 

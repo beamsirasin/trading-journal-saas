@@ -24,6 +24,10 @@ import type {
   TradeDirection,
   TradeStatus,
 } from '@/lib/trades/constants';
+import {
+  deriveHistoricalExecutionSnapshot,
+  type HistoricalReconciliationStatus,
+} from '@/lib/trades/historical-execution';
 import { isRecordedRetrospectively } from '@/lib/trades/recording-model';
 import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
@@ -651,6 +655,12 @@ export interface TradeDetail {
   readonly netPnlMinor: string | null;
   readonly exitHistoryCompleteness: ExitHistoryCompleteness | null;
   readonly finalPnlSource: FinalPnlSource | null;
+  /** Derived supporting subtotal; NULL means absent or at least one unpriced leg. */
+  readonly exitSubtotalMinor: string | null;
+  /** Derived, never persisted; arithmetic is gated by declared completeness. */
+  readonly exitReconciliation: HistoricalReconciliationStatus;
+  /** True only for a complete, fully-priced history with no canonical final. */
+  readonly canAdoptExitSubtotal: boolean;
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly enteredAt: string | null;
@@ -844,6 +854,13 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
           exits: exitRows,
         });
   const closedBps = knownClosedBps(exitRows);
+  const historicalExecution = deriveHistoricalExecutionSnapshot({
+    actualInitialRiskMinor: trade.actualInitialRiskMinor,
+    finalPnlMinor: trade.netPnlMinor,
+    finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
+    exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,
+    exits: exitRows,
+  });
   const gap = executionGapR(trade.actualR, trade.systemR);
 
   return {
@@ -906,6 +923,9 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       netPnlMinor: minorToString(trade.netPnlMinor),
       exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,
       finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
+      exitSubtotalMinor: minorToString(historicalExecution.exitSubtotalMinor),
+      exitReconciliation: historicalExecution.reconciliation,
+      canAdoptExitSubtotal: historicalExecution.canAdoptExitSubtotal,
       actualR: trade.actualR,
       traderOutcome: trade.traderOutcome as OutcomeValue | null,
       enteredAt: dateToIso(trade.enteredAt),

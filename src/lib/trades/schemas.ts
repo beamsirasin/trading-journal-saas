@@ -240,6 +240,9 @@ const nullableInstantField = () =>
 const nullableSignedMinorField = () =>
   z.preprocess((value) => (value === '' ? null : value), signedMinorField().nullable().optional());
 
+const requiredNullableSignedMinorField = () =>
+  z.preprocess((value) => (value === '' ? null : value), signedMinorField().nullable());
+
 const nullablePositiveMinorField = () =>
   z.preprocess(
     (value) => (value === '' ? null : value),
@@ -932,6 +935,63 @@ export const CreateCompletedTradeSchema = applyPlanShapeRefinements(CompletedTra
   });
 export type CreateCompletedTradeActionInput = z.input<typeof CreateCompletedTradeSchema>;
 export type CreateCompletedTradeActionData = z.output<typeof CreateCompletedTradeSchema>;
+
+// ---------------------------------------------------------------------------
+// 8b. historical closed-Money provenance transitions
+// ---------------------------------------------------------------------------
+
+export const AdoptHistoricalExitSubtotalSchema = z.object({ tradeId: uuidField() }).strict();
+
+export const EditHistoricalFinalResultSchema = z
+  .object({ tradeId: uuidField(), finalPnlMinor: requiredNullableSignedMinorField() })
+  .strict();
+
+const HistoricalExitCorrectionSchema = z
+  .object({
+    exitId: uuidField().optional(),
+    closedBps: nullableClosedBpsField(),
+    exitScope: z.preprocess(
+      (value) => (value === '' ? null : value),
+      z.enum(EXIT_SCOPES).nullable().optional(),
+    ),
+    realizedPnlMinor: nullableSignedMinorField(),
+    exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
+    exitedAt: nullableInstantField(),
+  })
+  .strict()
+  .refine(
+    (exit) =>
+      exit.closedBps != null ||
+      exit.exitScope != null ||
+      exit.realizedPnlMinor != null ||
+      exit.exitedAt != null,
+    { message: 'empty_historical_exit' },
+  );
+
+export const ApplyHistoricalExitHistoryCorrectionSchema = z
+  .object({
+    tradeId: uuidField(),
+    exitHistoryCompleteness: z.enum(EXIT_HISTORY_COMPLETENESS_VALUES).nullable(),
+    exits: z.array(HistoricalExitCorrectionSchema),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if ((data.exits.length === 0) !== (data.exitHistoryCompleteness === null)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'exit_completeness_history_mismatch',
+        path: ['exitHistoryCompleteness'],
+      });
+    }
+    const ids = data.exits.flatMap((exit) => (exit.exitId === undefined ? [] : [exit.exitId]));
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({ code: 'custom', message: 'duplicate_exit_id', path: ['exits'] });
+    }
+  });
+
+export type ApplyHistoricalExitHistoryCorrectionActionData = z.output<
+  typeof ApplyHistoricalExitHistoryCorrectionSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 9. markSystemNoTrade
