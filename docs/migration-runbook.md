@@ -99,6 +99,18 @@ pnpm db:migrate
 
 **There is no auto-migrate-on-deploy.** CLAUDE.md §4 forbids migrations at build or startup time — a deploy that raced a schema change against in-flight requests on the previous schema version would be a self-inflicted outage. Run `pnpm db:migrate` as its own explicit step, before traffic is routed to code that expects the new schema.
 
+## Persistent TradeChemist staging
+
+The reusable staging environment is intentionally separate from future customer production:
+
+- GitHub branch: `staging`.
+- Vercel project: `tradechemist-staging`, with `staging` as that project's Production Branch.
+- Application database: the approved Neon **development** branch only (`br-icy-flower-b34ui76w`, target fingerprint `db1_6d5a44e6147dff6b`). The Vercel staging project must never receive a Neon production connection string or `TEST_DATABASE_URL`.
+- Normal web runtime variables are limited to `DATABASE_URL`, `DATABASE_ENVIRONMENT`, `NEXT_PUBLIC_APP_URL`, `BETTER_AUTH_URL`, and `BETTER_AUTH_SECRET` unless a later integration proves another application variable is required. Do not expose `DATABASE_MIGRATION_URL`, `DEVELOPER_DATABASE_TARGET_ID`, `DEVELOPER_DATABASE_WRITE_ACK`, or test acknowledgements to the web runtime.
+- Deployments run the ordinary Next.js build and never apply migrations. Apply migrations separately through the guarded development workflow before deploying code that requires them.
+
+Product smoke checks use the real `/app` and `/app/trades/new` routes. `/prototype/add-trade` is frozen reference material, not an implementation or staging test route.
+
 ## Vercel Preview deployments
 
 A Preview deployment's `DATABASE_URL`/`DATABASE_MIGRATION_URL` should point at a **dedicated Preview/staging Neon branch**, never at the production branch and never at your personal local database. Configure this under Vercel's **Preview** environment scope (distinct from **Production** and **Development**) — see [`docs/neon-setup.md`](neon-setup.md#vercel-environment-scopes).

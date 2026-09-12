@@ -1,6 +1,9 @@
 # Trade Log & Add Trade — visual prototype
 
-**Status: awaiting visual design approval. Not production. Do not migrate.**
+**Status: frozen reference only. Not production. Do not migrate or add product behavior here.**
+
+The production Add Trade experience lives at `/app/trades/new`; all further product development and
+staging verification must use that route.
 
 A high-fidelity rendered prototype of the approved TradeChemist UX/UI specification for the Trade
 Log and Add Trade surfaces, built on the real frontend stack, the real design tokens and several of
