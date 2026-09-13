@@ -1694,3 +1694,39 @@ distinguishing it from a blank `planned_reward_minor`/`planned_target`; a struct
 (none/saved/customized/no-rule, with a reusable library) has no per-trade or workspace persistence —
 `trade_exits.exit_reason` is per-exit and `strategy_rules` exit rows are versioned rule checks. Both
 need a separate domain decision. No schema, server, calculation or migration change was made.
+
+## 66. Production After Trade Visual & Interaction Parity (as built)
+
+`/app/trades/new?timing=after_trade` now uses the same Add Trade language as the accepted
+production At Entry route. Rendering both real routes at 1440 and 390 showed differences that
+existed only because After Trade still used the first migration's layout: four numbered bordered
+cards and a separate save card at 1152px, a full-width account select, 14px labels with an
+untranslated "· optional", round-radio Direction, Strategy/Setup/"Plan recorded by"/timeframe/
+session at full weight in the plan, a ring-bordered Actual Result opening on "Actual result by"
+radios, a grey result box, an outlined "Add exit details" button, tall journal launchers and
+hand-rolled emotion pills.
+
+**Shared At Entry patterns reused** (`trade-recording-surface.tsx`, `trade-confidence-choice.tsx`,
+`trade-emotion-chips.tsx`): the 720px measure (both modes now share it on the route), one task
+surface with hairline bands, the account as a context line with Change, Symbol beside the Direction
+segments with recent-symbol chips, 12px labels with a translated Optional marker, quiet disclosures,
+the journal launcher surface, the five confidence choices, the emotion chips and the docked Save.
+`PrimaryAmountField` gained an additive `compact` size and `FormFooter` an additive `suppressed`
+state; both default to At Entry's existing rendering.
+
+**After Trade-specific hierarchy retained.** Entry and final exit times start blank and stay
+independently optional. The plan is compact and subordinate (compact amounts, a quiet price-level
+switch); Strategy, Setup, the checklist, timeframe, session, chart link and notes move into the
+retrospective Trade idea ("Were you following a strategy?"), with the same provenance payload. The
+Actual Result band stays strongest — an accent rule, the one large Final net P&L figure, and the
+derived outcome and Actual R at metric size — while keeping the unknown result, unknown risk,
+"Actual R needs a recorded actual risk", optional reconstruction, explicit completeness,
+reconciliation that picks neither figure and adoption only after save. Reconstruction collapses to
+one quiet line; expanded, it is one bordered panel with summary rows, an inline editor whose own
+Done/Remove own the screen while the page's Save is suppressed, and completeness plus
+reconciliation beneath. Save keeps "Save closed trade" and the Review helper. Review, Reflection and
+System Assessment remain post-save.
+
+**One capture alignment:** Feelings records emotions only when chosen or when "None of these" is
+chosen, matching At Entry, so opening Feelings to set a confidence no longer records "no emotions".
+No schema, server, calculation or migration change was made.

@@ -1853,7 +1853,11 @@
             "description": "Identify the completed trade. Only Account, Symbol and Direction are required.",
             "timezone": "Times use {timezone}. Leave either time blank if you do not know it.",
             "entryTime": "Entry time",
-            "finalExitTime": "Final exit time"
+            "finalExitTime": "Final exit time",
+            "change": "Change",
+            "changeAccountSr": "account",
+            "recentSymbols": "Recent symbols",
+            "optional": "Optional"
           },
           "plan": {
             "title": "Plan at entry",
@@ -1863,7 +1867,10 @@
             "setupHint": "Check conditions that were met at entry. Unchecked conditions are saved as Not Met.",
             "plannedRisk": "Planned risk",
             "targetProfit": "Target profit",
-            "targetR": "Target R"
+            "targetR": "Target R",
+            "usePrice": "Use price levels instead",
+            "useMoney": "Use amounts instead",
+            "priceHint": "Entry and stop from your chart. Take Profit and size are optional."
           },
           "actual": {
             "title": "Actual Result",
@@ -1877,7 +1884,9 @@
             "outcome": "Outcome",
             "unknown": "Not recorded",
             "unavailable": "Unavailable",
-            "rNeedsRisk": "Actual R needs a recorded actual risk at entry."
+            "rNeedsRisk": "Actual R needs a recorded actual risk at entry.",
+            "useMoney": "Record the result as an amount instead",
+            "usePrice": "Record the result with price levels instead"
           },
           "exits": {
             "title": "Exit reconstruction",
@@ -1912,7 +1921,8 @@
               "not_applicable": "There is not enough evidence to compare this history with a final result.",
               "not_recorded": "No exit history recorded."
             },
-            "adoptAfterSave": "After saving, you can explicitly use this subtotal as the final result from the persisted trade."
+            "adoptAfterSave": "After saving, you can explicitly use this subtotal as the final result from the persisted trade.",
+            "collapsedHint": "Optional — if you remember how the position was closed."
           },
           "journal": {
             "title": "Journal at entry",
@@ -1923,15 +1933,24 @@
               "label": "Trade idea",
               "prompt": "Why did you take this trade?",
               "description": "Record what you saw and intended at entry, not an explanation built from the outcome.",
-              "notes": "Anything else worth remembering"
+              "notes": "Anything else worth remembering",
+              "placeholder": "What you saw, and why it was worth risking money on.",
+              "strategyQuestion": "Were you following a strategy?",
+              "strategyHint": "The trading method you used.",
+              "setupHint": "The pattern or signal you traded.",
+              "checklistTitle": "Setup checklist",
+              "detailsAdded": "Details added"
             },
             "feelings": {
               "label": "Feelings at entry",
               "prompt": "How did you feel when you entered?",
               "description": "Recall how you felt at entry, rather than how the result feels now.",
               "emotions": "Emotions recalled at entry",
-              "summary": "Confidence {confidence} · {count, plural, one {# emotion} other {# emotions}}"
-            }
+              "summary": "Confidence {confidence} · {count, plural, one {# emotion} other {# emotions}}",
+              "noneOfThese": "None of these",
+              "confidencePreview": "{level} confidence"
+            },
+            "aside": "Recalled · optional"
           },
           "save": {
             "action": "Save closed trade",

@@ -1194,7 +1194,9 @@ test.describe('real Trade Journal creation', () => {
         const afterForm = page.locator('[data-after-trade-linear-form]:visible');
         await expect(afterForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
-        await expect(afterForm.locator('section')).toHaveCount(4);
+        await expect(afterForm.locator('[data-account-context]')).toBeVisible();
+        await expect(afterForm.locator('#after-strategy')).toHaveCount(0);
+        await expect(afterForm.locator('[data-journal-area]')).toHaveCount(2);
         await expect(afterForm.locator('#after-entered-at')).toHaveValue('');
         await expect(afterForm.locator('#after-exited-at')).toHaveValue('');
         await expect(afterForm.locator('[data-actual-result]')).toBeVisible();
@@ -1223,7 +1225,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(afterForm.locator('#after-entered-at')).toHaveValue('');
     await expect(afterForm.locator('#after-exited-at')).toHaveValue('');
     await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
-    await afterForm.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(afterForm, 'Long');
     await afterForm.getByLabel(/Final net P&L/).fill('400');
     await afterForm.getByLabel(/Actual risk at entry/).fill('100');
     await expect(afterForm.getByText('+4.00R')).toBeVisible();
@@ -1273,7 +1275,7 @@ test.describe('real Trade Journal creation', () => {
     // minimal and independently diagnosable.
     await page.goto('/en/app/trades/new?timing=after_trade');
     await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('REVIEWNEXT');
-    await afterForm.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(afterForm, 'Long');
     await afterForm.getByRole('button', { name: 'Add exit details' }).click();
     await afterForm.getByRole('button', { name: 'Record an exit' }).click();
     await afterForm.getByLabel(/Realized P&L/).fill('250');

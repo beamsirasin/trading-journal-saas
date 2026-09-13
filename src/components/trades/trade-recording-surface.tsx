@@ -324,6 +324,7 @@ export function PrimaryAmountField({
   hint,
   error,
   optionalLabel,
+  size = 'primary',
 }: {
   id: string;
   label: string;
@@ -333,14 +334,27 @@ export function PrimaryAmountField({
   hint?: string | undefined;
   error?: string | undefined;
   optionalLabel?: string | undefined;
+  /**
+   * `compact` keeps the control and gives up the size: for a supporting pair
+   * (a historical plan) that must not compete with the figure the page is about.
+   */
+  size?: 'primary' | 'compact';
 }) {
+  const compact = size === 'compact';
   const currencyId = `${id}-currency`;
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <label htmlFor={id} className="text-foreground text-sm font-medium">
+        <label
+          htmlFor={id}
+          className={
+            compact
+              ? 'text-muted-foreground text-xs font-medium'
+              : 'text-foreground text-sm font-medium'
+          }
+        >
           {label}
         </label>
         {optionalLabel === undefined ? null : (
@@ -365,7 +379,11 @@ export function PrimaryAmountField({
             hint !== undefined && hintId,
             error !== undefined && errorId,
           )}
-          className="numeric text-foreground h-12 w-full min-w-[112px] flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl"
+          className={
+            compact
+              ? 'numeric text-foreground h-9 w-full min-w-[112px] flex-1 bg-transparent text-base leading-none outline-none'
+              : 'numeric text-foreground h-12 w-full min-w-[112px] flex-1 bg-transparent text-[1.375rem] leading-none outline-none sm:text-2xl'
+          }
         />
         <span id={currencyId} className="text-muted-foreground shrink-0 text-sm">
           {currency}
@@ -517,19 +535,24 @@ export function FormFooter({
   pendingLabel,
   pending,
   helper,
+  suppressed = false,
 }: {
   action: string;
   pendingLabel: string;
   pending: boolean;
   helper: string;
+  /** While a local sub-task (an exit editor) owns the screen, its own actions finish it. */
+  suppressed?: boolean;
 }) {
   const keyboardOpen = useKeyboardObscuringViewport();
   return (
     <div
       data-global-save=""
+      data-suppressed={suppressed ? '' : undefined}
       data-form-footer={keyboardOpen ? 'inline' : 'docked'}
       className={cn(
         'mt-1 flex min-w-0 flex-col gap-2',
+        suppressed && 'hidden',
         !keyboardOpen &&
           'bg-background/95 border-border sticky bottom-0 z-10 -mx-4 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none',
       )}
