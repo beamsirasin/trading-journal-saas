@@ -1562,6 +1562,7 @@ surface has no Actual-result selector or duplicated Actual inputs; omission of a
 15G.5A service copy the selected Plan opening into Actual opening. A collapsed Advanced disclosure
 retains explicit same-basis and cross-basis Actual opening overrides. Setup and Entry Context remain
 optional and do not block direct Open Trade submission through the existing canonical create action.
+_Superseded for the customer UI by §64: At Entry is now one linear form; its create contract is unchanged._
 
 **After Trade.** Trade captures identity, Entered/Exited timestamps, and the same exclusive System
 Plan. Result separately selects the independent Actual Result basis. The simple Price path maps one
@@ -1617,3 +1618,39 @@ Retrospective disclosure remains solely at Entry Snapshot level. Strategy & Setu
 administration, Trade Log, Analytics, New Trade, data storage, and lifecycle contracts are
 unchanged. The migration ledger remains `0000`–`0016`; no `0017` exists. Founder acceptance remains
 pending manual retest.
+
+## 64. Production At Entry Linear Recording UI (as built)
+
+The real `/app/trades/new?timing=at_entry` route no longer renders the tabbed The trade / Setup /
+Context editor. `TradeRecordingForm` is now only the mode boundary: At Entry renders
+`TradeAtEntryForm`, After Trade renders the already-accepted `TradeAfterTradeForm`, and both draw
+their numbered section heading, field, radio choice, and journal launcher from
+`trade-recording-primitives.tsx` (moved unchanged out of the After Trade form). Production code does
+not import `components/prototype`; a unit test enforces that boundary.
+
+**Structure.** 1 The trade (Trading Account seeded from the active Account, Symbol normalized to
+upper case, Direction, Entry time defaulting to now in the user's timezone with a "Set to now"
+note) → 2 Plan at entry (Risk at entry and optional Target profit in the account currency; Target R
+derived by `composePlannedR` only when both exist; a quiet switch to price levels with the existing
+no-money notice; optional Strategy/Setup with the open condition checklist; timeframe/session; the
+collapsed Advanced opening override) → 3 Journal at entry (Trade idea asked in the present tense —
+"Why are you taking this trade?" — and Feelings at entry with confidence and emotions, both in the
+shared adaptive dialog/bottom sheet with Done/Cancel) → Save open trade.
+
+**Contract.** The `createTradeAction` payload is unchanged: Money plan by default, the server still
+copies the plan opening into Actual unless Advanced overrides it, the mutation key survives a
+retry, unmet conditions still require confirmation, and success still navigates to
+`/app/trades?trade=`. Errors stay quiet until a Save attempt and each clears when its own field is
+corrected. The prototype's Exit plan and explicit "No fixed target" state have no persistence and
+were not migrated; a blank Target profit continues to mean no target. No schema change, server
+change, or migration was made.
+
+**Confidence knob under the adaptive dialog.** Real-route verification found that reopening
+Feelings with a committed confidence drew the knob 5% short, permanently, in both At Entry and the
+already-migrated After Trade (75% at 392.6px against 413.5px on a 558px track). Mechanism: the
+control remounts inside the dialog's `scale(0.95)` enter animation, `TradeConfidenceControl` read
+the rail with `getBoundingClientRect` — which includes the transform — and no ResizeObserver fires
+when only a transform changes. Rotating a phone reached the same path (Sheet → Dialog remount).
+Knob placement and fill width now read the track's layout width; pointer-to-step mapping still uses
+the bounding rect. A unit test and a chromium e2e (`reopening Feelings with a committed step…`)
+were observed red before the repair, alongside the existing mobile rotation test.

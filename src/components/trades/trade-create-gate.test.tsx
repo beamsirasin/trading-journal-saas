@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -103,9 +103,9 @@ describe('TradeCreateGate', () => {
         timezone: 'Asia/Bangkok',
       });
       expect(screen.getByLabelText('Trading Account')).toBeVisible();
-      fireEvent.click(screen.getByRole('button', { name: 'Setup · optional' }));
+      // Strategy sits in the linear plan, optional and visible without a tab.
       expect(screen.getByLabelText(/^Strategy/)).toBeVisible();
-      expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Save open trade' })).toBeEnabled();
     },
   );
 });

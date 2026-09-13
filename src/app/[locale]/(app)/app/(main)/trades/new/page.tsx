@@ -21,10 +21,10 @@ type PageSearchParams = { timing?: string | string[] | undefined };
 /**
  * HOW LONG THIS FLOW IS, stated once.
  *
- * Two: choose the recording situation, then fill the form. The form's own
- * At Entry's panels and After Trade's linear sections are NOT route steps —
- * all belong to the same form and none is gated on another, so counting them
- * here would promise a reader a gate that does not exist.
+ * Two: choose the recording situation, then fill the form. Each form's own
+ * numbered sections are NOT route steps — they belong to one form and none is
+ * gated on another, so counting them here would promise a reader a gate that
+ * does not exist.
  */
 const RECORDING_FLOW_STEPS = 2;
 const CHOICE_STEP = 1;
@@ -80,8 +80,8 @@ export async function generateMetadata({
  * refresh keep it, a deep link land on it, browser Back return to the choice,
  * and a hand-edited value fail safely back to the choice instead of guessing
  * at which situation the trader is in. `TradeRecordingForm` is the production
- * mode boundary: it preserves the accepted At Entry form and renders the
- * dedicated linear historical form for After Trade.
+ * mode boundary: a linear At Entry form for a trade still open, and a linear
+ * historical form for After Trade.
  */
 export default async function NewTradePage({
   params,

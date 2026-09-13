@@ -301,14 +301,14 @@ describe('production After Trade recording', () => {
     expect(document.querySelector('[data-global-save]')).toHaveClass('hidden');
   });
 
-  it('keeps the accepted At Entry implementation on the other branch', () => {
+  it('keeps the At Entry form on the other branch', () => {
     render(
       <NextIntlClientProvider locale="en" messages={en}>
         <TradeRecordingForm options={options} timing="at_entry" timezone="Asia/Bangkok" />
       </NextIntlClientProvider>,
     );
-    expect(screen.getByRole('navigation', { name: 'New Trade sections' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Open Trade' })).toBeVisible();
+    expect(document.querySelector('[data-at-entry-linear-form]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Save open trade' })).toBeVisible();
     expect(document.querySelector('[data-after-trade-linear-form]')).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import en from '../../../messages/en.json';
 import { TradeConfidenceControl } from './trade-confidence-control';
@@ -162,5 +162,54 @@ describe('TradeConfidenceControl', () => {
         expect(radio(OPTION_NAME[step])).not.toBeChecked();
       }
     });
+  });
+});
+
+/*
+  THE KNOB IS PLACED IN LAYOUT PIXELS, NOT IN TRANSFORMED ONES.
+
+  The adaptive overlay's dialog opens from scale(0.95). When the control mounts
+  inside it with a step already committed — reopening Feelings — a width read
+  with getBoundingClientRect is 95% of the rail, and a transform never resizes
+  anything, so no observer ever corrects it. Measured on the real route before
+  the repair: 75% drawn at 392.6px against 413.5px on a 558px track.
+
+  jsdom has no layout, so the two readings are supplied here: a bounding width
+  already shrunk by the transform, and the element's own layout width.
+*/
+describe('TradeConfidenceControl geometry under a scaled ancestor', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('positions a committed step from the layout width, not the transformed width', () => {
+    const LAYOUT_WIDTH = 558;
+    const SCALED_WIDTH = LAYOUT_WIDTH * 0.95;
+    const isTrack = (element: Element) => element.getAttribute('data-slot') === 'confidence-track';
+
+    const realRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return isTrack(this)
+        ? DOMRect.fromRect({ x: 0, y: 0, width: SCALED_WIDTH, height: 44 })
+        : realRect.call(this);
+    });
+    const realComputed = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = realComputed(element, pseudo);
+      if (!isTrack(element)) return style;
+      return new Proxy(style, {
+        get: (target, key) =>
+          key === 'width' ? `${LAYOUT_WIDTH}px` : Reflect.get(target, key, target),
+      });
+    });
+
+    renderControl(75);
+
+    const knob = document.querySelector<HTMLElement>('[data-slot="confidence-pill"]');
+    expect(knob).not.toBeNull();
+    // 75% of the knob's travel, (558 - 20) × 0.75 = 403.5 — not (530.1 - 20) × 0.75.
+    expect(knob?.style.left).toBe('403.5px');
   });
 });

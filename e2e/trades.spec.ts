@@ -462,52 +462,37 @@ async function expandEntrySnapshotDetails(page: Page) {
 }
 
 /**
- * The New Trade form's panels, addressed by what they ARE rather than by what
- * they are currently called. Callers name the panel; this map owns the visible
- * label, so renaming one is a single edit here instead of a hunt through
- * thirteen call sites — and a rename that breaks navigation fails in one
- * obvious place rather than as thirteen unrelated-looking failures.
- *
- * The panel keys deliberately match the values the form uses internally and
- * the ones that travel in the URL; only the labels on the right are visual.
+ * THE AT ENTRY FORM IS ONE LINEAR PAGE: The trade → Plan at entry → Journal at
+ * entry → Save open trade. Strategy, Setup and the checklist sit inside the
+ * plan; the Journal lives behind two launchers that open a dialog on a desktop
+ * and a bottom sheet on a phone. These helpers name what they open, so a
+ * relabel is one edit here rather than a hunt through every call site.
  */
-const NEW_TRADE_VIEW_LABELS = {
-  trade: 'The trade',
-  result: 'Result',
-  setup: 'Setup · optional',
-  context: 'Context · optional',
-} as const;
-
-async function openNewTradeView(page: Page, view: keyof typeof NEW_TRADE_VIEW_LABELS) {
+async function openEntryJournal(page: Page, area: 'idea' | 'feelings') {
   await page
-    .getByTestId('new-trade-view-nav')
-    .getByRole('button', { name: NEW_TRADE_VIEW_LABELS[view], exact: true })
+    .getByRole('button', { name: area === 'idea' ? /Trade idea/ : /Feelings at entry/ })
     .click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+}
+
+async function closeEntryJournal(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
 /**
- * CHOOSE A BASIS. DO NOT INHERIT ONE.
- *
- * Seven tests in this file used to reach straight for `Entry` / `Actual
- * Entry` and worked only because the New Trade form happened to open in
- * Price. That made the form's default a silent premise of each of them: a
- * test named "advanced Price execution" was not testing Price, it was testing
- * whatever the default was, and changing the default would have failed them
- * for a reason that has nothing to do with what they are about.
- *
- * Worse, all seven are on the known-red list, and `pnpm e2e:known-red`
- * compares by NAME, not by cause — a second cause hiding under the first
- * would have gone unreported until someone fixed the first one.
- *
- * CLICK BEFORE TYPING. The basis handlers clear the fields they own on EVERY
- * click, including a click on the segment that is already selected.
+ * MONEY IS THE DEFAULT PLAN; PRICE IS ONE QUIET SWITCH AWAY. Switch before
+ * typing: the switch clears the plan fields it owns.
  */
-async function chooseBasis(
-  page: Page,
-  group: 'Plan by' | 'Actual result by' | 'Actual opening by',
-  basis: 'Price' | 'Money',
-) {
-  await page.getByRole('group', { name: group }).getByRole('button', { name: basis }).click();
+async function planWithPriceLevels(page: Page) {
+  await page.getByRole('button', { name: 'Plan with price levels instead' }).click();
+}
+
+async function chooseOpeningBasis(page: Page, basis: 'Price' | 'Money') {
+  await page
+    .getByRole('group', { name: 'Actual opening by' })
+    .getByRole('radio', { name: basis })
+    .check();
 }
 
 /**
@@ -522,12 +507,11 @@ async function chooseBasis(
 async function createOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-  await page.getByRole('button', { name: 'Long' }).click();
-  await chooseBasis(page, 'Plan by', 'Price');
+  await page.getByRole('radio', { name: 'Long' }).click();
+  await planWithPriceLevels(page);
   await page.getByLabel('Entry', { exact: true }).fill('100');
   await page.getByLabel('Stop Loss', { exact: true }).fill('90');
   await page.getByLabel(/Take Profit/).fill('130');
-  await openNewTradeView(page, 'setup');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
   await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
@@ -535,7 +519,7 @@ async function createOpenTrade(page: Page) {
   await page.getByLabel('Volume expanded').check();
   await page.getByLabel('Invalidation is clear').check();
   await page.getByLabel('Session is aligned').check();
-  await page.getByRole('button', { name: 'Open Trade' }).click();
+  await page.getByRole('button', { name: 'Save open trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
 
@@ -548,11 +532,9 @@ async function createOpenTrade(page: Page) {
 async function createMoneyOnlyOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
-  await page.getByRole('button', { name: 'Short' }).click();
-  await page.getByRole('button', { name: 'Money' }).click();
-  await page.getByLabel('Risk').fill('100.00');
-  await page.getByLabel(/Target Reward/).fill('300.00');
-  await openNewTradeView(page, 'setup');
+  await page.getByRole('radio', { name: 'Short' }).click();
+  await page.getByLabel('Risk at entry').fill('100.00');
+  await page.getByLabel(/Target profit/).fill('300.00');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
   await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
@@ -560,7 +542,7 @@ async function createMoneyOnlyOpenTrade(page: Page) {
   await page.getByLabel('Volume expanded').check();
   await page.getByLabel('Invalidation is clear').check();
   await page.getByLabel('Session is aligned').check();
-  await page.getByRole('button', { name: 'Open Trade' }).click();
+  await page.getByRole('button', { name: 'Save open trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
 
@@ -951,23 +933,27 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await chooseBasis(page, 'Plan by', 'Price');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
-    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
-    await openNewTradeView(page, 'context');
+    await openEntryJournal(page, 'feelings');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Fearful' }).click();
     await page.getByRole('button', { name: 'Hesitant' }).click();
-    await page.getByLabel('Entry Reason').fill('Breakout confirmed on the retest.');
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await closeEntryJournal(page);
+    await openEntryJournal(page, 'idea');
+    await page
+      .getByLabel('Why are you taking this trade?')
+      .fill('Breakout confirmed on the retest.');
+    await closeEntryJournal(page);
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     const dialog = page.getByRole('alertdialog');
     await expect(dialog.getByText('Save with unmet Setup Conditions?')).toBeVisible();
     await dialog.getByRole('button', { name: 'Continue' }).click();
@@ -1042,16 +1028,15 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await chooseBasis(page, 'Plan by', 'Price');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('150');
     await page.getByLabel('Stop Loss', { exact: true }).fill('149');
-    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByText('Not configured')).toBeVisible();
     await expect(page.getByText(/0\/0/)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     await openTradeSection(page, 'entry');
@@ -1070,8 +1055,8 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await chooseBasis(page, 'Plan by', 'Price');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
     await page.getByLabel(/Take Profit/).fill('130'); // Price implies +3R
@@ -1080,7 +1065,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel(/Planned reward/).fill('500.00'); // Money implies +10R
 
     await expect(page.getByText('Price and Money plans disagree')).toBeVisible();
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(
       page.getByText('Price and Money plans disagree — adjust one before continuing.'),
     ).toBeVisible();
@@ -1089,14 +1074,13 @@ test.describe('real Trade Journal creation', () => {
     // Resolve the disagreement — Money now agrees with Price (+3R) — and proceed.
     await page.getByLabel(/Planned reward/).fill('150.00');
     await expect(page.getByText('Price and Money plans disagree')).toHaveCount(0);
-    await openNewTradeView(page, 'setup');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await page.getByLabel('Invalidation is clear').check();
     await page.getByLabel('Session is aligned').check();
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
   });
 
@@ -1154,25 +1138,29 @@ test.describe('real Trade Journal creation', () => {
         await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
         await page.goto(`/${locale}/app/trades/new?timing=at_entry`);
 
-        const form = page.locator('form');
-        const viewNav = page.getByTestId('new-trade-view-nav');
-        await expect(form).toBeVisible();
-        await expect(viewNav).toBeVisible();
-        await expect(page.locator('#planned-risk')).toBeVisible();
-        await expect(page.locator('#planned-reward')).toBeVisible();
-        await expect(page.locator('button[type="submit"]')).toBeVisible();
-        await expect(page.locator('#record-strategy')).toHaveCount(0);
+        // At Entry is one linear form on the real route: no tabs, the plan and
+        // Strategy visible together, the Journal behind its launchers, and the
+        // entry time already set to now.
+        const entryForm = page.locator('[data-at-entry-linear-form]:visible');
+        await expect(entryForm).toBeVisible();
+        await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
+        await expect(entryForm.locator('section')).toHaveCount(3);
+        await expect(entryForm.locator('#entry-entered-at')).not.toHaveValue('');
+        await expect(entryForm.locator('#entry-risk')).toBeVisible();
+        await expect(entryForm.locator('#entry-target-profit')).toBeVisible();
+        await expect(entryForm.locator('#entry-strategy')).toBeVisible();
         await expect(page.locator('[data-slot="confidence-track"]')).toHaveCount(0);
+        await expect(entryForm.locator('[data-global-save] button[type="submit"]')).toBeVisible();
+        const entryDimensions = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+        }));
+        expect(entryDimensions.scroll).toBeLessThanOrEqual(entryDimensions.client + 1);
 
-        await viewNav.locator('button').nth(1).click();
-        await expect(page.locator('#record-strategy')).toBeVisible();
-        await expect(page.locator('#planned-entry')).toHaveCount(0);
-        await expect(page.locator('button[type="submit"]')).toBeVisible();
-
-        await viewNav.locator('button').nth(2).click();
+        await entryForm.locator('section').nth(2).getByRole('button').nth(1).click();
         await expect(page.locator('[data-slot="confidence-track"]')).toBeVisible();
-        await expect(page.locator('#record-strategy')).toHaveCount(0);
-        await expect(page.locator('button[type="submit"]')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
 
         // After Trade is a dedicated linear historical form on this same real
         // route. It must not regress to the retired four-panel UI.
@@ -1303,16 +1291,16 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
 
     await page.getByRole('textbox', { name: 'Symbol' }).fill('ADVANCED');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await chooseBasis(page, 'Plan by', 'Price');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
     await page.getByText('Advanced', { exact: true }).click();
     await page.getByLabel('Actual opening differs from the System Plan').check();
-    await chooseBasis(page, 'Actual opening by', 'Price');
+    await chooseOpeningBasis(page, 'Price');
     await page.getByLabel('Actual Entry').fill('101');
     await page.getByLabel('Actual Stop').fill('90');
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await page.getByRole('button', { name: 'Save open trade' }).click();
 
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
     await openTradeSection(page, 'actual');
@@ -1493,13 +1481,13 @@ test.describe('real Trade Journal creation', () => {
 
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDCAD');
-    await page.getByRole('button', { name: 'Long' }).click();
+    await page.getByRole('radio', { name: 'Long' }).click();
     // Genuinely no Plan, Strategy, or Setup at all (Phase 14C.1/Phase 14E) —
     // Account/Symbol/Direction plus the one required Actual execution basis.
-    await chooseBasis(page, 'Plan by', 'Price');
+    await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('0.8500');
     await page.getByLabel('Stop Loss', { exact: true }).fill('0.8450');
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 
     const detail = page.getByRole('article', { name: 'NZDCAD' });
@@ -1572,11 +1560,9 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await page.getByRole('button', { name: 'Money' }).click();
-    await page.getByLabel('Risk').fill('100.00');
-    await page.getByLabel(/Target Reward/).fill('300.00');
-    await openNewTradeView(page, 'setup');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await page.getByLabel('Risk at entry').fill('100.00');
+    await page.getByLabel(/Target profit/).fill('300.00');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByLabel(/^Setup/)).toHaveValue(/.+/);
@@ -1584,13 +1570,16 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
-    await openNewTradeView(page, 'context');
+    await openEntryJournal(page, 'feelings');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Focused' }).click();
+    await closeEntryJournal(page);
+    await openEntryJournal(page, 'idea');
     await page
-      .getByLabel('Entry Reason')
+      .getByLabel('Why are you taking this trade?')
       .fill('Clean breakout confirmed on the retest with expanding volume.');
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await closeEntryJournal(page);
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     const confirmDialog = page.getByRole('alertdialog');
     await expect(confirmDialog.getByText('Save with unmet Setup Conditions?')).toBeVisible();
     await confirmDialog.getByRole('button', { name: 'Continue' }).click();
@@ -1832,21 +1821,19 @@ test.describe('real Trade Journal creation', () => {
     // action; Open never silently reintroduces a Plan requirement.
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
-    await openNewTradeView(page, 'setup');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
-    await openNewTradeView(page, 'trade');
     // Read the plan field the fresh form actually opened with, and read it
     // WITHOUT touching the basis toggle: clicking one clears the very fields
     // this assertion is about, which would turn it into a tautology that
     // passes over a leaked draft. The anchors keep 'Initial Risk', 'Actual
     // Entry' and 'Entered At' out of the match.
-    await expect(page.getByLabel(/^(Entry|Risk)$/)).toHaveValue('');
+    await expect(page.getByLabel('Risk at entry', { exact: true })).toHaveValue('');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await chooseBasis(page, 'Plan by', 'Price');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('1.2500');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.2400');
-    await page.getByRole('button', { name: 'Open Trade' }).click();
+    await page.getByRole('button', { name: 'Save open trade' }).click();
     // No Setup was chosen, so the unmet-Conditions confirmation never appears
     // — the Trade opens directly.
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
@@ -2201,10 +2188,9 @@ test.describe('Confidence pill drag interaction', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await openNewTradeView(page, 'setup');
+    await page.getByRole('radio', { name: 'Long' }).click();
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await openNewTradeView(page, 'context');
+    await openEntryJournal(page, 'feelings');
   }
 
   /** Clicks a Confidence segment's styled (visible) label — the step number itself renders in a separate pointer-events-none overlay, so it is not a valid click target. */
@@ -2645,8 +2631,8 @@ test.describe('Confidence rendered geometry', () => {
   async function openContextStep(page: Page) {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await openNewTradeView(page, 'context');
+    await page.getByRole('radio', { name: 'Long' }).click();
+    await openEntryJournal(page, 'feelings');
     await expect(page.getByRole('group', { name: 'Confidence' })).toBeVisible();
   }
 
@@ -2901,6 +2887,45 @@ test.describe('Confidence rendered geometry', () => {
           `knob keeps a drag offset it never earned at ${where}: translateX ${geometry.knobTranslateX.toFixed(1)}px, expected 0`,
         )
         .toBeLessThanOrEqual(RESTING_TRANSFORM_TOLERANCE_PX);
+
+      expect
+        .soft(
+          Math.abs(geometry.knobCentre - expected),
+          `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expected.toFixed(1)}px`,
+        )
+        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
+    }
+  });
+
+  /**
+   * Reopening Feelings with a confidence already committed. The control mounts
+   * again inside the adaptive dialog while its enter animation still holds
+   * scale(0.95), so a width read through that transform is 95% of the real
+   * rail. Measured on the real route on 2026-09-14 before the repair, in both
+   * At Entry and After Trade: 75% drawn at 392.6px against 413.5px on a 558px
+   * track, still there two seconds later, because nothing re-reads the width
+   * once the animation ends — a transform does not resize anything.
+   */
+  test('reopening Feelings with a committed step draws the knob at that step', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'Desktop dialog coverage');
+    test.setTimeout(180_000);
+    await reachContextStep(page, 'e2e-confidence-reopen');
+
+    for (const [index, stepName] of STEP_NAMES.entries()) {
+      await openContextStep(page);
+      await page
+        .locator(`[data-slot="confidence-option"][data-step="${CONFIDENCE_STEP_VALUES[index]}"]`)
+        .click();
+      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
+      await closeEntryJournal(page);
+
+      await openEntryJournal(page, 'feelings');
+      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
+      await waitForKnobAtRest(page);
+
+      const geometry = await readSliderGeometry(page);
+      const expected = expectedCentre(geometry.trackWidth, geometry.knobWidth, index);
+      const where = `${stepName} after reopening Feelings (track ${geometry.trackWidth.toFixed(1)}px)`;
 
       expect
         .soft(

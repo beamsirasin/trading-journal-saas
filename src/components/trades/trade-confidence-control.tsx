@@ -25,6 +25,27 @@ type PillRect = { left: number; width: number };
 const KNOB_SIZE = 20;
 
 /**
+ * The track's width in LAYOUT pixels — the same pixels the knob's `left` is
+ * rendered in.
+ *
+ * `getBoundingClientRect` includes every ancestor transform. The adaptive
+ * overlay's dialog opens from `scale(0.95)`, so a control mounting inside it
+ * with a step already committed read a rail 95% of its real width, placed the
+ * knob from that, and kept it there: a transform resizes nothing, so the
+ * ResizeObserver below never fires to correct it. The computed width is the
+ * element's own used width and ignores transforms. jsdom has no layout and
+ * returns no number, so it falls back to the bounding width there.
+ *
+ * Only placement reads this. Mapping a pointer to a step still reads the
+ * bounding rect, because pointer coordinates are in the same transformed
+ * viewport space.
+ */
+function layoutWidth(element: HTMLElement): number {
+  const computed = Number.parseFloat(getComputedStyle(element).width);
+  return Number.isFinite(computed) ? computed : element.getBoundingClientRect().width;
+}
+
+/**
  * Shared by the fill's two renderings — the static one before the track has
  * been measured or under reduced motion, and the animated one after. One
  * string so the two can never drift into looking like different elements.
@@ -143,7 +164,7 @@ export function TradeConfidenceControl({
     // No zero-width guard: a track that has not been laid out yet (jsdom, or
     // the first paint) still has to produce a rect, because returning null
     // here would mean no knob renders at all rather than one at the origin.
-    const width = track.getBoundingClientRect().width;
+    const width = layoutWidth(track);
     const travel = Math.max(0, width - KNOB_SIZE);
     const ratio = CONFIDENCE_STEPS.length <= 1 ? 0 : index / (CONFIDENCE_STEPS.length - 1);
     return { left: ratio * travel, width: KNOB_SIZE };
@@ -159,7 +180,7 @@ export function TradeConfidenceControl({
     if (activeIndex === null) return;
     const measure = () => {
       setPillRect(measureKnob(activeIndex));
-      setTrackWidth(trackRef.current?.getBoundingClientRect().width ?? null);
+      setTrackWidth(trackRef.current ? layoutWidth(trackRef.current) : null);
     };
     // Still the DOM-measurement exception described above, and still a
     // set-state-in-effect: `react-hooks/set-state-in-effect` simply stops
