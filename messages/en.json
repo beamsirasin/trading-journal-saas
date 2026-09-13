@@ -1435,6 +1435,13 @@
         "netHint": "Enter the authoritative signed net amount in {currency}; costs will not be subtracted again.",
         "timezoneHint": "Wall-clock time in your saved timezone: {timezone}."
       },
+      "historicalExecution": {
+        "available": "Complete exit history ready",
+        "description": "This saved trade has no final result yet. Adoption is explicit and uses the server’s accepted provenance transition.",
+        "action": "Use {amount} as final result",
+        "saving": "Using subtotal…",
+        "error": "The exit subtotal could not be adopted. Reload the trade and try again."
+      },
       "system": {
         "resolve": "Record System Outcome",
         "resolveTitle": "Record System Outcome",
@@ -1839,7 +1846,102 @@
           "other": "Other"
         },
         "entryReasonPlaceholder": "Why did you take this trade?",
-        "notesPlaceholder": "Anything else you want to remember"
+        "notesPlaceholder": "Anything else you want to remember",
+        "after": {
+          "trade": {
+            "title": "The trade",
+            "description": "Identify the completed trade. Only Account, Symbol and Direction are required.",
+            "timezone": "Times use {timezone}. Leave either time blank if you do not know it.",
+            "entryTime": "Entry time",
+            "finalExitTime": "Final exit time"
+          },
+          "plan": {
+            "title": "Plan at entry",
+            "description": "Record only what applied when you entered. Leave anything you do not remember blank.",
+            "basis": "Plan recorded by",
+            "setupChecklist": "Setup checklist · optional",
+            "setupHint": "Check conditions that were met at entry. Unchecked conditions are saved as Not Met.",
+            "plannedRisk": "Planned risk",
+            "targetProfit": "Target profit",
+            "targetR": "Target R"
+          },
+          "actual": {
+            "title": "Actual Result",
+            "description": "The whole-trade result is authoritative. Exit details below are supporting evidence.",
+            "moneyHint": "Final monetary result",
+            "priceHint": "Entry, stop and exit levels",
+            "finalPnl": "Final net P&L",
+            "finalPnlHint": "Whole-trade result after costs, in {currency}. Use a minus sign for a loss.",
+            "risk": "Actual risk at entry",
+            "riskHint": "The amount actually at risk, in {currency}. Leave blank if unknown.",
+            "outcome": "Outcome",
+            "unknown": "Not recorded",
+            "unavailable": "Unavailable",
+            "rNeedsRisk": "Actual R needs a recorded actual risk at entry."
+          },
+          "exits": {
+            "title": "Exit reconstruction",
+            "description": "Optional supporting detail if you remember how the position was closed.",
+            "addDetails": "Add exit details",
+            "hide": "Hide exit details",
+            "empty": "No exits recorded. You can save the closed trade without reconstructing them.",
+            "add": "Record an exit",
+            "edit": "Edit",
+            "done": "Done",
+            "remove": "Remove",
+            "exitNumber": "Exit {number}",
+            "sparse": "Details not recorded yet",
+            "scope": "What did this exit close?",
+            "scopeOptions": {
+              "unknown": "Not recorded",
+              "part": "Part of the position",
+              "allRemaining": "All remaining position"
+            },
+            "reason": "Exit reason",
+            "completeness": "Is this the complete exit history?",
+            "completenessOptions": {
+              "unknown": "I’m not sure whether this is everything",
+              "incomplete": "Some exits are missing",
+              "complete": "These are all the exits"
+            },
+            "subtotal": "Recorded exits subtotal",
+            "reconciliation": {
+              "unreconciled": "This supporting subtotal does not replace the final result ({final}).",
+              "matched": "The complete exit history matches the final result.",
+              "conflict": "The complete exit history conflicts with the final result ({final}).",
+              "not_applicable": "There is not enough evidence to compare this history with a final result.",
+              "not_recorded": "No exit history recorded."
+            },
+            "adoptAfterSave": "After saving, you can explicitly use this subtotal as the final result from the persisted trade."
+          },
+          "journal": {
+            "title": "Journal at entry",
+            "description": "Optional context recalled from before the outcome was known.",
+            "notRecorded": "Not recorded",
+            "done": "Done",
+            "idea": {
+              "label": "Trade idea",
+              "prompt": "Why did you take this trade?",
+              "description": "Record what you saw and intended at entry, not an explanation built from the outcome.",
+              "notes": "Anything else worth remembering"
+            },
+            "feelings": {
+              "label": "Feelings at entry",
+              "prompt": "How did you feel when you entered?",
+              "description": "Recall how you felt at entry, rather than how the result feels now.",
+              "emotions": "Emotions recalled at entry",
+              "summary": "Confidence {confidence} · {count, plural, one {# emotion} other {# emotions}}"
+            }
+          },
+          "save": {
+            "action": "Save closed trade",
+            "helper": "Save what you remember. Reflection and System Assessment continue in Review after this trade is saved."
+          },
+          "validation": {
+            "allocation": "Enter a valid exit allocation.",
+            "coverage": "Known exit allocations cannot exceed 100%."
+          }
+        }
       },
       "backToTrades": "Back to Trades",
       "mode": {

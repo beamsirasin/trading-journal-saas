@@ -1140,7 +1140,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByRole('textbox', { name: 'Symbol' })).toBeVisible();
   });
 
-  test('Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH', async ({
+  test('production New Trade modes stay exclusive and overflow-free at 1440/1120/390/320 in EN/TH', async ({
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium viewport sweep');
@@ -1150,7 +1150,7 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
 
     for (const locale of ['en', 'th'] as const) {
-      for (const width of [1440, 390, 320]) {
+      for (const width of [1440, 1120, 390, 320]) {
         await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
         await page.goto(`/${locale}/app/trades/new?timing=at_entry`);
 
@@ -1158,9 +1158,8 @@ test.describe('real Trade Journal creation', () => {
         const viewNav = page.getByTestId('new-trade-view-nav');
         await expect(form).toBeVisible();
         await expect(viewNav).toBeVisible();
-        await expect(page.locator('#planned-entry')).toBeVisible();
-        await expect(page.locator('#planned-stop')).toBeVisible();
-        await expect(page.locator('#planned-target')).toBeVisible();
+        await expect(page.locator('#planned-risk')).toBeVisible();
+        await expect(page.locator('#planned-reward')).toBeVisible();
         await expect(page.locator('button[type="submit"]')).toBeVisible();
         await expect(page.locator('#record-strategy')).toHaveCount(0);
         await expect(page.locator('[data-slot="confidence-track"]')).toHaveCount(0);
@@ -1175,19 +1174,17 @@ test.describe('real Trade Journal creation', () => {
         await expect(page.locator('#record-strategy')).toHaveCount(0);
         await expect(page.locator('button[type="submit"]')).toBeVisible();
 
-        // The same viewport also proves the mutually-exclusive After Trade
-        // surface, including its fourth Result panel and timing-specific CTA.
-        // The mode is no longer a toggle inside the form — it is chosen before
-        // the form exists and travels in the URL, so that is how this asks for
-        // it.
+        // After Trade is a dedicated linear historical form on this same real
+        // route. It must not regress to the retired four-panel UI.
         await page.goto(`/${locale}/app/trades/new?timing=after_trade`);
-        await expect(viewNav.locator('button')).toHaveCount(4);
-        await viewNav.locator('button').nth(1).click();
-        await expect(page.locator('#actual-entry')).toBeVisible();
-        await expect(page.locator('#simple-exit')).toBeVisible();
-        await expect(page.locator('button[type="submit"]')).toContainText(
-          locale === 'en' ? 'Save Completed Trade' : 'บันทึกเทรดที่จบแล้ว',
-        );
+        const afterForm = page.locator('[data-after-trade-linear-form]:visible');
+        await expect(afterForm).toBeVisible();
+        await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
+        await expect(afterForm.locator('section')).toHaveCount(4);
+        await expect(afterForm.locator('#after-entered-at')).toHaveValue('');
+        await expect(afterForm.locator('#after-exited-at')).toHaveValue('');
+        await expect(afterForm.locator('[data-actual-result]')).toBeVisible();
+        await expect(afterForm.locator('[data-global-save]')).toBeVisible();
 
         const dimensions = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,
@@ -1198,86 +1195,102 @@ test.describe('real Trade Journal creation', () => {
     }
   });
 
-  test('Phase 15G.5D After Trade creates one completed Price Trade and opens Detail directly', async ({
+  test('After Trade records evidence, saves, and continues in persisted Review', async ({
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
-    test.setTimeout(180_000);
-    const user = await provisionJournalUser('e2e-trades-g5d-completed');
+    test.setTimeout(240_000);
+    const user = await provisionJournalUser('e2e-trades-after-trade-record-review');
     await loginAs(page, 'en', user);
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/en/app/trades/new?timing=after_trade');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
-    await page.getByRole('button', { name: 'Long' }).click();
-    await page.getByLabel('Entered At').fill('2026-08-22T10:00');
-    await page.getByLabel('Exited At').fill('2026-08-22T12:00');
-    await chooseBasis(page, 'Plan by', 'Price');
-    await page.getByLabel('Entry', { exact: true }).fill('100');
-    await page.getByLabel('Stop Loss', { exact: true }).fill('90');
-    await page.getByLabel(/Take Profit/).fill('130');
-    await openNewTradeView(page, 'result');
-    await chooseBasis(page, 'Actual result by', 'Price');
-    await page.getByLabel('Actual Entry').fill('100');
-    await page.getByLabel('Actual Initial Stop').fill('90');
-    await page.getByLabel('Exit Price').fill('120');
-    await expect(page.getByText('+2.00R')).toBeVisible();
-    await expect(page.getByText('Win', { exact: true })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'System Outcome' })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Save Completed Trade' }).click();
+    const afterForm = page.locator('[data-after-trade-linear-form]:visible');
 
-    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
-    const tradeId = new URL(page.url()).searchParams.get('trade');
-    expect(tradeId).not.toBeNull();
-    await expect(page.getByText('Closed', { exact: true }).last()).toBeVisible();
-    await openTradeSection(page, 'actual');
-    await expect(page.getByRole('heading', { name: 'Actual Result' })).toBeVisible();
-    await expect(page.getByText('+2.00R').last()).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'System Plan' })).toHaveCount(0);
-    await page.goto(`/en/app/trades?trade=${tradeId}&section=system`);
-    await expect(page.getByRole('heading', { name: 'System Plan' })).toBeVisible();
-    await expect(page.getByText('Plan by Price')).toBeVisible();
-    await expect(page.getByText('+3.00R')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'System Outcome' })).toBeVisible();
-    await expect(page.getByText("The System result hasn't been recorded yet.")).toBeVisible();
-    await openTradeSection(page, 'review');
+    await expect(afterForm.locator('#after-entered-at')).toHaveValue('');
+    await expect(afterForm.locator('#after-exited-at')).toHaveValue('');
+    await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
+    await afterForm.getByRole('radio', { name: 'Long' }).click();
+    await afterForm.getByLabel(/Final net P&L/).fill('400');
+    await afterForm.getByLabel(/Actual risk at entry/).fill('100');
+    await expect(afterForm.getByText('+4.00R')).toBeVisible();
+    await expect(afterForm.getByText('Win', { exact: true })).toBeVisible();
+
+    await afterForm.getByRole('button', { name: 'Add exit details' }).click();
+    await expect(afterForm.getByText(/No exits recorded/)).toBeVisible();
+    await afterForm.getByRole('button', { name: 'Record an exit' }).click();
+    await expect(afterForm.locator('[data-global-save]')).toBeHidden();
+    await afterForm.getByLabel(/Realized P&L/).fill('100');
+    await afterForm.getByLabel(/Closed %/).fill('25');
+    await afterForm.getByRole('button', { name: 'Done' }).click();
+    await afterForm.getByRole('radio', { name: 'Some exits are missing' }).click();
+    await expect(
+      afterForm.getByText(/supporting subtotal does not replace the final result/),
+    ).toBeVisible();
+
+    await afterForm.getByRole('button', { name: 'Record an exit' }).click();
+    await afterForm.getByLabel(/Realized P&L/).fill('150');
+    await afterForm.getByLabel(/Closed %/).fill('75');
+    await afterForm.getByRole('button', { name: 'Done' }).click();
+    await afterForm.getByRole('radio', { name: 'These are all the exits' }).click();
+    await expect(
+      afterForm.getByText(/complete exit history conflicts with the final result/),
+    ).toBeVisible();
+
+    await afterForm.getByLabel(/Final net P&L/).fill('');
+    await expect(
+      afterForm.getByText(/After saving, you can explicitly use this subtotal/),
+    ).toBeVisible();
+    await afterForm.getByRole('button', { name: /Trade idea/ }).click();
+    await page.getByLabel('Why did you take this trade?').fill('Breakout after consolidation');
+    await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(afterForm.getByRole('button', { name: /Exit 1/ })).toBeVisible();
+    await afterForm.getByRole('button', { name: /Exit 1/ }).click();
+    await expect(afterForm.locator('[data-global-save]')).toBeHidden();
+    await expect(afterForm.locator('[data-exit-editor]')).toBeVisible();
+    await afterForm.locator('[data-exit-editor]').getByRole('button', { name: 'Done' }).click();
+    await afterForm.getByRole('button', { name: /Feelings at entry/ }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+
+    // Persist from a fresh complete/no-final fixture. The draft above is the
+    // visual state matrix; this one keeps the write-path proof deliberately
+    // minimal and independently diagnosable.
+    await page.goto('/en/app/trades/new?timing=after_trade');
+    await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('REVIEWNEXT');
+    await afterForm.getByRole('radio', { name: 'Long' }).click();
+    await afterForm.getByRole('button', { name: 'Add exit details' }).click();
+    await afterForm.getByRole('button', { name: 'Record an exit' }).click();
+    await afterForm.getByLabel(/Realized P&L/).fill('250');
+    await afterForm.getByRole('button', { name: 'Done' }).click();
+    await afterForm.getByRole('radio', { name: 'These are all the exits' }).click();
+    await expect(
+      afterForm.getByText(/After saving, you can explicitly use this subtotal/),
+    ).toBeVisible();
+    await afterForm.getByRole('button', { name: 'Save closed trade' }).click();
+
+    await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+&tab=review/, {
+      timeout: 60_000,
+    });
+    await expect(page.getByRole('tab', { name: 'Review' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByText('Reflection', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /System assessment/ })).toBeVisible();
-    await openTradeSection(page, 'entry');
-    await expect(page.getByText('Recorded retrospectively', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Execution' }).click();
+    await expect(page.getByRole('button', { name: /Use .* as final result/ })).toBeVisible();
 
-    for (const locale of ['en', 'th'] as const) {
-      for (const width of [1440, 390, 320]) {
-        await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
-        await page.goto(`/${locale}/app/trades?trade=${tradeId}&section=system`);
-        const sectionNav = page.getByRole('navigation', {
-          name: locale === 'en' ? 'Trade sections' : 'ส่วนต่าง ๆ ของออเดอร์',
-        });
-        await expect(sectionNav.getByRole('link')).toHaveCount(5);
-        await expect(sectionNav.getByRole('link').nth(1)).toHaveAttribute('aria-current', 'true');
-        await expect(
-          page.getByRole('heading', { name: locale === 'en' ? 'System Plan' : 'แผนของระบบ' }),
-        ).toBeVisible();
-        await expect(
-          page.getByRole('heading', {
-            name: locale === 'en' ? 'System Outcome' : 'ผลลัพธ์ของระบบ',
-          }),
-        ).toBeVisible();
-        await page.waitForLoadState('networkidle');
-        const actualLink = sectionNav.getByRole('link').nth(0);
-        await expect(async () => {
-          await actualLink.focus();
-          await actualLink.press('Enter');
-          await page.waitForURL(/[?&]section=actual(?:&|$)/, { timeout: 5_000 });
-        }).toPass({ timeout: 30_000, intervals: [250] });
-        await expect(sectionNav.getByRole('link').nth(0)).toHaveAttribute('aria-current', 'true');
-        await expect(
-          page.getByRole('heading', { name: locale === 'en' ? 'Actual Result' : 'ผลลัพธ์จริง' }),
-        ).toBeVisible();
-        const dimensions = await page.evaluate(() => ({
-          scroll: document.documentElement.scrollWidth,
-          client: document.documentElement.clientWidth,
-        }));
-        expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
-      }
-    }
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.goto('/en/app/trades/new?timing=after_trade');
+    const narrowForm = page.locator('[data-after-trade-linear-form]:visible');
+    await narrowForm.getByLabel(/Final net P&L/).fill('123456789.12');
+    const narrowDimensions = await page.evaluate(() => ({
+      scroll: document.documentElement.scrollWidth,
+      client: document.documentElement.clientWidth,
+    }));
+    expect(narrowDimensions.scroll).toBeLessThanOrEqual(narrowDimensions.client + 1);
   });
 
   test('Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis', async ({

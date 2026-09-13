@@ -8,6 +8,7 @@ import {
 } from '@/components/trades/trade-execution-actions';
 import { AddExitDialog, CorrectExitDialog } from '@/components/trades/trade-exit-actions';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
+import { TradeHistoricalAdoption } from '@/components/trades/trade-historical-adoption';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 
 /** ACTUAL answers only “what did I actually do?” System Plan ownership lives in SystemSection. */
@@ -204,6 +205,7 @@ export function ActualSection({
             ) : null}
           </article>
         ))}
+        <TradeHistoricalAdoption trade={trade} />
       </section>
 
       {canWrite ? (

@@ -34,9 +34,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
-import { Link, useRouter } from '@/i18n/navigation';
+import { useRouter } from '@/i18n/navigation';
 
 import { NativeSelect } from './trade-action-form';
+import { TradeAfterTradeForm } from './trade-after-trade-form';
 import { TradeConfidenceControl } from './trade-confidence-control';
 import {
   datetimeLocalToIso,
@@ -46,6 +47,7 @@ import {
 import { formatR, formatTradeMoney } from './trade-format';
 import { PlanField } from './trade-plan-field';
 import { TradePlanVsActual, type PlanVsActualRow } from './trade-plan-vs-actual';
+import { TradeRecordingModeChange } from './trade-recording-mode-change';
 
 type Basis = 'price' | 'money';
 type Panel = 'trade' | 'result' | 'setup' | 'context';
@@ -275,71 +277,7 @@ function emptyValues(tradingAccountId: string): Values {
   };
 }
 
-/**
- * The one way back to the recording-mode choice.
- *
- * A PLAIN LINK WHILE THE FORM IS EMPTY, AND A QUESTION ONCE IT IS NOT.
- * Returning to the choice leaves this route, so the draft goes with it — that
- * is the safe reset the old in-form toggle had to perform by hand, and it is
- * now structural. But a reset the reader did not expect is just lost work, so
- * once anything has been entered the same control asks first, through the
- * dialog primitive this form already uses.
- *
- * No draft is persisted across the change. Carrying a half-filled At Entry
- * plan into an After Trade form would mean deciding which of its fields still
- * mean anything, and that is a product decision, not something to improvise.
- */
-function ChangeModeControl({ isDirty }: { isDirty: boolean }) {
-  const t = useTranslations('trades');
-  const tMode = useTranslations('trades.create.mode');
-  const router = useRouter();
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  if (!isDirty) {
-    return (
-      <Link
-        href="/app/trades/new"
-        data-recording-mode-change=""
-        className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
-      >
-        {tMode('change')}
-      </Link>
-    );
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        data-recording-mode-change=""
-        onClick={() => setConfirmOpen(true)}
-        className="text-primary focus-visible:ring-ring inline-flex min-h-11 items-center rounded-md text-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
-      >
-        {tMode('change')}
-      </button>
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tMode('changeConfirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{tMode('changeConfirm.description')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('lifecycle.common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setConfirmOpen(false);
-                router.push('/app/trades/new');
-              }}
-            >
-              {tMode('changeConfirm.continue')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
-  );
-}
-
+/** Parse only one of the five accepted confidence steps for the At Entry payload. */
 function parseConfidence(value: string): ConfidenceStep | undefined {
   const parsed = Number.parseInt(value, 10);
   return isConfidenceStep(parsed) ? parsed : undefined;
@@ -349,13 +287,33 @@ function outcomeKey(value: 'win' | 'loss' | 'break_even') {
   return value === 'break_even' ? 'breakEven' : value;
 }
 
-export function TradeRecordingForm({
+export interface TradeRecordingFormProps {
+  options: TradeCreateOptions;
+  timing: RecordingTiming;
+  activeTradingAccountId?: string | null;
+  timezone: string;
+}
+
+/** Keeps the accepted At Entry flow isolated while After Trade follows its own lifecycle. */
+export function TradeRecordingForm(props: TradeRecordingFormProps) {
+  if (props.timing === 'after_trade') {
+    return (
+      <TradeAfterTradeForm
+        options={props.options}
+        activeTradingAccountId={props.activeTradingAccountId ?? null}
+        timezone={props.timezone}
+      />
+    );
+  }
+  return <AtEntryTradeRecordingForm {...props} />;
+}
+
+function AtEntryTradeRecordingForm({
   options,
   timing,
   activeTradingAccountId = null,
   timezone,
-}: {
-  options: TradeCreateOptions;
+}: TradeRecordingFormProps) {
   /**
    * WHICH SITUATION THIS FORM IS RECORDING, CHOSEN BEFORE IT MOUNTED.
    *
@@ -367,15 +325,6 @@ export function TradeRecordingForm({
    * is a navigation back to the choice, which discards the draft — see
    * `ChangeModeControl`.
    */
-  timing: RecordingTiming;
-  /**
-   * The workspace's persisted active Account, used ONLY as this field's
-   * starting value. The field itself is unchanged and still decides which
-   * Account the Trade belongs to.
-   */
-  activeTradingAccountId?: string | null;
-  timezone: string;
-}) {
   const locale = useLocale();
   const t = useTranslations('trades');
   const r = useTranslations('trades.create.recording');
@@ -1051,7 +1000,7 @@ export function TradeRecordingForm({
         data-recording-mode={timing}
         className="text-muted-foreground mx-auto max-w-prose text-center text-sm text-pretty"
       >
-        {tMode(`${timing}.description`)} <ChangeModeControl isDirty={isDirty} />
+        {tMode(`${timing}.description`)} <TradeRecordingModeChange isDirty={isDirty} />
       </p>
 
       <div
