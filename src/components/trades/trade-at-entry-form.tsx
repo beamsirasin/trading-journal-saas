@@ -1,11 +1,12 @@
 'use client';
 
-import { HeartPulse, Lightbulb, TriangleAlert } from 'lucide-react';
+import { HeartPulse, Lightbulb } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useMemo, useRef, useState } from 'react';
 
 import { composePlannedR } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
+import { confidenceLevelKey } from '@/lib/trades/constants';
 import { createTradeAction } from '@/server/actions/trades';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 import {
@@ -25,7 +26,8 @@ import { useRouter } from '@/i18n/navigation';
 
 import { NativeSelect } from './trade-action-form';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import { TradeConfidenceControl } from './trade-confidence-control';
+import { TradeConfidenceChoice } from './trade-confidence-choice';
+import { TradeEmotionChips } from './trade-emotion-chips';
 import {
   datetimeLocalToIso,
   instantToDatetimeLocal,
@@ -33,14 +35,24 @@ import {
 } from './trade-form-values';
 import { formatR, formatTradeMoney } from './trade-format';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
+import { confidenceOf } from './trade-recording-primitives';
 import {
-  ChoiceGroup,
-  confidenceOf,
-  Field,
-  groupEmotionCatalog,
-  JournalLauncher,
-  SectionHeading,
-} from './trade-recording-primitives';
+  Band,
+  ContextLine,
+  FieldPair,
+  FormFooter,
+  InlineNote,
+  JournalLauncherSurface,
+  PrimaryAmountField,
+  QuietAction,
+  ResultLine,
+  SectionLabel,
+  SegmentedChoice,
+  SelectField,
+  TaskSurface,
+  TextInputField,
+} from './trade-recording-surface';
+import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 type Basis = 'money' | 'price';
 type Direction = '' | 'long' | 'short';
@@ -70,6 +82,20 @@ interface Values {
   confirmationNotes: string;
   tradingviewUrl: string;
   notes: string;
+}
+
+/** Everything the two journal overlays edit, held as a working copy until Done. */
+interface JournalDraft {
+  confirmationNotes: string;
+  tradingviewUrl: string;
+  notes: string;
+  strategyId: string;
+  setupId: string;
+  timeframe: string;
+  session: string;
+  conditionMet: Record<string, boolean>;
+  confidence: string;
+  emotions: readonly string[] | null;
 }
 
 function emptyValues(tradingAccountId: string): Values {
@@ -108,47 +134,37 @@ const PLAN_FIELDS = [
   'plannedReward',
 ] as const;
 const OPENING_FIELDS = ['actualEntry', 'actualStop', 'actualRisk', 'actualPositionSize'] as const;
+const RECENT_SYMBOL_LIMIT = 3;
 
-/**
- * WHAT CHOOSING PRICE COSTS, SAID WHERE THE CHOICE IS MADE.
- *
- * A Price-basis Trade has no monetary result by design
- * (`docs/calculation-spec.md`), and a single one leaves the Dashboard's Net P&L
- * unavailable for the whole population. At Entry, the basis that decides this
- * is the Plan's — or the Advanced opening's when that override is on.
- */
-function PriceHasNoMoneyNotice({ message }: { message: string }) {
-  return (
-    <p
-      role="status"
-      data-price-no-money-notice=""
-      className="border-warning/40 bg-warning/10 text-foreground flex items-start gap-2 rounded-lg border p-3 text-xs"
-    >
-      <TriangleAlert aria-hidden="true" className="text-warning mt-px size-4 shrink-0" />
-      <span>{message}</span>
-    </p>
-  );
+function excerpt(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length <= 64 ? trimmed : `${trimmed.slice(0, 63)}…`;
+}
+
+function isPresent<T>(value: T | null): value is T {
+  return value !== null;
 }
 
 /**
- * AT ENTRY — one linear recording flow for a trade that is still open.
+ * AT ENTRY — a trade that is still open, recorded on one task surface.
  *
- * The same four-part shape as After Trade, in the same visual language, so the
- * two read as one product: The trade → Plan at entry → Journal at entry → Save.
- * What differs is the lifecycle. The entry time follows the clock until the
- * trader changes it; there is no Actual Result, no exit reconstruction and no
- * review, because none of those exist yet; and the Trade idea is asked in the
- * present tense.
+ * THE COMPOSITION IS THE ACCEPTED PROTOTYPE'S. One card holds the trade: the
+ * account as context with a way to change it, Symbol beside Direction, the entry
+ * time already set to now, and the plan — Risk at entry as the one large figure,
+ * Target profit beside it, Target R as a derived line. The Journal sits under the
+ * card as one optional surface ("Now or later"), and the save action closes the
+ * page. Strategy, Setup, the checklist, timeframe, session and the chart live in
+ * the Trade idea, where they describe the trade rather than compete with its
+ * numbers.
  *
- * THE SHORT PATH is Symbol, Direction and Risk at entry: the account is seeded
- * and the entry time is already now. Target profit is optional and Target R is
- * derived by `lib/calc` only once both amounts exist — never typed, never shown
- * as zero. Price levels remain one quiet switch away rather than the first
- * question on the page.
+ * THE CONTRACT IS PRODUCTION'S AND DID NOT MOVE. One `createTradeAction` call,
+ * Money plan by default, the server copying the opening from the plan unless the
+ * trader says it differed, the mutation key reused on retry, unmet conditions
+ * confirmed before saving, and the same redirect.
  *
- * THE PAYLOAD IS UNCHANGED from the tabbed form this replaced: one canonical
- * `createTradeAction` call, Money by default, the server defaulting the opening
- * from the plan unless Advanced says the opening differed.
+ * NOT MIGRATED, AND NOT PRETENDED. The prototype's explicit "No fixed target"
+ * declaration and its structured Exit plan have no persistence: a blank Target
+ * profit still means no target, and no exit plan row is shown.
  */
 export function TradeAtEntryForm({
   options,
@@ -165,6 +181,7 @@ export function TradeAtEntryForm({
   const tMode = useTranslations('trades.create.mode');
   const router = useRouter();
   const hydrated = useIsHydrated();
+  const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
   const [mutationKey] = useState(generateId);
   /*
     The active Account first, then the sole Account, then nothing. The active
@@ -179,34 +196,43 @@ export function TradeAtEntryForm({
     (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
   const pristine = useMemo(() => emptyValues(initialAccount), [initialAccount]);
   const [values, setValues] = useState(pristine);
+  /* With nothing to show as context, the account starts as the decision it is. */
+  const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
   const [planBasis, setPlanBasis] = useState<Basis>('money');
   const [advancedOpening, setAdvancedOpening] = useState(false);
   const [openingBasis, setOpeningBasis] = useState<Basis>('money');
   const [conditionMet, setConditionMet] = useState<Record<string, boolean>>({});
-  const [emotionKeys, setEmotionKeys] = useState<string[]>([]);
-  const [feelingsRecorded, setFeelingsRecorded] = useState(false);
+  /* `null` = never answered; `[]` = explicitly none of these. */
+  const [emotions, setEmotions] = useState<readonly string[] | null>(null);
   const [journalArea, setJournalArea] = useState<JournalArea | null>(null);
-  const [journalDraft, setJournalDraft] = useState({
+  const [journalDraft, setJournalDraft] = useState<JournalDraft>({
     confirmationNotes: '',
     tradingviewUrl: '',
     notes: '',
+    strategyId: '',
+    setupId: '',
+    timeframe: '',
+    session: '',
+    conditionMet: {},
     confidence: '',
-    emotionKeys: [] as string[],
+    emotions: null,
   });
   const ideaTrigger = useRef<HTMLButtonElement>(null);
   const feelingsTrigger = useRef<HTMLButtonElement>(null);
   const [errors, setErrors] = useState<ErrorMap>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  /*
+    Only a SERVER refusal is held as state. The "check the highlighted fields"
+    banner is derived from the field errors below, so it disappears the moment
+    the last highlighted field is corrected instead of outliving every error.
+  */
+  const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [confirmUnmetOpen, setConfirmUnmetOpen] = useState(false);
 
   /*
-    ENTRY TIME FOLLOWS THE CLOCK UNTIL THE TRADER CHANGES IT.
-
-    Resolved after hydration only, so the server never renders a time the
-    browser would immediately contradict. An untouched field keeps meaning
-    "now"; the line beneath it says so, because a trader writing up a position
-    opened earlier must see that the value came from the clock.
+    ENTRY TIME FOLLOWS THE CLOCK UNTIL THE TRADER CHANGES IT — resolved after
+    hydration only, so the server never renders a time the browser immediately
+    contradicts.
   */
   const defaultEnteredAt = hydrated
     ? instantToDatetimeLocal(new Date().toISOString(), timezone)
@@ -217,13 +243,16 @@ export function TradeAtEntryForm({
     (item) => item.tradingAccountId === values.tradingAccountId,
   );
   const currency = selectedAccount?.baseCurrency ?? 'USD';
-  const selectedStrategy = options.strategies.find((item) => item.strategyId === values.strategyId);
-  const selectedSetup = selectedStrategy?.setups.find((item) => item.setupId === values.setupId);
-  const conditionCount = selectedSetup?.conditions.length ?? 0;
-  const metConditionCount = (selectedSetup?.conditions ?? []).filter(
-    (condition) => conditionMet[condition.conditionKey] === true,
-  ).length;
-  const emotionGroups = groupEmotionCatalog(options.emotionCatalog);
+  const committedStrategy = options.strategies.find(
+    (item) => item.strategyId === values.strategyId,
+  );
+  const committedSetup = committedStrategy?.setups.find((item) => item.setupId === values.setupId);
+  const draftStrategy = options.strategies.find(
+    (item) => item.strategyId === journalDraft.strategyId,
+  );
+  const draftSetup = draftStrategy?.setups.find((item) => item.setupId === journalDraft.setupId);
+  const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
+  const emotionLabel = new Map(options.emotionCatalog.map((item) => [item.key, item.label]));
 
   function clearErrors(fields: readonly string[]) {
     setErrors((current) => {
@@ -258,6 +287,11 @@ export function TradeAtEntryForm({
     clearErrors(OPENING_FIELDS);
   }
 
+  function toggleOpening() {
+    setAdvancedOpening((current) => !current);
+    resetOpening(planBasis);
+  }
+
   const plannedRisk =
     values.plannedRisk.trim() === ''
       ? null
@@ -285,28 +319,57 @@ export function TradeAtEntryForm({
     plannedPreview?.ok && plannedPreview.value.plannedR !== null
       ? plannedPreview.value.plannedR
       : null;
-  /*
-    1R in money only where the plan states it. A Price plan does not, and
-    CLAUDE.md §6 forbids deriving an amount from price × size.
-  */
+  /* 1R in money only where the plan states it; never derived from price × size (CLAUDE.md §6). */
   const oneR =
     planBasis === 'money' && plannedRisk?.ok ? formatTradeMoney(plannedRisk.value, currency) : null;
-
   const moneyDecidingBasis = advancedOpening ? openingBasis : planBasis;
 
   const isDirty =
-    feelingsRecorded ||
-    emotionKeys.length > 0 ||
+    emotions !== null ||
     Object.values(conditionMet).some(Boolean) ||
     (Object.keys(pristine) as (keyof Values)[]).some((key) => values[key] !== pristine[key]);
+
+  const confidenceStep = confidenceOf(values.confidence);
+  const ideaPreview = [
+    values.confirmationNotes.trim() === '' ? null : excerpt(values.confirmationNotes),
+    committedStrategy === undefined
+      ? null
+      : [committedStrategy.name, committedSetup?.name].filter(Boolean).join(' · '),
+  ].filter(isPresent);
+  if (
+    ideaPreview.length === 0 &&
+    [values.tradingviewUrl, values.notes, values.timeframe, values.session].some(
+      (value) => value.trim() !== '',
+    )
+  ) {
+    ideaPreview.push(e('journal.idea.detailsAdded'));
+  }
+  const feelingsParts = [
+    confidenceStep === undefined
+      ? null
+      : e('journal.feelings.confidencePreview', {
+          level: t(`create.confidence.level.${confidenceLevelKey(confidenceStep)}`),
+        }),
+    emotions === null
+      ? null
+      : emotions.length === 0
+        ? e('journal.feelings.noneOfThese')
+        : emotions.map((key) => emotionLabel.get(key) ?? key).join(', '),
+  ].filter(isPresent);
+  const feelingsPreview = feelingsParts.length === 0 ? [] : [feelingsParts.join(' · ')];
 
   function openJournal(area: JournalArea) {
     setJournalDraft({
       confirmationNotes: values.confirmationNotes,
       tradingviewUrl: values.tradingviewUrl,
       notes: values.notes,
+      strategyId: values.strategyId,
+      setupId: values.setupId,
+      timeframe: values.timeframe,
+      session: values.session,
+      conditionMet: { ...conditionMet },
       confidence: values.confidence,
-      emotionKeys: [...emotionKeys],
+      emotions,
     });
     setJournalArea(area);
   }
@@ -318,11 +381,15 @@ export function TradeAtEntryForm({
         confirmationNotes: journalDraft.confirmationNotes,
         tradingviewUrl: journalDraft.tradingviewUrl,
         notes: journalDraft.notes,
+        strategyId: journalDraft.strategyId,
+        setupId: journalDraft.setupId,
+        timeframe: journalDraft.timeframe,
+        session: journalDraft.session,
       }));
+      setConditionMet(journalDraft.conditionMet);
     } else if (journalArea === 'feelings') {
       setValues((current) => ({ ...current, confidence: journalDraft.confidence }));
-      setEmotionKeys(journalDraft.emotionKeys);
-      setFeelingsRecorded(true);
+      setEmotions(journalDraft.emotions);
     }
     setJournalArea(null);
   }
@@ -352,8 +419,6 @@ export function TradeAtEntryForm({
       if (plannedReward !== null && !plannedReward.ok)
         next.plannedReward = t('lifecycle.validation.money');
     }
-    if (values.setupId !== '' && values.strategyId === '')
-      next.setupId = t('validation.setupRequiresStrategy');
 
     if (advancedOpening) {
       if (openingBasis === 'price') {
@@ -372,14 +437,18 @@ export function TradeAtEntryForm({
     const next = collectErrors();
     if (Object.keys(next).length > 0) {
       setErrors(next);
-      setFormError(r('validation.fixFields'));
+      if (next.tradingAccountId !== undefined) setAccountPickerOpen(true);
       requestAnimationFrame(() =>
-        document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(),
+        document
+          .querySelector<HTMLElement>(
+            '[data-at-entry-linear-form] :is([aria-invalid="true"], [data-invalid="true"])',
+          )
+          ?.focus(),
       );
       return;
     }
 
-    const conditionAnswers = (selectedSetup?.conditions ?? []).map((condition) => ({
+    const conditionAnswers = (committedSetup?.conditions ?? []).map((condition) => ({
       conditionKey: condition.conditionKey,
       status: conditionMet[condition.conditionKey] ? ('met' as const) : ('not_met' as const),
     }));
@@ -393,10 +462,10 @@ export function TradeAtEntryForm({
       advancedOpening && openingBasis === 'money'
         ? parseTradeMoneyInput(values.actualRisk, currency, { allowZero: false })
         : null;
-    const confidence = confidenceOf(values.confidence);
+    const symbol = values.symbol.trim().toUpperCase();
 
     setPending(true);
-    setFormError(null);
+    setServerError(null);
     const result = await createTradeAction({
       mutationKey,
       tradingAccountId: values.tradingAccountId,
@@ -404,10 +473,10 @@ export function TradeAtEntryForm({
       systemPlanBasis: planBasis,
       ...(values.strategyId === '' ? {} : { strategyId: values.strategyId }),
       ...(values.setupId === '' ? {} : { setupId: values.setupId }),
-      ...(selectedSetup === undefined
+      ...(committedSetup === undefined
         ? {}
-        : { conditionSetToken: selectedSetup.conditionSetToken, conditionAnswers }),
-      symbol: values.symbol.trim().toUpperCase(),
+        : { conditionSetToken: committedSetup.conditionSetToken, conditionAnswers }),
+      symbol,
       direction: values.direction,
       plannedEntry: planBasis === 'price' ? values.plannedEntry.trim() : null,
       plannedStop: planBasis === 'price' ? values.plannedStop.trim() : null,
@@ -424,8 +493,8 @@ export function TradeAtEntryForm({
       timeframe: values.timeframe,
       session: values.session,
       confirmationNotes: values.confirmationNotes,
-      ...(confidence === undefined ? {} : { confidence }),
-      ...(feelingsRecorded ? { emotionKeys } : {}),
+      ...(confidenceStep === undefined ? {} : { confidence: confidenceStep }),
+      ...(emotions === null ? {} : { emotionKeys: [...emotions] }),
       tradingviewUrl: values.tradingviewUrl,
       notes: values.notes,
       chartAttachmentStorageKey: null,
@@ -449,14 +518,18 @@ export function TradeAtEntryForm({
       for (const field of Object.keys(result.error.fieldErrors ?? {}))
         mapped[field] = r('validation.invalidField');
       setErrors(mapped);
-      setFormError(t(`errors.${result.error.code}`));
+      setServerError(t(`errors.${result.error.code}`));
       return;
     }
+    symbolFavorites.recordUse(symbol);
     router.push(`/app/trades?trade=${result.data.tradeId}`);
   }
 
+  const formError =
+    serverError ?? (Object.keys(errors).length > 0 ? r('validation.fixFields') : null);
+
   return (
-    <div className="flex w-full min-w-0 flex-col gap-5">
+    <div className="flex w-full min-w-0 flex-col gap-4">
       <p
         data-recording-mode="at_entry"
         className="text-muted-foreground mx-auto max-w-prose text-center text-sm text-pretty"
@@ -470,7 +543,7 @@ export function TradeAtEntryForm({
         className={
           formError === null
             ? 'sr-only'
-            : 'border-destructive/30 bg-destructive/10 text-destructive rounded-lg border p-4 text-sm'
+            : 'border-destructive/30 bg-destructive/10 text-destructive rounded-lg border p-3 text-sm'
         }
       >
         {formError ?? r('ready')}
@@ -483,434 +556,318 @@ export function TradeAtEntryForm({
           event.preventDefault();
           void submit();
         }}
-        className="grid min-w-0 gap-5"
+        className="flex min-w-0 flex-col gap-3 md:gap-4"
       >
-        <section className="border-border bg-card grid min-w-0 gap-5 rounded-xl border p-4 sm:p-6">
-          <SectionHeading
-            number="1"
-            title={e('trade.title')}
-            description={e('trade.description')}
-          />
-          <div className="grid min-w-0 gap-5 sm:grid-cols-3">
-            <div className="grid min-w-0 gap-1.5 sm:col-span-2">
-              <label htmlFor="entry-account" className="text-sm font-medium">
-                {t('field.account')}
-              </label>
-              <NativeSelect
+        <TaskSurface>
+          <Band className="gap-3 py-3.5 sm:py-3.5">
+            {accountPickerOpen || selectedAccount === undefined ? (
+              <SelectField
                 id="entry-account"
-                value={values.tradingAccountId}
-                aria-invalid={errors.tradingAccountId !== undefined}
-                aria-describedby={
-                  errors.tradingAccountId === undefined ? undefined : 'entry-account-error'
-                }
-                onChange={(event) => setField('tradingAccountId', event.target.value)}
+                label={t('field.account')}
+                error={errors.tradingAccountId}
               >
-                <option value="">{t('create.chooseAccount')}</option>
-                {options.tradingAccounts.map((account) => (
-                  <option key={account.tradingAccountId} value={account.tradingAccountId}>
-                    {account.name} · {account.baseCurrency}
-                  </option>
-                ))}
-              </NativeSelect>
-              {errors.tradingAccountId === undefined ? null : (
-                <p id="entry-account-error" role="alert" className="text-destructive text-sm">
-                  {errors.tradingAccountId}
-                </p>
-              )}
-            </div>
-            <Field
-              id="entry-symbol"
-              label={t('field.symbol')}
-              value={values.symbol}
-              onChange={(value) => setField('symbol', value.toUpperCase())}
-              error={errors.symbol}
-              placeholder="XAUUSD"
-            />
-          </div>
-          <ChoiceGroup
-            legend={t('field.direction')}
-            name="entry-direction"
-            value={values.direction}
-            onChange={(value) => setField('direction', value)}
-            error={errors.direction}
-            options={[
-              { value: 'long', label: t('direction.long') },
-              { value: 'short', label: t('direction.short') },
-            ]}
-          />
-          <div className="grid min-w-0 gap-1.5 sm:max-w-sm">
-            <Field
-              id="entry-entered-at"
-              type="datetime-local"
-              label={e('trade.entryTime')}
-              value={enteredAtValue}
-              onChange={(value) => setField('enteredAt', value)}
-              error={errors.enteredAt}
-              hint={e('trade.timezone', { timezone })}
-            />
-            {values.enteredAt === '' && enteredAtValue !== '' ? (
-              <p data-entry-time-now="" className="text-muted-foreground text-xs">
-                {e('trade.setToNow')}
-              </p>
-            ) : null}
-          </div>
-        </section>
-
-        <section
-          data-plan-at-entry=""
-          className="border-primary/50 bg-card ring-primary/10 grid min-w-0 gap-5 rounded-xl border-2 p-4 ring-4 sm:p-6"
-        >
-          <SectionHeading
-            number="2"
-            title={e('plan.title')}
-            description={e('plan.description')}
-            strong
-          />
-
-          {planBasis === 'money' ? (
-            <div className="grid min-w-0 gap-5 sm:grid-cols-2">
-              <Field
-                id="entry-risk"
-                label={e('plan.risk')}
-                value={values.plannedRisk}
-                onChange={(value) => setField('plannedRisk', value)}
-                error={errors.plannedRisk}
-                inputMode="decimal"
-                hint={e('plan.riskHint', { currency })}
-              />
-              <Field
-                id="entry-target-profit"
-                label={e('plan.targetProfit')}
-                value={values.plannedReward}
-                onChange={(value) => setField('plannedReward', value)}
-                error={errors.plannedReward}
-                inputMode="decimal"
-                hint={e('plan.targetHint', { currency })}
-                optional
-              />
-            </div>
-          ) : (
-            <div className="grid min-w-0 gap-3">
-              <p className="text-muted-foreground text-xs">{e('plan.priceHint')}</p>
-              <div className="grid min-w-0 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                <Field
-                  id="entry-plan-entry"
-                  label={r('plannedEntry')}
-                  value={values.plannedEntry}
-                  onChange={(value) => setField('plannedEntry', value)}
-                  error={errors.plannedEntry}
-                  inputMode="decimal"
-                />
-                <Field
-                  id="entry-plan-stop"
-                  label={r('plannedStop')}
-                  value={values.plannedStop}
-                  onChange={(value) => setField('plannedStop', value)}
-                  error={errors.plannedStop}
-                  inputMode="decimal"
-                />
-                <Field
-                  id="entry-plan-target"
-                  label={r('takeProfit')}
-                  value={values.plannedTarget}
-                  onChange={(value) => setField('plannedTarget', value)}
-                  inputMode="decimal"
-                  optional
-                />
-                <Field
-                  id="entry-plan-size"
-                  label={t('field.positionSizeSimple')}
-                  value={values.plannedPositionSize}
-                  onChange={(value) => setField('plannedPositionSize', value)}
-                  inputMode="decimal"
-                  optional
-                />
-              </div>
-            </div>
-          )}
-
-          {/*
-            ONE DERIVED LINE, AND ONLY WHEN IT MEANS SOMETHING. Absent until the
-            engine can resolve Target R from both halves of the plan; a blank
-            target is not a zero-R target.
-          */}
-          {targetR === null ? null : (
-            <div
-              data-target-r=""
-              className="border-border flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t pt-3"
-            >
-              <span className="text-muted-foreground text-sm">{e('plan.targetR')}</span>
-              <span className="flex min-w-0 flex-wrap items-baseline gap-x-3">
-                {oneR === null ? null : (
-                  <span className="text-muted-foreground numeric text-xs break-all">
-                    {e('plan.oneR', { amount: oneR })}
-                  </span>
-                )}
-                <strong className="numeric">{formatR(targetR)}</strong>
-              </span>
-            </div>
-          )}
-
-          <div className="grid min-w-0 gap-3">
-            <Button
-              type="button"
-              variant="ghost"
-              data-plan-basis-switch={planBasis}
-              className="text-muted-foreground min-h-11 justify-self-start px-2"
-              onClick={() => changePlanBasis(planBasis === 'money' ? 'price' : 'money')}
-            >
-              {planBasis === 'money' ? e('plan.usePrice') : e('plan.useMoney')}
-            </Button>
-            {moneyDecidingBasis === 'price' ? (
-              <PriceHasNoMoneyNotice message={r('priceHasNoMoney')} />
-            ) : null}
-          </div>
-
-          <div className="border-border grid min-w-0 gap-5 border-t pt-5">
-            <div className="grid min-w-0 gap-5 sm:grid-cols-2">
-              <div className="grid min-w-0 gap-1.5">
-                <label htmlFor="entry-strategy" className="text-sm font-medium">
-                  {t('field.strategy')}{' '}
-                  <span className="text-muted-foreground font-normal">· optional</span>
-                </label>
                 <NativeSelect
-                  id="entry-strategy"
-                  value={values.strategyId}
-                  onChange={(event) => {
-                    setField('strategyId', event.target.value);
-                    setField('setupId', '');
-                    setConditionMet({});
-                  }}
+                  id="entry-account"
+                  value={values.tradingAccountId}
+                  aria-invalid={errors.tradingAccountId !== undefined}
+                  aria-describedby={
+                    errors.tradingAccountId === undefined ? undefined : 'entry-account-error'
+                  }
+                  onChange={(event) => setField('tradingAccountId', event.target.value)}
                 >
-                  <option value="">{t('create.chooseStrategy')}</option>
-                  {options.strategies.map((strategy) => (
-                    <option key={strategy.strategyId} value={strategy.strategyId}>
-                      {strategy.name}
+                  <option value="">{t('create.chooseAccount')}</option>
+                  {options.tradingAccounts.map((account) => (
+                    <option key={account.tradingAccountId} value={account.tradingAccountId}>
+                      {account.name} · {account.baseCurrency}
                     </option>
                   ))}
                 </NativeSelect>
-              </div>
-              <div className="grid min-w-0 gap-1.5">
-                <label htmlFor="entry-setup" className="text-sm font-medium">
-                  {t('field.setup')}{' '}
-                  <span className="text-muted-foreground font-normal">· optional</span>
-                </label>
-                <NativeSelect
-                  id="entry-setup"
-                  value={values.setupId}
-                  disabled={selectedStrategy === undefined}
-                  aria-invalid={errors.setupId !== undefined}
-                  onChange={(event) => {
-                    setField('setupId', event.target.value);
-                    setConditionMet({});
-                  }}
-                >
-                  <option value="">{t('create.chooseSetup')}</option>
-                  {(selectedStrategy?.setups ?? []).map((setup) => (
-                    <option key={setup.setupId} value={setup.setupId}>
-                      {setup.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-                {errors.setupId === undefined ? null : (
-                  <p role="alert" className="text-destructive text-sm">
-                    {errors.setupId}
-                  </p>
-                )}
-              </div>
-            </div>
+              </SelectField>
+            ) : (
+              <ContextLine
+                primary={selectedAccount.name}
+                secondary={selectedAccount.baseCurrency}
+                {...(options.tradingAccounts.length > 1
+                  ? {
+                      action: (
+                        <QuietAction onClick={() => setAccountPickerOpen(true)}>
+                          {e('trade.change')}{' '}
+                          <span className="sr-only">{e('trade.changeAccountSr')}</span>
+                        </QuietAction>
+                      ),
+                    }
+                  : {})}
+              />
+            )}
+          </Band>
 
-            {selectedSetup !== undefined && conditionCount === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                {t('create.conditions.notConfigured')}
-              </p>
-            ) : null}
-            {/*
-              Open, not collapsed: at entry the checklist is something the trader
-              is doing right now, and it appears only once a Setup is chosen.
-            */}
-            {selectedSetup !== undefined && conditionCount > 0 ? (
-              <fieldset className="border-border grid min-w-0 gap-2 rounded-lg border p-3">
-                <legend className="px-1 text-sm font-medium">{e('plan.setupChecklist')}</legend>
-                <p className="text-muted-foreground text-xs">{e('plan.setupHint')}</p>
-                <p className="text-muted-foreground text-xs">
-                  {t('create.conditions.adherence', {
-                    met: metConditionCount,
-                    total: conditionCount,
-                    percentage: Math.round((metConditionCount / conditionCount) * 100),
-                  })}
-                </p>
-                {selectedSetup.conditions.map((condition) => (
-                  <label
-                    key={condition.conditionKey}
-                    className="flex min-h-11 min-w-0 items-center gap-3 text-sm"
+          <Band>
+            <SectionLabel className="sr-only">{e('trade.title')}</SectionLabel>
+            <FieldPair>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <TextInputField
+                  id="entry-symbol"
+                  label={t('field.symbol')}
+                  value={values.symbol}
+                  onChange={(value) => setField('symbol', value.toUpperCase())}
+                  error={errors.symbol}
+                  placeholder="e.g. XAUUSD"
+                />
+                {recentSymbols.length === 0 ? null : (
+                  <div
+                    role="group"
+                    aria-label={e('trade.recentSymbols')}
+                    className="flex min-w-0 flex-wrap gap-1.5"
                   >
-                    <input
-                      type="checkbox"
-                      className="size-4 shrink-0"
-                      checked={conditionMet[condition.conditionKey] === true}
-                      onChange={(event) =>
-                        setConditionMet((current) => ({
-                          ...current,
-                          [condition.conditionKey]: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span className="min-w-0 break-words">{condition.label}</span>
-                  </label>
-                ))}
-              </fieldset>
-            ) : null}
-
-            <div className="grid min-w-0 gap-5 sm:grid-cols-2">
-              <Field
-                id="entry-timeframe"
-                label={t('field.timeframe')}
-                value={values.timeframe}
-                onChange={(value) => setField('timeframe', value)}
-                optional
+                    {recentSymbols.map((recent) => (
+                      <button
+                        key={recent}
+                        type="button"
+                        aria-pressed={values.symbol === recent}
+                        onClick={() => setField('symbol', recent)}
+                        className="border-border text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring aria-pressed:border-primary aria-pressed:text-foreground relative rounded-full border px-2.5 py-1 text-xs outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] focus-visible:ring-2"
+                      >
+                        {recent}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <SegmentedChoice
+                legend={t('field.direction')}
+                value={values.direction}
+                onChange={(value) => setField('direction', value)}
+                error={errors.direction}
+                errorId="entry-direction-error"
+                options={[
+                  { value: 'long', label: t('direction.long') },
+                  { value: 'short', label: t('direction.short') },
+                ]}
               />
-              <Field
-                id="entry-session"
-                label={t('field.session')}
-                value={values.session}
-                onChange={(value) => setField('session', value)}
-                optional
-              />
-            </div>
-          </div>
+            </FieldPair>
 
-          {/*
-            THE OPENING OVERRIDE, KEPT AND KEPT OUT OF THE WAY. By default the
-            server opens the Trade from the plan; this is the one place a trader
-            says the actual opening differed.
-          */}
-          <details
-            data-advanced-opening=""
-            className="border-border rounded-lg border px-3 py-2"
-            onToggle={(event) => {
-              if (!(event.currentTarget as HTMLDetailsElement).open && advancedOpening) {
-                setAdvancedOpening(false);
-                resetOpening(planBasis);
-              }
-            }}
-          >
-            <summary className="text-muted-foreground hover:text-foreground focus-visible:ring-ring flex min-h-11 cursor-pointer items-center rounded-md text-sm font-medium outline-none focus-visible:ring-2">
-              {r('advanced')}
-            </summary>
-            <div className="grid min-w-0 gap-5 pb-2">
-              <label className="flex min-h-11 items-center gap-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 shrink-0"
-                  checked={advancedOpening}
-                  onChange={(event) => {
-                    setAdvancedOpening(event.target.checked);
-                    resetOpening(planBasis);
-                  }}
-                />
-                {r('openingDiffers')}
-              </label>
-              {advancedOpening ? (
-                <>
-                  <ChoiceGroup
-                    legend={r('actualOpeningBy')}
-                    name="entry-opening-basis"
-                    value={openingBasis}
-                    onChange={resetOpening}
-                    options={[
-                      { value: 'money', label: r('money') },
-                      { value: 'price', label: r('price') },
-                    ]}
-                  />
-                  {openingBasis === 'price' ? (
-                    <div className="grid min-w-0 gap-5 sm:grid-cols-3">
-                      <Field
-                        id="entry-opening-entry"
-                        label={r('actualEntry')}
-                        value={values.actualEntry}
-                        onChange={(value) => setField('actualEntry', value)}
-                        error={errors.actualEntry}
-                        inputMode="decimal"
-                      />
-                      <Field
-                        id="entry-opening-stop"
-                        label={r('actualStop')}
-                        value={values.actualStop}
-                        onChange={(value) => setField('actualStop', value)}
-                        error={errors.actualStop}
-                        inputMode="decimal"
-                      />
-                      <Field
-                        id="entry-opening-size"
-                        label={t('field.actualPositionSize')}
-                        value={values.actualPositionSize}
-                        onChange={(value) => setField('actualPositionSize', value)}
-                        inputMode="decimal"
-                        optional
-                      />
-                    </div>
-                  ) : (
-                    <Field
-                      id="entry-opening-risk"
-                      label={r('initialRisk')}
-                      value={values.actualRisk}
-                      onChange={(value) => setField('actualRisk', value)}
-                      error={errors.actualRisk}
-                      inputMode="decimal"
-                      hint={currency}
-                    />
-                  )}
-                </>
+            <div className="flex min-w-0 flex-col gap-1">
+              <p id="entry-timezone" className="text-subtle-foreground mb-1 text-xs">
+                {e('trade.timezone', { timezone })}
+              </p>
+              <TextInputField
+                id="entry-entered-at"
+                type="datetime-local"
+                label={e('trade.entryTime')}
+                value={enteredAtValue}
+                onChange={(value) => setField('enteredAt', value)}
+                error={errors.enteredAt}
+                extraDescribedBy="entry-timezone"
+                numeric
+              />
+              {values.enteredAt === '' && enteredAtValue !== '' ? (
+                <p data-entry-time-now="" className="text-subtle-foreground text-xs">
+                  {e('trade.setToNow')}
+                </p>
               ) : null}
             </div>
-          </details>
-        </section>
+          </Band>
 
-        <section className="border-border bg-card grid min-w-0 gap-4 rounded-xl border p-4 sm:p-6">
-          <SectionHeading
-            number="3"
-            title={e('journal.title')}
-            description={e('journal.description')}
-          />
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-            <JournalLauncher
-              ref={ideaTrigger}
-              icon={<Lightbulb className="size-5" aria-hidden="true" />}
-              label={e('journal.idea.label')}
-              prompt={e('journal.idea.prompt')}
-              summary={values.confirmationNotes.trim() || null}
-              onClick={() => openJournal('idea')}
-            />
-            <JournalLauncher
-              ref={feelingsTrigger}
-              icon={<HeartPulse className="size-5" aria-hidden="true" />}
-              label={e('journal.feelings.label')}
-              prompt={e('journal.feelings.prompt')}
-              summary={
-                feelingsRecorded
-                  ? e('journal.feelings.summary', {
-                      count: emotionKeys.length,
-                      confidence: values.confidence || e('journal.notRecorded'),
-                    })
-                  : null
-              }
-              onClick={() => openJournal('feelings')}
-            />
-          </div>
-        </section>
+          <Band divided={false} className="gap-3 py-5 sm:py-5">
+            <SectionLabel id="entry-plan-heading">{e('plan.title')}</SectionLabel>
 
-        <div
-          data-global-save=""
-          className="border-border bg-card/95 pb-safe sticky bottom-0 z-10 rounded-xl border px-4 backdrop-blur-sm sm:static sm:px-6 sm:backdrop-blur-none"
-        >
-          <div className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-muted-foreground text-sm">{e('save.helper')}</p>
-            <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={pending}>
-              {pending ? r('saving') : e('save.action')}
-            </Button>
-          </div>
-        </div>
+            {planBasis === 'money' ? (
+              <FieldPair>
+                <PrimaryAmountField
+                  id="entry-risk"
+                  label={e('plan.risk')}
+                  currency={currency}
+                  value={values.plannedRisk}
+                  onChange={(value) => setField('plannedRisk', value)}
+                  hint={e('plan.riskHint')}
+                  error={errors.plannedRisk}
+                />
+                <PrimaryAmountField
+                  id="entry-target-profit"
+                  label={e('plan.targetProfit')}
+                  currency={currency}
+                  value={values.plannedReward}
+                  onChange={(value) => setField('plannedReward', value)}
+                  error={errors.plannedReward}
+                  optionalLabel={e('plan.optional')}
+                />
+              </FieldPair>
+            ) : (
+              <div className="flex min-w-0 flex-col gap-4">
+                <InlineNote>{e('plan.priceHint')}</InlineNote>
+                <FieldPair>
+                  <TextInputField
+                    id="entry-plan-entry"
+                    label={r('plannedEntry')}
+                    value={values.plannedEntry}
+                    onChange={(value) => setField('plannedEntry', value)}
+                    error={errors.plannedEntry}
+                    inputMode="decimal"
+                    numeric
+                  />
+                  <TextInputField
+                    id="entry-plan-stop"
+                    label={r('plannedStop')}
+                    value={values.plannedStop}
+                    onChange={(value) => setField('plannedStop', value)}
+                    error={errors.plannedStop}
+                    inputMode="decimal"
+                    numeric
+                  />
+                </FieldPair>
+                <FieldPair>
+                  <TextInputField
+                    id="entry-plan-target"
+                    label={r('takeProfit')}
+                    value={values.plannedTarget}
+                    onChange={(value) => setField('plannedTarget', value)}
+                    optionalLabel={e('plan.optional')}
+                    inputMode="decimal"
+                    numeric
+                  />
+                  <TextInputField
+                    id="entry-plan-size"
+                    label={t('field.positionSizeSimple')}
+                    value={values.plannedPositionSize}
+                    onChange={(value) => setField('plannedPositionSize', value)}
+                    optionalLabel={e('plan.optional')}
+                    inputMode="decimal"
+                    numeric
+                  />
+                </FieldPair>
+              </div>
+            )}
+
+            {/*
+              ONE DERIVED LINE, AND ONLY WHEN IT MEANS SOMETHING. A hairline above
+              it so the figure belongs to the amounts rather than floating after
+              them; absent until the engine resolves Target R from both halves.
+            */}
+            {targetR === null ? null : (
+              <div data-target-r="" className="border-border/70 min-w-0 border-t pt-3">
+                <ResultLine
+                  label={e('plan.targetR')}
+                  value={formatR(targetR) ?? targetR}
+                  detail={oneR === null ? undefined : e('plan.oneR', { amount: oneR })}
+                />
+              </div>
+            )}
+
+            <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 pt-1">
+              <QuietAction
+                className="text-muted-foreground hover:text-foreground font-normal"
+                onClick={() => changePlanBasis(planBasis === 'money' ? 'price' : 'money')}
+              >
+                {planBasis === 'money' ? e('plan.usePrice') : e('plan.useMoney')}
+              </QuietAction>
+              <QuietAction
+                className="text-muted-foreground hover:text-foreground font-normal"
+                expanded={advancedOpening}
+                controls="entry-opening"
+                onClick={toggleOpening}
+              >
+                {e('plan.openingDiffers')}
+              </QuietAction>
+            </div>
+
+            {moneyDecidingBasis === 'price' ? (
+              <InlineNote tone="warning" data-price-no-money-notice="">
+                {r('priceHasNoMoney')}
+              </InlineNote>
+            ) : null}
+
+            {advancedOpening ? (
+              <div
+                id="entry-opening"
+                className="border-border flex min-w-0 flex-col gap-4 border-t pt-4"
+              >
+                <SegmentedChoice
+                  legend={r('actualOpeningBy')}
+                  value={openingBasis}
+                  onChange={resetOpening}
+                  errorId="entry-opening-basis-error"
+                  options={[
+                    { value: 'money', label: r('money') },
+                    { value: 'price', label: r('price') },
+                  ]}
+                />
+                {openingBasis === 'price' ? (
+                  <FieldPair>
+                    <TextInputField
+                      id="entry-opening-entry"
+                      label={r('actualEntry')}
+                      value={values.actualEntry}
+                      onChange={(value) => setField('actualEntry', value)}
+                      error={errors.actualEntry}
+                      inputMode="decimal"
+                      numeric
+                    />
+                    <TextInputField
+                      id="entry-opening-stop"
+                      label={r('actualStop')}
+                      value={values.actualStop}
+                      onChange={(value) => setField('actualStop', value)}
+                      error={errors.actualStop}
+                      inputMode="decimal"
+                      numeric
+                    />
+                    <TextInputField
+                      id="entry-opening-size"
+                      label={t('field.actualPositionSize')}
+                      value={values.actualPositionSize}
+                      onChange={(value) => setField('actualPositionSize', value)}
+                      optionalLabel={e('plan.optional')}
+                      inputMode="decimal"
+                      numeric
+                    />
+                  </FieldPair>
+                ) : (
+                  <PrimaryAmountField
+                    id="entry-opening-risk"
+                    label={r('initialRisk')}
+                    currency={currency}
+                    value={values.actualRisk}
+                    onChange={(value) => setField('actualRisk', value)}
+                    error={errors.actualRisk}
+                  />
+                )}
+              </div>
+            ) : null}
+          </Band>
+        </TaskSurface>
+
+        <JournalLauncherSurface
+          headingId="entry-journal-heading"
+          heading={e('journal.title')}
+          aside={e('journal.aside')}
+          areas={[
+            {
+              id: 'idea',
+              label: e('journal.idea.label'),
+              Icon: Lightbulb,
+              invitation: e('journal.idea.prompt'),
+              preview: ideaPreview,
+              onOpen: () => openJournal('idea'),
+              triggerRef: ideaTrigger,
+            },
+            {
+              id: 'feelings',
+              label: e('journal.feelings.label'),
+              Icon: HeartPulse,
+              invitation: e('journal.feelings.prompt'),
+              preview: feelingsPreview,
+              onOpen: () => openJournal('feelings'),
+              triggerRef: feelingsTrigger,
+            },
+          ]}
+        />
+
+        <FormFooter
+          action={e('save.action')}
+          pendingLabel={r('saving')}
+          pending={pending}
+          helper={e('save.helper')}
+        />
       </form>
 
       <TradeAdaptiveOverlay
@@ -924,7 +881,7 @@ export function TradeAtEntryForm({
         returnFocusRef={ideaTrigger}
         footer={
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setJournalArea(null)}>
+            <Button type="button" variant="ghost" onClick={() => setJournalArea(null)}>
               {t('lifecycle.common.cancel')}
             </Button>
             <Button type="button" onClick={commitJournal}>
@@ -933,13 +890,15 @@ export function TradeAtEntryForm({
           </div>
         }
       >
-        <div className="grid min-w-0 gap-4">
-          <div className="grid gap-1.5">
-            <label htmlFor="entry-idea" className="text-sm font-medium">
+        <div className="flex min-w-0 flex-col gap-6">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label htmlFor="entry-idea" className="text-muted-foreground text-xs font-medium">
               {e('journal.idea.prompt')}
             </label>
             <Textarea
               id="entry-idea"
+              rows={4}
+              placeholder={e('journal.idea.placeholder')}
               value={journalDraft.confirmationNotes}
               onChange={(event) =>
                 setJournalDraft((current) => ({
@@ -947,29 +906,165 @@ export function TradeAtEntryForm({
                   confirmationNotes: event.target.value,
                 }))
               }
+              className="min-h-28 text-base"
             />
           </div>
-          <Field
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <p className="text-foreground text-sm font-medium">
+              {e('journal.idea.strategyQuestion')}
+            </p>
+            <SelectField
+              id="entry-strategy"
+              label={t('field.strategy')}
+              optionalLabel={e('plan.optional')}
+              hint={e('journal.idea.strategyHint')}
+            >
+              <NativeSelect
+                id="entry-strategy"
+                value={journalDraft.strategyId}
+                aria-describedby="entry-strategy-hint"
+                onChange={(event) => {
+                  const strategyId = event.target.value;
+                  setJournalDraft((current) => ({
+                    ...current,
+                    strategyId,
+                    setupId: '',
+                    conditionMet: {},
+                  }));
+                }}
+              >
+                <option value="">{t('create.chooseStrategy')}</option>
+                {options.strategies.map((strategy) => (
+                  <option key={strategy.strategyId} value={strategy.strategyId}>
+                    {strategy.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </SelectField>
+
+            {draftStrategy === undefined ? null : (
+              <SelectField
+                id="entry-setup"
+                label={t('field.setup')}
+                optionalLabel={e('plan.optional')}
+                hint={e('journal.idea.setupHint')}
+              >
+                <NativeSelect
+                  id="entry-setup"
+                  value={journalDraft.setupId}
+                  aria-describedby="entry-setup-hint"
+                  onChange={(event) => {
+                    const setupId = event.target.value;
+                    setJournalDraft((current) => ({ ...current, setupId, conditionMet: {} }));
+                  }}
+                >
+                  <option value="">{t('create.chooseSetup')}</option>
+                  {draftStrategy.setups.map((setup) => (
+                    <option key={setup.setupId} value={setup.setupId}>
+                      {setup.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </SelectField>
+            )}
+
+            {draftSetup !== undefined && draftSetup.conditions.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                {t('create.conditions.notConfigured')}
+              </p>
+            ) : null}
+
+            {draftSetup !== undefined && draftSetup.conditions.length > 0 ? (
+              <fieldset className="border-border flex min-w-0 flex-col gap-1 border-y py-3">
+                <legend className="text-foreground text-sm font-medium">
+                  {e('journal.idea.checklistTitle')}
+                </legend>
+                <p className="text-muted-foreground text-xs">{e('journal.idea.checklistHint')}</p>
+                <p className="text-muted-foreground text-xs">
+                  {t('create.conditions.adherence', {
+                    met: draftSetup.conditions.filter(
+                      (condition) => journalDraft.conditionMet[condition.conditionKey] === true,
+                    ).length,
+                    total: draftSetup.conditions.length,
+                    percentage: Math.round(
+                      (draftSetup.conditions.filter(
+                        (condition) => journalDraft.conditionMet[condition.conditionKey] === true,
+                      ).length /
+                        draftSetup.conditions.length) *
+                        100,
+                    ),
+                  })}
+                </p>
+                {draftSetup.conditions.map((condition) => (
+                  <label
+                    key={condition.conditionKey}
+                    className="flex min-h-11 min-w-0 items-center gap-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0"
+                      checked={journalDraft.conditionMet[condition.conditionKey] === true}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setJournalDraft((current) => ({
+                          ...current,
+                          conditionMet: {
+                            ...current.conditionMet,
+                            [condition.conditionKey]: checked,
+                          },
+                        }));
+                      }}
+                    />
+                    <span className="min-w-0 break-words">{condition.label}</span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
+          </div>
+
+          <FieldPair>
+            <TextInputField
+              id="entry-timeframe"
+              label={t('field.timeframe')}
+              optionalLabel={e('plan.optional')}
+              value={journalDraft.timeframe}
+              onChange={(timeframe) => setJournalDraft((current) => ({ ...current, timeframe }))}
+            />
+            <TextInputField
+              id="entry-session"
+              label={t('field.session')}
+              optionalLabel={e('plan.optional')}
+              value={journalDraft.session}
+              onChange={(session) => setJournalDraft((current) => ({ ...current, session }))}
+            />
+          </FieldPair>
+
+          <TextInputField
             id="entry-chart-link"
             type="url"
             inputMode="url"
             label={r('chartLink')}
+            optionalLabel={e('plan.optional')}
             value={journalDraft.tradingviewUrl}
-            onChange={(value) =>
-              setJournalDraft((current) => ({ ...current, tradingviewUrl: value }))
+            placeholder="https://www.tradingview.com/x/…"
+            onChange={(tradingviewUrl) =>
+              setJournalDraft((current) => ({ ...current, tradingviewUrl }))
             }
-            optional
           />
-          <div className="grid gap-1.5">
-            <label htmlFor="entry-notes" className="text-sm font-medium">
+
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label htmlFor="entry-notes" className="text-muted-foreground text-xs font-medium">
               {e('journal.idea.notes')}
             </label>
             <Textarea
               id="entry-notes"
+              rows={2}
               value={journalDraft.notes}
               onChange={(event) =>
                 setJournalDraft((current) => ({ ...current, notes: event.target.value }))
               }
+              className="min-h-20 text-base"
             />
           </div>
         </div>
@@ -986,7 +1081,7 @@ export function TradeAtEntryForm({
         returnFocusRef={feelingsTrigger}
         footer={
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setJournalArea(null)}>
+            <Button type="button" variant="ghost" onClick={() => setJournalArea(null)}>
               {t('lifecycle.common.cancel')}
             </Button>
             <Button type="button" onClick={commitJournal}>
@@ -995,8 +1090,8 @@ export function TradeAtEntryForm({
           </div>
         }
       >
-        <div className="grid min-w-0 gap-5">
-          <TradeConfidenceControl
+        <div className="flex min-w-0 flex-col gap-6">
+          <TradeConfidenceChoice
             id="entry-confidence"
             label={t('field.confidence')}
             hint={e('journal.feelings.confidenceHint')}
@@ -1008,43 +1103,15 @@ export function TradeAtEntryForm({
               }))
             }
           />
-          <fieldset className="grid gap-3">
-            <legend className="text-sm font-semibold">{e('journal.feelings.emotions')}</legend>
-            {emotionGroups.map((group) => (
-              <div key={group.key} data-emotion-group={group.key} className="grid gap-2">
-                <p className="text-muted-foreground text-xs font-medium">
-                  {r(`emotionGroups.${group.key}`)}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {group.emotions.map((emotion) => {
-                    const selected = journalDraft.emotionKeys.includes(emotion.key);
-                    return (
-                      <button
-                        key={emotion.key}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() =>
-                          setJournalDraft((current) => ({
-                            ...current,
-                            emotionKeys: selected
-                              ? current.emotionKeys.filter((key) => key !== emotion.key)
-                              : [...current.emotionKeys, emotion.key],
-                          }))
-                        }
-                        className={
-                          selected
-                            ? 'focus-visible:ring-ring border-primary bg-primary/10 min-h-11 rounded-full border px-4 text-sm outline-none focus-visible:ring-2'
-                            : 'focus-visible:ring-ring border-border hover:bg-accent min-h-11 rounded-full border px-4 text-sm outline-none focus-visible:ring-2'
-                        }
-                      >
-                        {emotion.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </fieldset>
+          <TradeEmotionChips
+            legend={e('journal.feelings.emotions')}
+            catalog={options.emotionCatalog}
+            value={journalDraft.emotions}
+            onChange={(next) => setJournalDraft((current) => ({ ...current, emotions: next }))}
+            groupLabel={(key) => r(`emotionGroups.${key}`)}
+            noneLabel={e('journal.feelings.noneOfThese')}
+            notRecordedLabel={e('journal.notRecorded')}
+          />
         </div>
       </TradeAdaptiveOverlay>
 

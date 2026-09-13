@@ -1945,44 +1945,52 @@
         "entry": {
           "trade": {
             "title": "The trade",
-            "description": "What you are trading. Account, Symbol, Direction and Entry time are required.",
+            "change": "Change",
+            "changeAccountSr": "account",
+            "recentSymbols": "Recent symbols",
             "timezone": "Times use {timezone}.",
             "entryTime": "Entry time",
             "setToNow": "Set to now. Opened earlier? Change it."
           },
           "plan": {
             "title": "Plan at entry",
-            "description": "What this trade risks, and what it is aiming for, as you open it.",
+            "optional": "Optional",
             "risk": "Risk at entry",
-            "riskHint": "What the whole position stands to lose if your stop is hit, in {currency}.",
+            "riskHint": "What the whole position stands to lose if your stop is hit.",
             "targetProfit": "Target profit",
-            "targetHint": "What the position makes if it reaches your target, in {currency}. Leave blank if there is no fixed target.",
             "targetR": "Target R",
             "oneR": "1R = {amount}",
-            "usePrice": "Plan with price levels instead",
-            "useMoney": "Plan with amounts instead",
-            "priceHint": "Entry and stop levels from your chart. Take Profit and size are optional.",
-            "setupChecklist": "Setup checklist",
-            "setupHint": "Check the conditions that are true right now. Unchecked conditions are saved as Not Met."
+            "usePrice": "Use price levels instead",
+            "useMoney": "Use amounts instead",
+            "priceHint": "Entry and stop from your chart. Take Profit and size are optional.",
+            "openingDiffers": "Your actual opening differed from this plan"
           },
           "journal": {
             "title": "Journal at entry",
-            "description": "Optional. Write it now while it is fresh, or add it later.",
+            "aside": "Now or later",
             "notRecorded": "Not recorded",
             "done": "Done",
             "idea": {
               "label": "Trade idea",
               "prompt": "Why are you taking this trade?",
               "description": "Why you are taking this trade, and anything you want to remember about it.",
-              "notes": "Anything else worth remembering"
+              "placeholder": "What you see, and why it is worth risking money on.",
+              "strategyQuestion": "Are you following a strategy?",
+              "strategyHint": "The trading method you are using.",
+              "setupHint": "The pattern or signal you are trading.",
+              "checklistTitle": "Setup checklist",
+              "checklistHint": "Check the conditions that are true right now. Unchecked conditions are saved as Not Met.",
+              "notes": "Anything else worth remembering",
+              "detailsAdded": "Details added"
             },
             "feelings": {
               "label": "Feelings at entry",
               "prompt": "How do you feel as you enter?",
               "description": "Your state as you take this trade. Nothing here is scored.",
               "confidenceHint": "How confident are you in this trade? The result never changes this.",
-              "emotions": "Emotions at entry",
-              "summary": "Confidence {confidence} · {count, plural, one {# emotion} other {# emotions}}"
+              "emotions": "Which of these apply right now?",
+              "noneOfThese": "None of these",
+              "confidencePreview": "{level} confidence"
             }
           },
           "save": {

@@ -26,7 +26,7 @@ import { useRouter } from '@/i18n/navigation';
 
 import { NativeSelect } from './trade-action-form';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import { TradeConfidenceControl } from './trade-confidence-control';
+import { TradeConfidenceChoice } from './trade-confidence-choice';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 import { formatR, formatTradeMoney } from './trade-format';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
@@ -1121,7 +1121,7 @@ export function TradeAfterTradeForm({
         }
       >
         <div className="grid min-w-0 gap-5">
-          <TradeConfidenceControl
+          <TradeConfidenceChoice
             id="after-confidence"
             label={t('field.confidence')}
             hint={tConfidence('hintHindsight')}

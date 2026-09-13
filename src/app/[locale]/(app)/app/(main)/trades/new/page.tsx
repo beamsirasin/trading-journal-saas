@@ -145,7 +145,12 @@ export default async function NewTradePage({
       eyebrow={t('create.pageTitle')}
       title={t(`create.mode.${timing}.title`)}
       exitHref="/app/trades"
-      className="max-w-6xl"
+      /*
+        At Entry is one task surface plus its journal, so it takes the accepted
+        prototype's reading measure (720px). After Trade keeps its wider frame
+        for its multi-column historical sections.
+      */
+      className={timing === 'at_entry' ? 'max-w-[45rem]' : 'max-w-6xl'}
     >
       <TradeCreateGate
         options={options}

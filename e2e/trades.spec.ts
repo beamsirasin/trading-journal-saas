@@ -462,6 +462,22 @@ async function expandEntrySnapshotDetails(page: Page) {
 }
 
 /**
+ * CHOOSE A RADIO THE WAY A PERSON DOES — BY ITS LABEL.
+ *
+ * The recording flow's segmented choices are native radios drawn by their
+ * labels (`peer sr-only`). A forced click on the 1px hidden input does not
+ * reliably land on it, so this clicks the input's own `<label for>` and then
+ * asserts the radio really became checked.
+ */
+async function chooseRadio(scope: Page | Locator, name: string) {
+  const radio = scope.getByRole('radio', { name, exact: true });
+  const id = await radio.getAttribute('id');
+  if (id === null) throw new Error(`radio "${name}" has no id to find its label by`);
+  await scope.locator(`label[for="${id}"]`).click();
+  await expect(radio).toBeChecked();
+}
+
+/**
  * THE AT ENTRY FORM IS ONE LINEAR PAGE: The trade → Plan at entry → Journal at
  * entry → Save open trade. Strategy, Setup and the checklist sit inside the
  * plan; the Journal lives behind two launchers that open a dialog on a desktop
@@ -485,14 +501,11 @@ async function closeEntryJournal(page: Page) {
  * typing: the switch clears the plan fields it owns.
  */
 async function planWithPriceLevels(page: Page) {
-  await page.getByRole('button', { name: 'Plan with price levels instead' }).click();
+  await page.getByRole('button', { name: 'Use price levels instead' }).click();
 }
 
 async function chooseOpeningBasis(page: Page, basis: 'Price' | 'Money') {
-  await page
-    .getByRole('group', { name: 'Actual opening by' })
-    .getByRole('radio', { name: basis })
-    .check();
+  await chooseRadio(page.getByRole('group', { name: 'Actual opening by' }), basis);
 }
 
 /**
@@ -507,11 +520,12 @@ async function chooseOpeningBasis(page: Page, basis: 'Price' | 'Money') {
 async function createOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-  await page.getByRole('radio', { name: 'Long' }).click();
+  await chooseRadio(page, 'Long');
   await planWithPriceLevels(page);
   await page.getByLabel('Entry', { exact: true }).fill('100');
   await page.getByLabel('Stop Loss', { exact: true }).fill('90');
   await page.getByLabel(/Take Profit/).fill('130');
+  await openEntryJournal(page, 'idea');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
   await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
@@ -519,6 +533,7 @@ async function createOpenTrade(page: Page) {
   await page.getByLabel('Volume expanded').check();
   await page.getByLabel('Invalidation is clear').check();
   await page.getByLabel('Session is aligned').check();
+  await closeEntryJournal(page);
   await page.getByRole('button', { name: 'Save open trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
@@ -532,9 +547,10 @@ async function createOpenTrade(page: Page) {
 async function createMoneyOnlyOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
-  await page.getByRole('radio', { name: 'Short' }).click();
+  await chooseRadio(page, 'Short');
   await page.getByLabel('Risk at entry').fill('100.00');
   await page.getByLabel(/Target profit/).fill('300.00');
+  await openEntryJournal(page, 'idea');
   await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
   await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
   await page.getByLabel('Breakout candle closed').check();
@@ -542,6 +558,7 @@ async function createMoneyOnlyOpenTrade(page: Page) {
   await page.getByLabel('Volume expanded').check();
   await page.getByLabel('Invalidation is clear').check();
   await page.getByLabel('Session is aligned').check();
+  await closeEntryJournal(page);
   await page.getByRole('button', { name: 'Save open trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
@@ -933,16 +950,18 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('1.25');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
+    await openEntryJournal(page, 'idea');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await page.getByLabel('Breakout candle closed').check();
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
+    await closeEntryJournal(page);
     await openEntryJournal(page, 'feelings');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Fearful' }).click();
@@ -1028,13 +1047,15 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('150');
     await page.getByLabel('Stop Loss', { exact: true }).fill('149');
+    await openEntryJournal(page, 'idea');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByText('Not configured')).toBeVisible();
+    await closeEntryJournal(page);
     await expect(page.getByText(/0\/0/)).toHaveCount(0);
     await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -1055,7 +1076,7 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
@@ -1138,18 +1159,18 @@ test.describe('real Trade Journal creation', () => {
         await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
         await page.goto(`/${locale}/app/trades/new?timing=at_entry`);
 
-        // At Entry is one linear form on the real route: no tabs, the plan and
-        // Strategy visible together, the Journal behind its launchers, and the
-        // entry time already set to now.
+        // At Entry is one task surface on the real route: no tabs, Risk and
+        // Target as the plan, Strategy behind the Trade idea, the Journal as one
+        // optional surface, and the entry time already set to now.
         const entryForm = page.locator('[data-at-entry-linear-form]:visible');
         await expect(entryForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
-        await expect(entryForm.locator('section')).toHaveCount(3);
         await expect(entryForm.locator('#entry-entered-at')).not.toHaveValue('');
         await expect(entryForm.locator('#entry-risk')).toBeVisible();
         await expect(entryForm.locator('#entry-target-profit')).toBeVisible();
-        await expect(entryForm.locator('#entry-strategy')).toBeVisible();
-        await expect(page.locator('[data-slot="confidence-track"]')).toHaveCount(0);
+        await expect(entryForm.locator('#entry-strategy')).toHaveCount(0);
+        await expect(entryForm.locator('[data-journal-area]')).toHaveCount(2);
+        await expect(page.locator('[data-slot="confidence-choice"]')).toHaveCount(0);
         await expect(entryForm.locator('[data-global-save] button[type="submit"]')).toBeVisible();
         const entryDimensions = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,
@@ -1157,8 +1178,13 @@ test.describe('real Trade Journal creation', () => {
         }));
         expect(entryDimensions.scroll).toBeLessThanOrEqual(entryDimensions.client + 1);
 
-        await entryForm.locator('section').nth(2).getByRole('button').nth(1).click();
-        await expect(page.locator('[data-slot="confidence-track"]')).toBeVisible();
+        await entryForm.locator('[data-journal-area="feelings"]').click();
+        await expect(page.locator('[data-slot="confidence-choice"]')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+
+        await entryForm.locator('[data-journal-area="idea"]').click();
+        await expect(page.getByRole('dialog').locator('#entry-strategy')).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -1291,12 +1317,11 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
 
     await page.getByRole('textbox', { name: 'Symbol' }).fill('ADVANCED');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('100');
     await page.getByLabel('Stop Loss', { exact: true }).fill('90');
-    await page.getByText('Advanced', { exact: true }).click();
-    await page.getByLabel('Actual opening differs from the System Plan').check();
+    await page.getByRole('button', { name: 'Your actual opening differed from this plan' }).click();
     await chooseOpeningBasis(page, 'Price');
     await page.getByLabel('Actual Entry').fill('101');
     await page.getByLabel('Actual Stop').fill('90');
@@ -1481,7 +1506,7 @@ test.describe('real Trade Journal creation', () => {
 
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDCAD');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     // Genuinely no Plan, Strategy, or Setup at all (Phase 14C.1/Phase 14E) —
     // Account/Symbol/Direction plus the one required Actual execution basis.
     await planWithPriceLevels(page);
@@ -1558,11 +1583,12 @@ test.describe('real Trade Journal creation', () => {
     // risk so R math stays comparable) -> Confidence -> an Emotion -> an Entry
     // Reason -> [Open Trade]. One atomic action — no separate "Open" step.
     await page.goto('/en/app/trades/new?timing=at_entry');
-    await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
+    await expect(page.locator('[data-account-context]:visible')).toBeVisible();
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     await page.getByLabel('Risk at entry').fill('100.00');
     await page.getByLabel(/Target profit/).fill('300.00');
+    await openEntryJournal(page, 'idea');
     await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
     await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
     await expect(page.getByLabel(/^Setup/)).toHaveValue(/.+/);
@@ -1570,6 +1596,7 @@ test.describe('real Trade Journal creation', () => {
     await page.getByLabel('Retest held').check();
     await page.getByLabel('Volume expanded').check();
     await expect(page.getByText('3/5 met · 60%')).toBeVisible();
+    await closeEntryJournal(page);
     await openEntryJournal(page, 'feelings');
     await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
     await page.getByRole('button', { name: 'Focused' }).click();
@@ -1820,8 +1847,10 @@ test.describe('real Trade Journal creation', () => {
     // remains optional data). Creates the Trade already Open in one atomic
     // action; Open never silently reintroduces a Plan requirement.
     await page.goto('/en/app/trades/new?timing=at_entry');
-    await expect(page.getByLabel('Trading Account', { exact: true })).toHaveValue(/.+/);
+    await expect(page.locator('[data-account-context]:visible')).toBeVisible();
+    await openEntryJournal(page, 'idea');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
+    await closeEntryJournal(page);
     // Read the plan field the fresh form actually opened with, and read it
     // WITHOUT touching the basis toggle: clicking one clears the very fields
     // this assertion is about, which would turn it into a tautology that
@@ -1829,7 +1858,7 @@ test.describe('real Trade Journal creation', () => {
     // Entry' and 'Entered At' out of the match.
     await expect(page.getByLabel('Risk at entry', { exact: true })).toHaveValue('');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await page.getByRole('radio', { name: 'Long' }).click();
+    await chooseRadio(page, 'Long');
     await planWithPriceLevels(page);
     await page.getByLabel('Entry', { exact: true }).fill('1.2500');
     await page.getByLabel('Stop Loss', { exact: true }).fill('1.2400');
@@ -2170,769 +2199,5 @@ test.describe('real Trade Journal creation', () => {
       client: document.documentElement.clientWidth,
     }));
     expect(narrowDimensions.scroll).toBeLessThanOrEqual(narrowDimensions.client + 1);
-  });
-});
-
-/**
- * Founder-UAT Confidence drag interaction. RTL/jsdom cannot exercise Framer
- * Motion's drag gesture (it needs real layout and real pointer capture), so
- * this is the actual proof that dragging the pill snaps to a valid discrete
- * step and never persists an intermediate value.
- */
-test.describe('Confidence pill drag interaction', () => {
-  test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
-
-  async function reachConfidenceStep(page: Page, prefix: string) {
-    const user = await provisionJournalUser(prefix);
-    await seedFramework(user.id);
-    await loginAs(page, 'en', user);
-    await page.goto('/en/app/trades/new?timing=at_entry');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-    await page.getByRole('radio', { name: 'Long' }).click();
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await openEntryJournal(page, 'feelings');
-  }
-
-  /** Clicks a Confidence segment's styled (visible) label — the step number itself renders in a separate pointer-events-none overlay, so it is not a valid click target. */
-  async function clickConfidenceOption(page: Page, step: 0 | 25 | 50 | 75 | 100) {
-    await page.locator(`[data-slot="confidence-option"][data-step="${step}"]`).click();
-  }
-
-  /**
-   * Waits for the pill's Motion spring transition (triggered by a preceding
-   * click or drag) to finish animating before any test reads its geometry —
-   * without this, a drag begun immediately after a click can read a
-   * mid-flight `boundingBox()` and compute the wrong relative start point.
-   * Polls until two consecutive reads agree, rather than a fixed sleep.
-   */
-  async function waitForPillSettled(page: Page) {
-    const pill = page.locator('[data-slot="confidence-pill"]');
-    await expect(async () => {
-      const first = await pill.boundingBox();
-      await page.evaluate(
-        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-      );
-      const second = await pill.boundingBox();
-      if (!first || !second || Math.abs(first.x - second.x) > 0.1) {
-        throw new Error('pill still animating');
-      }
-    }).toPass({ timeout: 5_000, intervals: [50] });
-  }
-
-  /** Moves a held pill to an absolute viewport X via enough intermediate events for Motion to recognize a pan. */
-  async function beginPillDragTo(page: Page, toX: number) {
-    await waitForPillSettled(page);
-    const pill = page.locator('[data-slot="confidence-pill"]');
-    const pillBox = await pill.boundingBox();
-    if (!pillBox) throw new Error('Confidence pill has no geometry');
-    const startX = pillBox.x + pillBox.width / 2;
-    const y = pillBox.y + pillBox.height / 2;
-    await page.mouse.move(startX, y);
-    await page.mouse.down();
-    await page.mouse.move(startX + (toX - startX) * 0.3, y, { steps: 5 });
-    await page.mouse.move(startX + (toX - startX) * 0.7, y, { steps: 5 });
-    await page.mouse.move(toX, y, { steps: 5 });
-  }
-
-  /** Drags and releases the pill at an absolute viewport X. */
-  async function dragPillTo(page: Page, toX: number) {
-    await beginPillDragTo(page, toX);
-    await page.mouse.up();
-  }
-
-  /**
-   * Waits out the animation frame in which a finished gesture actually
-   * commits its value.
-   *
-   * Framer Motion defers `onDragEnd` to `frame.postRender()`
-   * (`VisualElementDragControls.stop`), so the committed value changes one
-   * frame AFTER the pointer event that ended the gesture. A Playwright
-   * assertion passes on its FIRST successful poll, and that poll reliably
-   * wins the race against the deferred commit — which is how a cancelled
-   * gesture that overwrote the value on every single run still reported
-   * 7-in-10 green. Measured on the unfixed control: read straight after
-   * `mouse.up()` the value was still the old one in 10 runs out of 10, and
-   * read again 500ms later it was the overwritten one in 10 runs out of 10.
-   * Any assertion about a value after a gesture must come after this call,
-   * or it is inspecting a state the browser has not finished changing.
-   *
-   * Two nested `requestAnimationFrame`s rather than a fixed sleep: the first
-   * resolves within the next frame, the second guarantees one whole frame —
-   * Motion's update step and its postRender step — ran in between.
-   */
-  async function waitForGestureCommitFrame(page: Page) {
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        }),
-    );
-  }
-
-  async function trackBox(page: Page) {
-    const box = await page.locator('[data-slot="confidence-track"]').boundingBox();
-    if (!box) throw new Error('Confidence track has no geometry');
-    return box;
-  }
-
-  test('dragging the pill from 0% toward 25% snaps to exactly 25%', async ({ page }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
-    test.setTimeout(120_000);
-    await reachConfidenceStep(page, 'e2e-confidence-drag-a');
-    await clickConfidenceOption(page, 0);
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-
-    const track = await trackBox(page);
-    // Ratio 0.25 of the track's width maps to nearest index round(0.25*4)=1 -> 25%.
-    await dragPillTo(page, track.x + track.width * 0.25);
-
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).not.toBeChecked();
-    // The live "25% · Low" value readout sits in the header row above the
-    // fieldset, not inside the `group` itself, so it's asserted page-wide.
-    await expect(page.getByText('25% · Low', { exact: true })).toBeVisible();
-  });
-
-  test('dragging the pill from 25% toward 75% snaps to exactly 75%', async ({ page }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
-    test.setTimeout(120_000);
-    await reachConfidenceStep(page, 'e2e-confidence-drag-b');
-    await clickConfidenceOption(page, 25);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-
-    const track = await trackBox(page);
-    // Ratio 0.75 of the track's width maps to nearest index round(0.75*4)=3 -> 75%.
-    await dragPillTo(page, track.x + track.width * 0.75);
-
-    await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '25% · Low' })).not.toBeChecked();
-  });
-
-  /**
-   * Every assertion here has to require the value to CHANGE, and this test is
-   * the reason that rule is written down. It used to select 50%, drag to
-   * ratio 0.60 and assert 50% — the value it already had — which passes
-   * before the drag can be wrong; and a wrongly committed 75% then satisfied
-   * its second assertion for free. Measured against deliberately broken code:
-   * with the snapping index off by one to the right the whole test stayed
-   * green, and off by one to the left only its second assertion ever failed.
-   *
-   * Starting from 0% fixes both. Each assertion now names a step the control
-   * was not already on, and 50% and 75% are interior steps, so an off-by-one
-   * in either direction lands somewhere else rather than being absorbed by
-   * `clampIndex` at an end of the track.
-   */
-  test('dragging near a step boundary picks the geometrically nearest step', async ({ page }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
-    test.setTimeout(120_000);
-    await reachConfidenceStep(page, 'e2e-confidence-drag-c');
-    await clickConfidenceOption(page, 0);
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-
-    // The 50%/75% boundary sits at ratio 0.625 (round(x*4) flips from 2 to 3
-    // there). 0.60 is nearer to 50%; 0.66 is nearer to 75%.
-    const track = await trackBox(page);
-    await dragPillTo(page, track.x + track.width * 0.6);
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).not.toBeChecked();
-
-    await dragPillTo(page, track.x + track.width * 0.66);
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '50% · Neutral' })).not.toBeChecked();
-  });
-
-  test('drag cannot push the pill past the 0% or 100% bounds of the track', async ({ page }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
-    test.setTimeout(120_000);
-    await reachConfidenceStep(page, 'e2e-confidence-drag-d');
-    await clickConfidenceOption(page, 50);
-    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
-
-    const track = await trackBox(page);
-    // Motion's hard constraint must clamp the rendered pill even while the
-    // synthetic pointer is outside the track. Cancel after inspecting it:
-    // headless Chromium does not emit dragend for that artificial gesture.
-    const pill = page.locator('[data-slot="confidence-pill"]');
-    await beginPillDragTo(page, track.x - 1);
-    const pillPastLeft = await pill.boundingBox();
-    const leftScaleTolerance = (pillPastLeft?.width ?? 0) * 0.02 + 1;
-    expect(pillPastLeft?.x ?? -1).toBeGreaterThanOrEqual(track.x - leftScaleTolerance);
-    await pill.dispatchEvent('pointercancel');
-    await page.mouse.up();
-    // Inspect what the cancel really left behind, after the frame that would
-    // commit one. This used to call `clickConfidenceOption(50)` right here,
-    // which overwrote the state it was about to assert — a cancelled gesture
-    // committing 0% went unseen. Nothing may write Confidence between a
-    // cancel and its assertion.
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '50% · Neutral' })).toBeChecked();
-
-    // A valid release commits, checked first on an interior step: at ratio
-    // 0.25 a snapping error in either direction lands on a different step,
-    // whereas at the ends of the track `clampIndex` absorbs one direction and
-    // the assertion below could only ever catch the other.
-    await dragPillTo(page, track.x + track.width * 0.25);
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-
-    // And the outer step is still reachable by a release near the edge.
-    await dragPillTo(page, track.x + track.width * 0.05);
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-
-    await beginPillDragTo(page, track.x + track.width + 1);
-    const pillPastRight = await pill.boundingBox();
-    const rightScaleTolerance = (pillPastRight?.width ?? 0) * 0.02 + 1;
-    expect((pillPastRight?.x ?? 0) + (pillPastRight?.width ?? 0)).toBeLessThanOrEqual(
-      track.x + track.width + rightScaleTolerance,
-    );
-    await pill.dispatchEvent('pointercancel');
-    await page.mouse.up();
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-    expect(await page.getByRole('radio', { checked: true }).count()).toBe(1);
-  });
-
-  test('a cancelled pointer gesture leaves the Confidence value in a valid, unchanged discrete state', async ({
-    page,
-  }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
-    test.setTimeout(120_000);
-    await reachConfidenceStep(page, 'e2e-confidence-drag-e');
-    await clickConfidenceOption(page, 25);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-
-    const pill = page.locator('[data-slot="confidence-pill"]');
-    const pillBox = await pill.boundingBox();
-    if (!pillBox) throw new Error('Confidence pill has no geometry');
-    const startX = pillBox.x + pillBox.width / 2;
-    const y = pillBox.y + pillBox.height / 2;
-
-    await page.mouse.move(startX, y);
-    await page.mouse.down();
-    await page.mouse.move(startX + 60, y, { steps: 5 });
-    // Interrupt the gesture with a real pointercancel — nothing was ever
-    // persisted mid-drag, so cancelling must leave the last committed value
-    // exactly as it was, not some in-between value.
-    await pill.dispatchEvent('pointercancel');
-    await page.mouse.up();
-
-    // Without this the assertion below reads the value before the frame that
-    // would overwrite it, and passes on the state that is already there — it
-    // stayed green against the very defect it exists to catch.
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-    const checkedCount = await page.getByRole('radio', { checked: true }).count();
-    expect(checkedCount).toBe(1);
-  });
-
-  /**
-   * The test that watches the committed value across a cancelled gesture
-   * with nothing writing over it.
-   *
-   * DO NOT click a Confidence option between a cancel and an assertion here.
-   * The four sibling drag tests all call `clickConfidenceOption(...)` after
-   * cancelling, which overwrites the state they were about to inspect — that
-   * is precisely why a defect that fired on every cancelled drag survived a
-   * suite which cancels gestures five separate times. Any write to
-   * Confidence after the cancel makes this test incapable of failing.
-   *
-   * Both cancel flavours are exercised, because they reach `handleDragEnd`
-   * by different routes (see `trade-confidence-control.tsx`):
-   *  - a default synthetic `pointercancel` is non-primary, so Motion's own
-   *    window listener filters it out (`isPrimaryPointer`), the pan session
-   *    survives, and the commit arrives later on the real `pointerup`;
-   *  - a primary `pointercancel` — what an interrupted touch produces — ends
-   *    the pan session there and then, and the commit arrives as an
-   *    `onDragEnd` whose event type is `pointercancel`.
-   * A fix that only covers one route leaves the other committing silently.
-   */
-  test('a cancelled pointer gesture leaves the committed Confidence value untouched, observed after the commit frame', async ({
-    page,
-  }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium pointer-drag coverage');
-    test.setTimeout(120_000);
-    await reachConfidenceStep(page, 'e2e-confidence-cancel-commit');
-    await clickConfidenceOption(page, 25);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-
-    const pill = page.locator('[data-slot="confidence-pill"]');
-    const track = await trackBox(page);
-    // Far enough that a commit could only land on 100%, never back on 25%.
-    const farRight = track.x + track.width * 0.9;
-
-    async function dragTowardTheEndOfTheTrack() {
-      await waitForPillSettled(page);
-      const resting = await pill.boundingBox();
-      if (!resting) throw new Error('Confidence pill has no geometry');
-      await beginPillDragTo(page, farRight);
-      const dragged = await pill.boundingBox();
-      if (!dragged) throw new Error('Confidence pill has no geometry mid-drag');
-      // Guards the other way this test could go falsely green: if Motion
-      // never registered a drag session there is no commit to suppress, and
-      // an unchanged value would prove nothing. A pill that moved is proof
-      // the gesture was real.
-      expect(dragged.x).toBeGreaterThan(resting.x + 20);
-    }
-
-    await dragTowardTheEndOfTheTrack();
-    await pill.dispatchEvent('pointercancel');
-    await page.mouse.up();
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '100% · Very High' })).not.toBeChecked();
-    expect(await page.getByRole('radio', { checked: true }).count()).toBe(1);
-
-    await dragTowardTheEndOfTheTrack();
-    // A primary pointercancel: the one an interrupted touch actually emits,
-    // and the only one Motion's own listener accepts.
-    await pill.dispatchEvent('pointercancel', {
-      pointerType: 'mouse',
-      isPrimary: true,
-      button: 0,
-      bubbles: true,
-    });
-    await page.mouse.up();
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '25% · Low' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '100% · Very High' })).not.toBeChecked();
-    expect(await page.getByRole('radio', { checked: true }).count()).toBe(1);
-  });
-
-  test('dragging the pill on a narrow 390px mobile viewport snaps correctly with no page scroll hijack', async ({
-    page,
-  }) => {
-    test.skip(test.info().project.name !== 'mobile-chrome', 'Touch-capable viewport coverage');
-    test.setTimeout(120_000);
-    await page.setViewportSize({ width: 390, height: 844 });
-    await reachConfidenceStep(page, 'e2e-confidence-drag-mobile');
-    const confidenceGroup = page.getByRole('group', { name: 'Confidence' });
-    await expect(confidenceGroup).toBeVisible();
-    const groupBox = await confidenceGroup.boundingBox();
-    expect(groupBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(390);
-
-    await clickConfidenceOption(page, 0);
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).toBeChecked();
-
-    const track = await trackBox(page);
-    const scrollBefore = await page.evaluate(() => window.scrollY);
-    // Ratio 0.75 maps to round(0.75*4)=3 -> 75%, an interior step. It used to
-    // drag to 0.9 and assert 100%, where `clampIndex` absorbs any error that
-    // points off the end of the track: with the snapping index deliberately
-    // off by one to the right this test stayed green, and only caught the
-    // error pointing the other way.
-    await dragPillTo(page, track.x + track.width * 0.75);
-    await waitForGestureCommitFrame(page);
-    await expect(page.getByRole('radio', { name: '75% · High' })).toBeChecked();
-    await expect(page.getByRole('radio', { name: '0% · Very Low' })).not.toBeChecked();
-    const scrollAfter = await page.evaluate(() => window.scrollY);
-    expect(scrollAfter).toBe(scrollBefore);
-
-    const dimensions = await page.evaluate(() => ({
-      scroll: document.documentElement.scrollWidth,
-      client: document.documentElement.clientWidth,
-    }));
-    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client + 1);
-  });
-});
-
-/**
- * WHERE THE CONTROL IS DRAWN, ASSERTED AGAINST THE VALUE IT HOLDS.
- *
- * Every Confidence test above this point proves the committed VALUE is right.
- * None of them proves the PICTURE is right, and those are not the same claim.
- * The drag group reads `pill.boundingBox()` in five places and not one of them
- * is an expectation about position: two feed a gesture its start point
- * (`beginPillDragTo`), one waits out an animation (`waitForPillSettled`), and
- * the two that do call `expect()` assert only that the pill stayed INSIDE the
- * track, each as a one-sided bound. A knob resting ten pixels away from its own
- * value satisfies all of them.
- *
- * That gap is not hypothetical. Measured on `e2445fd~1`, at 1440px with the
- * value committed to 100%, the pill came to rest at 62.5% of the track — on top
- * of the "75%" label — and stayed there; the whole drag group was green
- * throughout. The suite could not see it because a misplaced pill only moves
- * where a drag STARTS: `beginPillDragTo` picks the pill up wherever it happens
- * to be and drags to an absolute X derived from the TRACK, and
- * `nearestIndexFromClientX` then reads that X against the track as well. The
- * answer stays right no matter where the picture is.
- *
- * So this group asserts the picture, and it asserts all three indicators,
- * because they do not share one coordinate system by accident of construction:
- * the knob travels `trackWidth - knobWidth` and is centred on itself, the ticks
- * say the same thing in CSS, and the fill is a separate expression that has to
- * be kept honest against both.
- */
-test.describe('Confidence rendered geometry', () => {
-  test.beforeEach(() => test.skip(!hasE2eDatabase, E2E_SKIP_REASON));
-
-  /**
-   * 1.5 CSS pixels, and the UNIT is the deliberate part.
-   *
-   * The defect this guards against is a fixed pixel offset — half a knob — so
-   * it is the same 10px whether the track is 1054px or 324px wide, while as a
-   * percentage of the track it is 0.95pp at one width and 3.09pp at the other.
-   * A percentage tolerance would have to be re-tuned per breakpoint to mean the
-   * same thing; a pixel tolerance already does.
-   *
-   * The band is set from measurement, not taste. Sub-pixel disagreement between
-   * the knob and its own tick — both derived from the same expression, one in
-   * JS and one in CSS `calc()` — was at most 0.25px across 1440/768/390. The
-   * smallest real offset the fill can be wrong by is 5px (at 25% and 75%; it is
-   * 10px at the ends and, unavoidably, 0 at 50% where the two coordinate
-   * systems cross). 1.5px therefore sits ~6x above the observed noise floor and
-   * ~3.3x below the smallest defect it must catch.
-   */
-  const GEOMETRY_TOLERANCE_PX = 1.5;
-
-  /**
-   * The knob's resting X transform is not a tolerance question the way a
-   * position is — it is either zero or it is a drag offset that outlived its
-   * drag. Half a pixel only absorbs sub-pixel matrix arithmetic; the smallest
-   * real corruption measured was 15px, from a 15px change in the track's width.
-   */
-  const RESTING_TRANSFORM_TOLERANCE_PX = 0.5;
-
-  const STEP_NAMES = [
-    '0% · Very Low',
-    '25% · Low',
-    '50% · Neutral',
-    '75% · High',
-    '100% · Very High',
-  ] as const;
-
-  /** The `data-step` attribute values, in the same order as `STEP_NAMES`. */
-  const CONFIDENCE_STEP_VALUES = [0, 25, 50, 75, 100] as const;
-
-  async function reachContextStep(page: Page, prefix: string) {
-    const user = await provisionJournalUser(prefix);
-    await seedFramework(user.id);
-    await loginAs(page, 'en', user);
-    await openContextStep(page);
-  }
-
-  /**
-   * Loads the Context step fresh at whatever the current viewport is.
-   *
-   * Each width RELOADS rather than merely resizing, and that is not tidiness.
-   * Resizing the window while Confidence holds a step above the midpoint leaves
-   * a stale `-562px` X transform on the knob — Motion re-resolves
-   * `dragConstraints` against the newly narrower track and corrects the element
-   * back inside it, and nothing ever clears that correction because the only
-   * code that resets the offset runs at the END of a drag, which never
-   * happened. The knob then renders hundreds of pixels outside the control and
-   * stays there. That is a separate defect, it lives in the drag region, and it
-   * is not what this group is about: these assertions are about where a step is
-   * DRAWN, so they measure a freshly laid-out control, which is also how a
-   * trader actually arrives at a breakpoint.
-   */
-  async function openContextStep(page: Page) {
-    await page.goto('/en/app/trades/new?timing=at_entry');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-    await page.getByRole('radio', { name: 'Long' }).click();
-    await openEntryJournal(page, 'feelings');
-    await expect(page.getByRole('group', { name: 'Confidence' })).toBeVisible();
-  }
-
-  /**
-   * Waits for the knob's spring to STOP, with a floor before the first sample.
-   *
-   * The floor is the whole point. A spring is motionless at t=0 — it has no
-   * velocity yet — so two reads taken one frame apart immediately after a
-   * keypress agree to well under a pixel and report "settled" before the
-   * animation has begun. Measured: the knob does not move at all for the first
-   * ~40ms after an ArrowRight, then travels for ~300ms. Sampling without a
-   * floor reads the OLD position and calls it the new one.
-   */
-  async function waitForKnobAtRest(page: Page) {
-    const knob = page.locator('[data-slot="confidence-pill"]');
-    await page.waitForTimeout(250);
-    await expect(async () => {
-      const first = await knob.boundingBox();
-      await page.waitForTimeout(120);
-      const second = await knob.boundingBox();
-      if (!first || !second || Math.abs(first.x - second.x) > 0.05) {
-        throw new Error('knob still moving');
-      }
-    }).toPass({ timeout: 10_000, intervals: [100] });
-  }
-
-  /**
-   * Reads the three indicators as pixel offsets from the track's left edge.
-   *
-   * `knobWidth` is measured rather than hard-coded, so the expectation is the
-   * slider CONTRACT — a thumb that travels the rail edge to edge and is centred
-   * on itself — rather than a copy of one constant from the component under
-   * test, which would agree with it even when both are wrong.
-   */
-  async function readSliderGeometry(page: Page) {
-    return page.evaluate(() => {
-      const track = document.querySelector('[data-slot="confidence-track"]');
-      if (!track) throw new Error('Confidence track is not rendered');
-      const trackRect = track.getBoundingClientRect();
-
-      const knob = track.querySelector('[data-slot="confidence-pill"]');
-      if (!knob) throw new Error('Confidence knob is not rendered');
-      const knobRect = knob.getBoundingClientRect();
-
-      // A missing fill is reported as a failed assertion below, not thrown
-      // here: throwing would abort the read and take the knob and scale
-      // assertions down with it, hiding whatever THEY had to say. Each of the
-      // three indicators has to be able to fail on its own.
-      const fill = track.querySelector('[data-slot="confidence-fill"]');
-      const fillRect = fill?.getBoundingClientRect() ?? null;
-
-      // The scale, wherever it lives: every leaf span in the fieldset whose
-      // whole text is a percentage. Located by content rather than by position,
-      // so the assertion does not depend on the tick row's markup.
-      const tickCentres = Array.from(
-        (track.closest('fieldset') as HTMLElement).querySelectorAll('span'),
-      )
-        .filter(
-          (span) => span.children.length === 0 && /^\d+%$/.test((span.textContent ?? '').trim()),
-        )
-        .map((span) => {
-          const rect = span.getBoundingClientRect();
-          return rect.left + rect.width / 2 - trackRect.left;
-        });
-
-      // The knob's own X transform, read out of the composed matrix. At rest
-      // this must be zero: the knob's resting position is CSS `left`, and the
-      // transform belongs to a drag in progress and to nothing else.
-      const knobTransform = getComputedStyle(knob).transform;
-      const knobTranslateX = new DOMMatrixReadOnly(
-        knobTransform === 'none' ? undefined : knobTransform,
-      ).m41;
-
-      return {
-        trackWidth: trackRect.width,
-        knobWidth: knobRect.width,
-        knobCentre: knobRect.left + knobRect.width / 2 - trackRect.left,
-        knobTranslateX,
-        fillEnd: fillRect === null ? null : fillRect.right - trackRect.left,
-        tickCentres,
-      };
-    });
-  }
-
-  /** The step's position under the slider contract, in px from the track's left edge. */
-  function expectedCentre(trackWidth: number, knobWidth: number, index: number) {
-    return (index / (STEP_NAMES.length - 1)) * (trackWidth - knobWidth) + knobWidth / 2;
-  }
-
-  test('the knob, the fill and the scale all point at the committed step, at every step and every width', async ({
-    page,
-  }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium rendering coverage');
-    test.setTimeout(180_000);
-    await reachContextStep(page, 'e2e-confidence-geometry');
-
-    // Three widths, because the offset this catches is a constant number of
-    // pixels and therefore a DIFFERENT fraction of the rail at each breakpoint.
-    for (const width of [1440, 768, 390] as const) {
-      await page.setViewportSize({ width, height: width === 1440 ? 1000 : 900 });
-      await openContextStep(page);
-
-      await page.locator('[data-slot="confidence-option"][data-step="0"]').click();
-      await expect(page.getByRole('radio', { name: STEP_NAMES[0] })).toBeChecked();
-
-      for (const [index, stepName] of STEP_NAMES.entries()) {
-        if (index > 0) {
-          await page.getByRole('group', { name: 'Confidence' }).press('ArrowRight');
-          await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
-        }
-        await waitForKnobAtRest(page);
-
-        const geometry = await readSliderGeometry(page);
-        const ratio = index / (STEP_NAMES.length - 1);
-        // The slider contract: the thumb's travel spans the rail, and the step
-        // is where the thumb's CENTRE lands.
-        const expectedCentre =
-          ratio * (geometry.trackWidth - geometry.knobWidth) + geometry.knobWidth / 2;
-        const where = `${stepName} at ${width}px (track ${geometry.trackWidth.toFixed(1)}px)`;
-
-        expect
-          .soft(
-            Math.abs(geometry.knobCentre - expectedCentre),
-            `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expectedCentre.toFixed(1)}px`,
-          )
-          .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
-
-        // The fill is a separate expression from the knob's, and it is the one
-        // measured wrong: it ended at `ratio x trackWidth` while the knob sat at
-        // `ratio x (trackWidth - knobWidth) + knobWidth/2`.
-        expect
-          .soft(
-            geometry.fillEnd === null
-              ? Number.POSITIVE_INFINITY
-              : Math.abs(geometry.fillEnd - expectedCentre),
-            `fill ends away from ${where}: end ${geometry.fillEnd?.toFixed(1) ?? 'missing'}px, expected ${expectedCentre.toFixed(1)}px`,
-          )
-          .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
-
-        const tickCentre = geometry.tickCentres[index];
-        expect
-          .soft(
-            tickCentre === undefined
-              ? Number.POSITIVE_INFINITY
-              : Math.abs(tickCentre - expectedCentre),
-            `scale label is drawn away from ${where}: centre ${tickCentre?.toFixed(1) ?? 'missing'}px, expected ${expectedCentre.toFixed(1)}px`,
-          )
-          .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
-      }
-    }
-  });
-
-  /**
-   * A RESIZE MUST NOT LEAVE A DRAG OFFSET BEHIND.
-   *
-   * The knob's resting position is CSS `left`. Its X transform belongs to a
-   * drag in progress and to nothing else, so at rest it must be exactly zero —
-   * and it is the transform, not the position, that this asserts, because the
-   * position is only the symptom.
-   *
-   * Motion writes that transform on its own. `dragConstraints={trackRef}` makes
-   * it watch three things — `window.resize`, a ResizeObserver on the knob, and
-   * a ResizeObserver on the track — and every one of them calls
-   * `scalePositionWithinConstraints`, which ends in
-   * `axisValue.set(mixNumber(min, max, boxProgress))`. `axisValue` resolves to
-   * the component's own `dragOffsetX`, because the knob is rendered with
-   * `style={{ x: dragOffsetX }}`. Nothing zeroes it outside a drag, so whatever
-   * Motion writes there stays written.
-   *
-   * Measured before the repair, at 1200px -> 900px: 25% off by -142.6px, 50%
-   * by -198.5px, 75% by -302.4px, 100% by -460.6px, and growing the window
-   * instead of shrinking it was worse (+730.0px at 100%). Only 0% survived,
-   * because its `left` is zero and the arithmetic then yields zero. Ten
-   * identical runs corrupted it ten times, at magnitudes from -60.1px to
-   * -641.0px — reliably broken, unreliably by how much.
-   *
-   * The widths are 1200 and 900 deliberately: above roughly 1240px the content
-   * column is max-width capped, the track's width does not follow the window,
-   * and nothing fires at all. Below the cap the knob is displaced by exactly
-   * the number of pixels the width changed.
-   */
-  test('a window resize leaves no drag offset on the knob, at every step', async ({ page }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium rendering coverage');
-    test.setTimeout(180_000);
-    await reachContextStep(page, 'e2e-confidence-resize');
-
-    for (const [index, stepName] of STEP_NAMES.entries()) {
-      await page.setViewportSize({ width: 1200, height: 1200 });
-      await openContextStep(page);
-      await page
-        .locator(`[data-slot="confidence-option"][data-step="${CONFIDENCE_STEP_VALUES[index]}"]`)
-        .click();
-      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
-      await waitForKnobAtRest(page);
-
-      await page.setViewportSize({ width: 900, height: 1200 });
-      await waitForKnobAtRest(page);
-
-      const geometry = await readSliderGeometry(page);
-      const expected = expectedCentre(geometry.trackWidth, geometry.knobWidth, index);
-      const where = `${stepName} after 1200px -> 900px (track ${geometry.trackWidth.toFixed(1)}px)`;
-
-      expect
-        .soft(
-          Math.abs(geometry.knobTranslateX),
-          `knob keeps a drag offset it never earned at ${where}: translateX ${geometry.knobTranslateX.toFixed(1)}px, expected 0`,
-        )
-        .toBeLessThanOrEqual(RESTING_TRANSFORM_TOLERANCE_PX);
-
-      expect
-        .soft(
-          Math.abs(geometry.knobCentre - expected),
-          `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expected.toFixed(1)}px`,
-        )
-        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
-    }
-  });
-
-  /**
-   * The same defect, reached the way a person reaches it: by turning the phone
-   * over. No window to drag, no developer tools, one ordinary gesture on the
-   * form a trader fills on a phone.
-   *
-   * Measured before the repair on the Pixel 7 profile, portrait to landscape:
-   * 50% displaced by +235.5px and 100% by +471.0px, which put the knob 461px
-   * past the right-hand end of an 817px track — outside the control entirely.
-   */
-  test('rotating the device leaves no drag offset on the knob, at every step', async ({ page }) => {
-    test.skip(test.info().project.name !== 'mobile-chrome', 'Touch-capable viewport coverage');
-    test.setTimeout(180_000);
-    await reachContextStep(page, 'e2e-confidence-rotate');
-
-    for (const [index, stepName] of STEP_NAMES.entries()) {
-      await page.setViewportSize({ width: 412, height: 915 });
-      await openContextStep(page);
-      await page
-        .locator(`[data-slot="confidence-option"][data-step="${CONFIDENCE_STEP_VALUES[index]}"]`)
-        .click();
-      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
-      await waitForKnobAtRest(page);
-
-      await page.setViewportSize({ width: 915, height: 412 });
-      await waitForKnobAtRest(page);
-
-      const geometry = await readSliderGeometry(page);
-      const expected = expectedCentre(geometry.trackWidth, geometry.knobWidth, index);
-      const where = `${stepName} after rotating to landscape (track ${geometry.trackWidth.toFixed(1)}px)`;
-
-      expect
-        .soft(
-          Math.abs(geometry.knobTranslateX),
-          `knob keeps a drag offset it never earned at ${where}: translateX ${geometry.knobTranslateX.toFixed(1)}px, expected 0`,
-        )
-        .toBeLessThanOrEqual(RESTING_TRANSFORM_TOLERANCE_PX);
-
-      expect
-        .soft(
-          Math.abs(geometry.knobCentre - expected),
-          `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expected.toFixed(1)}px`,
-        )
-        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
-    }
-  });
-
-  /**
-   * Reopening Feelings with a confidence already committed. The control mounts
-   * again inside the adaptive dialog while its enter animation still holds
-   * scale(0.95), so a width read through that transform is 95% of the real
-   * rail. Measured on the real route on 2026-09-14 before the repair, in both
-   * At Entry and After Trade: 75% drawn at 392.6px against 413.5px on a 558px
-   * track, still there two seconds later, because nothing re-reads the width
-   * once the animation ends — a transform does not resize anything.
-   */
-  test('reopening Feelings with a committed step draws the knob at that step', async ({ page }) => {
-    test.skip(test.info().project.name !== 'chromium', 'Desktop dialog coverage');
-    test.setTimeout(180_000);
-    await reachContextStep(page, 'e2e-confidence-reopen');
-
-    for (const [index, stepName] of STEP_NAMES.entries()) {
-      await openContextStep(page);
-      await page
-        .locator(`[data-slot="confidence-option"][data-step="${CONFIDENCE_STEP_VALUES[index]}"]`)
-        .click();
-      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
-      await closeEntryJournal(page);
-
-      await openEntryJournal(page, 'feelings');
-      await expect(page.getByRole('radio', { name: stepName })).toBeChecked();
-      await waitForKnobAtRest(page);
-
-      const geometry = await readSliderGeometry(page);
-      const expected = expectedCentre(geometry.trackWidth, geometry.knobWidth, index);
-      const where = `${stepName} after reopening Feelings (track ${geometry.trackWidth.toFixed(1)}px)`;
-
-      expect
-        .soft(
-          Math.abs(geometry.knobCentre - expected),
-          `knob is drawn away from ${where}: centre ${geometry.knobCentre.toFixed(1)}px, expected ${expected.toFixed(1)}px`,
-        )
-        .toBeLessThanOrEqual(GEOMETRY_TOLERANCE_PX);
-    }
   });
 });

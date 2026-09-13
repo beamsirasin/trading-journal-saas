@@ -1654,3 +1654,43 @@ when only a transform changes. Rotating a phone reached the same path (Sheet →
 Knob placement and fill width now read the track's layout width; pointer-to-step mapping still uses
 the bounding rect. A unit test and a chromium e2e (`reopening Feelings with a committed step…`)
 were observed red before the repair, alongside the existing mobile rotation test.
+
+## 65. Production At Entry Visual & Interaction Parity (as built)
+
+§64 migrated behaviour but not composition: the real route still read as three numbered form cards
+at 1152px, a full-width account select, 14px form labels, ordinary Risk/Target inputs with long
+hints, Strategy/Setup/timeframe/session competing inside the plan, a bordered Advanced box and a
+separate save card. Rendering `/prototype/log-trade/at-entry` (dev server) beside
+`/app/trades/new?timing=at_entry` (production build, real session) at 1440 and 390 established the
+gap before any change.
+
+**Composition now in production** (`trade-recording-surface.tsx`, shared): one task surface at the
+prototype's 720px measure with hairline bands — the Trading Account as a context line with Change
+(the real select is one action away, and opens by default when no active Account is valid), Symbol
+beside Direction with this workspace's recent-symbol chips (`useTradePlanFavorites`, recorded on a
+successful save), the entry time already set to now, then **Plan at entry**: Risk at entry as the
+one 22–24px figure with the account currency inside the control, optional Target profit beside it,
+Target R as a derived inline line. Price levels and "Your actual opening differed from this plan"
+are quiet disclosures, not dominant choices. Strategy, Setup, the condition checklist, timeframe,
+session, chart link and notes moved into the **Trade idea** overlay, whose preview shows the idea
+and "Strategy · Setup". The Journal is one surface headed "Journal at entry · Now or later"; Save is
+a plain primary action with its helper beneath, docked on phones and released while a keyboard is up.
+
+**Confidence** is five named radio options (`TradeConfidenceChoice`) in both At Entry and After
+Trade. `trades_confidence_check` allows exactly 0/25/50/75/100 and migration 0010 already remapped
+the legacy 1–5 scale, so every stored value reads back into exactly one option; no schema or
+semantic change. The slider (`TradeConfidenceControl`) remains referenced only by the unrouted
+legacy `trade-create-form.tsx`; its two e2e geometry describes were removed because the product no
+longer renders it. **Emotions** use two-column groups with an explicit "None of these": `[]` is sent
+only for that answer, and nothing is sent when Feelings were never answered.
+
+**Intentional production differences:** the route wizard chrome (progress, back/close, centred
+"At Entry" heading); the native `datetime-local` entry time (the prototype picker is recorded
+parity debt); the server-required setup condition checklist; Price basis and the opening override
+kept as capabilities.
+
+**Backend blockers, not migrated:** an explicit "No fixed target" declaration has no column
+distinguishing it from a blank `planned_reward_minor`/`planned_target`; a structured Exit plan
+(none/saved/customized/no-rule, with a reusable library) has no per-trade or workspace persistence —
+`trade_exits.exit_reason` is per-exit and `strategy_rules` exit rows are versioned rule checks. Both
+need a separate domain decision. No schema, server, calculation or migration change was made.
