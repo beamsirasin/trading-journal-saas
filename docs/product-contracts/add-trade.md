@@ -1,7 +1,7 @@
 # TradeChemist — Add Trade Product Contract v1
 
-> **Status:** Proposed product source of truth (v1). Review decisions 1–11 resolved 2026-09-14 —
-> see [Decision log](#decision-log). Not yet implemented.
+> **Status:** Proposed product source of truth (v1). Review decisions 1–11 and final decisions
+> 12–18 resolved 2026-09-14 — see [Decision log](#decision-log). Not yet implemented.
 
 ## 1. Product model
 
@@ -82,7 +82,7 @@ Primary comparison metrics ทั้งสองใช้ denominator เดี�
 - `System R = System Result / Risk at Entry`
 - `Actual R = Actual Result / Risk at Entry`
 
-ถ้า Risk at Entry unknown: Actual R และ System R ที่ต้อง derive จาก Money เป็น unavailable แม้จะทราบ Actual Risk
+ถ้า Risk at Entry unknown: Actual R และ System R ที่ต้อง derive จาก Money เป็น unavailable แม้จะทราบ Actual Risk (ยกเว้น legacy 1R baseline — ดู §28)
 
 **Actual Risk** — optional
 ความเสี่ยงทางการเงินจริงของ position เมื่อ execution ทำให้ต่างจาก Risk at Entry
@@ -109,11 +109,17 @@ interaction ต้องสื่อความหมายนี้อย่�
 
 ## Actual Risk in After Trade
 
-ใช้ semantics เดียวกัน:
+After Trade ห้ามสมมติเงียบ ๆ ว่า Actual Risk ตรงกับ Risk at Entry
 
-- actual risk ตรงกับ Risk at Entry
-- ทราบว่าต่าง → บันทึก Actual Risk
-- ไม่ทราบ → Actual Risk เป็น Unknown
+Actual Risk เริ่มต้นเป็น **Unanswered** จนกว่า trader จะระบุอย่าง explicit ว่า:
+
+- Matched Risk at Entry
+- Different → บันทึก Actual Risk
+- Don't know → Actual Risk เป็น Unknown
+
+เพราะ primary Actual R ใช้ Risk at Entry เป็น 1R baseline ร่วม Actual Risk ที่เป็น Unanswered หรือ Unknown จึงไม่ขัดขวาง primary System-vs-Actual comparison
+
+Actual Risk ใช้สำหรับ Risk Discipline / Risk Deviation
 
 Risk deviation เป็นข้อมูลสำหรับ Risk Discipline analytics แต่ไม่ควรทำให้ Add Trade ซับซ้อน
 
@@ -164,6 +170,23 @@ TP price เป็น execution/context data เท่านั้น และ�
 
 Exit Plan สามารถมาจาก library และ Strategy default ได้
 
+## Strategy default ใน At Entry
+
+At Entry สามารถ inherit default Exit Plan ของ Strategy ที่เลือกไว้โดยอัตโนมัติ ตราบใดที่ trader ยังไม่ได้เลือก Exit Plan state อื่นอย่าง explicit
+
+การ inherit ต้อง visible เช่น `From Strategy: <name>`
+
+trader ต้องสามารถ:
+
+- customize
+- replace ด้วย Exit Plan อื่น
+- clear
+- เลือก No Defined Exit Rule
+
+การ clear เป็น explicit choice จึงหยุดการ inherit และห้ามถูกแทนที่ด้วย Strategy default อีกโดยอัตโนมัติ
+
+## Strategy default ใน After Trade
+
 After Trade ห้าม apply Strategy default หรือ Exit Plan default ของปัจจุบันให้ historical trade โดยอัตโนมัติ trader เลือก saved rule ปัจจุบันเองได้ แต่ต้องถูกบันทึกว่า recalled/selected ระหว่าง reconstruction
 
 เมื่อ Trade ใช้ Exit Plan ระบบต้องเก็บ snapshot ของ rule ณ เวลานั้น ไม่ใช่ pointer ที่เปลี่ยนตาม library ในอนาคต
@@ -184,6 +207,15 @@ Core information:
 - Fixed Target / No Fixed Target
 - Exit Plan
 - Save Open Trade
+
+Save Open Trade ต้องมี:
+
+- Account
+- Symbol
+- Direction
+- Risk at Entry
+
+Entry time อาจ default เป็นเวลาปัจจุบันเพื่อ capture เร็ว แต่ต้องแก้ไขได้และ clear ได้เมื่อ trader ไม่ทราบเวลา หรือ default ผิด
 
 Core Analytical Data:
 
@@ -259,6 +291,23 @@ Unanswered หรือ Unknown ห้ามถูกนับเป็น Not M
 
 Entry Discipline แยกจาก Exit Discipline
 
+## Execution Rules (granular evidence)
+
+Execution rule checks ระดับ rule ที่มีอยู่ต้องถูกเก็บไว้เป็น granular evidence
+
+Conceptual mapping:
+
+- entry rules → Entry Discipline
+- risk rules → Risk Discipline
+- exit rules → Exit Discipline
+- management / invalidation rules → คงเป็น granular rule evidence ของตัวเองตามความเหมาะสม
+
+`Not Applicable` ยังคงเป็น state ที่ valid
+
+`Not Checked` / Unanswered ห้ามถูกนับเป็น violation
+
+Exit Plan Adherence (§18) เป็น trade-level summary และอยู่ร่วมกับ granular exit-rule checks ได้ แต่ห้ามกลายเป็นคำตอบที่แข่งกันสำหรับคำถามเดียวกัน
+
 ---
 
 # 9. Psychology
@@ -289,11 +338,15 @@ Emotion ต้องแยก:
 
 Psychology provenance อิงจาก **เวลาที่ observation ถูก capture จริง** ไม่ใช่เส้นทางที่สร้าง Trade
 
-entry psychology ที่ถูก capture ภายหลังช่วงเข้า Trade (ทั้งใน After Trade และเมื่อเพิ่มเข้าไปภายหลังใน Trade ที่สร้างจาก At Entry) ต้องมี provenance ว่า:
+**Recorded at Entry** หมายถึง observation นั้นอยู่ใน snapshot ของ Save Open Trade ครั้งแรกที่สำเร็จ
 
-**Recalled after trade**
+Psychology ที่ถูกเพิ่มหรือแก้ไขภายหลัง ห้ามกลายเป็น Recorded at Entry โดยเงียบ ๆ เพียงเพราะ Trade ยังเปิดอยู่ หรือเพราะ Trade ถูกสร้างจาก At Entry
 
-ห้ามถูก label ว่า Recorded at Entry
+observation ที่เกิดภายหลังต้องเก็บ provenance ที่เหมาะสม เช่น:
+
+**Recalled after trade** / **Edited later**
+
+entry psychology ที่บันทึกใน After Trade เป็น Recalled after trade
 
 ## Post-Trade Emotion
 
@@ -417,6 +470,12 @@ BE อยู่คู่กับ P&L ที่เป็นบวกหรือ
 
 Analytics ต้องแยก Trader Outcome ออกจาก objective Net P&L และ R metrics
 
+## Legacy Trader Outcome
+
+Trader Outcome เดิมที่ระบบ derive ไว้ก่อน contract นี้ต้องถูกเก็บไว้ ไม่ reset เป็น Unanswered และต้องมี provenance ว่า legacy/derived
+
+ห้ามแสดง legacy-derived Outcome ราวกับว่า trader เลือกเอง (ดู §28)
+
 ---
 
 # 13. After Trade
@@ -437,7 +496,7 @@ Optional timing:
 Risk / exit intention:
 
 - Risk at Entry (Intended Risk — 1R baseline)
-- Actual Risk: ตรงกับ Risk at Entry / ต่าง (บันทึกค่า) / Unknown — ดู §4
+- Actual Risk: เริ่มต้น Unanswered จนกว่า trader จะระบุ Matched / Different (บันทึกค่า) / Don't know — ดู §4
 - Fixed Target / No Fixed Target
 - Exit Plan
 
@@ -482,19 +541,24 @@ System Assessment เป็น Review activity
 
 ไม่ block การ Save หรือ Close Trade แต่ status ต้อง visible
 
-Status อย่างน้อย:
+Assessment finding อย่างน้อย:
 
 - Not Assessed
 - Assessed
-- Needs Review
 - Cannot Determine
 - No Trade
 
 Not Assessed เป็น soft attention state
 
-Needs Review เป็น stronger attention state และเกิดได้เฉพาะกับ System Assessment ที่ยืนยันแล้ว เมื่อ dependency จริงของมันเปลี่ยน (ดู §22)
-
 Cannot Determine และ No Trade ถือว่า assessment ได้รับคำตอบแล้ว ไม่ควรถูกเตือนว่า incomplete
+
+## Needs Review overlay
+
+`Needs Review` ไม่ใช่ finding ที่ exclusive กับ finding อื่น แต่เป็น staleness/attention overlay บน System Assessment ที่เคยยืนยันแล้ว เมื่อ dependency จริงของมันเปลี่ยน (ดู §22)
+
+finding ที่ยืนยันแล้ว เช่น Assessed, No Trade หรือ Cannot Determine อาจ stale และต้อง review โดย finding เดิมต้องถูกเก็บไว้
+
+Needs Review เป็น stronger attention state UI อาจแสดง `Needs Review` เป็นหลัก แต่ confirmed assessment เดิมต้องยังคงอยู่
 
 ---
 
@@ -592,6 +656,8 @@ Exit Plan Adherence เป็นแกนแยกจาก System Result แล
 
 Entry Discipline และ Risk Discipline เป็นแกนแยกต่างหาก
 
+Exit Plan Adherence เป็น trade-level summary อยู่ร่วมกับ granular exit-rule checks (§8) ได้ แต่ห้ามเป็นคำตอบที่แข่งกันสำหรับคำถามเดียวกัน
+
 การไม่ทำตาม Exit Plan ไม่ได้แปลว่า execution แย่โดยอัตโนมัติ
 
 ถ้า deviated ระบบสามารถบันทึกเพิ่มเติม:
@@ -667,7 +733,7 @@ Review lifecycle:
 - Not Reviewed
 - Reviewed
 
-`Needs Review` เป็น status ของ System Assessment เท่านั้น (ดู §14, §22)
+`Needs Review` เป็น overlay ของ System Assessment เท่านั้น ไม่ใช่ Review lifecycle state (ดู §14, §22)
 
 Closed Trade ไม่ได้แปลว่า Reviewed
 
@@ -736,7 +802,7 @@ Reviewed เป็น explicit user action
 
 ข้อมูลที่เคยยืนยันแล้วต้องไม่ถูก rewrite เงียบ ๆ เมื่อ dependencies เปลี่ยน
 
-`Needs Review` เกิดได้เฉพาะกับ **System Assessment ที่ยืนยันแล้ว** เมื่อ dependency จริงของมันเปลี่ยน เช่น:
+`Needs Review` เป็น staleness overlay ที่เกิดได้เฉพาะกับ **System Assessment ที่ยืนยันแล้ว** เมื่อ dependency จริงของมันเปลี่ยน โดย finding เดิมยังถูกเก็บไว้ เช่น:
 
 - Strategy changed
 - Setup changed
@@ -817,7 +883,9 @@ Unknown Risk ≠ $0 Risk
 
 P&L unknown ≠ Break-even
 
-Actual risk ยืนยันว่าตรง ≠ Actual Risk unknown
+Actual risk ยืนยันว่าตรง ≠ Actual Risk unknown (Don't know) ≠ Actual Risk unanswered
+
+Legacy-derived Trader Outcome ≠ Trader Outcome ที่ trader เลือกเอง
 
 Exit scope unknown ≠ Part ≠ All Remaining
 
@@ -957,6 +1025,32 @@ TradeChemist รับผิดชอบ complexity ที่เหลือห�
 
 ---
 
+# 28. Existing (legacy) data
+
+ข้อมูลเดิมก่อน contract นี้ต้องถูกเก็บไว้พร้อม provenance ที่ชัดเจน ห้ามแปลงให้ดูเหมือนเกิดจาก semantics ใหม่
+
+## Legacy Trader Outcome
+
+- เก็บค่า Trader Outcome ที่ derive ไว้เดิม
+- ระหว่าง migration ให้ mark provenance เป็น legacy/derived ไม่ reset เป็น Unanswered
+- ห้ามแสดงว่า trader เลือก Outcome นั้นเอง
+
+## Legacy risk
+
+ถ้า Trade เดิมมี Actual Risk แต่ไม่มี Intended Risk ในอดีต:
+
+- ห้ามสร้าง Intended Risk ขึ้นมา
+- เก็บ risk เดิมเป็น **legacy 1R baseline** พร้อม provenance ว่ามาจาก historical Actual Risk
+- วิธีนี้อาจรักษา historical R ไว้ได้ โดยไม่อ้างว่าตัวเลขนั้นคือความตั้งใจของ trader
+
+## Legacy Price-mode results
+
+- ห้ามแปลง Price-mode หรือ `price_exit` history เป็น Money data
+- เก็บเป็น legacy evidence/results พร้อม provenance ที่ชัดเจน
+- แสดงในประวัติได้ แต่ห้าม qualify เป็น Money-authoritative result ตาม contract ใหม่โดยเงียบ ๆ
+
+---
+
 # Decision log
 
 Resolved 2026-09-14 from the v1 proposal review (items 1–11):
@@ -984,3 +1078,23 @@ Resolved 2026-09-14 from the v1 proposal review (items 1–11):
     quiet non-blocking notice. (§12, §25)
 11. **Psychology provenance** — follows actual capture time; Post-Trade Emotion may be recorded at
     Final Close, After Trade or Review. (§9)
+
+Final product decisions, 2026-09-14 (items 12–18):
+
+12. **Save Open Trade minimum** — Account, Symbol, Direction and Risk at Entry are required; Entry
+    time may default to now but stays editable and clearable. (§6)
+13. **Existing data** — legacy derived Trader Outcomes are preserved with legacy/derived
+    provenance; historical Actual Risk without Intended Risk becomes a legacy 1R baseline, never a
+    manufactured Intended Risk; Price-mode and `price_exit` history stays legacy evidence and never
+    silently qualifies as Money-authoritative. (§12, §28)
+14. **After Trade Actual Risk** — starts Unanswered until Matched / Different / Don't know; an
+    unknown Actual Risk does not block the primary comparison. (§4, §13)
+15. **Strategy default Exit Plan** — At Entry may visibly inherit it until the trader makes an
+    explicit choice; After Trade never inherits. (§5)
+16. **Psychology provenance** — Recorded at Entry means included in the initial successful Save
+    Open Trade snapshot; later additions or changes keep recalled/edited-later provenance. (§9)
+17. **Execution Rules** — granular rule evidence is kept and mapped to Entry / Risk / Exit
+    Discipline; Not Applicable is kept; Not Checked is never a violation; Exit Plan Adherence is a
+    non-competing trade-level summary. (§8, §18)
+18. **Needs Review** — a staleness overlay on a confirmed finding that preserves the finding.
+    (§14, §22)
