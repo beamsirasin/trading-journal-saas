@@ -162,6 +162,96 @@ describe('production After Trade recording', () => {
     expect(document.querySelector('[data-result-summary]')).toHaveTextContent('+2.00R');
   });
 
+  it('clears the previous basis’s Actual values when the result basis changes', async () => {
+    renderForm();
+    fillIdentity();
+    fireEvent.change(screen.getByLabelText(/Final net P&L/), { target: { value: '400' } });
+    fireEvent.change(screen.getByLabelText(/Actual risk at entry/), { target: { value: '200' } });
+    openExits();
+    addExit({ amount: '150', percent: '100' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Record the result with price levels instead' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    // A realized P&L of 150 must never be submitted as an exit price of 150.
+    expect(payload()).toMatchObject({
+      actualResultBasis: 'price',
+      finalPnlMinor: null,
+      actualInitialRiskMinor: null,
+      exits: [{ closedBps: 10_000, exitPrice: null, realizedPnlMinor: null }],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the result as an amount instead' }));
+    expect(screen.getByLabelText(/Final net P&L/)).toHaveValue('');
+    expect(screen.getByLabelText(/Actual risk at entry/)).toHaveValue('');
+  });
+
+  it('clears plan values when the plan basis changes', () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText(/Planned risk/), { target: { value: '200' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use price levels instead' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use amounts instead' }));
+    expect(screen.getByLabelText(/Planned risk/)).toHaveValue('');
+  });
+
+  it('previews a Price result only once every exit carries what saving needs', () => {
+    renderForm();
+    fillIdentity();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Record the result with price levels instead' }),
+    );
+    fireEvent.change(screen.getByLabelText(/Actual Entry/), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/Actual Initial Stop/), { target: { value: '90' } });
+    openExits();
+    fireEvent.click(screen.getByRole('button', { name: 'Record an exit' }));
+    fireEvent.change(screen.getByLabelText(/Exit Price/), { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText(/Closed %/), { target: { value: '100' } });
+    const summary = () => document.querySelector('[data-result-summary]');
+    // The service derives no Price result while any exit lacks its time.
+    expect(summary()).not.toHaveTextContent('+2.00R');
+    expect(summary()).toHaveTextContent('Not recorded');
+    fireEvent.change(screen.getByLabelText(/Exit time/), { target: { value: '2026-09-01T14:15' } });
+    expect(summary()).toHaveTextContent('+2.00R');
+    expect(summary()).toHaveTextContent('Win');
+  });
+
+  it('offers the closing exit’s time and states a disagreement without blocking Save', async () => {
+    renderForm();
+    fillIdentity();
+    openExits();
+    fireEvent.click(screen.getByRole('button', { name: 'Record an exit' }));
+    fireEvent.change(screen.getByLabelText(/What did this exit close\?/), {
+      target: { value: 'part' },
+    });
+    fireEvent.change(screen.getByLabelText(/Exit time/), { target: { value: '2026-09-01T12:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    // A partial leg's time is a mid-trade timestamp, never offered as the final one.
+    expect(
+      screen.queryByRole('button', { name: /your exit that closed the position/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Record an exit' }));
+    fireEvent.change(screen.getByLabelText(/What did this exit close\?/), {
+      target: { value: 'all_remaining' },
+    });
+    fireEvent.change(screen.getByLabelText(/Exit time/), { target: { value: '2026-09-01T14:15' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /your exit that closed the position/ }));
+    expect(screen.getByLabelText(/Final exit time/)).toHaveValue('2026-09-01T14:15');
+    expect(
+      screen.queryByRole('button', { name: /your exit that closed the position/ }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('[data-exit-time-mismatch]')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(/Final exit time/), {
+      target: { value: '2026-09-01T15:00' },
+    });
+    expect(document.querySelector('[data-exit-time-mismatch]')).toHaveTextContent('are different');
+    fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+  });
+
   it('renders zero exits as an honest empty state', () => {
     renderForm();
     openExits();

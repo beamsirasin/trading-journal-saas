@@ -1730,3 +1730,30 @@ System Assessment remain post-save.
 **One capture alignment:** Feelings records emotions only when chosen or when "None of these" is
 chosen, matching At Entry, so opening Feelings to set a confidence no longer records "no emotions".
 No schema, server, calculation or migration change was made.
+
+## 67. Add Trade Feature Parity Audit (as built)
+
+An independent audit of the production At Entry and After Trade routes against the prototype
+(`components/prototype/add-trade`), the 15G.5D unified form (`7e2faf1^`), and both migration
+generations (`2eac1f6`, `59d3980`, `9e60ad9`, `49ac667`) found three After Trade regressions, all
+introduced by the `2eac1f6` migration and carried through the parity pass. They are now restored:
+
+- **Basis switches clear the previous basis's fields again** (§62's contract, implemented by 15G.5D's
+  `changePlanBasis`/`changeActualBasis`). The migration toggled the basis without clearing, so an
+  exit's single value — realized P&L in Money, exit price in Price — was submitted under the other
+  basis's meaning. Basis-neutral leg facts (allocation, scope, time, reason) are kept.
+- **The Price preview asks what the service asks.** `composeActualSnapshot` derives no Price result
+  while any exit lacks its time; the preview ignored the time and showed an Actual R and outcome the
+  saved trade would not carry.
+- **Final exit time from the closing leg.** The prototype's offer to use the latest `All remaining`
+  exit's time, and its non-blocking warning when the two closing times disagree, were omitted.
+  Partial legs are never offered.
+
+**Left for a product decision, not migrated:** explicit No fixed target and the structured Exit
+plan (no persistence, §65); an outcome recorded without an amount (`trades_status_consistency_check`
+forbids a closed `trader_outcome` without `net_pnl_minor` or `actual_r`); a zero Target profit
+(accepted by the schema, refused by the prototype); a one-field final exit price for Price results
+(15G.5D's `simpleExit`, dropped when exits became optional supporting evidence); the prototype's
+Close trade flow with an optional fraction and completeness question (production's Partial close /
+Close remaining dialogs require percentage, time and Money P&L). The prototype timestamp picker
+remains recorded parity debt. No schema, server, calculation or migration change was made.

@@ -1854,6 +1854,8 @@
             "timezone": "เวลาใช้เขตเวลา {timezone} เว้นว่างได้หากไม่ทราบ",
             "entryTime": "เวลาเข้า",
             "finalExitTime": "เวลาปิดสุดท้าย",
+            "useClosingExitTime": "ใช้ {time} — การปิดที่ปิดสถานะที่เหลือทั้งหมด",
+            "exitTimesDiffer": "เวลาปิดสุดท้ายไม่ตรงกับเวลาของการปิดที่ปิดสถานะที่เหลือทั้งหมด ({time})",
             "change": "เปลี่ยน",
             "changeAccountSr": "บัญชี",
             "recentSymbols": "สัญลักษณ์ล่าสุด",

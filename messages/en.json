@@ -1854,6 +1854,8 @@
             "timezone": "Times use {timezone}. Leave either time blank if you do not know it.",
             "entryTime": "Entry time",
             "finalExitTime": "Final exit time",
+            "useClosingExitTime": "Use {time} — your exit that closed the position",
+            "exitTimesDiffer": "Your final exit time and the exit that closed the position ({time}) are different.",
             "change": "Change",
             "changeAccountSr": "account",
             "recentSymbols": "Recent symbols",

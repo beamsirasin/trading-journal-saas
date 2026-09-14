@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, HeartPulse, Lightbulb, Plus, Trash2 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useRef, useState } from 'react';
 
 import { composePlannedR, composeTraderCloseV2 } from '@/lib/calc/trade';
@@ -30,7 +30,7 @@ import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import { TradeConfidenceChoice } from './trade-confidence-choice';
 import { TradeEmotionChips } from './trade-emotion-chips';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
-import { formatR, formatTradeMoney } from './trade-format';
+import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
 import { confidenceOf } from './trade-recording-primitives';
 import {
@@ -181,6 +181,21 @@ function isPresent<T>(value: T | null): value is T {
 }
 
 const RECENT_SYMBOL_LIMIT = 3;
+const PLAN_FIELDS = [
+  'plannedEntry',
+  'plannedStop',
+  'plannedTarget',
+  'plannedPositionSize',
+  'plannedRisk',
+  'plannedReward',
+] as const;
+const ACTUAL_FIELDS = [
+  'actualEntry',
+  'actualStop',
+  'actualPositionSize',
+  'actualRisk',
+  'finalPnl',
+] as const;
 
 /**
  * AFTER TRADE — a finished trade, written up from memory, in the same task-surface
@@ -217,6 +232,7 @@ export function TradeAfterTradeForm({
   const a = useTranslations('trades.create.recording.after');
   const tConfidence = useTranslations('trades.create.confidence');
   const tMode = useTranslations('trades.create.mode');
+  const locale = useLocale();
   const router = useRouter();
   const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
   const [mutationKey] = useState(generateId);
@@ -273,15 +289,46 @@ export function TradeAfterTradeForm({
   const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
   const emotionLabel = new Map(options.emotionCatalog.map((item) => [item.key, item.label]));
 
-  const setField = <K extends keyof Values>(field: K, value: Values[K]) => {
-    setValues((current) => ({ ...current, [field]: value }));
+  function clearErrors(fields: readonly string[]) {
     setErrors((current) => {
-      if (!(field in current)) return current;
+      if (!fields.some((field) => field in current)) return current;
       const next = { ...current };
-      delete next[field];
+      for (const field of fields) delete next[field];
       return next;
     });
+  }
+
+  const setField = <K extends keyof Values>(field: K, value: Values[K]) => {
+    setValues((current) => ({ ...current, [field]: value }));
+    clearErrors([field]);
   };
+
+  /*
+    SWITCHING BASIS CLEARS THE FIELDS THE PREVIOUS BASIS OWNED (Phase 15 §62), so
+    no hidden value from the other representation survives to be saved — or, for
+    an exit, to be saved under the other basis's meaning: the leg's one value is
+    a realized P&L in Money and an exit price in Price, and a P&L of 150 must not
+    quietly become an exit at 150. Basis-neutral leg facts (allocation, scope,
+    time, reason) stay.
+  */
+  function changePlanBasis(next: Basis) {
+    setPlanBasis(next);
+    setValues((current) => ({
+      ...current,
+      ...Object.fromEntries(PLAN_FIELDS.map((field) => [field, ''])),
+    }));
+    clearErrors(PLAN_FIELDS);
+  }
+
+  function changeActualBasis(next: Basis) {
+    setActualBasis(next);
+    setValues((current) => ({
+      ...current,
+      ...Object.fromEntries(ACTUAL_FIELDS.map((field) => [field, ''])),
+    }));
+    setExits((current) => current.map((exit) => ({ ...exit, value: '' })));
+    setErrors({});
+  }
 
   const parsedRisk =
     values.actualRisk.trim() === ''
@@ -318,10 +365,17 @@ export function TradeAfterTradeForm({
       exitPrice: exit.value.trim(),
       realizedPnlMinor: null,
     }));
+    /*
+      THE PREVIEW ASKS WHAT THE SERVICE ASKS. `composeActualSnapshot` derives no
+      Price result while any exit lacks its allocation, price or time, so a
+      preview that ignored the time promised an outcome the saved trade would
+      not carry.
+    */
     if (
       values.actualEntry.trim() === '' ||
       values.actualStop.trim() === '' ||
       priceExits.length === 0 ||
+      recordedExits.some((exit) => exit.exitedAt === '') ||
       priceExits.some((exit) => exit.closedBps === 0 || exit.exitPrice === '') ||
       priceExits.reduce((sum, exit) => sum + exit.closedBps, 0) !== 10_000
     )
@@ -375,6 +429,30 @@ export function TradeAfterTradeForm({
     actualBasis === 'money' ? monetarySnapshot.actualR : (priceActual?.actualR ?? null);
   const outcome =
     actualBasis === 'money' ? monetarySnapshot.traderOutcome : (priceActual?.traderOutcome ?? null);
+  /*
+    A LEG'S TIME MAY STAND FOR THE TRADE'S ONLY IF THAT LEG CLOSED IT. An `All
+    remaining` exit is the one leg that says nothing was left afterwards, so the
+    latest such leg's time is OFFERED for Final exit time — never written — and a
+    disagreement between the two is stated without choosing either or refusing
+    the save. A partial leg's time is a mid-trade timestamp and is never offered.
+  */
+  let closingExit: { local: string; iso: string } | null = null;
+  for (const exit of recordedExits) {
+    if (exit.scope !== 'all_remaining' || exit.exitedAt === '') continue;
+    const iso = datetimeLocalToIso(exit.exitedAt, timezone);
+    if (iso.ok && (closingExit === null || iso.value > closingExit.iso))
+      closingExit = { local: exit.exitedAt, iso: iso.value };
+  }
+  const finalExit = values.exitedAt === '' ? null : datetimeLocalToIso(values.exitedAt, timezone);
+  const closingExitLabel =
+    closingExit === null
+      ? null
+      : (formatTradeInstant(closingExit.iso, timezone, locale) ?? closingExit.local);
+  const finalMatchesClosingExit =
+    closingExit !== null && finalExit?.ok === true && finalExit.value === closingExit.iso;
+  const exitTimesDiffer =
+    closingExit !== null && finalExit?.ok === true && !finalMatchesClosingExit;
+
   const isDirty =
     recordedExits.length > 0 ||
     emotions !== null ||
@@ -765,6 +843,21 @@ export function TradeAfterTradeForm({
                   numeric
                 />
               </FieldPair>
+              {closingExit === null ||
+              closingExitLabel === null ||
+              finalMatchesClosingExit ? null : (
+                <QuietAction
+                  className="text-muted-foreground hover:text-foreground self-start font-normal"
+                  onClick={() => setField('exitedAt', closingExit.local)}
+                >
+                  {a('trade.useClosingExitTime', { time: closingExitLabel })}
+                </QuietAction>
+              )}
+              {exitTimesDiffer && closingExitLabel !== null ? (
+                <InlineNote tone="warning" data-exit-time-mismatch="">
+                  {a('trade.exitTimesDiffer', { time: closingExitLabel })}
+                </InlineNote>
+              ) : null}
             </div>
           </Band>
 
@@ -855,7 +948,7 @@ export function TradeAfterTradeForm({
             <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
               <QuietAction
                 className="text-muted-foreground hover:text-foreground font-normal"
-                onClick={() => setPlanBasis(planBasis === 'money' ? 'price' : 'money')}
+                onClick={() => changePlanBasis(planBasis === 'money' ? 'price' : 'money')}
               >
                 {planBasis === 'money' ? a('plan.usePrice') : a('plan.useMoney')}
               </QuietAction>
@@ -969,10 +1062,7 @@ export function TradeAfterTradeForm({
 
               <QuietAction
                 className="text-muted-foreground hover:text-foreground self-start font-normal"
-                onClick={() => {
-                  setActualBasis(actualBasis === 'money' ? 'price' : 'money');
-                  setErrors({});
-                }}
+                onClick={() => changeActualBasis(actualBasis === 'money' ? 'price' : 'money')}
               >
                 {actualBasis === 'money' ? a('actual.usePrice') : a('actual.useMoney')}
               </QuietAction>
