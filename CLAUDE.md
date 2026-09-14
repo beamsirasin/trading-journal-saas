@@ -25,13 +25,13 @@ Everything in the schema, the calculation engine, and the analytics UI serves th
 
 ### The central distinction (non-negotiable)
 
-|                 | **System performance**                                                               | **Trader performance**                                                                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Definition      | Result if strategy rules had been followed exactly                                   | Result of the trader's actual decisions                                                                                                                       |
-| Source of truth | The trader-confirmed System Result (Money, or direct R) under the rules that applied | Final Net P&L (Money) and the trader-selected Trader Outcome                                                                                                  |
-| Metrics         | System R, Avg R, Expectancy, Profit Factor, Total R, Max DD                          | Actual R, Win Rate (Trader Outcome), Avg R, Expectancy, Profit Factor, Total R, Max DD; paired System Edge Captured and Execution Gap are reported separately |
+|                 | **System performance**                                                               | **Trader performance**                                                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Definition      | Result if strategy rules had been followed exactly                                   | Result of the trader's actual decisions                                                                                                                                        |
+| Source of truth | The trader-confirmed System Result (Money, or direct R) under the rules that applied | Final Net P&L (Money) and the trader-selected Trader Outcome                                                                                                                   |
+| Metrics         | System Positive Rate, System R, Avg R, Expectancy, Profit Factor, Total R, Max DD    | Actual R, Trader Win Rate (trader-selected outcomes), Avg R, Expectancy, Profit Factor, Total R, Max DD; paired System Edge Captured and Execution Gap are reported separately |
 
-Both R figures use the approved common **Risk at Entry** baseline, and Win / Loss / BE is reserved for Trader Outcome (Add Trade contract §4, §12, §16). **Current implementation pending migration:** System R still comes from planned price geometry or the Money-only Plan resolution kinds, Actual R still divides by actual risk or uses Price mode, and a System Win Rate is still computed from a Win/Loss/BE `system_outcome` — see §6.
+Both R figures use the approved common **Risk at Entry** baseline, and Win / Loss / BE is reserved for Trader Outcome (Add Trade contract §4, §12, §16). **Current implementation pending migration:** System R still comes from planned price geometry or the Money-only Plan resolution kinds, Actual R still divides by actual risk or uses Price mode, and a System Win Rate is still computed from a Win/Loss/BE `system_outcome` (the approved metric is System Positive Rate) — see §6.
 
 **System Result and Trader Outcome are independent stored fields.** Never derive the System Result from actual profit or price, and never derive Trader Outcome from P&L or R under the approved contract. All four quadrants must be representable and must survive into analytics:
 
@@ -168,7 +168,7 @@ Every formula lives in `src/lib/calc/`, is documented in code with its definitio
 [`docs/product-contracts/add-trade.md`](docs/product-contracts/add-trade.md) (approved v1) defines these rules. They govern new design and implementation work. Where the subsections below describe different behaviour, that behaviour is **current implementation pending migration**, not approved product behaviour.
 
 - **Trader Outcome is trader-selected** — Win / BE / Loss / Unanswered. It is never classified from R or P&L sign, and the ±0.05R break-even tolerance does not decide it. A sign-contradicting choice is allowed with a quiet notice (contract §12).
-- **Win / Loss / BE belongs to Trader Outcome only.** The System side is a trader-confirmed System Result in Money or R, No Trade, or Cannot Determine; Positive / Flat / Negative is at most a display helper, never the user classification (§16).
+- **Win / Loss / BE belongs to Trader Outcome only.** The System side is a trader-confirmed System Result in Money or R, No Trade, or Cannot Determine; canonical System Result buckets are Positive (> 0), Flat (= 0) and Negative (< 0) by exact numeric sign with no ±0.05R tolerance, reported as System Positive Rate and System Result Distribution — never as Win / Loss / BE (§16, §25).
 - **Canonical R uses one baseline.** `Actual R = Final Net P&L / Risk at Entry` and `System R = System Result / Risk at Entry`, so System-vs-Actual comparison and Execution Impact are like-for-like (§4, §17). A System Result entered directly as R is valid while System Money is unknown; a gross-only System Result produces no Difference (§15).
 - **Actual Risk is a separate Risk Discipline observation.** It never redefines canonical Actual R (§4).
 - **Price is context.** Entry, SL, TP and exit prices never calculate new canonical P&L, Actual R, System R or Trader Outcome, and a Money/Price result-basis switch is not approved product behaviour (§3).
@@ -234,7 +234,7 @@ Never compare R to zero with `==`. In the **current implementation**, Trader and
 
 `breakEvenToleranceR` is `BREAK_EVEN_TOLERANCE_R` (`'0.0500'`, `src/config/trade-calc.ts`) — **locked in Phase 07C as a global Calculation Engine Version 1 constant**, identical for every Workspace and every Trading Account, not per-workspace or per-trading-account configuration. A future engine version could introduce per-workspace/per-account tolerance as an explicit product decision; that would be a new `CALC_VERSION` and a new constant, not a mutation of this one.
 
-**Approved target:** the tolerance no longer classifies Trader Outcome, which the trader selects (Add Trade contract §12), and System results do not use Win / Loss / BE (§16). The classification above remains the current implementation until migration.
+**Approved target:** the tolerance no longer classifies Trader Outcome, which the trader selects (Add Trade contract §12), and canonical System Result buckets use the exact numeric sign — `+0.01R` Positive, `0R` Flat, `−0.01R` Negative — never this tolerance (§16). The classification above remains the current implementation until migration.
 
 ### Aggregates
 
@@ -249,7 +249,7 @@ maxDrawdownR  = max over t of (runningPeak(ΣR) − ΣR at t)
 
 Divide-by-zero, empty sets, and all-wins/all-losses cases return `null` with an explicit reason — never `NaN`, never `Infinity`, never a silent `0`.
 
-**Approved target:** classification-based aggregates read the trader-selected Trader Outcome and exclude Unanswered rather than counting it as a loss; R-based aggregates use canonical Risk-at-Entry R and exclude legacy R by default (Add Trade contract §25, §28). Today these aggregates read the current derived outcomes and stored R.
+**Approved target:** classification-based aggregates read the trader-selected Trader Outcome and exclude Unanswered rather than counting it as a loss; R-based aggregates use canonical Risk-at-Entry R and exclude legacy R by default (Add Trade contract §25, §28). Canonical Trader Win Rate counts only trader-selected outcomes, excluding legacy-derived outcomes by default. Canonical System Positive Rate = Positive / eligible canonical System Results, excluding Not Assessed, No Trade, Cannot Determine, stale (Needs Review), ineligible gross-only and legacy results, with coverage reported rather than counted as negative. Today these aggregates read the current derived outcomes and stored R.
 
 ### Attribution metrics
 

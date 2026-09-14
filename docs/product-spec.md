@@ -31,13 +31,13 @@ The difference between them is the trader's contribution, positive or negative. 
 
 The hypothetical result had the strategy been followed exactly, as confirmed by the trader in System Assessment — never guessed from the actual result or from price.
 
-Metrics: System Avg R · System Expectancy · System Profit Factor · System Total R · System Max Drawdown, from the trader-confirmed System Result over Risk at Entry. Win / Loss / BE terminology is reserved for Trader Outcome: the current implementation's System Win Rate (a Win/Loss/BE `system_outcome`) remains pending migration, and its approved replacement is not yet specified.
+Metrics: System Positive Rate · System Result Distribution (Positive / Flat / Negative) · System Avg R · System Expectancy · System Profit Factor · System Total R · System Max Drawdown, from eligible trader-confirmed System Results over Risk at Entry. Buckets use the exact numeric sign with no break-even tolerance, and Win / Loss / BE terminology is reserved for Trader Outcome. System Positive Rate replaces the current implementation's System Win Rate (a Win/Loss/BE `system_outcome`), which remains pending migration.
 
 ### Trader performance
 
 The realised result of actual entries, management, exits, and costs.
 
-Metrics: Actual Win Rate (from the trader-selected Trader Outcome) · Actual Avg R/Expectancy · Actual Profit Factor · Actual Total R · Actual Max Drawdown. System Edge Captured and Execution Gap (formerly "Edge Leakage" — renamed and sign-corrected in Phase 13H: `actualR − systemR`, negative means the Trader captured less than the System) are paired comparison metrics over Trades eligible on both axes; they are not Trader-population aggregates. Discipline Score remains deferred.
+Metrics: Trader Win Rate (trader-selected Trader Outcomes only; legacy-derived outcomes excluded by default) · Actual Avg R/Expectancy · Actual Profit Factor · Actual Total R · Actual Max Drawdown. System Edge Captured and Execution Gap (formerly "Edge Leakage" — renamed and sign-corrected in Phase 13H: `actualR − systemR`, negative means the Trader captured less than the System) are paired comparison metrics over Trades eligible on both axes; they are not Trader-population aggregates. Discipline Score remains deferred.
 
 ### R-multiples
 

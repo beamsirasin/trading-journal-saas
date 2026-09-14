@@ -39,24 +39,28 @@ These are technical terms a Thai-speaking retail trader already uses in English,
 
 **System / Trader, translated, not left in English.** Unlike the terms above, the product's central axis names translate cleanly and are translated everywhere:
 
-| English            | Thai                                                                                         |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| System             | `ระบบ`                                                                                       |
-| Trader / Actual    | `จริง` (as an axis label), `เทรดเดอร์` (as a noun, e.g. section eyebrow "ระบบ vs เทรดเดอร์") |
-| System Performance | `ประสิทธิภาพตามระบบ`                                                                         |
-| Trader Performance | `ผลงานการเทรดจริง`                                                                           |
-| System Win Rate    | `อัตราชนะตามระบบ`                                                                            |
-| Actual Win Rate    | `อัตราชนะจริง`                                                                               |
+| English                                            | Thai                                                                                         |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| System                                             | `ระบบ`                                                                                       |
+| Trader / Actual                                    | `จริง` (as an axis label), `เทรดเดอร์` (as a noun, e.g. section eyebrow "ระบบ vs เทรดเดอร์") |
+| System Performance                                 | `ประสิทธิภาพตามระบบ`                                                                         |
+| Trader Performance                                 | `ผลงานการเทรดจริง`                                                                           |
+| System Result                                      | `ผลลัพธ์ตามระบบ`                                                                             |
+| System Positive Rate                               | `อัตราผลบวกตามระบบ`                                                                          |
+| Positive / Flat / Negative (System Result buckets) | `ผลบวก` / `ผลเป็นศูนย์` / `ผลลบ`                                                             |
+| Trader Win Rate                                    | `อัตราชนะจริง`                                                                               |
+
+**Retired term:** `System Win Rate` (`อัตราชนะตามระบบ`) is not current terminology for the Add Trade model. The approved [Add Trade Product Contract](product-contracts/add-trade.md) replaces it with **System Positive Rate**; Positive / Flat / Negative describe a System Result, while Win / Loss / BE remain familiar trading vocabulary reserved for Trader Outcome (§16, §25–26). Existing UI copy may still show the retired term until the Add Trade migration lands.
 
 **Journal V2 Setup Condition terms (Phase 13B):**
 
-| English                                      | Thai                                   | Note                                                                                                                                                      |
-| -------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Setup Conditions                             | `เงื่อนไขของเซ็ตอัพ`                   | Pre-entry facts configured per Setup Version; distinct from execution `Rules` (`กฎ`)                                                                      |
-| Condition                                    | `เงื่อนไข`                             | User-authored label content is never translated; this is UI chrome only                                                                                   |
-| Met / Not Met                                | `ตรงตามเงื่อนไข` / `ไม่ตรงตามเงื่อนไข` | Final Entry-snapshot binary state; no persisted “not checked” state                                                                                       |
-| Average Setup Adherence (Phase 13H, primary) | `ความสอดคล้องกับ Setup เฉลี่ย`         | `AVG(per-Trade met/applicable)`, each Trade weighted equally; zero configured/recorded Conditions is “ไม่ได้ตั้งค่า / N/A,” not 0%                        |
-| Conditions Met Rate (Phase 13H, secondary)   | `อัตราเงื่อนไขที่ผ่าน`                 | `SUM(met)/SUM(applicable)`, each Condition weighted equally — deliberately distinct from, and never labeled interchangeably with, Average Setup Adherence |
+| English                                      | Thai                                   | Note                                                                                                                                                               |
+| -------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Setup Conditions                             | `เงื่อนไขของเซ็ตอัพ`                   | Pre-entry facts configured per Setup Version; distinct from execution `Rules` (`กฎ`)                                                                               |
+| Condition                                    | `เงื่อนไข`                             | User-authored label content is never translated; this is UI chrome only                                                                                            |
+| Met / Not Met                                | `ตรงตามเงื่อนไข` / `ไม่ตรงตามเงื่อนไข` | Current implementation stores a binary Entry snapshot; the approved Add Trade contract adds Unanswered (and Unknown in After Trade), never counted as Not Met (§8) |
+| Average Setup Adherence (Phase 13H, primary) | `ความสอดคล้องกับ Setup เฉลี่ย`         | `AVG(per-Trade met/applicable)`, each Trade weighted equally; zero configured/recorded Conditions is “ไม่ได้ตั้งค่า / N/A,” not 0%                                 |
+| Conditions Met Rate (Phase 13H, secondary)   | `อัตราเงื่อนไขที่ผ่าน`                 | `SUM(met)/SUM(applicable)`, each Condition weighted equally — deliberately distinct from, and never labeled interchangeably with, Average Setup Adherence          |
 
 ## 4. Metric-label convention
 

@@ -1,5 +1,13 @@
 # Trade Log & Add Trade — visual prototype
 
+> **Current product authority:** the approved
+> [Add Trade Product Contract](../product-contracts/add-trade.md) (v1, 2026-09-14) is the current
+> product source of truth. Where this prototype behaves differently — including its historical
+> reconciliation behaviour (blocking Save on a declared-complete exit conflict, adopting exits
+> before save), its outcome behaviour (an outcome word signing an unsigned amount), and its
+> placement of Review and System assessment — that behaviour is not a current product requirement.
+> The prototype history below is unchanged.
+
 **Status: frozen reference only. Not production. Do not migrate or add product behavior here.**
 
 The production Add Trade experience lives at `/app/trades/new`; all further product development and

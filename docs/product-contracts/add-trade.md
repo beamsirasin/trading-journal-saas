@@ -3,7 +3,7 @@
 > **Status: Approved (v1, 2026-09-14).** This document is the product source of truth for the
 > TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
-> final decisions 12–18 and closing decisions 19–21 are recorded in the
+> final decisions 12–18, closing decisions 19–21 and analytics decisions 22–23 are recorded in the
 > [Decision log](#decision-log).
 >
 > **Authority:** where `CLAUDE.md`, canonical technical documentation (such as
@@ -505,6 +505,8 @@ Trader Outcome เดิมที่ระบบ derive ไว้ก่อน co
 
 ห้ามแสดง legacy-derived Outcome ราวกับว่า trader เลือกเอง (ดู §28)
 
+legacy-derived Outcome ถูก exclude จาก canonical Trader Win Rate โดย default (ดู §25)
+
 ---
 
 # 13. After Trade
@@ -648,7 +650,23 @@ System Result แสดงด้วย:
 - No Trade
 - Cannot Determine
 
-อาจมี Positive / Flat / Negative เป็น display helper แต่ไม่เรียก Win/Loss/BE
+## System Result buckets
+
+Canonical System Result แบ่ง bucket ตามค่าตัวเลขของ System Result (System Money หรือ System R — เครื่องหมายเดียวกันเสมอเพราะ Risk at Entry เป็นบวก):
+
+- **Positive** — System Result > 0
+- **Flat** — System Result = 0
+- **Negative** — System Result < 0
+
+ห้ามใช้ legacy ±0.05R break-even tolerance กับ canonical System Result classification เช่น:
+
+- +0.01R = Positive
+- 0R = Flat
+- −0.01R = Negative
+
+Exit mechanism เช่น `Break-even rule` แยกจาก numeric bucket — break-even rule อาจให้ net System Result ติดลบเล็กน้อยหลังหัก costs
+
+bucket เหล่านี้ไม่เรียก Win/Loss/BE
 
 Win/Loss/BE สงวนไว้สำหรับ Trader Outcome
 
@@ -940,6 +958,16 @@ System result gross-only ≠ net/comparable
 
 Trader Outcome แยกจาก objective Net P&L / R metrics
 
+### Trader Win Rate
+
+Canonical **Trader Win Rate** ใช้เฉพาะ Trader Outcome ที่ trader classify อย่าง explicit ภายใต้ contract นี้
+
+- BE ไม่ถูกนับใน numerator แต่อยู่ใน denominator
+- Unanswered ไม่ถูกนับ และห้ามถูกนับเป็น Loss
+- legacy-derived Trader Outcome ถูก exclude จาก canonical Win Rate โดย default (§28)
+
+ห้ามรวม algorithm-derived legacy outcome กับ trader-selected outcome โดยเงียบ ๆ
+
 ## System Performance
 
 ใช้:
@@ -948,6 +976,25 @@ Trader Outcome แยกจาก objective Net P&L / R metrics
 - System R
 - No Trade
 - Cannot Determine
+
+### System Positive Rate
+
+**System Positive Rate** แทน `System Win Rate` สำหรับ Add Trade model ใหม่:
+
+`System Positive Rate = Positive / eligible canonical System Results` (Positive + Flat + Negative)
+
+อาจแสดง **System Result Distribution**: Positive / Flat / Negative
+
+Denominator ใช้เฉพาะ eligible canonical System Results และ exclude:
+
+- Not Assessed (ยังไม่มี System Result)
+- No Trade
+- Cannot Determine
+- assessment ที่ stale / Needs Review จนกว่าจะ reconfirm
+- gross-only result ที่ไม่ eligible สำหรับ canonical comparable metric
+- legacy System results (§28)
+
+record ที่ถูก exclude ต้องแสดงเป็น coverage อย่างซื่อสัตย์ ห้ามนับเป็น Negative โดยเงียบ ๆ
 
 ## Strategy Performance
 
@@ -1071,6 +1118,8 @@ TradeChemist รับผิดชอบ complexity ที่เหลือห�
 - เก็บค่า Trader Outcome ที่ derive ไว้เดิม
 - ระหว่าง migration ให้ mark provenance เป็น legacy/derived ไม่ reset เป็น Unanswered
 - ห้ามแสดงว่า trader เลือก Outcome นั้นเอง
+- ยังแสดงบน historical Trade ได้เมื่อเป็นประโยชน์
+- exclude จาก canonical Trader Win Rate โดย default อาจเพิ่ม legacy/historical cohort ที่ label แยกได้ในอนาคต แต่ห้ามรวมกับ trader-selected outcome โดยเงียบ ๆ
 
 ## Legacy risk
 
@@ -1173,3 +1222,15 @@ Closing product decisions, 2026-09-14 (items 19–21):
     `recorded_during_trade`, `recalled_after_trade`) is separate from revision metadata; an edit
     never rewrites the original origin. Supersedes the "recalled/edited-later" wording of item 16.
     (§9)
+
+Analytics decisions, 2026-09-14 (items 22–23):
+
+22. **System Positive Rate** — replaces System Win Rate for the Add Trade model. Canonical System
+    Result buckets are Positive (> 0), Flat (= 0) and Negative (< 0) with no ±0.05R tolerance; an
+    exit mechanism such as a break-even rule is separate from the bucket. The rate uses only
+    eligible canonical System Results, excluding No Trade, Cannot Determine, stale assessments until
+    reconfirmed, ineligible gross-only results and legacy results, with coverage reported honestly.
+    (§16, §25)
+23. **Trader Win Rate and legacy outcomes** — canonical Trader Win Rate uses only trader-selected
+    Trader Outcomes; legacy-derived outcomes stay stored, visible and provenance-marked but are
+    excluded by default and never silently mixed. (§12, §25, §28)

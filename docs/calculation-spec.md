@@ -8,7 +8,7 @@ Every formula here must be implemented in `src/lib/calc/`, documented in code, a
 
 > **Add Trade authority (2026-09-14).** [`docs/product-contracts/add-trade.md`](product-contracts/add-trade.md) is the approved product source of truth for Add Trade semantics. This document remains the canonical formula reference and distinguishes two things that must not be confused:
 >
-> - **Approved target semantics** — Trader Outcome is trader-selected and never classified by the break-even tolerance; `Actual R = Final Net P&L / Risk at Entry` and `System R = System Result / Risk at Entry` share one baseline; a System Result may be entered as Money or directly as R and never uses Win / Loss / BE; a gross-only System Result produces no Difference; Actual Risk is a Risk Discipline observation that never redefines Actual R; prices never calculate canonical P&L, Actual R or System R; legacy R (historical-risk Actual R, differently denominated System R, Price-mode R and `price_exit` results) stays visible with provenance but is excluded by default from canonical R analytics and Execution Impact.
+> - **Approved target semantics** — Trader Outcome is trader-selected and never classified by the break-even tolerance; `Actual R = Final Net P&L / Risk at Entry` and `System R = System Result / Risk at Entry` share one baseline; a System Result may be entered as Money or directly as R and never uses Win / Loss / BE — its canonical buckets are Positive (> 0), Flat (= 0) and Negative (< 0) with no tolerance, and `System Positive Rate = Positive / eligible canonical System Results` (excluding Not Assessed, No Trade, Cannot Determine, stale, ineligible gross-only and legacy results, with coverage reported); canonical Trader Win Rate counts only trader-selected Trader Outcomes, excluding Unanswered and legacy-derived outcomes; a gross-only System Result produces no Difference; Actual Risk is a Risk Discipline observation that never redefines Actual R; prices never calculate canonical P&L, Actual R or System R; legacy R (historical-risk Actual R, differently denominated System R, Price-mode R and `price_exit` results) stays visible with provenance but is excluded by default from canonical R analytics and Execution Impact.
 > - **Current implementation until migration** — the formulas in §§2–5 (Price mode, `actualR = netPnlMinor / actualInitialRiskMinor`, price-geometry `systemGrossR`, tolerance-classified outcomes) are what `src/lib/calc/` computes today. They are documented accurately so the code can be understood and migrated; they are not the approved target.
 
 ---
@@ -163,7 +163,7 @@ Comment this at the call site while the current implementation stands. Unifying 
 
 **Never compare to zero with `==`.** After costs, an exact zero is vanishingly rare, so equality would classify almost every scratched trade as a win or a loss.
 
-**Approved target:** this tolerance no longer classifies Trader Outcome — the trader selects Win / BE / Loss / Unanswered (Add Trade contract §12) — and System results do not use Win / Loss / BE (§16). The classification above is the current implementation until migration.
+**Approved target:** this tolerance no longer classifies Trader Outcome — the trader selects Win / BE / Loss / Unanswered (Add Trade contract §12) — and canonical System Result buckets use the exact numeric sign — `+0.01R` is Positive, `0R` Flat, `−0.01R` Negative — never this tolerance (§16). The classification above is the current implementation until migration.
 
 ## 4. Aggregates
 
@@ -197,7 +197,7 @@ maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magni
 global eligibility (classification matters only when its corresponding filter is selected).
 The date axis and deterministic ordering are `exited_at`, then Trade ID.
 
-**Approved target:** canonical Trader R aggregates use Risk-at-Entry R and exclude legacy R by default; classification-based aggregates read the trader-selected Trader Outcome and exclude Unanswered rather than counting it as a loss (Add Trade contract §25, §28). Populations A–C as written describe the current implementation.
+**Approved target:** canonical Trader R aggregates use Risk-at-Entry R and exclude legacy R by default; classification-based aggregates read the trader-selected Trader Outcome and exclude Unanswered and legacy-derived outcomes rather than counting them (Add Trade contract §25, §28); canonical System Positive Rate replaces the current System Win Rate. Populations A–C as written describe the current implementation.
 
 **Population B — System eligible.** A Trade requires no soft deletion,
 `system_status = 'resolved'`, `system_r`, `system_outcome`, and `system_exited_at`. Actual status
