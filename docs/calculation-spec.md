@@ -6,6 +6,11 @@
 
 Every formula here must be implemented in `src/lib/calc/`, documented in code, and unit-tested including the edge cases listed. Analytics may never reimplement a formula inline.
 
+> **Add Trade authority (2026-09-14).** [`docs/product-contracts/add-trade.md`](product-contracts/add-trade.md) is the approved product source of truth for Add Trade semantics. This document remains the canonical formula reference and distinguishes two things that must not be confused:
+>
+> - **Approved target semantics** — Trader Outcome is trader-selected and never classified by the break-even tolerance; `Actual R = Final Net P&L / Risk at Entry` and `System R = System Result / Risk at Entry` share one baseline; a System Result may be entered as Money or directly as R and never uses Win / Loss / BE; a gross-only System Result produces no Difference; Actual Risk is a Risk Discipline observation that never redefines Actual R; prices never calculate canonical P&L, Actual R or System R; legacy R (historical-risk Actual R, differently denominated System R, Price-mode R and `price_exit` results) stays visible with provenance but is excluded by default from canonical R analytics and Execution Impact.
+> - **Current implementation until migration** — the formulas in §§2–5 (Price mode, `actualR = netPnlMinor / actualInitialRiskMinor`, price-geometry `systemGrossR`, tolerance-classified outcomes) are what `src/lib/calc/` computes today. They are documented accurately so the code can be understood and migrated; they are not the approved target.
+
 ---
 
 ## 1. Numeric rules
@@ -83,7 +88,7 @@ is `empty`. No partial total, FX conversion, current FX rate, `NaN`, or `Infinit
 `src/lib/calc/net-pnl.ts` owns this typed availability contract. R analytics remain available
 when money is not.
 
-### R-multiples
+### R-multiples (current implementation)
 
 ```
 plannedR = (plannedTarget − plannedEntry) / (plannedEntry − plannedStop)              [long]
@@ -124,9 +129,11 @@ systemR  = systemGrossR − systemCostR
 
 `resolveSystemR` (`src/lib/calc/trade.ts`) is the one function that respects `Trade.system_status`'s three-state lifecycle before attempting any arithmetic: `pending` returns `{ ok: false, reason: 'unresolved_system_outcome' }`, `no_trade` returns `{ ok: false, reason: 'system_no_trade' }`, and only `resolved` reaches `systemR`'s actual calculation. Neither `pending` nor `no_trade` is ever represented as a System R of `0` — CLAUDE.md's null-result discipline ("0 means no data" is forbidden) applies equally to the per-Trade engine and Phase 07D aggregates.
 
-### Why system and actual use different denominators
+### Why system and actual use different denominators (current implementation — superseded)
 
-This looks like a bug and is not. Do not "fix" it.
+**Superseded by the approved Add Trade contract:** canonical System R and Actual R both divide by Risk at Entry, and sizing differences are measured by Actual Risk as Risk Discipline. The reasoning below explains the current implementation; it is not a reason to resist the approved migration.
+
+In the current implementation this looks like a bug and is not.
 
 - **System R** uses `plannedEntry` and `plannedStop`. It answers: _what did the strategy offer?_
 - **Actual R** uses `actualEntry` and `actualInitialStop`. It answers: _what did the trader take?_
@@ -137,14 +144,14 @@ Both are expressed in R, and that normalisation is precisely what makes them com
 
 `Trade.system_cost_r` is a **user-supplied** estimate of costs attributable to the counterfactual System execution, expressed directly in R:
 
-- Non-negative, default `0`.
-- Supplied only when _resolving_ the System result (`system_status = 'pending' → 'resolved'`) — meaningless before resolution, so it is database-pinned to exactly `0` under both `pending` and `no_trade` (`trades_system_status_consistency_check`).
+- Non-negative when supplied. **Since migration 0017 it is nullable and `NULL` means unknown:** the result stays gross-only, `system_r`/`system_outcome` stay null, and no net Execution Gap is computed. A stored `0` is an explicit "no cost" estimate.
+- Supplied only when _resolving_ or reconfirming the System result — `NULL` under `pending`, `no_trade` and `cannot_determine` (`trades_system_status_consistency_check`).
 - **Never** automatically copied from Actual `commission_minor`/`fees_minor`/`swap_minor` — the System counterfactual's costs are not assumed to equal what the trader actually paid.
 - **Never** calculated from a per-account modelled cost constant in MVP — there is no such constant; the trader estimates it directly, the same self-reported posture the rest of the System counterfactual already has (product-spec §8's "known limitation").
 
 This was an open question in an earlier draft of this document; it is resolved as of Phase 07B and does not need revisiting in Phase 07C.
 
-Comment this at the call site. A future contributor unifying the denominators would break the product's core measurement.
+Comment this at the call site while the current implementation stands. Unifying the denominators is approved only as part of the Add Trade contract migration (common Risk-at-Entry baseline, legacy R preserved and excluded from canonical analytics) — never as an incidental change.
 
 ## 3. Break-even
 
@@ -155,6 +162,8 @@ Comment this at the call site. A future contributor unifying the denominators wo
 `breakEvenToleranceR` is `'0.0500'` (assumption A1), declared as `src/config/trade-calc.ts`'s `BREAK_EVEN_TOLERANCE_R` constant — a **global Calculation Engine Version 1 constant** (Phase 07B correction), identical for every Workspace and every Trading Account. It is not workspace-wide configuration, not a database column, and not user-configurable during the MVP: `trading_accounts` has no `break_even_tolerance_r` column (see `docs/data-dictionary.md`'s note on that table), and none is planned for this engine version. A future calculation-engine version could introduce per-workspace or per-account tolerance as an explicit product decision — that would be a new `CALC_VERSION` and a new constant, not a mutation of this one.
 
 **Never compare to zero with `==`.** After costs, an exact zero is vanishingly rare, so equality would classify almost every scratched trade as a win or a loss.
+
+**Approved target:** this tolerance no longer classifies Trader Outcome — the trader selects Win / BE / Loss / Unanswered (Add Trade contract §12) — and System results do not use Win / Loss / BE (§16). The classification above is the current implementation until migration.
 
 ## 4. Aggregates
 
@@ -187,6 +196,8 @@ maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magni
 `actual_r`, `trader_outcome`, and `exited_at`. Strategy, Setup, and System resolution do not gate
 global eligibility (classification matters only when its corresponding filter is selected).
 The date axis and deterministic ordering are `exited_at`, then Trade ID.
+
+**Approved target:** canonical Trader R aggregates use Risk-at-Entry R and exclude legacy R by default; classification-based aggregates read the trader-selected Trader Outcome and exclude Unanswered rather than counting it as a loss (Add Trade contract §25, §28). Populations A–C as written describe the current implementation.
 
 **Population B — System eligible.** A Trade requires no soft deletion,
 `system_status = 'resolved'`, `system_r`, `system_outcome`, and `system_exited_at`. Actual status
@@ -258,7 +269,7 @@ It is compliant only when zero applicable required checks are violated. All-`not
 Trades are resolved but not evaluated. `src/lib/calc/attribution.ts` returns the explicit counts
 and `no_evaluated_trades` when a rate cannot be computed.
 
-**Partial closes remain unchanged.** Core Population-A analytics include a position only after
+**Partial closes (current implementation).** Core Population-A analytics include a position only after
 its Exit legs total exactly 100%; Price mode sums direction-aware leg R weighted by closed
 fraction, while Money mode sums authoritative realized leg P&L once (never weights P&L again).
 The final parent `exited_at` is the chronologically latest Exit-leg timestamp.

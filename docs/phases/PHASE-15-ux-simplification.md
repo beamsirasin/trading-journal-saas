@@ -1,5 +1,12 @@
 # Phase 15 — Product UX Simplification & Information Architecture
 
+> **Superseded Add Trade semantics:** the Add Trade recording, closing, Review and System Assessment
+> decisions recorded here — including §§59–67 (Money/Price basis choices, Price results, derived
+> Trader Outcome, conflict blocking, Review-tab navigation and the open "product decision" lists) —
+> are historical. The approved product source of truth is
+> [`docs/product-contracts/add-trade.md`](../product-contracts/add-trade.md) (v1, 2026-09-14). The
+> implementation history below remains accurate.
+>
 > **Status:** 15A–15F and the approved 15G.4 recording-model audit are complete. The 15G.5A
 > domain/service foundation, 15G.5B atomic completed-create foundation, 15G.5C retrospective
 > analytics truth, and 15G.5D recording UX are implemented in the working tree — see §§59–62. Phase 15G Founder UAT

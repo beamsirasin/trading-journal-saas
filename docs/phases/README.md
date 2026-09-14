@@ -2,7 +2,7 @@
 
 The MVP is dependency-ordered and independently reviewable. A phase may land in named reviewable slices, as Phase 3A–3C did.
 
-Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then the active phase document. Do not implement work belonging to a later phase.
+Read [`../../CLAUDE.md`](../../CLAUDE.md) first, then any approved Product Contract for the domain in [`../product-contracts/`](../product-contracts/), then the active phase document. Phase documents are historical records: where one disagrees with an approved Product Contract, the contract wins. Do not implement work belonging to a later phase.
 
 | #                                            | Phase                               | Ships                                                                   | Depends on |
 | -------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------- | ---------- |

@@ -2,6 +2,13 @@
 
 **Depends on:** 06 · **Blocks:** 08, 09
 
+> **Superseded Add Trade semantics:** this phase's outcome classification (the break-even tolerance
+> deciding Trader Outcome), its System/Actual denominator rules and its Win / Loss / BE System
+> outcome are historical. The approved product source of truth is
+> [`docs/product-contracts/add-trade.md`](../product-contracts/add-trade.md) (v1, 2026-09-14); see
+> `CLAUDE.md` §6 for approved target semantics versus current implementation. The engine history
+> below remains accurate.
+
 **Status:** Phase 07 is officially complete, merged to `main`. 07A (repository audit), 07B (trade domain and discipline schema), 07C (risk and per-trade calculation engine), 07D (aggregate, attribution and equity calculation engine), and 07E (full regression and closeout) are all done — the `trades`/`mistake_types`/`trade_mistakes`/`trade_rule_checks` schema is real and migrated (`drizzle/0008_trade_domain_and_discipline.sql`), guarded-PostgreSQL-tested, and `src/lib/calc/{types,decimal,risk,trade,aggregate,attribution,equity}.ts` now implements the complete pure calculation core: Planned/Actual/System R, outcome classification, per-Trade snapshot composition (07C), plus Total/Average R, Expectancy, Win Rate, average Win/Loss, Payoff Ratio, Profit Factor, the cumulative-R equity curve, Maximum Drawdown, paired System-vs-Trader Execution Gap, System Edge Captured, and objective Rule Checks Followed (07D) — all pure, tested, importable with no database/environment/Next.js dependency. **Deliberately NOT implemented:** Discipline Score (no approved formula exists — see the Phase 07D brief's own explicit deferral), the weighted mistake-penalty formula, mistake-cost ranking, attribution of Execution Gap to individual mistake types, and verdict sample-size thresholds — all deferred to a later phase's explicit policy. **Not yet implemented:** no service, DAL, Server Action, UI, database write path, date-bucketed reporting, or SQL aggregation exists anywhere in this phase (Phase 08/09's job). The schema below reflects what was actually built in 07B, correcting the pre-implementation sketch this document originally carried (see the Phase 07A audit for the itemized mismatches: a missing Setup/Setup Version link, a stale `checklist_item_id`/`trade_checklist_results` design, a `price × quantity × contract multiplier` monetary formula abandoned as not universally valid, and an undifferentiated System "pending vs. never-would-have-happened" state). 07E's full regression (unit, guarded PostgreSQL integration, production E2E) and stale-reference scan confirmed the above with no active defects found beyond narrow documentation wording, all corrected during closeout.
 
 ## Goal

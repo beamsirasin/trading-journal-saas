@@ -2,6 +2,14 @@
 
 **Depends on:** 08, 09 · **Blocks:** 13B–13I
 
+> **Superseded Add Trade semantics:** this phase's "Price mode — authoritative contract", the
+> Money/Price `actual_result_mode` result basis, `trader_outcome` derived from R with the
+> break-even tolerance, `net_pnl_minor` as a sum of exit legs, and Price-precedence System
+> resolution are historical. The approved product source of truth is
+> [`docs/product-contracts/add-trade.md`](../product-contracts/add-trade.md) (v1, 2026-09-14);
+> Price is context there, and Price-derived results are legacy evidence. The implementation history
+> below remains accurate.
+
 **Status:** 13A–13H are **complete**. Migration `0013_actual_execution_v2.sql` implements Actual Execution V2 and Partial Close. Migration `0014_system_money_resolution.sql` adds deterministic Money-only System resolution while preserving Price precedence and historical Price results. 13G redesigned Trade Detail/List into the information architecture below and read-back Setup Conditions/archived-identity disclosure for the first time — no migration (0010–0014 unchanged, no `0015`); every field it needed already existed. 13H flips and renames the Execution Gap sign globally (`edgeLeakageR` → `executionGapR`, retired), and adds the first Setup Adherence, Condition, Confidence, and Emotion analytics — no migration; every dimension is derived read-only from data captured in 13B–13G. 13I has not started.
 
 This document supersedes the exploratory _Journal V2 Gap Audit_ (2026-08-15, unpublished research artifact) wherever the two disagree. The audit is accepted as research; several of its recommendations are corrected below after Founder review. Every correction is called out explicitly, with the reason, so implementers don't silently reintroduce the audit's original (superseded) framing.

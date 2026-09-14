@@ -2,6 +2,11 @@
 
 **Depends on:** 07 · **Blocks:** 09
 
+> **Superseded Add Trade semantics:** this phase's Trade recording, Review (`followed_plan`, a
+> prefilled System outcome) and derived-outcome rules are historical. The approved product source
+> of truth is [`docs/product-contracts/add-trade.md`](../product-contracts/add-trade.md) (v1,
+> 2026-09-14). The implementation history below remains accurate.
+
 **Status:** Complete. 08A (repository/workflow audit), 08B (Trade services/lifecycle), 08C (authenticated DAL, strict validation/errors, and Server Actions), 08D (real creation/list/detail UI), 08E (execution/System lifecycle, corrections, Rule/Mistake interaction, and soft deletion), and 08F (full regression and official closeout) are complete. Phase 09 — Dashboard & Analytics is next. The authenticated `/app/trades` route is DAL-backed and contains no demo fixture/notice; `/app/trades/new` is the staged Plan creation route. Every Action returns one closed JSON-serializable result, derives trusted session context, and strictly rejects derived/trusted fields. Trade list/detail labels come from each Trade's pinned historical Strategy/Setup snapshots, never the current Version.
 
 08F reconfirmed the complete contract through focused Trade unit/component tests, explicit Phase 06–08 guarded-PostgreSQL tests, the complete 33-file/517-test PostgreSQL suite on PostgreSQL 18.4, focused Chromium/Mobile Chrome Trade E2E, and a subsequent uncontaminated full 385-test serial production E2E run. The closeout also removed stale authenticated-shell demo labelling, corrected obsolete demo E2E route assumptions, and made Rule/Mistake UI reconciliation independent of slow full-route Server Action revalidation while keeping every write server-authoritative.

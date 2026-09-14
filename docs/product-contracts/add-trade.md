@@ -1,8 +1,19 @@
 # TradeChemist — Add Trade Product Contract v1
 
-> **Status:** Proposed product source of truth (v1). Review decisions 1–11, final decisions 12–18
-> and closing decisions 19–21 resolved 2026-09-14 — see [Decision log](#decision-log). Not yet
-> implemented.
+> **Status: Approved (v1, 2026-09-14).** This document is the product source of truth for the
+> TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
+> Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
+> final decisions 12–18 and closing decisions 19–21 are recorded in the
+> [Decision log](#decision-log).
+>
+> **Authority:** where `CLAUDE.md`, canonical technical documentation (such as
+> `docs/calculation-spec.md`, `docs/data-dictionary.md` or `docs/product-spec.md`) or a historical
+> Phase document disagrees with this contract about Add Trade behaviour or semantics, this contract
+> wins. See [`README.md`](README.md) for the documentation precedence order.
+>
+> **Implementation status:** approved target behaviour, not yet fully implemented. Current
+> production behaviour that differs is pending migration and must not be read as approved product
+> behaviour.
 
 ## 1. Product model
 

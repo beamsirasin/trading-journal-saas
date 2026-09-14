@@ -1,13 +1,17 @@
 # CLAUDE.md — Trading OS Engineering Constitution
 
-> This file is the standing contract for all work in this repository.
-> Read it before modifying code. Read the active phase document in [`docs/phases/`](docs/phases/) second.
+> This file is the standing engineering and AI operating contract for all work in this repository.
+> Read it before modifying code. For a domain covered by an approved Product Contract in [`docs/product-contracts/`](docs/product-contracts/), read that contract second, then the active phase document in [`docs/phases/`](docs/phases/).
+>
+> **Documentation precedence:** (1) an approved Product Contract defines intended product behaviour and semantics for its domain; (2) this file governs engineering and must not contradict an approved Product Contract — where it still does, the contract wins; (3) canonical technical docs (`docs/calculation-spec.md`, `docs/data-dictionary.md`, `docs/product-spec.md`) describe approved target semantics and label current implementation that has not caught up; (4) Phase documents are historical records and never silently override a newer approved contract. See [`docs/product-contracts/README.md`](docs/product-contracts/README.md).
+>
+> **Add Trade:** [`docs/product-contracts/add-trade.md`](docs/product-contracts/add-trade.md) is **approved (v1, 2026-09-14)** and is the product source of truth for At Entry, After Trade, Partial / Final Close, Review, System Assessment and related Strategy / Psychology / Discipline semantics. Much of it is **not implemented yet** — see §6 _Approved Add Trade target semantics_ and _Current implementation pending migration_.
 >
 > **Status:** Phases 03–11 are officially complete. Phase 11 — SaaS Administration delivered a dedicated `platform_admins` grant-history authority (never `users.is_platform_admin`, never derived from Workspace ownership), an append-only `admin_audit_log`, an EN-only non-locale-prefixed `/admin` shell (Overview, Users, Workspaces, Audit, VAT), privacy-limited read-only User/Workspace oversight, exactly three named Subscription Support mutations (Extend Trial, Grant/Change Complimentary Plan, Revoke Complimentary Plan) with a truthful null-shaped complimentary state that can convert to real paid only through the genuine checkout path, and DB-authoritative append-only platform VAT configuration (fail-closed, no customer control, no scheduling UI) wired into every quotation/checkout/billing-presentation call site. Platform-admin provisioning/revocation remains operational-script-only; no Admin-management UI exists or is planned. Phase 10 delivered the single pre-onboarding Settings surface with real self-scoped Profile/Preferences and Account Security, owner+writable Workspace rename, canonical Account/Plan/Billing navigation, and owner-only schema-versioned JSON/normalized CSV ZIP Workspace export that remains available in read-only and over-limit modes. No migration was required for Phase 10; Phase 11 needed exactly one (`0009_platform_admin_foundation.sql`, Phase 11B). Email change, avatar editing, provider linking/unlinking, MFA/passkeys, async import/export jobs, and account/workspace deletion remain deferred, as do impersonation, suspension, refunds/reconciliation, and payment-provider administration.
 > Phase 12A — Launch Readiness Repository and Infrastructure Audit — is complete: a read-only audit found zero tenant-isolation or Platform Admin authorization defects, a sound billing/subscription state machine, no production payment provider, no working production email delivery, and no platform-wide security headers. Phase 12B — Security Hardening delivered a blanket security-header baseline (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, a minimal `Permissions-Policy`, and production-only `Strict-Transport-Security`) plus a Report-Only `Content-Security-Policy` (enforcement deliberately deferred until a nonce architecture and real payment-provider script requirements are known), re-verified with no changes needed that tenant isolation/Platform Admin authorization/billing state machine/production fail-closed guards remain sound, extended redirect-safety regression coverage, and added an operator-facing confirmation (resolved email) to the platform-admin grant/revoke script's dry-run output. Phase 12B did not implement production email delivery or a real payment provider — both remain explicitly deferred to a later integration slice/phase, not a 12B gap. Phase 12 overall remains incomplete: accessibility automation, full responsive-width coverage, performance baselines, staging/production infrastructure, observability, and backup/restore rehearsal are still outstanding.
-> **Last updated:** 2026-08-13 (Phase 12B — security hardening baseline)
+> **Last updated:** 2026-09-14 (Add Trade Product Contract v1 approved — documentation governance reconciliation; the engineering status above last changed in Phase 12B)
 >
-> The master product instructions this repository was commissioned under are preserved verbatim in [Appendix A](#appendix-a--master-instructions-verbatim). Where this document elaborates on them, the appendix governs intent and this document governs implementation.
+> The master product instructions this repository was commissioned under are preserved verbatim in [Appendix A](#appendix-a--master-instructions-verbatim). Where this document elaborates on them, the appendix governs intent and this document governs implementation. An approved Product Contract supersedes Appendix A's intent for the domain it covers.
 
 ---
 
@@ -17,22 +21,24 @@ A multi-tenant SaaS trading journal whose purpose is **attribution**, not bookke
 
 > Did the trader lose because the strategy has no edge, or because the trader did not follow the strategy?
 
-Everything in the schema, the calculation engine, and the analytics UI serves that question. A feature that does not help separate _system performance_ from _trader performance_ is out of scope unless a phase document explicitly requests it.
+Everything in the schema, the calculation engine, and the analytics UI serves that question. A feature that does not help separate _system performance_ from _trader performance_ is out of scope unless an approved Product Contract or a phase document explicitly requests it.
 
 ### The central distinction (non-negotiable)
 
-|                 | **System performance**                                             | **Trader performance**                                                                                                                    |
-| --------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Definition      | Result if strategy rules had been followed exactly                 | Result of the trader's actual decisions                                                                                                   |
-| Source of truth | Planned entry, planned stop, planned target, rule-defined exit     | Actual entry, actual initial stop, actual exit, actual costs                                                                              |
-| Metrics         | System Win Rate, Avg R, Expectancy, Profit Factor, Total R, Max DD | Actual Win Rate, Avg R, Expectancy, Profit Factor, Total R, Max DD; paired System Edge Captured and Execution Gap are reported separately |
+|                 | **System performance**                                                               | **Trader performance**                                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Definition      | Result if strategy rules had been followed exactly                                   | Result of the trader's actual decisions                                                                                                                       |
+| Source of truth | The trader-confirmed System Result (Money, or direct R) under the rules that applied | Final Net P&L (Money) and the trader-selected Trader Outcome                                                                                                  |
+| Metrics         | System R, Avg R, Expectancy, Profit Factor, Total R, Max DD                          | Actual R, Win Rate (Trader Outcome), Avg R, Expectancy, Profit Factor, Total R, Max DD; paired System Edge Captured and Execution Gap are reported separately |
 
-**System outcome and trader outcome are independent stored fields.** Never derive system outcome from actual profit. All four quadrants must be representable and must survive into analytics:
+Both R figures use the approved common **Risk at Entry** baseline, and Win / Loss / BE is reserved for Trader Outcome (Add Trade contract §4, §12, §16). **Current implementation pending migration:** System R still comes from planned price geometry or the Money-only Plan resolution kinds, Actual R still divides by actual risk or uses Price mode, and a System Win Rate is still computed from a Win/Loss/BE `system_outcome` — see §6.
 
-- system win / trader win
-- system win / trader loss ← _the most valuable cell in the product_
-- system loss / trader loss
-- system loss / trader win _(made money by breaking the rules)_
+**System Result and Trader Outcome are independent stored fields.** Never derive the System Result from actual profit or price, and never derive Trader Outcome from P&L or R under the approved contract. All four quadrants must be representable and must survive into analytics:
+
+- positive System result / trader win
+- positive System result / trader loss ← _the most valuable cell in the product_
+- negative System result / trader loss
+- negative System result / trader win _(made money by breaking the rules)_
 
 ---
 
@@ -157,6 +163,33 @@ Drizzle must be configured so `numeric` columns come back as strings. Any place 
 
 Every formula lives in `src/lib/calc/`, is documented in code with its definition, and is unit-tested including edge cases. Analytics may never reimplement a formula inline.
 
+### Approved Add Trade target semantics
+
+[`docs/product-contracts/add-trade.md`](docs/product-contracts/add-trade.md) (approved v1) defines these rules. They govern new design and implementation work. Where the subsections below describe different behaviour, that behaviour is **current implementation pending migration**, not approved product behaviour.
+
+- **Trader Outcome is trader-selected** — Win / BE / Loss / Unanswered. It is never classified from R or P&L sign, and the ±0.05R break-even tolerance does not decide it. A sign-contradicting choice is allowed with a quiet notice (contract §12).
+- **Win / Loss / BE belongs to Trader Outcome only.** The System side is a trader-confirmed System Result in Money or R, No Trade, or Cannot Determine; Positive / Flat / Negative is at most a display helper, never the user classification (§16).
+- **Canonical R uses one baseline.** `Actual R = Final Net P&L / Risk at Entry` and `System R = System Result / Risk at Entry`, so System-vs-Actual comparison and Execution Impact are like-for-like (§4, §17). A System Result entered directly as R is valid while System Money is unknown; a gross-only System Result produces no Difference (§15).
+- **Actual Risk is a separate Risk Discipline observation.** It never redefines canonical Actual R (§4).
+- **Price is context.** Entry, SL, TP and exit prices never calculate new canonical P&L, Actual R, System R or Trader Outcome, and a Money/Price result-basis switch is not approved product behaviour (§3).
+- **Final Net P&L is authoritative** for a closed Trade. Exit subtotals are supporting history, adopted only explicitly, and a Complete-history discrepancy is non-blocking (§11).
+- **Review completion is an explicit lifecycle state** (Not Reviewed / Reviewed), never inferred from whether a review note exists (§20–21).
+- **Missing observations are never negative observations.** Unanswered or unknown conditions, rules, emotions, risk, scope or outcomes never count as Not Met, a violation, zero, None or a loss (§2, §8, §24).
+- **Legacy data keeps its provenance.** Legacy-derived Trader Outcomes, historical-Actual-Risk 1R baselines, Price-mode and `price_exit` results stay visible as legacy, and legacy R is excluded by default from canonical R analytics. Never manufacture canonical values from insufficient legacy evidence (§28).
+
+### Current implementation pending migration
+
+The running code predates the approved contract. Until the Add Trade migration lands, it still:
+
+- derives `trader_outcome` from R with the ±0.05R band, or from P&L sign, enforced by `trades_status_consistency_check`;
+- computes Actual R as `net_pnl_minor / actual_initial_risk_minor`, or from Price-mode geometry (`actual_result_mode = 'price'`);
+- computes System R from planned price geometry or the Money-only Plan resolution kinds, and stores a Win/Loss/BE `system_outcome`;
+- offers a Money/Price basis switch in Add Trade and a Price actual result in After Trade;
+- derives a live close's `net_pnl_minor` from exit legs, and blocks a Complete-history exit conflict;
+- treats a closed Trade with no `review_notes` as not reviewed.
+
+Describe that behaviour accurately when working on it, and do not extend it as though it were approved. Replacing it requires an explicit migration/implementation task.
+
 ### Per-trade primitives
 
 Let `direction ∈ {long, short}`.
@@ -174,15 +207,17 @@ riskPerUnit(entry, initialStop) =
 ```
 netResult = grossPnL − commission − fees − swap                        [minor units]
 
-actualR   = net_pnl_minor / actual_initial_risk_minor   [current runtime V1 Money path]
+actualR   = net_pnl_minor / actual_initial_risk_minor   [current implementation; approved target: Final Net P&L / Risk at Entry]
 plannedR  = plannedRewardPerUnit / plannedRiskPerUnit
 ```
 
 **Monetary risk is stored, never reconstructed from price × size.** `Trade.actual_initial_risk_minor` and `Trade.net_pnl_minor` (both `BIGINT` account-currency minor units) are the **authoritative** monetary inputs to Actual R. `riskPerUnit × positionSize × contractMultiplier` is **not** a valid substitute and must not be implemented: it does not hold across Forex, gold, crypto and indices, especially when the account currency differs from the quote currency — a pip value in JPY-quoted pairs, a per-contract multiplier for an index future, and a crypto position sized in the base asset do not reduce to one multiplication safely. The execution forms accept these authoritative amounts directly (registry-aware exact money parsing, or explicit raw minor units for an unknown currency); neither React nor the service derives them from price and quantity. `Trade.actual_entry`/`actual_exit`/`actual_position_size` remain informational `NUMERIC(20,10)` primitives, not R inputs. Locked in Phase 08; see `docs/calculation-spec.md` §_Initial risk amount — Actual is stored, not derived_.
 
-**Phase 13E Journal V2 runtime:** Actual Result has an explicit persisted mode. Price mode derives `Actual R = SUM((closed_bps / 10000) × direction-aware leg R)` from actual entry, actual initial stop, and Exit prices without requiring or fabricating monetary risk/P&L. Money mode derives `Actual R = SUM(realized_pnl_minor) / actual_initial_risk_minor`, without weighting each already-realized P&L leg by closed fraction again. When both complete representations exist, Money is authoritative for Trader Performance and Price remains diagnostic context; no strict equality invariant is permitted. See `docs/phases/PHASE-13-journal-v2.md` §§3–4.
+**Phase 13E Journal V2 runtime (current implementation pending migration — the approved Add Trade contract does not permit Price-derived results for new canonical values):** Actual Result has an explicit persisted mode. Price mode derives `Actual R = SUM((closed_bps / 10000) × direction-aware leg R)` from actual entry, actual initial stop, and Exit prices without requiring or fabricating monetary risk/P&L. Money mode derives `Actual R = SUM(realized_pnl_minor) / actual_initial_risk_minor`, without weighting each already-realized P&L leg by closed fraction again. When both complete representations exist, Money is authoritative for Trader Performance and Price remains diagnostic context; no strict equality invariant is permitted. See `docs/phases/PHASE-13-journal-v2.md` §§3–4.
 
-### System vs actual use different denominators — deliberately
+### System vs actual denominators — current implementation (superseded)
+
+**Superseded by the approved Add Trade contract:** canonical System R and Actual R both divide by Risk at Entry, and a trader who takes more or less risk than intended is measured by Actual Risk as Risk Discipline. The bullets below describe the current implementation so it can be understood and migrated; they are not a reason to resist the approved migration.
 
 - **System R** uses direction-aware `plannedEntry`/`plannedStop` geometry whenever that complete Price plan exists. For a Money-only Plan, Phase 13F resolves the counterfactual gross R as Target (`plannedRewardMinor / plannedRiskMinor`), Stop (`-1R`), Break Even (`0R`), or explicit Custom gross R, then subtracts `systemCostR`. It never reads Actual execution or `trade_exits`. It answers "what did the strategy offer?"
 - **Actual R** is computed from the authoritative source selected by `actual_result_mode`: Price geometry or realized Money. It answers "what did the trader take?"
@@ -191,13 +226,15 @@ Both are expressed in R, which is precisely what makes them comparable even when
 
 ### Break-even
 
-Never compare to zero with `==`. Break-even is an explicit, tolerance-banded classification:
+Never compare R to zero with `==`. In the **current implementation**, Trader and System outcomes are explicit, tolerance-banded classifications:
 
 ```
 |R| <= breakEvenToleranceR  ->  BREAK_EVEN
 ```
 
 `breakEvenToleranceR` is `BREAK_EVEN_TOLERANCE_R` (`'0.0500'`, `src/config/trade-calc.ts`) — **locked in Phase 07C as a global Calculation Engine Version 1 constant**, identical for every Workspace and every Trading Account, not per-workspace or per-trading-account configuration. A future engine version could introduce per-workspace/per-account tolerance as an explicit product decision; that would be a new `CALC_VERSION` and a new constant, not a mutation of this one.
+
+**Approved target:** the tolerance no longer classifies Trader Outcome, which the trader selects (Add Trade contract §12), and System results do not use Win / Loss / BE (§16). The classification above remains the current implementation until migration.
 
 ### Aggregates
 
@@ -211,6 +248,8 @@ maxDrawdownR  = max over t of (runningPeak(ΣR) − ΣR at t)
 ```
 
 Divide-by-zero, empty sets, and all-wins/all-losses cases return `null` with an explicit reason — never `NaN`, never `Infinity`, never a silent `0`.
+
+**Approved target:** classification-based aggregates read the trader-selected Trader Outcome and exclude Unanswered rather than counting it as a loss; R-based aggregates use canonical Risk-at-Entry R and exclude legacy R by default (Add Trade contract §25, §28). Today these aggregates read the current derived outcomes and stored R.
 
 ### Attribution metrics
 
@@ -264,7 +303,7 @@ Payments are a **mock flow** for the MVP, isolated behind a payment adapter so a
 
 ## 10. Working agreement
 
-**Before modifying code:** read this file → read the active phase document → inspect existing code and migrations → report the files likely to change. Do not rewrite unrelated code.
+**Before modifying code:** read this file → read the approved Product Contract for the domain, if one exists → read the active phase document → inspect existing code and migrations → report the files likely to change. Do not rewrite unrelated code.
 
 **After implementing:** format → lint → typecheck → unit tests → integration tests where relevant → production build. Then summarize changed files, document migrations, note unresolved risks, and make **one coherent commit** for the task.
 
@@ -299,7 +338,7 @@ Recorded here until validated. Each needs a decision before or during the phase 
 
 | #   | Assumption                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Decide by       |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| A1  | **Locked in Phase 07C** — break-even tolerance `0.0500R`, a **global Calculation Engine Version 1 constant** (`BREAK_EVEN_TOLERANCE_R`, `src/config/trade-calc.ts`), identical for every Workspace and Trading Account — not per-trading-account configuration, superseding this row's original provisional wording. `trading_accounts` carries no override column, and none is planned for this engine version.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Phase 07C ✓     |
+| A1  | **Locked in Phase 07C** — break-even tolerance `0.0500R`, a **global Calculation Engine Version 1 constant** (`BREAK_EVEN_TOLERANCE_R`, `src/config/trade-calc.ts`), identical for every Workspace and Trading Account — not per-trading-account configuration, superseding this row's original provisional wording. `trading_accounts` carries no override column, and none is planned for this engine version. **Superseded for Trader Outcome by the approved Add Trade contract (2026-09-14):** Trader Outcome is trader-selected; the constant still drives the current implementation until migration.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Phase 07C ✓     |
 | A2  | **Partially locked in Phase 07B/07D** — the general severity-weight framework (minor 0.15 / moderate 0.35 / severe 0.60, `src/config/mistakes.ts`'s `MISTAKE_SEVERITY_WEIGHTS`) exists as declared config, but is deliberately **not** applied to the nine seeded system mistake types: the source documents name the nine types but define no evidence-backed relative severity, so Phase 07 MVP seeds every one with a single neutral default (`severity = 'moderate'`, `weight = 1.0000`) instead of inventing unjustified differentiation. A Discipline Score formula built on either framework remains unapproved and unimplemented (see §6's null-result discipline and `docs/calculation-spec.md` §5).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Phase 07B/D ✓   |
 | A3  | **Locked in Phase 3C** — three monthly paid plans, gating exclusively on active trading-account count, with identical features and analytics: Starter (1 account, THB 149/USD 5), Trader (5 accounts, THB 299/USD 9), Professional (15 accounts, THB 499/USD 15). Every plan includes unlimited strategies, setups, trades, and trade history. Archived accounts do not count. Prices are tax-exclusive; VAT collection is disabled at launch because the business is not initially VAT registered. Superseded the Phase 01 provisional 1/3/10 starter/pro/elite draft. Registry: `src/config/plans.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Phase 3C ✓      |
 | A4  | **Locked in Phase 3C** — trial is 7 days, no card required, unlocks every feature, and grants exactly **1** active trading account — an explicit constant (`TRIAL_ACCOUNT_LIMIT`, `src/lib/entitlements/resolve.ts`), never derived from any paid plan's limit (not the highest, not Starter's, not `Math.max(...)`). Starts when workspace **onboarding completes** (`completeOnboarding`), not at first login — chosen so a trial is never consumed by an unverified account that never onboards, and so a trial-to-Starter conversion needs no account-count migration (both are exactly 1 account).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Phase 3C ✓      |
@@ -322,7 +361,7 @@ Recorded here until validated. Each needs a decision before or during the phase 
 
 ## Appendix A — Master instructions (verbatim)
 
-The original commissioning brief, preserved unaltered. Sections 1–11 above are the working elaboration of it; this appendix is the source of truth for intent.
+The original commissioning brief, preserved unaltered. Sections 1–11 above are the working elaboration of it; this appendix is the source of truth for intent, except where an approved Product Contract in `docs/product-contracts/` covers a domain. For Add Trade that contract supersedes the appendix — notably a trader-selected Trader Outcome instead of tolerance classification, a common Risk-at-Entry baseline for Actual R and System R, and Win / Loss / BE reserved for Trader Outcome.
 
 ---
 

@@ -2,6 +2,13 @@
 
 **Depends on:** 08, 09, 13 · **Blocks:** —
 
+> **Superseded Add Trade semantics:** this phase's Quick Capture minimum (Account + Symbol +
+> Direction), Open requiring a Price or Money actual basis, and "Reviews Pending" defined as
+> `review_notes IS NULL` are historical. The approved product source of truth is
+> [`docs/product-contracts/add-trade.md`](../product-contracts/add-trade.md) (v1, 2026-09-14):
+> Save Open Trade also requires Risk at Entry, and Review completion is an explicit state. The
+> implementation history below remains accurate.
+
 **Status:** 14A (read-only audit), 14B (persistence/domain foundation), 14C (customer-facing Independent Journal UX), 14C.1 (Quick Capture Persistence Completion), 14D (Trading Calendar + Trade Log), and 14E (Open/Close-Only Trade Flow) are all **complete**. Founder acceptance is **not yet obtained**.
 
 ---
