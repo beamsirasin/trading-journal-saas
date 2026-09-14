@@ -1,0 +1,986 @@
+# TradeChemist — Add Trade Product Contract v1
+
+> **Status:** Proposed product source of truth (v1). Review decisions 1–11 resolved 2026-09-14 —
+> see [Decision log](#decision-log). Not yet implemented.
+
+## 1. Product model
+
+TradeChemist มีเส้นทางบันทึก Trade หลักสองแบบ:
+
+**At Entry**
+ใช้เมื่อ Trade ยังเปิดอยู่ ผู้ใช้บันทึกข้อมูลที่รู้และสังเกตได้ในช่วงเข้า Trade
+
+**After Trade**
+ใช้เมื่อ Trade ปิดไปแล้ว ผู้ใช้บันทึกย้อนหลังเท่าที่จำได้หรือทราบ
+
+ทั้งสองเส้นทางสร้าง Trade model เดียวกัน ต่างกันที่ timing, completeness และ provenance ของข้อมูล
+
+ไม่มี Plan mode หรือ Price-result mode แยกต่างหาก
+
+---
+
+# 2. Core principle
+
+TradeChemist ต้อง:
+
+**Capture simple → preserve truth → analyze deeply later**
+
+ระบบต้องไม่สร้างความแน่นอนจากข้อมูลที่ผู้ใช้ไม่ได้ให้
+
+ดังนั้น:
+
+Unanswered ≠ Unknown ≠ None ≠ Zero ≠ Negative answer
+
+และข้อมูลที่ผู้ใช้กรอกแล้วต้องมี persistence behavior ที่ชัดเจน
+
+---
+
+# 3. Money and Price
+
+## Money
+
+Money เป็น source of truth สำหรับผลลัพธ์ทางการเงิน
+
+ใช้กับ:
+
+- Final Net P&L
+- Risk
+- Actual R
+- System R
+- monetary analytics
+
+Money เป็น input ที่แนะนำสำหรับ System Result แต่ System R อาจมาจาก direct R input ได้ (ดู §15)
+
+## Price
+
+Price เป็น optional execution context เท่านั้น เช่น:
+
+- Entry price
+- SL
+- TP
+- Exit price
+- Partial exit prices
+
+Price ไม่ใช้คำนวณ:
+
+- Final P&L
+- Actual R
+- System R
+- Win / Loss / BE
+
+ไม่มี Money/Price result-basis switch
+
+---
+
+# 4. Risk
+
+**Risk at Entry** (Intended Risk)
+ความเสี่ยงที่ trader ตั้งใจรับตอนเข้า Trade และเป็น primary **1R baseline**
+
+Primary comparison metrics ทั้งสองใช้ denominator เดียวกัน:
+
+- `System R = System Result / Risk at Entry`
+- `Actual R = Actual Result / Risk at Entry`
+
+ถ้า Risk at Entry unknown: Actual R และ System R ที่ต้อง derive จาก Money เป็น unavailable แม้จะทราบ Actual Risk
+
+**Actual Risk** — optional
+ความเสี่ยงทางการเงินจริงของ position เมื่อ execution ทำให้ต่างจาก Risk at Entry
+
+Actual Risk **ไม่** เปลี่ยนนิยามของ Actual R ใช้สำหรับ Risk Discipline / Risk Deviation analytics
+
+UX ต้องไม่บังคับให้กรอกสองค่าทุกครั้ง
+
+กรณีทั่วไปควรเรียบง่าย เช่น:
+
+Risk at Entry = $50
+
+แล้วเปิด progressive action เช่น:
+
+Actual risk differed
+
+เพื่อบันทึก Actual Risk เฉพาะเมื่อจำเป็น
+
+## Actual Risk at Entry
+
+การไม่เปิด `Actual risk differed` หมายถึง trader ยืนยันว่า actual risk ตรงกับ Risk at Entry ที่บันทึก
+
+interaction ต้องสื่อความหมายนี้อย่างซื่อสัตย์ ห้ามเป็น hidden server inference
+
+## Actual Risk in After Trade
+
+ใช้ semantics เดียวกัน:
+
+- actual risk ตรงกับ Risk at Entry
+- ทราบว่าต่าง → บันทึก Actual Risk
+- ไม่ทราบ → Actual Risk เป็น Unknown
+
+Risk deviation เป็นข้อมูลสำหรับ Risk Discipline analytics แต่ไม่ควรทำให้ Add Trade ซับซ้อน
+
+Report หลักยังคงเน้น System R vs Actual R ส่วน Risk Deviation เป็น secondary insight
+
+---
+
+# 5. Target and Exit Plan
+
+Target และ Exit Plan เป็นคนละ concept
+
+**Target = objective**
+
+**Exit Plan = rule**
+
+ผู้ใช้อาจมี:
+
+- Fixed Target + Exit Plan
+- Fixed Target โดยไม่มี Exit Plan เพิ่ม
+- No Fixed Target + Exit Plan
+- No Fixed Target + No Defined Exit Rule
+- Target/Exit Plan ยังไม่ได้บันทึก
+
+`No Fixed Target` ไม่ได้หมายถึง `No Exit Plan`
+
+## Target states
+
+- Unanswered
+- Fixed Target
+- No Fixed Target
+
+**Fixed Target** คือ objective ที่กำหนดไว้ล่วงหน้า ไม่จำเป็นต้องมีจำนวนเงิน อาจประกอบด้วย:
+
+- monetary Target Profit
+- TP price
+- หรือทั้งสองอย่าง
+
+TP price เป็น execution/context data เท่านั้น และห้ามใช้คำนวณ System Result
+
+ถ้าบันทึกไว้แค่ TP price และภายหลัง trader ยืนยันว่า target ถูกชน System Assessment ต้องขอ System Result เป็น Money หรือ R จาก trader
+
+## Exit Plan states
+
+- Not recorded
+- Saved Exit Plan
+- Customized for this trade
+- No Defined Exit Rule
+
+Exit Plan สามารถมาจาก library และ Strategy default ได้
+
+After Trade ห้าม apply Strategy default หรือ Exit Plan default ของปัจจุบันให้ historical trade โดยอัตโนมัติ trader เลือก saved rule ปัจจุบันเองได้ แต่ต้องถูกบันทึกว่า recalled/selected ระหว่าง reconstruction
+
+เมื่อ Trade ใช้ Exit Plan ระบบต้องเก็บ snapshot ของ rule ณ เวลานั้น ไม่ใช่ pointer ที่เปลี่ยนตาม library ในอนาคต
+
+---
+
+# 6. At Entry
+
+At Entry มีหน้าที่บันทึกสถานการณ์ตอนเข้า Trade โดยไม่ทำให้ workflow การเทรดหนักเกินไป
+
+Core information:
+
+- Account
+- Symbol
+- Direction
+- Entry time
+- Risk at Entry
+- Fixed Target / No Fixed Target
+- Exit Plan
+- Save Open Trade
+
+Core Analytical Data:
+
+- Strategy
+- Setup
+- Setup conditions
+- Confidence
+- Entry emotions
+
+Optional contextual data:
+
+- Trade idea / reason
+- timeframe
+- session
+- notes
+- chart
+- price levels
+- size
+
+Strategy/Psychology/Discipline data สามารถ optional สำหรับการ Save แต่ไม่ถือเป็นข้อมูลที่ไม่มีความสำคัญ เพราะเป็น input หลักของ analytics
+
+At Entry ไม่ควรมี:
+
+- Final P&L
+- Trader Outcome
+- System Result
+- System Assessment
+- Review
+
+---
+
+# 7. Strategy and Setup
+
+Strategy states:
+
+- Unanswered
+- No Strategy
+- Selected Strategy
+
+Setup states:
+
+- Unanswered
+- No Setup
+- Selected Setup
+
+`Unanswered` ห้าม collapse เป็น `No Strategy` หรือ `No Setup`
+
+Strategy/Setup Performance ใช้เฉพาะข้อมูลที่มี semantic ชัดเจน
+
+Strategy และ Setup สามารถมี conditions/rules ที่โหลดมาให้ user ตอบตอน Capture
+
+rule ที่ใช้กับ Trade ควรสะท้อน version ณ เวลานั้น ไม่ใช่ถูก rewrite ตาม Strategy ที่แก้ในอนาคต
+
+After Trade ห้ามใช้ Strategy default ปัจจุบันโดยอัตโนมัติ และห้ามอ้างว่าเป็น historical Strategy/rule version เว้นแต่ระบบพิสูจน์ได้จริงว่า version นั้นมีอยู่ ณ เวลาเข้า Trade
+
+---
+
+# 8. Setup Conditions and Entry Discipline
+
+At Entry condition:
+
+- Met
+- Not Met
+- Unanswered
+
+After Trade สามารถเพิ่ม:
+
+- Unknown / Don't remember
+
+Unanswered หรือ Unknown ห้ามถูกนับเป็น Not Met
+
+ระบบต้องไม่คำนวณ Discipline Performance โดยถือ missing observation เป็น failure
+
+Entry Discipline แยกจาก Exit Discipline
+
+---
+
+# 9. Psychology
+
+Psychology เป็น observation ที่มี phase ไม่ใช่ property เดียวของ Trade
+
+## At Entry
+
+สามารถเก็บ:
+
+- Confidence
+- Entry Emotion
+
+Confidence ไม่มี default value
+
+เช่น:
+
+null = unanswered  
+0 / 25 / 50 / 75 / 100 = user เลือกจริง
+
+Emotion ต้องแยก:
+
+- unanswered
+- None of these
+- selected emotion(s)
+
+## Provenance
+
+Psychology provenance อิงจาก **เวลาที่ observation ถูก capture จริง** ไม่ใช่เส้นทางที่สร้าง Trade
+
+entry psychology ที่ถูก capture ภายหลังช่วงเข้า Trade (ทั้งใน After Trade และเมื่อเพิ่มเข้าไปภายหลังใน Trade ที่สร้างจาก At Entry) ต้องมี provenance ว่า:
+
+**Recalled after trade**
+
+ห้ามถูก label ว่า Recorded at Entry
+
+## Post-Trade Emotion
+
+บันทึกได้ระหว่าง:
+
+- Final Close
+- After Trade
+- Review
+
+Post-Trade Emotion ต้องแยกจาก Entry Emotion และห้าม overwrite Entry Emotion
+
+Review interpretation ห้าม rewrite original observation แบบเงียบ ๆ
+
+---
+
+# 10. Partial Close and Exit Events
+
+แต่ละ exit event รองรับ:
+
+- Part / All Remaining (ดู Scope rules)
+- P&L for this exit — optional
+- % of original position — optional
+- Exit time — optional
+- Exit price — optional
+- Exit reason — optional
+
+`All Remaining` ปิด position แม้ percentage ของ exits ก่อนหน้าไม่สมบูรณ์
+
+P&L ของ exit ไม่ถูกคูณด้วย percentage ซ้ำ
+
+Reason-only exit เป็น valid observation ใน After Trade reconstruction
+
+Missing price, time หรือ percentage ไม่ทำให้ exit invalid
+
+## Scope rules
+
+**Live existing trade / Record Exit:**
+scope ต้องเป็น `Part` หรือ `All Remaining` เพราะมีผลต่อ lifecycle
+
+**After Trade reconstruction:**
+
+- scope อาจเป็น Unknown / Unanswered
+- reason-only exit observation เป็น valid
+- exit ที่ไม่ทราบ scope ห้ามถูกใช้ derive remaining-position lifecycle
+
+---
+
+# 11. Final Close
+
+Trade ที่เริ่มจาก At Entry สามารถ:
+
+Open → Partially Closed → Closed
+
+Partial Close ยังไม่มี Final Net P&L ของทั้ง Trade
+
+เมื่อ position ปิดทั้งหมด:
+
+- Final Net P&L
+- Trader Outcome
+- exit-history completeness
+
+จึงสามารถถูกบันทึกได้
+
+## Final Net P&L
+
+Final Net P&L เป็น authoritative monetary result ของ Closed Trade
+
+Exit subtotal เป็น supporting history
+
+ถ้า evidence ครบ (exit history ถูกระบุว่า Complete และทุก exit ที่เกี่ยวข้องมี P&L) ระบบสามารถเสนอ:
+
+Use recorded exits as final result
+
+แต่การ adopt ต้อง explicit
+
+**Discrepancy** มีได้เฉพาะเมื่อครบทุกข้อ:
+
+- exit history ถูกระบุอย่าง explicit ว่า Complete
+- ทุก exit ที่เกี่ยวข้องมี P&L
+- recorded exit subtotal ต่างจาก Final Net P&L
+
+Discrepancy ไม่ block การ Save หรือ Close ทั้งสองค่าถูกเก็บและแสดง และ Final Net P&L ยังคงเป็น authoritative
+
+ถ้า exit history เป็น Incomplete, Unknown หรือ Unanswered ความต่างนั้นห้ามถูกเรียกว่า discrepancy
+
+ห้าม overwrite อย่างใดอย่างหนึ่งเงียบ ๆ
+
+Incomplete exit history ไม่ block การปิด Trade
+
+---
+
+# 12. Trader Outcome
+
+Trader Outcome เป็น classification ที่ผู้ใช้เลือกเอง:
+
+- Win
+- Break-even (BE)
+- Loss
+- Unanswered
+
+Trader Outcome ไม่ derive จากเครื่องหมายของ P&L
+
+ตัวอย่าง valid:
+
+Actual P&L = +$10  
+Actual R = +0.2R  
+Trader Outcome = BE
+
+เพราะ trader อาจมอง trade นี้เป็น scratch/breakeven ตามระบบของตัวเอง
+
+P&L, R และ Trader Outcome เป็นข้อมูลคนละ semantic
+
+BE อยู่คู่กับ P&L ที่เป็นบวกหรือลบได้ตาม classification ของ trader
+
+ถ้า trader เลือก:
+
+- Win คู่กับ Final Net P&L ติดลบ หรือ
+- Loss คู่กับ Final Net P&L เป็นบวก
+
+ให้อนุญาต แต่แสดง notice แบบเงียบ ๆ ที่ไม่ block เพื่อให้เห็น input ที่อาจผิด ห้าม auto-correct และห้าม block Save
+
+Analytics ต้องแยก Trader Outcome ออกจาก objective Net P&L และ R metrics
+
+---
+
+# 13. After Trade
+
+After Trade มีหน้าที่บันทึก Trade ที่ปิดไปแล้ว โดยยอมรับว่าข้อมูลบางอย่างอาจไม่ทราบ
+
+Core identity:
+
+- Account
+- Symbol
+- Direction
+
+Optional timing:
+
+- Entry time
+- Final exit time
+
+Risk / exit intention:
+
+- Risk at Entry (Intended Risk — 1R baseline)
+- Actual Risk: ตรงกับ Risk at Entry / ต่าง (บันทึกค่า) / Unknown — ดู §4
+- Fixed Target / No Fixed Target
+- Exit Plan
+
+Actual Result:
+
+- Final Net P&L
+- Trader Outcome
+- Actual R when sufficient data exists
+
+Exit history:
+
+- exit events
+- completeness:
+  - Complete
+  - Incomplete
+  - Unknown
+  - Unanswered
+
+Analytical context:
+
+- Strategy
+- Setup
+- Conditions
+- Recalled Confidence
+- Recalled Entry Emotion
+- Post-Trade Emotion
+- Trade idea/context
+
+ข้อมูลที่ user กรอกใน Capture flow ต้อง persist เมื่อ Save Closed Trade
+
+Strategy / Exit Plan default ของปัจจุบันห้ามถูก apply อัตโนมัติ (ดู §5, §7)
+
+Exit event scope อาจเป็น Unknown / Unanswered (ดู §10)
+
+Reflection และ System Assessment ไม่ใช่ requirement ของ Save Closed Trade
+
+---
+
+# 14. System Assessment
+
+System Assessment เป็น Review activity
+
+ไม่ block การ Save หรือ Close Trade แต่ status ต้อง visible
+
+Status อย่างน้อย:
+
+- Not Assessed
+- Assessed
+- Needs Review
+- Cannot Determine
+- No Trade
+
+Not Assessed เป็น soft attention state
+
+Needs Review เป็น stronger attention state และเกิดได้เฉพาะกับ System Assessment ที่ยืนยันแล้ว เมื่อ dependency จริงของมันเปลี่ยน (ดู §22)
+
+Cannot Determine และ No Trade ถือว่า assessment ได้รับคำตอบแล้ว ไม่ควรถูกเตือนว่า incomplete
+
+---
+
+# 15. System Assessment flow
+
+System Assessment ต้องตอบ:
+
+1. Would your rules have taken this trade?
+2. ถ้า Yes — What should have closed it?
+3. What result would following the rule have produced? — Money (แนะนำ) หรือ R
+4. System R
+5. Were these rules actually in place before entry?
+6. Did the trader follow them? — ใช้ canonical **Exit Plan Adherence** field เดียว (ดู §18)
+7. ถ้า deviated — how and why?
+
+System Result ต้องมาจากสิ่งที่ผู้ใช้ยืนยัน ไม่ใช่ระบบเดาจาก actual result หรือ Price
+
+System exit mechanism สามารถเป็น:
+
+- Fixed Target
+- Initial SL
+- Break-even rule
+- Trailing exit
+- Time/session exit
+- Another predefined exit rule
+- Discretionary judgement explicitly allowed by the system
+
+Dynamic Exit Plan เช่น trend-line break ให้ผู้ใช้บอก monetary result (หรือ R) ที่ rule นั้นควรได้
+
+## System result evidence
+
+- monetary result → derive `System R = System Money / Risk at Entry`
+- direct R → System R เป็น known และ System Money อาจยังเป็น Unknown
+
+Price ห้ามใช้คำนวณ System Result หรือ System R
+
+ถ้า Fixed Target มีแค่ TP price และ trader ยืนยันว่า target ถูกชน ต้องขอ System Result เป็น Money หรือ R จาก trader
+
+## Comparability
+
+System result ต้องเก็บว่าเปรียบเทียบกับ Actual ได้หรือไม่:
+
+- net / comparable
+- gross only เพราะไม่ทราบ costs
+
+Gross-only System result ห้ามสร้าง System-vs-Actual Difference ราวกับว่าเปรียบเทียบกันได้โดยตรง
+
+---
+
+# 16. System Result
+
+System side ไม่ใช้ Trader Outcome terminology
+
+System Result แสดงด้วย:
+
+- Money
+- R
+- No Trade
+- Cannot Determine
+
+อาจมี Positive / Flat / Negative เป็น display helper แต่ไม่เรียก Win/Loss/BE
+
+Win/Loss/BE สงวนไว้สำหรับ Trader Outcome
+
+---
+
+# 17. System vs Trader
+
+Report หลักควรยังเน้น:
+
+- System R
+- Actual R
+- Difference / Execution Impact
+
+ไม่ควรแสดง R หลายแบบจน user สับสน
+
+Difference คำนวณเฉพาะเมื่อ System result เป็น net/comparable และทั้ง System R และ Actual R ใช้ Risk at Entry เป็น denominator เดียวกัน
+
+Risk discipline เช่น Intended Risk vs Actual Risk เป็น secondary insight
+
+ตัวเลขภายในเพิ่มเติมสามารถใช้สำหรับ analytics โดยไม่จำเป็นต้องแสดงทั้งหมดใน UI
+
+---
+
+# 18. Exit Plan Adherence
+
+Exit Plan Adherence เป็นแกนแยกจาก System Result และมี **canonical stored answer เดียว**:
+
+- Followed
+- Partly
+- Not Followed
+- Not Answered
+
+แสดงได้ทั้งใน Discipline และ System Assessment แต่ห้ามเก็บเป็นคำตอบซ้ำสองชุด
+
+Entry Discipline และ Risk Discipline เป็นแกนแยกต่างหาก
+
+การไม่ทำตาม Exit Plan ไม่ได้แปลว่า execution แย่โดยอัตโนมัติ
+
+ถ้า deviated ระบบสามารถบันทึกเพิ่มเติม:
+
+Deviation Type เช่น:
+
+- Early exit
+- Late exit
+- Different exit
+- Other
+
+และ Deviation Reason เช่น:
+
+- Emotion
+- Discretionary decision
+- Risk management
+- Execution mistake
+- External reason
+- Other
+
+Exact taxonomy ต้องผ่าน UX/prototype validation อีกครั้ง
+
+Deviation Type / Reason ยังเป็น product concept แต่ taxonomy เป็น provisional และห้าม freeze เป็น rigid database enum ก่อน UX validation
+
+---
+
+# 19. Execution Impact
+
+System Result กับ Trader Result ต้องสามารถใช้วิเคราะห์ผลของ execution ได้
+
+ตัวอย่าง:
+
+System R = +1.0R  
+Actual R = +0.6R  
+Difference = -0.4R
+
+TradeChemist สามารถวิเคราะห์ได้ว่า deviation ทำให้ผลดีขึ้นหรือแย่ลง
+
+Adherence กับ Execution Impact เป็นคนละ metric
+
+ตัวอย่าง:
+
+Not Followed + Positive Impact
+
+เป็น valid state
+
+เพราะ discretionary action อาจช่วยผลลัพธ์จริง
+
+Analytics จึงสามารถแยก:
+
+- Fear-driven early exits
+- Discretionary overrides
+- Late exits
+- Risk-management overrides
+
+และดู average impact ของแต่ละ behavior ได้
+
+---
+
+# 20. Review lifecycle
+
+Trade lifecycle กับ Review lifecycle เป็นคนละแกน
+
+Trade lifecycle:
+
+- Open
+- Partially Closed
+- Closed
+- Canceled
+
+Review lifecycle:
+
+- Not Reviewed
+- Reviewed
+
+`Needs Review` เป็น status ของ System Assessment เท่านั้น (ดู §14, §22)
+
+Closed Trade ไม่ได้แปลว่า Reviewed
+
+หลัง:
+
+- Save Closed Trade
+- Final Close / Close Remaining ที่ปิด existing trade
+
+แสดง:
+
+Trade Saved
+
+ผู้ใช้สามารถเลือก:
+
+- Review Trade
+- Done
+
+ห้ามเสนอ Review หลัง Save Open Trade
+
+Review ไม่บังคับ
+
+แต่ Not Reviewed และ Not Assessed สามารถมี soft attention indicator ได้
+
+---
+
+# 21. Review responsibilities
+
+Review แบ่ง conceptually เป็น:
+
+## Reflection
+
+- What happened?
+- What would you repeat?
+- What would you change?
+
+`Reviewed — nothing else to add` เป็น valid completion
+
+## Discipline / Behavior
+
+- Entry Discipline
+- Risk Discipline
+- Exit Plan Adherence
+- Deviation Type
+- Deviation Reason
+- Mistakes
+
+## System Assessment
+
+- system eligibility
+- exit rule
+- system result
+- system R
+- provenance
+- Exit Plan Adherence (field เดียวกับใน Discipline / Behavior)
+- System vs Actual comparison
+
+ไม่มี completion percentage
+
+ไม่มี requirement ว่าต้องมี note / mistake / Strategy / System Assessment จึงถือว่า Reviewed
+
+Reviewed เป็น explicit user action
+
+---
+
+# 22. Needs Review
+
+ข้อมูลที่เคยยืนยันแล้วต้องไม่ถูก rewrite เงียบ ๆ เมื่อ dependencies เปลี่ยน
+
+`Needs Review` เกิดได้เฉพาะกับ **System Assessment ที่ยืนยันแล้ว** เมื่อ dependency จริงของมันเปลี่ยน เช่น:
+
+- Strategy changed
+- Setup changed
+- Exit Plan changed
+- Risk at Entry changed
+- Target changed
+
+เฉพาะ dependency ที่ assessment นั้นใช้จริงเท่านั้นที่ทำให้ stale ไม่ใช่แก้อะไรก็ invalidate ทุกอย่าง
+
+**Final Net P&L ไม่ใช่ dependency ของ System Result** ถ้า Final Net P&L เปลี่ยน ให้ recompute Actual R / Difference ตามที่เกี่ยวข้อง ห้ามทำให้ System Assessment stale เพียงเพราะ Actual เปลี่ยน
+
+Reflection ไม่ถูก invalidate อัตโนมัติ
+
+---
+
+# 23. Draft lifecycle
+
+Recording Draft เป็นคนละสิ่งกับ persisted Trade
+
+หลัก:
+
+**Type → Draft**
+
+**Save → Persist**
+
+**Discard → Destroy**
+
+Nested editors เป็น view ของ Draft เดียวกัน
+
+Done:
+เก็บ changes แล้วปิด editor
+
+X / Escape / outside dismissal:
+เก็บ changes แล้วปิด editor
+
+Discard Changes:
+explicitly restore editor checkpoint
+
+Back / Close:
+navigate โดย Draft ยังอยู่
+
+Reload:
+Draft ต้อง recover ได้ใน browser/device เดิม
+
+Change At Entry / After Trade:
+Draft เดิมห้ามถูกทำลายเงียบ ๆ
+
+Cross-device draft sync ยังไม่ใช่ requirement
+
+Save failure ต้องรักษา Draft
+
+Save retry ต้องไม่สร้าง duplicate Trade
+
+---
+
+# 24. Global state semantics
+
+TradeChemist ต้องรักษาความต่างระหว่าง:
+
+- Unanswered
+- Unknown
+- None
+- Known Zero
+- Known Value
+- Negative answer
+
+ตัวอย่าง:
+
+ไม่ได้เลือก Strategy ≠ No Strategy
+
+ไม่ได้ตอบ condition ≠ Not Met
+
+Target blank ≠ No Fixed Target
+
+Emotion unanswered ≠ None of these
+
+Unknown Risk ≠ $0 Risk
+
+P&L unknown ≠ Break-even
+
+Actual risk ยืนยันว่าตรง ≠ Actual Risk unknown
+
+Exit scope unknown ≠ Part ≠ All Remaining
+
+System result gross-only ≠ net/comparable
+
+---
+
+# 25. Analytics principles
+
+## Trader Performance
+
+ใช้:
+
+- Final Net P&L
+- Actual R
+- Trader Outcome
+
+Trader Outcome แยกจาก objective Net P&L / R metrics
+
+## System Performance
+
+ใช้:
+
+- System Result
+- System R
+- No Trade
+- Cannot Determine
+
+## Strategy Performance
+
+ใช้:
+
+- Strategy
+- Setup
+- relevant result metrics
+
+## Discipline Performance
+
+แยกอย่างน้อย:
+
+- Entry Discipline
+- Exit Discipline
+- Risk Discipline (Actual Risk เทียบกับ Risk at Entry)
+
+ไม่ควรยุบทุกอย่างเป็น Discipline score เดียวโดยอัตโนมัติ
+
+## Psychology Performance
+
+ใช้:
+
+- Confidence
+- Emotions
+- observation phase/provenance
+
+## Data coverage
+
+Missing analytical data ต้องถูก exclude หรือแสดง coverage อย่างซื่อสัตย์
+
+TradeChemist ต้องไม่แสดง insight ที่ดูแม่นเกิน evidence ที่มี
+
+Correlation ต้องไม่ถูกเขียนเป็น causation
+
+---
+
+# 26. Language and terminology
+
+TradeChemist ไม่ต้องแปล trading terminology ทุกคำ
+
+ศัพท์ที่ trader คุ้นอยู่แล้วควรเก็บ เช่น:
+
+- TP
+- SL
+- P&L
+- R
+- Win / Loss / BE
+- Long / Short
+- Entry / Exit
+- Partial Close
+- Risk
+- Strategy
+- Setup
+
+สามารถใช้ศัพท์คู่กับคำอธิบาย เช่น:
+
+Target Profit (TP)
+
+Stop Loss (SL)
+
+Net P&L — กำไร/ขาดทุนสุทธิของทั้ง Trade
+
+Product-specific concepts เช่น:
+
+- System Result
+- Actual Result
+- Exit Plan
+- Execution Impact
+- Risk Deviation
+- Needs Review
+
+ควรใช้ภาษาที่เข้าใจง่ายและมี helper text เมื่อจำเป็น
+
+Internal technical terms เช่น:
+
+- provenance
+- calculation authority
+- reconciliation state
+- dependency snapshot
+- persistence semantics
+
+ไม่ควรถูก expose ให้ user
+
+หลัก localization:
+
+**Preserve familiar trading vocabulary. Localize for comprehension, not literal translation.**
+
+---
+
+# 27. UX principle
+
+ผู้ใช้ไม่ควรต้องเข้าใจ complexity ของ data model
+
+Mental model ที่ต้องการคือ:
+
+## ตอนเข้า
+
+What am I doing and why?
+
+## ตอนปิด
+
+What actually happened?
+
+## ตอน Review
+
+What should have happened, and what can I learn?
+
+TradeChemist รับผิดชอบ complexity ที่เหลือหลังบ้าน
+
+---
+
+# Decision log
+
+Resolved 2026-09-14 from the v1 proposal review (items 1–11):
+
+1. **Risk and R** — Risk at Entry is the 1R baseline for both System R and Actual R. Actual Risk is
+   optional Risk Discipline data and never redefines Actual R. Not opening "Actual risk differed"
+   is an honest, visible affirmation; After Trade keeps unknown distinct. (§4)
+2. **Adherence** — one canonical Exit Plan Adherence answer, shown in Discipline and System
+   Assessment; Deviation Type / Reason taxonomy stays provisional. (§18, §21)
+3. **Strategy defaults in After Trade** — never auto-applied; explicit selection is recorded as
+   recalled/selected during reconstruction; no unproven historical version claims. (§5, §7, §13)
+4. **System Result and costs** — Money preferred, direct R allowed, Price never; results keep
+   net/comparable vs gross-only, and gross-only produces no Difference. (§3, §15, §17)
+5. **Fixed Target** — may hold monetary Target Profit, TP price, or both; TP price never
+   calculates a System Result. (§5)
+6. **Needs Review** — Review lifecycle is Not Reviewed / Reviewed; only a confirmed System
+   Assessment becomes Needs Review; Final Net P&L is not a System dependency. (§14, §20, §22)
+7. **Review after Save** — offered after Save Closed Trade and a closing Final Close / Close
+   Remaining; never after Save Open Trade. (§20)
+8. **Exit subtotal discrepancy** — only for an explicitly Complete, fully priced exit history that
+   differs from Final Net P&L; non-blocking. (§11)
+9. **Exit scope** — required for live exits; may be Unknown / Unanswered in After Trade
+   reconstruction and then never drives lifecycle. (§10)
+10. **Trader Outcome vs P&L** — user-classified; sign-contradicting choices are allowed with a
+    quiet non-blocking notice. (§12, §25)
+11. **Psychology provenance** — follows actual capture time; Post-Trade Emotion may be recorded at
+    Final Close, After Trade or Review. (§9)
