@@ -1,7 +1,8 @@
 # TradeChemist — Add Trade Product Contract v1
 
-> **Status:** Proposed product source of truth (v1). Review decisions 1–11 and final decisions
-> 12–18 resolved 2026-09-14 — see [Decision log](#decision-log). Not yet implemented.
+> **Status:** Proposed product source of truth (v1). Review decisions 1–11, final decisions 12–18
+> and closing decisions 19–21 resolved 2026-09-14 — see [Decision log](#decision-log). Not yet
+> implemented.
 
 ## 1. Product model
 
@@ -82,7 +83,7 @@ Primary comparison metrics ทั้งสองใช้ denominator เดี�
 - `System R = System Result / Risk at Entry`
 - `Actual R = Actual Result / Risk at Entry`
 
-ถ้า Risk at Entry unknown: Actual R และ System R ที่ต้อง derive จาก Money เป็น unavailable แม้จะทราบ Actual Risk (ยกเว้น legacy 1R baseline — ดู §28)
+ถ้า Risk at Entry unknown: Actual R และ System R ที่ต้อง derive จาก Money เป็น unavailable แม้จะทราบ Actual Risk (legacy 1R baseline ให้ legacy R สำหรับ historical record เท่านั้น ไม่ใช่ canonical R — ดู §28)
 
 **Actual Risk** — optional
 ความเสี่ยงทางการเงินจริงของ position เมื่อ execution ทำให้ต่างจาก Risk at Entry
@@ -180,10 +181,14 @@ trader ต้องสามารถ:
 
 - customize
 - replace ด้วย Exit Plan อื่น
-- clear
+- ปฏิเสธ inherited plan
 - เลือก No Defined Exit Rule
 
-การ clear เป็น explicit choice จึงหยุดการ inherit และห้ามถูกแทนที่ด้วย Strategy default อีกโดยอัตโนมัติ
+**เมื่อ trader override inherited state อย่าง explicit แล้ว การ inherit จะถูก suppress สำหรับ Trade นั้นจนกว่าจะถูก restore อย่าง explicit**
+
+Strategy default เดิมห้ามปรากฏกลับมาเองทันทีหลังถูกปฏิเสธ การ restore ต้องเป็น explicit action เช่น `Use strategy default`
+
+UX ควรหลีกเลี่ยง label `Clear` แบบกว้าง ๆ เพราะความหมายกำกวม
 
 ## Strategy default ใน After Trade
 
@@ -338,15 +343,28 @@ Emotion ต้องแยก:
 
 Psychology provenance อิงจาก **เวลาที่ observation ถูก capture จริง** ไม่ใช่เส้นทางที่สร้าง Trade
 
-**Recorded at Entry** หมายถึง observation นั้นอยู่ใน snapshot ของ Save Open Trade ครั้งแรกที่สำเร็จ
+Provenance แยกเป็นสอง concept ที่ห้ามรวมกัน: **Observation origin** และ **Revision metadata**
 
-Psychology ที่ถูกเพิ่มหรือแก้ไขภายหลัง ห้ามกลายเป็น Recorded at Entry โดยเงียบ ๆ เพียงเพราะ Trade ยังเปิดอยู่ หรือเพราะ Trade ถูกสร้างจาก At Entry
+### Observation origin
 
-observation ที่เกิดภายหลังต้องเก็บ provenance ที่เหมาะสม เช่น:
+เวลาที่ observation ถูก capture ครั้งแรก อย่างน้อย:
 
-**Recalled after trade** / **Edited later**
+- `recorded_at_entry` — อยู่ใน snapshot ของ Save Open Trade ครั้งแรกที่สำเร็จ
+- `recorded_during_trade` — ถูก capture ครั้งแรกภายหลัง ขณะที่ Trade ยังเปิดอยู่
+- `recalled_after_trade` — entry-context information ที่ถูกให้ครั้งแรกหลัง Trade ปิดแล้ว
 
-entry psychology ที่บันทึกใน After Trade เป็น Recalled after trade
+Psychology ที่ถูกเพิ่มภายหลัง ห้ามกลายเป็น `recorded_at_entry` โดยเงียบ ๆ เพียงเพราะ Trade ยังเปิดอยู่ หรือเพราะ Trade ถูกสร้างจาก At Entry
+
+entry psychology ที่บันทึกใน After Trade เป็น `recalled_after_trade`
+
+### Revision metadata
+
+การแก้ไขภายหลังต้องรักษา observation origin เดิมไว้ และบันทึกแยกว่าถูกแก้ไขภายหลัง
+
+การแก้ไขห้าม rewrite origin เดิม เช่น:
+
+- Entry Emotion ที่อยู่ใน Save Open Trade ครั้งแรกยังเป็น `recorded_at_entry` แม้ trader แก้ไขภายหลัง
+- entry emotion ที่ให้ครั้งแรกหลัง Trade ปิด ยังเป็น `recalled_after_trade` แม้ถูกแก้ไขอีก
 
 ## Post-Trade Emotion
 
@@ -887,6 +905,12 @@ Actual risk ยืนยันว่าตรง ≠ Actual Risk unknown (Don't 
 
 Legacy-derived Trader Outcome ≠ Trader Outcome ที่ trader เลือกเอง
 
+Observation origin ≠ Revision metadata (`recorded_at_entry` ที่ถูกแก้ไขภายหลัง ≠ `recorded_during_trade`)
+
+Legacy R ≠ canonical R
+
+Inherited Exit Plan ≠ Exit Plan ที่ trader เลือกเอง ≠ inheritance ที่ถูก trader ปฏิเสธ
+
 Exit scope unknown ≠ Part ≠ All Remaining
 
 System result gross-only ≠ net/comparable
@@ -947,6 +971,8 @@ Missing analytical data ต้องถูก exclude หรือแสดง c
 TradeChemist ต้องไม่แสดง insight ที่ดูแม่นเกิน evidence ที่มี
 
 Correlation ต้องไม่ถูกเขียนเป็น causation
+
+Legacy R ที่ definition ไม่ตรงกับ contract นี้ต้องถูก exclude จาก canonical metrics โดย default (ดู §28)
 
 ---
 
@@ -1042,12 +1068,35 @@ TradeChemist รับผิดชอบ complexity ที่เหลือห�
 - ห้ามสร้าง Intended Risk ขึ้นมา
 - เก็บ risk เดิมเป็น **legacy 1R baseline** พร้อม provenance ว่ามาจาก historical Actual Risk
 - วิธีนี้อาจรักษา historical R ไว้ได้ โดยไม่อ้างว่าตัวเลขนั้นคือความตั้งใจของ trader
+- R ที่ได้เป็น legacy R ไม่ใช่ canonical R (ดู Legacy R analytics eligibility)
 
 ## Legacy Price-mode results
 
 - ห้ามแปลง Price-mode หรือ `price_exit` history เป็น Money data
 - เก็บเป็น legacy evidence/results พร้อม provenance ที่ชัดเจน
 - แสดงในประวัติได้ แต่ห้าม qualify เป็น Money-authoritative result ตาม contract ใหม่โดยเงียบ ๆ
+
+## Legacy R analytics eligibility
+
+เก็บ legacy R และ provenance ไว้ แต่ห้ามปนเข้า canonical R analytics ใหม่เมื่อ definition ไม่ตรงกับ contract นี้ ได้แก่:
+
+- legacy Actual R ที่ใช้ historical risk semantics
+- legacy System R ที่ใช้ denominator ต่างกัน
+- Price-mode / price-geometry R
+- `price_exit` System results
+
+ค่าเหล่านี้แสดงบน historical Trade record ได้พร้อม legacy provenance ที่ชัดเจน
+
+โดย default ต้อง exclude ออกจาก canonical metrics เช่น:
+
+- Average Actual R
+- canonical System vs Actual comparison
+- Execution Impact
+- analytics อื่นที่ต้องใช้ common Risk-at-Entry baseline ใหม่
+
+ห้ามสร้างหรือแปลงเป็น canonical value ใหม่ เว้นแต่ stored evidence เพียงพอจริงที่จะ reconstruct ภายใต้ contract นี้
+
+อาจเพิ่ม legacy analytics cohort ที่ label แยกได้ในอนาคต แต่ legacy และ canonical definition ห้ามถูกรวมกันโดยเงียบ ๆ
 
 ---
 
@@ -1098,3 +1147,18 @@ Final product decisions, 2026-09-14 (items 12–18):
     non-competing trade-level summary. (§8, §18)
 18. **Needs Review** — a staleness overlay on a confirmed finding that preserves the finding.
     (§14, §22)
+
+Closing product decisions, 2026-09-14 (items 19–21):
+
+19. **Legacy R analytics eligibility** — legacy Actual R, differently-denominated legacy System R,
+    Price-geometry R and `price_exit` results stay visible with legacy provenance but are excluded
+    by default from canonical R metrics, System vs Actual comparison and Execution Impact; nothing
+    is converted without sufficient evidence, and any legacy cohort is labelled separately. (§25,
+    §28)
+20. **Overriding an inherited Exit Plan** — an explicit override suppresses Strategy-default
+    inheritance for that Trade until an explicit restore such as "Use strategy default"; avoid a
+    generic "Clear" label. (§5)
+21. **Psychology provenance and later edits** — observation origin (`recorded_at_entry`,
+    `recorded_during_trade`, `recalled_after_trade`) is separate from revision metadata; an edit
+    never rewrites the original origin. Supersedes the "recalled/edited-later" wording of item 16.
+    (§9)
