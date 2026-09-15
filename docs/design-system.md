@@ -2,7 +2,7 @@
 
 **Status:** Phase 01.1. Tokens, typography, spacing, motion, charts and the component set used by the marketing site and application shell are implemented. Later phases add components when a phase needs them, not before.
 
-> **Authority:** this document controls **visual expression** only — the `DESIGN.md` / visual-system level until a dedicated `DESIGN.md` exists. It sits below approved [Product Contracts](product-contracts/README.md) (product semantics), [`UX_RULES.md`](UX_RULES.md) (interaction and behaviour) and `CLAUDE.md` engineering constraints. A visual choice here never overrides, or simplifies away, a semantic or behavioural rule from those documents; if a visual treatment cannot represent one clearly, report the conflict.
+> **Authority:** this document is the **implementation reference** for the visual system — concrete tokens, component implementations and measured decisions. Visual philosophy, hierarchy, composition and visual rules live in [`DESIGN.md`](../DESIGN.md) at the repository root; where the two disagree on visual direction for new work, `DESIGN.md` wins and this document is updated when that work lands. Both sit below approved [Product Contracts](product-contracts/README.md) (product semantics), [`UX_RULES.md`](UX_RULES.md) (interaction and behaviour) and `CLAUDE.md` engineering constraints. A visual choice here never overrides, or simplifies away, a semantic or behavioural rule from those documents; if a visual treatment cannot represent one clearly, report the conflict.
 
 ## 1. Principles
 

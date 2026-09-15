@@ -26,10 +26,11 @@ higher level wins and the conflict is a documentation defect to fix.
    how the levels above are implemented, but these documents must not contradict a contract's
    semantics or the UX Rules' behaviour. Where a contract applies, they describe the approved
    target and clearly label current implementation that has not caught up.
-4. **`DESIGN.md` / visual system** — **visual expression**: colour, typography, spacing, radius,
-   motion and component styling. No `DESIGN.md` exists yet; [`design-system.md`](../design-system.md)
-   is the visual system until one does. Visual simplification may never delete an approved semantic
-   or behaviour.
+4. **`DESIGN.md` / visual system** — **visual expression**: [`DESIGN.md`](../../DESIGN.md) at the
+   repository root owns visual philosophy, hierarchy, composition and visual rules;
+   [`design-system.md`](../design-system.md) is its implementation reference for tokens, components
+   and measured decisions. Visual simplification may never delete an approved semantic or
+   behaviour.
 5. **Historical documents** — Phase documents ([`docs/phases/`](../phases/)), reviews and the frozen
    prototype record. They remain intact as history and never silently override any level above.
 

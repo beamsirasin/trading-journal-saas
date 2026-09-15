@@ -151,6 +151,7 @@ Planned additions are described in [docs/architecture.md](docs/architecture.md);
 | [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first                                           |
 | [docs/product-contracts/](docs/product-contracts/)             | Approved Product Contracts — product semantics; highest documentation authority |
 | [docs/UX_RULES.md](docs/UX_RULES.md)                           | UX behaviour and interaction authority, below Product Contracts                 |
+| [DESIGN.md](DESIGN.md)                                         | Visual-design authority, below UX Rules; `docs/design-system.md` implements it  |
 | [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                                                   |
 | [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                                                |
 | [docs/data-dictionary.md](docs/data-dictionary.md)             | Schema and field meanings                                                       |
