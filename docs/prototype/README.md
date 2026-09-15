@@ -11,6 +11,10 @@
 
 **Status: frozen reference only. Not production. Do not migrate or add product behavior here.**
 
+> **Design pilots.** Later visual calibration pages live beside this prototype in
+> `src/components/prototype/design-pilot/` and reuse its models without changing its files. See
+> [At Entry — visual pilot](at-entry-visual-pilot.md).
+
 The production Add Trade experience lives at `/app/trades/new`; all further product development and
 staging verification must use that route.
 
