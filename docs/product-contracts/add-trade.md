@@ -4,7 +4,7 @@
 > TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
 > final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
-> decisions 24–37 are recorded in the [Decision log](#decision-log).
+> decisions 24–37 and pre-design decisions 38–40 are recorded in the [Decision log](#decision-log).
 >
 > **Authority:** where [`docs/UX_RULES.md`](../UX_RULES.md), `CLAUDE.md`, canonical technical
 > documentation (such as `docs/calculation-spec.md`, `docs/data-dictionary.md` or
@@ -190,6 +190,10 @@ Target และ Exit Plan เป็นคนละ concept
 การเลือก Fixed Target ต้องมี target representation อย่างน้อยหนึ่งอย่าง: monetary Target Profit หรือ TP price
 
 Fixed Target ที่ไม่มีทั้งสองอย่างไม่ใช่ completed target state ที่ valid
+
+ถ้า trader เลือก `Fixed Target` อย่าง explicit แต่ไม่มีทั้ง Target Profit และ TP price การ Save ถูก block ด้วย field-level validation error
+
+ห้ามแปลง state เป็น Unanswered หรือ No Fixed Target เงียบ ๆ
 
 objective แบบ dynamic หรือไม่ fixed (เช่น ถือจนกว่า trend-line break) อยู่ใน Exit Plan ไม่ใช่ Target
 
@@ -557,7 +561,7 @@ legacy-derived Outcome ถูก exclude จาก canonical Trader Win Rate โ
 
 After Trade มีหน้าที่บันทึก Trade ที่ปิดไปแล้ว โดยยอมรับว่าข้อมูลบางอย่างอาจไม่ทราบ
 
-Core identity:
+Core identity (minimum Trade identity):
 
 - Account
 - Symbol
@@ -610,7 +614,13 @@ Reflection และ System Assessment ไม่ใช่ requirement ของ 
 
 ## Save Closed Trade
 
-After Trade สามารถ Save Closed Trade ได้โดยไม่มี Risk at Entry, Final Net P&L หรือ Trader Outcome
+Save Closed Trade (After Trade / historical Closed Trade) ต้องมี minimum Trade identity:
+
+- Account
+- Symbol
+- Direction
+
+After Trade สามารถ Save Closed Trade ได้โดยไม่มี Risk at Entry, Final Net P&L หรือ Trader Outcome — ค่าเหล่านี้ยังเป็น optional สำหรับ historical Closed Trade capture
 
 ค่าที่ไม่ได้บันทึกยังคงขาด ลด analytical coverage (เช่น Actual R เป็น unavailable เมื่อไม่มี Risk at Entry หรือ Final Net P&L) และห้ามถูกสร้างขึ้นเอง
 
@@ -982,10 +992,20 @@ Save retry ต้องไม่สร้าง duplicate Trade
 
 ## Recording mode switch
 
-เมื่อสลับ At Entry / After Trade:
+หลัก: **ค่าที่ user กรอกเองสามารถ carry ข้าม recording mode ได้ แต่ contextual default ห้ามกลายเป็น historical answer เงียบ ๆ**
 
-- field ที่ใช้ร่วมกันของ Draft ถูก carry ข้าม
-- ค่าเฉพาะ mode ยังอยู่ใน Draft และอาจถูกซ่อนเมื่อไม่เกี่ยวข้อง ห้ามถูกลบเงียบ ๆ
+Draft preservation รักษางานของ user ไม่ใช่ system assumption ที่ยังไม่ถูกยืนยัน default อาจมี state ที่บอกว่ายังเป็นเพียง default จนกว่า trader จะยืนยันหรือเปลี่ยน
+
+เมื่อสลับ At Entry → After Trade:
+
+- ค่าร่วมที่ trader กรอกหรือเลือกเองอย่าง explicit และ semantics ยัง valid ถูก carry ข้าม เช่น Account, Symbol, Direction, Risk at Entry ที่กรอกเอง, Strategy / Setup ที่เลือกเอง, Exit Plan ที่เลือกเอง และ explicit shared observation อื่น
+- **Entry time:** ถ้า trader แก้ไขหรือยืนยัน Entry time อย่าง explicit ให้เก็บไว้ ถ้ายังเป็น automatic `now` default ที่ไม่ถูกแตะ ห้าม carry เป็น historical answer และ After Trade แสดง Entry time เป็น Unanswered
+- **implicit Actual Risk** ที่ตรงกับ Risk at Entry ("matches") ห้าม carry เป็น confirmed answer — After Trade Actual Risk เริ่มต้นเป็น Unanswered (ดู §4)
+- **Strategy-default Exit Plan ที่ถูก inherit อัตโนมัติ** ห้าม carry เป็น confirmed answer — After Trade ไม่ apply Strategy / Exit Plan default ย้อนหลัง (ดู §5)
+
+ทุกทิศทางของการสลับ:
+
+- ค่าเฉพาะ mode ยังอยู่ใน Draft และอาจถูกซ่อนเมื่อไม่เกี่ยวข้อง ห้ามถูกลบเงียบ ๆ แต่ default ที่ไม่ compatible ห้ามถูกถือเป็น confirmed answer
 - การสลับ recording mode ต้องไม่ทำลายงาน
 - provenance และ semantics สุดท้ายต้องสะท้อน recording context จริง ไม่ใช่เพียง route ที่ Draft เริ่มต้น
 
@@ -1396,3 +1416,20 @@ UX boundary decisions, 2026-09-15 (items 24–37):
 Deliberately deferred (2026-09-15): final Thai copy and the Deviation Type / Reason taxonomy stay
 open for UX/copy prototyping and are not frozen into rigid product or schema definitions (§18,
 §26). Interaction rules applying this contract live in [`docs/UX_RULES.md`](../UX_RULES.md).
+
+Pre-design semantics decisions, 2026-09-15 (items 38–40):
+
+38. **After Trade minimum identity** — saving an After Trade / historical Closed Trade requires
+    Account, Symbol and Direction, the minimum Trade identity; Risk at Entry, Final Net P&L and
+    Trader Outcome stay optional, and missing values reduce coverage without being manufactured.
+    Clarifies item 24. (§13)
+39. **Fixed Target incomplete state** — an explicitly selected Fixed Target with neither Target
+    Profit nor TP price blocks Save with a field-level validation error and is never silently
+    converted to Unanswered or No Fixed Target. Clarifies item 26. (§5)
+40. **Recording-mode switch and defaults** — user-entered values may carry across recording modes;
+    contextual defaults never silently become historical answers. An untouched automatic `now`
+    Entry time, an implicit Actual Risk match and an automatically inherited Strategy-default
+    Exit Plan do not carry into After Trade as answers; explicitly entered or confirmed shared
+    values do; hidden mode-specific data is kept but never treated as confirmed. Draft
+    preservation preserves user work, not unconfirmed system assumptions. Refines item 29.
+    (§23)

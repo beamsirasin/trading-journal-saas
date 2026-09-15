@@ -1,7 +1,7 @@
 # TradeChemist — UX Rules
 
 > **Status:** v1 (2026-09-15), active. The UX behaviour and interaction authority for TradeChemist.
-> UX boundary decisions 24–37 in the [Add Trade contract](product-contracts/add-trade.md#decision-log)
+> UX boundary decisions 24–37 and pre-design decisions 38–40 in the [Add Trade contract](product-contracts/add-trade.md#decision-log)
 > are applied.
 >
 > **Position in the documentation chain.** Each level controls its own domain, and a lower level
@@ -55,7 +55,8 @@ The non-negotiables. Each points to the full rule; the full rule governs.
 2. **Preserve Unanswered / Unknown / None / Zero / Negative.** Each stays a distinct state in label,
    control and analytics (§4).
 3. **Routine navigation is non-destructive.** Done, X, Escape, outside click, Back, Close and mode
-   switch keep work; only an explicit destructive action destroys it (§5).
+   switch keep work; only an explicit destructive action destroys it. Draft preservation preserves
+   user work, not unconfirmed system assumptions (§5, §5.5).
 4. **Optional-for-save is not analytically unimportant.** Strategy, Setup, conditions and psychology
    stay visible and inviting (§2.4).
 5. **Money is result authority; Price is context.** No Money/Price basis switch; price inconsistency
@@ -113,7 +114,7 @@ The non-negotiables. Each points to the full rule; the full rule governs.
    - **Tier 4 — optional context:** trade idea / reason, timeframe, session, notes, chart, price
      levels, size.
 3. **After Trade tiers** _(contract §13)_:
-   - **Tier 1 — identity:** Account, Symbol, Direction.
+   - **Tier 1 — minimum Trade identity, needed to save:** Account, Symbol, Direction.
    - **Tier 2 — what actually happened:** Final Net P&L and Trader Outcome — optional but strongly
      prompted — and Actual R when it can be derived.
    - **Tier 3 — risk and intent:** Risk at Entry, Actual Risk, Target, Exit Plan; optional Entry
@@ -202,8 +203,10 @@ Rules:
    - visible Strategy-default Exit Plan inheritance in At Entry _(contract §5)_;
    - the At Entry Actual Risk affirmation, which is visible under §3.4 _(contract §4)_.
 
-   Confidence has no default. Trader Outcome, conditions, emotions, Target, adherence and System
-   Result have none either _(contract §9, §12, §15)_.
+   Each stays distinguishable as a default until the trader confirms or changes it, and none
+   becomes a historical answer after a switch to After Trade (§5.5). Confidence has no default.
+   Trader Outcome, conditions, emotions, Target, adherence and System Result have none either
+   _(contract §9, §12, §15)_.
 
 2. **Blank numeric input is never zero.** A cleared or untouched money, R, percentage or price field
    stays empty through blur, collapse, reload recovery and save. It is never rendered or announced
@@ -237,6 +240,9 @@ Rules:
 
 **Routine navigation is non-destructive. Destruction requires an explicit destructive action.**
 
+**Draft preservation preserves user work, not unconfirmed system assumptions.** A default may carry
+a state showing that it is still only a default until the trader confirms or changes it.
+
 1. **Type → Draft · Save → Persist · Discard → Destroy** _(contract §23)_. Every entered value lands
    in the Draft as it is typed. Only Save creates or updates a Trade, and only Discard destroys the
    Draft.
@@ -259,17 +265,24 @@ Rules:
      dismissal during the interaction. Durable reload recovery for them is not a v1 requirement,
      and the interface MUST NOT claim it exists.
    - Cross-device sync is not a requirement, and the interface MUST NOT imply a draft is synced.
-5. **Switching At Entry ↔ After Trade never destroys work** _(contract §23)_:
-   - Shared draft fields carry across — for example Account, Symbol, Direction, Risk at Entry,
-     Target, explicitly chosen Exit Plan, Strategy, Setup, condition answers, psychology, notes, and
-     an explicit Actual Risk "Different" answer.
-   - Mode-specific values stay in the Draft and may be hidden while irrelevant — for example exit
-     events and Final Net P&L after switching back to At Entry. They are never silently deleted,
-     and they reappear when the trader switches back.
-   - Two At Entry-only states are not converted into After Trade answers: the visible Actual Risk
-     affirmation (After Trade Actual Risk starts Unanswered) and an inherited Strategy-default Exit
-     Plan (After Trade never inherits) _(contract §4, §5)_. A defaulted Entry time is a shared field:
-     it carries across and stays visibly editable and clearable.
+5. **Switching At Entry ↔ After Trade never destroys work and never confirms a default**
+   _(contract §23)_. User-entered values may carry across recording modes; contextual defaults must
+   not silently become historical answers.
+   - **Explicit shared values carry across** where their semantics remain valid — for example
+     Account, Symbol, Direction, a manually entered Risk at Entry, a manually selected Strategy,
+     Setup or Exit Plan, condition answers, psychology, notes, and an explicit Actual Risk
+     "Different" answer.
+   - **Untouched defaults do not become After Trade answers** _(contract §4, §5, §23)_:
+     - **Entry time** — if the trader edited or confirmed it, it is preserved; if it is still the
+       untouched automatic "now" default, it is not carried and After Trade shows Entry time as
+       unanswered.
+     - **Implicit Actual Risk match** — not carried; After Trade Actual Risk starts Unanswered.
+     - **Automatically inherited Strategy-default Exit Plan** — not carried; After Trade applies
+       no Strategy or Exit Plan default retrospectively.
+   - **Mode-specific values stay in the Draft** and may be hidden while irrelevant — for example
+     exit events and Final Net P&L after switching back to At Entry, or an untouched At Entry
+     default after switching to After Trade. They are never silently deleted, and hidden or
+     incompatible default data is never treated as a confirmed answer.
    - What is finally saved — lifecycle, provenance and origin — reflects the recording context at
      Save, not the route where the Draft began _(contract §7, §9)_.
 6. **Discarding a whole Draft** is an explicit, clearly destructive action. It SHOULD require
@@ -300,11 +313,14 @@ Rules:
 
 1. **Save is blocked only by contract requirements and by input that is invalid as entered:**
    - **Save Open Trade** requires Account, Symbol, Direction and Risk at Entry _(contract §6)_.
+   - **Save Closed Trade (After Trade)** requires the minimum Trade identity — Account, Symbol and
+     Direction _(contract §13)_. Risk at Entry, Final Net P&L and Trader Outcome stay optional.
    - **Risk at Entry, when entered, must be greater than zero** _(contract §4)_. Zero or a negative
      value is an error; zero is never a stand-in for unknown risk.
-   - **Fixed Target requires a Target Profit or a TP price** _(contract §5)_. A Fixed Target with
-     neither is incomplete: the error offers adding one or changing the Target choice, and the
-     interface never silently converts it to Unanswered or No Fixed Target.
+   - **An explicitly selected Fixed Target requires a Target Profit or a TP price** _(contract
+     §5)_. With neither, Save is blocked by a field-level validation error that offers adding one
+     or changing the Target choice. The interface never silently converts the state to Unanswered
+     or No Fixed Target.
    - **Record Exit on a live Trade** requires scope, Part or All Remaining _(contract §10)_.
    - **Final Close of an existing Open / Partially Closed Trade** requires explicit confirmation
      that the remaining position is closed — All Remaining scope or the Close Remaining action
@@ -561,8 +577,8 @@ Rules:
 
 1. **Question:** _What actually happened?_ The surface accepts that some facts are unknown or were
    never recorded _(contract §13)_.
-2. **Identity** — Account, Symbol, Direction. **Timing** — optional Entry time and final exit time,
-   which may stay blank (§4.9).
+2. **Minimum Trade identity** — Account, Symbol and Direction are required to save _(contract
+   §13)_. **Timing** — optional Entry time and final exit time, which may stay blank (§4.9).
 3. **Save Closed Trade does not require Risk at Entry, Final Net P&L or Trader Outcome** _(contract
    §13)_. Missing values stay missing, reduce analytical coverage, and are never manufactured.
    Final Net P&L and Trader Outcome are strongly prompted (§7.8).
@@ -805,6 +821,8 @@ report the conflict rather than simplifying the semantics.**
    - add "Don't know" controls to every optional field, or remove the ones §4.9 requires;
    - accept zero as Risk at Entry, or save a Fixed Target with neither Target Profit nor TP price;
    - silently revert an opened "Actual risk differed" to Matched;
+   - carry an untouched default (the "now" Entry time, an implicit Actual Risk match, an inherited
+     Exit Plan) into After Trade as a historical answer, or treat hidden draft data as confirmed;
    - use Win / Loss / BE, or "System Win Rate", on the System side;
    - make dismissal (X, Escape, outside click, Back, Close, mode switch) destructive, or delete
      mode-specific draft values on a mode switch;
@@ -862,8 +880,9 @@ Use this for every design, prototype, pull request or AI-generated redesign touc
       restores the editor checkpoint (§5.2).
 - [ ] Back, Close and route change keep the Draft; Add Trade and Review Drafts survive reload
       (§5.3–§5.4).
-- [ ] A mode switch carries shared fields, hides but keeps mode-specific values, and never turns an
-      At Entry default into an After Trade answer (§5.5).
+- [ ] A mode switch carries explicit shared values, hides but keeps mode-specific values, and never
+      turns an untouched default (the "now" Entry time, an implicit Actual Risk match, an inherited
+      Exit Plan) into an After Trade answer (§5.5).
 - [ ] Drafts never cross users or workspaces, and sign-out warns before clearing an unsaved draft
       (§5.11).
 - [ ] Save failure keeps the Draft, and retry cannot duplicate a Trade (§5.7).
@@ -879,8 +898,9 @@ Use this for every design, prototype, pull request or AI-generated redesign touc
 
 - [ ] At Entry shows no Final P&L, Trader Outcome, System Result, System Assessment or Review
       (§10.4).
-- [ ] Save Closed Trade and Final Close do not require Risk at Entry, Final Net P&L or Trader
-      Outcome, and prompt for the latter two (§12.3, §13.6).
+- [ ] Save Closed Trade requires only Account, Symbol and Direction; neither it nor Final Close
+      requires Risk at Entry, Final Net P&L or Trader Outcome, and both prompt for the latter two
+      (§6.1, §12.2–§12.3, §13.6).
 - [ ] Final Close requires explicit confirmation that the remaining position is closed (§13.5).
 - [ ] Partial Close asks for no whole-Trade result, and All Remaining closes without percentage
       completeness (§13.3–§13.4).
@@ -916,7 +936,7 @@ Use this for every design, prototype, pull request or AI-generated redesign touc
 ## Appendix A — Deferred items
 
 The UX/product boundary questions raised in v1 of this document are resolved by Add Trade contract
-decisions 24–37 and applied above. What remains is **deliberately deferred**. None of these items
+decisions 24–40 and applied above. What remains is **deliberately deferred**. None of these items
 blocks visual design or interaction design; each has a safe rule to follow meanwhile.
 
 | Item                                                          | Deferred to                 | Meanwhile                                                                                                                  |
@@ -929,12 +949,6 @@ blocks visual design or interaction design; each has a safe rule to follow meanw
 | Price-derived context displays (distance, pips)               | Later exploration           | None required; if explored, labelled context only, never calculation authority (§8.2) _(contract §3)_.                     |
 | Cross-device draft sync                                       | Not a requirement           | Never imply a draft is synced (§5.4) _(contract §23)_.                                                                     |
 | Astra interaction/data-integrity findings                     | Not available               | None exist in the repository and none are reconstructed; the contract and these rules are the current authorities.         |
-
-**One clarification to confirm (not a visual-design blocker):** the contract lists Account, Symbol
-and Direction as After Trade _core identity_ _(contract §13)_ and fixes the Save Open Trade minimum
-_(contract §6)_, but does not say in so many words whether core identity is required for Save
-Closed Trade. Meanwhile, present core identity as Tier 1 (§2.3) and add no other blocking
-requirement; the current schema already requires a Trading Account.
 
 If new questions arise, record them here and stop rather than deciding them in UI (§18.6).
 
