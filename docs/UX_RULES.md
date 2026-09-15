@@ -1,0 +1,841 @@
+# TradeChemist — UX Rules
+
+> **Status:** v1 (2026-09-15). The UX behaviour and interaction authority for TradeChemist.
+>
+> **Position in the documentation chain:**
+>
+> `Approved Product Contracts` → **`UX Rules` (this document)** → `DESIGN.md / visual system` →
+> `implementation`
+>
+> - An **approved Product Contract** defines what the product means. This document never changes a
+>   contract decision; where a rule here appears to disagree with an approved contract, the contract
+>   wins and the disagreement is a defect in this document. See
+>   [`product-contracts/README.md`](product-contracts/README.md).
+> - **This document** defines how the product must behave for the person using it: hierarchy,
+>   disclosure, state representation, draft and navigation behaviour, validation, feedback, and the
+>   interaction rules any redesign must preserve.
+> - The **visual system** defines how it looks. No `DESIGN.md` exists yet; until one does,
+>   [`design-system.md`](design-system.md) is the visual system. Colour, type scale, radius, shadow,
+>   component styling and brand direction belong there, not here.
+> - **Implementation** follows all three. Current production behaviour that differs from this
+>   document is pending migration (see [Appendix B](#appendix-b--current-implementation-evidence)),
+>   not a precedent.
+>
+> **Scope:** the only approved Product Contract today is
+> [Add Trade](product-contracts/add-trade.md) (v1, 2026-09-14), so the detailed rules here cover At
+> Entry, After Trade, Partial / Final Close, Review, System Assessment and the analytics that read
+> them. The general rules (§1–§10, §15–§19) apply to every TradeChemist surface unless a later
+> approved contract says otherwise.
+>
+> **Sources, in precedence order:** (1) the approved Add Trade Product Contract; (2) `CLAUDE.md` and
+> the governing technical documents; (3) the reconstructed prototype behaviour
+> (`src/components/prototype/`) only where it does not conflict with (1)–(2); (4) Astra
+> interaction/data-integrity findings as audit evidence only — no such report is present in this
+> repository, so none of its findings are incorporated; (5) current production UX as implementation
+> evidence only.
+>
+> **Rule language:** **MUST** / **MUST NOT** are requirements. **SHOULD** is the expected default; a
+> deviation needs a recorded reason. Contract references are written as _(contract §N)_. Quoted
+> English labels fix the **meaning** of an action or state, not its final copy — see §9.
+>
+> Questions this document could not answer without a new product decision are listed in
+> [Appendix A](#appendix-a--open-uxproduct-boundary-questions). They are recorded, not decided.
+
+---
+
+## 1. UX goals
+
+1. **Match the trader's mental model at each moment** _(contract §27)_:
+   - At entry — _What am I doing and why?_
+   - At close — _What actually happened?_
+   - At Review — _What should have happened, and what can I learn?_
+
+   Each surface asks only the questions that belong to its moment.
+
+2. **Capture simple → preserve truth → analyze deeply later** _(contract §2)_. Capture effort is
+   proportional to the moment: a trader entering a live position must be able to save in seconds,
+   and deeper interpretation waits for Review.
+3. **Never manufacture certainty.** The interface never turns an unanswered or unknown fact into an
+   answer, a zero, a default, or a negative observation _(contract §2, §24)_.
+4. **Keep attribution honest.** System performance and trader performance stay visibly and verbally
+   separate everywhere they appear _(CLAUDE.md §1; contract §16–§17)_.
+5. **Nothing a trader typed is lost by routine interaction.** Losing work requires an explicit
+   destructive action _(contract §23)_.
+6. **TradeChemist carries the complexity.** The trader never needs to understand the data model,
+   and internal vocabulary never reaches the screen _(contract §26–§27)_.
+7. **Inform without judging.** Possible mistakes produce quiet notices, not blocks. Missing data is
+   not failure, and not following an Exit Plan is not automatically bad execution _(contract §12,
+   §18–§19)_.
+
+---
+
+## 2. Information hierarchy
+
+1. **Rank information by the question of the moment, not by the data model.** Hierarchy is expressed
+   as priority tiers; this document does not prescribe a layout.
+2. **At Entry tiers** _(contract §6)_:
+   - **Tier 1 — needed to save:** Account, Symbol, Direction, Risk at Entry; plus Entry time.
+   - **Tier 2 — core intent:** Target (Unanswered / Fixed / No Fixed) and Exit Plan.
+   - **Tier 3 — core analytical data:** Strategy, Setup, setup conditions, Confidence, Entry
+     emotions.
+   - **Tier 4 — optional context:** trade idea / reason, timeframe, session, notes, chart, price
+     levels, size.
+3. **After Trade tiers** _(contract §13)_:
+   - **Tier 1 — identity:** Account, Symbol, Direction.
+   - **Tier 2 — what actually happened:** Final Net P&L, Trader Outcome, and Actual R when it can be
+     derived.
+   - **Tier 3 — risk and intent:** Risk at Entry, Actual Risk, Target, Exit Plan; optional Entry
+     and final exit times.
+   - **Tier 4 — history and context:** exit events and exit-history completeness, Strategy, Setup,
+     conditions, recalled Confidence and Entry Emotion, Post-Trade Emotion, trade idea/context.
+4. **Core analytical data is optional to save but never presented as unimportant** _(contract §6)_.
+   It MUST NOT sit behind labels that imply it is extra or advanced.
+5. **System vs Actual keeps three primary figures:** System R, Actual R, and Difference / Execution
+   Impact. Risk Deviation (Risk at Entry vs Actual Risk) is secondary. Other internal R figures MUST
+   NOT compete for attention _(contract §17)_.
+6. **Final Net P&L is the primary money figure of a closed Trade.** The recorded exit subtotal is
+   supporting history and is presented as subordinate to it _(contract §11)_.
+7. **Three independent status axes stay visually and verbally independent:**
+   - Trade lifecycle — Open / Partially Closed / Closed / Canceled.
+   - Review lifecycle — Not Reviewed / Reviewed.
+   - System Assessment — Not Assessed / Assessed / Cannot Determine / No Trade, with Needs Review
+     as an overlay.
+
+   One indicator MUST NOT merge them; for example, a Closed trade never looks Reviewed
+   _(contract §14, §20)_.
+
+8. **Provenance appears where a value is shown, in plain language.** A legacy-derived Trader Outcome,
+   a legacy R, an inherited Exit Plan, or a recalled observation carries its provenance next to the
+   value, not only in a detail view _(contract §5, §9, §28)_.
+
+---
+
+## 3. Progressive disclosure
+
+1. **Disclosure hides fields, never answers.** Collapsing or expanding a section MUST NOT change any
+   value or state inside it.
+2. **A collapsed section that contains answers shows that it does,** so recorded data is never
+   invisible and a trader can tell an untouched section from a completed one.
+3. **Disclosure MUST NOT hide a contract distinction.** For example, "Don't know" is never folded
+   into a blank field behind a disclosure.
+4. **Actual risk differed (At Entry)** is a progressive action _(contract §4)_. While it is closed,
+   the interface MUST visibly state that actual risk matches the recorded Risk at Entry. Not
+   opening it is an honest, visible affirmation, never a silent server inference. Opening it lets
+   the trader record Actual Risk.
+5. **Optional context (Tier 4) SHOULD be disclosed on demand.** Tier 1 and the Save action MUST be
+   reachable without traversing optional sections.
+6. **Nested editors are views of the same Draft** _(contract §23)_. This covers editors such as
+   Exit Plan, trade idea, exit events, emotions and conditions. Opening one never forks or
+   snapshots the Draft into a separate record.
+7. **Review is not a wizard.** Its areas (Reflection, Discipline / Behavior, System Assessment) MUST
+   NOT be gated in sequence, and no step locks another _(contract §21)_.
+8. **Follow-up questions appear only when their premise holds.** Examples:
+   - Deviation Type and Reason when adherence is Partly or Not Followed _(contract §18)_.
+   - A System Result input only when the system would have taken the trade _(contract §15)_.
+   - Hiding a follow-up MUST NOT delete its recorded answer. If the premise changes back, the
+     earlier answer reappears.
+
+---
+
+## 4. State semantics
+
+The interface MUST keep these states distinct in label, programmatic state and behaviour _(contract
+§2, §24)_:
+
+| State                      | Meaning                                                | Examples                                                                                    |
+| -------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| **Unanswered**             | The trader has not given an answer                     | No Strategy chosen yet; condition not answered; Confidence untouched; Target blank          |
+| **Unknown**                | The trader explicitly does not know                    | "Don't know" Actual Risk; "Don't remember" condition; exit scope unknown; completeness      |
+| **None**                   | The trader explicitly says the thing does not exist    | No Strategy; No Setup; None of these (emotions); No Fixed Target; No Defined Exit Rule      |
+| **Known Zero**             | A known value of exactly zero                          | Final Net P&L of 0; a System Result of 0 (Flat)                                             |
+| **Known Value**            | A known non-zero value or a selected option            | Risk at Entry $50; Confidence 75; Setup "Breakout"                                          |
+| **Negative answer**        | An explicit negative observation                       | Condition Not Met; Exit Plan Not Followed                                                   |
+| **Not Applicable**         | The rule explicitly does not apply to this trade       | An execution rule marked Not Applicable _(contract §8)_                                     |
+| **Inherited**              | A value visibly supplied by a default, not chosen      | Exit Plan "From Strategy: <name>" _(contract §5)_                                           |
+| **Legacy / derived**       | A historical value created under earlier semantics     | Legacy-derived Trader Outcome; legacy R; Price-mode result _(contract §28)_                 |
+| **Needs Review (overlay)** | A confirmed System Assessment whose dependency changed | Strategy changed after an Assessed finding; the prior finding is kept _(contract §14, §22)_ |
+
+Rules:
+
+1. **No answer is preselected.** The only contract-sanctioned starting values are:
+   - Entry time defaulting to now, editable and clearable _(contract §6)_;
+   - visible Strategy-default Exit Plan inheritance in At Entry _(contract §5)_;
+   - the At Entry Actual Risk affirmation, which is visible under §3.4 _(contract §4)_.
+
+   Confidence has no default. Trader Outcome, conditions, emotions, Target, adherence and System
+   Result have none either _(contract §9, §12, §15)_.
+
+2. **Blank numeric input is never zero.** A cleared or untouched money, R, percentage or price field
+   stays empty through blur, collapse, reload recovery and save. It is never rendered or announced
+   as `0`.
+3. **Unanswered is never displayed as a negative.** It uses a neutral "not answered" presentation,
+   never "No", "Not Met", "Loss", `0`, or a cue that reads as failure.
+4. **Each explicit option is its own choice.** None, Unknown and Not Applicable are selectable
+   options, not the absence of a selection.
+5. **Returning an answer to Unanswered is an explicit, specifically labelled action** (for example
+   "Remove answer"). It is never a side effect of another control. For Exit Plan, a generic "Clear"
+   is avoided _(contract §5)_.
+6. **Inherited, chosen and rejected states are distinguishable** _(contract §24)_:
+   - an inherited Exit Plan reads as inherited;
+   - a plan the trader picked reads as chosen;
+   - a rejected inheritance stays rejected and never quietly reappears _(contract §5)_.
+7. **Observation origin and revision are shown separately** _(contract §9)_. An edited observation
+   keeps its origin (recorded at entry / added during the trade / recalled after close) and may add
+   an "edited later" indication. An edit never changes the origin label.
+8. **Legacy values are never presented as trader choices or canonical figures** _(contract §28)_.
+
+---
+
+## 5. Draft and navigation behaviour
+
+**Routine navigation is non-destructive. Destruction requires an explicit destructive action.**
+
+1. **Type → Draft · Save → Persist · Discard → Destroy** _(contract §23)_. Every entered value lands
+   in the Recording Draft as it is typed. Only Save creates or updates a Trade, and only Discard
+   destroys the Draft.
+2. **Nested editors** _(contract §23)_:
+   - **Done** keeps the changes and closes the editor.
+   - **X, Escape, and outside dismissal** keep the changes and close the editor. They MUST NOT
+     behave like Cancel.
+   - **Discard Changes** is the only nested action that removes edits. It explicitly restores the
+     editor checkpoint — the Draft state when that editor was opened. It MUST be labelled
+     specifically, never "Cancel" or "Close".
+3. **Back, Close, route changes and the browser/system back gesture** navigate away with the Draft
+   intact. Because nothing is lost, they MUST NOT show an "unsaved changes will be lost" warning.
+   They MAY confirm that the Draft was kept.
+4. **Reload** — the Draft MUST be recoverable in the same browser on the same device. On return, the
+   interface states that a draft was recovered and offers to continue it or explicitly discard it.
+   Cross-device sync is not a requirement, and the interface MUST NOT imply a draft is synced.
+5. **Switching At Entry ↔ After Trade** MUST NOT silently destroy the Draft _(contract §23)_. A
+   switch never carries the At Entry Actual Risk affirmation into After Trade as an explicit
+   "Matched": After Trade Actual Risk starts Unanswered _(contract §4)_. How other draft values
+   carry across is an open question (Appendix A).
+6. **Discarding a whole Draft** is an explicit, clearly destructive action. It SHOULD require
+   confirmation or offer an undo.
+7. **Save failure preserves the Draft** exactly as entered and offers retry. **A retry MUST NOT
+   create a duplicate Trade**, whether the trader presses Save again, retries after a network error,
+   or saves again from a recovered draft.
+8. **The Draft is cleared only after a confirmed successful Save.**
+9. **After a successful Save:**
+   - **Save Open Trade** confirms that the open Trade was saved. It MUST NOT offer Review
+     _(contract §20)_.
+   - **Save Closed Trade**, or a Final Close / Close Remaining that closes an existing Trade, shows
+     **Trade Saved** with a choice of **Review Trade** or **Done** _(contract §20)_. Neither is
+     preselected, the choice never auto-advances, and Done returns the trader to where they came
+     from.
+10. **The interface never auto-navigates into Review.** Entering Review is always the trader's
+    choice.
+
+---
+
+## 6. Validation
+
+1. **Save is blocked only by contract requirements and by input that is invalid as entered:**
+   - **Save Open Trade** requires Account, Symbol, Direction and Risk at Entry _(contract §6)_.
+   - **Record Exit on a live Trade** requires scope, Part or All Remaining _(contract §10)_.
+   - **Invalid as entered** means a malformed number or date, or text that cannot be parsed as the
+     field's type.
+   - Save Closed Trade and Final Close minimums are not specified by the contract (Appendix A).
+     Until decided, no new blocking requirement may be added for them.
+2. **These MUST NOT block Save, Close or Record Exit:**
+   - Strategy, Setup, conditions, Confidence and emotions;
+   - Target and Exit Plan;
+   - Actual Risk in After Trade;
+   - exit-history completeness, incomplete exit percentages, and missing exit price, time or
+     percentage;
+   - unknown exit scope in After Trade reconstruction;
+   - an exit-subtotal discrepancy;
+   - a Trader Outcome that contradicts the P&L sign;
+   - Exit Plan Adherence, System Assessment, Reflection and Review
+     _(contract §6, §10–§14)_.
+3. **Four feedback classes, never confused:**
+   - **Error** — blocks this action; says what is missing or malformed and how to fix it.
+   - **Notice** — a quiet, non-blocking hint of a possible mistake, such as a sign contradiction or
+     a discrepancy.
+   - **Attention** — a soft status that invites later work, such as Not Reviewed, Not Assessed or
+     Needs Review.
+   - **Information** — neutral context, such as an inherited Exit Plan or a recovered draft.
+4. **Timing.** Required-field errors do not appear before the trader has interacted with the field
+   or attempted to save. On a save attempt:
+   - all blocking errors appear at once, inline;
+   - a summary identifies them;
+   - focus moves to the summary or to the first invalid field.
+5. **The Save control stays operable and explains itself.** A disabled Save with no stated reason is
+   not acceptable. Pressing Save when requirements are missing reveals what is needed.
+6. **Validation never rewrites input:**
+   - it does not flip a sign, round silently, or replace a blank with zero;
+   - it does not choose an outcome;
+   - it does not adopt the exit subtotal as Final Net P&L _(contract §11–§12)_.
+7. **Clearing Entry time is valid** and produces no error _(contract §6)_.
+8. **Errors and notices are programmatically associated** with their field and written in plain
+   trading language.
+
+---
+
+## 7. Feedback and system status
+
+1. **Saving is visible.** A pending save shows progress, prevents a repeat submission, and keeps
+   the Draft editable-safe.
+2. **Success is truthful and specific.** Confirmation names what was saved and the Trade's lifecycle
+   state. It never appears before the server confirms.
+3. **Failure is explicit.** A plain-language reason, the Draft kept, and a retry path. The interface
+   never implies a failed save succeeded.
+4. **Draft status is honest.** When a draft is kept or recovered, the interface says so, and it
+   makes clear the draft lives in this browser on this device only.
+5. **System Assessment status is always visible on a closed Trade** _(contract §14)_:
+   - **Not Assessed** is a soft attention state.
+   - **Cannot Determine** and **No Trade** are answered findings and MUST NOT be shown as
+     incomplete.
+   - **Needs Review** is a stronger attention state. It may lead the display, but the preserved
+     prior finding MUST remain visible. It SHOULD say which dependency changed.
+6. **Not Reviewed** may carry a soft attention indicator. Review is never presented as overdue or
+   mandatory _(contract §20)_.
+7. **Quiet notices** _(contract §11–§12)_:
+   - **Sign contradiction** — shown only for Win with negative Final Net P&L, or Loss with positive
+     Final Net P&L. It never auto-corrects and never blocks. BE carries no sign notice.
+   - **Exit-subtotal discrepancy** — shown only when all three contract conditions hold. Both values
+     are shown, and Final Net P&L is marked authoritative.
+8. **Recalculation is visible, not surprising.** When Final Net P&L changes, Actual R and Difference
+   update. The System Assessment is not marked Needs Review for that change _(contract §22)_.
+9. **A value that cannot be derived shows why**, never `0` and never an invented figure. For
+   example, "Actual R needs Risk at Entry and Final Net P&L." _(design-system §8)_.
+10. **Status messages use a persistent live region** so assistive technology hears them
+    _(design-system §12)_.
+11. **Feedback does not moralize.** Outcomes, deviations and missing answers are reported neutrally.
+
+---
+
+## 8. Forms
+
+1. **Money is the source of truth; Price is optional context** _(contract §3)_.
+   - The interface **MUST NOT reintroduce a Money/Price result-basis switch**, or any equivalent
+     control that lets Price become the basis of a result, in any form or name.
+   - There is no Plan mode or Price-result mode _(contract §1)_.
+2. **Price never becomes a result.** Entry, SL, TP and exit prices MUST NOT produce a displayed or
+   stored Final P&L, Actual R, System R, System Result or Win / Loss / BE _(contract §3, §5,
+   §15)_.
+3. **Money inputs:**
+   - show the Trading Account's currency;
+   - accept exact values without silent rounding;
+   - keep blank distinct from zero (§4.2);
+   - allow a negative value on every platform keyboard — where a numeric keyboard has no minus key,
+     an explicit sign control is provided;
+   - format in the account currency, independent of UI language _(design-system §13)_.
+4. **Multi-state questions use controls that can represent Unanswered.**
+   - A group of explicit options with no initial selection is required, not a checkbox or binary
+     switch, because those cannot represent Unanswered.
+   - This applies to Met / Not Met, adherence, Trader Outcome, Target state, Actual Risk
+     (Matched / Different / Don't know) and exit scope.
+5. **Timestamps:**
+   - entered and displayed in the user's profile timezone, never the browser's or server's
+     _(CLAUDE.md §7)_;
+   - Entry time may default to now, and stays editable and explicitly clearable _(contract §6)_;
+   - quick actions such as "Now" are welcome, but must not be confused with a date-only choice;
+   - suggested times, such as the closing exit's time, require explicit adoption.
+6. **Target** — Unanswered / Fixed Target / No Fixed Target. A Fixed Target may hold a monetary
+   Target Profit, a TP price, or both _(contract §5)_. Leaving Target blank is not No Fixed Target.
+7. **Exit Plan** — Not recorded / Saved Exit Plan / Customized for this trade / No Defined Exit Rule
+   _(contract §5)_.
+   - Editing a saved or inherited plan for this Trade produces "Customized for this trade". It never
+     silently edits the library rule.
+   - The Trade keeps a snapshot of the rule, and the interface presents it as the rule used then.
+8. **Exit events** _(contract §10)_:
+   - Scope is required for live exits. In After Trade it may be left unknown.
+   - P&L, % of original position, exit time, exit price and exit reason are all optional.
+   - A reason-only exit is valid in After Trade.
+   - The interface MUST NOT multiply exit P&L by percentage, and MUST NOT require percentages to sum
+     before All Remaining closes the position.
+   - An exit of unknown scope never drives remaining-position status.
+9. **Exit-history completeness** — Complete / Incomplete / Unknown / Unanswered, with no default
+   _(contract §13)_.
+10. **Final Net P&L and Trader Outcome are separate inputs.**
+    - Trader Outcome (Win / BE / Loss) is chosen by the trader and never preselected from sign or R
+      _(contract §12)_.
+    - "Use recorded exits as final result" is offered only when history is Complete and every
+      relevant exit has P&L, and it applies only when pressed _(contract §11)_.
+11. **System Result input** _(contract §15)_:
+    - Money is the suggested unit; direct R is allowed.
+    - Comparability is an explicit choice: net / comparable or gross only.
+    - It is never prefilled or inferred from the actual result or from price.
+12. **Deviation Type and Reason** use the provisional taxonomy _(contract §18)_. The option set must
+    be changeable without a data or interaction redesign, and "Other" remains available.
+13. **Every control is labelled.** Numeric fields open numeric keyboards, and forms stay usable with
+    password managers, autofill and paste where relevant.
+
+---
+
+## 9. Trading terminology and localization
+
+1. **Preserve familiar trading vocabulary** _(contract §26)_: TP, SL, P&L, R, Win / Loss / BE,
+   Long / Short, Entry / Exit, Partial Close, Risk, Strategy, Setup.
+2. **Pair terms with plain explanations where helpful** — Target Profit (TP), Stop Loss (SL), Net P&L
+   with a short helper.
+3. **Product concepts use plain language and helper text:** System Result, Actual Result, Exit
+   Plan, Execution Impact, Risk Deviation, Needs Review.
+4. **Internal terms never reach the screen:** provenance, calculation authority, reconciliation
+   state, dependency snapshot, persistence semantics _(contract §26)_. Their meaning is expressed in
+   plain words, such as "Recalled after close", "From Strategy: <name>" or "Needs Review — Strategy
+   changed".
+5. **Win / Loss / BE belongs to Trader Outcome only.**
+   - The System side uses Positive / Flat / Negative, No Trade and Cannot Determine
+     _(contract §16)_.
+   - New UI MUST NOT use "System Win Rate"; the metrics are **System Positive Rate** and **Trader
+     Win Rate** _(contract §25)_.
+6. **Unanswered and Unknown read differently** in every locale. One phrase must not stand for both.
+7. **Meaning is fixed here; final copy is not.**
+   - The labels quoted in this document and the contract fix intent. Examples: "Actual risk
+     differed", "From Strategy: <name>", "Use strategy default", "Use recorded exits as final
+     result", "Reviewed — nothing else to add", "Trade Saved", "Review Trade", "Done".
+   - Wording may be refined in `messages/` if the meaning and the state distinction survive.
+8. **Thai copy follows the [localization glossary](localization-glossary.md):** preserve familiar
+   trading vocabulary, and localize for comprehension, not literal translation.
+   - This document does **not** lock Thai wording.
+   - Proposed Thai terms for new concepts (for example Positive / Flat / Negative, System Positive
+     Rate, Unanswered vs Unknown) still need native-copy validation.
+9. **Money formatting is locale-independent; dates pin the Gregorian calendar** in both locales
+   _(design-system §13)_.
+
+---
+
+## 10. Capture vs Review
+
+1. **Capture records observations; Review interprets them.**
+   - Capture surfaces are At Entry, After Trade, Record Exit and Partial / Final Close.
+   - Review holds Reflection, Discipline / Behavior and System Assessment _(contract §21)_.
+2. **Capture never requires Review.** No Capture Save waits on Reflection, adherence or System
+   Assessment _(contract §13–§14)_.
+3. **Review never silently rewrites Capture.** Changing a captured observation from within Review is
+   an explicit edit of that observation, keeping its origin and adding revision metadata. Review
+   interpretation is stored alongside it, never over it _(contract §9, §22)_.
+4. **At Entry shows no result or Review surfaces:** no Final P&L, Trader Outcome, System Result,
+   System Assessment or Review _(contract §6)_.
+5. **After Trade captures what happened** but does not present Reflection or System Assessment as a
+   step before Save _(contract §13)_.
+6. **Post-Trade Emotion** may be captured at Final Close, in After Trade, or in Review. It is always
+   separate from, and never overwrites, Entry Emotion _(contract §9)_.
+7. **Review is entered only by the trader's choice,** after closing saves or later from the Trade
+   (§5.9–§5.10).
+
+---
+
+## 11. At Entry UX rules
+
+1. **Question:** _What am I doing and why?_ Every element either answers it or is optional context.
+2. **Fast save.** Save Open Trade needs only Account, Symbol, Direction and Risk at Entry
+   _(contract §6)_. Everything else is optional, and Save is reachable without scrolling through
+   optional sections.
+3. **Entry time** defaults to now, and stays visibly editable and clearable.
+4. **Risk at Entry** is prominent as the 1R baseline. "Actual risk differed" follows §3.4: closed
+   states the match visibly, open records Actual Risk.
+5. **Target** is Unanswered until chosen: Fixed Target (Target Profit, TP price, or both) or No
+   Fixed Target _(contract §5)_.
+6. **Exit Plan inheritance** _(contract §5)_:
+   - While the trader has not made an explicit Exit Plan choice, the selected Strategy's default
+     plan is inherited and labelled "From Strategy: <name>".
+   - If the Strategy changes before any explicit choice, the inherited plan follows the newly
+     selected Strategy's default, still labelled.
+   - The trader can customize, replace with another plan, reject the inherited plan, or choose No
+     Defined Exit Rule.
+   - Any explicit override suppresses inheritance for this Trade. Changing Strategy afterwards does
+     not bring a default back.
+   - Inheritance returns only through an explicit restore action such as "Use strategy default".
+   - A generic "Clear" is avoided.
+7. **Strategy and Setup** — Unanswered / No Strategy (No Setup) / Selected, never collapsed
+   _(contract §7)_. Conditions come from the selected Strategy/Setup version and are answered
+   Met / Not Met / Unanswered. At Entry offers no Unknown _(contract §8)_.
+8. **Confidence** has no default. **Entry emotions** are Unanswered, None of these, or selected
+   emotions _(contract §9)_.
+9. **No result, outcome, System Assessment or Review** appears (§10.4).
+10. **After Save Open Trade** the confirmation offers no Review (§5.9).
+11. **Later additions while the Trade is open are not "at entry."**
+    - Psychology added after the first successful Save Open Trade is shown as added during the
+      trade.
+    - Edits to at-entry observations keep "recorded at entry" plus an edited indication
+      _(contract §9)_.
+    - For non-psychology entry context added later, see Appendix A.
+12. **Mobile is a quick-entry experience.** The Save minimum and Save action come first, and
+    everything else is progressive (§16).
+
+---
+
+## 12. After Trade UX rules
+
+1. **Question:** _What actually happened?_ The surface accepts that some facts are unknown
+   _(contract §13)_.
+2. **Identity** — Account, Symbol, Direction. **Timing** — optional Entry time and final exit time.
+3. **Actual Risk starts Unanswered** and offers explicit **Matched Risk at Entry**, **Different**
+   (record Actual Risk) and **Don't know** _(contract §4)_. It never silently assumes a match, and
+   an unanswered or unknown Actual Risk does not block the System-vs-Actual comparison.
+4. **Result:**
+   - Final Net P&L and a trader-selected Trader Outcome, with the quiet sign notice (§7.7).
+   - Actual R appears only when Final Net P&L and Risk at Entry are both known; otherwise its
+     reason is shown.
+5. **No current defaults are applied to a historical Trade** _(contract §5, §7)_.
+   - Strategy defaults and Exit Plan defaults are not auto-applied.
+   - If the trader chooses a current saved rule, it is presented as selected during
+     reconstruction, never as the historical rule version, unless that version is provably the
+     one in place at entry.
+6. **Conditions** additionally offer Unknown / Don't remember, which is never counted as Not Met
+   _(contract §8)_.
+7. **Exit events** follow §8.8. Reason-only exits and unknown scope are valid, and unknown-scope
+   exits never drive lifecycle. Completeness uses §8.9.
+8. **Recalled psychology is labelled as recalled** _(contract §9)_. Recalled Confidence and Entry
+   Emotion keep that origin even after later edits. Post-Trade Emotion is separate.
+9. **Everything the trader entered persists** on Save Closed Trade _(contract §13)_.
+10. **Reflection and System Assessment are not required** and are not steps of the form.
+11. **After Save Closed Trade:** Trade Saved → Review Trade / Done (§5.9).
+
+---
+
+## 13. Partial / Final Close UX rules
+
+1. **Lifecycle is explicit:** Open → Partially Closed → Closed. The Trade shows its current
+   lifecycle state and whether position remains _(contract §11)_.
+2. **Record Exit on a live Trade** requires scope, Part or All Remaining. Every other exit field is
+   optional _(contract §10)_.
+3. **Partial Close does not ask for whole-Trade results.**
+   - Final Net P&L and Trader Outcome are not requested.
+   - A running exit subtotal may be shown only when labelled as partial supporting history, not a
+     result.
+4. **All Remaining closes the position** even when earlier percentages are incomplete. There is no
+   block and no percentage re-weighting _(contract §10)_.
+5. **At full close** the trader can record Final Net P&L, Trader Outcome and exit-history
+   completeness, plus Post-Trade Emotion _(contract §9, §11)_. Incomplete exit history never blocks
+   closing. Whether Final Net P&L or Trader Outcome is required to close is Appendix A.
+6. **"Use recorded exits as final result"** is offered only when exit history is explicitly Complete
+   and every relevant exit has P&L. It applies only when pressed _(contract §11)_.
+7. **Discrepancy language** is used only when history is explicitly Complete, every relevant exit
+   has P&L, and the subtotal differs from Final Net P&L.
+   - Both values are shown, and Final Net P&L is authoritative. It never blocks.
+   - With Incomplete, Unknown or Unanswered history, the two figures may be shown but MUST NOT be
+     called a discrepancy _(contract §11)_.
+8. **Neither value is silently overwritten.**
+9. **A closing Final Close / Close Remaining** shows Trade Saved → Review Trade / Done (§5.9).
+10. **Later edits to Final Net P&L** recompute Actual R and Difference and do not mark System
+    Assessment as Needs Review _(contract §22)_.
+11. **Canceled** is a lifecycle state in the contract, but no Cancel flow is specified (Appendix A).
+
+---
+
+## 14. Review UX rules
+
+1. **Question:** _What should have happened, and what can I learn?_
+2. **Review is optional and chosen.** Not Reviewed and Not Assessed may show soft attention; Review
+   is never forced, auto-entered or scored _(contract §20)_.
+3. **Three conceptual areas, no gating:**
+   - Reflection;
+   - Discipline / Behavior — Entry Discipline, Risk Discipline, Exit Plan Adherence, Deviation Type
+     and Reason, Mistakes;
+   - System Assessment _(contract §21)_.
+4. **No completion percentage.** Reviewed never requires a note, a mistake, a Strategy or a System
+   Assessment _(contract §21)_.
+5. **Reviewed is an explicit trader action.** "Reviewed — nothing else to add" is a valid completion.
+6. **System Assessment asks, in order of meaning** _(contract §15)_:
+   1. Would your rules have taken this trade? — yes, or **No Trade**. **Cannot Determine** is an
+      answered finding available whenever the trader cannot establish the system outcome, and it
+      is never presented as incomplete _(contract §14)_.
+   2. If yes: what should have closed it? — Fixed Target, Initial SL, break-even rule, trailing
+      exit, time/session exit, another predefined rule, or discretion the system explicitly allows.
+   3. What result would following the rule have produced? — Money (suggested) or R, marked net /
+      comparable or gross only, and never prefilled.
+   4. System R — derived from System Money ÷ Risk at Entry, or given directly.
+   5. Were these rules actually in place before entry?
+   6. Did the trader follow them? — the canonical Exit Plan Adherence answer.
+   7. If deviated: how and why? — Deviation Type and Reason.
+7. **Rules that need a trader-stated result:**
+   - A TP-price-only Fixed Target confirmed as hit, and any dynamic Exit Plan, ask the trader for
+     the System Result in Money or R.
+   - Price is never used to fill it _(contract §5, §15)_.
+8. **One Exit Plan Adherence answer.** It appears in both Discipline and System Assessment as the
+   same field. An edit in one place shows immediately in the other, and the interface never offers
+   two answers that could disagree _(contract §18)_.
+9. **System vs Actual shows System R, Actual R and Difference.**
+   - Difference appears only when the System result is net / comparable and both R figures use
+     Risk at Entry.
+   - A gross-only result shows System R without a Difference and says why.
+   - Risk Deviation is secondary _(contract §15, §17)_.
+10. **Adherence and Execution Impact are separate readings.** A combination such as Not Followed
+    with a positive impact is presented neutrally, as valid _(contract §19)_.
+11. **Needs Review** presents the preserved finding, what changed, and explicit actions to reconfirm
+    or update it _(contract §14, §22)_. Only dependencies the assessment actually used trigger it.
+    Reflection is never invalidated automatically.
+12. **Review interpretation never rewrites original observations** _(contract §9)_. Post-Trade
+    Emotion may be recorded here, and Entry Emotion stays untouched.
+13. **Discipline axes stay separate.** Entry, Risk and Exit Discipline are not merged into a single
+    score _(contract §25; CLAUDE.md §6)_.
+
+---
+
+## 15. Analytics integrity in UX
+
+1. **System and Trader performance are labelled and grouped separately** _(CLAUDE.md §1)_.
+2. **Trader Win Rate** _(contract §25)_:
+   - It counts only trader-selected Trader Outcomes.
+   - BE is in the denominator, not the numerator.
+   - Unanswered is excluded, never counted as a loss.
+   - Legacy-derived outcomes are excluded by default.
+   - The surface shows coverage, such as how many closed Trades the rate is based on.
+3. **System Positive Rate** _(contract §16, §25)_:
+   - It is Positive ÷ eligible canonical System Results.
+   - It excludes Not Assessed, No Trade, Cannot Determine, Needs Review (until reconfirmed),
+     ineligible gross-only and legacy results. The exclusions are shown as coverage, never as
+     Negative.
+   - Positive / Flat / Negative may be shown as a distribution and never labelled Win / Loss / BE.
+4. **Canonical and legacy never mix silently.**
+   - Legacy R, legacy outcomes and Price-mode results may appear on historical Trades with their
+     provenance.
+   - A legacy cohort, if shown, is separately labelled _(contract §28)_.
+5. **Missing is its own bucket.** Charts, filters, tables and breakdowns never fold Unanswered or
+   Unknown into No, Not Met, None, zero, Loss or Negative _(contract §24)_.
+6. **Uncomputable metrics state their reason** instead of showing `0`, `NaN` or `∞`
+   _(design-system §8; CLAUDE.md §6)_.
+7. **Evidence limits are visible.** Insight wording avoids precision the sample cannot support and
+   never states correlation as causation _(contract §25)_.
+8. **Psychology analytics respect observation origin.** Recorded-at-entry observations are not
+   silently pooled with recalled ones _(contract §9, §25)_.
+9. **A metric's population SHOULD be inspectable** where a drill-down exists, so the definition
+   can be checked against the data. This rule adds no required analytics feature.
+10. **Every data surface ships loading, empty, error and success states,** and empty states teach
+    the next action _(design-system §8)_.
+
+---
+
+## 16. Responsive behaviour
+
+1. **Same semantics at every width.**
+   - Presentation may adapt, but a state may never be dropped or merged.
+   - A multi-state question never becomes a binary toggle on a phone.
+   - A distinction visible on desktop is available on mobile.
+2. **Mobile At Entry is quick entry.** The Save minimum and Save come first; optional sections are
+   progressive _(CLAUDE.md §8; design-system §6)_.
+3. **No horizontal page overflow** from 320px upward. Exit history and other wide content scroll
+   inside their own container or switch to a card presentation _(design-system §6)_.
+4. **Nested editors on small screens** may present full-height, keeping §5.2 semantics. The system
+   back gesture behaves as Back / Close and keeps the Draft.
+5. **The on-screen keyboard** must not hide the focused field or its error. Numeric fields open
+   numeric keyboards, and negative values stay enterable (§8.3).
+6. **Touch targets** meet the visual system's minimum _(design-system §6)_.
+7. **Resize, rotation and backgrounding** never lose Draft content, disclosure answers or focus
+   context.
+
+---
+
+## 17. Accessibility and interaction
+
+1. **Baseline** — WCAG AA contrast, visible focus, full keyboard operation, semantic landmarks,
+   labelled controls, and associated errors _(design-system §12)_.
+2. **Every state is programmatically exposed.**
+   - Unanswered is an option group with no selection, announced as such.
+   - Unknown, None and Not Applicable are named options.
+   - Inherited values are announced as inherited ("From Strategy: <name>").
+   - Blank fields are never announced as `0`.
+3. **Meaning never relies on colour, icon or position alone.** States, notices, attention indicators
+   and System buckets carry text.
+4. **Keyboard rules for nested editors:**
+   - Escape closes and keeps changes (§5.2), and focus returns to the control that opened the
+     editor.
+   - Discard Changes is reachable by keyboard and named explicitly.
+   - Enter inside a nested editor never submits the whole Trade.
+5. **Focus management** — a failed save attempt moves focus to the error summary or first invalid
+   field. Trade Saved moves focus to the confirmation and its Review Trade / Done choice.
+6. **Live announcements** use a persistent polite live region for save progress, success, failure,
+   recovered draft and quiet notices _(design-system §12)_.
+7. **Helper text and disclosures never depend on hover.** They are reachable by keyboard and touch.
+8. **Nothing time-limited.** Choices and confirmations do not auto-dismiss or auto-advance.
+9. **Motion** respects `prefers-reduced-motion` and never gates access to content _(design-system
+   §7)_.
+
+---
+
+## 18. AI redesign guardrails
+
+**If a visual/interaction design cannot represent the approved product semantics clearly, stop and
+report the conflict rather than simplifying the semantics.**
+
+1. **Read order for any redesign:** the approved Product Contract → this document → the visual
+   system → current code.
+2. **Neither current production nor the prototype is an authority.** They are evidence. Reuse their
+   interaction ideas only where they satisfy the contract and these rules.
+3. **Known prototype conflicts must not be copied** _(prototype reconstruction)_:
+   - a blocking exit-history conflict;
+   - adoption of the exit subtotal before save;
+   - outcome words that sign an amount;
+   - a Review surface before save.
+4. **A redesign MUST NOT:**
+   - reintroduce a Money/Price result-basis switch, a Plan mode, or a Price-result mode;
+   - derive P&L, R, System Result or Trader Outcome from price, or derive Trader Outcome from sign
+     or R;
+   - preselect an answer, or give Confidence, Trader Outcome, conditions, emotions, Target,
+     adherence or System Result a default;
+   - fold Unanswered, Unknown, None, Known Zero and negative answers into fewer states to simplify
+     a control;
+   - use Win / Loss / BE, or "System Win Rate", on the System side;
+   - make dismissal (X, Escape, outside click, Back, Close, mode switch) destructive;
+   - add blocking validation beyond §6.1, or block on a notice;
+   - offer Review after Save Open Trade, auto-enter Review, add a completion percentage, or require
+     content to mark a Trade Reviewed;
+   - auto-apply a current Strategy or Exit Plan default in After Trade, re-apply a rejected
+     inheritance, or use a generic "Clear" for Exit Plan;
+   - show two editable Exit Plan Adherence answers;
+   - expose internal technical vocabulary;
+   - mix legacy and canonical values, or count excluded records as negative;
+   - freeze the Deviation Type / Reason taxonomy, or lock Thai copy that still needs native
+     validation.
+5. **Styling decisions stay in the visual system.** A redesign that changes appearance only still
+   passes the §19 checklist.
+6. **When semantics seem to need a new decision,** record the question and stop. Do not resolve it
+   in UI.
+
+---
+
+## 19. UX review checklist
+
+Use this for every design, prototype, pull request or AI-generated redesign touching these flows.
+
+**Semantics and states**
+
+- [ ] Every contract state is representable: Unanswered, Unknown, None, Known Zero, Known Value,
+      negative answer, Not Applicable, Inherited, Legacy, and the Needs Review overlay (§4).
+- [ ] No answer is preselected beyond the three contract-sanctioned starting values (§4.1).
+- [ ] Blank numeric fields stay blank through blur, collapse, reload and save (§4.2).
+- [ ] Unanswered never reads as No, Not Met, Loss, zero or Negative (§4.3, §15.5).
+- [ ] There is no Money/Price basis switch, and price derives no result (§8.1–§8.2).
+- [ ] Win / Loss / BE appears only for Trader Outcome, and Trader Outcome is never derived (§8.10,
+      §9.5).
+- [ ] Exit Plan inheritance is visible, overridable, suppressed after override, and restored only
+      explicitly. There is no generic "Clear" (§11.6).
+- [ ] After Trade applies no current defaults and presents Actual Risk as Unanswered (§12.3, §12.5).
+
+**Draft, navigation and validation**
+
+- [ ] Done, X, Escape and outside dismissal keep changes, and Discard Changes restores the editor
+      checkpoint (§5.2).
+- [ ] Back, Close, route change and mode switch keep the Draft, and reload recovers it (§5.3–§5.5).
+- [ ] Save failure keeps the Draft, and retry cannot duplicate a Trade (§5.7).
+- [ ] Only contract requirements and invalid input block Save; notices never block (§6.1–§6.3).
+- [ ] Save explains what is missing instead of being silently disabled (§6.5).
+- [ ] Review is offered only after Save Closed Trade or a closing Final Close / Close Remaining,
+      never after Save Open Trade, and never auto-entered (§5.9–§5.10).
+
+**Capture, close and Review**
+
+- [ ] At Entry shows no Final P&L, Trader Outcome, System Result, System Assessment or Review
+      (§10.4).
+- [ ] Partial Close asks for no whole-Trade result, and All Remaining closes without percentage
+      completeness (§13.3–§13.4).
+- [ ] Exit subtotal adoption is explicit and offered only for a Complete, fully priced history.
+      Discrepancy language appears only under all three conditions (§13.6–§13.7).
+- [ ] System Result is trader-stated in Money or R, marked net or gross-only, and never prefilled
+      (§8.11, §14.6).
+- [ ] There is one Exit Plan Adherence answer, and Execution Impact is shown separately (§14.8,
+      §14.10).
+- [ ] Reviewed is explicit, with no completion percentage and no required content (§14.4–§14.5).
+- [ ] Needs Review keeps and shows the prior finding, and Final Net P&L changes do not trigger it
+      (§13.10, §14.11).
+
+**Analytics, language, responsive and accessibility**
+
+- [ ] System Positive Rate and Trader Win Rate use their contract populations and show coverage
+      (§15.2–§15.3).
+- [ ] Legacy and canonical values are never silently mixed (§15.4).
+- [ ] Uncomputable values show a reason, never `0` (§7.9, §15.6).
+- [ ] Familiar trading vocabulary is preserved, and internal terms are absent (§9.1, §9.4).
+- [ ] Thai copy follows the glossary, and unvalidated Thai wording is not treated as final (§9.8).
+- [ ] Semantics are identical at 320px, tablet and desktop, with no horizontal page overflow
+      (§16.1, §16.3).
+- [ ] Every state is exposed programmatically, meaning never relies on colour alone, and focus and
+      live announcements follow §17.
+- [ ] Any semantic conflict found was reported rather than simplified away (§18).
+
+---
+
+## Appendix A — Open UX/product boundary questions
+
+These came up while deriving the rules above. Each needs a **product decision** (a Product Contract
+update) before a UX rule can be written. This document does not decide them. Until they are
+decided, implementations MUST NOT invent an answer that adds blocking, drops a state, or claims
+provenance.
+
+1. **Save Closed Trade and Final Close minimums.**
+   - The contract fixes the Save Open Trade minimum _(§6)_.
+   - It lists After Trade "core identity" and says Reflection and System Assessment are not
+     required _(§13)_.
+   - It does not say whether Risk at Entry, Final Net P&L or Trader Outcome is required to save a
+     closed Trade or complete a Final Close.
+2. **Whether Risk at Entry may be zero or negative.** "Unknown Risk ≠ $0 Risk" separates the states
+   _(§24)_, but the contract does not say whether a Known Zero Risk at Entry is acceptable input when
+   it is the 1R baseline.
+3. **Whether a Fixed Target needs detail.** A Fixed Target "may consist of" Target Profit, TP price
+   or both _(§5)_. It is unclear whether Fixed Target with neither is valid.
+4. **An opened but blank "Actual risk differed" at At Entry.** Not opening it is an affirmation
+   _(§4)_. What an opened section with no Actual Risk value saves as is not defined.
+5. **Observation origin for non-psychology entry context.**
+   - Origin (`recorded_at_entry` / `recorded_during_trade` / `recalled_after_trade`) is defined for
+     psychology _(§9)_.
+   - After Trade Strategy selection is "recalled/selected during reconstruction" _(§5, §7)_.
+   - The origin of Strategy, Setup, conditions or Exit Plan first added to an open Trade after
+     Save Open Trade is not defined.
+6. **Draft carry-over when switching At Entry ↔ After Trade.** The Draft must not be silently
+   destroyed _(§23)_. The contract does not define:
+   - whether values carry over into the other mode, or one Draft is kept per mode;
+   - how origin-bearing values (psychology, Exit Plan inheritance) are treated across the switch.
+
+   §5.5 fixes only that the Actual Risk affirmation never becomes an explicit After Trade "Matched".
+
+7. **Draft lifecycle for editing an existing Trade.** §23 describes a Recording Draft. The contract
+   does not say whether reload recovery and checkpoint rules also apply to Record Exit, Final Close,
+   Review and edits of a persisted Trade.
+8. **Draft retention and shared devices.** The contract does not define:
+   - how long a locally recovered draft is kept;
+   - whether sign-out or a workspace switch clears it;
+   - how several concurrent drafts are presented.
+9. **Review availability for open or partially closed Trades.** Review must not be offered after
+   Save Open Trade _(§20)_. Whether an open Trade can be reviewed later is not stated.
+10. **Reverting Reviewed.** Reviewed is an explicit action _(§21)_. Whether a trader can return a
+    Trade to Not Reviewed is not stated.
+11. **Exit Plan Adherence without a usable Exit Plan.** The answers are Followed / Partly / Not
+    Followed / Not Answered _(§18)_. The contract does not say:
+    - whether adherence is asked when the Exit Plan is No Defined Exit Rule or Not recorded;
+    - whether a Not Applicable answer is needed there.
+12. **Explicit Unknown for numeric facts.** Unknown is an explicit answer for Actual Risk,
+    conditions, exit scope and completeness. For Risk at Entry, Final Net P&L and timestamps, the
+    contract separates Unknown from zero and break-even _(§24)_ but does not say whether a separate
+    explicit "Don't know" answer is captured or a blank covers it.
+13. **Canceled Trades.** Canceled is a Trade lifecycle state _(§20)_ with no defined flow,
+    requirements, Review behaviour or analytics treatment.
+14. **Price context consistency.** Price is context only _(§3)_. The contract does not say:
+    - whether an inconsistent price context (SL on the wrong side of entry, TP behind entry) is an
+      error, a notice, or accepted — `CLAUDE.md` §6 still describes rejecting a non-positive
+      `riskPerUnit` for price geometry;
+    - whether price-derived planning context, such as a planned reward:risk ratio, may be shown as
+      labelled context.
+15. **Final Thai wording** for new concepts needs native-copy validation _(glossary)_. The Deviation
+    Type / Reason taxonomy is provisional pending UX/prototype validation _(contract §18)_.
+16. **Astra interaction/data-integrity findings** are not present in the repository and were not
+    reviewed. If they are supplied, they are audit evidence to check against these rules, not an
+    authority.
+
+---
+
+## Appendix B — Current implementation evidence
+
+Implementation evidence only, recorded so redesign and migration work can find the gaps. These are
+**current implementation pending migration**, not approved behaviour
+(see [`CLAUDE.md`](../CLAUDE.md) §6 _Current implementation pending migration_):
+
+- Add Trade offers a Money/Price basis switch, and After Trade offers a Price actual result (§8.1).
+- Trader Outcome is derived from R with a ±0.05R band or from P&L sign, and a Win/Loss/BE
+  `system_outcome` and System Win Rate are still shown (§8.10, §9.5, §15.3).
+- Journal overlays treat Cancel / Escape as discard (§5.2).
+- Changing mode discards the entered form after a confirmation (§5.5).
+- There is no reload draft recovery (§5.4).
+- After Trade redirects straight to the Review tab instead of offering Trade Saved → Review Trade /
+  Done (§5.9–§5.10).
+- A Complete-history exit conflict blocks saving, and a live close derives net P&L from exit legs
+  (§6.2, §13.7).
+- A closed Trade counts as reviewed when review notes exist, rather than by an explicit Reviewed
+  action (§14.5).
+- Setup condition checks store only Met / Not Met, exit rows cannot be reason-only, and emotions
+  carry no observation phase (§4, §12.6–§12.8).
+- Timestamp fields use native date-time inputs (§8.5 — acceptable only if they meet the timezone,
+  clearing and accessibility rules).
