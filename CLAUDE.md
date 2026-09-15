@@ -1,9 +1,9 @@
 # CLAUDE.md — Trading OS Engineering Constitution
 
 > This file is the standing engineering and AI operating contract for all work in this repository.
-> Read it before modifying code. For a domain covered by an approved Product Contract in [`docs/product-contracts/`](docs/product-contracts/), read that contract; for user-facing work also read [`docs/UX_RULES.md`](docs/UX_RULES.md) and then the visual system ([`docs/design-system.md`](docs/design-system.md)); then read the active phase document in [`docs/phases/`](docs/phases/).
+> Read it before modifying code. For a domain covered by an approved Product Contract in [`docs/product-contracts/`](docs/product-contracts/), read that contract; for user-facing work also read [`docs/UX_RULES.md`](docs/UX_RULES.md), then [`DESIGN.md`](DESIGN.md) (visual-design authority) and [`docs/design-system.md`](docs/design-system.md) (its implementation and token reference); then read the active phase document in [`docs/phases/`](docs/phases/).
 >
-> **Documentation precedence:** each level controls its own domain, and a lower level never overrides a higher level's semantic or behavioural decision. (1) An approved Product Contract controls **product semantics** for its domain; (2) [`docs/UX_RULES.md`](docs/UX_RULES.md) controls **interaction and behaviour** and never changes contract semantics; (3) this file and the canonical technical docs (`docs/calculation-spec.md`, `docs/data-dictionary.md`, `docs/product-spec.md`) control **engineering and technical constraints** as applicable — those constraints (authorization, tenancy, money precision, UTC time) still bind how (1)–(2) are implemented, but these documents must not contradict (1)–(2), and they label current implementation that has not caught up; (4) `DESIGN.md` / the visual system (currently `docs/design-system.md`) controls **visual expression** and may never simplify away an approved semantic or behaviour; (5) Phase documents and other historical records never silently override any level above. See [`docs/product-contracts/README.md`](docs/product-contracts/README.md).
+> **Documentation precedence:** each level controls its own domain, and a lower level never overrides a higher level's semantic or behavioural decision. (1) An approved Product Contract controls **product semantics** for its domain; (2) [`docs/UX_RULES.md`](docs/UX_RULES.md) controls **interaction and behaviour** and never changes contract semantics; (3) this file and the canonical technical docs (`docs/calculation-spec.md`, `docs/data-dictionary.md`, `docs/product-spec.md`) control **engineering and technical constraints** as applicable — those constraints (authorization, tenancy, money precision, UTC time) still bind how (1)–(2) are implemented, but these documents must not contradict (1)–(2), and they label current implementation that has not caught up; (4) [`DESIGN.md`](DESIGN.md) controls **visual expression**, with [`docs/design-system.md`](docs/design-system.md) as its implementation and token reference, and may never simplify away an approved semantic or behaviour; (5) Phase documents and other historical records never silently override any level above. See [`docs/product-contracts/README.md`](docs/product-contracts/README.md).
 >
 > **Add Trade:** [`docs/product-contracts/add-trade.md`](docs/product-contracts/add-trade.md) is **approved (v1, 2026-09-14)** and is the product source of truth for At Entry, After Trade, Partial / Final Close, Review, System Assessment and related Strategy / Psychology / Discipline semantics. Much of it is **not implemented yet** — see §6 _Approved Add Trade target semantics_ and _Current implementation pending migration_.
 >
@@ -282,7 +282,7 @@ systemEdgeCaptured = actualTotalR / systemTotalR
 
 Modern professional SaaS. Not an admin template.
 
-This section is the engineering baseline. Interaction and behaviour rules live in [`docs/UX_RULES.md`](docs/UX_RULES.md), below approved Product Contracts; visual expression lives in the visual system, currently [`docs/design-system.md`](docs/design-system.md). Neither this baseline nor the visual system may simplify away an approved semantic or behaviour.
+This section is the engineering baseline. Interaction and behaviour rules live in [`docs/UX_RULES.md`](docs/UX_RULES.md), below approved Product Contracts; visual expression lives in [`DESIGN.md`](DESIGN.md), implemented through the tokens and components in [`docs/design-system.md`](docs/design-system.md). Neither this baseline nor the visual system may simplify away an approved semantic or behaviour.
 
 - Identity: blue / navy / cyan. **Dark mode is the primary experience**; light mode is complete, not an afterthought.
 - Restrained gradients, clean layered surfaces, generous spacing, consistent radii, clear hierarchy.
@@ -306,7 +306,7 @@ Payments are a **mock flow** for the MVP, isolated behind a payment adapter so a
 
 ## 10. Working agreement
 
-**Before modifying code:** read this file → read the approved Product Contract for the domain, if one exists → for user-facing work, read [`docs/UX_RULES.md`](docs/UX_RULES.md) and then the visual system ([`docs/design-system.md`](docs/design-system.md)) → read the active phase document → inspect existing code and migrations → report the files likely to change. Do not rewrite unrelated code.
+**Before modifying code:** read this file → read the approved Product Contract for the domain, if one exists → for user-facing work, read [`docs/UX_RULES.md`](docs/UX_RULES.md), then [`DESIGN.md`](DESIGN.md) and [`docs/design-system.md`](docs/design-system.md) → read the active phase document → inspect existing code and migrations → report the files likely to change. Do not rewrite unrelated code.
 
 **After implementing:** format → lint → typecheck → unit tests → integration tests where relevant → production build. Then summarize changed files, document migrations, note unresolved risks, and make **one coherent commit** for the task.
 

@@ -14,9 +14,10 @@
 > 3. **`CLAUDE.md` and canonical technical docs** — engineering and technical constraints as
 >    applicable (authorization, tenancy, money precision, UTC time). They bind how these rules are
 >    implemented but never contradict them.
-> 4. **`DESIGN.md` / visual system** — visual expression. No `DESIGN.md` exists yet;
->    [`design-system.md`](design-system.md) is the visual system until one does. Colour, type scale,
->    radius, shadow, component styling and brand direction belong there, not here.
+> 4. **`DESIGN.md` / visual system** — visual expression. [`DESIGN.md`](../DESIGN.md) is the
+>    visual-design authority; [`design-system.md`](design-system.md) is its implementation and token
+>    reference. Colour, type scale, radius, shadow, component styling and brand direction belong
+>    there, not here.
 > 5. **Historical documents** — Phase documents, reviews and the frozen prototype record.
 >
 > Where a rule here appears to disagree with an approved contract, the contract wins and the
