@@ -186,6 +186,11 @@ Rules:
    set in the explanatory role — never `0`, `—` pretending to be a value, or a greyed number.
 6. **Thai rhythm is part of the role.** Every role keeps script-appropriate line-height and removes
    Latin tracking for Thai (implemented in `globals.css`); a new role must do the same.
+7. **Form values use the primary family with tabular figures, not the monospace stack.** Money,
+   price, date and time inputs in Capture set digits with `tabular-nums` in Noto Sans Thai; the
+   monospace stack made them read as code in the At Entry pilot
+   ([evidence](docs/prototype/at-entry-visual-pilot.md#5-visual-foundations--what-now-has-evidence)).
+   Whether tables and KPI figures follow is still open (Appendix C item 2).
 
 ---
 
@@ -866,15 +871,26 @@ After these adjustments no principle was found to fail in the listed contexts.
 ## Appendix C — Intentionally deferred decisions
 
 These are visual decisions this document frames but does not settle; each needs a measured
-implementation pass recorded in `docs/design-system.md`.
+implementation pass recorded in `docs/design-system.md`. Items marked **Pilot evidence** were
+exercised by the [At Entry visual pilot](docs/prototype/at-entry-visual-pilot.md) (2026-09-16); the
+evidence narrows the decision but does not replace the implementation pass.
 
 1. **Palette retune:** a less-black Dark ground, a shared temperature across themes, and separating
    the Light action blue from break-even, `trader` series and focus — with contrast and CVD
-   re-validation.
+   re-validation. **Pilot evidence (temperature only):** a lifted cool-neutral Dark ground and a
+   neutral Light ground with one cyan accent family across both themes held hierarchy and contrast
+   on a Capture page. Accent separation from outcome and series colours is untested there, and the
+   token migration stays deferred.
 2. **Figure typeface:** whether tabular figures in Noto Sans Thai can replace the monospace `numeric`
-   stack for figures, keeping alignment.
+   stack for figures, keeping alignment. **Pilot evidence:** for Capture inputs, tabular figures in
+   the primary family read as product UI while the monospace stack made money and date inputs read as
+   code — see §4 rule 7. Column alignment in tables and KPI figures is still untested.
 3. **Uppercase label retirement:** migration path for caps `text-label` / `MetricLabel` defaults.
+   **Pilot evidence:** a full Capture page with no uppercase kept its hierarchy at 320–1440 in both
+   themes. The migration path for existing Dashboard and Analytics labels, and Thai, remain open.
 4. **Radius roles:** mapping the current radius classes onto control / card / overlay / pill.
+   **Pilot evidence:** control `rounded-md`, surface `rounded-xl`, the overlay primitive's own radius
+   and pill `rounded-full` covered every element on the page.
 5. **Notice primitive:** API and emphasis levels for info / notice / attention.
 6. **Status badge consolidation:** one indicator covering lifecycle, review, assessment, outcome and
    legacy with tone rules from §8.
