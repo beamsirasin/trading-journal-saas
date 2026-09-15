@@ -1,15 +1,15 @@
 # CLAUDE.md — Trading OS Engineering Constitution
 
 > This file is the standing engineering and AI operating contract for all work in this repository.
-> Read it before modifying code. For a domain covered by an approved Product Contract in [`docs/product-contracts/`](docs/product-contracts/), read that contract second, then the active phase document in [`docs/phases/`](docs/phases/).
+> Read it before modifying code. For a domain covered by an approved Product Contract in [`docs/product-contracts/`](docs/product-contracts/), read that contract; for user-facing work also read [`docs/UX_RULES.md`](docs/UX_RULES.md) and then the visual system ([`docs/design-system.md`](docs/design-system.md)); then read the active phase document in [`docs/phases/`](docs/phases/).
 >
-> **Documentation precedence:** (1) an approved Product Contract defines intended product behaviour and semantics for its domain; (2) this file governs engineering and must not contradict an approved Product Contract — where it still does, the contract wins; (3) canonical technical docs (`docs/calculation-spec.md`, `docs/data-dictionary.md`, `docs/product-spec.md`) describe approved target semantics and label current implementation that has not caught up; (4) Phase documents are historical records and never silently override a newer approved contract. See [`docs/product-contracts/README.md`](docs/product-contracts/README.md).
+> **Documentation precedence:** each level controls its own domain, and a lower level never overrides a higher level's semantic or behavioural decision. (1) An approved Product Contract controls **product semantics** for its domain; (2) [`docs/UX_RULES.md`](docs/UX_RULES.md) controls **interaction and behaviour** and never changes contract semantics; (3) this file and the canonical technical docs (`docs/calculation-spec.md`, `docs/data-dictionary.md`, `docs/product-spec.md`) control **engineering and technical constraints** as applicable — those constraints (authorization, tenancy, money precision, UTC time) still bind how (1)–(2) are implemented, but these documents must not contradict (1)–(2), and they label current implementation that has not caught up; (4) `DESIGN.md` / the visual system (currently `docs/design-system.md`) controls **visual expression** and may never simplify away an approved semantic or behaviour; (5) Phase documents and other historical records never silently override any level above. See [`docs/product-contracts/README.md`](docs/product-contracts/README.md).
 >
 > **Add Trade:** [`docs/product-contracts/add-trade.md`](docs/product-contracts/add-trade.md) is **approved (v1, 2026-09-14)** and is the product source of truth for At Entry, After Trade, Partial / Final Close, Review, System Assessment and related Strategy / Psychology / Discipline semantics. Much of it is **not implemented yet** — see §6 _Approved Add Trade target semantics_ and _Current implementation pending migration_.
 >
 > **Status:** Phases 03–11 are officially complete. Phase 11 — SaaS Administration delivered a dedicated `platform_admins` grant-history authority (never `users.is_platform_admin`, never derived from Workspace ownership), an append-only `admin_audit_log`, an EN-only non-locale-prefixed `/admin` shell (Overview, Users, Workspaces, Audit, VAT), privacy-limited read-only User/Workspace oversight, exactly three named Subscription Support mutations (Extend Trial, Grant/Change Complimentary Plan, Revoke Complimentary Plan) with a truthful null-shaped complimentary state that can convert to real paid only through the genuine checkout path, and DB-authoritative append-only platform VAT configuration (fail-closed, no customer control, no scheduling UI) wired into every quotation/checkout/billing-presentation call site. Platform-admin provisioning/revocation remains operational-script-only; no Admin-management UI exists or is planned. Phase 10 delivered the single pre-onboarding Settings surface with real self-scoped Profile/Preferences and Account Security, owner+writable Workspace rename, canonical Account/Plan/Billing navigation, and owner-only schema-versioned JSON/normalized CSV ZIP Workspace export that remains available in read-only and over-limit modes. No migration was required for Phase 10; Phase 11 needed exactly one (`0009_platform_admin_foundation.sql`, Phase 11B). Email change, avatar editing, provider linking/unlinking, MFA/passkeys, async import/export jobs, and account/workspace deletion remain deferred, as do impersonation, suspension, refunds/reconciliation, and payment-provider administration.
 > Phase 12A — Launch Readiness Repository and Infrastructure Audit — is complete: a read-only audit found zero tenant-isolation or Platform Admin authorization defects, a sound billing/subscription state machine, no production payment provider, no working production email delivery, and no platform-wide security headers. Phase 12B — Security Hardening delivered a blanket security-header baseline (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, a minimal `Permissions-Policy`, and production-only `Strict-Transport-Security`) plus a Report-Only `Content-Security-Policy` (enforcement deliberately deferred until a nonce architecture and real payment-provider script requirements are known), re-verified with no changes needed that tenant isolation/Platform Admin authorization/billing state machine/production fail-closed guards remain sound, extended redirect-safety regression coverage, and added an operator-facing confirmation (resolved email) to the platform-admin grant/revoke script's dry-run output. Phase 12B did not implement production email delivery or a real payment provider — both remain explicitly deferred to a later integration slice/phase, not a 12B gap. Phase 12 overall remains incomplete: accessibility automation, full responsive-width coverage, performance baselines, staging/production infrastructure, observability, and backup/restore rehearsal are still outstanding.
-> **Last updated:** 2026-09-14 (Add Trade Product Contract v1 approved — documentation governance reconciliation; the engineering status above last changed in Phase 12B)
+> **Last updated:** 2026-09-15 (UX Rules activated in the documentation precedence and Add Trade UX boundary decisions 24–37 recorded; the engineering status above last changed in Phase 12B)
 >
 > The master product instructions this repository was commissioned under are preserved verbatim in [Appendix A](#appendix-a--master-instructions-verbatim). Where this document elaborates on them, the appendix governs intent and this document governs implementation. An approved Product Contract supersedes Appendix A's intent for the domain it covers.
 
@@ -171,7 +171,7 @@ Every formula lives in `src/lib/calc/`, is documented in code with its definitio
 - **Win / Loss / BE belongs to Trader Outcome only.** The System side is a trader-confirmed System Result in Money or R, No Trade, or Cannot Determine; canonical System Result buckets are Positive (> 0), Flat (= 0) and Negative (< 0) by exact numeric sign with no ±0.05R tolerance, reported as System Positive Rate and System Result Distribution — never as Win / Loss / BE (§16, §25).
 - **Canonical R uses one baseline.** `Actual R = Final Net P&L / Risk at Entry` and `System R = System Result / Risk at Entry`, so System-vs-Actual comparison and Execution Impact are like-for-like (§4, §17). A System Result entered directly as R is valid while System Money is unknown; a gross-only System Result produces no Difference (§15).
 - **Actual Risk is a separate Risk Discipline observation.** It never redefines canonical Actual R (§4).
-- **Price is context.** Entry, SL, TP and exit prices never calculate new canonical P&L, Actual R, System R or Trader Outcome, and a Money/Price result-basis switch is not approved product behaviour (§3).
+- **Price is context.** Entry, SL, TP and exit prices never calculate new canonical P&L, Actual R, System R or Trader Outcome, and a Money/Price result-basis switch is not approved product behaviour (§3). A plausible price inconsistency such as a Long stop above Entry is a non-blocking data-quality notice; only malformed price input is an error (§3).
 - **Final Net P&L is authoritative** for a closed Trade. Exit subtotals are supporting history, adopted only explicitly, and a Complete-history discrepancy is non-blocking (§11).
 - **Review completion is an explicit lifecycle state** (Not Reviewed / Reviewed), never inferred from whether a review note exists (§20–21).
 - **Missing observations are never negative observations.** Unanswered or unknown conditions, rules, emotions, risk, scope or outcomes never count as Not Met, a violation, zero, None or a loss (§2, §8, §24).
@@ -186,6 +186,7 @@ The running code predates the approved contract. Until the Add Trade migration l
 - computes System R from planned price geometry or the Money-only Plan resolution kinds, and stores a Win/Loss/BE `system_outcome`;
 - offers a Money/Price basis switch in Add Trade and a Price actual result in After Trade;
 - derives a live close's `net_pnl_minor` from exit legs, and blocks a Complete-history exit conflict;
+- rejects a Stop or Target on the wrong side of Entry as a validation error (approved target: a non-blocking data-quality notice, contract §3);
 - treats a closed Trade with no `review_notes` as not reviewed.
 
 Describe that behaviour accurately when working on it, and do not extend it as though it were approved. Replacing it requires an explicit migration/implementation task.
@@ -200,7 +201,7 @@ riskPerUnit(entry, initialStop) =
     short -> initialStop - entry
 ```
 
-`riskPerUnit` must be **strictly positive**. A non-positive value means the stop is on the wrong side of entry — reject at validation, never silently proceed.
+`riskPerUnit` must be **strictly positive**. A non-positive value means the stop is on the wrong side of entry — reject at validation, never silently proceed. _(Current implementation. Approved Add Trade target: price is context only, so a wrong-side stop is a non-blocking data-quality notice and price never becomes a denominator for canonical values — contract §3.)_
 
 `riskPerUnit` is a price distance. It is **not** a route to a monetary risk amount.
 
@@ -281,6 +282,8 @@ systemEdgeCaptured = actualTotalR / systemTotalR
 
 Modern professional SaaS. Not an admin template.
 
+This section is the engineering baseline. Interaction and behaviour rules live in [`docs/UX_RULES.md`](docs/UX_RULES.md), below approved Product Contracts; visual expression lives in the visual system, currently [`docs/design-system.md`](docs/design-system.md). Neither this baseline nor the visual system may simplify away an approved semantic or behaviour.
+
 - Identity: blue / navy / cyan. **Dark mode is the primary experience**; light mode is complete, not an afterthought.
 - Restrained gradients, clean layered surfaces, generous spacing, consistent radii, clear hierarchy.
 - Accessible contrast (WCAG AA minimum), visible focus rings, full keyboard operation, labelled form controls, semantic landmarks.
@@ -303,7 +306,7 @@ Payments are a **mock flow** for the MVP, isolated behind a payment adapter so a
 
 ## 10. Working agreement
 
-**Before modifying code:** read this file → read the approved Product Contract for the domain, if one exists → read the active phase document → inspect existing code and migrations → report the files likely to change. Do not rewrite unrelated code.
+**Before modifying code:** read this file → read the approved Product Contract for the domain, if one exists → for user-facing work, read [`docs/UX_RULES.md`](docs/UX_RULES.md) and then the visual system ([`docs/design-system.md`](docs/design-system.md)) → read the active phase document → inspect existing code and migrations → report the files likely to change. Do not rewrite unrelated code.
 
 **After implementing:** format → lint → typecheck → unit tests → integration tests where relevant → production build. Then summarize changed files, document migrations, note unresolved risks, and make **one coherent commit** for the task.
 

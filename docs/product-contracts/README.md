@@ -10,19 +10,31 @@ the code does not implement yet.
 
 ## Documentation precedence
 
-When documents disagree, resolve them in this order:
+Each level controls its own domain. When documents disagree, resolve them in this order. A lower
+level never overrides a higher level's semantic or behavioural decision; where one still does, the
+higher level wins and the conflict is a documentation defect to fix.
 
-1. **Approved Product Contract** — intended product behaviour and semantics for its domain.
-2. **[`CLAUDE.md`](../../CLAUDE.md)** — current engineering and AI operating instructions. It must
-   not contradict an approved Product Contract; where it still does, the contract wins and the
-   conflict is a documentation defect to fix.
-3. **Canonical technical documentation** — for example
-   [`calculation-spec.md`](../calculation-spec.md), [`data-dictionary.md`](../data-dictionary.md)
-   and [`product-spec.md`](../product-spec.md). These describe the approved target semantics where a
-   contract applies, and clearly label current implementation that has not caught up.
-4. **Historical Phase documents** ([`docs/phases/`](../phases/)) — records of what was decided and
-   built at the time. They remain intact as history and never silently override a newer approved
-   Product Contract.
+1. **Approved Product Contract** — **product semantics** for its domain: what a state, value or
+   result means, what is required, and what is never inferred.
+2. **[`UX_RULES.md`](../UX_RULES.md)** — **interaction and behaviour**: information hierarchy,
+   progressive disclosure, state representation, drafts and navigation, validation, feedback, and
+   redesign guardrails. It applies the contracts and never changes their semantics.
+3. **[`CLAUDE.md`](../../CLAUDE.md) and canonical technical documentation** — **engineering and
+   technical constraints** as applicable, for example [`calculation-spec.md`](../calculation-spec.md),
+   [`data-dictionary.md`](../data-dictionary.md) and [`product-spec.md`](../product-spec.md).
+   Engineering constraints such as authorization, tenancy, money precision and UTC time still bind
+   how the levels above are implemented, but these documents must not contradict a contract's
+   semantics or the UX Rules' behaviour. Where a contract applies, they describe the approved
+   target and clearly label current implementation that has not caught up.
+4. **`DESIGN.md` / visual system** — **visual expression**: colour, typography, spacing, radius,
+   motion and component styling. No `DESIGN.md` exists yet; [`design-system.md`](../design-system.md)
+   is the visual system until one does. Visual simplification may never delete an approved semantic
+   or behaviour.
+5. **Historical documents** — Phase documents ([`docs/phases/`](../phases/)), reviews and the frozen
+   prototype record. They remain intact as history and never silently override any level above.
+
+For design or implementation of a user-facing flow, read in the same order: Product Contract → UX
+Rules → `CLAUDE.md` and technical docs → visual system → current code.
 
 ## Target versus current implementation
 

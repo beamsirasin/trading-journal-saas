@@ -2,7 +2,8 @@
 
 > **Current product authority:** the approved
 > [Add Trade Product Contract](../product-contracts/add-trade.md) (v1, 2026-09-14) is the current
-> product source of truth. Where this prototype behaves differently — including its historical
+> product source of truth, and [`docs/UX_RULES.md`](../UX_RULES.md) is the current interaction
+> authority. Where this prototype behaves differently — including its historical
 > reconciliation behaviour (blocking Save on a declared-complete exit conflict, adopting exits
 > before save), its outcome behaviour (an outcome word signing an unsigned amount), and its
 > placement of Review and System assessment — that behaviour is not a current product requirement.

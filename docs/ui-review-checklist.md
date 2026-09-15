@@ -4,6 +4,8 @@ Run this against any phase that ships a user-facing surface. It is a review aid,
 
 Conventions live in [design-system.md](design-system.md). This file is what you walk through before saying a screen is done.
 
+For a flow covered by an approved [Product Contract](product-contracts/README.md), also walk the [UX Rules](UX_RULES.md) review checklist (§19). Product semantics come from the contract, interaction behaviour from the UX Rules, and visual expression from the design system — a visual check here never overrides either.
+
 ## Automated first
 
 Nothing below is worth reviewing by hand until these pass. Failures here are cheaper to read than to rediscover in a browser.

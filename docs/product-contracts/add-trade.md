@@ -3,13 +3,15 @@
 > **Status: Approved (v1, 2026-09-14).** This document is the product source of truth for the
 > TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
-> final decisions 12–18, closing decisions 19–21 and analytics decisions 22–23 are recorded in the
-> [Decision log](#decision-log).
+> final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
+> decisions 24–37 are recorded in the [Decision log](#decision-log).
 >
-> **Authority:** where `CLAUDE.md`, canonical technical documentation (such as
-> `docs/calculation-spec.md`, `docs/data-dictionary.md` or `docs/product-spec.md`) or a historical
-> Phase document disagrees with this contract about Add Trade behaviour or semantics, this contract
-> wins. See [`README.md`](README.md) for the documentation precedence order.
+> **Authority:** where [`docs/UX_RULES.md`](../UX_RULES.md), `CLAUDE.md`, canonical technical
+> documentation (such as `docs/calculation-spec.md`, `docs/data-dictionary.md` or
+> `docs/product-spec.md`), the visual system or a historical Phase document disagrees with this
+> contract about Add Trade behaviour or semantics, this contract wins. UX Rules define the
+> interaction behaviour that applies this contract. See [`README.md`](README.md) for the
+> documentation precedence order.
 >
 > **Implementation status:** approved target behaviour, not yet fully implemented. Current
 > production behaviour that differs is pending migration and must not be read as approved product
@@ -82,6 +84,14 @@ Price ไม่ใช้คำนวณ:
 
 ไม่มี Money/Price result-basis switch
 
+## Price consistency
+
+Price ที่ขัดกันเชิง semantic แต่เป็นไปได้ เช่น Long trade ที่ SL อยู่เหนือ Entry เป็น data-quality notice ที่ไม่ block การ Save ไม่ใช่ error
+
+Price input ที่ malformed (parse เป็นราคาไม่ได้) ยังเป็น error ได้
+
+Contextual display ที่ derive จาก Price เช่น distance หรือ pips อาจถูกสำรวจภายหลัง แต่ Price ห้ามเป็น calculation authority ของ canonical P&L, Actual R, System R หรือ System Result
+
 ---
 
 # 4. Risk
@@ -118,6 +128,14 @@ Actual risk differed
 การไม่เปิด `Actual risk differed` หมายถึง trader ยืนยันว่า actual risk ตรงกับ Risk at Entry ที่บันทึก
 
 interaction ต้องสื่อความหมายนี้อย่างซื่อสัตย์ ห้ามเป็น hidden server inference
+
+ถ้า trader เปิด `Actual risk differed` อย่าง explicit แต่ไม่กรอกจำนวน ให้เก็บเป็น **Different** และ **amount unknown** ห้าม revert เป็น Matched เงียบ ๆ
+
+## Known Risk at Entry
+
+Risk at Entry ที่ทราบค่าต้องมากกว่าศูนย์
+
+ศูนย์ไม่ใช่ตัวแทนของ risk ที่ unknown หรือไม่ได้บันทึก
 
 ## Actual Risk in After Trade
 
@@ -168,6 +186,12 @@ Target และ Exit Plan เป็นคนละ concept
 - monetary Target Profit
 - TP price
 - หรือทั้งสองอย่าง
+
+การเลือก Fixed Target ต้องมี target representation อย่างน้อยหนึ่งอย่าง: monetary Target Profit หรือ TP price
+
+Fixed Target ที่ไม่มีทั้งสองอย่างไม่ใช่ completed target state ที่ valid
+
+objective แบบ dynamic หรือไม่ fixed (เช่น ถือจนกว่า trend-line break) อยู่ใน Exit Plan ไม่ใช่ Target
 
 TP price เป็น execution/context data เท่านั้น และห้ามใช้คำนวณ System Result
 
@@ -229,7 +253,7 @@ Save Open Trade ต้องมี:
 - Account
 - Symbol
 - Direction
-- Risk at Entry
+- Risk at Entry (มากกว่าศูนย์ — ดู §4)
 
 Entry time อาจ default เป็นเวลาปัจจุบันเพื่อ capture เร็ว แต่ต้องแก้ไขได้และ clear ได้เมื่อ trader ไม่ทราบเวลา หรือ default ผิด
 
@@ -286,6 +310,18 @@ Strategy และ Setup สามารถมี conditions/rules ที่โ�
 rule ที่ใช้กับ Trade ควรสะท้อน version ณ เวลานั้น ไม่ใช่ถูก rewrite ตาม Strategy ที่แก้ในอนาคต
 
 After Trade ห้ามใช้ Strategy default ปัจจุบันโดยอัตโนมัติ และห้ามอ้างว่าเป็น historical Strategy/rule version เว้นแต่ระบบพิสูจน์ได้จริงว่า version นั้นมีอยู่ ณ เวลาเข้า Trade
+
+## Capture origin
+
+Strategy, Setup, setup conditions และ Exit Plan ใช้หลัก observation origin เดียวกับ Psychology (ดู §9):
+
+- `recorded_at_entry` — อยู่ใน Save Open Trade ครั้งแรกที่สำเร็จ
+- `recorded_during_trade` — ถูกให้ครั้งแรกภายหลัง ขณะที่ Trade ยังเปิดอยู่
+- `recalled_after_trade` — ถูกให้ครั้งแรกหลัง Trade ปิดแล้ว รวมถึง saved rule ที่ถูกเลือกระหว่าง After Trade reconstruction
+
+การแก้ไขภายหลังต้องรักษา origin เดิม และบันทึก revision แยก (ดู §9 Revision metadata)
+
+origin สะท้อน recording context จริง ไม่ใช่ route ที่ Draft เริ่มต้น (ดู §23)
 
 ---
 
@@ -439,6 +475,14 @@ Partial Close ยังไม่มี Final Net P&L ของทั้ง Trade
 
 จึงสามารถถูกบันทึกได้
 
+## Final Close confirmation
+
+Final Close ของ existing Open / Partially Closed Trade ต้องมีการยืนยันอย่าง explicit ว่า position ที่เหลือถูกปิดแล้ว เช่น exit scope `All Remaining` หรือ action `Close Remaining`
+
+Final Net P&L และ Trader Outcome ควรถูก prompt อย่างชัดเจน แต่ยังเป็น optional
+
+ค่าที่ไม่ได้บันทึกยังคงขาด ลด analytical coverage และห้ามถูกสร้างขึ้นเอง
+
 ## Final Net P&L
 
 Final Net P&L เป็น authoritative monetary result ของ Closed Trade
@@ -563,6 +607,16 @@ Strategy / Exit Plan default ของปัจจุบันห้ามถู
 Exit event scope อาจเป็น Unknown / Unanswered (ดู §10)
 
 Reflection และ System Assessment ไม่ใช่ requirement ของ Save Closed Trade
+
+## Save Closed Trade
+
+After Trade สามารถ Save Closed Trade ได้โดยไม่มี Risk at Entry, Final Net P&L หรือ Trader Outcome
+
+ค่าที่ไม่ได้บันทึกยังคงขาด ลด analytical coverage (เช่น Actual R เป็น unavailable เมื่อไม่มี Risk at Entry หรือ Final Net P&L) และห้ามถูกสร้างขึ้นเอง
+
+Final Net P&L และ Trader Outcome ควรถูก prompt อย่างชัดเจน แต่ไม่ block การ Save
+
+Risk at Entry, Final Net P&L และเวลาใน historical capture อาจเว้นว่างเมื่อไม่ทราบหรือไม่ได้บันทึก โดยไม่ต้องมี explicit Unknown control (ดู §24)
 
 ---
 
@@ -697,7 +751,10 @@ Exit Plan Adherence เป็นแกนแยกจาก System Result แล
 - Followed
 - Partly
 - Not Followed
+- Not Applicable — เฉพาะเมื่อ Trade มี Exit Plan เป็น `No Defined Exit Rule` อย่าง explicit
 - Not Answered
+
+ถ้า Exit Plan เป็นเพียง `Not recorded` ห้าม infer `Not Applicable` adherence ยังคงเป็น Not Answered จนกว่า trader จะตอบ
 
 แสดงได้ทั้งใน Discipline และ System Assessment แต่ห้ามเก็บเป็นคำตอบซ้ำสองชุด
 
@@ -804,6 +861,26 @@ Review ไม่บังคับ
 
 แต่ Not Reviewed และ Not Assessed สามารถมี soft attention indicator ได้
 
+## Review availability
+
+Formal Review มีเฉพาะ Trade ที่ Closed แล้ว
+
+Open และ Partially Closed Trade สามารถมี notes และ data capture ปกติได้ แต่ไม่ถูก Reviewed อย่างเป็นทางการ
+
+## Reopening a Review
+
+Reviewed Trade ไม่กลับเป็น Not Reviewed
+
+Review สามารถถูกเปิดใหม่และแก้ไข แล้ว Finish อีกครั้งได้ การ Finish อีกครั้งจะ update review completion metadata
+
+System Assessment staleness (`Needs Review`) ยังคงแยกจาก Review lifecycle
+
+## Canceled
+
+Canceled ยังเป็น Trade lifecycle state แต่ UX การสร้างหรือ transition ไป Canceled อยู่นอก scope ของ Add Trade redesign v1
+
+ห้ามคิด Cancel Trade flow ใหม่ใน redesign นี้
+
 ---
 
 # 21. Review responsibilities
@@ -892,16 +969,38 @@ Back / Close:
 navigate โดย Draft ยังอยู่
 
 Reload:
-Draft ต้อง recover ได้ใน browser/device เดิม
+Add Trade Recording Draft และ Review Draft ต้อง recover ได้ใน browser/device เดิม (ดู Draft scope)
 
 Change At Entry / After Trade:
-Draft เดิมห้ามถูกทำลายเงียบ ๆ
+Draft เดิมห้ามถูกทำลายเงียบ ๆ (ดู Recording mode switch)
 
 Cross-device draft sync ยังไม่ใช่ requirement
 
 Save failure ต้องรักษา Draft
 
 Save retry ต้องไม่สร้าง duplicate Trade
+
+## Recording mode switch
+
+เมื่อสลับ At Entry / After Trade:
+
+- field ที่ใช้ร่วมกันของ Draft ถูก carry ข้าม
+- ค่าเฉพาะ mode ยังอยู่ใน Draft และอาจถูกซ่อนเมื่อไม่เกี่ยวข้อง ห้ามถูกลบเงียบ ๆ
+- การสลับ recording mode ต้องไม่ทำลายงาน
+- provenance และ semantics สุดท้ายต้องสะท้อน recording context จริง ไม่ใช่เพียง route ที่ Draft เริ่มต้น
+
+## Draft scope
+
+- Routine dismissal ที่ไม่ทำลายข้อมูลใช้กับทุก editor
+- Durable reload recovery จำเป็นสำหรับ Add Trade Recording Draft และ Review Draft
+- Record Exit, Final Close และการแก้ไข saved Trade ต้องรักษางานข้าม routine dismissal ระหว่าง interaction แต่ durable reload recovery ยังไม่ใช่ requirement ของ v1 สำหรับ flow ที่สั้นกว่านี้
+
+## Draft privacy
+
+- Draft ถูก scope ตาม user และ workspace และห้ามปรากฏใน context ของ user หรือ workspace อื่น
+- Explicit sign-out ล้าง local unsaved drafts
+- ถ้ามี unsaved draft อยู่ sign-out ต้องเตือนก่อนทำลาย
+- Automatic draft-retention TTL เป็น implementation policy ไม่ใช่ product decision ที่ต้องมีก่อน redesign
 
 ---
 
@@ -943,6 +1042,20 @@ Inherited Exit Plan ≠ Exit Plan ที่ trader เลือกเอง ≠ 
 Exit scope unknown ≠ Part ≠ All Remaining
 
 System result gross-only ≠ net/comparable
+
+Actual Risk: Different แต่ไม่ทราบจำนวน ≠ Matched
+
+Exit Plan Adherence Not Applicable (No Defined Exit Rule) ≠ Not Answered (Exit Plan Not recorded)
+
+Risk at Entry ว่าง ≠ Risk at Entry = 0 (Risk at Entry ที่ทราบค่าต้องมากกว่าศูนย์)
+
+## Explicit Unknown controls
+
+explicit `Don't know` / Unknown control ใช้เฉพาะเมื่อ uncertainty ที่ explicit เปลี่ยน product meaning เช่น Actual Risk, setup conditions ใน After Trade, exit scope ใน After Trade และ exit-history completeness
+
+ไม่ต้องเพิ่ม `Don't know` control ให้ทุก optional field
+
+Risk at Entry, Final Net P&L และเวลาใน historical capture อาจเว้นว่างเมื่อไม่ทราบหรือไม่ได้บันทึก เว้นแต่ Product Contract กำหนด Unknown state แยกไว้โดยเฉพาะ ค่าว่างยังคงไม่เท่ากับศูนย์หรือ Break-even
 
 ---
 
@@ -1234,3 +1347,52 @@ Analytics decisions, 2026-09-14 (items 22–23):
 23. **Trader Win Rate and legacy outcomes** — canonical Trader Win Rate uses only trader-selected
     Trader Outcomes; legacy-derived outcomes stay stored, visible and provenance-marked but are
     excluded by default and never silently mixed. (§12, §25, §28)
+
+UX boundary decisions, 2026-09-15 (items 24–37):
+
+24. **Closed Trade requirements** — After Trade may save a Closed Trade without Risk at Entry,
+    Final Net P&L or Trader Outcome; missing values stay missing, reduce analytical coverage and
+    are never manufactured. Final Close of an existing Open / Partially Closed Trade requires
+    explicit confirmation that the remaining position is closed; Final Net P&L and Trader Outcome
+    are strongly prompted but optional. (§11, §13)
+25. **Risk at Entry** — a known Risk at Entry must be greater than zero; zero never substitutes for
+    unknown or missing risk. (§4, §6)
+26. **Fixed Target** — requires at least one representation, Target Profit or TP price; a Fixed
+    Target with neither is not a valid completed state; dynamic or non-fixed exit objectives
+    belong in Exit Plan. (§5)
+27. **Actual risk differed without an amount** — preserved as Different with the amount unknown,
+    never silently reverted to Matched. (§4)
+28. **Capture origin beyond psychology** — Strategy, Setup, setup conditions and Exit Plan use the
+    same origin principle as psychology (`recorded_at_entry`, `recorded_during_trade`,
+    `recalled_after_trade`); later edits keep the origin and record revision separately. (§7, §9)
+29. **Switching At Entry / After Trade** — shared draft fields carry across; mode-specific values
+    stay in the Draft, may be hidden and are never silently deleted; switching never destroys
+    work; final provenance and semantics reflect the actual recording context, not the starting
+    route. (§23)
+30. **Draft scope** — non-destructive routine dismissal applies to all editors; durable reload
+    recovery is required for Add Trade Recording Drafts and Review Drafts; Record Exit, Final
+    Close and saved-trade editing preserve work across routine dismissal but need no durable
+    reload recovery in v1. (§23)
+31. **Draft privacy** — drafts are user- and workspace-scoped and never surface in another
+    context; explicit sign-out clears local unsaved drafts after warning; automatic retention TTL
+    is implementation policy. (§23)
+32. **Review availability** — formal Review exists only for Closed Trades; Open and Partially
+    Closed Trades may have ordinary notes and data capture but are not formally Reviewed. (§20)
+33. **Review lifecycle** — a Reviewed Trade never returns to Not Reviewed; a Review may be
+    reopened, edited and Finished again, which updates review completion metadata; System
+    Assessment staleness stays separate. (§20)
+34. **Exit Plan Adherence Not Applicable** — allowed only when the Trade explicitly has No Defined
+    Exit Rule; a Not recorded Exit Plan never implies Not Applicable. (§18)
+35. **Don't Know controls** — explicit Unknown controls only where uncertainty changes product
+    meaning; Risk at Entry, Final Net P&L and timestamps in historical capture may stay blank
+    unless a contract requires a distinct Unknown state. (§13, §24)
+36. **Canceled Trades** — Canceled remains a lifecycle state; its creation and transition UX is
+    outside Add Trade redesign v1, and no Cancel Trade flow is invented. (§20)
+37. **Price-context inconsistencies** — a plausible semantic inconsistency such as a Long stop
+    above Entry is a non-blocking data-quality notice; malformed price input may be an error;
+    price-derived context such as distance or pips may be explored later but never becomes
+    calculation authority. (§3)
+
+Deliberately deferred (2026-09-15): final Thai copy and the Deviation Type / Reason taxonomy stay
+open for UX/copy prototyping and are not frozen into rigid product or schema definitions (§18,
+§26). Interaction rules applying this contract live in [`docs/UX_RULES.md`](../UX_RULES.md).

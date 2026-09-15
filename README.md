@@ -146,24 +146,26 @@ Planned additions are described in [docs/architecture.md](docs/architecture.md);
 
 ## Documentation
 
-| Document                                                       | What it covers                                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first                                          |
-| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                                                  |
-| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                                               |
-| [docs/data-dictionary.md](docs/data-dictionary.md)             | Schema and field meanings                                                      |
-| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases                                       |
-| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y                                       |
-| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard                               |
-| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                                                |
-| [docs/migration-runbook.md](docs/migration-runbook.md)         | Database migration commands, per environment                                   |
-| [docs/neon-setup.md](docs/neon-setup.md)                       | Manual Neon project/branch setup                                               |
-| [docs/google-oauth-setup.md](docs/google-oauth-setup.md)       | Manual Google OAuth client setup                                               |
-| [docs/email-delivery-setup.md](docs/email-delivery-setup.md)   | Email adapter boundary and what is/isn't verified                              |
-| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                                                      |
-| [docs/deployment-checklist.md](docs/deployment-checklist.md)   | Pre-deployment verification for the completed Phase 04 billing/payment surface |
-| [docs/decisions/](docs/decisions/)                             | Architecture decision records                                                  |
-| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                                                       |
+| Document                                                       | What it covers                                                                  |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [CLAUDE.md](CLAUDE.md)                                         | Engineering constitution — read first                                           |
+| [docs/product-contracts/](docs/product-contracts/)             | Approved Product Contracts — product semantics; highest documentation authority |
+| [docs/UX_RULES.md](docs/UX_RULES.md)                           | UX behaviour and interaction authority, below Product Contracts                 |
+| [docs/product-spec.md](docs/product-spec.md)                   | What the product does and why                                                   |
+| [docs/architecture.md](docs/architecture.md)                   | Structure, boundaries, data flow                                                |
+| [docs/data-dictionary.md](docs/data-dictionary.md)             | Schema and field meanings                                                       |
+| [docs/calculation-spec.md](docs/calculation-spec.md)           | Every financial formula, with edge cases                                        |
+| [docs/design-system.md](docs/design-system.md)                 | Tokens, typography, motion, charts, a11y                                        |
+| [docs/localization-glossary.md](docs/localization-glossary.md) | Thai/English terminology and formatting standard                                |
+| [docs/ui-review-checklist.md](docs/ui-review-checklist.md)     | What to check before a UI ships                                                 |
+| [docs/migration-runbook.md](docs/migration-runbook.md)         | Database migration commands, per environment                                    |
+| [docs/neon-setup.md](docs/neon-setup.md)                       | Manual Neon project/branch setup                                                |
+| [docs/google-oauth-setup.md](docs/google-oauth-setup.md)       | Manual Google OAuth client setup                                                |
+| [docs/email-delivery-setup.md](docs/email-delivery-setup.md)   | Email adapter boundary and what is/isn't verified                               |
+| [docs/roadmap.md](docs/roadmap.md)                             | Phase sequence and status                                                       |
+| [docs/deployment-checklist.md](docs/deployment-checklist.md)   | Pre-deployment verification for the completed Phase 04 billing/payment surface  |
+| [docs/decisions/](docs/decisions/)                             | Architecture decision records                                                   |
+| [docs/phases/](docs/phases/)                                   | Detailed per-phase scope                                                        |
 
 ## Environment
 
