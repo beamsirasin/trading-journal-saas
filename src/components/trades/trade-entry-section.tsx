@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { confidenceLevelKey } from '@/lib/trades/constants';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { DetailRow, SectionTitle, SubSection } from '@/components/trades/trade-detail-primitives';
+import { formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeEmotionsEditor } from '@/components/trades/trade-reflection-editor';
 import { Badge } from '@/components/ui/badge';
 
@@ -67,6 +68,52 @@ function emotionSummary(trade: TradeDetailModel, t: ReturnType<typeof useTransla
 }
 
 /**
+ * THE ADD TRADE CONTRACT ANSWERS, each kept distinct from every other.
+ *
+ * A legacy Trade has none of these columns and shows none of these rows: an
+ * Unanswered Target on a contract row and a Target that was never a question
+ * are different facts, and neither is displayed as the other.
+ */
+function targetSummary(trade: TradeDetailModel, t: ReturnType<typeof useTranslations<'trades'>>) {
+  if (trade.targetState === null) return t('detail.contract.notAnswered');
+  if (trade.targetState === 'no_fixed') return t('detail.contract.targetNoFixed');
+  const profit = formatTradeMoney(trade.plannedRewardMinor, trade.tradingAccountBaseCurrency);
+  const parts = [
+    profit,
+    trade.targetPrice === null ? null : `${t('detail.contract.targetPrice')} ${trade.targetPrice}`,
+  ].filter((part): part is string => part !== null);
+  return parts.length === 0
+    ? t('detail.contract.targetFixed')
+    : `${t('detail.contract.targetFixed')} · ${parts.join(' · ')}`;
+}
+
+function actualRiskSummary(
+  trade: TradeDetailModel,
+  t: ReturnType<typeof useTranslations<'trades'>>,
+) {
+  if (trade.actualRiskAnswer === 'matched') return t('detail.contract.actualRiskMatched');
+  if (trade.actualRiskAnswer === 'unknown') return t('detail.contract.actualRiskUnknown');
+  const amount = formatTradeMoney(trade.actualInitialRiskMinor, trade.tradingAccountBaseCurrency);
+  return amount === null
+    ? t('detail.contract.actualRiskDifferentUnknown')
+    : t('detail.contract.actualRiskDifferent', { amount });
+}
+
+function exitPlanSummary(trade: TradeDetailModel, t: ReturnType<typeof useTranslations<'trades'>>) {
+  if (trade.exitPlanState === null) return t('detail.contract.exitPlanNotRecorded');
+  if (trade.exitPlanState === 'no_rule') return t('detail.contract.exitPlanNoRule');
+  if (trade.exitPlanState === 'customized') {
+    return trade.exitPlanName === null
+      ? t('detail.contract.exitPlanCustomized')
+      : t('detail.contract.exitPlanBasedOn', { name: trade.exitPlanName });
+  }
+  const name = trade.exitPlanName ?? '';
+  return trade.exitPlanProvenance === 'strategy_default'
+    ? t('detail.contract.exitPlanFromStrategy', { name })
+    : name;
+}
+
+/**
  * ENTRY SNAPSHOT — Phase 15E. Answers "what did I know, see and feel at
  * entry?" Scan-friendly summary first (brief §22), full detail behind a
  * native `<details>` disclosure (a real semantic expand control, not a
@@ -97,6 +144,26 @@ export function EntrySnapshotSection({
       </div>
 
       <dl className="divide-border divide-y">
+        {trade.recordingContract === null ? null : (
+          <>
+            <DetailRow label={t('detail.contract.target')} value={targetSummary(trade, t)} />
+            <DetailRow
+              label={t('detail.contract.actualRisk')}
+              value={actualRiskSummary(trade, t)}
+            />
+            <DetailRow label={t('detail.contract.exitPlan')} value={exitPlanSummary(trade, t)} />
+            {trade.enteredAtSource === null ? null : (
+              <DetailRow
+                label={t('detail.contract.entryTimeSource')}
+                value={t(
+                  trade.enteredAtSource === 'default_now'
+                    ? 'detail.contract.entryTimeDefault'
+                    : 'detail.contract.entryTimeTrader',
+                )}
+              />
+            )}
+          </>
+        )}
         <DetailRow label={t('detail.sections.conditions')} value={checklistSummary(trade, t)} />
         <DetailRow
           label={t('field.confidence')}
@@ -154,6 +221,25 @@ export function EntrySnapshotSection({
 
           <SubSection id="trade-entry-plan" title={t('create.sections.context')}>
             <dl className="divide-border divide-y">
+              {/* Price is context on a contract row — never an input to a result. */}
+              {trade.contextEntryPrice === null ? null : (
+                <DetailRow
+                  label={`${t('detail.contract.priceContext')} · ${t('detail.contract.contextEntry')}`}
+                  value={trade.contextEntryPrice}
+                />
+              )}
+              {trade.contextStopPrice === null ? null : (
+                <DetailRow
+                  label={`${t('detail.contract.priceContext')} · ${t('detail.contract.contextStop')}`}
+                  value={trade.contextStopPrice}
+                />
+              )}
+              {trade.contextPositionSize === null ? null : (
+                <DetailRow
+                  label={`${t('detail.contract.priceContext')} · ${t('detail.contract.contextSize')}`}
+                  value={trade.contextPositionSize}
+                />
+              )}
               {trade.timeframe === null ? null : (
                 <DetailRow label={t('field.timeframe')} value={trade.timeframe} />
               )}

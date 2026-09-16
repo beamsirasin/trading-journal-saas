@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -50,6 +50,7 @@ describe('TradeCreateGate', () => {
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        exitPlans: [],
         emotionCatalog,
       },
       timing: 'at_entry' as const,
@@ -72,6 +73,7 @@ describe('TradeCreateGate', () => {
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        exitPlans: [],
         emotionCatalog,
       },
       timing: 'at_entry' as const,
@@ -95,6 +97,7 @@ describe('TradeCreateGate', () => {
           strategies,
           workspaceId: 'ws-1',
           chartUploadConfigured: false,
+          exitPlans: [],
           emotionCatalog,
         },
         timing: 'at_entry' as const,
@@ -104,10 +107,8 @@ describe('TradeCreateGate', () => {
       });
       // A single Account is context on the task surface, not a decision.
       expect(document.querySelector('[data-account-context]')).toHaveTextContent('Main · USD');
-      // Strategy is optional and lives in the Trade idea, reachable without a tab.
-      fireEvent.click(screen.getByRole('button', { name: /Trade idea/ }));
-      expect(within(screen.getByRole('dialog')).getByLabelText('Strategy')).toBeVisible();
-      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+      // Strategy is optional and sits with the analytical questions, behind no gate.
+      expect(screen.getByLabelText('Strategy')).toBeVisible();
       expect(screen.getByRole('button', { name: 'Save open trade' })).toBeEnabled();
     },
   );

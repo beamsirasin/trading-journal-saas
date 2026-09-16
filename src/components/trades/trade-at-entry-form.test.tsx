@@ -1,27 +1,18 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  EMPTY_FAVORITES_STATE,
-  favoritesStorageKey,
-  recordRecent,
-  serializeFavoritesState,
-} from '@/lib/trades/local-favorites';
-import { CreateTradeSchema } from '@/lib/trades/schemas';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 
 import en from '../../../messages/en.json';
-import th from '../../../messages/th.json';
-import { TradeRecordingForm } from './trade-recording-form';
+import { TradeAtEntryForm } from './trade-at-entry-form';
 
-const createTradeActionMock = vi.fn();
-const createCompletedTradeActionMock = vi.fn();
 const pushMock = vi.fn();
+const createTradeMock = vi.fn();
 
 vi.mock('@/i18n/navigation', () => ({
-  useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
   Link: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
       {children}
@@ -30,22 +21,15 @@ vi.mock('@/i18n/navigation', () => ({
 }));
 
 vi.mock('@/server/actions/trades', () => ({
-  createTradeAction: (...args: unknown[]) => createTradeActionMock(...args),
-  createCompletedTradeAction: (...args: unknown[]) => createCompletedTradeActionMock(...args),
+  createTradeAction: (input: unknown) => createTradeMock(input),
 }));
 
-const USD = {
-  tradingAccountId: '018f0000-0000-7000-8000-000000000001',
-  name: 'Main USD',
-  accountMode: 'live',
-  baseCurrency: 'USD',
-} as const;
-const THB = {
-  tradingAccountId: '018f0000-0000-7000-8000-000000000002',
-  name: 'Prop THB',
-  accountMode: 'live',
-  baseCurrency: 'THB',
-} as const;
+const ACCOUNT = '018f0000-0000-7000-8000-000000000001';
+const BREAKOUT = '018f0000-0000-7000-8000-000000000010';
+const REVERSAL = '018f0000-0000-7000-8000-000000000011';
+const RETEST = '018f0000-0000-7000-8000-000000000020';
+const SCALE_OUT = '018f0000-0000-7000-8000-000000000030';
+const TRAIL = '018f0000-0000-7000-8000-000000000031';
 
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
@@ -54,578 +38,445 @@ const options = {
     { key: 'calm', label: 'Calm' },
     { key: 'fomo', label: 'FOMO' },
   ],
-  tradingAccounts: [USD],
+  exitPlans: [
+    {
+      exitPlanId: SCALE_OUT,
+      name: 'Scale out',
+      instructions: 'Half at 1R, trail the rest.',
+      strategyId: BREAKOUT,
+    },
+    { exitPlanId: TRAIL, name: 'Trail', instructions: 'Trail behind structure.', strategyId: null },
+  ],
+  tradingAccounts: [
+    {
+      tradingAccountId: ACCOUNT,
+      name: 'Main USD',
+      accountMode: 'live',
+      baseCurrency: 'USD',
+    },
+  ],
   strategies: [
     {
-      strategyId: '018f0000-0000-7000-8000-000000000010',
-      name: 'Golden Breakout',
+      strategyId: BREAKOUT,
+      name: 'Breakout',
       currentVersionNumber: 1,
       setups: [
         {
-          setupId: '018f0000-0000-7000-8000-000000000020',
-          name: 'Clean Retest',
+          setupId: RETEST,
+          name: 'Retest',
           sortOrder: 0,
-          conditionSetToken: 'condition-set-token',
+          conditionSetToken: 'token-retest',
           conditions: [
-            { conditionKey: 'retest', label: 'Retest held', sortOrder: 0 },
-            { conditionKey: 'volume', label: 'Volume expanded', sortOrder: 1 },
+            { conditionKey: 'candle', label: 'Candle closed', sortOrder: 0 },
+            { conditionKey: 'volume', label: 'Volume rising', sortOrder: 1 },
           ],
         },
       ],
     },
+    { strategyId: REVERSAL, name: 'Reversal', currentVersionNumber: 1, setups: [] },
   ],
 } as const satisfies TradeCreateOptions;
 
-function renderForm({
-  locale = 'en',
-  formOptions = options,
-  activeTradingAccountId = null,
-}: {
-  locale?: 'en' | 'th';
-  formOptions?: TradeCreateOptions;
-  activeTradingAccountId?: string | null;
-} = {}) {
+function renderForm() {
   return render(
-    <NextIntlClientProvider locale={locale} messages={locale === 'en' ? en : th}>
-      <TradeRecordingForm
-        options={formOptions}
-        timing="at_entry"
-        activeTradingAccountId={activeTradingAccountId}
+    <NextIntlClientProvider locale="en" messages={en}>
+      <TradeAtEntryForm
+        options={options}
+        activeTradingAccountId={ACCOUNT}
         timezone="Asia/Bangkok"
       />
     </NextIntlClientProvider>,
   );
 }
 
-const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
-const dialog = () => screen.getByRole('dialog');
+/** The one Save: desktop panel and mobile bar render the same action in jsdom. */
+function save() {
+  fireEvent.click(screen.getAllByRole('button', { name: 'Save open trade' })[0]!);
+}
 
-function fillShortPath({ risk = '200' }: { risk?: string } = {}) {
+function fillMinimum() {
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-  fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
-  fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: risk } });
+  fireEvent.click(screen.getByLabelText('Long'));
+  fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
 }
 
-function payload() {
-  return createTradeActionMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+function exitPlanState() {
+  return document.querySelector('[data-exit-plan-state]')?.getAttribute('data-exit-plan-state');
 }
 
-function alerts() {
-  return screen.queryAllByRole('alert').map((alert) => alert.textContent);
+function statusText() {
+  return document.querySelector('[data-save-status]')?.textContent ?? '';
 }
 
 beforeEach(() => {
-  window.localStorage.clear();
-  createTradeActionMock.mockReset();
-  createTradeActionMock.mockResolvedValue({
-    ok: true,
-    data: { tradeId: '018f0000-0000-7000-8000-000000000099', alreadyCreated: false },
-  });
-  createCompletedTradeActionMock.mockReset();
   pushMock.mockReset();
+  createTradeMock.mockReset();
+  createTradeMock.mockResolvedValue({ ok: true, data: { tradeId: 'trade-1' } });
+  window.localStorage.clear();
 });
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-describe('production At Entry recording — composition', () => {
-  it('renders one task surface, then the optional journal, then Save', () => {
+describe('At Entry — the contract write', () => {
+  it('saves Account, Symbol, Direction and Risk at Entry alone, with Risk as the 1R baseline', async () => {
     renderForm();
-    expect(document.querySelector('[data-at-entry-linear-form]')).not.toBeNull();
-    expect(
-      screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
-    ).toEqual(['The trade', 'Plan at entry', 'Journal at entry']);
-    expect(screen.getByRole('region', { name: 'Journal at entry' })).toHaveTextContent(
-      'Now or later',
-    );
-    expect(screen.getByRole('button', { name: 'Save open trade' })).toBeEnabled();
-  });
-
-  it('no longer renders the tabbed editor, and keeps Strategy out of the main surface', () => {
-    renderForm();
-    expect(
-      screen.queryByRole('navigation', { name: 'New Trade sections' }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByTestId('new-trade-view-nav')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open Trade' })).not.toBeInTheDocument();
-    // Strategy, Setup, timeframe and session describe the trade inside Trade idea.
-    expect(screen.queryByLabelText(/^Strategy/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Timeframe')).not.toBeInTheDocument();
-    expect(document.querySelector('details')).toBeNull();
-  });
-
-  it('has no lifecycle parts that belong to After Trade, and claims no exit plan', () => {
-    renderForm();
-    expect(screen.queryByText('Actual Result')).not.toBeInTheDocument();
-    expect(screen.queryByText('Exit reconstruction')).not.toBeInTheDocument();
-    expect(screen.queryByText('Reflection')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Exit plan/)).not.toBeInTheDocument();
-    expect(screen.queryByText('No fixed target')).not.toBeInTheDocument();
-  });
-
-  it('opens quietly: nothing is flagged before a Save attempt', () => {
-    renderForm();
-    expect(alerts()).toEqual([]);
-    expect(document.querySelector('[aria-invalid="true"]')).toBeNull();
-  });
-});
-
-describe('production At Entry recording — The trade', () => {
-  it('shows a single account as context, not as a decision', () => {
-    renderForm();
-    const context = document.querySelector('[data-account-context]');
-    expect(context).toHaveTextContent('Main USD · USD');
-    expect(screen.queryByLabelText('Trading Account')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Change account' })).not.toBeInTheDocument();
-  });
-
-  it('seeds the active Account and keeps the real select one Change away', async () => {
-    renderForm({
-      formOptions: { ...options, tradingAccounts: [USD, THB] },
-      activeTradingAccountId: THB.tradingAccountId,
-    });
-    expect(document.querySelector('[data-account-context]')).toHaveTextContent('Prop THB · THB');
-    expect(document.querySelector('#entry-risk-currency')).toHaveTextContent('THB');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Change account' }));
-    const account = screen.getByLabelText('Trading Account');
-    expect(account.tagName).toBe('SELECT');
-    expect(account).toHaveValue(THB.tradingAccountId);
-    fireEvent.change(account, { target: { value: USD.tradingAccountId } });
-    expect(document.querySelector('#entry-risk-currency')).toHaveTextContent('USD');
-
-    fillShortPath();
+    fillMinimum();
     save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload().tradingAccountId).toBe(USD.tradingAccountId);
-  });
-
-  it('opens on the account decision when no active Account is valid', () => {
-    renderForm({
-      formOptions: { ...options, tradingAccounts: [USD, THB] },
-      activeTradingAccountId: '018f0000-0000-7000-8000-0000000000aa',
-    });
-    expect(screen.getByLabelText('Trading Account')).toHaveValue('');
-  });
-
-  it('defaults Entry time to now in the trader timezone, and says so', () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-09-14T07:32:00.000Z'));
-    renderForm();
-    expect(screen.getByLabelText('Entry time')).toHaveValue('2026-09-14T14:32');
-    expect(screen.getByText('Set to now. Opened earlier? Change it.')).toBeVisible();
-    expect(screen.getByText('Times use Asia/Bangkok.')).toBeVisible();
-  });
-
-  it('sends a changed Entry time converted from the trader timezone', async () => {
-    renderForm();
-    fillShortPath();
-    fireEvent.change(screen.getByLabelText('Entry time'), {
-      target: { value: '2026-09-10T09:15' },
-    });
-    expect(screen.queryByText('Set to now. Opened earlier? Change it.')).not.toBeInTheDocument();
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(String(payload().enteredAt)).toMatch(/^2026-09-10T02:15:00/);
-  });
-
-  it('normalizes Symbol to upper case and records the chosen Direction', async () => {
-    renderForm();
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: ' nas100' } });
-    expect(screen.getByLabelText('Symbol')).toHaveValue(' NAS100');
-    fireEvent.click(screen.getByRole('radio', { name: 'Short' }));
-    expect(screen.getByRole('radio', { name: 'Short' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'Long' })).not.toBeChecked();
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({ symbol: 'NAS100', direction: 'short' });
-  });
-
-  it('offers this workspace’s recent symbols as one-tap chips, and remembers a saved one', async () => {
-    const key = favoritesStorageKey('symbol', options.workspaceId);
-    window.localStorage.setItem(
-      key,
-      serializeFavoritesState(
-        recordRecent(recordRecent(EMPTY_FAVORITES_STATE, 'EURUSD'), 'NAS100'),
-      ),
-    );
-    renderForm();
-    const chips = within(screen.getByRole('group', { name: 'Recent symbols' }));
-    fireEvent.click(chips.getByRole('button', { name: 'NAS100' }));
-    expect(screen.getByLabelText('Symbol')).toHaveValue('NAS100');
-
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'gbpjpy' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '50' } });
-    save();
-    await waitFor(() => expect(pushMock).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(window.localStorage.getItem(key) ?? '{}').recents[0]).toBe('GBPJPY');
-  });
-
-  it('renders no recent-symbol chips when the workspace has none', () => {
-    renderForm();
-    expect(screen.queryByRole('group', { name: 'Recent symbols' })).not.toBeInTheDocument();
-  });
-});
-
-describe('production At Entry recording — Plan at entry', () => {
-  it('leads with Risk at entry as the primary figure, Target profit optional beside it', () => {
-    renderForm();
-    const risk = screen.getByLabelText('Risk at entry');
-    expect(risk.className).toContain('text-[1.375rem]');
-    expect(risk).toHaveAccessibleDescription(/USD/);
-    expect(screen.getByLabelText('Target profit')).toBeVisible();
-    expect(screen.queryByRole('group', { name: 'Plan by' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Entry')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Use price levels instead' })).toBeVisible();
-  });
-
-  it('derives Target R as a line, only once both amounts exist, never as zero', () => {
-    renderForm();
-    fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '200' } });
-    expect(document.querySelector('[data-target-r]')).toBeNull();
-    expect(screen.queryByText(/0\.00R/)).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Target profit'), { target: { value: '1000' } });
-    const line = document.querySelector('[data-target-r]');
-    expect(line).toHaveTextContent('Target R');
-    expect(line).toHaveTextContent('+5.00R');
-    expect(line).toHaveTextContent('1R = 200.00 USD');
-    expect(screen.queryByLabelText('Target R')).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Target profit'), { target: { value: '' } });
-    expect(document.querySelector('[data-target-r]')).toBeNull();
-  });
-
-  it('saves without a target: the plan is sent with no reward', async () => {
-    renderForm();
-    fillShortPath();
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+      recordingContract: 'add_trade_v1',
       recordingTiming: 'at_entry',
       systemPlanBasis: 'money',
-      plannedRiskMinor: '20000',
-      plannedRewardMinor: null,
+      symbol: 'XAUUSD',
+      direction: 'long',
+      plannedRiskMinor: '10000',
+      actualRiskAnswer: 'matched',
+      enteredAtSource: 'default_now',
     });
-    expect(CreateTradeSchema.safeParse(payload()).success).toBe(true);
+    const payload = createTradeMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('targetState');
+    expect(payload).not.toHaveProperty('exitPlan');
+    expect(payload).not.toHaveProperty('plannedEntry');
   });
 
-  it('keeps Price capability behind a quiet switch, with its money consequence stated', async () => {
+  it('offers no Money/Price switch and keeps price fields as context', () => {
     renderForm();
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Use price levels instead' }));
-    expect(screen.queryByLabelText('Risk at entry')).not.toBeInTheDocument();
-    expect(document.querySelector('[data-price-no-money-notice]')).not.toBeNull();
-
-    fireEvent.change(screen.getByLabelText('Entry'), { target: { value: '100' } });
-    fireEvent.change(screen.getByLabelText('Stop Loss'), { target: { value: '90' } });
-    fireEvent.change(screen.getByLabelText('Take Profit'), { target: { value: '130' } });
-    expect(document.querySelector('[data-target-r]')).toHaveTextContent('+3.00R');
-    expect(document.querySelector('[data-target-r]')).not.toHaveTextContent('1R =');
-
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
-      systemPlanBasis: 'price',
-      plannedEntry: '100',
-      plannedStop: '90',
-      plannedTarget: '130',
-      plannedRiskMinor: null,
-    });
-    expect(payload()).not.toHaveProperty('actualResultMode');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use amounts instead' }));
-    expect(document.querySelector('[data-price-no-money-notice]')).toBeNull();
-    expect(screen.getByLabelText('Risk at entry')).toHaveValue('');
-  });
-
-  it('keeps the opening override collapsed until asked for, and sends it only when used', async () => {
-    renderForm();
-    const toggle = screen.getByRole('button', {
-      name: 'Your actual opening differed from this plan',
-    });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByRole('group', { name: 'Actual opening by' })).not.toBeInTheDocument();
-
-    fillShortPath();
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'Actual opening by' })).getByRole('radio', {
-        name: 'Price',
-      }),
-    );
-    fireEvent.change(screen.getByLabelText('Actual Entry'), { target: { value: '101' } });
-    fireEvent.change(screen.getByLabelText('Actual Stop'), { target: { value: '90' } });
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
-      systemPlanBasis: 'money',
-      actualResultMode: 'price',
-      actualEntry: '101',
-      actualInitialStop: '90',
-      actualInitialRiskMinor: null,
-    });
+    expect(screen.queryByRole('button', { name: /Use price levels instead/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Trade idea, chart and price levels/ }));
+    expect(screen.getByText('Context only, never used to calculate results')).toBeVisible();
   });
 });
 
-describe('production At Entry recording — Trade idea', () => {
-  it('asks in the present tense and keeps the draft until Done', async () => {
+describe('At Entry — Actual Risk', () => {
+  it('shows the matched assumption only beside a real Risk at Entry, and makes it reversible', () => {
     renderForm();
-    fillShortPath();
-    const launcher = screen.getByRole('button', { name: /Trade idea/ });
-    expect(launcher).toHaveTextContent('Why are you taking this trade?');
-
-    fireEvent.click(launcher);
-    fireEvent.change(within(dialog()).getByLabelText('Why are you taking this trade?'), {
-      target: { value: 'Abandoned thought' },
-    });
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
-    expect(launcher).toHaveTextContent('Why are you taking this trade?');
-    expect(screen.queryByText('Why did you take this trade?')).not.toBeInTheDocument();
-
-    fireEvent.click(launcher);
-    fireEvent.change(within(dialog()).getByLabelText('Why are you taking this trade?'), {
-      target: { value: 'Third push out of the London range' },
-    });
-    fireEvent.change(within(dialog()).getByLabelText('Timeframe'), { target: { value: 'H1' } });
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Done' }));
-    expect(launcher).toHaveTextContent('Third push out of the London range');
-
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
-      confirmationNotes: 'Third push out of the London range',
-      timeframe: 'H1',
-    });
+    expect(screen.queryByText('Your actual risk matched this amount.')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    expect(screen.getByText('Your actual risk matched this amount.')).toBeVisible();
+    expect(screen.getByText('Assumed until you say otherwise.')).toBeVisible();
   });
 
-  it('carries the production Strategy / Setup contract, including the condition snapshot', async () => {
+  it('keeps a Different amount through Matched and back', () => {
     renderForm();
-    fillShortPath();
-    fireEvent.click(screen.getByRole('button', { name: /Trade idea/ }));
-    const idea = within(dialog());
-    expect(idea.getByText('Are you following a strategy?')).toBeVisible();
-    expect(idea.queryByLabelText(/^Setup/)).not.toBeInTheDocument();
-    fireEvent.change(idea.getByLabelText('Strategy'), {
-      target: { value: options.strategies[0].strategyId },
-    });
-    fireEvent.change(idea.getByLabelText('Setup'), {
-      target: { value: options.strategies[0].setups[0].setupId },
-    });
-    fireEvent.click(idea.getByLabelText('Retest held'));
-    expect(idea.getByText('1/2 met · 50%')).toBeVisible();
-    fireEvent.click(idea.getByRole('button', { name: 'Done' }));
-    expect(screen.getByRole('button', { name: /Trade idea/ })).toHaveTextContent(
-      'Golden Breakout · Clean Retest',
-    );
-
-    save();
-    const confirm = await screen.findByRole('alertdialog');
-    expect(createTradeActionMock).not.toHaveBeenCalled();
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({
-      strategyId: options.strategies[0].strategyId,
-      setupId: options.strategies[0].setups[0].setupId,
-      conditionSetToken: 'condition-set-token',
-      conditionAnswers: [
-        { conditionKey: 'retest', status: 'met' },
-        { conditionKey: 'volume', status: 'not_met' },
-      ],
-    });
+    fillMinimum();
+    fireEvent.click(screen.getByRole('button', { name: 'It was different' }));
+    fireEvent.change(screen.getByLabelText('Actual risk'), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'It matched after all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'It was different' }));
+    expect(screen.getByLabelText('Actual risk')).toHaveValue('150');
   });
 
-  it('does not require a Strategy', async () => {
+  it('records Different with the amount unknown without demanding a second figure', async () => {
     renderForm();
-    fillShortPath();
+    fillMinimum();
+    fireEvent.click(screen.getByRole('button', { name: 'It was different' }));
+    fireEvent.click(screen.getByRole('button', { name: "I don't know the amount" }));
+    expect(screen.getByText('Different, amount not known')).toBeVisible();
     save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).not.toHaveProperty('strategyId');
-    expect(payload()).not.toHaveProperty('setupId');
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    const payload = createTradeMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload.actualRiskAnswer).toBe('different');
+    expect(payload).not.toHaveProperty('actualInitialRiskMinor');
   });
 });
 
-describe('production At Entry recording — Feelings at entry', () => {
-  it('offers five named confidence choices mapped to the stored steps', async () => {
+describe('At Entry — Target', () => {
+  it('attaches an incomplete Fixed Target to Target profit, never to No fixed target', () => {
     renderForm();
-    fillShortPath();
-    fireEvent.click(screen.getByRole('button', { name: /Feelings at entry/ }));
-    const feelings = within(dialog());
-    expect(dialog()).toHaveTextContent('Your state as you take this trade.');
-    const group = within(feelings.getByRole('group', { name: 'Confidence' }));
-    expect(group.getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual([
-      '0',
-      '25',
-      '50',
-      '75',
-      '100',
-    ]);
-    expect(group.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(
-      true,
-    );
-    expect(document.querySelector('[data-slot="confidence-pill"]')).toBeNull();
-
-    fireEvent.click(group.getByRole('radio', { name: 'High' }));
-    fireEvent.click(feelings.getByRole('button', { name: 'Done' }));
-    expect(screen.getByRole('button', { name: /Feelings at entry/ })).toHaveTextContent(
-      'High confidence',
-    );
+    fillMinimum();
+    fireEvent.click(screen.getByLabelText(/Fixed target/));
     save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({ confidence: 75 });
-    // Confidence alone is not an emotion answer.
-    expect(payload()).not.toHaveProperty('emotionKeys');
+    const message = screen.getByText(
+      'Add a target profit or a TP price, or choose No fixed target.',
+    );
+    expect(message).toBeVisible();
+    expect(screen.getByLabelText('Target profit')).toHaveAttribute(
+      'aria-describedby',
+      expect.stringContaining(message.id),
+    );
+    expect(screen.getByLabelText(/No fixed target/)).not.toHaveAttribute('aria-invalid', 'true');
   });
 
-  it('keeps Feelings optional: opened and cancelled sends nothing', async () => {
+  it('returns Target to Unanswered by an explicit, labelled action', () => {
     renderForm();
-    fillShortPath();
-    fireEvent.click(screen.getByRole('button', { name: /Feelings at entry/ }));
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Calm' }));
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).not.toHaveProperty('emotionKeys');
-    expect(payload()).not.toHaveProperty('confidence');
-  });
-
-  it('records chosen emotions once committed', async () => {
-    renderForm();
-    fillShortPath();
-    fireEvent.click(screen.getByRole('button', { name: /Feelings at entry/ }));
-    expect(within(dialog()).getByText('Not recorded')).toBeVisible();
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Calm' }));
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Done' }));
-    expect(screen.getByRole('button', { name: /Feelings at entry/ })).toHaveTextContent('Calm');
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({ emotionKeys: ['calm'] });
-  });
-
-  it('keeps an explicit "None of these" distinct from never answering', async () => {
-    renderForm();
-    fillShortPath();
-    fireEvent.click(screen.getByRole('button', { name: /Feelings at entry/ }));
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'None of these' }));
-    expect(within(dialog()).queryByText('Not recorded')).not.toBeInTheDocument();
-    fireEvent.click(within(dialog()).getByRole('button', { name: 'Done' }));
-    expect(screen.getByRole('button', { name: /Feelings at entry/ })).toHaveTextContent(
-      'None of these',
-    );
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(payload()).toMatchObject({ emotionKeys: [] });
+    fillMinimum();
+    fireEvent.click(screen.getByLabelText(/No fixed target/));
+    expect(screen.getByLabelText(/No fixed target/)).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove target answer' }));
+    expect(screen.getByLabelText(/No fixed target/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Fixed target/)).not.toBeChecked();
   });
 });
 
-describe('production At Entry recording — validation and Save', () => {
-  it('shows required errors only after an attempted Save, and does not send', () => {
-    renderForm({ formOptions: { ...options, tradingAccounts: [USD, THB] } });
-    save();
-    expect(alerts()).toEqual([
-      'Choose a Trading Account.',
-      'Enter a symbol.',
-      'Choose Long or Short.',
-      'Enter your risk at entry.',
-    ]);
-    expect(createTradeActionMock).not.toHaveBeenCalled();
+describe('At Entry — readiness and hidden errors', () => {
+  it('never reports Ready while a blocking error sits in a collapsed disclosure', () => {
+    renderForm();
+    fillMinimum();
+    expect(statusText()).toContain('Ready to save');
+
+    fireEvent.click(screen.getByRole('button', { name: /Trade idea, chart and price levels/ }));
+    fireEvent.change(screen.getByLabelText('SL price'), { target: { value: '12..5' } });
+    fireEvent.click(screen.getByRole('button', { name: /Trade idea, chart and price levels/ }));
+    expect(statusText()).not.toContain('Ready to save');
+    expect(statusText()).toContain('attention');
+    // The collapsed summary says an error is inside rather than hiding it.
+    expect(screen.getByText('1 thing to fix')).toBeVisible();
   });
 
-  it('clears each corrected error on its own', () => {
+  it('opens the section holding a hidden error when Save is attempted', () => {
     renderForm();
+    fillMinimum();
+    const trigger = screen.getByRole('button', { name: /Trade idea, chart and price levels/ });
+    fireEvent.click(trigger);
+    fireEvent.change(screen.getByLabelText('Entry price'), { target: { value: 'abc' } });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
     save();
-    expect(alerts()).toEqual([
-      'Enter a symbol.',
-      'Choose Long or Short.',
-      'Enter your risk at entry.',
-    ]);
-
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    expect(alerts()).toEqual(['Choose Long or Short.', 'Enter your risk at entry.']);
-
-    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '50' } });
-    expect(alerts()).toEqual(['Choose Long or Short.']);
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
-    expect(alerts()).toEqual([]);
+    expect(createTradeMock).not.toHaveBeenCalled();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      screen.getByText('Enter a price greater than zero, using digits and one decimal point.'),
+    ).toBeVisible();
   });
+});
 
-  it('withdraws the "check the highlighted fields" banner once nothing is highlighted', () => {
+describe('At Entry — Exit Plan', () => {
+  function selectBreakout() {
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
+  }
+
+  it('inherits the Strategy default with local, discoverable feedback and no redundant confirm', () => {
     renderForm();
-    save();
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Check the highlighted fields and try again.',
-    );
-
-    fillShortPath();
-    expect(alerts()).toEqual([]);
-    expect(screen.getByRole('status')).not.toHaveTextContent(
-      'Check the highlighted fields and try again.',
-    );
-    expect(createTradeActionMock).not.toHaveBeenCalled();
-  });
-
-  it('associates each field error with its control', () => {
-    renderForm();
-    save();
-    const risk = screen.getByLabelText('Risk at entry');
-    expect(risk).toHaveAttribute('aria-invalid', 'true');
-    expect(risk.getAttribute('aria-describedby')).toContain('entry-risk-error');
-    expect(screen.getByRole('group', { name: 'Direction' })).toHaveAccessibleDescription(
-      'Choose Long or Short.',
-    );
-  });
-
-  it('rejects a zero risk rather than sending it', () => {
-    renderForm();
-    fillShortPath({ risk: '0' });
-    save();
-    expect(createTradeActionMock).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Risk at entry')).toHaveAttribute('aria-invalid', 'true');
-  });
-
-  it('does not require the Journal to Save, and redirects to the saved Trade', async () => {
-    renderForm();
-    fillShortPath();
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
-    expect(payload()).not.toHaveProperty('systemResult');
-    expect(payload()).not.toHaveProperty('actualResultMode');
-    await waitFor(() =>
-      expect(pushMock).toHaveBeenCalledWith(
-        '/app/trades?trade=018f0000-0000-7000-8000-000000000099',
+    fillMinimum();
+    selectBreakout();
+    expect(exitPlanState()).toBe('inherited');
+    expect(screen.getByText('From Strategy: Breakout')).toBeVisible();
+    expect(
+      screen.getByText('Breakout currently supplies this exit plan unless you change it.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'Breakout currently supplies the exit plan “Scale out” unless you change it.',
       ),
-    );
+    ).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Use this plan' })).toBeNull();
   });
 
-  it('reuses one mutation key when a failed Save is retried', async () => {
-    createTradeActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: { code: 'invalid_initial_risk' },
-    });
+  it('opening the chooser and closing without a change never manufactures an override', () => {
     renderForm();
-    fillShortPath();
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(1));
-    const firstKey = payload().mutationKey;
-    expect(pushMock).not.toHaveBeenCalled();
-    save();
-    await waitFor(() => expect(createTradeActionMock).toHaveBeenCalledTimes(2));
-    expect(payload().mutationKey).toBe(firstKey);
+    fillMinimum();
+    selectBreakout();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose another' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(exitPlanState()).toBe('inherited');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose another' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(exitPlanState()).toBe('inherited');
   });
 
-  it('renders the composition in Thai', () => {
-    renderForm({ locale: 'th' });
-    expect(screen.getByRole('heading', { name: 'แผนตอนเข้า' })).toBeInTheDocument();
-    expect(screen.getByLabelText('ความเสี่ยงตอนเข้า')).toBeVisible();
-    expect(screen.getByText('ตอนนี้หรือภายหลัง')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'บันทึกเทรดที่ยังเปิดอยู่' })).toBeVisible();
+  it('opening Customize claims nothing until the wording really changes', () => {
+    renderForm();
+    fillMinimum();
+    selectBreakout();
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    expect(screen.getByLabelText('Your plan for this trade')).toHaveValue(
+      'Half at 1R, trail the rest.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(exitPlanState()).toBe('inherited');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
+      target: { value: 'Half at 1R, close the rest at 2R.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(exitPlanState()).toBe('customized');
+    expect(screen.getByText('Customized for this trade')).toBeVisible();
+  });
+
+  it('discards an edit only when Discard changes is chosen', () => {
+    renderForm();
+    fillMinimum();
+    selectBreakout();
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
+      target: { value: 'Something else entirely.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(exitPlanState()).toBe('inherited');
+  });
+
+  it('keeps custom wording through another choice and restores it', async () => {
+    renderForm();
+    fillMinimum();
+    selectBreakout();
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
+      target: { value: 'Close before the news.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(exitPlanState()).toBe('customized');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use strategy default' }));
+    expect(exitPlanState()).toBe('inherited');
+    fireEvent.click(screen.getByRole('button', { name: 'Use your custom plan' }));
+    expect(exitPlanState()).toBe('customized');
+    expect(screen.getByText('Close before the news.')).toBeVisible();
+
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+      exitPlan: {
+        state: 'customized',
+        instructions: 'Close before the news.',
+      },
+      exitPlanInheritanceDeclined: true,
+    });
+  });
+
+  it('sends an inherited plan with its Strategy-default provenance', async () => {
+    renderForm();
+    fillMinimum();
+    selectBreakout();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+      strategyId: BREAKOUT,
+      exitPlan: { state: 'saved', exitPlanId: SCALE_OUT, provenance: 'strategy_default' },
+    });
+  });
+});
+
+describe('At Entry — the analytical questions', () => {
+  it('restores Setup and condition answers when a Strategy is returned to', async () => {
+    renderForm();
+    fillMinimum();
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
+    fireEvent.change(screen.getByLabelText('Setup'), { target: { value: RETEST } });
+    const candle = screen.getByRole('group', { name: /Candle closed/ });
+    fireEvent.click(within(candle).getByLabelText('Met'));
+
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: REVERSAL } });
+    expect(screen.getByLabelText('Setup')).toHaveValue('');
+
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
+    expect(screen.getByLabelText('Setup')).toHaveValue(RETEST);
+    expect(
+      within(screen.getByRole('group', { name: /Candle closed/ })).getByLabelText('Met'),
+    ).toBeChecked();
+
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    // Only the answered condition travels; the unanswered one is never a Not Met.
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+      setupId: RETEST,
+      conditionAnswers: [{ conditionKey: 'candle', status: 'met' }],
+    });
+  });
+
+  it('holds No strategy, a selection and Unanswered apart', async () => {
+    renderForm();
+    fillMinimum();
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: '__none' } });
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({ noStrategy: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove strategy answer' }));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    const second = createTradeMock.mock.calls[1]![0] as Record<string, unknown>;
+    expect(second).not.toHaveProperty('noStrategy');
+    expect(second).not.toHaveProperty('strategyId');
+  });
+
+  it('refuses to turn the last selected emotion into silence', () => {
+    renderForm();
+    fillMinimum();
+    fireEvent.click(screen.getByRole('button', { name: 'Calm' }));
+    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Calm' }));
+    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      screen.getByText('To clear this answer, choose None of these or Remove answer.'),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove emotions answer' }));
+    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('keeps Not answered, None of these and a selection as three different answers', async () => {
+    renderForm();
+    fillMinimum();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).not.toHaveProperty('emotionKeys');
+
+    fireEvent.click(screen.getByRole('button', { name: 'None of these' }));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    expect(createTradeMock.mock.calls[1]![0]).toMatchObject({ emotionKeys: [] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'FOMO' }));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(3));
+    expect(createTradeMock.mock.calls[2]![0]).toMatchObject({ emotionKeys: ['fomo'] });
+  });
+
+  it('has no Confidence default and removes it explicitly', async () => {
+    renderForm();
+    fillMinimum();
+    for (const level of ['Very Low', 'Low', 'Neutral', 'High', 'Very High']) {
+      expect(screen.getByLabelText(level)).not.toBeChecked();
+    }
+    fireEvent.click(screen.getByLabelText('High'));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({ confidence: 75 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove confidence answer' }));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    expect(createTradeMock.mock.calls[1]![0]).not.toHaveProperty('confidence');
+  });
+
+  it('summarizes answered analytical coverage honestly', () => {
+    renderForm();
+    fillMinimum();
+    const summary = () => document.querySelector('[data-analysis-summary]')?.textContent ?? '';
+    expect(summary()).toContain('Not answered yet');
+
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
+    fireEvent.change(screen.getByLabelText('Setup'), { target: { value: RETEST } });
+    fireEvent.click(
+      within(screen.getByRole('group', { name: /Candle closed/ })).getByLabelText('Met'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'None of these' }));
+    expect(summary()).toContain('Breakout · Retest');
+    expect(summary()).toContain('1 of 2 conditions answered');
+    expect(summary()).toContain('No emotions');
+  });
+});
+
+describe('At Entry — entry time', () => {
+  it('keeps an untouched default distinct from a confirmed time, and can clear it', async () => {
+    renderForm();
+    fillMinimum();
+    expect(screen.getByText('Set automatically to now')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'This time is right' }));
+    expect(screen.queryByText('Set automatically to now')).toBeNull();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({ enteredAtSource: 'trader' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear time' }));
+    expect(screen.getByText('Not set')).toBeVisible();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    const cleared = createTradeMock.mock.calls[1]![0] as Record<string, unknown>;
+    expect(cleared).not.toHaveProperty('enteredAt');
+    expect(cleared).not.toHaveProperty('enteredAtSource');
   });
 });

@@ -29,6 +29,7 @@ vi.mock('@/server/actions/trades', () => ({
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  exitPlans: [],
   emotionCatalog: [{ key: 'calm', label: 'Calm' }],
   tradingAccounts: [
     {
@@ -74,7 +75,7 @@ describe('TradeRecordingForm — the production mode boundary', () => {
   it('states the recording mode instead of offering to switch it mid-form', () => {
     const { container, unmount } = renderForm();
     expect(container.querySelector('[data-recording-mode="at_entry"]')).not.toBeNull();
-    expect(screen.getByText(/Record the trade before the outcome is known/)).toBeVisible();
+    expect(screen.getByText(/At entry: the position is still open/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'After Trade' })).not.toBeInTheDocument();
 
     unmount();
@@ -102,7 +103,7 @@ describe('TradeRecordingForm — the production mode boundary', () => {
 
   it('translates the mode statement', () => {
     renderForm('th');
-    expect(screen.getByText(/บันทึกออเดอร์ก่อนที่จะรู้ผลลัพธ์/)).toBeVisible();
+    expect(screen.getByText(/ตอนเข้า: สถานะยังเปิดอยู่/)).toBeVisible();
     expect(screen.getByRole('link', { name: 'เปลี่ยน' })).toBeVisible();
   });
 });

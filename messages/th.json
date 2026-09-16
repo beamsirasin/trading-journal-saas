@@ -1361,6 +1361,31 @@
           "reviewRecorded": "ทบทวนแล้ว",
           "reviewNotReviewed": "ยังไม่ได้ทบทวน"
         }
+      },
+      "contract": {
+        "target": "เป้าหมาย",
+        "targetFixed": "มีเป้าหมายแน่นอน",
+        "targetNoFixed": "ไม่มีเป้าหมายแน่นอน",
+        "notAnswered": "ยังไม่ได้ตอบ",
+        "actualRisk": "ความเสี่ยงจริง",
+        "actualRiskMatched": "ตรงกับความเสี่ยงตอนเข้า",
+        "actualRiskDifferent": "ต่างออกไป · {amount}",
+        "actualRiskDifferentUnknown": "ต่างออกไป ไม่ทราบจำนวน",
+        "actualRiskUnknown": "ไม่ทราบ",
+        "exitPlan": "แผนการออก",
+        "exitPlanNotRecorded": "ไม่ได้บันทึก",
+        "exitPlanNoRule": "ไม่มีกฎการออกที่กำหนดไว้",
+        "exitPlanFromStrategy": "{name} · จากกลยุทธ์",
+        "exitPlanCustomized": "ปรับแต่งสำหรับเทรดนี้",
+        "exitPlanBasedOn": "ปรับแต่ง · อ้างอิงจาก {name}",
+        "entryTimeSource": "ที่มาของเวลาเข้า",
+        "entryTimeDefault": "ตั้งอัตโนมัติเมื่อบันทึก",
+        "entryTimeTrader": "คุณกรอกเอง",
+        "priceContext": "ราคาเป็นบริบท",
+        "contextEntry": "ราคาเข้า",
+        "contextStop": "ราคา SL",
+        "contextSize": "ขนาด",
+        "targetPrice": "ราคา TP"
       }
     },
     "tradeManagement": {
@@ -2021,6 +2046,190 @@
           "validation": {
             "risk": "กรอกความเสี่ยงตอนเข้า"
           }
+        },
+        "contractEntry": {
+          "title": "บันทึกเทรดที่ยังเปิดอยู่",
+          "back": "เทรด",
+          "subtitle": "ตอนเข้า: สถานะยังเปิดอยู่",
+          "sections": {
+            "trade": "รายการเทรด",
+            "plan": "ความเสี่ยงและแผน",
+            "read": "ทำไมคุณเข้าเทรดนี้",
+            "readDescription": "ไม่จำเป็นต่อการบันทึก คำตอบเหล่านี้ใช้สร้างข้อมูลเชิงลึกด้านกลยุทธ์และจิตวิทยา",
+            "usedInAnalytics": "ใช้ในการวิเคราะห์",
+            "context": "ไอเดีย กราฟ และระดับราคา"
+          },
+          "account": {
+            "label": "บัญชีเทรด",
+            "change": "เปลี่ยน",
+            "changeAria": "เปลี่ยนบัญชี",
+            "choose": "เลือกบัญชี"
+          },
+          "symbol": {
+            "label": "สัญลักษณ์",
+            "placeholder": "เช่น XAUUSD",
+            "recent": "ล่าสุด",
+            "useRecent": "ใช้ {symbol}"
+          },
+          "direction": {
+            "label": "ทิศทาง",
+            "long": "Long",
+            "short": "Short"
+          },
+          "entryTime": {
+            "label": "เวลาเข้า",
+            "defaulted": "ตั้งเป็นเวลาปัจจุบันอัตโนมัติ",
+            "notSet": "ไม่ได้ตั้ง",
+            "hint": "เวลาใช้เขตเวลา {timezone} หากเข้าก่อนหน้านี้ ให้เปลี่ยน หรือล้างเวลาหากไม่แน่ใจ",
+            "confirm": "เวลานี้ถูกต้อง",
+            "useNow": "ใช้เวลาปัจจุบัน",
+            "clear": "ล้างเวลา"
+          },
+          "risk": {
+            "label": "ความเสี่ยงตอนเข้า",
+            "hint": "จำนวนสูงสุดที่ทั้งสถานะจะเสียหากโดนจุดตัดขาดทุน นี่คือ 1R ของคุณ"
+          },
+          "actualRisk": {
+            "matched": "ความเสี่ยงจริงตรงกับจำนวนนี้",
+            "assumption": "ถือว่าตรงกันจนกว่าคุณจะบอกว่าไม่ใช่",
+            "different": "ความเสี่ยงจริงต่างออกไป",
+            "amount": "ความเสี่ยงจริง",
+            "amountHint": "จำนวนที่คุณเสี่ยงจริง 1R ยังคงเป็นความเสี่ยงตอนเข้า",
+            "unknown": "ไม่ทราบจำนวน",
+            "unknownState": "ต่างออกไป ไม่ทราบจำนวน",
+            "enterAmount": "กรอกจำนวน",
+            "matchedAfterAll": "จริง ๆ แล้วตรงกัน"
+          },
+          "target": {
+            "legend": "เป้าหมาย",
+            "fixed": "มีเป้าหมายแน่นอน",
+            "fixedDescription": "จำนวนกำไร ราคา TP หรือทั้งสองอย่าง",
+            "noFixed": "ไม่มีเป้าหมายแน่นอน",
+            "noFixedDescription": "คุณจะปิดตามกฎหรือวิจารณญาณ",
+            "profit": "กำไรเป้าหมาย",
+            "price": "ราคา TP",
+            "priceContext": "ราคาเป็นบริบท",
+            "reachR": "หากถึงเป้าหมายจะได้ {r}",
+            "removeAria": "ลบคำตอบเป้าหมาย"
+          },
+          "exitPlan": {
+            "title": "แผนการออก",
+            "notRecordedHint": "วิธีที่คุณวางแผนจัดการและปิดเทรดนี้ เป้าหมายแน่นอนไม่ใช่สิ่งเดียวกับกฎการออก",
+            "noRule": "ไม่มีกฎการออกที่กำหนดไว้",
+            "noRuleDescription": "คุณไม่มีกฎสำหรับการปิดเทรดนี้",
+            "customized": "ปรับแต่งสำหรับเทรดนี้",
+            "basedOn": "อ้างอิงจาก {name}",
+            "fromStrategy": "จากกลยุทธ์: {name}",
+            "inheritedNotice": "{strategy} กำหนดแผนการออกนี้ให้ เว้นแต่คุณจะเปลี่ยน",
+            "choose": "เลือกแผนการออก",
+            "change": "เปลี่ยน",
+            "customize": "ปรับแต่ง",
+            "editWording": "แก้ไขข้อความ",
+            "chooseAnother": "เลือกแผนอื่น",
+            "useDefault": "ใช้ค่าเริ่มต้นของกลยุทธ์",
+            "useCustom": "ใช้แผนที่คุณเขียนเอง",
+            "removeAria": "ลบคำตอบแผนการออก",
+            "editorDescription": "เลือกวิธีที่คุณวางแผนปิดเทรดนี้ การปิดหน้าต่างนี้จะเก็บการเปลี่ยนแปลงไว้",
+            "done": "เสร็จ",
+            "discard": "ยกเลิกการเปลี่ยนแปลง",
+            "close": "ปิด",
+            "writeOwn": "เขียนแผนสำหรับเทรดนี้",
+            "writeOwnDescription": "ใช้กับเทรดนี้เท่านั้น แผนที่บันทึกไว้จะไม่เปลี่ยน",
+            "defaultFor": "ค่าเริ่มต้นของ {strategy}",
+            "customLabel": "แผนของคุณสำหรับเทรดนี้",
+            "customPlaceholder": "เช่น ปิดครึ่งหนึ่งที่ 2R แล้วเลื่อนจุดตัดขาดทุนตามโลว์ที่สูงขึ้น",
+            "customHint": "ไม่มีอะไรเปลี่ยนจนกว่าคุณจะแก้ไขข้อความ",
+            "backToChoices": "เลือกแผนที่บันทึกไว้แทน",
+            "emptyLibrary": "คุณยังไม่มีแผนการออกที่บันทึกไว้"
+          },
+          "strategy": {
+            "label": "กลยุทธ์",
+            "notAnswered": "ยังไม่ได้ตอบ",
+            "none": "ไม่มีกลยุทธ์",
+            "setup": "Setup",
+            "setupNeedsStrategy": "เลือกกลยุทธ์ก่อน",
+            "noSetup": "ไม่มี Setup",
+            "removeStrategyAria": "ลบคำตอบกลยุทธ์",
+            "removeSetupAria": "ลบคำตอบ Setup",
+            "suppliesExitPlan": "{strategy} กำหนดแผนการออก “{plan}” ให้ เว้นแต่คุณจะเปลี่ยน",
+            "conditions": "เงื่อนไขของ Setup",
+            "conditionsHint": "ตอบเฉพาะข้อที่คุณตรวจแล้ว ข้อที่ข้ามจะไม่ถูกนับว่าไม่ผ่าน",
+            "met": "ผ่าน",
+            "notMet": "ไม่ผ่าน",
+            "removeConditionAria": "ลบคำตอบของ {condition}"
+          },
+          "removeAnswer": "ลบคำตอบ",
+          "notAnswered": "ยังไม่ได้ตอบ",
+          "confidence": {
+            "label": "ความมั่นใจ",
+            "hint": "คุณมั่นใจแค่ไหนขณะเข้าเทรด ผลลัพธ์จะไม่เปลี่ยนค่านี้",
+            "removeAria": "ลบคำตอบความมั่นใจ"
+          },
+          "emotions": {
+            "legend": "คุณรู้สึกอย่างไรขณะเข้าเทรด",
+            "none": "ไม่มีข้อใดเลย",
+            "removeAria": "ลบคำตอบอารมณ์",
+            "lastOne": "หากต้องการล้างคำตอบนี้ ให้เลือก ไม่มีข้อใดเลย หรือ ลบคำตอบ"
+          },
+          "summary": {
+            "open": "ตอบคำถามเหล่านี้ตอนนี้",
+            "hide": "ซ่อนคำถามเหล่านี้",
+            "notAnswered": "ยังไม่ได้ตอบ",
+            "noStrategy": "ไม่มีกลยุทธ์",
+            "noSetup": "ไม่มี Setup",
+            "conditions": "ตอบเงื่อนไขแล้ว {answered} จาก {total}",
+            "confidence": "ความมั่นใจ: {level}",
+            "emotionsNone": "ไม่มีอารมณ์",
+            "emotionsCount": "{count} อารมณ์",
+            "contextEmpty": "ยังไม่ได้เพิ่ม",
+            "contextFilled": "เพิ่มแล้ว {count} รายการ",
+            "hasErrors": "ต้องแก้ไข {count} รายการ"
+          },
+          "context": {
+            "reason": "ทำไมถึงเทรดนี้",
+            "reasonPlaceholder": "สิ่งที่คุณเห็น และทำไมจึงคุ้มกับความเสี่ยง",
+            "chart": "ลิงก์กราฟ",
+            "timeframe": "ไทม์เฟรม",
+            "session": "เซสชัน",
+            "prices": "ระดับราคา",
+            "pricesHint": "เป็นบริบทเท่านั้น ไม่ใช้คำนวณผลลัพธ์",
+            "entryPrice": "ราคาเข้า",
+            "stopPrice": "ราคา SL",
+            "size": "ขนาด",
+            "notes": "บันทึก",
+            "stopWrongSide": "ราคา SL อยู่ฝั่งกำไรของราคาเข้าสำหรับทิศทางนี้ โปรดตรวจสอบราคา การบันทึกยังทำได้",
+            "targetWrongSide": "ราคา TP อยู่ฝั่งขาดทุนของราคาเข้าสำหรับทิศทางนี้ โปรดตรวจสอบราคา การบันทึกยังทำได้"
+          },
+          "save": {
+            "action": "บันทึกเทรดที่ยังเปิดอยู่",
+            "saving": "กำลังบันทึก…",
+            "panelTitle": "สิ่งที่ต้องมีเพื่อบันทึก",
+            "panelDescription": "อย่างอื่นเพิ่มได้ตอนนี้หรือภายหลัง",
+            "ready": "พร้อมบันทึก อย่างอื่นรอได้",
+            "remaining": "ต้องมีอีก {count} จาก 4 รายการเพื่อบันทึก",
+            "blocked": "มี {count} รายการที่ต้องแก้ก่อนบันทึก",
+            "helper": "บันทึกการปิดและรีวิวเทรดนี้ได้ภายหลัง",
+            "requirement": {
+              "account": "บัญชีเทรด",
+              "symbol": "สัญลักษณ์",
+              "direction": "ทิศทาง",
+              "risk": "ความเสี่ยงตอนเข้า"
+            },
+            "added": "เพิ่มแล้ว",
+            "needed": "ยังต้องมี"
+          },
+          "errors": {
+            "requiredAccount": "เลือกบัญชีเทรด",
+            "requiredSymbol": "กรอกสัญลักษณ์",
+            "requiredDirection": "เลือก Long หรือ Short",
+            "requiredRisk": "กรอกความเสี่ยงตอนเข้า",
+            "requiredActualRisk": "กรอกจำนวน หรือเลือก ไม่ทราบจำนวน",
+            "invalidMoney": "กรอกจำนวนเงินที่ถูกต้องตามทศนิยมที่สกุลเงินรองรับ",
+            "mustBePositive": "กรอกจำนวนที่มากกว่าศูนย์",
+            "invalidDatetime": "กรอกวันและเวลาที่ถูกต้องตามเขตเวลาที่บันทึกไว้",
+            "invalidPrice": "กรอกราคาที่มากกว่าศูนย์ ใช้ตัวเลขและจุดทศนิยมหนึ่งจุด",
+            "fixedTargetRequiresValue": "เพิ่มกำไรเป้าหมายหรือราคา TP หรือเลือก ไม่มีเป้าหมายแน่นอน"
+          }
         }
       },
       "backToTrades": "กลับไปหน้าออเดอร์",
@@ -2171,7 +2380,8 @@
       "file_too_large": "รูปภาพนี้มีขนาดใหญ่เกินไป โปรดเลือกไฟล์ที่มีขนาดไม่เกิน 3 MB",
       "invalid_file": "เลือกไฟล์รูปภาพเพื่ออัปโหลด",
       "invalid_storage_key": "ไม่สามารถระบุรูปภาพนี้ได้ โปรดอัปโหลดใหม่อีกครั้ง",
-      "unexpected_error": "เกิดข้อผิดพลาด โปรดลองอีกครั้ง"
+      "unexpected_error": "เกิดข้อผิดพลาด โปรดลองอีกครั้ง",
+      "invalid_exit_plan": "แผนการออกนี้ใช้ไม่ได้แล้ว เลือกแผนอื่นแล้วลองอีกครั้ง"
     },
     "workspace": {
       "filterError": {

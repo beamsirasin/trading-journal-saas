@@ -1361,6 +1361,31 @@
           "reviewRecorded": "Reviewed",
           "reviewNotReviewed": "Not reviewed"
         }
+      },
+      "contract": {
+        "target": "Target",
+        "targetFixed": "Fixed target",
+        "targetNoFixed": "No fixed target",
+        "notAnswered": "Not answered",
+        "actualRisk": "Actual risk",
+        "actualRiskMatched": "Matched risk at entry",
+        "actualRiskDifferent": "Different · {amount}",
+        "actualRiskDifferentUnknown": "Different, amount not known",
+        "actualRiskUnknown": "Not known",
+        "exitPlan": "Exit plan",
+        "exitPlanNotRecorded": "Not recorded",
+        "exitPlanNoRule": "No defined exit rule",
+        "exitPlanFromStrategy": "{name} · from Strategy",
+        "exitPlanCustomized": "Customized for this trade",
+        "exitPlanBasedOn": "Customized · based on {name}",
+        "entryTimeSource": "Entry time source",
+        "entryTimeDefault": "Set automatically when saved",
+        "entryTimeTrader": "Entered by you",
+        "priceContext": "Price context",
+        "contextEntry": "Entry price",
+        "contextStop": "SL price",
+        "contextSize": "Size",
+        "targetPrice": "TP price"
       }
     },
     "tradeManagement": {
@@ -2021,6 +2046,190 @@
           "validation": {
             "risk": "Enter your risk at entry."
           }
+        },
+        "contractEntry": {
+          "title": "Record an open trade",
+          "back": "Trades",
+          "subtitle": "At entry: the position is still open.",
+          "sections": {
+            "trade": "The trade",
+            "plan": "Risk and plan",
+            "read": "Why you are taking it",
+            "readDescription": "Not needed to save. These answers build your Strategy and Psychology insights.",
+            "usedInAnalytics": "Used in analytics",
+            "context": "Trade idea, chart and price levels"
+          },
+          "account": {
+            "label": "Trading Account",
+            "change": "Change",
+            "changeAria": "Change account",
+            "choose": "Choose an account"
+          },
+          "symbol": {
+            "label": "Symbol",
+            "placeholder": "e.g. XAUUSD",
+            "recent": "Recent",
+            "useRecent": "Use {symbol}"
+          },
+          "direction": {
+            "label": "Direction",
+            "long": "Long",
+            "short": "Short"
+          },
+          "entryTime": {
+            "label": "Entry time",
+            "defaulted": "Set automatically to now",
+            "notSet": "Not set",
+            "hint": "Times use {timezone}. Opened earlier? Change it, or clear it if you are not sure.",
+            "confirm": "This time is right",
+            "useNow": "Use now",
+            "clear": "Clear time"
+          },
+          "risk": {
+            "label": "Risk at entry",
+            "hint": "The most this whole position stands to lose at your stop. This is your 1R."
+          },
+          "actualRisk": {
+            "matched": "Your actual risk matched this amount.",
+            "assumption": "Assumed until you say otherwise.",
+            "different": "It was different",
+            "amount": "Actual risk",
+            "amountHint": "What you really had at risk. Your 1R stays your risk at entry.",
+            "unknown": "I don't know the amount",
+            "unknownState": "Different, amount not known",
+            "enterAmount": "Enter the amount",
+            "matchedAfterAll": "It matched after all"
+          },
+          "target": {
+            "legend": "Target",
+            "fixed": "Fixed target",
+            "fixedDescription": "A profit amount, a TP price, or both",
+            "noFixed": "No fixed target",
+            "noFixedDescription": "You will close on a rule or judgement",
+            "profit": "Target profit",
+            "price": "TP price",
+            "priceContext": "Price context",
+            "reachR": "Reaching your target would be {r}.",
+            "removeAria": "Remove target answer"
+          },
+          "exitPlan": {
+            "title": "Exit plan",
+            "notRecordedHint": "How you plan to manage and close this trade. A fixed target is not the same thing as an exit rule.",
+            "noRule": "No defined exit rule",
+            "noRuleDescription": "You do not have a rule for closing this trade.",
+            "customized": "Customized for this trade",
+            "basedOn": "Based on {name}",
+            "fromStrategy": "From Strategy: {name}",
+            "inheritedNotice": "{strategy} currently supplies this exit plan unless you change it.",
+            "choose": "Choose exit plan",
+            "change": "Change",
+            "customize": "Customize",
+            "editWording": "Edit wording",
+            "chooseAnother": "Choose another",
+            "useDefault": "Use strategy default",
+            "useCustom": "Use your custom plan",
+            "removeAria": "Remove exit plan answer",
+            "editorDescription": "Choose how you plan to close this trade. Closing this panel keeps a real change.",
+            "done": "Done",
+            "discard": "Discard changes",
+            "close": "Close",
+            "writeOwn": "Write a plan for this trade",
+            "writeOwnDescription": "Only this trade uses it. Your saved plans stay as they are.",
+            "defaultFor": "Default for {strategy}",
+            "customLabel": "Your plan for this trade",
+            "customPlaceholder": "For example: take half at 2R, trail the rest beneath each higher low.",
+            "customHint": "Nothing changes until you edit the wording.",
+            "backToChoices": "Choose a saved plan instead",
+            "emptyLibrary": "You have no saved exit plans yet."
+          },
+          "strategy": {
+            "label": "Strategy",
+            "notAnswered": "Not answered",
+            "none": "No strategy",
+            "setup": "Setup",
+            "setupNeedsStrategy": "Choose a strategy first",
+            "noSetup": "No setup",
+            "removeStrategyAria": "Remove strategy answer",
+            "removeSetupAria": "Remove setup answer",
+            "suppliesExitPlan": "{strategy} currently supplies the exit plan “{plan}” unless you change it.",
+            "conditions": "Setup conditions",
+            "conditionsHint": "Answer the ones you checked. Skipped ones are never counted as not met.",
+            "met": "Met",
+            "notMet": "Not met",
+            "removeConditionAria": "Remove answer for {condition}"
+          },
+          "removeAnswer": "Remove answer",
+          "notAnswered": "Not answered",
+          "confidence": {
+            "label": "Confidence",
+            "hint": "How sure are you as you enter? The result never changes this.",
+            "removeAria": "Remove confidence answer"
+          },
+          "emotions": {
+            "legend": "How you feel as you enter",
+            "none": "None of these",
+            "removeAria": "Remove emotions answer",
+            "lastOne": "To clear this answer, choose None of these or Remove answer."
+          },
+          "summary": {
+            "open": "Answer these now",
+            "hide": "Hide these questions",
+            "notAnswered": "Not answered yet",
+            "noStrategy": "No strategy",
+            "noSetup": "No setup",
+            "conditions": "{answered} of {total} conditions answered",
+            "confidence": "Confidence: {level}",
+            "emotionsNone": "No emotions",
+            "emotionsCount": "{count, plural, one {# emotion} other {# emotions}}",
+            "contextEmpty": "Nothing added",
+            "contextFilled": "{count, plural, one {# detail added} other {# details added}}",
+            "hasErrors": "{count, plural, one {# thing to fix} other {# things to fix}}"
+          },
+          "context": {
+            "reason": "Why this trade",
+            "reasonPlaceholder": "What you see, and why it is worth the risk.",
+            "chart": "Chart link",
+            "timeframe": "Timeframe",
+            "session": "Session",
+            "prices": "Price levels",
+            "pricesHint": "Context only, never used to calculate results",
+            "entryPrice": "Entry price",
+            "stopPrice": "SL price",
+            "size": "Size",
+            "notes": "Notes",
+            "stopWrongSide": "Your SL price is on the profit side of entry for this direction. Check the prices; this does not block saving.",
+            "targetWrongSide": "Your TP price is on the losing side of entry for this direction. Check the prices; this does not block saving."
+          },
+          "save": {
+            "action": "Save open trade",
+            "saving": "Saving…",
+            "panelTitle": "Needed to save",
+            "panelDescription": "Everything else can be added now or later.",
+            "ready": "Ready to save. Everything else can wait.",
+            "remaining": "{count} of 4 needed to save",
+            "blocked": "{count, plural, one {# thing needs attention} other {# things need attention}} before saving",
+            "helper": "You can record exits and review this trade later.",
+            "requirement": {
+              "account": "Trading Account",
+              "symbol": "Symbol",
+              "direction": "Direction",
+              "risk": "Risk at entry"
+            },
+            "added": "added",
+            "needed": "still needed"
+          },
+          "errors": {
+            "requiredAccount": "Choose a Trading Account.",
+            "requiredSymbol": "Enter a symbol.",
+            "requiredDirection": "Choose Long or Short.",
+            "requiredRisk": "Enter your risk at entry.",
+            "requiredActualRisk": "Enter the amount, or choose I don't know the amount.",
+            "invalidMoney": "Enter a valid amount with the currency's supported precision.",
+            "mustBePositive": "Enter an amount greater than zero.",
+            "invalidDatetime": "Enter a valid date and time in your saved timezone.",
+            "invalidPrice": "Enter a price greater than zero, using digits and one decimal point.",
+            "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target."
+          }
         }
       },
       "backToTrades": "Back to Trades",
@@ -2171,7 +2380,8 @@
       "file_too_large": "This image is too large. Choose a file under 3 MB.",
       "invalid_file": "Choose an image file to upload.",
       "invalid_storage_key": "This image could not be identified. Please upload it again.",
-      "unexpected_error": "Something went wrong. Please try again."
+      "unexpected_error": "Something went wrong. Please try again.",
+      "invalid_exit_plan": "That exit plan is no longer available. Choose another plan and try again."
     },
     "workspace": {
       "filterError": {

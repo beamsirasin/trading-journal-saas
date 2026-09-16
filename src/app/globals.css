@@ -39,6 +39,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-control-border: var(--control-border);
   --color-ring: var(--ring);
 
   /* Product tokens — trading domain. */
@@ -457,6 +458,8 @@ html[lang='th'] .text-label {
   --destructive-foreground: #f6f6f6;
   --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.12);
+  /* Form control boundary: 3.7:1 on card, 4.1:1 on canvas (DESIGN.md §17). */
+  --control-border: #737373;
   --ring: #3498b8;
 
   --surface: #0d0d0d;
@@ -552,6 +555,8 @@ html[lang='th'] .text-label {
   --destructive-foreground: #ffffff;
   --border: #dde4f0;
   --input: #dde4f0;
+  /* Form control boundary: 3.6:1 on card, 3.5:1 on canvas (DESIGN.md §17). */
+  --control-border: #7b879b;
   --ring: #1d4ed8;
 
   --surface: #e9edf7;
@@ -642,6 +647,8 @@ html[lang='th'] .text-label {
   --destructive-foreground: #f6f6f6;
   --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.12);
+  /* Form control boundary: 3.7:1 on card, 4.1:1 on canvas (DESIGN.md §17). */
+  --control-border: #737373;
   --ring: #3498b8;
 
   --surface: #0d0d0d;

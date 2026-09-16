@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 
@@ -12,7 +13,9 @@ import { getTradeCreateOptions } from '@/server/dal/trades';
 import { TradeCreateGate } from '@/components/trades/trade-create-gate';
 import { TradeRecordingModeSelection } from '@/components/trades/trade-recording-mode-selection';
 import { WizardShell } from '@/components/trades/trade-wizard-shell';
+import { Button } from '@/components/ui/button';
 import { localizedAlternates, localizedOpenGraph } from '@/i18n/metadata';
+import { Link } from '@/i18n/navigation';
 import type { AppLocale } from '@/i18n/routing';
 
 type PageParams = { locale: string };
@@ -135,6 +138,40 @@ export default async function NewTradePage({
       >
         <TradeRecordingModeSelection />
       </WizardShell>
+    );
+  }
+
+  /*
+    AT ENTRY IS A CAPTURE WORKSPACE, NOT A WIZARD STEP. "Record an open trade"
+    is a long form with a sticky save panel beside it, so it takes a compact
+    flow header and the workspace width instead of the centred step frame. The
+    way back to the recording choice is the guarded "Change" the form renders.
+  */
+  if (timing === 'at_entry') {
+    return (
+      <div className="mx-auto w-full max-w-[70rem] min-w-0 px-4 pt-4 pb-10 sm:px-6 lg:px-8 lg:pt-8 lg:pb-16">
+        <header className="flex min-w-0 flex-col items-start gap-1">
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-3">
+            <Link href="/app/trades">
+              <ArrowLeft aria-hidden="true" />
+              {t('create.recording.contractEntry.back')}
+            </Link>
+          </Button>
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
+            {t('create.recording.contractEntry.title')}
+          </h1>
+        </header>
+        <div className="mt-2 min-w-0">
+          <TradeCreateGate
+            options={options}
+            canWrite={authorization.allowed}
+            writeBlockReason={authorization.allowed ? null : authorization.code}
+            timing={timing}
+            activeTradingAccountId={activeAccount?.id ?? null}
+            timezone={preferences.timezone}
+          />
+        </div>
+      </div>
     );
   }
 

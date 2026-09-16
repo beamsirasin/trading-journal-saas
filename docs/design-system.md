@@ -68,6 +68,8 @@ The vocabulary follows shadcn/ui's contract so vendored components work untouche
 
 Radii derive from `--radius` (0.75rem): `rounded-sm` / `md` / `lg` / `xl`.
 
+**`control-border`** is the boundary of a form control a trader has to find and operate — an input well, a select, a recorded-answer choice, an emotion chip. `border` / `input` are dividers and stay quiet; a control boundary must meet **3:1 non-text contrast** against both the card and the canvas (DESIGN.md §17 rule 2), which neither reaches. Dark `#737373` (3.7:1 on `card`, 4.1:1 on `background`); Light `#7b879b` (3.6:1 on `card`, 3.5:1 on `background`). First adopted by the contract At Entry form (`src/components/trades/trade-at-entry-controls.tsx`); other forms still use `input` until they are migrated.
+
 ### Palette
 
 | Token               | Dark      | Light     |
