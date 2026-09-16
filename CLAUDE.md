@@ -31,7 +31,7 @@ Everything in the schema, the calculation engine, and the analytics UI serves th
 | Source of truth | The trader-confirmed System Result (Money, or direct R) under the rules that applied | Final Net P&L (Money) and the trader-selected Trader Outcome                                                                                                                   |
 | Metrics         | System Positive Rate, System R, Avg R, Expectancy, Profit Factor, Total R, Max DD    | Actual R, Trader Win Rate (trader-selected outcomes), Avg R, Expectancy, Profit Factor, Total R, Max DD; paired System Edge Captured and Execution Gap are reported separately |
 
-Both R figures use the approved common **Risk at Entry** baseline, and Win / Loss / BE is reserved for Trader Outcome (Add Trade contract §4, §12, §16). **Current implementation pending migration:** System R still comes from planned price geometry or the Money-only Plan resolution kinds, Actual R still divides by actual risk or uses Price mode, and a System Win Rate is still computed from a Win/Loss/BE `system_outcome` (the approved metric is System Positive Rate) — see §6.
+Both R figures use the approved common **Risk at Entry** baseline, and Win / Loss / BE is reserved for Trader Outcome (Add Trade contract §4, §12, §16). **Current implementation pending migration:** System R still comes from planned price geometry or the Money-only Plan resolution kinds, and a System Win Rate is still computed from a Win/Loss/BE `system_outcome` (the approved metric is System Positive Rate). Actual R now divides by **Risk at Entry** on an Add Trade contract row (`recording_contract = 'add_trade_v1'`, migration 0021, At Entry only) and still divides by actual risk, or uses Price mode, on every legacy row — see §6.
 
 **System Result and Trader Outcome are independent stored fields.** Never derive the System Result from actual profit or price, and never derive Trader Outcome from P&L or R under the approved contract. All four quadrants must be representable and must survive into analytics:
 
@@ -182,9 +182,9 @@ Every formula lives in `src/lib/calc/`, is documented in code with its definitio
 The running code predates the approved contract. Until the Add Trade migration lands, it still:
 
 - derives `trader_outcome` from R with the ±0.05R band, or from P&L sign, enforced by `trades_status_consistency_check`;
-- computes Actual R as `net_pnl_minor / actual_initial_risk_minor`, or from Price-mode geometry (`actual_result_mode = 'price'`);
+- computes Actual R as `net_pnl_minor / actual_initial_risk_minor`, or from Price-mode geometry (`actual_result_mode = 'price'`), **on legacy rows only** — a contract row created by At Entry divides by `planned_risk_minor` (Risk at Entry) through `actualRDenominatorMinor`;
 - computes System R from planned price geometry or the Money-only Plan resolution kinds, and stores a Win/Loss/BE `system_outcome`;
-- offers a Money/Price basis switch in Add Trade and a Price actual result in After Trade;
+- offers a Money/Price basis switch in **After Trade** and a Price actual result there; At Entry no longer has that switch, records price as context only, and no longer asks a trader to confirm "unmet" Setup Conditions, because an unanswered condition was never a Not Met;
 - derives a live close's `net_pnl_minor` from exit legs, and blocks a Complete-history exit conflict;
 - rejects a Stop or Target on the wrong side of Entry as a validation error (approved target: a non-blocking data-quality notice, contract §3);
 - treats a closed Trade with no `review_notes` as not reviewed.

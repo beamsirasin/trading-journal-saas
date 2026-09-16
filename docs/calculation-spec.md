@@ -68,6 +68,11 @@ short: riskPerUnit = initialStop − entry
 
 `Trade.actual_initial_risk_minor` and `Trade.net_pnl_minor` (both `BIGINT` account-currency minor units) are the **authoritative** monetary inputs to Actual R — never `riskPerUnit × positionSize × contractMultiplier`. That formula is not universally valid across Forex, gold, crypto and indices, especially when account currency differs from quote currency; a pip value in JPY-quoted pairs, a per-contract multiplier for an index future, and a crypto position sized in the base asset do not reduce to one multiplication safely. Phase 08's execution forms accept these authoritative amounts directly and convert human currency input with the registry-aware exact money parser (or explicit raw minor units for an unknown currency); neither React nor the service derives them from price/quantity. `src/lib/calc/` reads the two stored bigints and `Trade.actual_entry`/`actual_exit`/`actual_position_size` remain informational primitives (`NUMERIC(20,10)`), not R inputs.
 
+**Which stored amount is the denominator depends on the row (migration 0021).** `actualRDenominatorMinor` (`src/lib/trades/add-trade-contract.ts`) decides it once, and every caller — Close, Execution correction, historical execution, the Trade Detail read model and the Trade List — asks it rather than reading a column directly:
+
+- a **contract row** (`recording_contract = 'add_trade_v1'`) divides by `planned_risk_minor`, the approved **Risk at Entry** 1R baseline. Its `actual_initial_risk_minor` is the separate **Actual Risk** Risk Discipline observation and never rescales Actual R, which is what lets "I risked more than I intended" be visible as discipline instead of silently changing the R the trade is measured in;
+- a **legacy row** keeps `actual_initial_risk_minor` as its denominator, so no historical R is rewritten.
+
 **Planned R has no such ambiguity** — it is a pure per-unit price ratio and never touches position size or account currency at all (below).
 
 ### Net result
