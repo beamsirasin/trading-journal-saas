@@ -1056,6 +1056,104 @@ describe('trades DAL (real database)', () => {
     });
   });
 
+  describe('Realized R to date — an open Trade with nothing realized has no Actual R', () => {
+    /*
+      `composeRealizedActual` answers 0.0000 for a Money-mode Trade with no Exit
+      legs — the sum of nothing over a real denominator — and an open Trade always
+      has a denominator. Detail published that as Realized R, and Trade Detail's
+      hero showed it as Actual R: a missing observation rendered as an answer
+      (contract §2/§24). These prove Detail and List now agree, and that a
+      genuine realized 0R still reports itself.
+    */
+    async function openMoneyTrade(
+      workspaceId: string,
+      userId: string,
+      fw: Framework,
+    ): Promise<string> {
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+      const opened = await openTrade(workspaceId, userId, created.tradeId, {
+        actualResultMode: 'money',
+        actualInitialRiskMinor: 5000n,
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      if (!opened.ok) throw new Error('open failed');
+      return created.tradeId;
+    }
+
+    it('reports no Realized R for a legacy open Money Trade with no exits, on Detail and List alike', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const tradeId = await openMoneyTrade(workspaceId, userId, fw);
+
+      const detail = await getWorkspaceTradeDetail(tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.realizedRToDate).toBeNull();
+      expect(detail.trade.closedBps).toBe(0);
+
+      const list = await listWorkspaceTrades({});
+      expect(list.items.find((item) => item.tradeId === tradeId)?.realizedRToDate).toBeNull();
+    });
+
+    it('reports no Realized R for a contract open Trade with no exits', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        symbol: 'XAUUSD',
+        direction: 'long',
+        recordingTiming: 'at_entry',
+        recordingContract: 'add_trade_v1',
+        systemPlanBasis: 'money',
+        plannedRiskMinor: 10_000n,
+        actualRiskAnswer: 'matched',
+      });
+      if (!created.ok) throw new Error(`contract create failed: ${created.code}`);
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      // Risk at Entry is a real denominator, which is exactly why this used to
+      // publish 0.00R. Nothing has been realized, so there is no R yet.
+      expect(detail.trade.recordingContract).toBe('add_trade_v1');
+      expect(detail.trade.realizedRToDate).toBeNull();
+    });
+
+    it('reports Realized R once something is realized, and keeps a genuine 0R', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+
+      const partial = await openMoneyTrade(workspaceId, userId, fw);
+      const exit = await addTradeExit(workspaceId, userId, partial, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 5_000,
+        realizedPnlMinor: 2_500n,
+        exitedAt: new Date('2026-08-01T10:00:00Z'),
+      });
+      expect(exit.ok).toBe(true);
+      const partialDetail = await getWorkspaceTradeDetail(partial);
+      expect(partialDetail.ok).toBe(true);
+      if (!partialDetail.ok) return;
+      expect(partialDetail.trade.realizedRToDate).toBe('0.5000');
+
+      // A realized result that really is zero is an ANSWER, not an absence.
+      const flat = await openMoneyTrade(workspaceId, userId, fw);
+      const flatExit = await addTradeExit(workspaceId, userId, flat, {
+        mutationKey: crypto.randomUUID(),
+        closedBps: 2_500,
+        realizedPnlMinor: 0n,
+        exitedAt: new Date('2026-08-01T11:00:00Z'),
+      });
+      expect(flatExit.ok).toBe(true);
+      const flatDetail = await getWorkspaceTradeDetail(flat);
+      expect(flatDetail.ok).toBe(true);
+      if (!flatDetail.ok) return;
+      expect(flatDetail.trade.realizedRToDate).toBe('0.0000');
+    });
+  });
+
   describe('listWorkspaceTrades — batched partial-close Realized R and Setup Condition adherence (Phase 13G)', () => {
     it('derives remaining bps and Realized R for a partially-exited open Trade via one batched Exit read', async () => {
       const { userId, workspaceId } = await freshWorkspace();

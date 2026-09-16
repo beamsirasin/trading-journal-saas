@@ -985,7 +985,25 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       })),
       closedBps,
       remainingBps: closedBps === null ? null : 10_000 - closedBps,
-      realizedRToDate: realized?.ok ? realized.value.realizedR : null,
+      /*
+        REALIZED R EXISTS ONLY ONCE SOMETHING HAS BEEN REALIZED.
+
+        `composeRealizedActual` answers `0.0000` for a Money-mode Trade with no
+        Exit legs at all — the sum of nothing over a real denominator — and an
+        open Trade always has a denominator, so this read used to publish a
+        `0.00R` that Trade Detail's hero then showed as Actual R. That is a
+        missing observation rendered as an answer (contract §2/§24), and it
+        contradicted this field's own documented contract above.
+
+        Gated exactly as `listWorkspaceTrades` already gates it, so the List and
+        the Detail cannot disagree about the same Trade. A genuine realized
+        `0R` — an exit whose realized P&L really is zero — still reports
+        `0.0000`, because it has `closedBps > 0`.
+      */
+      realizedRToDate:
+        trade.status === 'open' && closedBps !== null && closedBps > 0 && realized?.ok
+          ? realized.value.realizedR
+          : null,
 
       systemExitPrice: trade.systemExitPrice,
       systemResolutionKind: trade.systemResolutionKind as SystemResolutionKind | null,
