@@ -622,6 +622,96 @@ describe('Add Trade contract At Entry (real database)', () => {
     });
   });
 
+  describe('contradictions are refused as validation, never left to the database', () => {
+    it('refuses a Different Actual Risk that states Risk at Entry’s own amount', async () => {
+      const fw = await freshFramework();
+      expect(
+        await createTrade(
+          workspaceId,
+          actorUserId,
+          contractInput(fw, { actualRiskAnswer: 'different', actualInitialRiskMinor: 10_000n }),
+        ),
+      ).toMatchObject({ ok: false, code: 'invalid_initial_risk' });
+    });
+
+    it('refuses a Risk at Entry edit that would equal a stated Different amount, keeping the answer', async () => {
+      const fw = await freshFramework();
+      const tradeId = await createContract(fw, {
+        actualRiskAnswer: 'different',
+        actualInitialRiskMinor: 30_000n,
+      });
+      expect(
+        await updateTradePlan(workspaceId, actorUserId, tradeId, { plannedRiskMinor: 30_000n }),
+      ).toMatchObject({ ok: false, code: 'invalid_plan' });
+      expect(await readTrade(tradeId)).toMatchObject({
+        plannedRiskMinor: 10_000n,
+        actualRiskAnswer: 'different',
+        actualInitialRiskMinor: 30_000n,
+      });
+    });
+
+    it('refuses an inherited Exit Plan alongside a declined inheritance', async () => {
+      const fw = await freshFramework();
+      const plan = await insertExitPlan({ workspaceId, strategyId: fw.strategyId });
+      expect(
+        await createTrade(
+          workspaceId,
+          actorUserId,
+          contractInput(fw, {
+            strategyId: fw.strategyId,
+            exitPlan: { state: 'saved', exitPlanId: plan.id, provenance: 'strategy_default' },
+            exitPlanInheritanceDeclined: true,
+          }),
+        ),
+      ).toMatchObject({ ok: false, code: 'invalid_exit_plan' });
+    });
+  });
+
+  it('never stamps contract-era capture provenance onto a legacy row, at create or on a later edit', async () => {
+    const fw = await freshFramework();
+    const result = await createTrade(workspaceId, actorUserId, {
+      mutationKey: crypto.randomUUID(),
+      tradingAccountId: fw.tradingAccountId,
+      symbol: 'XAUUSD',
+      direction: 'long',
+      recordingTiming: 'at_entry',
+      systemPlanBasis: 'money',
+      plannedRiskMinor: 10_000n,
+      enteredAt: new Date('2026-09-01T10:00:00Z'),
+      confidence: 50,
+      emotionKeys: [],
+    });
+    if (!result.ok) throw new Error(`legacy create failed: ${result.code}`);
+    const tradeId = result.tradeId;
+
+    expect(
+      await updateTradePlan(workspaceId, actorUserId, tradeId, { confidence: 75 }),
+    ).toMatchObject({ ok: true });
+    expect(await replaceTradeEmotions(workspaceId, actorUserId, tradeId, ['calm'])).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await assignTradeClassification(workspaceId, actorUserId, tradeId, {
+        strategyId: fw.strategyId,
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(await readTrade(tradeId)).toMatchObject({
+      recordingContract: null,
+      confidence: 75,
+      strategyId: fw.strategyId,
+      strategyOrigin: null,
+      setupOrigin: null,
+      exitPlanOrigin: null,
+      confidenceOrigin: null,
+      emotionsOrigin: null,
+      classificationRevisedAt: null,
+      exitPlanRevisedAt: null,
+      confidenceRevisedAt: null,
+      emotionsRevisedAt: null,
+    });
+  });
+
   it('leaves a legacy At Entry write exactly as it was', async () => {
     const fw = await freshFramework();
     const result = await createTrade(workspaceId, actorUserId, {

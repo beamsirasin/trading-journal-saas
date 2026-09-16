@@ -562,6 +562,20 @@ function addAddTradeContractIssues(
   ) {
     issue('inherited_exit_plan_requires_strategy', 'exitPlan');
   }
+  if (
+    data.exitPlan?.state === 'saved' &&
+    data.exitPlan.provenance === 'strategy_default' &&
+    data.exitPlanInheritanceDeclined === true
+  ) {
+    issue('inherited_exit_plan_conflicts_with_declined', 'exitPlan');
+  }
+  if (
+    data.actualRiskAnswer === 'different' &&
+    data.actualInitialRiskMinor != null &&
+    data.actualInitialRiskMinor === data.plannedRiskMinor
+  ) {
+    issue('different_actual_risk_equals_risk_at_entry', 'actualInitialRiskMinor');
+  }
 }
 
 export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSchema)

@@ -613,7 +613,8 @@ export type AtEntryErrorCode =
   | 'must_be_positive'
   | 'invalid_datetime'
   | 'invalid_price'
-  | 'fixed_target_requires_value';
+  | 'fixed_target_requires_value'
+  | 'actual_risk_equals_risk_at_entry';
 
 export type AtEntryNotice = 'stop_wrong_side' | 'target_wrong_side';
 
@@ -666,6 +667,11 @@ export function validateAtEntryDraft(
     else {
       const amount = parseTradeMoneyInput(draft.actualRisk.amount, context.currency);
       if (!amount.ok) errors.actualRiskAmount = moneyError(amount.code);
+      // Blocking, never rewritten to Matched: the trader said Actual Risk
+      // differed, so the same amount is a contradiction for them to resolve.
+      else if (riskMinor !== null && amount.value === riskMinor) {
+        errors.actualRiskAmount = 'actual_risk_equals_risk_at_entry';
+      }
     }
   }
 

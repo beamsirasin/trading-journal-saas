@@ -364,7 +364,7 @@ export const trades = pgTable(
     exitPlanState: text('exit_plan_state'),
     /** `strategy_default` = inherited without an explicit choice; `selected` = chosen by the trader. */
     exitPlanProvenance: text('exit_plan_provenance'),
-    exitPlanId: uuid('exit_plan_id').references(() => exitPlans.id, { onDelete: 'set null' }),
+    exitPlanId: uuid('exit_plan_id'),
     exitPlanName: text('exit_plan_name'),
     exitPlanInstructions: text('exit_plan_instructions'),
     /** An explicit rejection of the Strategy default; suppresses inheritance until explicitly restored. */
@@ -414,6 +414,19 @@ export const trades = pgTable(
     // workspace and the same Strategy, mirroring Phase 06's own composite-FK
     // pattern exactly (`strategy_versions_strategy_workspace_fk`,
     // `strategy_setup_versions_setup_strategy_fk`, etc).
+    /*
+      A TRADE NEVER REFERENCES ANOTHER WORKSPACE'S EXIT PLAN. The original
+      single-column FK to `exit_plans(id)` accepted one, and only the service
+      stopped it; this is the same composite posture every other tenant-scoped
+      reference in this table already uses. Migration 0022 writes it with
+      `ON DELETE SET NULL (exit_plan_id)` so deleting a plan clears the
+      provenance pointer without touching `workspace_id`.
+    */
+    foreignKey({
+      name: 'trades_exit_plan_workspace_fk',
+      columns: [table.exitPlanId, table.workspaceId],
+      foreignColumns: [exitPlans.id, exitPlans.workspaceId],
+    }).onDelete('set null'),
     foreignKey({
       name: 'trades_trading_account_workspace_fk',
       columns: [table.tradingAccountId, table.workspaceId],
@@ -649,7 +662,9 @@ export const trades = pgTable(
     check(
       'trades_entered_at_source_check',
       sql`${table.enteredAtSource} IS NULL OR (
-        ${table.enteredAtSource} IN ('default_now', 'trader') AND ${table.enteredAt} IS NOT NULL
+        ${table.recordingContract} IS NOT NULL
+        AND ${table.enteredAtSource} IN ('default_now', 'trader')
+        AND ${table.enteredAt} IS NOT NULL
       )`,
     ),
     check(
@@ -707,7 +722,10 @@ export const trades = pgTable(
     ),
     check(
       'trades_contract_open_risk_check',
-      sql`${table.recordingContract} IS NULL OR ${table.status} <> 'open' OR ${table.plannedRiskMinor} IS NOT NULL`,
+      sql`${table.recordingContract} IS NULL OR (
+        ${table.status} <> 'planned'
+        AND (${table.status} <> 'open' OR ${table.plannedRiskMinor} IS NOT NULL)
+      )`,
     ),
     check(
       'trades_actual_risk_answer_check',
@@ -718,7 +736,14 @@ export const trades = pgTable(
             ${table.actualRiskAnswer} = 'matched'
             AND ${table.plannedRiskMinor} IS NOT NULL
             AND ${table.actualInitialRiskMinor} IS NOT DISTINCT FROM ${table.plannedRiskMinor}
-          ) OR ${table.actualRiskAnswer} = 'different'
+          ) OR (
+            ${table.actualRiskAnswer} = 'different'
+            AND (
+              ${table.actualInitialRiskMinor} IS NULL
+              OR ${table.plannedRiskMinor} IS NULL
+              OR ${table.actualInitialRiskMinor} <> ${table.plannedRiskMinor}
+            )
+          )
           OR (
             ${table.actualRiskAnswer} = 'unknown'
             AND ${table.actualInitialRiskMinor} IS NULL
@@ -751,6 +776,10 @@ export const trades = pgTable(
       ) OR (
         ${table.exitPlanState} = 'saved'
         AND ${table.exitPlanProvenance} IS NOT NULL
+        AND (
+          ${table.exitPlanProvenance} <> 'strategy_default'
+          OR (${table.strategyId} IS NOT NULL AND NOT ${table.exitPlanInheritanceDeclined})
+        )
         AND ${table.exitPlanName} IS NOT NULL
         AND btrim(${table.exitPlanName}) <> ''
         AND ${table.exitPlanInstructions} IS NOT NULL
@@ -778,7 +807,20 @@ export const trades = pgTable(
     ),
     check(
       'trades_capture_origin_check',
-      sql`(${table.strategyOrigin} IS NULL OR ${table.strategyOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
+      sql`(
+          ${table.recordingContract} IS NOT NULL OR (
+            ${table.strategyOrigin} IS NULL
+            AND ${table.setupOrigin} IS NULL
+            AND ${table.exitPlanOrigin} IS NULL
+            AND ${table.confidenceOrigin} IS NULL
+            AND ${table.emotionsOrigin} IS NULL
+            AND ${table.classificationRevisedAt} IS NULL
+            AND ${table.exitPlanRevisedAt} IS NULL
+            AND ${table.confidenceRevisedAt} IS NULL
+            AND ${table.emotionsRevisedAt} IS NULL
+          )
+        )
+        AND (${table.strategyOrigin} IS NULL OR ${table.strategyOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
         AND (${table.setupOrigin} IS NULL OR ${table.setupOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
         AND (${table.exitPlanOrigin} IS NULL OR ${table.exitPlanOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
         AND (${table.confidenceOrigin} IS NULL OR ${table.confidenceOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))

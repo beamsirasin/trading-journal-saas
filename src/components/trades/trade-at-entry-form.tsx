@@ -269,6 +269,8 @@ export function TradeAtEntryForm({
         return c('errors.invalidPrice');
       case 'fixed_target_requires_value':
         return c('errors.fixedTargetRequiresValue');
+      case 'actual_risk_equals_risk_at_entry':
+        return c('errors.actualRiskEqualsRiskAtEntry');
     }
   }
 

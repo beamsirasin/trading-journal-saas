@@ -50,6 +50,11 @@ describe('CreateTradeSchema — Add Trade contract v1', () => {
       ),
     ).toEqual([]);
     expect(issueMessages(contractInput({ actualRiskAnswer: 'different' }))).toEqual([]);
+    expect(
+      issueMessages(
+        contractInput({ actualRiskAnswer: 'different', actualInitialRiskMinor: '10000' }),
+      ),
+    ).toContain('different_actual_risk_equals_risk_at_entry');
   });
 
   it('attaches an incomplete Fixed Target to the Target question', () => {
@@ -134,6 +139,15 @@ describe('CreateTradeSchema — Add Trade contract v1', () => {
         }),
       ),
     ).toContain('inherited_exit_plan_requires_strategy');
+    expect(
+      issueMessages(
+        contractInput({
+          strategyId: uuid3,
+          exitPlan: { state: 'saved', exitPlanId: uuid1, provenance: 'strategy_default' },
+          exitPlanInheritanceDeclined: true,
+        }),
+      ),
+    ).toContain('inherited_exit_plan_conflicts_with_declined');
     expect(
       issueMessages(
         contractInput({

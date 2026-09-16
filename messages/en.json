@@ -2228,7 +2228,8 @@
             "mustBePositive": "Enter an amount greater than zero.",
             "invalidDatetime": "Enter a valid date and time in your saved timezone.",
             "invalidPrice": "Enter a price greater than zero, using digits and one decimal point.",
-            "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target."
+            "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target.",
+            "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all."
           }
         }
       },

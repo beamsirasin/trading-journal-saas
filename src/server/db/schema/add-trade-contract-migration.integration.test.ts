@@ -117,8 +117,10 @@ describe('migration 0021 — Add Trade contract At Entry schema', () => {
     await raw.end();
   });
 
-  it('is the latest migration and is named for the contract', () => {
-    expect(migrationFiles.at(-1)).toBe('0021_add_trade_contract_at_entry.sql');
+  it('is migration 0021 and is named for the contract', () => {
+    expect(migrationFiles.filter((name) => Number(name.slice(0, 4)) === 21)).toEqual([
+      '0021_add_trade_contract_at_entry.sql',
+    ]);
   });
 
   describe('legacy rows keep their pre-contract shape', () => {

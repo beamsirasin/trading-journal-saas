@@ -601,6 +601,15 @@ function validateContractCreate(
   if (input.actualInitialRiskMinor != null && input.actualInitialRiskMinor <= 0n) {
     return 'invalid_initial_risk';
   }
+  // A Different Actual Risk that states Risk at Entry's own amount is a
+  // contradiction, and `trades_actual_risk_answer_check` refuses it.
+  if (
+    input.actualRiskAnswer === 'different' &&
+    input.actualInitialRiskMinor != null &&
+    input.actualInitialRiskMinor === input.plannedRiskMinor
+  ) {
+    return 'invalid_initial_risk';
+  }
   const hasTargetProfit = input.plannedRewardMinor != null;
   const hasTargetPrice = input.targetPrice != null;
   if (input.targetState === 'fixed') {
@@ -618,6 +627,14 @@ function validateContractCreate(
   }
   if (input.noSetup === true && (input.strategyId === undefined || input.setupId !== undefined)) {
     return 'invalid_classification_request';
+  }
+  // An inherited plan and a declined inheritance cannot both be true.
+  if (
+    input.exitPlan?.state === 'saved' &&
+    input.exitPlan.provenance === 'strategy_default' &&
+    input.exitPlanInheritanceDeclined === true
+  ) {
+    return 'invalid_exit_plan';
   }
   return null;
 }
@@ -1023,12 +1040,22 @@ export async function createTradeInTx(
                 : null,
             noStrategy: input.noStrategy === true,
             noSetup: input.noSetup === true,
+            /*
+              CAPTURE ORIGIN IS CONTRACT-ERA EVIDENCE, so it is written ONLY on a
+              contract row. It used to be written for every path, which stamped
+              contract provenance onto legacy After Trade rows and made
+              `recording_contract IS NULL AND strategy_origin IS NOT NULL`
+              reachable in production — a legacy row wearing new-model
+              provenance (contract §28). Migration 0022 refuses those rows; this
+              is the writer that was producing them.
+            */
+            strategyOrigin:
+              input.strategyId !== undefined || input.noStrategy === true ? origin : null,
+            setupOrigin: input.setupId !== undefined || input.noSetup === true ? origin : null,
+            confidenceOrigin: input.confidence != null ? origin : null,
+            emotionsOrigin: emotionsRecorded ? origin : null,
           }
         : {}),
-      strategyOrigin: input.strategyId !== undefined || input.noStrategy === true ? origin : null,
-      setupOrigin: input.setupId !== undefined || input.noSetup === true ? origin : null,
-      confidenceOrigin: input.confidence != null ? origin : null,
-      emotionsOrigin: emotionsRecorded ? origin : null,
       // Phase 14E — one atomic insert, never insert-then-update. Absent
       // `actualResultMode` leaves every field below at its column
       // default (`status = 'planned'`, everything else `null`) —
@@ -1395,6 +1422,17 @@ export async function updateTradePlan(
       if (resolved.plannedRiskMinor !== trade.plannedRiskMinor) {
         if (trade.actualRiskAnswer === 'matched') {
           nextActualInitialRiskMinor = resolved.plannedRiskMinor;
+        } else if (
+          trade.actualRiskAnswer === 'different' &&
+          trade.actualInitialRiskMinor === resolved.plannedRiskMinor
+        ) {
+          /*
+            REFUSED, NEVER SILENTLY FLIPPED TO MATCHED. The trader explicitly
+            said Actual Risk differed; a Risk at Entry equal to that amount
+            would contradict the answer, and rewriting it without asking would
+            overwrite an explicit observation (contract §4).
+          */
+          return { ok: false, code: 'invalid_plan' };
         }
         if (trade.status === 'closed' && trade.netPnlMinor !== null) {
           const recomputed = composeTraderClose(trade.netPnlMinor, resolved.plannedRiskMinor);
@@ -1443,19 +1481,27 @@ export async function updateTradePlan(
         session: nextSession,
         confirmationNotes: nextConfirmationNotes,
         confidence: nextConfidence,
-        // First supply records its origin; a later change is a revision and
-        // never rewrites the origin (contract §9).
-        confidenceOrigin:
-          nextConfidence !== trade.confidence &&
-          nextConfidence !== null &&
-          trade.confidenceOrigin === null &&
-          trade.confidence === null
-            ? laterCaptureOrigin(trade.status)
-            : trade.confidenceOrigin,
-        confidenceRevisedAt:
-          nextConfidence !== trade.confidence && trade.confidence !== null
-            ? new Date()
-            : trade.confidenceRevisedAt,
+        /*
+          First supply records its origin; a later change is a revision and
+          never rewrites the origin (contract §9). A LEGACY ROW RECORDS
+          NEITHER — those columns describe contract-era capture, and a legacy
+          row keeps its own provenance (contract §28).
+        */
+        ...(isContractRow(trade)
+          ? {
+              confidenceOrigin:
+                nextConfidence !== trade.confidence &&
+                nextConfidence !== null &&
+                trade.confidenceOrigin === null &&
+                trade.confidence === null
+                  ? laterCaptureOrigin(trade.status)
+                  : trade.confidenceOrigin,
+              confidenceRevisedAt:
+                nextConfidence !== trade.confidence && trade.confidence !== null
+                  ? new Date()
+                  : trade.confidenceRevisedAt,
+            }
+          : {}),
         targetState: nextTargetState,
         actualInitialRiskMinor: nextActualInitialRiskMinor,
         actualR: nextActualR,
@@ -3251,12 +3297,19 @@ export async function assignTradeClassification(
         // first supply records when it happened (contract §7).
         noStrategy: false,
         noSetup: false,
-        strategyOrigin:
-          trade.strategyOrigin ?? (assigningStrategy ? laterCaptureOrigin(trade.status) : null),
-        setupOrigin:
-          trade.setupOrigin ?? (assigningSetup ? laterCaptureOrigin(trade.status) : null),
-        ...(trade.noStrategy || (assigningSetup && trade.noSetup)
-          ? { classificationRevisedAt: assignedAt }
+        // Contract rows only: origin and revision describe contract-era capture,
+        // and a legacy row must stay legacy (contract §28).
+        ...(isContractRow(trade)
+          ? {
+              strategyOrigin:
+                trade.strategyOrigin ??
+                (assigningStrategy ? laterCaptureOrigin(trade.status) : null),
+              setupOrigin:
+                trade.setupOrigin ?? (assigningSetup ? laterCaptureOrigin(trade.status) : null),
+              ...(trade.noStrategy || (assigningSetup && trade.noSetup)
+                ? { classificationRevisedAt: assignedAt }
+                : {}),
+            }
           : {}),
         updatedAt: new Date(),
       })

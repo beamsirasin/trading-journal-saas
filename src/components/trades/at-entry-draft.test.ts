@@ -205,6 +205,18 @@ describe('At Entry draft — Actual Risk', () => {
     expect(payload).not.toHaveProperty('actualInitialRiskMinor');
   });
 
+  it('blocks a Different amount equal to Risk at Entry and never rewrites it to Matched', () => {
+    // `100.00` and `100` are the same minor-unit amount, so the comparison is by value.
+    const draft = setActualRiskMode(setActualRiskAmount(minimum(), '100.00'), 'different');
+    const validation = validateAtEntryDraft(draft, context);
+    expect(validation.errors).toEqual({ actualRiskAmount: 'actual_risk_equals_risk_at_entry' });
+    expect(atEntryReadiness(validation)).toMatchObject({ status: 'blocked', count: 1 });
+    expect(buildAtEntryPayload(draft, { ...context, mutationKey: ACCOUNT, options })).toBeNull();
+    expect(draft.actualRisk).toEqual({ mode: 'different', amount: '100.00' });
+
+    expect(validateAtEntryDraft(setActualRiskAmount(draft, '100.01'), context).errors).toEqual({});
+  });
+
   it('asks for the amount only when Different with an amount is chosen', () => {
     expect(
       validateAtEntryDraft(setActualRiskMode(minimum(), 'different'), context).errors
