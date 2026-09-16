@@ -7,6 +7,15 @@ import { composeRealizedActual } from '@/lib/calc/trade';
 import { createConditionSetToken } from '@/lib/setup-conditions/condition-set-token';
 import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots';
 import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
+import {
+  actualRDenominatorMinor,
+  type ActualRiskAnswer,
+  type EnteredAtSource,
+  type ExitPlanProvenance,
+  type ExitPlanState,
+  type RecordingContract,
+  type TargetState,
+} from '@/lib/trades/add-trade-contract';
 import type {
   ActualResultMode,
   ExitHistoryCompleteness,
@@ -33,6 +42,7 @@ import { getActiveWorkspaceContext } from '@/server/auth/dal';
 import { getDb } from '@/server/db/client';
 import {
   emotionTypes,
+  exitPlans,
   mistakeTypes,
   setupConditions,
   setups,
@@ -396,6 +406,8 @@ export async function listWorkspaceTrades(
       actualEntry: trades.actualEntry,
       actualInitialStop: trades.actualInitialStop,
       actualInitialRiskMinor: trades.actualInitialRiskMinor,
+      recordingContract: trades.recordingContract,
+      plannedRiskMinor: trades.plannedRiskMinor,
       tradingAccountName: tradingAccounts.name,
       tradingAccountBaseCurrency: tradingAccounts.baseCurrency,
       tradingAccountIsArchived: tradingAccounts.isArchived,
@@ -482,7 +494,7 @@ export async function listWorkspaceTrades(
                 direction: row.direction,
                 actualEntry: row.actualEntry,
                 actualInitialStop: row.actualInitialStop,
-                actualInitialRiskMinor: row.actualInitialRiskMinor,
+                actualInitialRiskMinor: actualRDenominatorMinor(row),
                 exits,
               });
               return realized.ok ? realized.value.realizedR : null;
@@ -611,6 +623,22 @@ export interface TradeDetail {
   readonly systemStatus: SystemStatus;
   /** Trade-level temporal truth only; never per-field provenance. */
   readonly recordedRetrospectively: boolean;
+  /** `'add_trade_v1'` for a contract row; `null` for a legacy row, whose fields below stay unanswered. */
+  readonly recordingContract: RecordingContract | null;
+  readonly enteredAtSource: EnteredAtSource | null;
+  readonly targetState: TargetState | null;
+  readonly targetPrice: string | null;
+  readonly contextEntryPrice: string | null;
+  readonly contextStopPrice: string | null;
+  readonly contextPositionSize: string | null;
+  readonly actualRiskAnswer: ActualRiskAnswer | null;
+  readonly exitPlanState: ExitPlanState | null;
+  readonly exitPlanProvenance: ExitPlanProvenance | null;
+  readonly exitPlanName: string | null;
+  readonly exitPlanInstructions: string | null;
+  readonly exitPlanInheritanceDeclined: boolean;
+  readonly noStrategy: boolean;
+  readonly noSetup: boolean;
 
   readonly symbol: string;
   readonly direction: TradeDirection;
@@ -850,12 +878,12 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
           direction: trade.direction,
           actualEntry: trade.actualEntry,
           actualInitialStop: trade.actualInitialStop,
-          actualInitialRiskMinor: trade.actualInitialRiskMinor,
+          actualInitialRiskMinor: actualRDenominatorMinor(trade),
           exits: exitRows,
         });
   const closedBps = knownClosedBps(exitRows);
   const historicalExecution = deriveHistoricalExecutionSnapshot({
-    actualInitialRiskMinor: trade.actualInitialRiskMinor,
+    actualInitialRiskMinor: actualRDenominatorMinor(trade),
     finalPnlMinor: trade.netPnlMinor,
     finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
     exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,
@@ -888,6 +916,21 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
         createdAt: trade.createdAt,
         exitedAt: trade.exitedAt,
       }),
+      recordingContract: trade.recordingContract as RecordingContract | null,
+      enteredAtSource: trade.enteredAtSource as EnteredAtSource | null,
+      targetState: trade.targetState as TargetState | null,
+      targetPrice: trade.targetPrice,
+      contextEntryPrice: trade.contextEntryPrice,
+      contextStopPrice: trade.contextStopPrice,
+      contextPositionSize: trade.contextPositionSize,
+      actualRiskAnswer: trade.actualRiskAnswer as ActualRiskAnswer | null,
+      exitPlanState: trade.exitPlanState as ExitPlanState | null,
+      exitPlanProvenance: trade.exitPlanProvenance as ExitPlanProvenance | null,
+      exitPlanName: trade.exitPlanName,
+      exitPlanInstructions: trade.exitPlanInstructions,
+      exitPlanInheritanceDeclined: trade.exitPlanInheritanceDeclined,
+      noStrategy: trade.noStrategy,
+      noSetup: trade.noSetup,
 
       symbol: trade.symbol,
       direction: trade.direction as TradeDirection,
@@ -1067,8 +1110,19 @@ export interface TradeCreateStrategyOption {
   readonly setups: readonly TradeCreateSetupOption[];
 }
 
+/** A saved Exit Plan from the workspace library (Add Trade contract §5). */
+export interface TradeCreateExitPlanOption {
+  readonly exitPlanId: string;
+  readonly name: string;
+  readonly instructions: string;
+  /** The Strategy this plan is the default exit plan for, when it is one. */
+  readonly strategyId: string | null;
+}
+
 export interface TradeCreateOptions {
   readonly tradingAccounts: readonly TradeCreateAccountOption[];
+  /** Active saved Exit Plans; at most one per Strategy is that Strategy's default. */
+  readonly exitPlans: readonly TradeCreateExitPlanOption[];
   readonly strategies: readonly TradeCreateStrategyOption[];
   readonly emotionCatalog: readonly TradeEmotionOption[];
   /**
@@ -1228,6 +1282,17 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     });
   }
 
+  const exitPlanRows = await db
+    .select({
+      id: exitPlans.id,
+      name: exitPlans.name,
+      instructions: exitPlans.instructions,
+      strategyId: exitPlans.strategyId,
+    })
+    .from(exitPlans)
+    .where(and(eq(exitPlans.workspaceId, workspaceId), eq(exitPlans.isArchived, false)))
+    .orderBy(asc(exitPlans.name), asc(exitPlans.id));
+
   return {
     tradingAccounts: accountRows.map((a) => ({
       tradingAccountId: a.id,
@@ -1236,6 +1301,12 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
       baseCurrency: a.baseCurrency,
     })),
     strategies: strategyOptions,
+    exitPlans: exitPlanRows.map((plan) => ({
+      exitPlanId: plan.id,
+      name: plan.name,
+      instructions: plan.instructions,
+      strategyId: plan.strategyId,
+    })),
     emotionCatalog,
     workspaceId,
     chartUploadConfigured: isChartAttachmentStorageConfigured(),

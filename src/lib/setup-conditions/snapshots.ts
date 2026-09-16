@@ -36,6 +36,11 @@ export type PrepareSetupConditionSnapshotsResult =
 export function prepareSetupConditionSnapshots(
   conditions: readonly AuthoritativeSetupCondition[],
   answers: readonly Readonly<{ conditionKey: string; status: string }>[],
+  /**
+   * Add Trade contract rows keep Unanswered conditions unanswered: only the
+   * answered subset is snapshotted, and a missing answer is never a Not Met.
+   */
+  options: { readonly allowUnanswered?: boolean } = {},
 ): PrepareSetupConditionSnapshotsResult {
   const answerByKey = new Map<string, string>();
   for (const answer of answers) {
@@ -52,7 +57,7 @@ export function prepareSetupConditionSnapshots(
   for (const key of answerByKey.keys()) {
     if (!conditionKeys.has(key)) return { ok: false, code: 'unknown_condition_answer' };
   }
-  if (answerByKey.size !== conditions.length) {
+  if (options.allowUnanswered !== true && answerByKey.size !== conditions.length) {
     return { ok: false, code: 'incomplete_condition_answers' };
   }
 
@@ -60,6 +65,7 @@ export function prepareSetupConditionSnapshots(
     ok: true,
     snapshots: [...conditions]
       .sort((a, b) => a.sortOrder - b.sortOrder)
+      .filter((condition) => answerByKey.has(condition.conditionKey))
       .map((condition) => ({
         ...condition,
         checkStatus: answerByKey.get(condition.conditionKey) as SetupConditionCheckStatus,

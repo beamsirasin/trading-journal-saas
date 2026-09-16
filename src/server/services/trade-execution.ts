@@ -5,6 +5,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { composeRealizedActual, composeTraderCloseV2 } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { systemClock, type Clock } from '@/lib/time';
+import { actualRDenominatorMinor } from '@/lib/trades/add-trade-contract';
 import { CLOSED_BPS_TOTAL, type OutcomeValue } from '@/lib/trades/constants';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb, type Database } from '@/server/db/client';
@@ -62,7 +63,7 @@ function calculationInput(trade: typeof trades.$inferSelect, exits: readonly Exi
     direction: trade.direction,
     actualEntry: trade.actualEntry,
     actualInitialStop: trade.actualInitialStop,
-    actualInitialRiskMinor: trade.actualInitialRiskMinor,
+    actualInitialRiskMinor: actualRDenominatorMinor(trade),
     exits: exits.map((exit) => ({
       closedBps: exit.closedBps,
       exitPrice: exit.exitPrice,

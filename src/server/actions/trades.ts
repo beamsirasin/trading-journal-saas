@@ -289,6 +289,18 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       actualInitialRiskMinor: parsed.data.actualInitialRiskMinor ?? null,
       actualPositionSize: parsed.data.actualPositionSize ?? null,
       enteredAt: parsed.data.enteredAt,
+      recordingContract: parsed.data.recordingContract,
+      targetState: parsed.data.targetState,
+      targetPrice: parsed.data.targetPrice ?? null,
+      contextEntryPrice: parsed.data.contextEntryPrice ?? null,
+      contextStopPrice: parsed.data.contextStopPrice ?? null,
+      contextPositionSize: parsed.data.contextPositionSize ?? null,
+      actualRiskAnswer: parsed.data.actualRiskAnswer,
+      enteredAtSource: parsed.data.enteredAtSource,
+      exitPlan: parsed.data.exitPlan,
+      exitPlanInheritanceDeclined: parsed.data.exitPlanInheritanceDeclined,
+      noStrategy: parsed.data.noStrategy,
+      noSetup: parsed.data.noSetup,
     });
     if (!result.ok) return planFailure(result);
     revalidateTradeRoutes();

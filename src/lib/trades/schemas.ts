@@ -8,6 +8,12 @@ import {
 } from '@/lib/storage/chart-attachment';
 import { parseInstant } from '@/lib/time/parse';
 import {
+  ENTERED_AT_SOURCES,
+  EXIT_PLAN_PROVENANCES,
+  RECORDING_CONTRACT_ADD_TRADE_V1,
+  TARGET_STATES,
+} from '@/lib/trades/add-trade-contract';
+import {
   RECORDING_TIMINGS,
   SYSTEM_PLAN_BASES,
   validateNewWritePlanAuthority,
@@ -128,6 +134,42 @@ const SIGNED_DECIMAL_PATTERN = /^[+-]?\d+(\.\d+)?$/;
 const DECIMAL_MAX_LENGTH = 32;
 
 const decimalField = () => z.string().regex(SIGNED_DECIMAL_PATTERN).max(DECIMAL_MAX_LENGTH);
+
+/** A strictly positive decimal: a price or size recorded as context only (Add Trade contract §3). */
+const positiveDecimalField = () =>
+  decimalField().refine((value) => !value.startsWith('-') && /[1-9]/.test(value), {
+    message: 'must_be_positive',
+  });
+
+const EXIT_PLAN_INSTRUCTIONS_MAX_LENGTH = 2000;
+
+/**
+ * The Exit Plan answer a contract At Entry write carries. `saved` names a
+ * library plan (its wording is snapshotted on the server, never trusted from
+ * the client); `customized` carries the trader's own instructions; absent
+ * means Not recorded.
+ */
+const exitPlanChoiceField = () =>
+  z.discriminatedUnion('state', [
+    z
+      .object({
+        state: z.literal('saved'),
+        exitPlanId: uuidField(),
+        provenance: z.enum(EXIT_PLAN_PROVENANCES),
+      })
+      .strict(),
+    z
+      .object({
+        state: z.literal('customized'),
+        baseExitPlanId: uuidField().nullable(),
+        instructions: requiredTextField(EXIT_PLAN_INSTRUCTIONS_MAX_LENGTH).refine(
+          (value) => value.trim() !== '',
+          { message: 'blank_exit_plan_instructions' },
+        ),
+      })
+      .strict(),
+    z.object({ state: z.literal('no_rule') }).strict(),
+  ]);
 
 /**
  * SYSTEM COST R — OPTIONAL, AND AN EMPTY STRING MEANS UNKNOWN.
@@ -421,8 +463,106 @@ const CreateTradeObjectSchema = z
     actualPositionSize: decimalField().nullable().optional(),
     /** Required exactly when `actualResultMode` is present — see the refine below. */
     enteredAt: instantField().optional(),
+    /**
+     * ADD TRADE CONTRACT v1 (docs/product-contracts/add-trade.md). Present only
+     * on a contract At Entry write; every field below is rejected without it.
+     */
+    recordingContract: z.literal(RECORDING_CONTRACT_ADD_TRADE_V1).optional(),
+    /** Absent = Unanswered. */
+    targetState: z.enum(TARGET_STATES).optional(),
+    targetPrice: positiveDecimalField().nullable().optional(),
+    contextEntryPrice: positiveDecimalField().nullable().optional(),
+    contextStopPrice: positiveDecimalField().nullable().optional(),
+    contextPositionSize: positiveDecimalField().nullable().optional(),
+    actualRiskAnswer: z.enum(['matched', 'different']).optional(),
+    enteredAtSource: z.enum(ENTERED_AT_SOURCES).optional(),
+    exitPlan: exitPlanChoiceField().optional(),
+    exitPlanInheritanceDeclined: z.boolean().optional(),
+    noStrategy: z.boolean().optional(),
+    noSetup: z.boolean().optional(),
   })
   .strict();
+
+const ADD_TRADE_CONTRACT_ONLY_FIELDS = [
+  'targetState',
+  'targetPrice',
+  'contextEntryPrice',
+  'contextStopPrice',
+  'contextPositionSize',
+  'actualRiskAnswer',
+  'enteredAtSource',
+  'exitPlan',
+  'exitPlanInheritanceDeclined',
+  'noStrategy',
+  'noSetup',
+] as const;
+
+/** Price is context on a contract row: no legacy Price plan and no Price-mode Actual. */
+const CONTRACT_PRICE_AUTHORITY_FIELDS = [
+  'plannedEntry',
+  'plannedStop',
+  'plannedTarget',
+  'plannedPositionSize',
+  'actualEntry',
+  'actualInitialStop',
+  'actualPositionSize',
+] as const;
+
+type CreateTradeObject = z.output<typeof CreateTradeObjectSchema>;
+
+/**
+ * The contract At Entry write: Account, Symbol, Direction and a positive Risk
+ * at Entry are required; an explicit Fixed Target needs Target Profit or a TP
+ * price; Actual Risk is matched or different; an entry time carries its source.
+ */
+function addAddTradeContractIssues(
+  data: CreateTradeObject,
+  issue: (message: string, path: string) => void,
+): void {
+  if (data.recordingTiming !== 'at_entry') issue('contract_requires_at_entry', 'recordingTiming');
+  if (data.systemPlanBasis !== undefined && data.systemPlanBasis !== 'money') {
+    issue('contract_money_is_result_authority', 'systemPlanBasis');
+  }
+  for (const field of CONTRACT_PRICE_AUTHORITY_FIELDS) {
+    if (data[field] != null) issue('contract_price_is_context', field);
+  }
+  if (data.actualResultMode !== undefined) issue('contract_price_is_context', 'actualResultMode');
+  if (data.plannedRiskMinor == null) issue('contract_requires_risk_at_entry', 'plannedRiskMinor');
+  const hasTargetProfit = data.plannedRewardMinor != null;
+  const hasTargetPrice = data.targetPrice != null;
+  if (data.targetState === 'fixed') {
+    if (!hasTargetProfit && !hasTargetPrice) {
+      issue('fixed_target_requires_representation', 'targetState');
+    }
+    if (data.plannedRewardMinor === 0n) {
+      issue('target_profit_must_be_positive', 'plannedRewardMinor');
+    }
+  } else if (hasTargetProfit || hasTargetPrice) {
+    issue('target_values_require_fixed_target', 'targetState');
+  }
+  if (data.actualRiskAnswer === undefined) {
+    issue('contract_requires_actual_risk_answer', 'actualRiskAnswer');
+  }
+  if (data.actualRiskAnswer === 'matched' && data.actualInitialRiskMinor != null) {
+    issue('matched_actual_risk_has_no_amount', 'actualInitialRiskMinor');
+  }
+  if ((data.enteredAt === undefined) !== (data.enteredAtSource === undefined)) {
+    issue('entered_at_source_mismatch', 'enteredAtSource');
+  }
+  if (data.noStrategy === true && data.strategyId !== undefined) {
+    issue('no_strategy_conflicts_with_strategy', 'noStrategy');
+  }
+  if (data.noSetup === true && (data.strategyId === undefined || data.setupId !== undefined)) {
+    issue('no_setup_requires_strategy_without_setup', 'noSetup');
+  }
+  if (
+    data.exitPlan?.state === 'saved' &&
+    data.exitPlan.provenance === 'strategy_default' &&
+    data.strategyId === undefined
+  ) {
+    issue('inherited_exit_plan_requires_strategy', 'exitPlan');
+  }
+}
 
 export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSchema)
   // Phase 14B: a Setup never exists without a Strategy — the same pairing
@@ -457,6 +597,16 @@ export const CreateTradeSchema = applyPlanShapeRefinements(CreateTradeObjectSche
         message: authority.code,
         path: ['systemPlanBasis'],
       });
+    }
+
+    const issue = (message: string, path: string) =>
+      context.addIssue({ code: 'custom', message, path: [path] });
+    if (data.recordingContract !== undefined) {
+      addAddTradeContractIssues(data, issue);
+      return;
+    }
+    for (const field of ADD_TRADE_CONTRACT_ONLY_FIELDS) {
+      if (data[field] !== undefined) issue('contract_fields_require_contract', field);
     }
 
     if (data.actualResultMode === undefined) {

@@ -4,6 +4,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
 import { systemClock, type Clock } from '@/lib/time';
+import { laterCaptureOrigin } from '@/lib/trades/add-trade-contract';
 import { isRuleCheckStatus } from '@/lib/trades/constants';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb } from '@/server/db/client';
@@ -302,7 +303,15 @@ export async function replaceTradeEmotions(
     const recordedAt = clock.now();
     await tx
       .update(trades)
-      .set({ emotionsRecordedAt: recordedAt, updatedAt: recordedAt })
+      .set({
+        emotionsRecordedAt: recordedAt,
+        // First supply records its origin; a later change is a revision that
+        // never rewrites the origin (contract §9). Legacy unknown stays unknown.
+        ...(ctx.trade.emotionsRecordedAt === null && ctx.trade.emotionsOrigin === null
+          ? { emotionsOrigin: laterCaptureOrigin(ctx.trade.status) }
+          : { emotionsRevisedAt: recordedAt }),
+        updatedAt: recordedAt,
+      })
       .where(eq(trades.id, tradeId));
     await insertAuditLog(tx, {
       action: 'trade.emotions_corrected',

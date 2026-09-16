@@ -4,6 +4,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { generateId } from '@/lib/identifiers';
 import { systemClock, type Clock } from '@/lib/time';
+import { actualRDenominatorMinor } from '@/lib/trades/add-trade-contract';
 import type {
   ExitHistoryCompleteness,
   ExitScope,
@@ -77,7 +78,7 @@ export type HistoricalExecutionMutationResult =
 
 function stateFromRows(trade: TradeRow, exits: readonly ExitRow[]): HistoricalExecutionState {
   return {
-    actualInitialRiskMinor: trade.actualInitialRiskMinor,
+    actualInitialRiskMinor: actualRDenominatorMinor(trade),
     finalPnlMinor: trade.netPnlMinor,
     finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
     exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,

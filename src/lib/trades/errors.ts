@@ -52,6 +52,7 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'emotion_type_not_usable',
   'invalid_status_transition',
   'invalid_initial_risk',
+  'invalid_exit_plan',
   'invalid_execution_context',
   'invalid_closed_bps',
   'invalid_exit_shape',
@@ -121,6 +122,7 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'system_requires_price_plan',
   'invalid_status_transition',
   'invalid_initial_risk',
+  'invalid_exit_plan',
   'invalid_execution_context',
   'invalid_closed_bps',
   'invalid_exit_shape',
@@ -184,6 +186,7 @@ export function mapServiceErrorToPublicCode(
     case 'planned_r_mismatch':
     case 'system_requires_price_plan':
     case 'invalid_status_transition':
+    case 'invalid_exit_plan':
     case 'invalid_initial_risk':
     case 'invalid_execution_context':
     case 'invalid_closed_bps':

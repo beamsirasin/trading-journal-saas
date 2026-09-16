@@ -6,6 +6,7 @@ import {
   prepareSetupConditionSnapshots,
   type SetupConditionAnswer,
 } from '@/lib/setup-conditions/snapshots';
+import type { CaptureOrigin } from '@/lib/trades/add-trade-contract';
 import type { Database } from '@/server/db/client';
 import { setupConditions, trades, tradeSetupConditionChecks } from '@/server/db/schema';
 
@@ -36,6 +37,8 @@ export async function snapshotTradeSetupConditionsInTx(
     readonly tradeId: string;
     readonly setupVersionId: string;
     readonly answers: readonly SetupConditionAnswer[];
+    readonly allowUnanswered?: boolean;
+    readonly origin?: CaptureOrigin | null;
   },
 ): Promise<SnapshotTradeSetupConditionsResult> {
   const [trade] = await tx
@@ -61,7 +64,9 @@ export async function snapshotTradeSetupConditionsInTx(
         eq(setupConditions.setupVersionId, params.setupVersionId),
       ),
     );
-  const prepared = prepareSetupConditionSnapshots(authoritative, params.answers);
+  const prepared = prepareSetupConditionSnapshots(authoritative, params.answers, {
+    allowUnanswered: params.allowUnanswered === true,
+  });
   if (!prepared.ok) return prepared;
   if (prepared.snapshots.length === 0) return { ok: true, count: 0 };
 
@@ -75,6 +80,7 @@ export async function snapshotTradeSetupConditionsInTx(
       label: snapshot.label,
       sortOrder: snapshot.sortOrder,
       checkStatus: snapshot.checkStatus,
+      origin: params.origin ?? null,
     })),
   );
   return { ok: true, count: prepared.snapshots.length };

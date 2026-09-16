@@ -47,6 +47,25 @@ describe('prepareSetupConditionSnapshots', () => {
     ).toEqual({ ok: false, code: 'invalid_condition_status' });
   });
 
+  it('keeps an unanswered Condition unanswered on an Add Trade contract write', () => {
+    // A missing answer is never a Not Met: only the answered subset is kept.
+    expect(
+      prepareSetupConditionSnapshots(conditions, [{ conditionKey: 'b', status: 'not_met' }], {
+        allowUnanswered: true,
+      }),
+    ).toEqual({ ok: true, snapshots: [{ ...conditions[0], checkStatus: 'not_met' }] });
+    expect(prepareSetupConditionSnapshots(conditions, [], { allowUnanswered: true })).toEqual({
+      ok: true,
+      snapshots: [],
+    });
+    // Answers that are present are still validated.
+    expect(
+      prepareSetupConditionSnapshots(conditions, [{ conditionKey: 'invented', status: 'met' }], {
+        allowUnanswered: true,
+      }),
+    ).toEqual({ ok: false, code: 'unknown_condition_answer' });
+  });
+
   it('accepts an explicit empty answer set for a zero-Condition Setup', () => {
     expect(prepareSetupConditionSnapshots([], [])).toEqual({ ok: true, snapshots: [] });
     expect(deriveSetupAdherence([])).toBeNull();
