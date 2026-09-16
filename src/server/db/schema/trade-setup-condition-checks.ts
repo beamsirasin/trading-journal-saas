@@ -42,6 +42,8 @@ export const tradeSetupConditionChecks = pgTable(
     label: text('label').notNull(),
     sortOrder: integer('sort_order').notNull(),
     checkStatus: text('check_status').notNull(),
+    /** When this answer was first supplied (contract §7). NULL on legacy rows. */
+    origin: text('origin'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -77,6 +79,10 @@ export const tradeSetupConditionChecks = pgTable(
     check(
       'trade_setup_condition_checks_status_check',
       sql`${table.checkStatus} IN ('met', 'not_met')`,
+    ),
+    check(
+      'trade_setup_condition_checks_origin_check',
+      sql`${table.origin} IS NULL OR ${table.origin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade')`,
     ),
     check('trade_setup_condition_checks_label_not_blank_check', sql`btrim(${table.label}) <> ''`),
     check('trade_setup_condition_checks_sort_order_check', sql`${table.sortOrder} >= 0`),

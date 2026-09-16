@@ -148,6 +148,13 @@
       "when": 1789178401700,
       "tag": "0020_mean_turbo",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789508477624,
+      "tag": "0021_add_trade_contract_at_entry",
+      "breakpoints": true
     }
   ]
 }

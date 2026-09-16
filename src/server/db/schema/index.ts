@@ -21,6 +21,7 @@ export * from './setups';
 export * from './strategy-setup-versions';
 export * from './strategy-rules';
 export * from './setup-conditions';
+export * from './exit-plans';
 export * from './trades';
 export * from './trade-exits';
 export * from './trade-setup-condition-checks';

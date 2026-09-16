@@ -19,6 +19,7 @@ import {
 import { CALC_VERSION } from '@/config/trade-calc';
 import { generateId } from '@/lib/identifiers';
 
+import { exitPlans } from './exit-plans';
 import { setups } from './setups';
 import { strategies, strategyVersions } from './strategies';
 import { strategySetupVersions } from './strategy-setup-versions';
@@ -339,6 +340,50 @@ export const trades = pgTable(
      * from the other.
      */
     planAdherence: text('plan_adherence'),
+
+    // -------------------------------------------------------------------
+    // Add Trade contract v1 (migration 0021). A NULL `recording_contract`
+    // is a legacy row: nothing below is written for it and nothing legacy is
+    // converted. A contract row carries the approved semantics directly:
+    // Risk at Entry (`planned_risk_minor`) is the 1R baseline, price is
+    // context only, and every answer keeps Unanswered distinct.
+    // -------------------------------------------------------------------
+    recordingContract: text('recording_contract'),
+    /** `default_now` = the automatic "now" kept as-is; `trader` = edited or confirmed. NULL with a NULL `entered_at`. */
+    enteredAtSource: text('entered_at_source'),
+    /** NULL = Unanswered. `fixed` needs Target Profit (`planned_reward_minor`) or a TP price. */
+    targetState: text('target_state'),
+    /** TP price — context only, never a calculation input. */
+    targetPrice: numeric('target_price', { precision: 20, scale: 10 }),
+    contextEntryPrice: numeric('context_entry_price', { precision: 20, scale: 10 }),
+    contextStopPrice: numeric('context_stop_price', { precision: 20, scale: 10 }),
+    contextPositionSize: numeric('context_position_size', { precision: 20, scale: 10 }),
+    /** Risk Discipline evidence; never the Actual R denominator on a contract row. */
+    actualRiskAnswer: text('actual_risk_answer'),
+    /** NULL = Not recorded. `saved` / `customized` carry a snapshot; `no_rule` is an explicit answer. */
+    exitPlanState: text('exit_plan_state'),
+    /** `strategy_default` = inherited without an explicit choice; `selected` = chosen by the trader. */
+    exitPlanProvenance: text('exit_plan_provenance'),
+    exitPlanId: uuid('exit_plan_id').references(() => exitPlans.id, { onDelete: 'set null' }),
+    exitPlanName: text('exit_plan_name'),
+    exitPlanInstructions: text('exit_plan_instructions'),
+    /** An explicit rejection of the Strategy default; suppresses inheritance until explicitly restored. */
+    exitPlanInheritanceDeclined: boolean('exit_plan_inheritance_declined').notNull().default(false),
+    /** Explicit "No Strategy" — distinct from an unanswered, unclassified Trade. */
+    noStrategy: boolean('no_strategy').notNull().default(false),
+    noSetup: boolean('no_setup').notNull().default(false),
+    // Capture origin (contract §7, §9): when each answer was FIRST supplied.
+    // Revision timestamps record later edits without rewriting the origin.
+    strategyOrigin: text('strategy_origin'),
+    setupOrigin: text('setup_origin'),
+    exitPlanOrigin: text('exit_plan_origin'),
+    confidenceOrigin: text('confidence_origin'),
+    emotionsOrigin: text('emotions_origin'),
+    classificationRevisedAt: timestamp('classification_revised_at', { withTimezone: true }),
+    exitPlanRevisedAt: timestamp('exit_plan_revised_at', { withTimezone: true }),
+    confidenceRevisedAt: timestamp('confidence_revised_at', { withTimezone: true }),
+    emotionsRevisedAt: timestamp('emotions_revised_at', { withTimezone: true }),
+
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -593,6 +638,153 @@ export const trades = pgTable(
     // be edited down to zero representations) is untouched and enforced only
     // in application code, not here.
 
+    // Add Trade contract v1 (migration 0021) — see the column block above.
+    // A CHECK that evaluates to NULL PASSES, so every comparison below that can
+    // meet a NULL column is written NULL-safely (IS NOT DISTINCT FROM, or an
+    // explicit IS NOT NULL) rather than trusting `=` or `<>` to fail closed.
+    check(
+      'trades_recording_contract_check',
+      sql`${table.recordingContract} IS NULL OR ${table.recordingContract} = 'add_trade_v1'`,
+    ),
+    check(
+      'trades_entered_at_source_check',
+      sql`${table.enteredAtSource} IS NULL OR (
+        ${table.enteredAtSource} IN ('default_now', 'trader') AND ${table.enteredAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      'trades_target_state_check',
+      sql`${table.targetState} IS NULL OR ${table.targetState} IN ('fixed', 'no_fixed')`,
+    ),
+    check(
+      'trades_contract_target_check',
+      sql`(
+        ${table.recordingContract} IS NULL
+        AND ${table.targetState} IS NULL
+        AND ${table.targetPrice} IS NULL
+      ) OR (
+        ${table.recordingContract} IS NOT NULL
+        AND (
+          (
+            ${table.targetState} IS NOT DISTINCT FROM 'fixed'
+            AND (${table.plannedRewardMinor} IS NOT NULL OR ${table.targetPrice} IS NOT NULL)
+            AND (${table.plannedRewardMinor} IS NULL OR ${table.plannedRewardMinor} > 0)
+          ) OR (
+            ${table.targetState} IS DISTINCT FROM 'fixed'
+            AND ${table.plannedRewardMinor} IS NULL
+            AND ${table.targetPrice} IS NULL
+          )
+        )
+      )`,
+    ),
+    check(
+      'trades_context_price_check',
+      sql`(${table.targetPrice} IS NULL OR ${table.targetPrice} > 0)
+        AND (${table.contextEntryPrice} IS NULL OR ${table.contextEntryPrice} > 0)
+        AND (${table.contextStopPrice} IS NULL OR ${table.contextStopPrice} > 0)
+        AND (${table.contextPositionSize} IS NULL OR ${table.contextPositionSize} > 0)
+        AND (
+          ${table.recordingContract} IS NOT NULL OR (
+            ${table.contextEntryPrice} IS NULL
+            AND ${table.contextStopPrice} IS NULL
+            AND ${table.contextPositionSize} IS NULL
+          )
+        )`,
+    ),
+    // Price is never result authority on a contract row: no legacy Price plan,
+    // no Price-mode Actual, no price geometry to calculate from.
+    check(
+      'trades_contract_price_authority_check',
+      sql`${table.recordingContract} IS NULL OR (
+        ${table.plannedEntry} IS NULL
+        AND ${table.plannedStop} IS NULL
+        AND ${table.plannedTarget} IS NULL
+        AND ${table.plannedPositionSize} IS NULL
+        AND ${table.actualEntry} IS NULL
+        AND ${table.actualInitialStop} IS NULL
+        AND (${table.actualResultMode} IS NULL OR ${table.actualResultMode} = 'money')
+      )`,
+    ),
+    check(
+      'trades_contract_open_risk_check',
+      sql`${table.recordingContract} IS NULL OR ${table.status} <> 'open' OR ${table.plannedRiskMinor} IS NOT NULL`,
+    ),
+    check(
+      'trades_actual_risk_answer_check',
+      sql`${table.actualRiskAnswer} IS NULL OR (
+        ${table.recordingContract} IS NOT NULL
+        AND (
+          (
+            ${table.actualRiskAnswer} = 'matched'
+            AND ${table.plannedRiskMinor} IS NOT NULL
+            AND ${table.actualInitialRiskMinor} IS NOT DISTINCT FROM ${table.plannedRiskMinor}
+          ) OR ${table.actualRiskAnswer} = 'different'
+          OR (
+            ${table.actualRiskAnswer} = 'unknown'
+            AND ${table.actualInitialRiskMinor} IS NULL
+          )
+        )
+      )`,
+    ),
+    check(
+      'trades_exit_plan_state_check',
+      sql`${table.exitPlanState} IS NULL OR ${table.exitPlanState} IN ('saved', 'customized', 'no_rule')`,
+    ),
+    check(
+      'trades_exit_plan_provenance_check',
+      sql`${table.exitPlanProvenance} IS NULL OR ${table.exitPlanProvenance} IN ('strategy_default', 'selected')`,
+    ),
+    check(
+      'trades_exit_plan_shape_check',
+      sql`(
+        ${table.exitPlanState} IS NULL
+        AND ${table.exitPlanProvenance} IS NULL
+        AND ${table.exitPlanId} IS NULL
+        AND ${table.exitPlanName} IS NULL
+        AND ${table.exitPlanInstructions} IS NULL
+      ) OR (
+        ${table.exitPlanState} = 'no_rule'
+        AND ${table.exitPlanProvenance} IS NULL
+        AND ${table.exitPlanId} IS NULL
+        AND ${table.exitPlanName} IS NULL
+        AND ${table.exitPlanInstructions} IS NULL
+      ) OR (
+        ${table.exitPlanState} = 'saved'
+        AND ${table.exitPlanProvenance} IS NOT NULL
+        AND ${table.exitPlanName} IS NOT NULL
+        AND btrim(${table.exitPlanName}) <> ''
+        AND ${table.exitPlanInstructions} IS NOT NULL
+        AND btrim(${table.exitPlanInstructions}) <> ''
+      ) OR (
+        ${table.exitPlanState} = 'customized'
+        AND ${table.exitPlanProvenance} IS NOT NULL
+        AND ${table.exitPlanInstructions} IS NOT NULL
+        AND btrim(${table.exitPlanInstructions}) <> ''
+      )`,
+    ),
+    check(
+      'trades_exit_plan_contract_check',
+      sql`${table.recordingContract} IS NOT NULL OR (
+        ${table.exitPlanState} IS NULL AND ${table.exitPlanInheritanceDeclined} = false
+      )`,
+    ),
+    check(
+      'trades_no_strategy_check',
+      sql`NOT ${table.noStrategy} OR (${table.strategyId} IS NULL AND ${table.setupId} IS NULL)`,
+    ),
+    check(
+      'trades_no_setup_check',
+      sql`NOT ${table.noSetup} OR (${table.strategyId} IS NOT NULL AND ${table.setupId} IS NULL)`,
+    ),
+    check(
+      'trades_capture_origin_check',
+      sql`(${table.strategyOrigin} IS NULL OR ${table.strategyOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
+        AND (${table.setupOrigin} IS NULL OR ${table.setupOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
+        AND (${table.exitPlanOrigin} IS NULL OR ${table.exitPlanOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
+        AND (${table.confidenceOrigin} IS NULL OR ${table.confidenceOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
+        AND (${table.emotionsOrigin} IS NULL OR ${table.emotionsOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))`,
+    ),
+
     // Chart-attachment terminal fields (migration 0010) — populated together
     // or not at all, the same all-or-nothing posture
     // `trades_system_status_consistency_check` already establishes for a
@@ -783,7 +975,7 @@ export const trades = pgTable(
       ) OR (
         ${table.status} = 'open'
         AND ${table.actualResultMode} IS NOT NULL
-        AND ${table.enteredAt} IS NOT NULL
+        AND (${table.enteredAt} IS NOT NULL OR ${table.recordingContract} IS NOT NULL)
         AND ${table.actualExit} IS NULL
         AND ${table.netPnlMinor} IS NULL
         AND ${table.exitedAt} IS NULL
@@ -797,7 +989,10 @@ export const trades = pgTable(
             AND ${table.actualInitialRiskMinor} IS NULL
           ) OR (
             ${table.actualResultMode} = 'money'
-            AND ${table.actualInitialRiskMinor} IS NOT NULL
+            AND (
+              ${table.actualInitialRiskMinor} IS NOT NULL
+              OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskMinor} IS NOT NULL)
+            )
           )
         )
       ) OR (
@@ -837,7 +1032,10 @@ export const trades = pgTable(
                 AND ${table.actualExit} IS NOT NULL
               ) OR (
                 ${table.actualResultMode} = 'money'
-                AND ${table.actualInitialRiskMinor} IS NOT NULL
+                AND (
+                  ${table.actualInitialRiskMinor} IS NOT NULL
+                  OR (${table.recordingContract} IS NOT NULL AND ${table.plannedRiskMinor} IS NOT NULL)
+                )
                 AND ${table.netPnlMinor} IS NOT NULL
               )
             )
