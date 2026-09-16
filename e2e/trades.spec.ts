@@ -87,6 +87,76 @@ async function seedRetrospectiveDetailTrade(userId: string): Promise<string> {
   }
 }
 
+/**
+ * A LEGACY PRICE TRADE, SEEDED RATHER THAN TYPED.
+ *
+ * At Entry no longer records a Price plan or a Price-mode Actual (Add Trade
+ * contract §3, migration 0021), so a Trade with price geometry can only be a
+ * legacy row now. The Price-side Detail, System Plan and weighted Partial
+ * Close behaviour it feeds is still real behaviour for every such row already
+ * in a customer's history, so these specs exercise a row shaped exactly as the
+ * pre-contract form used to write one — and prove the contract migration left
+ * it untouched.
+ */
+async function seedLegacyPriceOpenTrade(userId: string): Promise<string> {
+  const { testUrl } = validateTestDatabaseEnvironment();
+  const client = postgres(testUrl, { max: 1 });
+  const db = drizzle(client, {
+    schema: { workspaces, tradingAccounts, trades, strategies, strategySetupVersions },
+  });
+  try {
+    const [workspace] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.personalOwnerUserId, userId));
+    if (workspace === undefined) throw new Error('Trade E2E price workspace missing');
+    const [account] = await db
+      .select({ id: tradingAccounts.id })
+      .from(tradingAccounts)
+      .where(eq(tradingAccounts.workspaceId, workspace.id));
+    if (account === undefined) throw new Error('Trade E2E price Account missing');
+    const [strategy] = await db
+      .select({ id: strategies.id, currentVersionId: strategies.currentVersionId })
+      .from(strategies)
+      .where(eq(strategies.workspaceId, workspace.id));
+    if (strategy?.currentVersionId == null) throw new Error('Trade E2E price Strategy missing');
+    const [setupVersion] = await db
+      .select({ id: strategySetupVersions.id, setupId: strategySetupVersions.setupId })
+      .from(strategySetupVersions)
+      .where(eq(strategySetupVersions.strategyVersionId, strategy.currentVersionId));
+    if (setupVersion === undefined) throw new Error('Trade E2E price Setup Version missing');
+
+    const [trade] = await db
+      .insert(trades)
+      .values({
+        workspaceId: workspace.id,
+        tradingAccountId: account.id,
+        strategyId: strategy.id,
+        strategyVersionId: strategy.currentVersionId,
+        setupId: setupVersion.setupId,
+        setupVersionId: setupVersion.id,
+        symbol: 'XAUUSD',
+        direction: 'long',
+        plannedEntry: '100',
+        plannedStop: '90',
+        plannedTarget: '130',
+        plannedR: '3.0000',
+        actualResultMode: 'price',
+        actualEntry: '100',
+        actualInitialStop: '90',
+        status: 'open',
+        enteredAt: new Date(),
+        strategyAssignedAt: new Date(),
+        setupAssignedAt: new Date(),
+      })
+      .returning({ id: trades.id });
+    if (trade === undefined) throw new Error('Trade E2E price Trade insert failed');
+    return trade.id;
+  } finally {
+    await client.end();
+  }
+}
+
 async function seedFramework(userId: string, withConditions = true): Promise<void> {
   const { testUrl } = validateTestDatabaseEnvironment();
   const client = postgres(testUrl, { max: 1 });
@@ -478,22 +548,36 @@ async function chooseRadio(scope: Page | Locator, name: string) {
 }
 
 /**
- * THE AT ENTRY FORM IS ONE LINEAR PAGE: The trade → Plan at entry → Journal at
- * entry → Save open trade. Strategy, Setup and the checklist sit inside the
- * plan; the Journal lives behind two launchers that open a dialog on a desktop
- * and a bottom sheet on a phone. These helpers name what they open, so a
- * relabel is one edit here rather than a hunt through every call site.
+ * THE CONTRACT AT ENTRY FORM IS ONE CAPTURE WORKSPACE: the trade → risk and
+ * plan → why you are taking it → context → Save open trade. Strategy, Setup,
+ * the Conditions, Confidence and emotions sit in the page's own reading order
+ * (behind one disclosure on a phone), so there is no journal overlay to open.
+ *
+ * A recorded-answer choice is a native radio behind a styled label, exactly
+ * like `chooseRadio` above, but its accessible name includes the option's own
+ * description line — so these take a pattern rather than an exact string.
  */
-async function openEntryJournal(page: Page, area: 'idea' | 'feelings') {
-  await page
-    .getByRole('button', { name: area === 'idea' ? /Trade idea/ : /Feelings at entry/ })
-    .click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+async function chooseChoice(scope: Page | Locator, name: RegExp | string) {
+  // A string is the whole accessible name ("Met" must not also match "Not
+  // met"); a pattern is for options that carry their own description line.
+  const radio = scope.getByRole('radio', { name, exact: typeof name === 'string' });
+  const id = await radio.getAttribute('id');
+  if (id === null) throw new Error(`choice "${String(name)}" has no id to find its label by`);
+  await scope.locator(`label[for="${id}"]`).click();
+  await expect(radio).toBeChecked();
 }
 
-async function closeEntryJournal(page: Page) {
-  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+/** Answers one Setup Condition inside its own labelled group. */
+async function answerCondition(page: Page, label: string, answer: 'Met' | 'Not met') {
+  await chooseChoice(page.getByRole('group', { name: new RegExp(label) }), answer);
+}
+
+/** Chooses a Strategy and Setup on the page itself — no overlay, no gate. */
+async function classifyAtEntry(page: Page, strategy: string, setup?: string) {
+  await page.getByLabel('Strategy', { exact: true }).selectOption({ label: strategy });
+  if (setup !== undefined) {
+    await page.getByLabel('Setup', { exact: true }).selectOption({ label: setup });
+  }
 }
 
 /**
@@ -517,25 +601,10 @@ async function chooseOpeningBasis(page: Page, basis: 'Price' | 'Money') {
  * assertion in this file (weighted Partial Close R, etc.) is unaffected by
  * this phase's change.
  */
-async function createOpenTrade(page: Page) {
-  await page.goto('/en/app/trades/new?timing=at_entry');
-  await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-  await chooseRadio(page, 'Long');
-  await planWithPriceLevels(page);
-  await page.getByLabel('Entry', { exact: true }).fill('100');
-  await page.getByLabel('Stop Loss', { exact: true }).fill('90');
-  await page.getByLabel(/Take Profit/).fill('130');
-  await openEntryJournal(page, 'idea');
-  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-  await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
-  await page.getByLabel('Breakout candle closed').check();
-  await page.getByLabel('Retest held').check();
-  await page.getByLabel('Volume expanded').check();
-  await page.getByLabel('Invalidation is clear').check();
-  await page.getByLabel('Session is aligned').check();
-  await closeEntryJournal(page);
-  await page.getByRole('button', { name: 'Save open trade' }).click();
-  await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
+async function createOpenTrade(page: Page, userId: string) {
+  const tradeId = await seedLegacyPriceOpenTrade(userId);
+  await page.goto(`/en/app/trades?trade=${tradeId}`);
+  await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
 }
 
 /**
@@ -547,18 +616,20 @@ async function createOpenTrade(page: Page) {
 async function createMoneyOnlyOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
   await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
-  await chooseRadio(page, 'Short');
+  await chooseChoice(page, 'Short');
   await page.getByLabel('Risk at entry').fill('100.00');
-  await page.getByLabel(/Target profit/).fill('300.00');
-  await openEntryJournal(page, 'idea');
-  await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-  await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
-  await page.getByLabel('Breakout candle closed').check();
-  await page.getByLabel('Retest held').check();
-  await page.getByLabel('Volume expanded').check();
-  await page.getByLabel('Invalidation is clear').check();
-  await page.getByLabel('Session is aligned').check();
-  await closeEntryJournal(page);
+  await chooseChoice(page, /Fixed target/);
+  await page.getByLabel('Target profit').fill('300.00');
+  await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
+  for (const condition of [
+    'Breakout candle closed',
+    'Retest held',
+    'Volume expanded',
+    'Invalidation is clear',
+    'Session is aligned',
+  ]) {
+    await answerCondition(page, condition, 'Met');
+  }
   await page.getByRole('button', { name: 'Save open trade' }).click();
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
@@ -700,7 +771,7 @@ test.describe('real Trade Journal creation', () => {
     await expect(page.getByText('Demo data', { exact: true })).toHaveCount(0);
     await expect(page.getByText(/fixture preview/i)).toHaveCount(0);
     await expect(page.getByText('London Open Sweep')).toHaveCount(0);
-    await createOpenTrade(page);
+    await createOpenTrade(page, user.id);
     await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
     const detail = page.getByRole('article', { name: 'XAUUSD' });
     await expect(page.getByText('Long').first()).toBeVisible();
@@ -773,7 +844,7 @@ test.describe('real Trade Journal creation', () => {
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades');
-    await createOpenTrade(page);
+    await createOpenTrade(page, user.id);
     const detail = page.getByRole('article', { name: 'XAUUSD' });
     // Phase 14E — created already Open; no separate Open step.
     await expect(page.getByText('Open', { exact: true }).last()).toBeVisible();
@@ -942,7 +1013,9 @@ test.describe('real Trade Journal creation', () => {
     ).toBeVisible();
   });
 
-  test('confirms unmet Conditions and persists the exact mixed snapshots', async ({ page }) => {
+  test('records only the Conditions the trader answered, with no unmet confirmation', async ({
+    page,
+  }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
     test.setTimeout(180_000);
     const user = await provisionJournalUser('e2e-trades-conditions');
@@ -950,32 +1023,23 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await chooseRadio(page, 'Long');
-    await planWithPriceLevels(page);
-    await page.getByLabel('Entry', { exact: true }).fill('1.25');
-    await page.getByLabel('Stop Loss', { exact: true }).fill('1.24');
-    await openEntryJournal(page, 'idea');
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
-    await page.getByLabel('Breakout candle closed').check();
-    await page.getByLabel('Retest held').check();
-    await page.getByLabel('Volume expanded').check();
-    await expect(page.getByText('3/5 met · 60%')).toBeVisible();
-    await closeEntryJournal(page);
-    await openEntryJournal(page, 'feelings');
-    await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
+    await chooseChoice(page, 'Long');
+    await page.getByLabel('Risk at entry').fill('100.00');
+    await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
+    // Three answered, one answered Not Met, one deliberately left unanswered.
+    await answerCondition(page, 'Breakout candle closed', 'Met');
+    await answerCondition(page, 'Retest held', 'Met');
+    await answerCondition(page, 'Volume expanded', 'Met');
+    await answerCondition(page, 'Invalidation is clear', 'Not met');
+    await chooseChoice(page, 'High');
     await page.getByRole('button', { name: 'Fearful' }).click();
     await page.getByRole('button', { name: 'Hesitant' }).click();
-    await closeEntryJournal(page);
-    await openEntryJournal(page, 'idea');
-    await page
-      .getByLabel('Why are you taking this trade?')
-      .fill('Breakout confirmed on the retest.');
-    await closeEntryJournal(page);
+    await page.getByRole('button', { name: /Trade idea, chart and price levels/ }).click();
+    await page.getByLabel('Why this trade').fill('Breakout confirmed on the retest.');
     await page.getByRole('button', { name: 'Save open trade' }).click();
-    const dialog = page.getByRole('alertdialog');
-    await expect(dialog.getByText('Save with unmet Setup Conditions?')).toBeVisible();
-    await dialog.getByRole('button', { name: 'Continue' }).click();
+    // Nothing asks the trader to confirm "unmet" Conditions: the one they
+    // skipped is unanswered, which was never a Not Met to confirm.
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
     const tradeId = new URL(page.url()).searchParams.get('trade');
     if (tradeId === null) throw new Error('created Trade ID missing from URL');
@@ -1028,18 +1092,17 @@ test.describe('real Trade Journal creation', () => {
     await page.reload();
     await openTradeSection(page, 'review');
     await expect(reviewNotes).toHaveValue('Waited for confirmation and managed risk.');
+    // The unanswered Condition has no row at all — a skipped question is
+    // never stored as a negative observation (contract §8).
     expect(await readConditionChecks(tradeId)).toEqual([
       { label: 'Breakout candle closed', checkStatus: 'met' },
       { label: 'Retest held', checkStatus: 'met' },
       { label: 'Volume expanded', checkStatus: 'met' },
       { label: 'Invalidation is clear', checkStatus: 'not_met' },
-      { label: 'Session is aligned', checkStatus: 'not_met' },
     ]);
   });
 
-  test('zero-Condition Setup shows Not configured and saves without a warning', async ({
-    page,
-  }) => {
+  test('a Setup with no Conditions saves with no checklist and no warning', async ({ page }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
     test.setTimeout(180_000);
     const user = await provisionJournalUser('e2e-trades-zero-conditions');
@@ -1047,15 +1110,11 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
-    await chooseRadio(page, 'Long');
-    await planWithPriceLevels(page);
-    await page.getByLabel('Entry', { exact: true }).fill('150');
-    await page.getByLabel('Stop Loss', { exact: true }).fill('149');
-    await openEntryJournal(page, 'idea');
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
-    await expect(page.getByText('Not configured')).toBeVisible();
-    await closeEntryJournal(page);
+    await chooseChoice(page, 'Long');
+    await page.getByLabel('Risk at entry').fill('100.00');
+    await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
+    // No Conditions exist, so no checklist is offered and no count is invented.
+    await expect(page.getByText('Setup conditions')).toHaveCount(0);
     await expect(page.getByText(/0\/0/)).toHaveCount(0);
     await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -1159,18 +1218,21 @@ test.describe('real Trade Journal creation', () => {
         await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
         await page.goto(`/${locale}/app/trades/new?timing=at_entry`);
 
-        // At Entry is one task surface on the real route: no tabs, Risk and
-        // Target as the plan, Strategy behind the Trade idea, the Journal as one
-        // optional surface, and the entry time already set to now.
+        // At Entry is one capture workspace on the real route: no tabs, Risk
+        // at Entry as the lead figure, Target as an explicit answer, the
+        // analytical questions in the page's own order, and an entry time
+        // already defaulted to now.
         const entryForm = page.locator('[data-at-entry-linear-form]:visible');
         await expect(entryForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
-        await expect(entryForm.locator('#entry-entered-at')).not.toHaveValue('');
+        await expect(entryForm.locator('#entry-time')).not.toHaveValue('');
         await expect(entryForm.locator('#entry-risk')).toBeVisible();
-        await expect(entryForm.locator('#entry-target-profit')).toBeVisible();
-        await expect(entryForm.locator('#entry-strategy')).toHaveCount(0);
-        await expect(entryForm.locator('[data-journal-area]')).toHaveCount(2);
-        await expect(page.locator('[data-slot="confidence-choice"]')).toHaveCount(0);
+        await expect(entryForm.getByRole('radio', { name: /Fixed target/ })).toHaveCount(1);
+        await expect(entryForm.locator('#entry-strategy')).toHaveCount(1);
+        // The journal overlays are gone: the analytical questions are on the
+        // page itself, and the Exit Plan is a first-class answer beside Target.
+        await expect(entryForm.locator('[data-journal-area]')).toHaveCount(0);
+        await expect(entryForm.locator('[data-exit-plan-state]')).toHaveCount(1);
         await expect(entryForm.locator('[data-global-save] button[type="submit"]')).toBeVisible();
         const entryDimensions = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,
@@ -1178,15 +1240,13 @@ test.describe('real Trade Journal creation', () => {
         }));
         expect(entryDimensions.scroll).toBeLessThanOrEqual(entryDimensions.client + 1);
 
-        await entryForm.locator('[data-journal-area="feelings"]').click();
-        await expect(page.locator('[data-slot="confidence-choice"]')).toBeVisible();
-        await page.keyboard.press('Escape');
-        await expect(page.getByRole('dialog')).toHaveCount(0);
-
-        await entryForm.locator('[data-journal-area="idea"]').click();
-        await expect(page.getByRole('dialog').locator('#entry-strategy')).toBeVisible();
-        await page.keyboard.press('Escape');
-        await expect(page.getByRole('dialog')).toHaveCount(0);
+        // Every analytical question is reachable at this width without an
+        // overlay: on a phone the disclosure holds them, on a desktop they are
+        // already open.
+        const analysisToggle = entryForm.locator('#entry-analysis-toggle');
+        if (await analysisToggle.isVisible()) await analysisToggle.click();
+        await expect(entryForm.getByRole('group', { name: 'Confidence' })).toBeVisible();
+        await expect(entryForm.locator('#entry-strategy')).toBeVisible();
 
         // After Trade is a dedicated linear historical form on this same real
         // route. It must not regress to the retired four-panel UI.
@@ -1309,7 +1369,11 @@ test.describe('real Trade Journal creation', () => {
     expect(narrowDimensions.scroll).toBeLessThanOrEqual(narrowDimensions.client + 1);
   });
 
-  test('Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis', async ({
+  // SUPERSEDED by the Add Trade contract (migration 0021): At Entry records
+  // price as context only, so it can no longer state a Price-mode actual
+  // opening that differs from a Price plan. The legacy rows that already carry
+  // that shape keep it, and Trade Detail still renders them.
+  test.skip('Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis', async ({
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
@@ -1508,12 +1572,10 @@ test.describe('real Trade Journal creation', () => {
 
     await page.goto('/en/app/trades/new?timing=at_entry');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDCAD');
-    await chooseRadio(page, 'Long');
-    // Genuinely no Plan, Strategy, or Setup at all (Phase 14C.1/Phase 14E) —
-    // Account/Symbol/Direction plus the one required Actual execution basis.
-    await planWithPriceLevels(page);
-    await page.getByLabel('Entry', { exact: true }).fill('0.8500');
-    await page.getByLabel('Stop Loss', { exact: true }).fill('0.8450');
+    await chooseChoice(page, 'Long');
+    // The contract minimum: Account, Symbol, Direction and Risk at Entry.
+    // No Target, no Exit Plan, no Strategy, no Setup.
+    await page.getByLabel('Risk at entry').fill('100.00');
     await page.getByRole('button', { name: 'Save open trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 
@@ -1587,31 +1649,22 @@ test.describe('real Trade Journal creation', () => {
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.locator('[data-account-context]:visible')).toBeVisible();
     await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
-    await chooseRadio(page, 'Long');
+    await chooseChoice(page, 'Long');
     await page.getByLabel('Risk at entry').fill('100.00');
-    await page.getByLabel(/Target profit/).fill('300.00');
-    await openEntryJournal(page, 'idea');
-    await page.getByLabel('Strategy').selectOption({ label: 'Golden Breakout' });
-    await page.getByLabel(/^Setup/).selectOption({ label: 'Clean Retest' });
-    await expect(page.getByLabel(/^Setup/)).toHaveValue(/.+/);
-    await page.getByLabel('Breakout candle closed').check();
-    await page.getByLabel('Retest held').check();
-    await page.getByLabel('Volume expanded').check();
-    await expect(page.getByText('3/5 met · 60%')).toBeVisible();
-    await closeEntryJournal(page);
-    await openEntryJournal(page, 'feelings');
-    await page.locator('[data-slot="confidence-option"][data-step="75"]').click();
+    await chooseChoice(page, /Fixed target/);
+    await page.getByLabel('Target profit').fill('300.00');
+    await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
+    await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
+    await answerCondition(page, 'Breakout candle closed', 'Met');
+    await answerCondition(page, 'Retest held', 'Met');
+    await answerCondition(page, 'Volume expanded', 'Met');
+    await chooseChoice(page, 'High');
     await page.getByRole('button', { name: 'Focused' }).click();
-    await closeEntryJournal(page);
-    await openEntryJournal(page, 'idea');
+    await page.getByRole('button', { name: /Trade idea, chart and price levels/ }).click();
     await page
-      .getByLabel('Why are you taking this trade?')
+      .getByLabel('Why this trade')
       .fill('Clean breakout confirmed on the retest with expanding volume.');
-    await closeEntryJournal(page);
     await page.getByRole('button', { name: 'Save open trade' }).click();
-    const confirmDialog = page.getByRole('alertdialog');
-    await expect(confirmDialog.getByText('Save with unmet Setup Conditions?')).toBeVisible();
-    await confirmDialog.getByRole('button', { name: 'Continue' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
 
     // Arrives directly on Detail already Open — Partial Close/Close Trade are
@@ -1850,9 +1903,7 @@ test.describe('real Trade Journal creation', () => {
     // action; Open never silently reintroduces a Plan requirement.
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.locator('[data-account-context]:visible')).toBeVisible();
-    await openEntryJournal(page, 'idea');
     await expect(page.getByLabel('Strategy')).toHaveValue('');
-    await closeEntryJournal(page);
     // Read the plan field the fresh form actually opened with, and read it
     // WITHOUT touching the basis toggle: clicking one clears the very fields
     // this assertion is about, which would turn it into a tautology that
@@ -1860,13 +1911,11 @@ test.describe('real Trade Journal creation', () => {
     // Entry' and 'Entered At' out of the match.
     await expect(page.getByLabel('Risk at entry', { exact: true })).toHaveValue('');
     await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await chooseRadio(page, 'Long');
-    await planWithPriceLevels(page);
-    await page.getByLabel('Entry', { exact: true }).fill('1.2500');
-    await page.getByLabel('Stop Loss', { exact: true }).fill('1.2400');
+    await chooseChoice(page, 'Long');
+    await page.getByLabel('Risk at entry').fill('125.00');
     await page.getByRole('button', { name: 'Save open trade' }).click();
-    // No Setup was chosen, so the unmet-Conditions confirmation never appears
-    // — the Trade opens directly.
+    // Nothing is confirmed on the way out: an unanswered question is not a
+    // negative answer, so the Trade opens directly.
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     const tradeUrl = page.url();
@@ -1878,9 +1927,10 @@ test.describe('real Trade Journal creation', () => {
       .getByRole('heading', { name: 'System Plan' })
       .locator('..')
       .locator('..');
-    await expect(planSection.getByText('1.2500')).toBeVisible();
-    await expect(planSection.getByText('1.2400')).toBeVisible();
+    // Price was never recorded here: the plan is the Risk at Entry the trader
+    // stated, and the Price fields stay truthfully absent.
     await expect(planSection.getByText('Not available')).toBeVisible();
+    await expect(planSection.getByText('1.2500')).toHaveCount(0);
     await openTradeSection(page, 'strategy');
     const classification = detail.getByLabel('Strategy & Setup');
     await expect(classification.getByText('Not assigned')).toBeVisible();

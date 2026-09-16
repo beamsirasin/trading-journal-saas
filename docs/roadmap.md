@@ -404,9 +404,9 @@ Not product debt: these are the things that make shipping the current work unsaf
 
 ## Known product debt
 
-**Twenty `e2e/trades.spec.ts` tests still assert a UI that is not there.** Nineteen of them are one defect — the retired Trade Journal and Trade Detail — and the twentieth is a different one, described after the list. The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. Those nineteen fail for that reason alone. They are listed below together with the twentieth, under the Playwright project each one runs in:
+**Nineteen `e2e/trades.spec.ts` tests still assert a UI that is not there.** Eighteen of them are one defect — the retired Trade Journal and Trade Detail — and the twentieth is a different one, described after the list. The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. Those nineteen fail for that reason alone. They are listed below together with the twentieth, under the Playwright project each one runs in:
 
-**`chromium` (17)**
+**`chromium` (16)**
 
 - `Phase 15G.5C discloses retrospective recording once at Entry Snapshot level`
 - `desktop creates, completes, corrects discipline, resolves, and deletes a Trade`
@@ -415,10 +415,9 @@ Not product debt: these are the things that make shipping the current work unsaf
 - `Money Partial Close sums already-net leg P&L without weighting it twice`
 - `Money-only System Target resolves independently while Actual remains partially open`
 - `Money-only System Stop can be corrected to Custom gross R`
-- `confirms unmet Conditions and persists the exact mixed snapshots`
-- `zero-Condition Setup shows Not configured and saves without a warning`
+- `records only the Conditions the trader answered, with no unmet confirmation`
+- `a Setup with no Conditions saves with no checklist and no warning`
 - `Phase 15G.5D After Trade creates one completed Price Trade and opens Detail directly`
-- `Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis`
 - `walks one Trade through create (already Open), partial close, independent System resolve, final close, review, and confirms Detail, List, and Analytics all agree`
 - `Phase 14C/14E — minimal New Trade with no Plan/Strategy/Setup opens atomically, Actual closes while System stays Pending, then classifies the Trade later`
 - `Phase 15G.1 — Calendar is separate from Trade Log, independent Trader/System dates never collapse, and day selection filters Log truthfully`
@@ -437,6 +436,12 @@ Not product debt: these are the things that make shipping the current work unsaf
 It was not caused by turning retries off for that block, and there is direct evidence: the identical failure — same locator, same "resolved to 2 elements" — is already annotated in the 60-minute measurement run of 2026-09-02, while `retries: 2` was still in force. Removing the retries only stopped it being absorbed. No complete CI run existed between the Trades rebuild and 2026-09-03, so nothing had ever adjudicated it either way.
 
 Repairing them is not a locator swap: the assertions have to be rewritten against `TradesTable` and `TradeDetailsSheet`, including the `?section=` → `?tab=` Trade Detail contract. Deliberately left out of the Log a trade wizard slice, whose own e2e repair covered only the two causes that slice touched.
+
+**What the Add Trade contract At Entry migration changed here (2026-09-16).** The list lost one entry and renamed two, and no entry changed its reason for failing.
+
+- `Phase 15G.3 advanced Price execution preserves a distinct plan and actual basis` is now `test.skip`, so it produces no verdict at all and left the list. At Entry records price as context (contract §3, migration 0021), so it can no longer state a Price-mode actual opening that differs from a Price plan; the legacy rows that already carry that shape keep it.
+- `confirms unmet Conditions…` and `zero-Condition Setup…` were renamed, because what they assert changed: an unanswered Setup Condition is now stored as nothing rather than a Not Met, and nothing asks a trader to confirm one.
+- The three remaining At Entry creation tests still fail on **exactly** the retired `getByRole('navigation', { name: 'Trade sections' })` above, and now fail LATER than they did: they create the contract Trade, land on Detail, and only then hit the retired locator. That is this debt, not a new one — the creation half of each was rewritten against the contract form and works.
 
 **Compare by name _and project_, never by count, and never from a single project's run.** Do it with `pnpm e2e:known-red <run.log>` (`scripts/compare-known-red-e2e.mjs`), which diffs this list against a run and separates a name that went red from a name that went green — comparing by eye is how the omission below happened. A full `trades.spec.ts` run is expected to report exactly these twenty name/project pairs and no other — 20 failures in CI. A local run reports 19 of them: the strict-mode failure above does not reproduce outside CI. Line numbers are deliberately omitted: they moved twice during the repair that produced this list. A pair on this list going green is progress; a pair _not_ on it going red is a regression.
 

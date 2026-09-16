@@ -66,15 +66,12 @@ describe('NewTradePage', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', 'Step 1 of 2');
   });
 
-  it.each([
-    ['at_entry', 'At Entry'],
-    ['after_trade', 'After Trade'],
-  ])('names the recording mode in the heading on step two: %s', async (timing, heading) => {
-    await renderPage(timing);
+  it('names the recording mode in the heading on step two: after_trade', async () => {
+    await renderPage('after_trade');
 
     // The heading is the mode, not the flow. "Log a trade" is the eyebrow
     // above it and must not be the `<h1>` as well.
-    expect(screen.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'After Trade' })).toBeVisible();
     expect(
       screen.queryByRole('heading', { level: 1, name: 'Log a trade' }),
     ).not.toBeInTheDocument();
@@ -93,6 +90,24 @@ describe('NewTradePage', () => {
       '/en/app/trades',
     );
     expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/en/app/trades');
+  });
+
+  /**
+   * AT ENTRY IS A CAPTURE WORKSPACE, NOT A WIZARD STEP (Add Trade contract).
+   * It states the task in its own words — "Record an open trade" — and drops
+   * the step frame: a long form with a sticky save panel beside it is not a
+   * step in a two-question flow, and a progress bar over it would promise a
+   * gate that does not exist. The way back to the recording choice is the
+   * guarded "Change" the form itself renders.
+   */
+  it('gives At Entry its own compact header instead of the wizard step frame', async () => {
+    await renderPage('at_entry');
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Record an open trade' })).toBeVisible();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByTestId('create-gate')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Trades' })).toHaveAttribute('href', '/en/app/trades');
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('falls back to the choice when the timing in the URL is not one we know', async () => {
