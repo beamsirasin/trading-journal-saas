@@ -66,6 +66,7 @@ export const CALC_FAILURE_REASONS = [
   'no_profit_or_loss',
   'system_has_no_edge',
   'no_comparable_trades',
+  'no_outcomes_answered',
   'no_rule_checks',
   'no_evaluated_trades',
   'invalid_timezone',

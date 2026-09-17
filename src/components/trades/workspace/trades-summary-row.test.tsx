@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { AnalyticsMetric } from '@/lib/analytics/metrics';
 import type { NetPnlAvailability } from '@/lib/calc/net-pnl';
 import type { DashboardPageData } from '@/lib/dashboard/page-data';
@@ -16,6 +17,8 @@ interface Overrides {
   readonly traderEmpty?: boolean;
   readonly netPnl?: NetPnlAvailability;
   readonly traderTradeCount?: number;
+  readonly closedTradeCount?: number;
+  readonly legacy?: DashboardPageData['coverage']['legacy'];
 }
 
 function data(overrides: Overrides = {}): DashboardPageData {
@@ -29,11 +32,17 @@ function data(overrides: Overrides = {}): DashboardPageData {
       traderTradeCount: overrides.traderTradeCount ?? 66,
       systemTradeCount: 66,
       pairedTradeCount: 60,
+      closedTradeCount: overrides.closedTradeCount ?? overrides.traderTradeCount ?? 66,
       monetaryResultCount: 66,
+      legacy: overrides.legacy ?? NO_LEGACY_EXCLUSIONS,
     },
     basic: {
       netPnl: overrides.netPnl ?? { status: 'available', currency: 'USD', totalMinor: '231000' },
-      tradeWin: { rate: available('0.4091'), tradeCount: 66, wins: 27, breakEvens: 5, losses: 34 },
+      tradeWin: {
+        rate: available('0.4091'),
+        tradeCount: 66,
+        outcomes: { wins: 27, breakEvens: 5, losses: 34 },
+      },
     },
     trader: { totalR: available('23.1000') },
   } as unknown as DashboardPageData;
@@ -95,9 +104,9 @@ describe('TradesSummaryRow', () => {
 
   it('says there is nothing in scope rather than printing zeroes', () => {
     const { container } = renderRow({ traderEmpty: true, traderTradeCount: 0 });
-    expect(card(container, 'netPnl')).toHaveTextContent('No Trades in scope');
-    expect(card(container, 'totalR')).toHaveTextContent('No Trades in scope');
-    expect(card(container, 'winRate')).toHaveTextContent('No Trades in scope');
+    expect(card(container, 'netPnl')).toHaveTextContent('Nothing eligible in scope');
+    expect(card(container, 'totalR')).toHaveTextContent('Nothing eligible in scope');
+    expect(card(container, 'winRate')).toHaveTextContent('Nothing eligible in scope');
     // A count of nothing is a truthful zero.
     expect(card(container, 'tradeCount')).toHaveTextContent('0');
   });

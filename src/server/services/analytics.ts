@@ -44,6 +44,8 @@ export async function getAnalyticsSnapshot(
         timezone: raw.data.filters.timezone,
       },
       trader: raw.data.trader,
+      money: raw.data.money,
+      legacyCoverage: raw.data.legacyCoverage,
       system: raw.data.system,
       systemPendingCount: raw.data.systemPendingCount,
       comparison: raw.data.comparisonCandidates,

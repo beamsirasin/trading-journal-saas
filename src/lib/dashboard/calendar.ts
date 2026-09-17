@@ -61,9 +61,16 @@ export interface CalendarPerformanceDay extends CalendarDayBase {
   readonly mode: 'actual' | 'system';
   readonly eligibleTradeCount: number;
   readonly totalR: string;
-  readonly wins: number;
-  readonly breakEvens: number;
-  readonly losses: number;
+  /**
+   * The day's answered Trader (or System) outcomes, or `null` when none of its
+   * Trades has one. Canonical analytics read no derived outcome (Add Trade
+   * contract §25), and "0 wins, 0 losses" would claim an answer nobody gave.
+   */
+  readonly outcomes: {
+    readonly wins: number;
+    readonly breakEvens: number;
+    readonly losses: number;
+  } | null;
   readonly classification: CalendarDayClassification;
 }
 
@@ -150,7 +157,8 @@ export interface CalendarActualRecord {
   /** Actual `exited_at`, ISO-8601 UTC — this mode's only date axis. */
   readonly exitedAt: string;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  /** `null` is an unanswered outcome; see `CalendarPerformanceDay.outcomes`. */
+  readonly traderOutcome: OutcomeValue | null;
 }
 
 /** Population B row. */
@@ -184,13 +192,16 @@ interface OutcomeTally {
   wins: number;
   breakEvens: number;
   losses: number;
+  answered: number;
 }
 
 function tally(): OutcomeTally {
-  return { wins: 0, breakEvens: 0, losses: 0 };
+  return { wins: 0, breakEvens: 0, losses: 0, answered: 0 };
 }
 
-function countOutcome(into: OutcomeTally, outcome: OutcomeValue): void {
+function countOutcome(into: OutcomeTally, outcome: OutcomeValue | null): void {
+  if (outcome === null) return;
+  into.answered += 1;
   if (outcome === 'win') into.wins += 1;
   else if (outcome === 'loss') into.losses += 1;
   else into.breakEvens += 1;
@@ -312,9 +323,14 @@ export function composeCalendarPerformanceMonth(
       date,
       eligibleTradeCount: bucket.values.length,
       totalR: toCanonicalR(dayTotal),
-      wins: bucket.outcomes.wins,
-      breakEvens: bucket.outcomes.breakEvens,
-      losses: bucket.outcomes.losses,
+      outcomes:
+        bucket.outcomes.answered === 0
+          ? null
+          : {
+              wins: bucket.outcomes.wins,
+              breakEvens: bucket.outcomes.breakEvens,
+              losses: bucket.outcomes.losses,
+            },
       classification,
     });
   }

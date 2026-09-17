@@ -496,14 +496,20 @@ function CalendarCell({
   const summary =
     day.mode === 'gap'
       ? t('cellSummary.gap', { date: dateLabel, gap: rText, paired: count })
-      : t('cellSummary.performance', {
-          date: dateLabel,
-          total: rText,
-          trades: count,
-          wins: day.wins,
-          breakEvens: day.breakEvens,
-          losses: day.losses,
-        });
+      : day.outcomes === null
+        ? t('cellSummary.performanceWithoutOutcomes', {
+            date: dateLabel,
+            total: rText,
+            trades: count,
+          })
+        : t('cellSummary.performance', {
+            date: dateLabel,
+            total: rText,
+            trades: count,
+            wins: day.outcomes.wins,
+            breakEvens: day.outcomes.breakEvens,
+            losses: day.outcomes.losses,
+          });
 
   return (
     <DashboardStateLink

@@ -266,14 +266,16 @@ afterAll(async () => {
 });
 
 describe('Risk Performance PostgreSQL boundary', () => {
-  it('keeps Dashboard core at five reads and adds one narrow risk projection', () => {
-    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(5);
+  it('keeps Dashboard core at seven reads and adds one narrow risk projection', () => {
+    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(7);
     expect(DASHBOARD_MAJOR_PROJECTIONS).toEqual([
       'trader',
       'system',
       'paired',
       'attention',
       'recent_trades',
+      'closed_trade_money',
+      'legacy_coverage',
     ]);
     expect(RISK_PERFORMANCE_MAJOR_PROJECTION_COUNT).toBe(1);
     expect(RISK_PERFORMANCE_MAJOR_PROJECTIONS).toEqual(['closed_actual_money_history']);

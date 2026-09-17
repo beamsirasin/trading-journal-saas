@@ -199,11 +199,17 @@ function DayReviewHeadlineBlock({ headline }: { headline: DayReviewHeadline }) {
           value={headline.eligibleTradeCount}
         />
       </dl>
-      <dl className="text-muted-foreground flex min-w-0 flex-wrap gap-x-5 gap-y-1 text-xs">
-        <Distribution label={t('outcome.wins')} value={headline.wins} />
-        <Distribution label={t('outcome.breakEvens')} value={headline.breakEvens} />
-        <Distribution label={t('outcome.losses')} value={headline.losses} />
-      </dl>
+      {headline.outcomes === null ? (
+        <p className="text-muted-foreground text-xs" data-day-review-outcomes="none">
+          {t('outcome.noneAnswered')}
+        </p>
+      ) : (
+        <dl className="text-muted-foreground flex min-w-0 flex-wrap gap-x-5 gap-y-1 text-xs">
+          <Distribution label={t('outcome.wins')} value={headline.outcomes.wins} />
+          <Distribution label={t('outcome.breakEvens')} value={headline.outcomes.breakEvens} />
+          <Distribution label={t('outcome.losses')} value={headline.outcomes.losses} />
+        </dl>
+      )}
     </div>
   );
 }

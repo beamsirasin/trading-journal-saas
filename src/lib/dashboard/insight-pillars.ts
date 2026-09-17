@@ -41,7 +41,8 @@ export const INSIGHT_SELECTION_POLICY = {
 export interface InsightActualTradeInput {
   readonly tradeId: string;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  /** `null`: no answered Trader Outcome. Canonical reads never carry a derived one. */
+  readonly traderOutcome: OutcomeValue | null;
   readonly actualExitedAt: string;
   readonly systemR: string | null;
   readonly systemOutcome: OutcomeValue | null;

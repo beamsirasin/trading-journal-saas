@@ -155,7 +155,8 @@ describe('isComparisonEligible / selectComparisonEligible', () => {
   it('eligible only when both the Actual and System axes are complete', () => {
     expect(isComparisonEligible(base)).toBe(true);
     expect(isComparisonEligible({ ...base, actualR: null })).toBe(false);
-    expect(isComparisonEligible({ ...base, traderOutcome: null })).toBe(false);
+    // An unanswered Trader Outcome is not an incomplete Actual result (contract §24).
+    expect(isComparisonEligible({ ...base, traderOutcome: null })).toBe(true);
     expect(isComparisonEligible({ ...base, actualExitedAt: null })).toBe(false);
     expect(isComparisonEligible({ ...base, systemR: null })).toBe(false);
     expect(isComparisonEligible({ ...base, systemOutcome: null })).toBe(false);

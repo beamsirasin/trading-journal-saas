@@ -44,9 +44,7 @@ const ACTUAL_DAY: CalendarPerformanceDay = {
   date: DATE,
   eligibleTradeCount: 2,
   totalR: '1.5000',
-  wins: 1,
-  breakEvens: 0,
-  losses: 1,
+  outcomes: { wins: 1, breakEvens: 0, losses: 1 },
   classification: 'winning',
 };
 
@@ -84,9 +82,7 @@ describe('Day Review composition', () => {
       mode: 'actual',
       totalR: '1.5000',
       eligibleTradeCount: 2,
-      wins: 1,
-      breakEvens: 0,
-      losses: 1,
+      outcomes: { wins: 1, breakEvens: 0, losses: 1 },
       classification: 'winning',
     });
   });

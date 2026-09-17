@@ -66,7 +66,10 @@ function summarise(model: CalendarMonthModel) {
         : {
             totalR: day.totalR,
             trades: day.eligibleTradeCount,
-            wl: `${day.wins}W ${day.breakEvens}BE ${day.losses}L`,
+            wl:
+              day.outcomes === null
+                ? 'no answered outcomes'
+                : `${day.outcomes.wins}W ${day.outcomes.breakEvens}BE ${day.outcomes.losses}L`,
           }),
     })),
   };

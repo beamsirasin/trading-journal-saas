@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { AnalyticsMetric } from '@/lib/analytics/metrics';
 import type { NetPnlAvailability } from '@/lib/calc/net-pnl';
 import type { DashboardPageData } from '@/lib/dashboard/page-data';
@@ -19,6 +20,7 @@ interface Overrides {
   readonly totalR?: AnalyticsMetric;
   readonly winRate?: AnalyticsMetric;
   readonly traderTradeCount?: number;
+  readonly closedTradeCount?: number;
 }
 
 /**
@@ -37,16 +39,16 @@ function data(overrides: Overrides = {}): DashboardPageData {
       traderTradeCount: overrides.traderTradeCount ?? 66,
       systemTradeCount: 66,
       pairedTradeCount: 60,
+      closedTradeCount: overrides.closedTradeCount ?? overrides.traderTradeCount ?? 66,
       monetaryResultCount: 66,
+      legacy: NO_LEGACY_EXCLUSIONS,
     },
     basic: {
       netPnl: overrides.netPnl ?? { status: 'available', currency: 'USD', totalMinor: '231000' },
       tradeWin: {
         rate: overrides.winRate ?? available('0.4091'),
         tradeCount: 66,
-        wins: 27,
-        breakEvens: 5,
-        losses: 34,
+        outcomes: { wins: 27, breakEvens: 5, losses: 34 },
       },
     },
     trader: { totalR: overrides.totalR ?? available('23.1000') },

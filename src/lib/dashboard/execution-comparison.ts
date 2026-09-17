@@ -214,11 +214,9 @@ export function composeComparisonExclusions(
     if (isComparisonEligible(record)) continue;
     total += 1;
 
+    // An unanswered Trader Outcome is not an incomplete Actual result (contract §24).
     const actualComplete =
-      record.status === 'closed' &&
-      record.actualR !== null &&
-      record.traderOutcome !== null &&
-      record.actualExitedAt !== null;
+      record.status === 'closed' && record.actualR !== null && record.actualExitedAt !== null;
 
     if (actualComplete) {
       byReason.awaiting_system_result += 1;

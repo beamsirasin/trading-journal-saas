@@ -33,9 +33,7 @@ export type DayReviewHeadline =
       readonly mode: 'actual' | 'system';
       readonly totalR: string;
       readonly eligibleTradeCount: number;
-      readonly wins: number;
-      readonly breakEvens: number;
-      readonly losses: number;
+      readonly outcomes: CalendarPerformanceDay['outcomes'];
       readonly classification: CalendarPerformanceDay['classification'];
     }
   | {
@@ -170,9 +168,7 @@ export function composeDayReview(
           mode: day.mode,
           totalR: day.totalR,
           eligibleTradeCount: day.eligibleTradeCount,
-          wins: day.wins,
-          breakEvens: day.breakEvens,
-          losses: day.losses,
+          outcomes: day.outcomes,
           classification: day.classification,
         };
 

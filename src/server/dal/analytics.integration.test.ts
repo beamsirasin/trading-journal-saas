@@ -254,6 +254,14 @@ interface TradeOverrides {
   moneyOnlySystem?: boolean;
   deleted?: boolean;
   framework?: Framework;
+  /**
+   * `contract` (the default) records the row under Add Trade contract v1: a
+   * Money result against Risk at Entry, with no Price plan — the only Actual R
+   * canonical analytics admit. `legacy` keeps the pre-contract shape (Price
+   * plan, Actual Risk as 1R), which canonical analytics must exclude and
+   * disclose as legacy coverage.
+   */
+  recording?: 'contract' | 'legacy';
 }
 
 async function createTradeRow(
@@ -264,6 +272,10 @@ async function createTradeRow(
 ) {
   const status = overrides.status ?? 'closed';
   const system = overrides.system ?? 'resolved';
+  const contract = (overrides.recording ?? 'contract') === 'contract';
+  if (contract && status === 'planned') {
+    throw new Error('a contract row is never planned; pass recording: legacy');
+  }
   const exitedAt = overrides.exitedAt ?? new Date('2026-08-01T10:00:00Z');
   const enteredAt =
     status === 'closed'
@@ -272,25 +284,42 @@ async function createTradeRow(
   const systemExitedAt = overrides.systemExitedAt ?? new Date('2026-08-01T11:00:00Z');
   const fw = overrides.framework ?? framework;
   const moneyOnlySystem = overrides.moneyOnlySystem === true;
-  const actualFields =
-    status === 'planned' || status === 'canceled'
-      ? {}
-      : {
-          actualResultMode: 'money' as const,
-          actualEntry: '100.0000000000',
-          actualInitialStop: '99.0000000000',
-          actualInitialRiskMinor: 100n,
-          enteredAt,
-          ...(status === 'closed'
-            ? {
-                actualExit: '101.0000000000',
-                netPnlMinor: 100n,
-                exitedAt,
-                actualR: '1.0000',
-                traderOutcome: 'win',
-              }
-            : {}),
-        };
+  const hasActual = status !== 'planned' && status !== 'canceled';
+  const planFields = contract
+    ? {
+        recordingContract: 'add_trade_v1',
+        plannedRiskMinor: 100n,
+        plannedRewardMinor: moneyOnlySystem ? 200n : null,
+        targetState: moneyOnlySystem ? 'fixed' : null,
+        actualRiskAnswer: hasActual ? 'matched' : null,
+      }
+    : {
+        plannedEntry: moneyOnlySystem ? null : '100.0000000000',
+        plannedStop: moneyOnlySystem ? null : '99.0000000000',
+        plannedTarget: moneyOnlySystem ? null : '102.0000000000',
+        plannedRiskMinor: moneyOnlySystem ? 100n : null,
+        plannedRewardMinor: moneyOnlySystem ? 200n : null,
+        plannedR: '2.0000',
+      };
+  const actualFields = !hasActual
+    ? {}
+    : {
+        actualResultMode: 'money' as const,
+        // A contract row never carries Price as result authority.
+        actualEntry: contract ? null : '100.0000000000',
+        actualInitialStop: contract ? null : '99.0000000000',
+        actualInitialRiskMinor: 100n,
+        enteredAt,
+        ...(status === 'closed'
+          ? {
+              actualExit: '101.0000000000',
+              netPnlMinor: 100n,
+              exitedAt,
+              actualR: '1.0000',
+              traderOutcome: 'win',
+            }
+          : {}),
+      };
   const systemFields =
     system === 'resolved'
       ? {
@@ -326,12 +355,7 @@ async function createTradeRow(
         setupVersionId: fw.oldSetupVersionId,
         symbol: 'EURUSD',
         direction: 'long',
-        plannedEntry: moneyOnlySystem ? null : '100.0000000000',
-        plannedStop: moneyOnlySystem ? null : '99.0000000000',
-        plannedTarget: moneyOnlySystem ? null : '102.0000000000',
-        plannedRiskMinor: moneyOnlySystem ? 100n : null,
-        plannedRewardMinor: moneyOnlySystem ? 200n : null,
-        plannedR: '2.0000',
+        ...planFields,
         status,
         createdAt: overrides.createdAt ?? new Date(enteredAt.getTime() - 60 * 60 * 1000),
         deletedAt: overrides.deleted ? new Date('2026-08-03T00:00:00Z') : null,
@@ -388,7 +412,10 @@ async function createFixture(): Promise<Fixture> {
     system: 'resolved',
     systemExitedAt: new Date('2026-08-03T11:00:00Z'),
   });
-  await createTradeRow(workspaceId, activeAccountId, framework, { status: 'planned' });
+  await createTradeRow(workspaceId, activeAccountId, framework, {
+    status: 'planned',
+    recording: 'legacy',
+  });
   await createTradeRow(workspaceId, activeAccountId, framework, { status: 'canceled' });
   await createTradeRow(workspaceId, activeAccountId, framework, { system: 'no_trade' });
   await createTradeRow(workspaceId, activeAccountId, framework, { deleted: true });
@@ -590,6 +617,47 @@ describe('analytics DAL (real PostgreSQL)', () => {
     );
   });
 
+  /**
+   * Add Trade contract §25/§28. A legacy Trade's Actual R used its historical
+   * Actual Risk as 1R, so it never enters a canonical R population — and the
+   * stored `trader_outcome` on every row was derived from R, so no row carries
+   * one into canonical analytics. The legacy row is complete in every other
+   * respect and sits in range, so only the recording contract can exclude it.
+   */
+  it('excludes legacy Actual R from the Trader population, discloses it as coverage, and projects no derived Trader Outcome', async () => {
+    const fixture = await createFixture();
+    const before = await getDashboardRawData({}, READ_OPTIONS);
+    if (!before.ok) throw new Error(before.code);
+    const legacyTradeId = await createTradeRow(
+      fixture.workspaceId,
+      fixture.activeAccountId,
+      fixture.framework,
+      { recording: 'legacy', exitedAt: new Date('2026-08-05T10:00:00Z'), system: 'pending' },
+    );
+    // A legacy row outside the range is not disclosed for this range either.
+    await createTradeRow(fixture.workspaceId, fixture.activeAccountId, fixture.framework, {
+      recording: 'legacy',
+      exitedAt: new Date('2026-01-05T10:00:00Z'),
+      system: 'pending',
+    });
+
+    const [trader, after] = await Promise.all([
+      getTraderAnalyticsRecords({}, READ_OPTIONS),
+      getDashboardRawData({}, READ_OPTIONS),
+    ]);
+    if (!trader.ok) throw new Error(trader.code);
+    if (!after.ok) throw new Error(after.code);
+    expect(trader.data.map((row) => row.tradeId)).not.toContain(legacyTradeId);
+    expect(trader.data.length).toBeGreaterThan(0);
+    // Every stored row says 'win'; canonical analytics must not repeat it.
+    expect(trader.data.every((row) => row.traderOutcome === null)).toBe(true);
+    expect(after.data.legacyCoverage.excludedActualCount).toBe(
+      before.data.legacyCoverage.excludedActualCount + 1,
+    );
+    // Net P&L is not an R figure: the legacy Trade's money still counts.
+    expect(after.data.money.map((row) => row.tradeId)).toContain(legacyTradeId);
+  });
+
   it('Phase 15D: Trader rows also carry Symbol/Direction/Session/Timeframe from the same already-eligible query, Session/Timeframe null when never set', async () => {
     const fixture = await createFixture();
     const result = await getTraderAnalyticsRecords({}, READ_OPTIONS);
@@ -601,62 +669,84 @@ describe('analytics DAL (real PostgreSQL)', () => {
     expect(paired?.timeframe).toBeNull();
   });
 
-  it('selects resolved System rows independently of execution status and applies System time', async () => {
-    const fixture = await createFixture();
-    const result = await getSystemAnalyticsRecords({}, READ_OPTIONS);
-    if (!result.ok) throw new Error(result.code);
-    const ids = result.data.map((row) => row.tradeId);
-    expect(ids).toContain(fixture.pairedTradeId);
-    expect(ids).toContain(fixture.openSystemTradeId);
-    expect(ids).not.toContain(fixture.pendingTradeId);
-    expect(result.data.every((row) => row.systemStatus === 'resolved')).toBe(true);
+  /**
+   * No stored System result is canonical yet (Add Trade contract §16, §28):
+   * the System population is empty by construction, on a contract row as much
+   * as on a legacy one. What survives is the disclosure — every resolved System
+   * result in scope is counted as excluded legacy evidence, gated on the System
+   * axis (`system_exited_at`), independently of execution status.
+   */
+  it('admits no resolved System row and counts every in-range one as legacy System coverage on System time', async () => {
+    await createFixture();
+    const [system, dashboard] = await Promise.all([
+      getSystemAnalyticsRecords({}, READ_OPTIONS),
+      getDashboardRawData({}, READ_OPTIONS),
+    ]);
+    if (!system.ok) throw new Error(system.code);
+    if (!dashboard.ok) throw new Error(dashboard.code);
+    expect(system.data).toEqual([]);
+    expect(dashboard.data.system).toEqual([]);
+    // In the active account's 90D window, by `system_exited_at`: the paired
+    // Trade, the System-resolved open Trade, the legacy planned and canceled
+    // Trades (resolved on 1 August), and the 12 May Trade. NOT the pending or
+    // no-trade Trades, the deleted one, the archived account's, the 10 August
+    // one past the range, or the Trade whose Actual exit is in range but whose
+    // System exit (1 April) is not.
+    expect(dashboard.data.legacyCoverage.excludedSystemCount).toBe(5);
   });
 
-  it('includes Money-only resolved System snapshots in the existing System population', async () => {
+  it('counts a Money-only resolved System snapshot as legacy System coverage, never as a System row', async () => {
     const fixture = await createFixture();
+    const before = await getDashboardRawData({}, READ_OPTIONS);
+    if (!before.ok) throw new Error(before.code);
     const moneyTradeId = await createTradeRow(
       fixture.workspaceId,
       fixture.activeAccountId,
       fixture.framework,
       { status: 'open', system: 'resolved', moneyOnlySystem: true },
     );
-    const result = await getSystemAnalyticsRecords({}, READ_OPTIONS);
-    if (!result.ok) throw new Error(result.code);
-    expect(result.data).toContainEqual(
-      expect.objectContaining({ tradeId: moneyTradeId, systemR: '2.0000', systemOutcome: 'win' }),
+    const [system, after] = await Promise.all([
+      getSystemAnalyticsRecords({}, READ_OPTIONS),
+      getDashboardRawData({}, READ_OPTIONS),
+    ]);
+    if (!system.ok) throw new Error(system.code);
+    if (!after.ok) throw new Error(after.code);
+    expect(system.data.map((row) => row.tradeId)).not.toContain(moneyTradeId);
+    expect(after.data.legacyCoverage.excludedSystemCount).toBe(
+      before.data.legacyCoverage.excludedSystemCount + 1,
     );
   });
 
-  it('anchors bounded pairs to Actual exit while retaining System exit as metadata', async () => {
+  /**
+   * Population C pairs a canonical Actual R with a canonical System R, and no
+   * System R is canonical yet — so a contract Trade that is complete on BOTH
+   * axes (its resolved System result is legacy System R) must not pair. A
+   * legacy System R beside a canonical Actual R is exactly the mixed-definition
+   * comparison contract §28 forbids.
+   */
+  it('pairs nothing, not even a canonical Actual Trade that also carries a resolved legacy System result', async () => {
     const fixture = await createFixture();
-    const result = await getPairedAnalyticsRecords({}, READ_OPTIONS);
-    if (!result.ok) throw new Error(result.code);
-    expect(result.data.map((row) => row.tradeId)).toContain(fixture.pairedTradeId);
-    expect(result.data.map((row) => row.tradeId)).not.toContain(fixture.openSystemTradeId);
-    expect(
-      result.data.some(
-        (row) =>
-          row.actualExitedAt === '2026-08-01T12:00:00.000Z' &&
-          row.systemExitedAt === '2026-04-01T12:00:00.000Z',
-      ),
-    ).toBe(true);
-    expect(
-      result.data.every(
-        (row) =>
-          row.status === 'closed' &&
-          row.deletedAt === null &&
-          row.actualR !== '' &&
-          row.traderOutcome !== null &&
-          row.actualExitedAt !== '' &&
-          row.systemStatus === 'resolved' &&
-          row.systemR !== '' &&
-          row.systemOutcome !== null &&
-          row.systemExitedAt !== '',
-      ),
-    ).toBe(true);
+    const [paired, trader, dashboard] = await Promise.all([
+      getPairedAnalyticsRecords({}, READ_OPTIONS),
+      getTraderAnalyticsRecords({}, READ_OPTIONS),
+      getDashboardRawData({}, READ_OPTIONS),
+    ]);
+    if (!paired.ok) throw new Error(paired.code);
+    if (!trader.ok) throw new Error(trader.code);
+    if (!dashboard.ok) throw new Error(dashboard.code);
+    // The Trade is genuinely complete on the Actual axis and stores a resolved
+    // System result, so only canonical eligibility can keep it unpaired.
+    expect(trader.data.map((row) => row.tradeId)).toContain(fixture.pairedTradeId);
+    const stored = await db.query.trades.findFirst({
+      columns: { systemStatus: true, systemR: true },
+      where: eq(trades.id, fixture.pairedTradeId),
+    });
+    expect(stored).toEqual({ systemStatus: 'resolved', systemR: '2.0000' });
+    expect(paired.data).toEqual([]);
+    expect(selectComparisonEligible(dashboard.data.comparisonCandidates)).toEqual([]);
   });
 
-  it('includes Actual-in/System-out, excludes Actual-out/System-in, and orders timestamp ties by Trade ID', async () => {
+  it('keeps each axis on its own date: Actual-in/System-out is Trader-only, Actual-out/System-in is System coverage only, and Trader ties order by Trade ID', async () => {
     const fixture = await createFixture();
     const actualInSystemOut = await createTradeRow(
       fixture.workspaceId,
@@ -688,12 +778,21 @@ describe('analytics DAL (real PostgreSQL)', () => {
       }),
     ]);
 
-    const result = await getPairedAnalyticsRecords({}, READ_OPTIONS);
+    const [result, dashboard] = await Promise.all([
+      getTraderAnalyticsRecords({}, READ_OPTIONS),
+      getDashboardRawData({}, READ_OPTIONS),
+    ]);
     if (!result.ok) throw new Error(result.code);
+    if (!dashboard.ok) throw new Error(dashboard.code);
     const ids = result.data.map((row) => row.tradeId);
     expect(ids).toContain(actualInSystemOut);
     expect(ids).not.toContain(actualOutSystemIn);
     expect(ids.filter((id) => tiedIds.includes(id))).toEqual([...tiedIds].sort());
+
+    // System coverage in the same range: the base fixture's five, plus the
+    // Actual-out/System-in Trade and the tie whose System exit is 9 August —
+    // never the Actual-in/System-out Trade or the tie resolved in March.
+    expect(dashboard.data.legacyCoverage.excludedSystemCount).toBe(7);
   });
 
   /**
@@ -715,6 +814,9 @@ describe('analytics DAL (real PostgreSQL)', () => {
    * So this asserts the bundle, not the focused reader: the focused reader
    * would keep passing on the strength of its own filter while the Dashboard
    * quietly counted an extra Trade.
+   *
+   * While no System result is canonical the System door admits nothing, so
+   * today this holds twice over; it is kept for the migration that opens it.
    */
   it('keeps a paired Trade whose Actual exit is outside the range but whose System exit is inside it out of the Dashboard bundle', async () => {
     const fixture = await createFixture();
@@ -731,9 +833,8 @@ describe('analytics DAL (real PostgreSQL)', () => {
     const dashboard = await getDashboardRawData({}, READ_OPTIONS);
     if (!dashboard.ok) throw new Error(dashboard.code);
 
-    // It is complete on both axes, so it is genuinely pairable — it is only
-    // the RANGE that excludes it, which is the part a date-blind predicate
-    // cannot see.
+    // It is complete on both axes, so a date-blind predicate would treat it
+    // as pairable — it is the RANGE that excludes it.
     expect(
       selectComparisonEligible(dashboard.data.comparisonCandidates).map((row) => row.tradeId),
     ).not.toContain(actualOutSystemIn);
@@ -755,10 +856,11 @@ describe('analytics DAL (real PostgreSQL)', () => {
     if (!system.ok) throw new Error(system.code);
     if (!paired.ok) throw new Error(paired.code);
 
-    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(5);
+    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(7);
     expect(dashboard.data.trader.map((row) => row.tradeId)).toEqual(
       trader.data.map((row) => row.tradeId),
     );
+    expect(dashboard.data.trader.length).toBeGreaterThan(0);
     expect(dashboard.data.system.map((row) => row.tradeId)).toEqual(
       system.data.map((row) => row.tradeId),
     );
@@ -770,8 +872,8 @@ describe('analytics DAL (real PostgreSQL)', () => {
     expect(
       selectComparisonEligible(dashboard.data.comparisonCandidates).map((row) => row.tradeId),
     ).toEqual(paired.data.map((row) => row.tradeId));
-    // And the superset really is one: the System-resolved open Trade is a
-    // candidate the focused reader excludes, which is exactly the row the
+    // And the superset really is one: the canonical Actual Trades are
+    // candidates the focused reader cannot pair, which is exactly what the
     // Dashboard needs in order to say why a total differs.
     expect(dashboard.data.comparisonCandidates.length).toBeGreaterThan(paired.data.length);
     expect(dashboard.data).not.toHaveProperty('rules');
@@ -875,10 +977,11 @@ describe('analytics DAL (real PostgreSQL)', () => {
       setupId: fixture.framework.setupId,
       strategyVersionId: fixture.framework.oldVersionId,
     };
+    // The System and paired projections are empty while no System result is
+    // canonical, so a scoping check over them would pass vacuously; their
+    // scope is proved through the legacy System coverage count below.
     for (const read of [
       getTraderAnalyticsRecords,
-      getSystemAnalyticsRecords,
-      getPairedAnalyticsRecords,
       getRuleAnalyticsRecords,
       getMistakeAnalyticsRecords,
     ]) {
@@ -895,6 +998,28 @@ describe('analytics DAL (real PostgreSQL)', () => {
         ),
       ).toBe(true);
     }
+
+    const systemCoverage = async (filters: Record<string, string>) => {
+      const result = await getDashboardRawData({ datePreset: 'all', ...filters }, READ_OPTIONS);
+      if (!result.ok) throw new Error(result.code);
+      expect(result.data.system).toEqual([]);
+      expect(selectComparisonEligible(result.data.comparisonCandidates)).toEqual([]);
+      return result.data.legacyCoverage.excludedSystemCount;
+    };
+    // Every resolved, undeleted System result pinned to this Account and
+    // Version: the fixture's seven, with no date gate under range=All.
+    expect(await systemCoverage(input)).toBe(7);
+    expect(await systemCoverage({ ...input, tradingAccountId: fixture.archivedAccountId })).toBe(1);
+    expect(
+      await systemCoverage({ ...input, strategyVersionId: fixture.framework.currentVersionId }),
+    ).toBe(0);
+    const otherFramework = await createFramework(fixture.workspaceId);
+    expect(
+      await systemCoverage({
+        tradingAccountId: fixture.activeAccountId,
+        strategyId: otherFramework.strategyId,
+      }),
+    ).toBe(0);
   });
 
   describe('getSystemPendingCount (Phase 14C §19)', () => {
@@ -1221,7 +1346,7 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     expect(result.data.some((r) => r.tradeId === recordedZeroTrade)).toBe(false);
   });
 
-  it('Setup Adherence: independent Trader/System populations — both / System-only (partial-open Actual) / Trader-only (System pending)', async () => {
+  it('Setup Adherence: the Trader population keeps its own completeness (closed in, open out, System pending in) and the System population admits no legacy System result', async () => {
     const { workspaceId, accountId, framework } = await setupWorkspace();
     const [condition] = await db
       .insert(setupConditions)
@@ -1248,10 +1373,10 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
       );
     }
 
-    // A: fully closed Actual + resolved System — contributes to BOTH.
+    // A: fully closed Actual + resolved (legacy) System — Trader only.
     const bothTradeId = await createTradeRow(workspaceId, accountId, framework);
     await withCondition(bothTradeId);
-    // B: Actual still open/partial, System independently resolved — System only.
+    // B: Actual still open/partial, System independently resolved — neither.
     const systemOnlyTradeId = await createTradeRow(workspaceId, accountId, framework, {
       status: 'open',
       system: 'resolved',
@@ -1274,14 +1399,16 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
 
     expect(traderIds.has(bothTradeId)).toBe(true);
-    expect(systemIds.has(bothTradeId)).toBe(true);
     expect(traderIds.has(systemOnlyTradeId)).toBe(false);
-    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
     expect(traderIds.has(traderOnlyTradeId)).toBe(true);
-    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+    // Both stored System results are resolved, and both are legacy System R:
+    // the System read admits neither, on a contract row or otherwise.
+    expect(systemIds.has(bothTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.size).toBe(0);
   });
 
-  it('Condition: independent Trader/System populations — both / System-only / Trader-only, and Money-only System resolutions are included', async () => {
+  it('Condition: the Trader population keeps its own completeness and the System population admits no legacy System result, Money-only resolutions included', async () => {
     const { workspaceId, accountId, framework } = await setupWorkspace();
     const [condition] = await db
       .insert(setupConditions)
@@ -1321,8 +1448,8 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
       system: 'pending',
     });
     await withCondition(traderOnlyTradeId);
-    // Money-only System resolution (no `system_exit_price`) must be included
-    // in the System-side Condition read exactly like a Price resolution.
+    // A Money-only System resolution (no `system_exit_price`) is legacy System
+    // R exactly like a Price resolution, so it is excluded the same way.
     const moneyOnlySystemTradeId = await createTradeRow(workspaceId, accountId, framework, {
       status: 'open',
       system: 'resolved',
@@ -1340,15 +1467,17 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
 
     expect(traderIds.has(bothTradeId)).toBe(true);
-    expect(systemIds.has(bothTradeId)).toBe(true);
     expect(traderIds.has(systemOnlyTradeId)).toBe(false);
-    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
     expect(traderIds.has(traderOnlyTradeId)).toBe(true);
-    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
-    expect(systemIds.has(moneyOnlySystemTradeId)).toBe(true);
+    // Both stored System results are resolved, and both are legacy System R:
+    // the System read admits neither, on a contract row or otherwise.
+    expect(systemIds.has(bothTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.size).toBe(0);
+    expect(systemIds.has(moneyOnlySystemTradeId)).toBe(false);
   });
 
-  it('Confidence: independent Trader/System populations — both / System-only (partial-open Actual) / Trader-only (System pending)', async () => {
+  it('Confidence: the Trader population keeps its own completeness (closed in, open out, System pending in) and the System population admits no legacy System result', async () => {
     const { workspaceId, accountId, framework } = await setupWorkspace();
     const bothTradeId = await createTradeRow(workspaceId, accountId, framework);
     await db.update(trades).set({ confidence: 50 }).where(eq(trades.id, bothTradeId));
@@ -1373,14 +1502,16 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
 
     expect(traderIds.has(bothTradeId)).toBe(true);
-    expect(systemIds.has(bothTradeId)).toBe(true);
     expect(traderIds.has(systemOnlyTradeId)).toBe(false);
-    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
     expect(traderIds.has(traderOnlyTradeId)).toBe(true);
-    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+    // Both stored System results are resolved, and both are legacy System R:
+    // the System read admits neither, on a contract row or otherwise.
+    expect(systemIds.has(bothTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.size).toBe(0);
   });
 
-  it('Emotion: independent Trader/System populations — both / System-only (partial-open Actual) / Trader-only (System pending)', async () => {
+  it('Emotion: the Trader population keeps its own completeness (closed in, open out, System pending in) and the System population admits no legacy System result', async () => {
     const { workspaceId, accountId, framework } = await setupWorkspace();
     const emotion = await db.query.emotionTypes.findFirst({
       where: eq(emotionTypes.isSystem, true),
@@ -1420,14 +1551,16 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     const systemIds = new Set(systemResult.data.map((r) => r.tradeId));
 
     expect(traderIds.has(bothTradeId)).toBe(true);
-    expect(systemIds.has(bothTradeId)).toBe(true);
     expect(traderIds.has(systemOnlyTradeId)).toBe(false);
-    expect(systemIds.has(systemOnlyTradeId)).toBe(true);
     expect(traderIds.has(traderOnlyTradeId)).toBe(true);
-    expect(systemIds.has(traderOnlyTradeId)).toBe(false);
+    // Both stored System results are resolved, and both are legacy System R:
+    // the System read admits neither, on a contract row or otherwise.
+    expect(systemIds.has(bothTradeId)).toBe(false);
+    expect(systemIds.has(systemOnlyTradeId)).toBe(false);
+    expect(systemIds.size).toBe(0);
   });
 
-  it('date axes are never shared between Trader and System reads — exited_at outside range + system_exited_at inside => System only, and the reverse => Trader only', async () => {
+  it('date axes are never shared — the Trader read gates on exited_at, and the legacy System disclosure gates on system_exited_at while the System read stays empty', async () => {
     const { workspaceId, accountId, framework } = await setupWorkspace();
     const [condition] = await db
       .insert(setupConditions)
@@ -1473,25 +1606,27 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     // a row whose System-eligible date falls inside it but whose own
     // `exited_at` does not, and vice versa.
     const augustWindow = { referenceInstant: new Date('2026-08-20T00:00:00.000Z') } as const;
-    const [traderAugust, systemAugust] = await Promise.all([
+    const [traderAugust, systemAugust, augustCoverage] = await Promise.all([
       getSetupAdherenceAnalyticsRecords({ datePreset: '30d' }, augustWindow),
       getSetupAdherenceSystemAnalyticsRecords({ datePreset: '30d' }, augustWindow),
+      getDashboardRawData({ datePreset: '30d' }, augustWindow),
     ]);
-    if (!traderAugust.ok || !systemAugust.ok) throw new Error('read failed');
+    if (!traderAugust.ok || !systemAugust.ok || !augustCoverage.ok) throw new Error('read failed');
     const traderAugustIds = new Set(traderAugust.data.map((r) => r.tradeId));
-    const systemAugustIds = new Set(systemAugust.data.map((r) => r.tradeId));
 
-    // Within the August 30D window: the System-side row (system_exited_at
-    // in August) appears in System, NOT Trader (its own exited_at is July,
-    // outside this window). The Trader-side row (exited_at in August)
-    // appears in Trader, NOT System (its own system_exited_at is July).
-    expect(systemAugustIds.has(systemOnlyByDateTradeId)).toBe(true);
+    // Within the August 30D window: the Trader-side row (exited_at in August)
+    // appears in Trader; the System-side row (its own exited_at is July) does
+    // not. The System read admits neither, because both System results are
+    // legacy — but the legacy System disclosure is still bucketed on
+    // `system_exited_at`, so it counts the August System exit and not the
+    // July one.
     expect(traderAugustIds.has(systemOnlyByDateTradeId)).toBe(false);
     expect(traderAugustIds.has(traderOnlyByDateTradeId)).toBe(true);
-    expect(systemAugustIds.has(traderOnlyByDateTradeId)).toBe(false);
+    expect(systemAugust.data).toEqual([]);
+    expect(augustCoverage.data.legacyCoverage.excludedSystemCount).toBe(1);
   });
 
-  it('applies account, Strategy, Setup, and Version filters independently to every Trader/System behavioral projection', async () => {
+  it('applies the account filter to the Trader behavioral projection and to the legacy System count behind the empty System projection', async () => {
     const { workspaceId, accountId, framework } = await setupWorkspace();
     const otherAccountId = await createAccount(workspaceId, 'Other account');
     const [condition] = await db
@@ -1531,9 +1666,14 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     ]);
     if (!traderConfidence.ok || !systemConfidence.ok) throw new Error('read failed');
     expect(traderConfidence.data.some((r) => r.tradeId === outOfScopeTradeId)).toBe(false);
-    expect(systemConfidence.data.some((r) => r.tradeId === outOfScopeTradeId)).toBe(false);
     expect(traderConfidence.data.some((r) => r.tradeId === inScopeTradeId)).toBe(true);
-    expect(systemConfidence.data.some((r) => r.tradeId === inScopeTradeId)).toBe(true);
+    // No System result is canonical, so the System read is empty in and out
+    // of scope; the account scope still applies to the legacy System count,
+    // which would be 2 if the other account's resolved Trade leaked in.
+    expect(systemConfidence.data).toEqual([]);
+    const coverage = await getDashboardRawData(input, READ_OPTIONS);
+    if (!coverage.ok) throw new Error(coverage.code);
+    expect(coverage.data.legacyCoverage.excludedSystemCount).toBe(1);
   });
 
   it('never aggregates Setup Adherence, Condition, Confidence, or Emotion analytics across workspaces', async () => {

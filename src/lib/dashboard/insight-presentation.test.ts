@@ -63,7 +63,7 @@ function systemFrom(trade: InsightActualTradeInput): InsightSystemTradeInput {
   return {
     tradeId: trade.tradeId,
     systemR: trade.systemR ?? trade.actualR,
-    systemOutcome: trade.systemOutcome ?? trade.traderOutcome,
+    systemOutcome: trade.systemOutcome ?? trade.traderOutcome ?? 'break_even',
     systemExitedAt: trade.systemExitedAt ?? trade.actualExitedAt,
     strategyId: trade.strategyId,
     strategyLabel: trade.strategyLabel,

@@ -399,7 +399,8 @@
         "incomplete": "Some Trades have no money result",
         "mixed_currency": "Mixed account currencies",
         "unsupported_currency_scale": "Unsupported account currency",
-        "no_planned_rr": "No Trades with a planned target"
+        "no_planned_rr": "No Trades with a planned target",
+        "no_outcomes_answered": "No outcomes chosen yet"
       },
       "recent": {
         "title": "Recent Trades",
@@ -422,7 +423,7 @@
     "basicKpi": {
       "regionLabel": "Key trading figures",
       "infoTrigger": "About {metric}",
-      "empty": "No Trades yet",
+      "empty": "Nothing eligible yet",
       "compositionTrades": "{wins}W · {breakEvens}BE · {losses}L",
       "tradeCount": "{count, plural, one {# Trade} other {# Trades}}",
       "missingMoney": "No money result on {missing} of {total} closed Trades — recorded by price",
@@ -633,7 +634,7 @@
       },
       "states": {
         "emptyTitle": "No comparable Trades",
-        "emptyDescription": "A Trade joins this comparison only once it has both a completed Actual outcome and a resolved System outcome. Nothing in this range has both yet.",
+        "emptyDescription": "A Trade joins this comparison only once it has both a completed Actual result and a confirmed System result. No eligible Trade in this range has both yet.",
         "error": "This comparison could not be prepared from the stored figures. Nothing here is missing because of your Trades — the recorded data needs review."
       },
       "table": {
@@ -714,7 +715,8 @@
       },
       "cellSummary": {
         "performance": "{date}: {total} across {trades} Trades. {wins} won, {breakEvens} broke even, {losses} lost.",
-        "gap": "{date}: Execution Gap {gap} across {paired} paired Trades."
+        "gap": "{date}: Execution Gap {gap} across {paired} paired Trades.",
+        "performanceWithoutOutcomes": "{date}: {total} across {trades} Trades. No outcomes chosen yet."
       },
       "classification": {
         "performance": {
@@ -731,9 +733,9 @@
       "states": {
         "emptyTitle": "Nothing eligible this month",
         "emptyDescription": {
-          "actual": "No Trade closed in this month within the current filters. Page to another month, or widen the date range.",
-          "system": "No System outcome resolved in this month within the current filters. A System outcome is recorded separately from your exit.",
-          "gap": "No Trade in this month has both an Actual and a System result yet. The Gap needs both sides."
+          "actual": "No eligible Trade closed in this month within the current filters. Page to another month, or widen the date range.",
+          "system": "No eligible System result in this month within the current filters. A System result is recorded separately from your exit.",
+          "gap": "No eligible Trade in this month has both an Actual and a System result yet. The Gap needs both sides."
         },
         "errorTitle": "The Calendar could not be built",
         "errorDescription": "A stored result in this month could not be read. Nothing has been guessed or rounded to zero. Reload, and if it persists the Trade data for this month needs attention."
@@ -765,7 +767,8 @@
       "outcome": {
         "wins": "Won",
         "breakEvens": "Break even",
-        "losses": "Lost"
+        "losses": "Lost",
+        "noneAnswered": "No Trader Outcomes chosen for this day yet."
       },
       "distribution": {
         "underperformed": "Underperformed",
@@ -782,9 +785,9 @@
       "states": {
         "emptyTitle": "Nothing on this day",
         "emptyDescription": {
-          "actual": "No Trade closed on this day within the current filters.",
-          "system": "No System outcome resolved on this day within the current filters.",
-          "gap": "No Trade on this day has both an Actual and a System result."
+          "actual": "No eligible Trade closed on this day within the current filters.",
+          "system": "No eligible System result on this day within the current filters.",
+          "gap": "No eligible Trade on this day has both an Actual and a System result."
         },
         "errorTitle": "This day could not be read",
         "errorDescription": "A stored result for this day could not be read. Nothing has been guessed or rounded to zero."
@@ -1006,7 +1009,7 @@
       "states": {
         "no_eligible_trades": {
           "strategy": {
-            "title": "No closed Trades yet",
+            "title": "No eligible closed Trades yet",
             "description": "Record a closed Trade to compare Strategies here."
           },
           "psychology": {
@@ -2459,7 +2462,7 @@
       },
       "summary": {
         "regionLabel": "Summary of the Trades in view",
-        "empty": "No Trades in scope",
+        "empty": "Nothing eligible in scope",
         "tradeCount": {
           "label": "Trades"
         },
@@ -2808,8 +2811,8 @@
           "description": "What happened?",
           "traderHero": "Trader Total R",
           "systemHero": "System Total R",
-          "traderEmptyTitle": "No completed Trades yet",
-          "systemEmptyTitle": "No System Outcomes resolved yet",
+          "traderEmptyTitle": "No eligible completed Trades yet",
+          "systemEmptyTitle": "No eligible System results yet",
           "insight": {
             "behind": "Your actual execution has captured less than the System on paired Trades.",
             "ahead": "Your actual execution has outperformed the System on paired Trades.",
@@ -2911,7 +2914,7 @@
       "system": {
         "title": "System Performance",
         "description": "What the rules would have produced when the System outcome is resolved. Pending and no-trade outcomes are left out, not counted as zero.",
-        "empty": "No eligible System Trades in this scope. Resolve System outcomes to build this view."
+        "empty": "No eligible System results in this scope yet."
       },
       "trader": {
         "title": "Trader Performance",
@@ -2962,7 +2965,8 @@
         "no_trading_days": "No eligible trading days",
         "no_conditions_applicable": "No Trades with applicable Setup Conditions",
         "no_confidence_recorded": "No Trades with recorded Confidence",
-        "data_integrity_error": "Metric temporarily unavailable"
+        "data_integrity_error": "Metric temporarily unavailable",
+        "no_outcomes_answered": "No outcomes chosen yet"
       },
       "equity": {
         "title": "Independent Equity Curves",
@@ -3027,7 +3031,7 @@
         "avgR": "Actual Avg R",
         "winRate": "Actual Win Rate",
         "emptyTitle": "No Setup Condition snapshots in this scope",
-        "emptyDescription": "No closed Trades in this scope have a recorded, applicable Setup Condition snapshot.",
+        "emptyDescription": "No eligible closed Trades in this scope have a recorded, applicable Setup Condition snapshot.",
         "help": "Grouped by Condition identity, which survives a Setup Version being edited — the same logical Condition stays comparable across versions. Descriptive only, not a causal claim."
       },
       "confidence": {
@@ -3046,7 +3050,7 @@
         "avgR": "Actual Avg R",
         "winRate": "Actual Win Rate",
         "emptyTitle": "No Emotions recorded",
-        "emptyDescription": "No closed Trades in this scope have a recorded Emotion selection.",
+        "emptyDescription": "No eligible closed Trades in this scope have a recorded Emotion selection.",
         "help": "A Trade with multiple Emotions belongs to every one of its Emotion groups, so the totals across groups may exceed the unique Trade count — this is expected, not a duplicate count. Descriptive only, not a causal claim."
       },
       "mistakes": {
@@ -3103,6 +3107,10 @@
     },
     "mistakeCost": {
       "title": "Mistake cost"
+    },
+    "legacyCoverage": {
+      "actual": "{count, plural, one {# closed Trade was recorded before the Add Trade update, so its R is} other {# closed Trades were recorded before the Add Trade update, so their R is}} not included in these R figures. Net P&L still counts every closed Trade.",
+      "system": "{count, plural, one {# System result uses the earlier System model and is} other {# System results use the earlier System model and are}} not included. System figures return once System Assessment is recorded under the new model."
     }
   },
   "mistakes": {

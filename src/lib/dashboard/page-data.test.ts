@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { ComparisonMetricRecord, SystemMetricRecord } from '@/lib/analytics/metrics';
 
 import {
@@ -112,6 +113,12 @@ function input(
       trader('be', '0.0000', 'break_even', '0'),
       trader('loss', '-1.0000', 'loss', '-125'),
     ],
+    money: [
+      { tradeId: 'win', netPnlMinor: '250', baseCurrency: 'USD' },
+      { tradeId: 'be', netPnlMinor: '0', baseCurrency: 'USD' },
+      { tradeId: 'loss', netPnlMinor: '-125', baseCurrency: 'USD' },
+    ],
+    legacyCoverage: NO_LEGACY_EXCLUSIONS,
     system: [system('win', '3.0000', 'win'), system('loss', '-1.0000', 'loss')],
     comparison: [pair('win', '2.0000', '3.0000'), pair('loss', '-1.0000', '-1.0000')],
     attention: {
@@ -155,9 +162,7 @@ describe('DashboardPageData composition', () => {
     expect(result.basic.tradeWin).toEqual({
       rate: { status: 'available', value: '0.3333' },
       tradeCount: 3,
-      wins: 1,
-      breakEvens: 1,
-      losses: 1,
+      outcomes: { wins: 1, breakEvens: 1, losses: 1 },
     });
     expect(result.basic.dayWinRate).toMatchObject({
       status: 'available',
@@ -181,7 +186,9 @@ describe('DashboardPageData composition', () => {
       traderTradeCount: 3,
       systemTradeCount: 2,
       pairedTradeCount: 2,
+      closedTradeCount: 3,
       monetaryResultCount: 3,
+      legacy: NO_LEGACY_EXCLUSIONS,
     });
   });
 
@@ -213,13 +220,19 @@ describe('DashboardPageData composition', () => {
 
   it('propagates incomplete and mixed-currency money states without affecting R', () => {
     const incomplete = composeDashboardPageData(
-      input({ trader: [trader('money', '1', 'win'), trader('price', '2', 'win', null)] }),
+      input({
+        trader: [trader('money', '1', 'win'), trader('price', '2', 'win', null)],
+        money: [trader('money', '1', 'win'), trader('price', '2', 'win', null)],
+      }),
     );
     expect(incomplete.basic.netPnl).toEqual({ status: 'unavailable', reason: 'incomplete' });
     expect(incomplete.trader.totalR).toEqual({ status: 'available', value: '3.0000' });
 
     const mixed = composeDashboardPageData(
-      input({ trader: [trader('usd', '1', 'win'), trader('thb', '2', 'win', '100', 'THB')] }),
+      input({
+        trader: [trader('usd', '1', 'win'), trader('thb', '2', 'win', '100', 'THB')],
+        money: [trader('usd', '1', 'win'), trader('thb', '2', 'win', '100', 'THB')],
+      }),
     );
     expect(mixed.basic.netPnl).toEqual({ status: 'unavailable', reason: 'mixed_currency' });
   });
@@ -228,6 +241,7 @@ describe('DashboardPageData composition', () => {
     const result = composeDashboardPageData(
       input({
         trader: [],
+        money: [],
         system: [system('system-only', '2', 'win')],
         comparison: [],
       }),

@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
+import type { LegacyAnalyticsCoverage } from '@/lib/analytics/canonical-population';
 import {
   parseAnalyticsFilters,
   resolveAnalyticsDateBounds,
@@ -66,6 +67,13 @@ import {
   tradingAccounts,
 } from '@/server/db/schema';
 
+import {
+  canonicalActualConditions,
+  canonicalSystemConditions,
+  canonicalSystemR,
+  canonicalTraderOutcome,
+  selectLegacyAnalyticsCoverage,
+} from './canonical-analytics-population';
 import { entryContextAnalyticsEligible } from './trade-recording-model';
 import {
   occurredAtExpr,
@@ -404,7 +412,7 @@ export interface TraderAnalyticsRecord {
   readonly status: TradeStatus;
   readonly deletedAt: null;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly traderOutcome: OutcomeValue | null;
   readonly exitedAt: string;
   readonly tradingAccountId: string;
   /** Authoritative Actual money result; null is legitimate for Price-mode Trades. */
@@ -471,10 +479,7 @@ async function selectTraderAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.status, 'closed'),
-        isNotNull(trades.actualR),
-        isNotNull(trades.traderOutcome),
-        isNotNull(trades.exitedAt),
+        ...canonicalActualConditions(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -485,7 +490,7 @@ async function selectTraderAnalyticsRecords(
     status: row.status as TradeStatus,
     deletedAt: null,
     actualR: row.actualR as string,
-    traderOutcome: row.traderOutcome as OutcomeValue,
+    traderOutcome: canonicalTraderOutcome(),
     exitedAt: (row.exitedAt as Date).toISOString(),
     netPnlMinor: row.netPnlMinor?.toString() ?? null,
     direction: row.direction as TradeDirection,
@@ -499,6 +504,57 @@ export async function getTraderAnalyticsRecords(
   const context = await resolveAnalyticsQueryContext(input, options);
   if (!context.ok) return context;
   return { ok: true, data: await selectTraderAnalyticsRecords(context.data) };
+}
+
+export interface ClosedTradeMoneyAnalyticsRecord {
+  readonly tradeId: string;
+  readonly netPnlMinor: string | null;
+  readonly baseCurrency: string;
+}
+
+/**
+ * EVERY CLOSED TRADE IN SCOPE, for money totals only.
+ *
+ * Final Net P&L has no legacy and canonical form, so this population is not
+ * canonical-gated: it is the closed Trades on the Actual `exited_at` axis in
+ * the same Account/Strategy/Setup/Version scope as every other figure. A Trade
+ * with no Final Net P&L stays in it with `netPnlMinor: null`, which is what
+ * lets Net P&L report itself incomplete rather than quietly smaller.
+ */
+async function selectClosedTradeMoneyRecords(
+  context: AnalyticsQueryContext,
+): Promise<readonly ClosedTradeMoneyAnalyticsRecord[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      tradeId: trades.id,
+      netPnlMinor: trades.netPnlMinor,
+      baseCurrency: tradingAccounts.baseCurrency,
+    })
+    .from(trades)
+    .innerJoin(tradingAccounts, eq(tradingAccounts.id, trades.tradingAccountId))
+    .where(
+      and(
+        ...frameworkConditions(context),
+        isNull(trades.deletedAt),
+        eq(trades.status, 'closed'),
+        isNotNull(trades.exitedAt),
+        ...dateConditions(trades.exitedAt, context.filters.dateBounds),
+      ),
+    )
+    .orderBy(asc(trades.exitedAt), asc(trades.id));
+  return rows.map((row) => ({ ...row, netPnlMinor: row.netPnlMinor?.toString() ?? null }));
+}
+
+/** Legacy evidence left out of this scope's canonical figures, on each axis's own date gate. */
+function selectScopeLegacyCoverage(
+  context: AnalyticsQueryContext,
+): Promise<LegacyAnalyticsCoverage> {
+  return selectLegacyAnalyticsCoverage({
+    scope: [...frameworkConditions(context), isNull(trades.deletedAt)],
+    actualDate: dateConditions(trades.exitedAt, context.filters.dateBounds),
+    systemDate: dateConditions(trades.systemExitedAt, context.filters.dateBounds),
+  });
 }
 
 export interface SystemAnalyticsRecord {
@@ -536,9 +592,7 @@ async function selectSystemAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.systemStatus, 'resolved'),
-        isNotNull(trades.systemR),
-        isNotNull(trades.systemOutcome),
+        ...canonicalSystemConditions(),
         isNotNull(trades.systemExitedAt),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
@@ -604,7 +658,7 @@ export interface PairedAnalyticsRecord {
   readonly status: 'closed';
   readonly deletedAt: null;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly traderOutcome: OutcomeValue | null;
   readonly systemR: string;
   readonly systemStatus: 'resolved';
   readonly systemOutcome: OutcomeValue;
@@ -647,22 +701,12 @@ export interface ComparisonCandidateRecord {
 
 /** Population A's completeness contract, as SQL. */
 function actualCompleteCondition(): SQL {
-  return and(
-    eq(trades.status, 'closed'),
-    isNotNull(trades.actualR),
-    isNotNull(trades.traderOutcome),
-    isNotNull(trades.exitedAt),
-  ) as SQL;
+  return and(...canonicalActualConditions()) as SQL;
 }
 
 /** Population B's completeness contract, as SQL. */
 function systemCompleteCondition(): SQL {
-  return and(
-    eq(trades.systemStatus, 'resolved'),
-    isNotNull(trades.systemR),
-    isNotNull(trades.systemOutcome),
-    isNotNull(trades.systemExitedAt),
-  ) as SQL;
+  return and(...canonicalSystemConditions(), isNotNull(trades.systemExitedAt)) as SQL;
 }
 
 /**
@@ -742,8 +786,15 @@ async function selectComparisonCandidateRecords(
     status: row.status as TradeStatus,
     deletedAt: null,
     systemStatus: row.systemStatus as SystemStatus,
-    traderOutcome: row.traderOutcome as OutcomeValue | null,
-    systemOutcome: row.systemOutcome as OutcomeValue | null,
+    traderOutcome: canonicalTraderOutcome(),
+    /*
+      THE SQL GATE ONLY GUARDS THE SYSTEM-ONLY BRANCH. A candidate admitted for
+      its canonical Actual R still carries whatever System result its row holds,
+      and `isComparisonEligible` would pair the two. No stored System result is
+      canonical yet, so none is carried here (contract §28).
+    */
+    systemR: canonicalSystemR(),
+    systemOutcome: null,
     actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
     systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
   }));
@@ -766,7 +817,7 @@ function selectEligibleFromCandidates(
     status: 'closed' as const,
     deletedAt: null,
     actualR: record.actualR as string,
-    traderOutcome: record.traderOutcome as OutcomeValue,
+    traderOutcome: record.traderOutcome,
     systemStatus: 'resolved' as const,
     systemR: record.systemR as string,
     systemOutcome: record.systemOutcome as OutcomeValue,
@@ -857,10 +908,12 @@ async function selectDashboardRecentTrades(
     occurredAt: new Date(row.occurredAt).toISOString(),
     direction: row.direction as TradeDirection,
     status: row.status as TradeStatus,
-    traderOutcome: row.traderOutcome as OutcomeValue | null,
+    traderOutcome: canonicalTraderOutcome(),
     actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
     systemStatus: row.systemStatus as SystemStatus,
-    systemOutcome: row.systemOutcome as OutcomeValue | null,
+    // No stored System result is canonical yet, so no row shows a paired Gap.
+    systemOutcome: null,
+    systemR: canonicalSystemR(),
     systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
   }));
 }
@@ -1016,7 +1069,7 @@ export interface SetupAdherenceAnalyticsRecord {
   readonly metCount: number;
   readonly totalCount: number;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly traderOutcome: OutcomeValue | null;
 }
 
 /**
@@ -1043,10 +1096,7 @@ async function selectSetupAdherenceAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.status, 'closed'),
-        isNotNull(trades.actualR),
-        isNotNull(trades.traderOutcome),
-        isNotNull(trades.exitedAt),
+        ...canonicalActualConditions(),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
@@ -1057,7 +1107,7 @@ async function selectSetupAdherenceAnalyticsRecords(
   return rows.map((row) => ({
     ...row,
     actualR: row.actualR as string,
-    traderOutcome: row.traderOutcome as OutcomeValue,
+    traderOutcome: canonicalTraderOutcome(),
   }));
 }
 
@@ -1097,9 +1147,7 @@ async function selectSetupAdherenceSystemAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.systemStatus, 'resolved'),
-        isNotNull(trades.systemR),
-        isNotNull(trades.systemOutcome),
+        ...canonicalSystemConditions(),
         isNotNull(trades.systemExitedAt),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
@@ -1131,7 +1179,7 @@ export interface ConditionAnalyticsRecord {
   readonly label: string;
   readonly checkStatus: SetupConditionCheckStatus;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly traderOutcome: OutcomeValue | null;
   readonly exitedAt: string;
 }
 
@@ -1170,10 +1218,7 @@ async function selectConditionAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.status, 'closed'),
-        isNotNull(trades.actualR),
-        isNotNull(trades.traderOutcome),
-        isNotNull(trades.exitedAt),
+        ...canonicalActualConditions(),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
@@ -1184,7 +1229,7 @@ async function selectConditionAnalyticsRecords(
     ...row,
     checkStatus: row.checkStatus as SetupConditionCheckStatus,
     actualR: row.actualR as string,
-    traderOutcome: row.traderOutcome as OutcomeValue,
+    traderOutcome: canonicalTraderOutcome(),
     exitedAt: (row.exitedAt as Date).toISOString(),
   }));
 }
@@ -1237,9 +1282,7 @@ async function selectConditionSystemAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.systemStatus, 'resolved'),
-        isNotNull(trades.systemR),
-        isNotNull(trades.systemOutcome),
+        ...canonicalSystemConditions(),
         isNotNull(trades.systemExitedAt),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
@@ -1269,7 +1312,7 @@ export interface ConfidenceAnalyticsRecord {
   readonly tradeId: string;
   readonly confidence: number;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly traderOutcome: OutcomeValue | null;
 }
 
 /** Only Trades where Confidence was explicitly recorded (`IS NOT NULL`) — `0` is a real recorded value, never conflated with "not recorded". */
@@ -1289,10 +1332,7 @@ async function selectConfidenceAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.status, 'closed'),
-        isNotNull(trades.actualR),
-        isNotNull(trades.traderOutcome),
-        isNotNull(trades.exitedAt),
+        ...canonicalActualConditions(),
         isNotNull(trades.confidence),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
@@ -1304,7 +1344,7 @@ async function selectConfidenceAnalyticsRecords(
     ...row,
     confidence: row.confidence as number,
     actualR: row.actualR as string,
-    traderOutcome: row.traderOutcome as OutcomeValue,
+    traderOutcome: canonicalTraderOutcome(),
   }));
 }
 
@@ -1341,9 +1381,7 @@ async function selectConfidenceSystemAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.systemStatus, 'resolved'),
-        isNotNull(trades.systemR),
-        isNotNull(trades.systemOutcome),
+        ...canonicalSystemConditions(),
         isNotNull(trades.systemExitedAt),
         isNotNull(trades.confidence),
         entryContextAnalyticsEligible(),
@@ -1374,7 +1412,7 @@ export interface EmotionAnalyticsRecord {
   readonly key: string;
   readonly label: string;
   readonly actualR: string;
-  readonly traderOutcome: OutcomeValue;
+  readonly traderOutcome: OutcomeValue | null;
 }
 
 /**
@@ -1404,10 +1442,7 @@ async function selectEmotionAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.status, 'closed'),
-        isNotNull(trades.actualR),
-        isNotNull(trades.traderOutcome),
-        isNotNull(trades.exitedAt),
+        ...canonicalActualConditions(),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
@@ -1417,7 +1452,7 @@ async function selectEmotionAnalyticsRecords(
   return rows.map((row) => ({
     ...row,
     actualR: row.actualR as string,
-    traderOutcome: row.traderOutcome as OutcomeValue,
+    traderOutcome: canonicalTraderOutcome(),
   }));
 }
 
@@ -1464,9 +1499,7 @@ async function selectEmotionSystemAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        eq(trades.systemStatus, 'resolved'),
-        isNotNull(trades.systemR),
-        isNotNull(trades.systemOutcome),
+        ...canonicalSystemConditions(),
         isNotNull(trades.systemExitedAt),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
@@ -1493,6 +1526,8 @@ export async function getEmotionSystemAnalyticsRecords(
 export interface AnalyticsRawPopulations {
   readonly filters: ResolvedAnalyticsFilters;
   readonly trader: readonly TraderAnalyticsRecord[];
+  readonly money: readonly ClosedTradeMoneyAnalyticsRecord[];
+  readonly legacyCoverage: LegacyAnalyticsCoverage;
   readonly system: readonly SystemAnalyticsRecord[];
   /** Phase 14C §19 — account/framework-scoped, deliberately NOT date-bounded. See `selectSystemPendingCount`. */
   readonly systemPendingCount: number;
@@ -1535,6 +1570,8 @@ export async function getAnalyticsRawPopulations(
     confidenceSystem,
     emotions,
     emotionsSystem,
+    money,
+    legacyCoverage,
   ] = await Promise.all([
     selectTraderAnalyticsRecords(context.data),
     selectSystemAnalyticsRecords(context.data),
@@ -1550,12 +1587,16 @@ export async function getAnalyticsRawPopulations(
     selectConfidenceSystemAnalyticsRecords(context.data),
     selectEmotionAnalyticsRecords(context.data),
     selectEmotionSystemAnalyticsRecords(context.data),
+    selectClosedTradeMoneyRecords(context.data),
+    selectScopeLegacyCoverage(context.data),
   ]);
   return {
     ok: true,
     data: {
       filters: context.data.filters,
       trader,
+      money,
+      legacyCoverage,
       system,
       systemPendingCount,
       comparisonCandidates,
@@ -1579,6 +1620,8 @@ export const DASHBOARD_MAJOR_PROJECTIONS = [
   'paired',
   'attention',
   'recent_trades',
+  'closed_trade_money',
+  'legacy_coverage',
 ] as const;
 export const DASHBOARD_MAJOR_PROJECTION_COUNT = DASHBOARD_MAJOR_PROJECTIONS.length;
 
@@ -1586,6 +1629,8 @@ export interface DashboardRawData {
   readonly filters: ResolvedAnalyticsFilters;
   readonly account: DashboardAccountContext;
   readonly trader: readonly TraderAnalyticsRecord[];
+  readonly money: readonly ClosedTradeMoneyAnalyticsRecord[];
+  readonly legacyCoverage: LegacyAnalyticsCoverage;
   readonly system: readonly SystemAnalyticsRecord[];
   readonly comparisonCandidates: readonly ComparisonCandidateRecord[];
   readonly attention: TradeAttentionCounts;
@@ -1603,19 +1648,24 @@ export async function getDashboardRawData(
 ): Promise<AnalyticsReadResult<DashboardRawData>> {
   const context = await resolveAnalyticsQueryContext(input, options);
   if (!context.ok) return context;
-  const [trader, system, comparisonCandidates, attention, recentTrades] = await Promise.all([
-    selectTraderAnalyticsRecords(context.data),
-    selectSystemAnalyticsRecords(context.data),
-    selectComparisonCandidateRecords(context.data),
-    selectWorkspaceTradeAttentionCounts(context.data.workspaceId),
-    selectDashboardRecentTrades(context.data),
-  ]);
+  const [trader, system, comparisonCandidates, attention, recentTrades, money, legacyCoverage] =
+    await Promise.all([
+      selectTraderAnalyticsRecords(context.data),
+      selectSystemAnalyticsRecords(context.data),
+      selectComparisonCandidateRecords(context.data),
+      selectWorkspaceTradeAttentionCounts(context.data.workspaceId),
+      selectDashboardRecentTrades(context.data),
+      selectClosedTradeMoneyRecords(context.data),
+      selectScopeLegacyCoverage(context.data),
+    ]);
   return {
     ok: true,
     data: {
       filters: context.data.filters,
       account: context.data.account,
       trader,
+      money,
+      legacyCoverage,
       system,
       comparisonCandidates,
       attention,
@@ -1728,9 +1778,7 @@ export async function getCalendarMonthRecords(
         and(
           ...scope,
           isNull(trades.deletedAt),
-          eq(trades.status, 'closed'),
-          isNotNull(trades.actualR),
-          isNotNull(trades.traderOutcome),
+          ...canonicalActualConditions(),
           gte(trades.exitedAt, window.start),
           lt(trades.exitedAt, window.end),
         ),
@@ -1744,7 +1792,7 @@ export async function getCalendarMonthRecords(
           tradeId: row.tradeId,
           exitedAt: (row.exitedAt as Date).toISOString(),
           actualR: row.actualR as string,
-          traderOutcome: row.traderOutcome as OutcomeValue,
+          traderOutcome: canonicalTraderOutcome(),
         })),
       },
     };
@@ -1763,9 +1811,7 @@ export async function getCalendarMonthRecords(
         and(
           ...scope,
           isNull(trades.deletedAt),
-          eq(trades.systemStatus, 'resolved'),
-          isNotNull(trades.systemR),
-          isNotNull(trades.systemOutcome),
+          ...canonicalSystemConditions(),
           gte(trades.systemExitedAt, window.start),
           lt(trades.systemExitedAt, window.end),
         ),
@@ -1802,13 +1848,8 @@ export async function getCalendarMonthRecords(
       and(
         ...scope,
         isNull(trades.deletedAt),
-        eq(trades.status, 'closed'),
-        isNotNull(trades.actualR),
-        isNotNull(trades.traderOutcome),
-        isNotNull(trades.exitedAt),
-        eq(trades.systemStatus, 'resolved'),
-        isNotNull(trades.systemR),
-        isNotNull(trades.systemOutcome),
+        ...canonicalActualConditions(),
+        ...canonicalSystemConditions(),
         /*
           NO `system_exited_at` GATE. The formula here is `actualR - systemR`
           and the range is anchored to Actual `exited_at` (CLAUDE.md §6 — the
@@ -1866,20 +1907,12 @@ export async function getDayReviewRecords(
   const axisColumn = params.mode === 'system' ? trades.systemExitedAt : trades.exitedAt;
   const populationConditions =
     params.mode === 'system'
-      ? [
-          eq(trades.systemStatus, 'resolved'),
-          isNotNull(trades.systemR),
-          isNotNull(trades.systemOutcome),
-        ]
+      ? canonicalSystemConditions()
       : params.mode === 'actual'
-        ? [eq(trades.status, 'closed'), isNotNull(trades.actualR), isNotNull(trades.traderOutcome)]
+        ? canonicalActualConditions()
         : [
-            eq(trades.status, 'closed'),
-            isNotNull(trades.actualR),
-            isNotNull(trades.traderOutcome),
-            eq(trades.systemStatus, 'resolved'),
-            isNotNull(trades.systemR),
-            isNotNull(trades.systemOutcome),
+            ...canonicalActualConditions(),
+            ...canonicalSystemConditions(),
             // Same reasoning as the paired window above: R comparison needs the
             // R, not a System exit instant.
           ];
@@ -1928,12 +1961,12 @@ export async function getDayReviewRecords(
       direction: row.direction as TradeDirection,
       tradingAccountName: row.tradingAccountName,
       status: row.status as TradeStatus,
-      traderOutcome: row.traderOutcome as OutcomeValue | null,
+      traderOutcome: canonicalTraderOutcome(),
       actualR: row.actualR,
       actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
       systemStatus: row.systemStatus as SystemStatus,
-      systemOutcome: row.systemOutcome as OutcomeValue | null,
-      systemR: row.systemR,
+      systemOutcome: null,
+      systemR: canonicalSystemR(),
       systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
       strategyName: row.strategyName,
       setupName: row.setupName,

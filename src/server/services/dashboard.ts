@@ -34,6 +34,8 @@ export async function getDashboardPageData(
       filters,
       account: raw.data.account,
       trader: raw.data.trader,
+      money: raw.data.money,
+      legacyCoverage: raw.data.legacyCoverage,
       system: raw.data.system,
       comparison: raw.data.comparisonCandidates,
       attention: raw.data.attention,

@@ -13,9 +13,11 @@ const day = (date: string, totalR: string): CalendarDay => ({
   date,
   eligibleTradeCount: 1,
   totalR,
-  wins: totalR.startsWith('-') ? 0 : 1,
-  breakEvens: 0,
-  losses: totalR.startsWith('-') ? 1 : 0,
+  outcomes: {
+    wins: totalR.startsWith('-') ? 0 : 1,
+    breakEvens: 0,
+    losses: totalR.startsWith('-') ? 1 : 0,
+  },
   classification: totalR.startsWith('-') ? 'losing' : 'winning',
 });
 

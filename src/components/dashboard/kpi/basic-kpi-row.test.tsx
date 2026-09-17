@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { AnalyticsMetric } from '@/lib/analytics/metrics';
 import type { NetPnlAvailability } from '@/lib/calc/net-pnl';
 import type { DashboardPageData, DashboardPerformanceData } from '@/lib/dashboard/page-data';
@@ -53,7 +54,9 @@ function data(overrides: Overrides = {}): DashboardPageData {
       traderTradeCount: 31,
       systemTradeCount: 31,
       pairedTradeCount: 31,
+      closedTradeCount: 31,
       monetaryResultCount: 31,
+      legacy: NO_LEGACY_EXCLUSIONS,
       ...overrides.coverage,
     },
     basic: {
@@ -61,9 +64,7 @@ function data(overrides: Overrides = {}): DashboardPageData {
       tradeWin: {
         rate: available('0.5484'),
         tradeCount: 31,
-        wins: 17,
-        breakEvens: 3,
-        losses: 11,
+        outcomes: { wins: 17, breakEvens: 3, losses: 11 },
       },
       plannedRr: { average: available('3.2000'), tradeCount: 28, ...overrides.plannedRr },
       profitFactor: available('3.6400'),
@@ -368,7 +369,7 @@ describe('BasicKpiRow', () => {
     */
     const { container } = renderRow({
       netPnl: { status: 'unavailable', reason: 'incomplete' } as NetPnlAvailability,
-      coverage: { traderTradeCount: 31, monetaryResultCount: 28 },
+      coverage: { closedTradeCount: 31, monetaryResultCount: 28 },
     });
     const card = widget(container, 'basic.net-pnl');
     expect(card).toHaveAttribute('data-kpi-status', 'unavailable');
@@ -383,7 +384,7 @@ describe('BasicKpiRow', () => {
     // zero anyway — a "0 of 31" line would be a false explanation.
     const { container } = renderRow({
       netPnl: { status: 'unavailable', reason: 'mixed_currency' } as NetPnlAvailability,
-      coverage: { traderTradeCount: 31, monetaryResultCount: 28 },
+      coverage: { closedTradeCount: 31, monetaryResultCount: 28 },
     });
     const card = widget(container, 'basic.net-pnl');
     expect(within(card).queryByText(/closed Trades/)).not.toBeInTheDocument();
@@ -455,7 +456,7 @@ describe('BasicKpiRow', () => {
     for (const id of BASIC_IDS) {
       const card = widget(container, id);
       expect(card).toHaveAttribute('data-kpi-status', 'empty');
-      expect(within(card).getByText('No Trades yet')).toBeVisible();
+      expect(within(card).getByText('Nothing eligible yet')).toBeVisible();
     }
     expect(container.textContent).not.toContain('No eligible Trades');
   });

@@ -26,9 +26,7 @@ const performanceDay = (overrides: Partial<CalendarDay> = {}): CalendarDay =>
     date: '2026-03-05',
     eligibleTradeCount: 3,
     totalR: '1.5000',
-    wins: 2,
-    breakEvens: 0,
-    losses: 1,
+    outcomes: { wins: 2, breakEvens: 0, losses: 1 },
     classification: 'winning',
     ...overrides,
   }) as CalendarDay;
@@ -146,9 +144,7 @@ describe('Dashboard Calendar card', () => {
         performanceDay({
           totalR: '0.0000',
           classification: 'break_even',
-          wins: 1,
-          breakEvens: 0,
-          losses: 1,
+          outcomes: { wins: 1, breakEvens: 0, losses: 1 },
         }),
       ]),
     );
@@ -166,8 +162,7 @@ describe('Dashboard Calendar card', () => {
           date: '2026-03-06',
           totalR: '-1.2500',
           classification: 'losing',
-          wins: 0,
-          losses: 2,
+          outcomes: { wins: 0, breakEvens: 0, losses: 2 },
         }),
       ]),
       { hrefs: hrefs(['2026-03-05', '2026-03-06']) },

@@ -70,7 +70,7 @@ function systemFrom(trade: InsightActualTradeInput): InsightSystemTradeInput {
   return {
     tradeId: trade.tradeId,
     systemR: trade.systemR ?? trade.actualR,
-    systemOutcome: trade.systemOutcome ?? trade.traderOutcome,
+    systemOutcome: trade.systemOutcome ?? trade.traderOutcome ?? 'break_even',
     systemExitedAt: trade.systemExitedAt ?? trade.actualExitedAt,
     strategyId: trade.strategyId,
     strategyLabel: trade.strategyLabel,
@@ -430,7 +430,9 @@ describe('Empty and error states', () => {
   it('renders all three pillars with their own empty copy and no fake zero', () => {
     const { container } = renderPillars(buildView([]));
     expect(container.querySelectorAll('[data-insight-pillar]')).toHaveLength(3);
-    expect(within(pillar(container, 'strategy')).getByText('No closed Trades yet')).toBeVisible();
+    expect(
+      within(pillar(container, 'strategy')).getByText('No eligible closed Trades yet'),
+    ).toBeVisible();
     expect(
       within(pillar(container, 'psychology')).getByText('No eligible Trades yet'),
     ).toBeVisible();
@@ -478,7 +480,9 @@ describe('Localization', () => {
 
   it('keeps the Thai empty states truthful rather than borrowing English', () => {
     const { container } = renderPillars(buildView([]), 'th');
-    expect(within(pillar(container, 'strategy')).getByText('ยังไม่มี Trade ที่ปิด')).toBeVisible();
+    expect(
+      within(pillar(container, 'strategy')).getByText('ยังไม่มี Trade ที่ปิดและเข้าเกณฑ์'),
+    ).toBeVisible();
     expect(container.textContent ?? '').not.toMatch(/No closed Trades|No eligible Trades/);
   });
 });

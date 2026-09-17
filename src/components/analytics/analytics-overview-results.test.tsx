@@ -88,12 +88,12 @@ describe('ResultsZone', () => {
 
   it('shows a calm empty state for Trader with zero finalized Trades, not an error', () => {
     renderZone({ trader: axis({ sampleCount: 0, totalR: unavailable }) });
-    expect(screen.getByText('No completed Trades yet')).toBeVisible();
+    expect(screen.getByText('No eligible completed Trades yet')).toBeVisible();
   });
 
   it('shows a calm empty state for System with zero resolved outcomes and none pending', () => {
     renderZone({ system: axis({ sampleCount: 0, totalR: unavailable }), systemPendingCount: 0 });
-    expect(screen.getByText('No System Outcomes resolved yet')).toBeVisible();
+    expect(screen.getByText('No eligible System results yet')).toBeVisible();
   });
 
   it('surfaces a pending System readiness action, never implying it belongs to the selected period', () => {

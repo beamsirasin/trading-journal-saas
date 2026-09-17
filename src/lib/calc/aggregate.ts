@@ -16,10 +16,16 @@ import { calcErr, calcOk, type CalcResult } from './types';
 // ---------------------------------------------------------------------------
 
 /**
- * The minimal shape `isTraderEligible` needs. Trader metrics are eligible
+ * The minimal shape `isTraderEligible` needs. Trader R metrics are eligible
  * when: execution `status` is `closed`; not soft-deleted (`deletedAt`);
- * `actualR`, `traderOutcome`, and the Actual `exitedAt` exist. **System status does not
- * matter** — a closed Trader Trade with `system_status = 'pending'` is
+ * `actualR` and the Actual `exitedAt` exist.
+ *
+ * A TRADER OUTCOME IS NOT REQUIRED. An unanswered outcome is a missing
+ * observation, never a negative one (Add Trade contract §24): the Trade keeps
+ * its Actual R in every R metric and only leaves the outcome metrics, which
+ * count answered outcomes alone (§25).
+ *
+ * **System status does not matter** —a closed Trader Trade with `system_status = 'pending'` is
  * still fully eligible for Trader metrics (Phase 07D's locked eligibility
  * rule; Trader close and System resolution are independent lifecycles,
  * Phase 07B/07C).
@@ -37,7 +43,6 @@ export function isTraderEligible(trade: TraderEligibleTradeInput): boolean {
     trade.status === 'closed' &&
     trade.deletedAt === null &&
     trade.actualR !== null &&
-    trade.traderOutcome !== null &&
     trade.exitedAt !== null
   );
 }
@@ -146,7 +151,25 @@ export function expectancyR(values: readonly string[]): CalcResult<string> {
  */
 export interface OutcomeRecord {
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  /**
+   * `null` is an UNANSWERED outcome — including one that exists in storage but
+   * was not chosen by the trader, which canonical analytics never read (Add
+   * Trade contract §25, §28). It is excluded from every outcome metric and is
+   * never counted as a loss.
+   */
+  readonly outcome: OutcomeValue | null;
+}
+
+/**
+ * The shared precondition of every outcome metric: no records is `no_trades`;
+ * records with no answered outcome is `no_outcomes_answered` — a real sample
+ * whose outcomes are simply not known, never a 0% rate.
+ */
+function answeredOutcomes(records: readonly OutcomeRecord[]): CalcResult<readonly OutcomeRecord[]> {
+  if (records.length === 0) return calcErr('no_trades');
+  const subset = records.filter((record) => record.outcome !== null);
+  if (subset.length === 0) return calcErr('no_outcomes_answered');
+  return calcOk(subset);
 }
 
 export interface OutcomeCounts {
@@ -178,9 +201,10 @@ export function outcomeCounts(records: readonly OutcomeRecord[]): OutcomeCounts 
  * 60%), never formatted UI text; presentation belongs to a later phase.
  */
 export function winRate(records: readonly OutcomeRecord[]): CalcResult<string> {
-  if (records.length === 0) return calcErr('no_trades');
-  const wins = records.filter((record) => record.outcome === 'win').length;
-  return calcOk(toCanonicalR(new CalcDecimal(wins).dividedBy(records.length)));
+  const subset = answeredOutcomes(records);
+  if (!subset.ok) return subset;
+  const wins = subset.value.filter((record) => record.outcome === 'win').length;
+  return calcOk(toCanonicalR(new CalcDecimal(wins).dividedBy(subset.value.length)));
 }
 
 function parseOutcomeSubset(
@@ -211,6 +235,8 @@ function rawAverage(values: readonly CalcDecimalValue[]): CalcDecimalValue {
  * Break-even Trades never participate in this subset.
  */
 export function averageWinR(records: readonly OutcomeRecord[]): CalcResult<string> {
+  const subset = answeredOutcomes(records);
+  if (!subset.ok && subset.reason === 'no_outcomes_answered') return subset;
   const winsResult = parseOutcomeSubset(records, 'win');
   if (!winsResult.ok) return winsResult;
   if (winsResult.value.length === 0) return calcErr('no_wins');
@@ -225,6 +251,8 @@ export function averageWinR(records: readonly OutcomeRecord[]): CalcResult<strin
  * even Trades never participate in this subset.
  */
 export function averageLossR(records: readonly OutcomeRecord[]): CalcResult<string> {
+  const subset = answeredOutcomes(records);
+  if (!subset.ok && subset.reason === 'no_outcomes_answered') return subset;
   const lossesResult = parseOutcomeSubset(records, 'loss');
   if (!lossesResult.ok) return lossesResult;
   if (lossesResult.value.length === 0) return calcErr('no_losses');
@@ -241,6 +269,8 @@ export function averageLossR(records: readonly OutcomeRecord[]): CalcResult<stri
  * is always a non-negative decimal ratio, never clamped, never `Infinity`.
  */
 export function payoffRatio(records: readonly OutcomeRecord[]): CalcResult<string> {
+  const subset = answeredOutcomes(records);
+  if (!subset.ok && subset.reason === 'no_outcomes_answered') return subset;
   const winsResult = parseOutcomeSubset(records, 'win');
   if (!winsResult.ok) return winsResult;
   if (winsResult.value.length === 0) return calcErr('no_wins');

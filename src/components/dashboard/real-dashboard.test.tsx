@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { DashboardPageData, DashboardPerformanceData } from '@/lib/dashboard/page-data';
 import { NO_COMPARISON_EXCLUSIONS, performanceAxis } from '@/test/analytics-model-fixtures';
 
@@ -93,16 +94,16 @@ function overview(overrides: Partial<DashboardPageData> = {}): DashboardPageData
       traderTradeCount: 5,
       systemTradeCount: 3,
       pairedTradeCount: 2,
+      closedTradeCount: 5,
       monetaryResultCount: 5,
+      legacy: NO_LEGACY_EXCLUSIONS,
     },
     basic: {
       netPnl: { status: 'available', currency: 'USD', totalMinor: '1000' },
       tradeWin: {
         rate: available('0.6000'),
         tradeCount: 5,
-        wins: 3,
-        breakEvens: 0,
-        losses: 2,
+        outcomes: { wins: 3, breakEvens: 0, losses: 2 },
       },
       plannedRr: { average: available('2.5000'), tradeCount: 5 },
       profitFactor: available('5.0000'),

@@ -9,6 +9,7 @@ import {
 } from '@/lib/dashboard/widgets';
 import type { TradeAttentionKind } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
+import { LegacyCoverageNote } from '@/components/analytics/legacy-coverage-note';
 import {
   DashboardLoadingIndicator,
   DashboardLoadingStatus,
@@ -91,6 +92,7 @@ export function RealDashboard({
         <ActiveTradingAccountSummaryCard account={data.account.account} />
       ) : null}
       <BasicKpiRow data={data} className="mt-4 first:mt-0" />
+      <LegacyCoverageNote coverage={data.coverage.legacy} className="mt-3" />
       <NeedsAttentionPanel attention={data.attention.counts} className="mt-4" />
 
       {/*

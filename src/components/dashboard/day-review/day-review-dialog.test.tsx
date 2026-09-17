@@ -47,9 +47,7 @@ const actualReview: DayReviewData = {
     mode: 'actual',
     totalR: '1.5000',
     eligibleTradeCount: 2,
-    wins: 1,
-    breakEvens: 0,
-    losses: 1,
+    outcomes: { wins: 1, breakEvens: 0, losses: 1 },
     classification: 'winning',
   },
   trades: [row(), row({ tradeId: 'trade-2', symbol: 'EURUSD', actualR: '-0.5000' })],
@@ -234,7 +232,7 @@ describe('Day Review states', () => {
     });
     expect(screen.getByText('Nothing on this day')).toBeInTheDocument();
     expect(
-      screen.getByText('No System outcome resolved on this day within the current filters.'),
+      screen.getByText('No eligible System result on this day within the current filters.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });

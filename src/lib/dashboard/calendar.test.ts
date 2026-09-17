@@ -80,9 +80,7 @@ describe('Actual calendar month', () => {
       date: '2026-03-02',
       eligibleTradeCount: 2,
       totalR: '1.5000',
-      wins: 1,
-      losses: 1,
-      breakEvens: 0,
+      outcomes: { wins: 1, losses: 1, breakEvens: 0 },
       classification: 'winning',
     });
     expect(month.days[1]).toMatchObject({ date: '2026-03-05', classification: 'losing' });
@@ -101,8 +99,7 @@ describe('Actual calendar month', () => {
       ]),
     );
     const day = month.days[0] as CalendarPerformanceDay;
-    expect(day.losses).toBe(2);
-    expect(day.wins).toBe(1);
+    expect(day.outcomes).toEqual({ wins: 1, breakEvens: 0, losses: 2 });
     expect(day.totalR).toBe('2.0000');
     expect(day.classification).toBe('winning');
   });

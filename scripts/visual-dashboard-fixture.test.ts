@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import { composeDashboardPageData } from '@/lib/dashboard/page-data';
 
 import {
@@ -139,6 +140,8 @@ function page() {
       },
     },
     trader,
+    money: trader,
+    legacyCoverage: NO_LEGACY_EXCLUSIONS,
     system,
     comparison,
     attention: {
@@ -271,7 +274,9 @@ describe('deterministic visual Dashboard fixture', () => {
       traderTradeCount: 66,
       systemTradeCount: 68,
       pairedTradeCount: 64,
+      closedTradeCount: 66,
       monetaryResultCount: 66,
+      legacy: NO_LEGACY_EXCLUSIONS,
     });
     expect(result.basic.netPnl).toEqual({
       status: 'available',

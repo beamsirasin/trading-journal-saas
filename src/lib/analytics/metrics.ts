@@ -38,6 +38,7 @@ import type {
   TradeStatus,
 } from '@/lib/trades/constants';
 
+import type { LegacyAnalyticsCoverage } from './canonical-population';
 import type { AnalyticsDateBounds, AnalyticsDatePreset } from './filters';
 
 export const ANALYTICS_UNAVAILABLE_REASONS = [
@@ -47,6 +48,7 @@ export const ANALYTICS_UNAVAILABLE_REASONS = [
   'no_losses',
   'no_profit_or_loss',
   'no_comparable_trades',
+  'no_outcomes_answered',
   'system_has_no_edge',
   'no_rule_checks',
   'no_evaluated_trades',
@@ -86,6 +88,7 @@ const FAILURE_CLASSIFICATION = {
   no_profit_or_loss: 'no_profit_or_loss',
   system_has_no_edge: 'system_has_no_edge',
   no_comparable_trades: 'no_comparable_trades',
+  no_outcomes_answered: 'no_outcomes_answered',
   no_rule_checks: 'no_rule_checks',
   no_evaluated_trades: 'no_evaluated_trades',
   no_conditions_applicable: 'no_conditions_applicable',
@@ -116,6 +119,20 @@ export interface TraderMetricRecord {
   readonly baseCurrency: string;
 }
 
+/**
+ * ONE CLOSED TRADE'S MONEY RESULT, WHATEVER ITS R DEFINITION.
+ *
+ * Final Net P&L is money in the account's own currency. It has no legacy and
+ * canonical form the way Actual R does, so Net P&L totals read every closed
+ * Trade in scope rather than the canonical R population — and therefore agree
+ * with the Trade list and the Risk Performance balance.
+ */
+export interface ClosedTradeMoneyRecord {
+  readonly tradeId: string;
+  readonly netPnlMinor: string | null;
+  readonly baseCurrency: string;
+}
+
 export interface SystemMetricRecord {
   readonly tradeId: string;
   readonly systemStatus: SystemStatus | string;
@@ -133,11 +150,15 @@ export interface AnalyticsEquityPoint {
 
 export interface PerformanceAnalyticsModel {
   readonly sampleCount: number;
+  /**
+   * `null` when the sample has Trades but none has an answered outcome — a
+   * count of "0 wins, 0 losses" would claim an answer nobody gave.
+   */
   readonly outcomeCounts: {
     readonly wins: number;
     readonly breakEvens: number;
     readonly losses: number;
-  };
+  } | null;
   readonly totalR: AnalyticsMetric;
   readonly winRate: AnalyticsMetric;
   readonly averageR: AnalyticsMetric;
@@ -153,7 +174,7 @@ export interface PerformanceAnalyticsModel {
 interface AxisRecord {
   readonly tradeId: string;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
   readonly occurredAt: string;
 }
 
@@ -174,7 +195,10 @@ function composePerformanceAxis(records: readonly AxisRecord[]): PerformanceAnal
 
   return {
     sampleCount: records.length,
-    outcomeCounts: outcomeCounts(outcomeRecords),
+    outcomeCounts:
+      records.length > 0 && outcomeRecords.every((record) => record.outcome === null)
+        ? null
+        : outcomeCounts(outcomeRecords),
     totalR: toAnalyticsMetric(totalR(rValues)),
     winRate: toAnalyticsMetric(winRate(outcomeRecords)),
     averageR: toAnalyticsMetric(averageR(rValues)),
@@ -208,7 +232,7 @@ export function composeTraderAnalytics(
     eligible.map((record) => ({
       tradeId: record.tradeId,
       r: record.actualR as string,
-      outcome: record.traderOutcome as OutcomeValue,
+      outcome: record.traderOutcome,
       occurredAt: record.exitedAt,
     })),
   );
@@ -299,7 +323,7 @@ export function composeComparisonAnalytics(
     eligibleRecords.map((record) => ({
       tradeId: record.tradeId,
       r: record.actualR as string,
-      outcome: record.traderOutcome as OutcomeValue,
+      outcome: record.traderOutcome,
       occurredAt: record.actualExitedAt as string,
     })),
   );
@@ -452,7 +476,7 @@ export interface DimensionAxisSummary {
 }
 
 function summarizeAxis(
-  records: readonly { r: string; outcome: OutcomeValue }[],
+  records: readonly { r: string; outcome: OutcomeValue | null }[],
 ): DimensionAxisSummary {
   return {
     tradeCount: records.length,
@@ -471,7 +495,7 @@ export interface SetupAdherenceMetricRecord {
   readonly metCount: number;
   readonly totalCount: number;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
 }
 
 export interface SetupAdherenceBucketModel {
@@ -494,7 +518,7 @@ export interface SetupAdherenceAnalyticsModel {
 function bucketAdherenceByAxis(
   records: readonly SetupAdherenceMetricRecord[],
 ): Map<SetupAdherenceBucketId, DimensionAxisSummary> {
-  const grouped = new Map<SetupAdherenceBucketId, { r: string; outcome: OutcomeValue }[]>();
+  const grouped = new Map<SetupAdherenceBucketId, { r: string; outcome: OutcomeValue | null }[]>();
   for (const bucket of SETUP_ADHERENCE_BUCKETS) grouped.set(bucket, []);
   for (const record of records) {
     if (record.totalCount <= 0) continue;
@@ -545,7 +569,7 @@ export interface ConditionMetricRecord {
   readonly label: string;
   readonly checkStatus: 'met' | 'not_met' | string;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
   readonly occurredAt: string;
 }
 
@@ -568,10 +592,10 @@ interface ConditionGroupState {
   conditionKey: string;
   label: string;
   latestOccurredAt: string;
-  traderMet: { r: string; outcome: OutcomeValue }[];
-  traderNotMet: { r: string; outcome: OutcomeValue }[];
-  systemMet: { r: string; outcome: OutcomeValue }[];
-  systemNotMet: { r: string; outcome: OutcomeValue }[];
+  traderMet: { r: string; outcome: OutcomeValue | null }[];
+  traderNotMet: { r: string; outcome: OutcomeValue | null }[];
+  systemMet: { r: string; outcome: OutcomeValue | null }[];
+  systemNotMet: { r: string; outcome: OutcomeValue | null }[];
 }
 
 function conditionGroupKey(setupId: string, conditionKey: string): string {
@@ -652,7 +676,7 @@ export interface ConfidenceMetricRecord {
   readonly tradeId: string;
   readonly confidence: number;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
 }
 
 export interface ConfidenceLevelModel {
@@ -677,8 +701,8 @@ export interface ConfidenceAnalyticsModel {
 
 function groupConfidenceByLevel(
   records: readonly ConfidenceMetricRecord[],
-): Map<number, { r: string; outcome: OutcomeValue }[]> {
-  const byLevel = new Map<number, { r: string; outcome: OutcomeValue }[]>();
+): Map<number, { r: string; outcome: OutcomeValue | null }[]> {
+  const byLevel = new Map<number, { r: string; outcome: OutcomeValue | null }[]>();
   for (const level of CONFIDENCE_ANALYTICS_LEVELS) byLevel.set(level, []);
   for (const record of records) {
     byLevel.get(record.confidence)?.push({ r: record.r, outcome: record.outcome });
@@ -721,7 +745,7 @@ export interface EmotionMetricRecord {
   readonly key: string;
   readonly label: string;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
 }
 
 export interface EmotionGroupModel {
@@ -740,7 +764,7 @@ export interface EmotionGroupModel {
 
 interface EmotionGroupState {
   label: string;
-  entries: { r: string; outcome: OutcomeValue }[];
+  entries: { r: string; outcome: OutcomeValue | null }[];
 }
 
 function groupEmotionsByKey(
@@ -812,7 +836,7 @@ export interface FrameworkMetricRecord {
   readonly strategyId: string | null;
   readonly setupId: string | null;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
 }
 
 export interface StrategyPerformanceModel {
@@ -841,8 +865,8 @@ export interface FrameworkPerformanceAnalyticsModel {
 function groupByKey(
   records: readonly FrameworkMetricRecord[],
   key: 'strategyId' | 'setupId',
-): Map<string, { r: string; outcome: OutcomeValue }[]> {
-  const groups = new Map<string, { r: string; outcome: OutcomeValue }[]>();
+): Map<string, { r: string; outcome: OutcomeValue | null }[]> {
+  const groups = new Map<string, { r: string; outcome: OutcomeValue | null }[]>();
   for (const record of records) {
     const id = record[key];
     if (id === null) continue;
@@ -963,7 +987,7 @@ export interface ContextMetricRecord {
   /** `null` means the dimension was never recorded for this Trade (only possible for Session/Timeframe — Symbol/Direction are `NOT NULL` core fields). */
   readonly value: string | null;
   readonly r: string;
-  readonly outcome: OutcomeValue;
+  readonly outcome: OutcomeValue | null;
 }
 
 export interface ContextGroupModel {
@@ -981,7 +1005,7 @@ export interface ContextBreakdownModel {
 export function composeContextBreakdown(
   records: readonly ContextMetricRecord[],
 ): ContextBreakdownModel {
-  const groups = new Map<string, { r: string; outcome: OutcomeValue }[]>();
+  const groups = new Map<string, { r: string; outcome: OutcomeValue | null }[]>();
   let missingCount = 0;
   for (const record of records) {
     if (record.value === null) {
@@ -1024,6 +1048,9 @@ export interface AnalyticsScopeModel {
 export interface AnalyticsSnapshotInput {
   readonly scope: AnalyticsScopeModel;
   readonly trader: readonly TraderMetricRecord[];
+  /** Every closed Trade in scope — the Net P&L population; see `ClosedTradeMoneyRecord`. */
+  readonly money: readonly ClosedTradeMoneyRecord[];
+  readonly legacyCoverage: LegacyAnalyticsCoverage;
   readonly system: readonly SystemMetricRecord[];
   /** Phase 14C §19 — a pure passthrough count, never a formula input. See `AnalyticsSnapshot.systemPendingCount`. */
   readonly systemPendingCount: number;
@@ -1052,7 +1079,10 @@ export interface AnalyticsSnapshot {
   readonly scope: AnalyticsScopeModel;
   readonly trader: PerformanceAnalyticsModel;
   readonly traderDayWin: AnalyticsMetric<DayWinRateSummary>;
+  /** Over every closed Trade in scope, not the canonical R population. */
   readonly traderNetPnl: NetPnlAvailability;
+  /** Evidence the canonical figures above left out as legacy (Add Trade contract §28). */
+  readonly legacyCoverage: LegacyAnalyticsCoverage;
   readonly system: PerformanceAnalyticsModel;
   /**
    * Count of `system_status = 'pending'` Trades in the current
@@ -1091,8 +1121,9 @@ export function composeAnalyticsSnapshot(input: AnalyticsSnapshotInput): Analyti
         input.scope.timezone,
       ),
     ),
+    legacyCoverage: input.legacyCoverage,
     traderNetPnl: netPnl(
-      traderEligible.map((record) => ({
+      input.money.map((record) => ({
         netPnlMinor: record.netPnlMinor,
         baseCurrency: record.baseCurrency,
       })),

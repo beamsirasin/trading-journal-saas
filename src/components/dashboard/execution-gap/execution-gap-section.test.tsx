@@ -422,7 +422,7 @@ describe('ExecutionGapSection — availability', () => {
     // canonical unavailable reason on each summary metric above it.
     expect(within(emptyState).getByText('No comparable Trades')).toBeVisible();
     expect(
-      within(panel).getByText(/completed Actual outcome and a resolved System outcome/i),
+      within(panel).getByText(/completed Actual result and a confirmed System result/i),
     ).toBeVisible();
     // No plot frame, no axes, no legend — an empty chart still reads as a chart.
     expect(panel.querySelector('[role="img"]')).toBeNull();

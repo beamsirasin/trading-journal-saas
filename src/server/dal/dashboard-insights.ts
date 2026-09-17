@@ -32,6 +32,12 @@ import {
   type AnalyticsReadOptions,
   type AnalyticsReadResult,
 } from './analytics';
+import {
+  canonicalActualConditions,
+  canonicalSystemConditions,
+  canonicalSystemR,
+  canonicalTraderOutcome,
+} from './canonical-analytics-population';
 
 export const DASHBOARD_INSIGHT_MAJOR_PROJECTIONS = [
   'actual_trades',
@@ -70,18 +76,13 @@ export async function getDashboardInsightRawData(
   const actualConditions = [
     ...frameworkConditions(context.data),
     isNull(trades.deletedAt),
-    eq(trades.status, 'closed'),
-    isNotNull(trades.actualR),
-    isNotNull(trades.traderOutcome),
-    isNotNull(trades.exitedAt),
+    ...canonicalActualConditions(),
     ...dateConditions(trades.exitedAt, context.data.filters.dateBounds),
   ];
   const systemConditions = [
     ...frameworkConditions(context.data),
     isNull(trades.deletedAt),
-    eq(trades.systemStatus, 'resolved'),
-    isNotNull(trades.systemR),
-    isNotNull(trades.systemOutcome),
+    ...canonicalSystemConditions(),
     isNotNull(trades.systemExitedAt),
     ...dateConditions(trades.systemExitedAt, context.data.filters.dateBounds),
   ];
@@ -177,10 +178,12 @@ export async function getDashboardInsightRawData(
       actualTrades: actualRows.map((row) => ({
         ...row,
         actualR: row.actualR as string,
-        traderOutcome: row.traderOutcome as OutcomeValue,
+        traderOutcome: canonicalTraderOutcome(),
         actualExitedAt: (row.actualExitedAt as Date).toISOString(),
-        systemOutcome: row.systemOutcome as OutcomeValue | null,
-        systemExitedAt: row.systemExitedAt?.toISOString() ?? null,
+        // A canonical Actual R never pairs with a legacy System R (contract §28).
+        systemR: canonicalSystemR(),
+        systemOutcome: null,
+        systemExitedAt: null,
       })),
       systemTrades: systemRows.map((row) => ({
         ...row,

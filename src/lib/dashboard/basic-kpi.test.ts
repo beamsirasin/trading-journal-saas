@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { AnalyticsMetric } from '@/lib/analytics/metrics';
 import type { NetPnlAvailability } from '@/lib/calc/net-pnl';
 
@@ -41,6 +42,7 @@ function page(
   population: {
     readonly traderEmpty?: boolean;
     readonly monetaryResultCount?: number;
+    readonly closedTradeCount?: number;
     readonly trader?: Partial<DashboardPerformanceData>;
   } = {},
 ): DashboardPageData {
@@ -54,16 +56,16 @@ function page(
       traderTradeCount: 31,
       systemTradeCount: 31,
       pairedTradeCount: 31,
+      closedTradeCount: population.closedTradeCount ?? 31,
       monetaryResultCount: population.monetaryResultCount ?? 31,
+      legacy: NO_LEGACY_EXCLUSIONS,
     },
     basic: {
       netPnl: overrides.netPnl ?? { status: 'available', currency: 'USD', totalMinor: '124350' },
       tradeWin: {
         rate: available('0.5484'),
         tradeCount: 31,
-        wins: 17,
-        breakEvens: 3,
-        losses: 11,
+        outcomes: { wins: 17, breakEvens: 3, losses: 11 },
         ...overrides.tradeWin,
       },
       plannedRr: { average: available('3.2000'), tradeCount: 28, ...overrides.plannedRr },
@@ -280,7 +282,12 @@ describe('composeBasicKpis', () => {
 
     it('reflects the break-even Trades D2 already counted in the denominator', () => {
       const models = composeBasicKpis(
-        page({ tradeWin: { wins: 5, breakEvens: 4, losses: 1, rate: available('0.5000') } }),
+        page({
+          tradeWin: {
+            outcomes: { wins: 5, breakEvens: 4, losses: 1 },
+            rate: available('0.5000'),
+          },
+        }),
       );
       expect(models.find((model) => model.key === 'tradeWin')?.indicator).toMatchObject({
         breakEvens: 4,

@@ -242,9 +242,14 @@ describe('isTraderEligible / selectTraderEligible', () => {
     expect(isTraderEligible({ ...base, deletedAt: new Date() })).toBe(false);
   });
 
-  it('ineligible when actualR or traderOutcome is missing', () => {
+  it('ineligible when actualR is missing', () => {
     expect(isTraderEligible({ ...base, actualR: null })).toBe(false);
-    expect(isTraderEligible({ ...base, traderOutcome: null })).toBe(false);
+  });
+
+  it('stays eligible with an unanswered Trader Outcome: a missing observation never removes R', () => {
+    // Add Trade contract §24/§25 — an unanswered outcome leaves outcome
+    // metrics only; the Trade's Actual R still counts.
+    expect(isTraderEligible({ ...base, traderOutcome: null })).toBe(true);
   });
 
   it('ineligible without an Actual exit timestamp', () => {

@@ -174,6 +174,12 @@ async function populate(params: {
   workspaceId: string;
   accountId: string;
   framework: Awaited<ReturnType<typeof createFramework>>;
+  /**
+   * `contract` (the default) records every Trade under Add Trade contract v1,
+   * so its Actual R is canonical. `legacy` records the same Trades without it,
+   * which canonical Insight reads must exclude on every projection.
+   */
+  recording?: 'contract' | 'legacy';
 }) {
   const [focused, fearful] = await Promise.all([
     db.query.emotionTypes.findFirst({
@@ -223,6 +229,9 @@ async function populate(params: {
           traderOutcome: positive ? 'win' : 'loss',
           status: 'closed',
           plannedRiskMinor: 10_000n,
+          ...(params.recording === 'legacy'
+            ? {}
+            : { recordingContract: 'add_trade_v1', actualRiskAnswer: 'matched' }),
           systemStatus: 'resolved',
           systemResolutionKind: 'money_custom',
           systemGrossRInput: '1.0000',
@@ -322,6 +331,10 @@ async function populateUnclassified(params: { workspaceId: string; accountId: st
           actualR: '-0.5000',
           traderOutcome: 'loss',
           status: 'closed',
+          // Add Trade contract v1: Risk at Entry, so this Actual R is canonical.
+          recordingContract: 'add_trade_v1',
+          plannedRiskMinor: 10_000n,
+          actualRiskAnswer: 'matched',
         })
         .returning({ id: trades.id });
       if (trade === undefined) throw new Error('unclassified trade insert failed');
@@ -379,8 +392,8 @@ afterAll(async () => {
 });
 
 describe('D8A PostgreSQL Insight boundary', () => {
-  it('preserves five Dashboard reads, one D7 read, and five bulk D8 projections', () => {
-    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(5);
+  it('preserves seven Dashboard reads, one D7 read, and five bulk D8 projections', () => {
+    expect(DASHBOARD_MAJOR_PROJECTION_COUNT).toBe(7);
     expect(RISK_PERFORMANCE_MAJOR_PROJECTION_COUNT).toBe(1);
     expect(DASHBOARD_INSIGHT_MAJOR_PROJECTION_COUNT).toBe(5);
     expect(DASHBOARD_INSIGHT_MAJOR_PROJECTIONS).toEqual([
@@ -421,7 +434,13 @@ describe('D8A PostgreSQL Insight boundary', () => {
     expect(raw.ok).toBe(true);
     if (!raw.ok) throw new Error(raw.code);
     expect(raw.data.actualTrades).toHaveLength(20);
-    expect(raw.data.systemTrades).toHaveLength(20);
+    // Every stored System result is legacy System R, so none is read.
+    expect(raw.data.systemTrades).toHaveLength(0);
+    expect(
+      raw.data.actualTrades.every(
+        (trade) => trade.traderOutcome === null && trade.systemR === null,
+      ),
+    ).toBe(true);
     expect(raw.data.emotions).toHaveLength(20);
     expect(raw.data.ruleChecks).toHaveLength(20);
     expect(raw.data.mistakes).toHaveLength(5);
@@ -435,12 +454,11 @@ describe('D8A PostgreSQL Insight boundary', () => {
       ok: true,
       data: {
         status: 'available',
+        // The stored System results (1R each against Actual +/-1R) would make
+        // a -1.0000R divergence insight; as legacy System R they make none.
         strategy: {
-          primaryInsight: {
-            type: 'system_actual_divergence',
-            metrics: { averageExecutionGapR: { status: 'available', value: '-1.0000' } },
-          },
-          coverage: { actualEligibleTradeCount: 20, systemEligibleTradeCount: 20 },
+          primaryInsight: null,
+          coverage: { actualEligibleTradeCount: 20, systemEligibleTradeCount: 0 },
         },
         psychology: {
           primaryInsight: { type: 'confidence_underperformance', observational: true },
@@ -457,6 +475,48 @@ describe('D8A PostgreSQL Insight boundary', () => {
             tradeRuleAdherenceRate: { status: 'available', value: '0.5000' },
           },
         },
+      },
+    });
+  });
+
+  /**
+   * The same twenty Trades recorded without the Add Trade contract: their
+   * Actual R used historical Actual Risk as 1R, so every canonical Insight
+   * projection — including the Emotion, Rule and Mistake rowsets joined to the
+   * Actual population — must leave them out, and every pillar must report no
+   * eligible Trades rather than insights built on legacy R.
+   */
+  it('excludes legacy Trades from every Insight projection', async () => {
+    const fixture = await createWorkspaceFixture();
+    const accountId = await createAccount(fixture.workspaceId, 'Legacy');
+    const framework = await createFramework(fixture.workspaceId);
+    const ids = await populate({
+      workspaceId: fixture.workspaceId,
+      accountId,
+      framework,
+      recording: 'legacy',
+    });
+    expect(ids).toHaveLength(20);
+    const raw = await getDashboardInsightRawData(
+      { datePreset: 'all', tradingAccountId: accountId },
+      { referenceInstant: REFERENCE },
+    );
+    if (!raw.ok) throw new Error(raw.code);
+    expect(raw.data.actualTrades).toHaveLength(0);
+    expect(raw.data.systemTrades).toHaveLength(0);
+    expect(raw.data.emotions).toHaveLength(0);
+    expect(raw.data.ruleChecks).toHaveLength(0);
+    expect(raw.data.mistakes).toHaveLength(0);
+
+    const result = await getDashboardInsightData(filters(accountId), {
+      referenceInstant: REFERENCE,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        strategy: { status: 'no_eligible_trades' },
+        psychology: { status: 'no_eligible_trades' },
+        discipline: { status: 'no_eligible_trades' },
       },
     });
   });
@@ -505,7 +565,7 @@ describe('D8A PostgreSQL Insight boundary', () => {
       { referenceInstant: REFERENCE },
     );
     expect(bounded.ok && bounded.data.actualTrades).toHaveLength(15);
-    expect(bounded.ok && bounded.data.systemTrades).toHaveLength(10);
+    expect(bounded.ok && bounded.data.systemTrades).toHaveLength(0);
     expect(bounded.ok && bounded.data.emotions).toHaveLength(15);
     expect(bounded.ok && bounded.data.ruleChecks).toHaveLength(10);
 

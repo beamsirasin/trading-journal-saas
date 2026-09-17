@@ -11,6 +11,7 @@
  */
 import postgres from 'postgres';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type { ComparisonMetricRecord, SystemMetricRecord } from '@/lib/analytics/metrics';
 import {
   composeDashboardPageData,
@@ -225,6 +226,8 @@ async function main(): Promise<void> {
           },
         },
         trader,
+        money: trader,
+        legacyCoverage: NO_LEGACY_EXCLUSIONS,
         system,
         comparison,
         attention: {

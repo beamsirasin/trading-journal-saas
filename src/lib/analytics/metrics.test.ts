@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import { CALC_FAILURE_REASONS, calcErr } from '@/lib/calc/types';
 
 import {
@@ -577,13 +578,14 @@ describe('failure mapping and full projections', () => {
       'no_losses',
       'no_profit_or_loss',
       'no_comparable_trades',
+      'no_outcomes_answered',
       'system_has_no_edge',
       'no_rule_checks',
       'no_evaluated_trades',
       'no_conditions_applicable',
       'no_confidence_recorded',
     ]);
-    expect(CALC_FAILURE_REASONS).toHaveLength(28);
+    expect(CALC_FAILURE_REASONS).toHaveLength(29);
     for (const reason of CALC_FAILURE_REASONS) {
       const mapped = toAnalyticsMetric(calcErr(reason));
       if (expectedUnavailable.has(reason)) {
@@ -598,6 +600,8 @@ describe('failure mapping and full projections', () => {
     const snapshot = composeAnalyticsSnapshot({
       scope: SCOPE,
       trader: [trader('divergent', '-1.0000', 'loss')],
+      money: [trader('divergent', '-1.0000', 'loss')],
+      legacyCoverage: NO_LEGACY_EXCLUSIONS,
       system: [system('divergent', '3.0000', 'win')],
       systemPendingCount: 0,
       comparison: [comparison('divergent', '3.0000', '-1.0000')],
@@ -637,6 +641,8 @@ describe('failure mapping and full projections', () => {
     const snapshot = composeAnalyticsSnapshot({
       scope: SCOPE,
       trader: [trader('t', '1.0000', 'win')],
+      money: [trader('t', '1.0000', 'win')],
+      legacyCoverage: NO_LEGACY_EXCLUSIONS,
       system: [system('t', '2.0000', 'win')],
       systemPendingCount: 3,
       comparison: [comparison('t', '2.0000', '1.0000')],

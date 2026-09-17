@@ -36,7 +36,6 @@ export function isComparisonEligible(trade: ComparisonEligibleTradeInput): boole
     trade.deletedAt === null &&
     trade.status === 'closed' &&
     trade.actualR !== null &&
-    trade.traderOutcome !== null &&
     trade.actualExitedAt !== null &&
     trade.systemStatus === 'resolved' &&
     trade.systemR !== null &&

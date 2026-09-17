@@ -1,9 +1,11 @@
+import type { LegacyAnalyticsCoverage } from '@/lib/analytics/canonical-population';
 import {
   composeSystemAnalytics,
   composeTraderAnalytics,
   toAnalyticsMetric,
   type AnalyticsMetric,
   type AnalyticsScopeModel,
+  type ClosedTradeMoneyRecord,
   type ComparisonMetricRecord,
   type PerformanceAnalyticsModel,
   type SystemMetricRecord,
@@ -143,19 +145,24 @@ export interface DashboardPageData {
     readonly comparison: 'available' | 'empty' | 'error';
   };
   readonly coverage: {
+    /** Trades in the canonical Actual R population. */
     readonly traderTradeCount: number;
     readonly systemTradeCount: number;
     readonly pairedTradeCount: number;
+    /** Every closed Trade in scope — the Net P&L population. */
+    readonly closedTradeCount: number;
+    /** Closed Trades in scope that carry a Final Net P&L. */
     readonly monetaryResultCount: number;
+    /** Evidence canonical R and System figures left out as legacy. */
+    readonly legacy: LegacyAnalyticsCoverage;
   };
   readonly basic: {
     readonly netPnl: NetPnlAvailability;
     readonly tradeWin: {
       readonly rate: AnalyticsMetric;
       readonly tradeCount: number;
-      readonly wins: number;
-      readonly breakEvens: number;
-      readonly losses: number;
+      /** `null` when no Trade in the population has an answered Trader Outcome. */
+      readonly outcomes: PerformanceAnalyticsModel['outcomeCounts'];
     };
     /**
      * AVERAGE PLANNED REWARD PER 1R OF PLANNED RISK — the PLAN axis, and the
@@ -237,6 +244,9 @@ export interface DashboardPageCompositionInput {
   readonly filters: DashboardFilterState;
   readonly account: DashboardAccountContext;
   readonly trader: readonly DashboardTraderMetricRecord[];
+  /** Every closed Trade in scope; see `ClosedTradeMoneyRecord`. */
+  readonly money: readonly ClosedTradeMoneyRecord[];
+  readonly legacyCoverage: LegacyAnalyticsCoverage;
   readonly system: readonly SystemMetricRecord[];
   readonly comparison: readonly ComparisonMetricRecord[];
   readonly attention: DashboardAttentionCounts;
@@ -257,11 +267,9 @@ const selectPerformance = (axis: PerformanceAnalyticsModel): DashboardPerformanc
 });
 
 export function composeRecentTrade(record: DashboardRecentTradeRecord): DashboardRecentTrade {
+  // An unanswered Trader Outcome is not an incomplete Actual result (contract §24).
   const actualComplete =
-    record.status === 'closed' &&
-    record.actualR !== null &&
-    record.traderOutcome !== null &&
-    record.actualExitedAt !== null;
+    record.status === 'closed' && record.actualR !== null && record.actualExitedAt !== null;
   const systemComplete =
     record.systemStatus === 'resolved' &&
     record.systemR !== null &&
@@ -339,7 +347,7 @@ export function composeDashboardPageData(input: DashboardPageCompositionInput): 
   const traderFull = composeTraderAnalytics(input.trader);
   const systemFull = composeSystemAnalytics(input.system);
   const comparison = composeExecutionComparison(input.comparison, input.scope.timezone);
-  const monetaryResultCount = traderRecords.filter((record) => record.netPnlMinor !== null).length;
+  const monetaryResultCount = input.money.filter((record) => record.netPnlMinor !== null).length;
 
   return {
     scope: input.scope,
@@ -354,11 +362,13 @@ export function composeDashboardPageData(input: DashboardPageCompositionInput): 
       traderTradeCount: traderFull.sampleCount,
       systemTradeCount: systemFull.sampleCount,
       pairedTradeCount: comparison.summary.comparableCount,
+      closedTradeCount: input.money.length,
       monetaryResultCount,
+      legacy: input.legacyCoverage,
     },
     basic: {
       netPnl: netPnl(
-        traderRecords.map((record) => ({
+        input.money.map((record) => ({
           netPnlMinor: record.netPnlMinor,
           baseCurrency: record.baseCurrency,
         })),
@@ -366,9 +376,7 @@ export function composeDashboardPageData(input: DashboardPageCompositionInput): 
       tradeWin: {
         rate: traderFull.winRate,
         tradeCount: traderFull.sampleCount,
-        wins: traderFull.outcomeCounts.wins,
-        breakEvens: traderFull.outcomeCounts.breakEvens,
-        losses: traderFull.outcomeCounts.losses,
+        outcomes: traderFull.outcomeCounts,
       },
       plannedRr: composePlannedRr(traderRecords),
       profitFactor: traderFull.profitFactor,

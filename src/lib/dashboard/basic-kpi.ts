@@ -480,10 +480,12 @@ function outcomeIndicator(
  */
 export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiModel[] {
   const populationEmpty = data.availability.trader === 'empty';
+  // Net P&L reads every closed Trade, not the canonical R population.
+  const moneyEmpty = data.coverage.closedTradeCount === 0;
   const basic = data.basic;
   const trader = data.trader;
 
-  const netPnlValue: BasicKpiValue = populationEmpty
+  const netPnlValue: BasicKpiValue = moneyEmpty
     ? EMPTY
     : basic.netPnl.status === 'empty'
       ? EMPTY
@@ -497,7 +499,7 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
     this applies to: `mixed_currency` and `unsupported_currency_scale` are
     not about missing results, and the card's own wording already names them.
   */
-  const missingMoneyCount = data.coverage.traderTradeCount - data.coverage.monetaryResultCount;
+  const missingMoneyCount = data.coverage.closedTradeCount - data.coverage.monetaryResultCount;
   const netPnlContext: BasicKpiContext =
     netPnlValue.status === 'available' && basic.netPnl.status === 'available'
       ? { kind: 'tradeCount', tradeCount: data.coverage.monetaryResultCount }
@@ -507,19 +509,11 @@ export function composeBasicKpis(data: DashboardPageData): readonly BasicKpiMode
         ? {
             kind: 'missingMoney',
             missing: missingMoneyCount,
-            total: data.coverage.traderTradeCount,
+            total: data.coverage.closedTradeCount,
           }
         : NO_CONTEXT;
 
-  const tradeWin = outcomeIndicator(
-    populationEmpty
-      ? null
-      : {
-          wins: basic.tradeWin.wins,
-          breakEvens: basic.tradeWin.breakEvens,
-          losses: basic.tradeWin.losses,
-        },
-  );
+  const tradeWin = outcomeIndicator(populationEmpty ? null : basic.tradeWin.outcomes);
 
   // No planned Trade is not a metric failure over the population — it is the
   // PLAN side never having been filled in. See `BasicKpiUnavailableReason`.

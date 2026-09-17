@@ -9,6 +9,7 @@ import {
   type TradesSummaryValue,
 } from '@/lib/trades/workspace-summary';
 import { cn } from '@/lib/utils';
+import { LegacyCoverageNote } from '@/components/analytics/legacy-coverage-note';
 import { MetricLabel } from '@/components/product/metric';
 
 const TONE_CLASS: Record<AnalyticsDisplayTone, string> = {
@@ -59,6 +60,9 @@ export function TradesSummaryRow({
           <SummaryCard key={model.key} model={model} />
         ))}
       </dl>
+      {scope?.kind === 'open' ? null : (
+        <LegacyCoverageNote coverage={data.coverage.legacy} className="mt-3" />
+      )}
     </section>
   );
 }
@@ -88,7 +92,7 @@ function SummaryCard({ model }: { model: TradesSummaryModel }) {
 }
 
 /**
- * Never a fake zero. An empty population reads as "No Trades in scope" and an
+ * Never a fake zero. An empty population reads as "Nothing eligible in scope" and an
  * unavailable metric names its own reason, both in words — because printing
  * `0.00R` over a population that does not exist is the one thing a journal
  * must never do (CLAUDE.md §6).

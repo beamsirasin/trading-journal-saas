@@ -131,15 +131,17 @@ export function composeTradesSummary(
     does, because a Net P&L or a Win Rate over nothing is not zero, it is
     undefined.
   */
-  const tradeCount: TradesSummaryValue = plainValue(String(data.coverage.traderTradeCount));
+  const tradeCount: TradesSummaryValue = plainValue(String(data.coverage.closedTradeCount));
 
-  const netPnl: TradesSummaryValue = populationEmpty
-    ? EMPTY
-    : basic.netPnl.status === 'empty'
+  // Net P&L reads every closed Trade, so it matches the list below it.
+  const netPnl: TradesSummaryValue =
+    data.coverage.closedTradeCount === 0
       ? EMPTY
-      : basic.netPnl.status === 'unavailable'
-        ? { status: 'unavailable', reason: basic.netPnl.reason }
-        : formatNetPnl(basic.netPnl.currency, basic.netPnl.totalMinor);
+      : basic.netPnl.status === 'empty'
+        ? EMPTY
+        : basic.netPnl.status === 'unavailable'
+          ? { status: 'unavailable', reason: basic.netPnl.reason }
+          : formatNetPnl(basic.netPnl.currency, basic.netPnl.totalMinor);
 
   // The ACTUAL, realized Trader total — never the System axis, and never the
   // paired subset. Signed, because "did this make or lose" is the whole

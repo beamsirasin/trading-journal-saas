@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { NO_LEGACY_EXCLUSIONS } from '@/lib/analytics/canonical-population';
 import type {
   AnalyticsMetric,
   AnalyticsSnapshot,
@@ -104,6 +105,7 @@ function snapshot(overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnapshot
       },
     },
     traderNetPnl: { status: 'available', currency: 'USD', totalMinor: '-100' },
+    legacyCoverage: NO_LEGACY_EXCLUSIONS,
     comparison: {
       comparableCount: 2,
       pairedSystemAxis: performanceAxis(),

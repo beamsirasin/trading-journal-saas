@@ -14,9 +14,7 @@ const performance = (overrides: Partial<CalendarPerformanceDay> = {}): CalendarP
   date: '2026-03-05',
   eligibleTradeCount: 3,
   totalR: '1.5000',
-  wins: 2,
-  breakEvens: 0,
-  losses: 1,
+  outcomes: { wins: 2, breakEvens: 0, losses: 1 },
   classification: 'winning',
   ...overrides,
 });

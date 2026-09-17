@@ -30,6 +30,8 @@ import { ZoneSection } from '@/components/product/zone-section';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@/i18n/navigation';
 
+import { LegacyCoverageNote } from './legacy-coverage-note';
+
 export interface AnalyticsEquityDisplayData {
   readonly trader: readonly AnalyticsEquityDisplayPoint[];
   readonly system: readonly AnalyticsEquityDisplayPoint[];
@@ -63,6 +65,7 @@ export function RealAnalyticsPage({
       <p className="text-muted-foreground text-sm" aria-label={t('scope.label')}>
         {scopeLabels.join(' · ')}
       </p>
+      <LegacyCoverageNote coverage={snapshot.legacyCoverage} className="-mt-6" />
 
       {view === 'overview' ? (
         <>

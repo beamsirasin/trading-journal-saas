@@ -56,6 +56,7 @@ const { getDashboardPageData } = await import('./dashboard');
 const { getDashboardCalendarMonthInZone, getDashboardDayReview } =
   await import('./dashboard-calendar');
 const { getAnalyticsRawPopulations } = await import('../dal/analytics');
+const { entryContextAnalyticsEligible } = await import('../dal/trade-recording-model');
 
 const db = getTestDb();
 const workspaceIds: string[] = [];
@@ -220,23 +221,52 @@ interface TradeInput {
   systemOutcome?: 'win' | 'loss' | 'break_even';
   systemExitedAt?: Date;
   deleted?: boolean;
+  /**
+   * `contract` (the default) records the Trade under Add Trade contract v1 —
+   * Money against Risk at Entry, no Price plan — the only Actual R canonical
+   * analytics admit. `legacy` keeps the pre-contract Price-plan shape, whose
+   * Actual R canonical analytics exclude and disclose as legacy coverage.
+   * `traderOutcome` is stored either way (the status CHECK still requires the
+   * derived one), and canonical analytics must never read it.
+   */
+  recording?: 'contract' | 'legacy';
 }
 
 async function createTrade(workspaceId: string, input: TradeInput): Promise<string> {
   const status = input.status ?? 'closed';
   const systemStatus = input.systemStatus ?? 'resolved';
+  const contract = (input.recording ?? 'contract') === 'contract';
+  if (contract && status === 'planned') {
+    throw new Error('a contract row is never planned; pass recording: legacy');
+  }
   const exitedAt = input.exitedAt ?? new Date('2026-08-01T10:00:00Z');
   const systemExitedAt = input.systemExitedAt ?? new Date('2026-08-01T11:00:00Z');
+  const planFields = contract
+    ? {
+        recordingContract: 'add_trade_v1',
+        plannedRiskMinor: 100n,
+        actualRiskAnswer: status === 'closed' || status === 'open' ? 'matched' : null,
+      }
+    : {
+        plannedEntry: '100.0000000000',
+        plannedStop: '99.0000000000',
+        plannedTarget: '102.0000000000',
+        plannedR: '2.0000',
+      };
+  // A contract row never carries Price as result authority.
+  const priceFields = contract
+    ? {}
+    : { actualEntry: '100.0000000000', actualInitialStop: '99.0000000000' };
+  const netPnlMinor = (input.actualR ?? '1.0000').startsWith('-') ? -100n : 100n;
   const actualFields =
     status === 'closed'
       ? {
           actualResultMode: 'money' as const,
-          actualEntry: '100.0000000000',
-          actualInitialStop: '99.0000000000',
+          ...priceFields,
           actualInitialRiskMinor: 100n,
           enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000),
           actualExit: '101.0000000000',
-          netPnlMinor: (input.actualR ?? '1.0000').startsWith('-') ? -100n : 100n,
+          netPnlMinor,
           exitedAt,
           actualR: input.actualR ?? '1.0000',
           traderOutcome: input.traderOutcome ?? 'win',
@@ -244,8 +274,7 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
       : status === 'open'
         ? {
             actualResultMode: 'money' as const,
-            actualEntry: '100.0000000000',
-            actualInitialStop: '99.0000000000',
+            ...priceFields,
             actualInitialRiskMinor: 100n,
             enteredAt: new Date('2026-08-01T09:00:00Z'),
           }
@@ -288,10 +317,7 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
         setupAssignedAt: input.framework === null ? null : new Date('2026-08-01T00:00:00Z'),
         symbol: 'EURUSD',
         direction: 'long',
-        plannedEntry: '100.0000000000',
-        plannedStop: '99.0000000000',
-        plannedTarget: '102.0000000000',
-        plannedR: '2.0000',
+        ...planFields,
         status,
         createdAt: input.createdAt ?? new Date(exitedAt.getTime() - 2 * 60 * 60 * 1000),
         deletedAt: input.deleted ? new Date('2026-08-05T00:00:00Z') : null,
@@ -307,8 +333,8 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
         mutationKey: crypto.randomUUID(),
         sequence: 1,
         closedBps: 10_000,
-        exitPrice: actualFields.actualExit,
-        realizedPnlMinor: actualFields.netPnlMinor,
+        exitPrice: '101.0000000000',
+        realizedPnlMinor: netPnlMinor,
         exitedAt,
       });
     }
@@ -560,22 +586,31 @@ describe('analytics service (real PostgreSQL)', () => {
       accountScope: { kind: 'account', accountId: fixture.activeAccountId, source: 'active' },
     });
     expect(result.data.trader.sampleCount).toBe(7);
-    expect(result.data.system.sampleCount).toBe(6);
+    // Canonical R reads every contract Trade's Actual R: 1 - 1 + 2 - 2 + 2 + 4 + 1.
+    expect(result.data.trader.totalR).toEqual({ status: 'available', value: '7.0000' });
     expect(result.data.traderNetPnl).toEqual({
       status: 'available',
       currency: 'USD',
       totalMinor: '300',
     });
-    expect(result.data.comparison.comparableCount).toBe(6);
-    expect(result.data.trader.winRate).toEqual({ status: 'available', value: '0.7143' });
-    expect(result.data.system.winRate).toEqual({ status: 'available', value: '0.5000' });
-    expect(result.data.comparison).toMatchObject({
-      pairedSystemTotalR: { status: 'available', value: '6.0000' },
-      pairedActualTotalR: { status: 'available', value: '5.0000' },
-      executionGapR: { status: 'available', value: '-1.0000' },
-      averageExecutionGapR: { status: 'available', value: '-0.1667' },
-      systemEdgeCaptured: { status: 'available', value: '0.8333' },
+    // Every stored `trader_outcome` was derived from R, so none is an answer:
+    // Win Rate is unavailable, never 0% and never the derived 71%.
+    expect(result.data.trader.winRate).toEqual({
+      status: 'unavailable',
+      reason: 'no_outcomes_answered',
     });
+    expect(result.data.trader.outcomeCounts).toBeNull();
+    // No System result is canonical yet: the System axis and every paired
+    // figure are empty, and the six resolved System results in range (the four
+    // paired Trades, the open Trade, the Secondary Trade — not the Trade whose
+    // System exit is in April) are disclosed as legacy instead.
+    expect(result.data.system.sampleCount).toBe(0);
+    expect(result.data.comparison.comparableCount).toBe(0);
+    expect(result.data.comparison.executionGapR).toEqual({
+      status: 'unavailable',
+      reason: 'no_comparable_trades',
+    });
+    expect(result.data.legacyCoverage).toEqual({ excludedActualCount: 0, excludedSystemCount: 6 });
     expect(result.data.rules).toEqual({
       followedCount: 8,
       violatedCount: 2,
@@ -603,8 +638,10 @@ describe('analytics service (real PostgreSQL)', () => {
     );
     if (!all.ok) throw new Error(all.code);
     expect(all.data.trader.sampleCount).toBe(8);
-    expect(all.data.system.sampleCount).toBe(8);
-    expect(all.data.comparison.comparableCount).toBe(7);
+    expect(all.data.system.sampleCount).toBe(0);
+    expect(all.data.comparison.comparableCount).toBe(0);
+    // Every undeleted resolved System result across both Accounts, all time.
+    expect(all.data.legacyCoverage.excludedSystemCount).toBe(8);
     expect(all.data.traderNetPnl).toEqual({ status: 'unavailable', reason: 'mixed_currency' });
 
     const archived = await getAnalyticsSnapshot(
@@ -638,8 +675,11 @@ describe('analytics service (real PostgreSQL)', () => {
       const filtered = await getAnalyticsSnapshot(filters, READ_OPTIONS);
       if (!filtered.ok) throw new Error(filtered.code);
       expect(filtered.data.trader.sampleCount).toBe(6);
-      expect(filtered.data.system.sampleCount).toBe(5);
-      expect(filtered.data.comparison.comparableCount).toBe(5);
+      expect(filtered.data.system.sampleCount).toBe(0);
+      expect(filtered.data.comparison.comparableCount).toBe(0);
+      // The framework filter still scopes the legacy System disclosure: the
+      // Secondary Trade's resolved System result is not counted (6 unfiltered).
+      expect(filtered.data.legacyCoverage.excludedSystemCount).toBe(5);
     }
   });
 
@@ -759,8 +799,9 @@ describe('analytics service (real PostgreSQL)', () => {
       strategyVersionId: fixture.primary.strategyVersionId,
     });
     expect(result.data.snapshot.trader.sampleCount).toBe(7);
-    expect(result.data.snapshot.system.sampleCount).toBe(7);
-    expect(result.data.snapshot.comparison.comparableCount).toBe(6);
+    expect(result.data.snapshot.system.sampleCount).toBe(0);
+    expect(result.data.snapshot.legacyCoverage.excludedSystemCount).toBe(7);
+    expect(result.data.snapshot.comparison.comparableCount).toBe(0);
     expect(result.data.snapshot.comparison.comparableCount).not.toBe(
       result.data.snapshot.trader.sampleCount,
     );
@@ -857,7 +898,8 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(allTime.data.overview.scope.datePreset).toBe('all');
     expect(allTime.data.overview.scope.accountScope.kind).toBe('account');
     expect(allTime.data.overview.trader.sampleCount).toBe(8);
-    expect(allTime.data.overview.system.sampleCount).toBe(8);
+    // Eight resolved System results in this scope, every one legacy System R.
+    expect(allTime.data.overview.system.sampleCount).toBe(0);
 
     const invalidRange = await getDashboardOverview('7d', READ_OPTIONS);
     if (!invalidRange.ok) throw new Error(invalidRange.code);
@@ -899,16 +941,25 @@ describe('analytics service (real PostgreSQL)', () => {
       setupId: fixture.secondary.setupId,
     });
     expect(result.data.trader.sampleCount).toBe(1);
-    expect(result.data.system.sampleCount).toBe(1);
+    expect(result.data.system.sampleCount).toBe(0);
+    // The April Secondary Trade is outside 30D on both axes; only the
+    // in-range Secondary Trade's legacy System result is disclosed.
+    expect(result.data.coverage.legacy).toEqual({
+      excludedActualCount: 0,
+      excludedSystemCount: 1,
+    });
     expect(result.data.recentTrades).toMatchObject({
       scope: 'dashboard_filters',
       dateAxis: 'occurred_at',
     });
     expect(result.data.recentTrades.items).toHaveLength(1);
+    // Its stored System R equals its Actual R, so a leaked legacy System R
+    // would show a 0.0000R Gap; a canonical row shows no Gap at all.
     expect(result.data.recentTrades.items[0]).toMatchObject({
       strategyName: 'Secondary',
       setupName: 'Secondary Setup',
-      executionGapR: { status: 'available', value: '0.0000' },
+      systemR: null,
+      executionGapR: { status: 'unavailable', reason: 'system_incomplete' },
     });
     expect(result.data.attention.scope).toBe('workspace_operational');
   });
@@ -930,16 +981,78 @@ describe('analytics service (real PostgreSQL)', () => {
   });
 
   /**
-   * D5A against real PostgreSQL. The point is not the arithmetic — that is
-   * covered exhaustively in `execution-comparison.test.ts` — but that the
-   * DAL's ORDER BY, its `exited_at`-only range gate, and the composer's own
-   * ordering agree end to end, and that the series reconciles with the
-   * summary the same read produced.
+   * Final Net P&L has no legacy form, so the money population reads every
+   * closed Trade in scope while the canonical R population reads contract
+   * Trades only. A legacy Trade must move Net P&L and the closed count, and
+   * must move neither Total R nor the canonical Trade count — only the legacy
+   * disclosure.
    */
-  it('D5A composes a paired series ordered and bounded by Actual exit alone', async () => {
+  it('keeps legacy Trades in Net P&L while excluding their Actual R from canonical R figures', async () => {
     const fixture = await createFixture();
-    // Actual INSIDE the 30D window, System exit far outside it -> included,
-    // because Population C is anchored to the Actual exit and nothing else.
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'all',
+      unit: 'money',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+    const before = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!before.ok) throw new Error(before.code);
+
+    await createTrade(fixture.workspaceId, {
+      accountId: fixture.activeAccountId,
+      framework: fixture.primary,
+      recording: 'legacy',
+      systemStatus: 'pending',
+      actualR: '-1.0000',
+      traderOutcome: 'loss',
+      exitedAt: new Date('2026-08-06T10:00:00Z'),
+    });
+    const after = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!after.ok) throw new Error(after.code);
+
+    expect(before.data.basic.netPnl).toEqual({
+      status: 'available',
+      currency: 'USD',
+      totalMinor: '300',
+    });
+    expect(after.data.basic.netPnl).toEqual({
+      status: 'available',
+      currency: 'USD',
+      totalMinor: '200',
+    });
+    expect(after.data.coverage.closedTradeCount).toBe(before.data.coverage.closedTradeCount + 1);
+    expect(after.data.coverage.monetaryResultCount).toBe(
+      before.data.coverage.monetaryResultCount + 1,
+    );
+    expect(after.data.coverage.traderTradeCount).toBe(before.data.coverage.traderTradeCount);
+    expect(after.data.trader.totalR).toEqual(before.data.trader.totalR);
+    expect(after.data.coverage.legacy.excludedActualCount).toBe(
+      before.data.coverage.legacy.excludedActualCount + 1,
+    );
+  });
+
+  /**
+   * D5A against real PostgreSQL, under canonical populations. Population C
+   * pairs a canonical Actual R with a canonical System R, and no stored System
+   * result is canonical yet — so Trades that are complete on both axes, inside
+   * the window on either axis, still produce an empty comparison. What the page
+   * can still say truthfully is how much legacy System evidence it left out,
+   * and that disclosure keeps each axis's own date gate: the System exit, not
+   * the Actual exit, decides whether a System result is in range.
+   */
+  it('D5A reports an empty paired series while disclosing in-range legacy System results by System exit', async () => {
+    const fixture = await createFixture();
+    const parsed = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: '30d',
+      unit: 'r',
+    });
+    if (!parsed.ok) throw new Error(parsed.code);
+    const before = await getDashboardPageData(parsed.state, READ_OPTIONS);
+    if (!before.ok) throw new Error(before.code);
+
+    // Actual INSIDE the 30D window, System exit far outside it: a Trader
+    // Trade, and not a System result this window discloses.
     await createTrade(fixture.workspaceId, {
       accountId: fixture.activeAccountId,
       framework: fixture.primary,
@@ -950,7 +1063,8 @@ describe('analytics service (real PostgreSQL)', () => {
       exitedAt: new Date('2026-08-05T10:00:00Z'),
       systemExitedAt: new Date('2019-01-01T10:00:00Z'),
     });
-    // Actual OUTSIDE the window, System exit inside it -> excluded.
+    // Actual OUTSIDE the window, System exit inside it: no Trader Trade here,
+    // but a legacy System result this window does disclose.
     await createTrade(fixture.workspaceId, {
       accountId: fixture.activeAccountId,
       framework: fixture.primary,
@@ -962,65 +1076,22 @@ describe('analytics service (real PostgreSQL)', () => {
       systemExitedAt: new Date('2026-08-06T10:00:00Z'),
     });
 
-    const parsed = parseDashboardFilterState({
-      account: fixture.activeAccountId,
-      range: '30d',
-      unit: 'r',
-    });
-    if (!parsed.ok) throw new Error(parsed.code);
     const result = await getDashboardPageData(parsed.state, READ_OPTIONS);
     if (!result.ok) throw new Error(result.code);
-    const comparison = result.data.comparison;
-    expect(comparison.status).toBe('available');
-    if (comparison.status !== 'available') throw new Error('unreachable');
-
-    const inWindow = comparison.tradeSeries.find((point) => point.systemR === '4.0000');
-    expect(inWindow).toBeDefined();
-    expect(inWindow?.systemExitedAt).toBe('2019-01-01T10:00:00.000Z');
-    expect(comparison.tradeSeries.some((point) => point.actualR === '7.0000')).toBe(false);
-
-    // Ordering is Actual exit ASC, then Trade ID ASC — no exception.
-    const ordered = [...comparison.tradeSeries].sort((left, right) => {
-      const byInstant = new Date(left.exitedAt).getTime() - new Date(right.exitedAt).getTime();
-      return byInstant !== 0 ? byInstant : left.tradeId.localeCompare(right.tradeId);
-    });
-    expect(comparison.tradeSeries).toEqual(ordered);
-
-    // Every point holds the identity, and the last one IS the summary.
-    for (const point of comparison.tradeSeries) {
-      expect(Number(point.cumulativeExecutionGapR)).toBeCloseTo(
-        Number(point.cumulativeActualR) - Number(point.cumulativeSystemR),
-        10,
-      );
-    }
-    const last = comparison.tradeSeries.at(-1);
-    expect(comparison.summary.pairedSystemTotalR).toEqual({
-      status: 'available',
-      value: last?.cumulativeSystemR,
-    });
-    expect(comparison.summary.pairedActualTotalR).toEqual({
-      status: 'available',
-      value: last?.cumulativeActualR,
-    });
-    expect(comparison.summary.executionGapR).toEqual({
-      status: 'available',
-      value: last?.cumulativeExecutionGapR,
-    });
-    expect(comparison.summary.comparableCount).toBe(comparison.tradeSeries.length);
-    expect(
-      comparison.distribution.underperformedCount +
-        comparison.distribution.matchedCount +
-        comparison.distribution.outperformedCount,
-    ).toBe(comparison.summary.comparableCount);
-
-    // The daily rollup closes on exactly the same totals as the trade series.
-    const lastDaily = comparison.dailySeries.at(-1);
-    expect(lastDaily?.cumulativeSystemR).toBe(last?.cumulativeSystemR);
-    expect(lastDaily?.cumulativeActualR).toBe(last?.cumulativeActualR);
-    expect(lastDaily?.cumulativeExecutionGapR).toBe(last?.cumulativeExecutionGapR);
-    expect(comparison.dailySeries.reduce((total, point) => total + point.pairedTradeCount, 0)).toBe(
-      comparison.summary.comparableCount,
+    expect(result.data.trader.sampleCount).toBe(before.data.trader.sampleCount + 1);
+    expect(result.data.coverage.legacy.excludedSystemCount).toBe(
+      before.data.coverage.legacy.excludedSystemCount + 1,
     );
+    expect(result.data.coverage.pairedTradeCount).toBe(0);
+    const comparison = result.data.comparison;
+    expect(comparison.status).toBe('empty');
+    if (comparison.status !== 'empty') throw new Error('unreachable');
+    expect(comparison.reason).toBe('no_comparable_trades');
+    expect(comparison.summary.comparableCount).toBe(0);
+    expect(comparison.summary.executionGapR).toEqual({
+      status: 'unavailable',
+      reason: 'no_comparable_trades',
+    });
   });
 
   /**
@@ -1054,6 +1125,8 @@ describe('analytics service (real PostgreSQL)', () => {
     for (const day of result.data.days) {
       expect(day.mode).toBe('actual');
       expect(day.date.startsWith('2026-08')).toBe(true);
+      // Every row stores a derived Trader Outcome; no day may count one.
+      if (day.mode !== 'gap') expect(day.outcomes).toBeNull();
     }
     // Days sum to the month total, and only populated dates appear.
     const summed = result.data.days.reduce(
@@ -1069,10 +1142,18 @@ describe('analytics service (real PostgreSQL)', () => {
     ).toBe(result.data.days.length);
   });
 
-  it('D6A buckets the System calendar on system_exited_at, not the Actual exit', async () => {
+  /**
+   * No stored System result is canonical yet, so the System calendar has
+   * nothing to bucket even though a resolved System exit falls in the month.
+   * The System axis itself is still `system_exited_at`: the legacy System
+   * disclosure for a single day counts the Trade on its System exit day and not
+   * on its Actual exit day.
+   */
+  it('D6A leaves the System calendar empty and discloses legacy System results on system_exited_at, not the Actual exit', async () => {
     const fixture = await createFixture();
-    // Actual exits 5 August; the System side resolves on 9 August. In Actual
-    // mode this Trade is a 5 August day, in System mode a 9 August one.
+    // Actual exits 5 August; the System side resolves on 9 August — the only
+    // System exit on either day (the fixture's pending Trade exits 5 August
+    // with no System result).
     await createTrade(fixture.workspaceId, {
       accountId: fixture.activeAccountId,
       framework: fixture.primary,
@@ -1088,9 +1169,23 @@ describe('analytics service (real PostgreSQL)', () => {
       range: 'all',
       unit: 'r',
     });
-    if (!parsed.ok) throw new Error(parsed.code);
+    const actualDay = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'custom',
+      from: '2026-08-05',
+      to: '2026-08-05',
+      unit: 'r',
+    });
+    const systemDay = parseDashboardFilterState({
+      account: fixture.activeAccountId,
+      range: 'custom',
+      from: '2026-08-09',
+      to: '2026-08-09',
+      unit: 'r',
+    });
+    if (!parsed.ok || !actualDay.ok || !systemDay.ok) throw new Error('filter parse failed');
 
-    const [actualMonth, systemMonth] = await Promise.all([
+    const [actualMonth, systemMonth, onActualDay, onSystemDay] = await Promise.all([
       getDashboardCalendarMonthInZone(
         parsed.state,
         { mode: 'actual', year: 2026, month: 8 },
@@ -1103,20 +1198,20 @@ describe('analytics service (real PostgreSQL)', () => {
         'UTC',
         READ_OPTIONS,
       ),
+      getDashboardPageData(actualDay.state, READ_OPTIONS),
+      getDashboardPageData(systemDay.state, READ_OPTIONS),
     ]);
-    if (!actualMonth.ok || !systemMonth.ok) throw new Error('calendar read failed');
-    if (actualMonth.data.status !== 'available' || systemMonth.data.status !== 'available') {
-      throw new Error('unreachable');
+    if (!actualMonth.ok || !systemMonth.ok || !onActualDay.ok || !onSystemDay.ok) {
+      throw new Error('read failed');
     }
-    const actualDates = actualMonth.data.days.map((day) => day.date);
-    const systemDates = systemMonth.data.days.map((day) => day.date);
-    expect(actualDates).toContain('2026-08-05');
-    expect(systemDates).toContain('2026-08-09');
-    // Nothing forces the two axes into alignment.
-    expect(actualDates).not.toEqual(systemDates);
+    if (actualMonth.data.status !== 'available') throw new Error('unreachable');
+    expect(actualMonth.data.days.map((day) => day.date)).toContain('2026-08-05');
+    expect(systemMonth.data.status).toBe('empty');
+    expect(onActualDay.data.coverage.legacy.excludedSystemCount).toBe(0);
+    expect(onSystemDay.data.coverage.legacy.excludedSystemCount).toBe(1);
   });
 
-  it('D6A builds the Gap calendar from Population C, anchored on the Actual exit', async () => {
+  it('D6A leaves the Gap calendar empty while no System result is canonical, beside a populated Actual month', async () => {
     const fixture = await createFixture();
     const parsed = parseDashboardFilterState({
       account: fixture.activeAccountId,
@@ -1125,35 +1220,27 @@ describe('analytics service (real PostgreSQL)', () => {
     });
     if (!parsed.ok) throw new Error(parsed.code);
 
-    const result = await getDashboardCalendarMonthInZone(
-      parsed.state,
-      { mode: 'gap', year: 2026, month: 8 },
-      'UTC',
-      READ_OPTIONS,
-    );
-    if (!result.ok) throw new Error(result.code);
-    if (result.data.status !== 'available') throw new Error('unreachable');
-
-    for (const day of result.data.days) {
-      if (day.mode !== 'gap') throw new Error('expected a gap day');
-      // Every day's Gap is Actual minus System, never a second formula.
-      expect(Number(day.gapR)).toBeCloseTo(Number(day.actualR) - Number(day.systemR), 10);
-      expect(day.underperformedCount + day.matchedCount + day.outperformedCount).toBe(
-        day.pairedTradeCount,
-      );
-      expect(['outperformed', 'matched', 'underperformed']).toContain(day.classification);
-    }
-    // The paired population is a subset of the Actual one.
-    const actualMonth = await getDashboardCalendarMonthInZone(
-      parsed.state,
-      { mode: 'actual', year: 2026, month: 8 },
-      'UTC',
-      READ_OPTIONS,
-    );
-    if (!actualMonth.ok || actualMonth.data.status !== 'available') throw new Error('unreachable');
-    expect(result.data.totals.eligibleTradeCount).toBeLessThanOrEqual(
-      actualMonth.data.totals.eligibleTradeCount,
-    );
+    const [result, actualMonth] = await Promise.all([
+      getDashboardCalendarMonthInZone(
+        parsed.state,
+        { mode: 'gap', year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+      getDashboardCalendarMonthInZone(
+        parsed.state,
+        { mode: 'actual', year: 2026, month: 8 },
+        'UTC',
+        READ_OPTIONS,
+      ),
+    ]);
+    if (!result.ok || !actualMonth.ok) throw new Error('read failed');
+    // The fixture's four August Trades store a resolved System result beside a
+    // canonical Actual R; pairing them would mix definitions (contract §28).
+    expect(actualMonth.data.status).toBe('available');
+    expect(result.data.status).toBe('empty');
+    if (result.data.status !== 'empty') throw new Error('unreachable');
+    expect(result.data.reason).toBe('no_eligible_trades');
   });
 
   /**
@@ -1299,6 +1386,11 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(review.data.date).toBe(firstDay.date);
     expect(review.data.mode).toBe('actual');
     expect(reconcileDayReview(review.data)).toBe(true);
+    // No row's derived Trader Outcome or legacy System R reaches the review.
+    if (review.data.headline.mode === 'gap') throw new Error('expected an actual headline');
+    expect(review.data.headline.outcomes).toBeNull();
+    expect(review.data.trades.length).toBeGreaterThan(0);
+    expect(review.data.trades.every((row) => row.systemR === null)).toBe(true);
     // Every row carries a stable Trade ID for the Quick Preview boundary.
     for (const row of review.data.trades) {
       expect(row.tradeId).toMatch(/^[0-9a-f-]{36}$/i);
@@ -1508,7 +1600,8 @@ describe('analytics service (real PostgreSQL)', () => {
     });
     expect(result.data.setupAdherence.buckets.find((b) => b.bucket === '100')).toMatchObject({
       trader: { tradeCount: 1, averageR: { status: 'available', value: '2.0000' } },
-      system: { tradeCount: 1, averageR: { status: 'available', value: '2.0000' } },
+      // Its resolved System result is legacy System R, so no System group counts it.
+      system: { tradeCount: 0 },
     });
 
     expect(result.data.conditions).toHaveLength(1);
@@ -1516,7 +1609,7 @@ describe('analytics service (real PostgreSQL)', () => {
       conditionKey: condition.conditionKey,
       label: 'Above the 200 EMA',
       trader: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
-      system: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
+      system: { met: { tradeCount: 0 }, notMet: { tradeCount: 0 } },
     });
 
     expect(result.data.confidence).toMatchObject({
@@ -1525,14 +1618,14 @@ describe('analytics service (real PostgreSQL)', () => {
     });
     expect(result.data.confidence.levels.find((l) => l.level === 75)).toMatchObject({
       trader: { tradeCount: 1 },
-      system: { tradeCount: 1 },
+      system: { tradeCount: 0 },
     });
 
     expect(result.data.emotions).toHaveLength(1);
     expect(result.data.emotions[0]).toMatchObject({
       key: emotion.key,
       trader: { tradeCount: 1 },
-      system: { tradeCount: 1 },
+      system: { tradeCount: 0 },
     });
 
     expect(() => JSON.stringify(result.data)).not.toThrow();
@@ -1759,59 +1852,52 @@ describe('analytics service (real PostgreSQL)', () => {
     if (!raw.ok) throw new Error(raw.code);
     const affectedTradeIds = (records: readonly { tradeId: string }[]) =>
       [...new Set(records.map((record) => record.tradeId))].sort();
+    // Trader-side entry context: the retrospective contract Trades (pending,
+    // no-trade, late classification) are Trader-eligible below, so only the
+    // entry-context gate keeps them out here.
     expect(affectedTradeIds(raw.data.setupAdherence)).toEqual([liveTradeId]);
-    expect(affectedTradeIds(raw.data.setupAdherenceSystem)).toEqual([liveTradeId]);
     expect(affectedTradeIds(raw.data.conditions)).toEqual([liveTradeId]);
-    expect(affectedTradeIds(raw.data.conditionsSystem)).toEqual([liveTradeId]);
     expect(affectedTradeIds(raw.data.confidence)).toEqual(
       [liveTradeId, ...liveConfidenceIds].sort(),
     );
-    expect(affectedTradeIds(raw.data.confidenceSystem)).toEqual(
-      [liveTradeId, ...liveConfidenceIds].sort(),
-    );
     expect(affectedTradeIds(raw.data.emotions)).toEqual([liveTradeId]);
-    expect(affectedTradeIds(raw.data.emotionsSystem)).toEqual([liveTradeId]);
+    // System-side behavioral reads admit no legacy System result, and every
+    // stored System result here is legacy.
+    expect(raw.data.setupAdherenceSystem).toEqual([]);
+    expect(raw.data.conditionsSystem).toEqual([]);
+    expect(raw.data.confidenceSystem).toEqual([]);
+    expect(raw.data.emotionsSystem).toEqual([]);
 
+    // `createCompletedTrade` records a legacy (pre-contract) Trade, so its
+    // Actual R is not canonical: it leaves the Trader population and is
+    // disclosed as legacy Actual coverage instead.
     expect(affectedTradeIds(raw.data.trader)).toEqual(
       [
         liveTradeId,
         noChecklistId,
         retrospectiveNoTradeId,
         retrospectivePendingId,
-        retrospectiveResolvedId,
         lateClassificationId,
         zeroConfiguredId,
         ...liveConfidenceIds,
       ].sort(),
     );
-    expect(affectedTradeIds(raw.data.system)).toEqual(
-      [
-        liveTradeId,
-        noChecklistId,
-        lateClassificationId,
-        retrospectiveResolvedId,
-        zeroConfiguredId,
-        ...liveConfidenceIds,
-      ].sort(),
-    );
-    expect(affectedTradeIds(selectComparisonEligible(raw.data.comparisonCandidates))).toEqual(
-      [
-        liveTradeId,
-        noChecklistId,
-        lateClassificationId,
-        retrospectiveResolvedId,
-        zeroConfiguredId,
-        ...liveConfidenceIds,
-      ].sort(),
-    );
+    expect(raw.data.system).toEqual([]);
+    expect(selectComparisonEligible(raw.data.comparisonCandidates)).toEqual([]);
+    expect(raw.data.legacyCoverage).toEqual({
+      excludedActualCount: 1,
+      // Every resolved System result: all but the pending and no-trade Trades.
+      excludedSystemCount: 9,
+    });
+    // Rules and Mistakes are counts, not R, and stay on every closed Trade.
     expect(affectedTradeIds(raw.data.rules)).toContain(retrospectiveResolvedId);
     expect(affectedTradeIds(raw.data.mistakes)).toContain(retrospectiveResolvedId);
 
     const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ_OPTIONS);
     if (!result.ok) throw new Error(result.code);
-    expect(result.data.trader.sampleCount).toBe(11);
-    expect(result.data.system.sampleCount).toBe(9);
-    expect(result.data.comparison.comparableCount).toBe(9);
+    expect(result.data.trader.sampleCount).toBe(10);
+    expect(result.data.system.sampleCount).toBe(0);
+    expect(result.data.comparison.comparableCount).toBe(0);
     expect(result.data.setupAdherence).toMatchObject({
       sampleCount: 1,
       averageAdherence: { status: 'available', value: '1.0000' },
@@ -1819,7 +1905,7 @@ describe('analytics service (real PostgreSQL)', () => {
     });
     expect(result.data.conditions[0]).toMatchObject({
       trader: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
-      system: { met: { tradeCount: 1 }, notMet: { tradeCount: 0 } },
+      system: { met: { tradeCount: 0 }, notMet: { tradeCount: 0 } },
     });
     expect(result.data.confidence).toMatchObject({
       sampleCount: 5,
@@ -1828,22 +1914,22 @@ describe('analytics service (real PostgreSQL)', () => {
     for (const level of [0, 25, 50, 75, 100]) {
       expect(result.data.confidence.levels.find((row) => row.level === level)).toMatchObject({
         trader: { tradeCount: 1 },
-        system: { tradeCount: 1 },
+        system: { tradeCount: 0 },
       });
     }
     expect(result.data.emotions).toHaveLength(1);
     expect(result.data.emotions[0]).toMatchObject({
       trader: { tradeCount: 1 },
-      system: { tradeCount: 1 },
+      system: { tradeCount: 0 },
     });
     expect(
       result.data.strategyPerformance.strategies.find(
         (strategy) => strategy.strategyId === framework.strategyId,
       ),
-    ).toMatchObject({ trader: { tradeCount: 10 }, system: { tradeCount: 8 } });
+    ).toMatchObject({ trader: { tradeCount: 9 }, system: { tradeCount: 0 } });
     expect(
       result.data.setupPerformance.setups.find((setup) => setup.setupId === framework.setupId),
-    ).toMatchObject({ trader: { tradeCount: 10 }, system: { tradeCount: 8 } });
+    ).toMatchObject({ trader: { tradeCount: 9 }, system: { tradeCount: 0 } });
     expect(result.data.rules.followedCount).toBe(8);
     expect(result.data.mistakes.map((mistake) => mistake.tradeCount)).toEqual([2, 1]);
 
@@ -1915,8 +2001,9 @@ describe('analytics service (real PostgreSQL)', () => {
     );
     if (!zeroEligible.ok) throw new Error(zeroEligible.code);
     expect(zeroEligible.data.trader.sampleCount).toBe(1);
-    expect(zeroEligible.data.system.sampleCount).toBe(1);
-    expect(zeroEligible.data.comparison.comparableCount).toBe(1);
+    expect(zeroEligible.data.system.sampleCount).toBe(0);
+    expect(zeroEligible.data.legacyCoverage.excludedSystemCount).toBe(1);
+    expect(zeroEligible.data.comparison.comparableCount).toBe(0);
     expect(zeroEligible.data.setupAdherence).toMatchObject({
       sampleCount: 0,
       averageAdherence: { status: 'unavailable', reason: 'no_conditions_applicable' },
@@ -1984,22 +2071,36 @@ describe('analytics service (real PostgreSQL)', () => {
     const ids = (records: readonly { tradeId: string }[]) =>
       [...new Set(records.map((record) => record.tradeId))].sort();
     expect(ids(raw.data.confidence)).toEqual([equalMillisecondId, liveId].sort());
-    expect(ids(raw.data.confidenceSystem)).toEqual([equalMillisecondId, liveId, openId].sort());
     expect(ids(raw.data.trader)).toEqual([equalMillisecondId, liveId, retrospectiveId].sort());
-    expect(ids(raw.data.system)).toEqual(
-      [equalMillisecondId, liveId, openId, retrospectiveId].sort(),
-    );
-    expect(ids(selectComparisonEligible(raw.data.comparisonCandidates))).toEqual(
+    // No System result is canonical, so no System read or pair exists, and the
+    // candidates are the canonical Actual Trades alone — the System-resolved
+    // open Trade no longer enters through the System door.
+    expect(raw.data.confidenceSystem).toEqual([]);
+    expect(raw.data.system).toEqual([]);
+    expect(selectComparisonEligible(raw.data.comparisonCandidates)).toEqual([]);
+    expect(ids(raw.data.comparisonCandidates)).toEqual(
       [equalMillisecondId, liveId, retrospectiveId].sort(),
     );
-    // The System-resolved open Trade is a CANDIDATE but not a pair: it is
-    // complete on the System axis and has no Actual exit at all, which is
-    // precisely the row that makes the System total and the paired total
-    // disagree.
-    expect(ids(raw.data.comparisonCandidates)).toContain(openId);
+    expect(raw.data.legacyCoverage.excludedSystemCount).toBe(4);
+
+    // The Open-Trade half of the predicate used to be observed through the
+    // System Confidence read, which is empty now; observe it on the SQL
+    // predicate directly, against the same rows.
+    const entryContextEligible = await db
+      .select({ id: trades.id })
+      .from(trades)
+      .where(
+        and(
+          inArray(trades.id, [liveId, equalMillisecondId, retrospectiveId, openId]),
+          entryContextAnalyticsEligible(),
+        ),
+      );
+    expect(entryContextEligible.map((row) => row.id).sort()).toEqual(
+      [equalMillisecondId, liveId, openId].sort(),
+    );
   });
 
-  it('Phase 14B: unclassified Trades participate in global Trader/System/paired analytics but never in a Strategy/Setup breakdown', async () => {
+  it('Phase 14B: unclassified Trades participate in global Trader analytics and the global legacy System disclosure but never in a Strategy/Setup breakdown', async () => {
     const userId = await createUser('phase14b-unclassified');
     const workspaceId = await createWorkspace(userId, 'phase14b-unclassified');
     const accountId = await createAccount(workspaceId, 'Account');
@@ -2019,7 +2120,7 @@ describe('analytics service (real PostgreSQL)', () => {
       exitedAt: new Date('2026-08-01T10:00:00Z'),
     });
 
-    // G: Actual still open (NOT Trader-eligible) + System resolved (System-eligible) + unclassified.
+    // G: Actual still open (NOT Trader-eligible) + System resolved (legacy System evidence) + unclassified.
     await createTrade(workspaceId, {
       accountId,
       framework: null,
@@ -2029,7 +2130,7 @@ describe('analytics service (real PostgreSQL)', () => {
       systemExitedAt: new Date('2026-08-01T11:00:00Z'),
     });
 
-    // H: both Actual and System final + unclassified — comparison-eligible for Execution Gap.
+    // H: both Actual and System final + unclassified — would pair, but its System R is legacy.
     await createTrade(workspaceId, {
       accountId,
       framework: null,
@@ -2063,10 +2164,12 @@ describe('analytics service (real PostgreSQL)', () => {
     if (!global.ok) throw new Error(global.code);
     // Trader-eligible: the F Trade, the H Trade, and the classified control — 3.
     expect(global.data.trader.sampleCount).toBe(3);
-    // System-eligible: the G Trade, the H Trade, and the classified control — 3.
-    expect(global.data.system.sampleCount).toBe(3);
-    // Comparison-eligible (both sides final): the H Trade and the classified control — 2.
-    expect(global.data.comparison.comparableCount).toBe(2);
+    // No System result is canonical, so nothing is System- or comparison-
+    // eligible; the unclassified G and H Trades still participate in the
+    // global legacy System disclosure beside the classified control — 3.
+    expect(global.data.system.sampleCount).toBe(0);
+    expect(global.data.comparison.comparableCount).toBe(0);
+    expect(global.data.legacyCoverage.excludedSystemCount).toBe(3);
 
     // I: filtering by the classified Strategy excludes all three unclassified Trades.
     const filtered = await getAnalyticsSnapshot(
@@ -2075,20 +2178,22 @@ describe('analytics service (real PostgreSQL)', () => {
     );
     if (!filtered.ok) throw new Error(filtered.code);
     expect(filtered.data.trader.sampleCount).toBe(1);
-    expect(filtered.data.system.sampleCount).toBe(1);
-    expect(filtered.data.comparison.comparableCount).toBe(1);
+    expect(filtered.data.system.sampleCount).toBe(0);
+    expect(filtered.data.comparison.comparableCount).toBe(0);
+    expect(filtered.data.legacyCoverage.excludedSystemCount).toBe(1);
 
-    // Phase 15D: the same three unclassified Trades are excluded from the
+    // Phase 15D: the same unclassified Trades are excluded from the
     // Strategy/Setup breakdown itself (never an "Unknown Strategy" bucket)
     // while still counted in its coverage disclosure — global Trader
-    // eligibility (asserted above) is completely unaffected.
+    // eligibility (asserted above) is completely unaffected. The System side
+    // of that disclosure has no canonical System Trades to classify.
     expect(global.data.strategyPerformance.strategies).toHaveLength(1);
     expect(global.data.strategyPerformance.strategies[0]?.strategyId).toBe(framework.strategyId);
     expect(global.data.strategyPerformance.strategies[0]?.trader.tradeCount).toBe(1);
     expect(global.data.strategyPerformance.classifiedTraderCount).toBe(1);
     expect(global.data.strategyPerformance.unclassifiedTraderCount).toBe(2);
-    expect(global.data.strategyPerformance.classifiedSystemCount).toBe(1);
-    expect(global.data.strategyPerformance.unclassifiedSystemCount).toBe(2);
+    expect(global.data.strategyPerformance.classifiedSystemCount).toBe(0);
+    expect(global.data.strategyPerformance.unclassifiedSystemCount).toBe(0);
     expect(global.data.setupPerformance.setups).toHaveLength(1);
     expect(global.data.setupPerformance.setups[0]?.setupId).toBe(framework.setupId);
     expect(global.data.setupPerformance.setups[0]?.strategyId).toBe(framework.strategyId);
