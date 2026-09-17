@@ -26,6 +26,11 @@ import {
 } from './at-entry-draft';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import { InlineAction, Notice, RadioMark, StateText, Tag } from './trade-at-entry-controls';
+import {
+  ExitPlanLibrary,
+  newExitPlanLibraryForm,
+  type ExitPlanLibraryForm,
+} from './trade-at-entry-exit-plan-library';
 
 /**
  * THE EXIT PLAN — five visual states that must not collapse.
@@ -46,10 +51,12 @@ export function AtEntryExitPlan({
   draft,
   options,
   onChange,
+  onLibraryChanged,
 }: {
   draft: AtEntryDraft;
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
   onChange: (next: AtEntryDraft) => void;
+  onLibraryChanged: (plans: readonly TradeCreateExitPlanOption[]) => void;
 }) {
   const t = useTranslations('trades.create.recording.contractEntry.exitPlan');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -59,6 +66,10 @@ export function AtEntryExitPlan({
   const [session, setSession] = useState<ExitPlanEditorSession | null>(null);
   const [customBaseId, setCustomBaseId] = useState<string | null>(null);
   const [customText, setCustomText] = useState('');
+  // Library management state lives here, outside the overlay, so closing the
+  // editor never loses a plan the trader was part-way through writing.
+  const [managing, setManaging] = useState(false);
+  const [libraryForm, setLibraryForm] = useState<ExitPlanLibraryForm | null>(null);
 
   const { resolved, strategyDefault } = resolveExitPlan(draft, options);
   const strategyName = activeClassification(draft, options).strategy?.name ?? '';
@@ -71,6 +82,7 @@ export function AtEntryExitPlan({
     base: TradeCreateExitPlanOption | null = null,
   ) {
     lastTrigger.current = trigger;
+    setManaging(libraryForm !== null);
     setSession(setExitPlanEditorView(openExitPlanEditor(draft), view));
     if (resolved.status === 'customized') {
       setCustomBaseId(draft.exitPlan.customBaseId);
@@ -250,6 +262,14 @@ export function AtEntryExitPlan({
           );
         }}
         strategyName={strategyName}
+        managing={managing}
+        libraryForm={libraryForm}
+        onLibraryForm={setLibraryForm}
+        onLibraryChanged={onLibraryChanged}
+        onManage={(next, startForm) => {
+          setManaging(next);
+          if (startForm) setLibraryForm(newExitPlanLibraryForm());
+        }}
       />
     </section>
   );
@@ -265,6 +285,11 @@ function ExitPlanEditor({
   onChooseSaved,
   onChooseNoRule,
   onCustomText,
+  managing,
+  libraryForm,
+  onLibraryForm,
+  onManage,
+  onLibraryChanged,
 }: {
   session: ExitPlanEditorSession | null;
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
@@ -275,6 +300,11 @@ function ExitPlanEditor({
   onChooseSaved: (plan: TradeCreateExitPlanOption) => void;
   onChooseNoRule: () => void;
   onCustomText: (text: string) => void;
+  managing: boolean;
+  libraryForm: ExitPlanLibraryForm | null;
+  onLibraryForm: (form: ExitPlanLibraryForm | null) => void;
+  onManage: (managing: boolean, startForm: boolean) => void;
+  onLibraryChanged: (plans: readonly TradeCreateExitPlanOption[]) => void;
 }) {
   const t = useTranslations('trades.create.recording.contractEntry.exitPlan');
   const name = useId();
@@ -296,6 +326,18 @@ function ExitPlanEditor({
     session !== null && session.working.classification.strategy === 'selected'
       ? session.working.classification.strategyId
       : null;
+
+  const inUseIds =
+    working === null
+      ? []
+      : [
+          working.resolved.status === 'inherited' || working.resolved.status === 'saved'
+            ? working.resolved.plan.exitPlanId
+            : working.resolved.status === 'customized'
+              ? (working.resolved.base?.exitPlanId ?? null)
+              : null,
+          working.strategyDefault?.exitPlanId ?? null,
+        ].filter((id): id is string => id !== null);
 
   const choices = [
     ...options.exitPlans.map((plan) => ({
@@ -349,72 +391,98 @@ function ExitPlanEditor({
         </div>
       }
     >
-      <fieldset className="flex min-w-0 flex-col gap-2" data-exit-plan-editor="">
-        <legend className="sr-only">{t('title')}</legend>
-        {options.exitPlans.length === 0 ? (
-          <p className="text-muted-foreground text-sm">{t('emptyLibrary')}</p>
-        ) : null}
-        {choices.map((choice) => {
-          const checked = selectedKey === choice.key;
-          const id = `${name}-${choice.key}`;
-          return (
-            <div key={choice.key} className="min-w-0">
-              <input
-                type="radio"
-                id={id}
-                name={name}
-                checked={checked}
-                onChange={choice.apply}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor={id}
-                className={cn(
-                  'peer-focus-visible:ring-ring flex min-h-12 cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
-                  checked
-                    ? 'border-foreground/60 bg-accent'
-                    : 'border-control-border bg-background hover:bg-accent',
-                )}
-              >
-                <RadioMark checked={checked} className="mt-0.5" />
-                <span className="min-w-0">
-                  <span className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="text-foreground text-sm font-semibold break-words">
-                      {choice.title}
+      {managing ? (
+        <ExitPlanLibrary
+          options={options}
+          strategyId={strategyId}
+          strategyName={strategyName}
+          inUseIds={inUseIds}
+          form={libraryForm}
+          onForm={onLibraryForm}
+          onBack={() => onManage(false, false)}
+          onLibraryChanged={onLibraryChanged}
+        />
+      ) : (
+        <>
+          <fieldset className="flex min-w-0 flex-col gap-2" data-exit-plan-editor="">
+            <legend className="sr-only">{t('title')}</legend>
+            {options.exitPlans.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                {t('emptyLibrary')}{' '}
+                <InlineAction onClick={() => onManage(true, true)}>{t('createFirst')}</InlineAction>
+              </p>
+            ) : null}
+            {choices.map((choice) => {
+              const checked = selectedKey === choice.key;
+              const id = `${name}-${choice.key}`;
+              return (
+                <div key={choice.key} className="min-w-0">
+                  <input
+                    type="radio"
+                    id={id}
+                    name={name}
+                    checked={checked}
+                    onChange={choice.apply}
+                    className="peer sr-only"
+                  />
+                  <label
+                    htmlFor={id}
+                    className={cn(
+                      'peer-focus-visible:ring-ring flex min-h-12 cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+                      checked
+                        ? 'border-foreground/60 bg-accent'
+                        : 'border-control-border bg-background hover:bg-accent',
+                    )}
+                  >
+                    <RadioMark checked={checked} className="mt-0.5" />
+                    <span className="min-w-0">
+                      <span className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="text-foreground text-sm font-semibold break-words">
+                          {choice.title}
+                        </span>
+                        {choice.tag === null ? null : <Tag tone="context">{choice.tag}</Tag>}
+                      </span>
+                      <span className="text-muted-foreground mt-0.5 block text-sm break-words">
+                        {choice.detail}
+                      </span>
                     </span>
-                    {choice.tag === null ? null : <Tag tone="context">{choice.tag}</Tag>}
-                  </span>
-                  <span className="text-muted-foreground mt-0.5 block text-sm break-words">
-                    {choice.detail}
-                  </span>
-                </span>
-              </label>
+                  </label>
+                </div>
+              );
+            })}
+          </fieldset>
+          {customizing || options.exitPlans.length === 0 ? null : (
+            <div className="mt-3">
+              <InlineAction onClick={() => onManage(true, false)}>{t('manage')}</InlineAction>
             </div>
-          );
-        })}
-      </fieldset>
-      {customizing ? (
-        <div className="mt-4 flex min-w-0 flex-col gap-1.5">
-          <label htmlFor={`${name}-instructions`} className="text-foreground text-sm font-medium">
-            {t('customLabel')}
-          </label>
-          <textarea
-            id={`${name}-instructions`}
-            value={customText}
-            rows={4}
-            placeholder={t('customPlaceholder')}
-            aria-describedby={`${name}-instructions-hint`}
-            onChange={(event) => onCustomText(event.target.value)}
-            className="bg-background border-control-border text-foreground placeholder:text-subtle-foreground focus-visible:border-ring focus-visible:ring-ring/40 min-h-28 w-full rounded-md border px-3 py-2.5 text-base outline-none focus-visible:ring-[3px]"
-          />
-          <p id={`${name}-instructions-hint`} className="text-muted-foreground text-sm">
-            {t('customHint')}
-          </p>
-          <div>
-            <InlineAction onClick={() => onView('choose')}>{t('backToChoices')}</InlineAction>
-          </div>
-        </div>
-      ) : null}
+          )}
+          {customizing ? (
+            <div className="mt-4 flex min-w-0 flex-col gap-1.5">
+              <label
+                htmlFor={`${name}-instructions`}
+                className="text-foreground text-sm font-medium"
+              >
+                {t('customLabel')}
+              </label>
+              <textarea
+                id={`${name}-instructions`}
+                value={customText}
+                rows={4}
+                placeholder={t('customPlaceholder')}
+                aria-describedby={`${name}-instructions-hint`}
+                onChange={(event) => onCustomText(event.target.value)}
+                className="bg-background border-control-border text-foreground placeholder:text-subtle-foreground focus-visible:border-ring focus-visible:ring-ring/40 min-h-28 w-full rounded-md border px-3 py-2.5 text-base outline-none focus-visible:ring-[3px]"
+              />
+              <p id={`${name}-instructions-hint`} className="text-muted-foreground text-sm">
+                {t('customHint')}
+              </p>
+              <div>
+                <InlineAction onClick={() => onView('choose')}>{t('backToChoices')}</InlineAction>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
     </TradeAdaptiveOverlay>
   );
 }

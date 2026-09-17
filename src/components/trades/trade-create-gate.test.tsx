@@ -14,6 +14,7 @@ vi.mock('@/i18n/navigation', () => ({
     </a>
   ),
 }));
+vi.mock('@/server/actions/exit-plans', () => ({}));
 vi.mock('@/server/actions/trades', () => ({ createTradeAction: vi.fn() }));
 vi.mock('@/server/actions/chart-attachment', () => ({ uploadChartAttachmentAction: vi.fn() }));
 

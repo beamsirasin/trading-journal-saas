@@ -44,6 +44,7 @@ describe('AuditLogMetadata is a closed, safe shape', () => {
       readonly ruleKey?: string;
       readonly conditionKey?: string;
       readonly versionNumber?: number;
+      readonly replacedExitPlanId?: string;
       readonly ruleCategory?: string;
       readonly ruleScope?: string;
       readonly isNoop?: boolean;
@@ -67,6 +68,7 @@ describe('AuditLogMetadata is a closed, safe shape', () => {
     expectTypeOf<AuditLogMetadata>().not.toHaveProperty('strategyName');
     expectTypeOf<AuditLogMetadata>().not.toHaveProperty('setupName');
     expectTypeOf<AuditLogMetadata>().not.toHaveProperty('description');
+    expectTypeOf<AuditLogMetadata>().not.toHaveProperty('instructions');
     expectTypeOf<AuditLogMetadata>().not.toHaveProperty('notes');
     expectTypeOf<AuditLogMetadata>().not.toHaveProperty('changeNote');
     expectTypeOf<AuditLogMetadata>().not.toHaveProperty('title');

@@ -23,7 +23,7 @@ export function isValidBaseCurrency(value: unknown): value is string {
   return typeof value === 'string' && BASE_CURRENCY_PATTERN.test(value);
 }
 
-const HTML_MARKUP_PATTERN = /[<>]/;
+export const HTML_MARKUP_PATTERN = /[<>]/;
 
 /**
  * Defence in depth for free-text fields (account name, broker, platform) —

@@ -9,7 +9,7 @@ import { generateId } from '@/lib/identifiers';
 import { CONFIDENCE_LEVELS, confidenceLevelKey } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
 import { createTradeAction } from '@/server/actions/trades';
-import type { TradeCreateOptions } from '@/server/dal/trades';
+import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
 import { useRouter } from '@/i18n/navigation';
@@ -157,7 +157,7 @@ function isRendered(element: Element): boolean {
  * Only one of the two is ever rendered at a time.
  */
 export function TradeAtEntryForm({
-  options,
+  options: serverOptions,
   activeTradingAccountId = null,
   timezone,
 }: {
@@ -168,6 +168,24 @@ export function TradeAtEntryForm({
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
   const router = useRouter();
+  /*
+    THE LIBRARY A TRADER JUST CHANGED WINS OVER THE PAGE'S COPY OF IT.
+
+    A saved-plan action returns the active library it produced. Waiting for
+    the page's server props to catch up instead was a race: the action's own
+    revalidation and a client refresh could land in either order, and the
+    editor would keep showing the list from before the change — a plan just
+    saved absent, a plan just archived still offered. The adopted list lasts
+    for this form's life, which ends when the Trade is saved.
+  */
+  const [adoptedExitPlans, setAdoptedExitPlans] = useState<
+    readonly TradeCreateExitPlanOption[] | null
+  >(null);
+  const options = useMemo<TradeCreateOptions>(
+    () =>
+      adoptedExitPlans === null ? serverOptions : { ...serverOptions, exitPlans: adoptedExitPlans },
+    [serverOptions, adoptedExitPlans],
+  );
   const hydrated = useIsHydrated();
   const keyboardOpen = useKeyboardObscuringViewport();
   const wide = useIsWideViewport();
@@ -624,6 +642,7 @@ export function TradeAtEntryForm({
               draft={draft}
               options={options}
               onChange={(next) => apply(() => next)}
+              onLibraryChanged={setAdoptedExitPlans}
             />
           </section>
 

@@ -9,10 +9,26 @@ import en from '../../../messages/en.json';
 import { TradeAtEntryForm } from './trade-at-entry-form';
 
 const pushMock = vi.fn();
+const refreshMock = vi.fn();
 const createTradeMock = vi.fn();
+const libraryActions = vi.hoisted(() => ({
+  create: vi.fn(),
+  update: vi.fn(),
+  archive: vi.fn(),
+  setDefault: vi.fn(),
+  removeDefault: vi.fn(),
+}));
+
+vi.mock('@/server/actions/exit-plans', () => ({
+  createExitPlanAction: (input: unknown) => libraryActions.create(input),
+  updateExitPlanAction: (input: unknown) => libraryActions.update(input),
+  archiveExitPlanAction: (input: unknown) => libraryActions.archive(input),
+  setExitPlanStrategyDefaultAction: (input: unknown) => libraryActions.setDefault(input),
+  removeExitPlanStrategyDefaultAction: (input: unknown) => libraryActions.removeDefault(input),
+}));
 
 vi.mock('@/i18n/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, refresh: refreshMock }),
   Link: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
     <a href={href} {...rest}>
       {children}
@@ -112,6 +128,16 @@ beforeEach(() => {
   pushMock.mockReset();
   createTradeMock.mockReset();
   createTradeMock.mockResolvedValue({ ok: true, data: { tradeId: 'trade-1' } });
+  refreshMock.mockReset();
+  for (const action of Object.values(libraryActions)) {
+    action.mockReset();
+    // The server's library is unchanged unless a test says otherwise.
+    action.mockResolvedValue({
+      ok: true,
+      data: { exitPlanId: 'plan-new', replacedExitPlanId: null },
+      exitPlans: options.exitPlans,
+    });
+  }
   window.localStorage.clear();
 });
 
@@ -344,6 +370,192 @@ describe('At Entry — Exit Plan', () => {
       strategyId: BREAKOUT,
       exitPlan: { state: 'saved', exitPlanId: SCALE_OUT, provenance: 'strategy_default' },
     });
+  });
+});
+
+describe('At Entry — managing saved exit plans', () => {
+  function selectBreakout() {
+    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
+  }
+
+  function openManage() {
+    fireEvent.click(screen.getByRole('button', { name: /^(Choose another|Choose exit plan)$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Manage saved plans' }));
+  }
+
+  function libraryItem(name: string): HTMLElement {
+    const item = document.querySelector(`[data-exit-plan-library-item="${name}"]`);
+    if (!(item instanceof HTMLElement)) throw new Error(`no library item ${name}`);
+    return item;
+  }
+
+  it('creates a saved plan as a library decision, never as this trade’s answer', async () => {
+    const NEWS = '018f0000-0000-7000-8000-000000000032';
+    libraryActions.create.mockResolvedValue({
+      ok: true,
+      data: { exitPlanId: NEWS },
+      exitPlans: [
+        {
+          exitPlanId: NEWS,
+          name: 'News exit',
+          instructions: 'Flat before news.',
+          strategyId: null,
+        },
+        ...options.exitPlans,
+      ],
+    });
+    renderForm();
+    fillMinimum();
+    selectBreakout();
+    openManage();
+    fireEvent.click(screen.getByRole('button', { name: 'New saved plan' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'News exit' } });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Flat before high-impact news.\nNo re-entry for 15 minutes.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save plan' }));
+    await vi.waitFor(() => expect(libraryActions.create).toHaveBeenCalledTimes(1));
+    // The plan form lives in a portal inside the At Entry form's React tree: its
+    // submit must never bubble up and save the Trade.
+    expect(createTradeMock).not.toHaveBeenCalled();
+    expect(libraryActions.create.mock.calls[0]![0]).toMatchObject({
+      name: 'News exit',
+      instructions: 'Flat before high-impact news.\nNo re-entry for 15 minutes.',
+      mutationKey: expect.any(String),
+    });
+    expect(
+      await screen.findByText('News exit saved. Go back to choose it for this trade.'),
+    ).toBeVisible();
+
+    /*
+      THE NEW PLAN IS OFFERED FROM THE ACTION'S OWN RESULT, with no router
+      refresh at all. Waiting for the page's props to catch up raced the
+      action's revalidation and could leave the saved plan missing.
+    */
+    expect(refreshMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to exit plan choices' }));
+    expect(screen.getByRole('radio', { name: /News exit/ })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    // The inherited default is untouched: creating a plan chose nothing.
+    expect(exitPlanState()).toBe('inherited');
+  });
+
+  it('refuses a blank plan at its fields without calling the server', () => {
+    renderForm();
+    fillMinimum();
+    openManage();
+    fireEvent.click(screen.getByRole('button', { name: 'New saved plan' }));
+    fireEvent.change(screen.getByLabelText('Instructions'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save plan' }));
+    expect(screen.getByText('Enter a name for this plan.')).toBeVisible();
+    expect(screen.getByText("Write the plan's instructions.")).toBeVisible();
+    expect(libraryActions.create).not.toHaveBeenCalled();
+  });
+
+  it('keeps a half-written plan when the editor is closed and reopened', () => {
+    renderForm();
+    fillMinimum();
+    openManage();
+    fireEvent.click(screen.getByRole('button', { name: 'New saved plan' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Half written' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Choose exit plan' }));
+    expect(screen.getByLabelText('Name')).toHaveValue('Half written');
+  });
+
+  it('makes, replaces and removes a default only for the Strategy this trade uses', async () => {
+    renderForm();
+    fillMinimum();
+    openManage();
+    // No Strategy chosen: no default can be set from here.
+    expect(screen.queryByRole('button', { name: /default for/ })).toBeNull();
+    expect(
+      screen.getByText('To set a Strategy default, choose a Strategy for this trade first.'),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    selectBreakout();
+    openManage();
+    fireEvent.click(
+      within(libraryItem('Trail')).getByRole('button', {
+        name: 'Make this the default for Breakout instead',
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(libraryActions.setDefault).toHaveBeenCalledWith({
+        exitPlanId: TRAIL,
+        strategyId: BREAKOUT,
+      }),
+    );
+    fireEvent.click(
+      within(libraryItem('Scale out')).getByRole('button', {
+        name: 'Remove as default for Breakout',
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(libraryActions.removeDefault).toHaveBeenCalledWith({ exitPlanId: SCALE_OUT }),
+    );
+  });
+
+  it('confirms an archive and says when this trade’s own answer depends on the plan', async () => {
+    renderForm();
+    fillMinimum();
+    selectBreakout();
+    openManage();
+    const scaleOut = libraryItem('Scale out');
+    fireEvent.click(within(scaleOut).getByRole('button', { name: 'Archive Scale out' }));
+    expect(libraryActions.archive).not.toHaveBeenCalled();
+    expect(within(scaleOut).getByText('It also stops being a Strategy default.')).toBeVisible();
+    expect(
+      within(scaleOut).getByText(
+        "This trade's exit plan currently uses it, so that answer will become Not recorded.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(within(scaleOut).getByRole('button', { name: 'Keep plan' }));
+    expect(libraryActions.archive).not.toHaveBeenCalled();
+
+    fireEvent.click(within(scaleOut).getByRole('button', { name: 'Archive Scale out' }));
+    fireEvent.click(within(scaleOut).getByRole('button', { name: 'Archive plan' }));
+    await vi.waitFor(() =>
+      expect(libraryActions.archive).toHaveBeenCalledWith({ exitPlanId: SCALE_OUT }),
+    );
+  });
+
+  it('drops an archived plan from the choices as soon as the archive succeeds', async () => {
+    libraryActions.archive.mockResolvedValue({
+      ok: true,
+      data: { exitPlanId: TRAIL },
+      exitPlans: options.exitPlans.filter((plan) => plan.exitPlanId !== TRAIL),
+    });
+    renderForm();
+    fillMinimum();
+    openManage();
+    fireEvent.click(within(libraryItem('Trail')).getByRole('button', { name: 'Archive Trail' }));
+    fireEvent.click(within(libraryItem('Trail')).getByRole('button', { name: 'Archive plan' }));
+    expect(await screen.findByText('Trail archived.')).toBeVisible();
+    expect(document.querySelector('[data-exit-plan-library-item="Trail"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to exit plan choices' }));
+    expect(screen.queryByRole('radio', { name: /Trail/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /Scale out/ })).toBeInTheDocument();
+  });
+
+  it('shows a failed library change and changes nothing', async () => {
+    libraryActions.update.mockResolvedValue({ ok: false, error: { code: 'read_only_workspace' } });
+    renderForm();
+    fillMinimum();
+    openManage();
+    fireEvent.click(within(libraryItem('Trail')).getByRole('button', { name: 'Edit Trail' }));
+    expect(screen.getByLabelText('Instructions')).toHaveValue('Trail behind structure.');
+    fireEvent.click(screen.getByRole('button', { name: 'Save plan' }));
+    expect(
+      await screen.findByText(
+        'Your workspace is read-only, so saved plans cannot be changed right now.',
+      ),
+    ).toBeVisible();
+    expect(document.querySelector('[data-exit-plan-library-item="Trail"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(libraryItem('Trail')).toHaveTextContent('Trail behind structure.');
   });
 });
 

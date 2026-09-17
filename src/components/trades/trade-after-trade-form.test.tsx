@@ -22,6 +22,7 @@ vi.mock('@/i18n/navigation', () => ({
   ),
 }));
 
+vi.mock('@/server/actions/exit-plans', () => ({}));
 vi.mock('@/server/actions/trades', () => ({
   createTradeAction: (...args: unknown[]) => createTradeActionMock(...args),
   createCompletedTradeAction: (...args: unknown[]) => createCompletedTradeActionMock(...args),

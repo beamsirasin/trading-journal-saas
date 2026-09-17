@@ -1137,6 +1137,34 @@ export interface TradeCreateExitPlanOption {
   readonly strategyId: string | null;
 }
 
+/**
+ * THE ACTIVE SAVED EXIT PLAN LIBRARY, as At Entry offers it.
+ *
+ * The one read behind both `getTradeCreateOptions` and every library Server
+ * Action's result, so the list an editor adopts after a change is exactly the
+ * list a fresh page load would render. `workspaceId` must be session-derived.
+ */
+export async function selectActiveExitPlanOptions(
+  workspaceId: string,
+): Promise<readonly TradeCreateExitPlanOption[]> {
+  const rows = await getDb()
+    .select({
+      id: exitPlans.id,
+      name: exitPlans.name,
+      instructions: exitPlans.instructions,
+      strategyId: exitPlans.strategyId,
+    })
+    .from(exitPlans)
+    .where(and(eq(exitPlans.workspaceId, workspaceId), eq(exitPlans.isArchived, false)))
+    .orderBy(asc(exitPlans.name), asc(exitPlans.id));
+  return rows.map((plan) => ({
+    exitPlanId: plan.id,
+    name: plan.name,
+    instructions: plan.instructions,
+    strategyId: plan.strategyId,
+  }));
+}
+
 export interface TradeCreateOptions {
   readonly tradingAccounts: readonly TradeCreateAccountOption[];
   /** Active saved Exit Plans; at most one per Strategy is that Strategy's default. */
@@ -1300,16 +1328,7 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     });
   }
 
-  const exitPlanRows = await db
-    .select({
-      id: exitPlans.id,
-      name: exitPlans.name,
-      instructions: exitPlans.instructions,
-      strategyId: exitPlans.strategyId,
-    })
-    .from(exitPlans)
-    .where(and(eq(exitPlans.workspaceId, workspaceId), eq(exitPlans.isArchived, false)))
-    .orderBy(asc(exitPlans.name), asc(exitPlans.id));
+  const activeExitPlans = await selectActiveExitPlanOptions(workspaceId);
 
   return {
     tradingAccounts: accountRows.map((a) => ({
@@ -1319,12 +1338,7 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
       baseCurrency: a.baseCurrency,
     })),
     strategies: strategyOptions,
-    exitPlans: exitPlanRows.map((plan) => ({
-      exitPlanId: plan.id,
-      name: plan.name,
-      instructions: plan.instructions,
-      strategyId: plan.strategyId,
-    })),
+    exitPlans: activeExitPlans,
     emotionCatalog,
     workspaceId,
     chartUploadConfigured: isChartAttachmentStorageConfigured(),

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { EMOTION_KEYS } from '@/config/emotions';
+import { exitPlanInstructionsField } from '@/lib/exit-plans/schemas';
 import { SETUP_CONDITION_CHECK_STATUSES } from '@/lib/setup-conditions/snapshots';
 import {
   CHART_ATTACHMENT_STORAGE_KEY_MAX_LENGTH,
@@ -141,8 +142,6 @@ const positiveDecimalField = () =>
     message: 'must_be_positive',
   });
 
-const EXIT_PLAN_INSTRUCTIONS_MAX_LENGTH = 2000;
-
 /**
  * The Exit Plan answer a contract At Entry write carries. `saved` names a
  * library plan (its wording is snapshotted on the server, never trusted from
@@ -162,10 +161,8 @@ const exitPlanChoiceField = () =>
       .object({
         state: z.literal('customized'),
         baseExitPlanId: uuidField().nullable(),
-        instructions: requiredTextField(EXIT_PLAN_INSTRUCTIONS_MAX_LENGTH).refine(
-          (value) => value.trim() !== '',
-          { message: 'blank_exit_plan_instructions' },
-        ),
+        // Same field as a saved library plan: line breaks allowed, blank refused.
+        instructions: exitPlanInstructionsField(),
       })
       .strict(),
     z.object({ state: z.literal('no_rule') }).strict(),

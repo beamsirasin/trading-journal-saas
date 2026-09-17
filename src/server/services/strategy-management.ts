@@ -107,7 +107,7 @@ async function verifyActiveMembership(
 }
 
 /** Lock order step 3: canonical entitlement resolution — every mutation here is `'ordinary_write'`. */
-async function resolveMutationDenial(
+export async function resolveMutationDenial(
   tx: Parameters<typeof lockAndResolveEntitlement>[0],
   workspaceId: string,
   clock: Clock,
@@ -137,7 +137,7 @@ async function resolveMutationDenial(
  * has no such exception and calls `acquireWorkspaceWriteAccess` below,
  * which still performs steps 1–3 together.
  */
-async function lockWorkspaceAndVerifyMembership(
+export async function lockWorkspaceAndVerifyMembership(
   tx: Executor,
   workspaceId: string,
   userId: string,
@@ -152,7 +152,7 @@ async function lockWorkspaceAndVerifyMembership(
 }
 
 /** Lock order steps 1–3, composed — the common case for every mutation without an idempotency-replay exception. */
-async function acquireWorkspaceWriteAccess(
+export async function acquireWorkspaceWriteAccess(
   tx: Executor,
   workspaceId: string,
   userId: string,
@@ -172,7 +172,7 @@ type StrategyLockResult =
   | { readonly ok: false; readonly code: 'strategy_not_found' };
 
 /** Lock order step 4. */
-async function lockStrategyRow(
+export async function lockStrategyRow(
   tx: Executor,
   workspaceId: string,
   strategyId: string,

@@ -48,6 +48,8 @@ export interface AuditLogMetadata {
   readonly ruleKey?: string;
   readonly conditionKey?: string;
   readonly versionNumber?: number;
+  /** A Strategy-default change that displaced another plan — identifiers only. */
+  readonly replacedExitPlanId?: string;
   readonly ruleCategory?: string;
   /** `'strategy' | 'setup'` — never rule/setup/strategy content itself. */
   readonly ruleScope?: string;
