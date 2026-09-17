@@ -261,6 +261,7 @@ export type InsightPillar<I, C, M> =
       readonly reason:
         | 'no_eligible_trades'
         | 'sample_below_policy'
+        | 'system_results_unavailable'
         | 'strategy_attribution_missing'
         | 'psychology_not_recorded'
         | 'required_checks_not_evaluated';
@@ -453,7 +454,18 @@ function composeStrategyPillar(
   if (selectedId !== null) primaryGroup = groupMetrics(input, selectedKind, selectedId);
   else primaryGroup = eligibleGroups[0] ?? null;
   if (primaryGroup === null || sampleForGroup(primaryGroup) < 5) {
-    return emptyPillar('strategy', 'sample_below_policy', coverage, supportingMetrics);
+    /*
+      WHICH EVIDENCE IS MISSING, NOT "not enough Trades" FOR BOTH (contract
+      §25, §28). This pillar ranks by System expectancy, so with no eligible
+      canonical System Result no group can rank however many Trades exist —
+      a different fact from a cohort under the sample floor, and reporting it
+      as too few Trades reads as a judgement on the Strategy.
+    */
+    const reason =
+      coverage.systemEligibleTradeCount === 0 && coverage.actualEligibleTradeCount > 0
+        ? 'system_results_unavailable'
+        : 'sample_below_policy';
+    return emptyPillar('strategy', reason, coverage, supportingMetrics);
   }
 
   const divergence = primaryGroup.metrics.averageExecutionGapR;
@@ -1090,6 +1102,7 @@ function emptyPillar<C, M>(
   reason:
     | 'no_eligible_trades'
     | 'sample_below_policy'
+    | 'system_results_unavailable'
     | 'strategy_attribution_missing'
     | 'psychology_not_recorded'
     | 'required_checks_not_evaluated',
@@ -1104,7 +1117,7 @@ function emptyPillar<C, M>(
       ? 'no_eligible_trades'
       : reason === 'sample_below_policy'
         ? 'insufficient_sample'
-        : reason === 'strategy_attribution_missing'
+        : reason === 'strategy_attribution_missing' || reason === 'system_results_unavailable'
           ? 'unavailable'
           : 'unevaluated';
   return {

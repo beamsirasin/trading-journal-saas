@@ -147,6 +147,7 @@ export type InsightCoverageView =
 export type InsightCardReason =
   | 'no_eligible_trades'
   | 'sample_below_policy'
+  | 'system_results_unavailable'
   | 'strategy_attribution_missing'
   | 'psychology_not_recorded'
   | 'required_checks_not_evaluated'

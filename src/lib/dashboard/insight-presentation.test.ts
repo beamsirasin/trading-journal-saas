@@ -249,6 +249,25 @@ describe('Strategy pillar', () => {
     expect(strategy.minimumCohortTradeCount).toBe(5);
   });
 
+  /**
+   * TWO DIFFERENT FACTS, TWO DIFFERENT SENTENCES. This pillar ranks by the
+   * System result recorded for each Trade. With canonical System Results
+   * excluded (contract §25, §28), no group can rank however many Trades are
+   * in scope — which is not the same as a cohort under the sample floor, and
+   * must not be reported as one.
+   */
+  it('separates “no System results yet” from “not enough Trades yet”', () => {
+    const plentyOfTrades = Array.from({ length: 20 }, (_, index) => actual(index));
+    const noSystemEvidence = card(view(plentyOfTrades, { systemTrades: [] }), 'strategy');
+    expect(noSystemEvidence.reason).toBe('system_results_unavailable');
+    expect(noSystemEvidence.status).toBe('unavailable');
+    expect(noSystemEvidence.primary).toBeNull();
+
+    const tooFewTrades = card(view([actual(0), actual(1)]), 'strategy');
+    expect(tooFewTrades.reason).toBe('sample_below_policy');
+    expect(tooFewTrades.reason).not.toBe(noSystemEvidence.reason);
+  });
+
   it('marks a 5–19 Trade cohort limited while still showing the observation', () => {
     const strategy = card(view(Array.from({ length: 9 }, (_, index) => actual(index))), 'strategy');
     expect(strategy.status).toBe('limited_sample');
