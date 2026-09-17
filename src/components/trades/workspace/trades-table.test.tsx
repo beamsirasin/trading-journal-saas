@@ -48,6 +48,8 @@ function row(overrides: Partial<TradesWorkspaceRow> = {}): TradesWorkspaceRow {
     strategyVersionNumber: 2,
     status: 'closed',
     systemStatus: 'resolved',
+    // A pre-contract row: its stored outcome and System R are legacy evidence.
+    recordingContract: null,
     plannedR: '3.0000',
     actualR: '2.2000',
     systemR: '3.0000',
@@ -169,6 +171,18 @@ describe('TradesTable — never a fabricated figure', () => {
   it('says NO RESULT for a closed Trade whose outcome was never classified', () => {
     renderTable([row({ traderOutcome: null })]);
     expect(screen.getAllByRole('cell')[2]?.textContent).toBe('NO RESULT');
+  });
+
+  /*
+    An Add Trade contract row carries a derived `trader_outcome` from the
+    pre-contract close. Showing WIN here would present a trader-selected
+    answer nobody gave (contract §12, §25).
+  */
+  it('never labels an Add Trade contract row WIN or LOSS from a derived outcome', () => {
+    renderTable([row({ traderOutcome: 'win', recordingContract: 'add_trade_v1' })]);
+    const result = screen.getAllByRole('cell')[2]?.textContent;
+    expect(result).toBe('NOT ANSWERED');
+    expect(result).not.toContain('WIN');
   });
 });
 

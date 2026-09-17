@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 
 import { tradeHoldingTime } from '@/lib/trades/holding-time';
+import { tradeExecutionGapEvidence, tradeSystemResultEvidence } from '@/lib/trades/record-evidence';
 import type { TradeDetail } from '@/server/dal/trades';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { Fact, FactGrid, PanelSection } from '@/components/trades/workspace/panel-primitives';
@@ -41,6 +42,8 @@ export function TradeOverviewPanel({
   const money = (value: string | null) => formatTradeMoney(value, trade.tradingAccountBaseCurrency);
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale);
   const held = tradeHoldingTime(trade.enteredAt, trade.exitedAt);
+  const systemResult = tradeSystemResultEvidence(trade);
+  const gap = tradeExecutionGapEvidence(trade);
 
   const hasPrices =
     trade.actualEntry !== null ||
@@ -65,16 +68,31 @@ export function TradeOverviewPanel({
             hint={t('hints.actualR')}
             tone="neutral"
           />
+          {/*
+            Legacy evidence stays readable and says so; a canonical Actual R
+            is never paired with it as though the two were comparable.
+          */}
           <Fact
             label={tTrades('field.systemR')}
-            value={formatR(trade.systemR)}
-            hint={t('hints.systemR')}
+            value={systemResult.status === 'legacy_derived' ? formatR(systemResult.systemR) : null}
+            hint={
+              systemResult.status === 'legacy_derived'
+                ? tTrades('evidence.legacyHint')
+                : systemResult.status === 'unavailable' &&
+                    systemResult.reason === 'no_canonical_system_result'
+                  ? tTrades('evidence.systemUnavailable')
+                  : t('hints.systemR')
+            }
             tone="neutral"
           />
           <Fact
             label={tTrades('field.executionGap')}
-            value={formatR(trade.executionGapR)}
-            hint={t('hints.executionGap')}
+            value={gap.status === 'legacy_derived' ? formatR(gap.executionGapR) : null}
+            hint={
+              gap.status === 'unavailable' && gap.reason === 'no_canonical_system_result'
+                ? tTrades('evidence.gapUnavailable')
+                : t('hints.executionGap')
+            }
             tone="neutral"
           />
         </FactGrid>

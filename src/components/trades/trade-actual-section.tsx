@@ -2,6 +2,7 @@ import { useTranslations } from 'next-intl';
 
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
+import { TraderOutcomeEvidence } from '@/components/trades/trade-evidence';
 import {
   ExecutionCorrectionDialog,
   OpenTradeDialog,
@@ -9,7 +10,6 @@ import {
 import { AddExitDialog, CorrectExitDialog } from '@/components/trades/trade-exit-actions';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeHistoricalAdoption } from '@/components/trades/trade-historical-adoption';
-import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 
 /** ACTUAL answers only “what did I actually do?” System Plan ownership lives in SystemSection. */
 export function ActualSection({
@@ -80,7 +80,7 @@ export function ActualSection({
                 {formatR(trade.actualR) ?? t('common.notAvailable')}
               </span>
             </div>
-            <TradeOutcomeBadge outcome={trade.traderOutcome} />
+            <TraderOutcomeEvidence trade={trade} />
           </div>
         ) : isPartial ? (
           <div className="flex flex-col gap-1">

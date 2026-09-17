@@ -44,6 +44,8 @@ function row(overrides: Partial<TradesWorkspaceRow> = {}): TradesWorkspaceRow {
     strategyVersionNumber: 2,
     status: 'closed',
     systemStatus: 'resolved',
+    // A pre-contract row: its stored outcome and System R are legacy evidence.
+    recordingContract: null,
     plannedR: '3.0000',
     actualR: '2.2000',
     systemR: '3.0000',

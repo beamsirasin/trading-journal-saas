@@ -11,6 +11,7 @@ import {
   DashboardStateLink,
   useDashboardStateNavigation,
 } from '@/components/dashboard/dashboard-state-link';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeStatusBadge } from '@/components/trades/trade-status-badge';
 import {
@@ -213,8 +214,35 @@ function OverviewPanel({
         className="border-border bg-muted/30 grid min-w-0 grid-cols-3 gap-3 rounded-lg border p-3"
       >
         <Figure label={t('actualR')} value={trade.actualR} />
-        <Figure label={t('systemR')} value={trade.systemR} />
-        <Figure label={t('executionGapR')} value={trade.executionGapR} tone />
+        {/*
+          The System figure and the Gap appear only as evidence that means
+          what the label says. On an Add Trade contract row there is no
+          canonical System Result yet, so both say so instead of pairing a
+          canonical Actual R with a pre-contract System R.
+        */}
+        <Figure
+          label={tTrades('field.systemR')}
+          value={trade.systemResult.status === 'unavailable' ? null : trade.systemResult.systemR}
+          unavailable={
+            trade.systemResult.status === 'unavailable'
+              ? tTrades('evidence.systemUnavailable')
+              : undefined
+          }
+          legacy={trade.systemResult.status === 'legacy_derived'}
+        />
+        <Figure
+          label={t('executionGapR')}
+          value={
+            trade.executionGap.status === 'unavailable' ? null : trade.executionGap.executionGapR
+          }
+          unavailable={
+            trade.executionGap.status === 'unavailable'
+              ? tTrades('evidence.gapUnavailable')
+              : undefined
+          }
+          legacy={trade.executionGap.status === 'legacy_derived'}
+          tone
+        />
       </dl>
 
       <dl className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
@@ -423,18 +451,32 @@ function Figure({
   label,
   value,
   tone = false,
+  unavailable,
+  legacy = false,
 }: {
   label: string;
   value: string | null;
   tone?: boolean;
+  /** Why there is no figure — shown in place of it, never as a zero. */
+  unavailable?: string | undefined;
+  legacy?: boolean;
 }) {
   const t = useTranslations('dashboard.tradePreview');
   const formatted =
     value === null ? null : formatAnalyticsMetric({ status: 'available', value }, 'r');
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-muted-foreground text-[10px] font-medium uppercase">{label}</dt>
+      <dt className="text-muted-foreground flex min-w-0 flex-wrap items-center gap-1 text-[10px] font-medium uppercase">
+        {label}
+        {legacy ? <LegacyEvidenceBadge className="px-1 py-0 text-[9px]" /> : null}
+      </dt>
+      {unavailable === undefined ? null : (
+        <dd data-figure-unavailable="" className="text-muted-foreground text-xs leading-5">
+          {unavailable}
+        </dd>
+      )}
       <dd
+        hidden={unavailable !== undefined}
         className={cn(
           'numeric truncate text-base leading-6 font-semibold',
           tone &&

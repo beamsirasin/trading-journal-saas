@@ -1047,6 +1047,10 @@
         "error": {
           "title": "Insights could not be prepared",
           "description": "A stored figure behind these pillars could not be read. Nothing has been guessed or rounded to zero."
+        },
+        "system_results_unavailable": {
+          "title": "No System results to compare yet",
+          "description": "Strategy comparison ranks by the System result recorded for each Trade, and none of the Trades in scope has one under the current model yet. Nothing here says the Strategy performed badly."
         }
       }
     }
@@ -2505,7 +2509,8 @@
         "open": "OPEN",
         "planned": "PLANNED",
         "canceled": "CANCELED",
-        "unresolved": "NO RESULT"
+        "unresolved": "NO RESULT",
+        "outcome_unanswered": "NOT ANSWERED"
       },
       "review": {
         "needs_details": "Needs details",
@@ -2553,7 +2558,8 @@
           "systemNoTrade": "The rules would not have permitted this Trade, so there is no system result to compare against.",
           "systemNeedsReview": "The confirmed System assessment needs review after its plan information changed, so Execution Gap is withheld.",
           "actualIncomplete": "This Trade is not closed yet, so your final result is not settled and cannot be compared.",
-          "unavailable": "A comparison needs both a settled result and a recorded system result. One of them is missing."
+          "unavailable": "A comparison needs both a settled result and a recorded system result. One of them is missing.",
+          "systemNotCanonical": "This Trade was recorded under the Add Trade contract, and no System Assessment exists for it under that model yet. The earlier System figure is kept as legacy evidence rather than compared with your Actual R."
         },
         "groups": {
           "result": "Result",
@@ -2645,6 +2651,15 @@
         "open": "Open Trades",
         "closed": "Closed Trades"
       }
+    },
+    "evidence": {
+      "legacy": "Legacy",
+      "legacyHint": "Recorded under the earlier model, and excluded from canonical comparison.",
+      "outcomeUnanswered": "Outcome not answered",
+      "outcomeMissing": "Not available",
+      "systemUnavailable": "No System Assessment yet",
+      "systemLegacyNote": "This System result was recorded under the earlier System model. It stays visible as legacy evidence and is not compared with this Trade’s Actual R.",
+      "gapUnavailable": "No comparable System Result"
     }
   },
   "strategies": {

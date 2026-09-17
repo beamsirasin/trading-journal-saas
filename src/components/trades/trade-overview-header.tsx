@@ -1,5 +1,6 @@
 import { useTranslations } from 'next-intl';
 
+import { tradeExecutionGapEvidence, tradeSystemResultEvidence } from '@/lib/trades/record-evidence';
 import { tradeSystemAssessmentEligibility } from '@/lib/trades/system-assessment-view';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { HeroMetric } from '@/components/product/summary-primitives';
@@ -9,6 +10,7 @@ import {
   DeleteTradeControl,
 } from '@/components/trades/trade-destructive-actions';
 import { ArchivedBadge } from '@/components/trades/trade-detail-primitives';
+import { LegacyEvidenceBadge, TraderOutcomeEvidence } from '@/components/trades/trade-evidence';
 import { formatR, formatTradeInstant } from '@/components/trades/trade-format';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 import { SystemStatusBadge, TradeStatusBadge } from '@/components/trades/trade-status-badge';
@@ -20,7 +22,7 @@ function actualHero(
   if (trade.status === 'closed') {
     return {
       value: formatR(trade.actualR) ?? t('common.notAvailable'),
-      supporting: <TradeOutcomeBadge outcome={trade.traderOutcome} />,
+      supporting: <TraderOutcomeEvidence trade={trade} />,
     };
   }
   if (trade.status === 'open') {
@@ -41,9 +43,24 @@ function systemHero(
   t: ReturnType<typeof useTranslations<'trades'>>,
 ): { value: string; supporting?: React.ReactNode } {
   if (trade.systemStatus === 'resolved') {
+    const evidence = tradeSystemResultEvidence(trade);
+    /*
+      A contract row's Actual R is canonical, and no canonical System Result
+      exists yet, so this hero states the absence instead of promoting the
+      pre-contract figure into the approved System slot. The figure itself is
+      not hidden — the System section below shows it as legacy evidence.
+    */
+    if (evidence.status === 'unavailable') {
+      return { value: '—', supporting: t('evidence.systemUnavailable') };
+    }
     return {
-      value: formatR(trade.systemR) ?? t('common.notAvailable'),
-      supporting: <TradeOutcomeBadge outcome={trade.systemOutcome} />,
+      value: formatR(evidence.systemR) ?? t('common.notAvailable'),
+      supporting: (
+        <span className="inline-flex items-center gap-1.5">
+          <TradeOutcomeBadge outcome={trade.systemOutcome} />
+          <LegacyEvidenceBadge />
+        </span>
+      ),
     };
   }
   if (trade.systemStatus === 'pending') return { value: t('status.system.pending') };
@@ -108,7 +125,12 @@ export function TradeOverviewHeader({
           value={system.value}
           supporting={system.supporting}
         />
-        {trade.executionGapR === null ||
+        {/*
+          NEVER A MIXED GAP. `Actual R − System R` needs both sides to mean
+          the same thing; on a contract row the Actual side is canonical and
+          the stored System R is not, so there is no Gap to show.
+        */}
+        {tradeExecutionGapEvidence(trade).status === 'unavailable' ||
         tradeSystemAssessmentEligibility(trade) === 'needs_review' ? null : (
           <HeroMetric label={t('field.executionGap')} value={formatR(trade.executionGapR) ?? '—'} />
         )}

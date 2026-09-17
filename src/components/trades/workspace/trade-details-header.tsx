@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { tradeExecutionGapEvidence } from '@/lib/trades/record-evidence';
 import { deriveTradeResult } from '@/lib/trades/result';
 import { tradeSystemAssessmentEligibility } from '@/lib/trades/system-assessment-view';
 import { cn } from '@/lib/utils';
@@ -154,19 +155,29 @@ function SystemComparison({ trade }: { trade: TradeDetail }) {
   const t = useTranslations('trades.workspace.details');
   const eligibility = tradeSystemAssessmentEligibility(trade);
 
-  if (trade.executionGapR === null || eligibility === 'needs_review') {
+  const gapEvidence = tradeExecutionGapEvidence(trade);
+
+  if (gapEvidence.status === 'unavailable' || eligibility === 'needs_review') {
     // Say which side is missing. "Not available" alone leaves the reader with
     // no idea whether to resolve a System outcome or to close a position.
     const reason =
       eligibility === 'needs_review'
         ? 'systemNeedsReview'
-        : trade.systemStatus === 'no_trade'
-          ? 'systemNoTrade'
-          : trade.systemStatus !== 'resolved'
-            ? 'systemPending'
-            : trade.status !== 'closed'
-              ? 'actualIncomplete'
-              : 'unavailable';
+        : /*
+            A contract row measures Actual R against Risk at Entry; the stored
+            System R came from the pre-contract model. Subtracting one from
+            the other is the mixing this states instead (contract §25, §28).
+          */
+          gapEvidence.status === 'unavailable' &&
+            gapEvidence.reason === 'no_canonical_system_result'
+          ? 'systemNotCanonical'
+          : trade.systemStatus === 'no_trade'
+            ? 'systemNoTrade'
+            : trade.systemStatus !== 'resolved'
+              ? 'systemPending'
+              : trade.status !== 'closed'
+                ? 'actualIncomplete'
+                : 'unavailable';
     return (
       <p
         data-trade-comparison="unavailable"

@@ -289,6 +289,19 @@ describe('Trade Details — system versus trader', () => {
     expect(find('[data-trade-comparison-reason="actualIncomplete"]')).not.toBeNull();
   });
 
+  /*
+    THE MIXING THIS SLICE REMOVES. A contract row's Actual R is canonical and
+    its stored System R is not, so the sheet states that rather than showing
+    their difference as this Trade's Execution Gap (contract §25, §28).
+  */
+  it('withholds the comparison on an Add Trade contract row and says why', () => {
+    renderSheet({ recordingContract: 'add_trade_v1' });
+    expect(find('[data-trade-comparison="available"]')).toBeNull();
+    expect(find('[data-trade-comparison-reason="systemNotCanonical"]')).not.toBeNull();
+    expect(screen.queryByText('-0.80R')).toBeNull();
+    expect(screen.getByText(/no System Assessment exists for it/)).toBeInTheDocument();
+  });
+
   it('says so when the rules would not have permitted the Trade at all', () => {
     renderSheet({
       systemStatus: 'no_trade',

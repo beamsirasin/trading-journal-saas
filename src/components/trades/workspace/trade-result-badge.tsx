@@ -26,6 +26,8 @@ const VARIANT: Record<TradeResultKind, BadgeVariant> = {
   planned: 'brand',
   canceled: 'neutral',
   unresolved: 'neutral',
+  // Unanswered is not a bad result — it is a question the trader has not been asked.
+  outcome_unanswered: 'neutral',
 };
 
 export function TradeResultBadge({ result }: { result: TradeResultKind }) {

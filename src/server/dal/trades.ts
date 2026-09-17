@@ -142,6 +142,12 @@ export interface TradeListItem {
   readonly strategyVersionNumber: number | null;
   readonly status: TradeStatus;
   readonly systemStatus: SystemStatus;
+  /**
+   * `'add_trade_v1'` for a contract row, `null` for legacy — what decides
+   * whether this row's stored outcome and System R may be presented as
+   * approved Add Trade answers (`src/lib/trades/record-evidence.ts`).
+   */
+  readonly recordingContract: RecordingContract | null;
   readonly plannedR: string | null;
   readonly actualR: string | null;
   readonly systemR: string | null;
@@ -514,6 +520,7 @@ export async function listWorkspaceTrades(
         strategyVersionNumber: row.strategyVersionNumber,
         status: row.status as TradeStatus,
         systemStatus: row.systemStatus as SystemStatus,
+        recordingContract: row.recordingContract as RecordingContract | null,
         plannedR: row.plannedR,
         actualR: row.actualR,
         systemR: row.systemR,

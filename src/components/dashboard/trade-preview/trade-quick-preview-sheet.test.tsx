@@ -38,8 +38,10 @@ function model(overrides: Partial<TradeQuickPreviewModel> = {}): TradeQuickPrevi
     tradingAccountName: 'Primary',
     tradingAccountBaseCurrency: 'USD',
     actualR: '2.0000',
-    systemR: '3.0000',
-    executionGapR: '-1.0000',
+    // A legacy row by default: its System R and Gap are historical evidence.
+    traderOutcome: { status: 'legacy_derived', outcome: 'win' },
+    systemResult: { status: 'legacy_derived', systemR: '3.0000' },
+    executionGap: { status: 'legacy_derived', executionGapR: '-1.0000' },
     enteredAt: '2026-03-05T02:00:00.000Z',
     exitedAt: '2026-03-05T06:00:00.000Z',
     systemExitedAt: '2026-03-05T07:00:00.000Z',
@@ -126,10 +128,35 @@ describe('Quick Preview Overview', () => {
   });
 
   it('shows a dash rather than a fabricated Gap while a side is incomplete', () => {
-    renderSheet(model({ systemStatus: 'pending', systemR: null, executionGapR: null }));
+    renderSheet(
+      model({
+        systemStatus: 'pending',
+        systemResult: { status: 'unavailable', reason: 'not_resolved' },
+        executionGap: { status: 'unavailable', reason: 'not_comparable' },
+      }),
+    );
     const results = document.body.querySelector('[data-trade-preview-results]') as HTMLElement;
     expect(results).not.toHaveTextContent('0.00R');
-    expect(results.textContent).toContain('—');
+    expect(results.querySelectorAll('[data-figure-unavailable]').length).toBe(2);
+  });
+
+  /*
+    The mixing this slice removes: a canonical Actual R beside a pre-contract
+    System R, with their difference presented as this Trade's Execution Gap.
+  */
+  it('names the missing canonical System Result instead of pairing legacy evidence with it', () => {
+    renderSheet(
+      model({
+        systemResult: { status: 'unavailable', reason: 'no_canonical_system_result' },
+        executionGap: { status: 'unavailable', reason: 'no_canonical_system_result' },
+      }),
+    );
+    const results = document.body.querySelector('[data-trade-preview-results]') as HTMLElement;
+    expect(results).toHaveTextContent('+2.00R');
+    expect(results).not.toHaveTextContent('+3.00R');
+    expect(results).not.toHaveTextContent('-1.00R');
+    expect(results).toHaveTextContent('No System Assessment yet');
+    expect(results).toHaveTextContent('No comparable System Result');
   });
 
   it('carries the Trade identity and context after the figures', () => {

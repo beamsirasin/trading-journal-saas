@@ -126,17 +126,38 @@ describe('Quick Preview projection', () => {
    */
   it('carries the already-derived Execution Gap rather than recomputing it', () => {
     const model = composeTradeQuickPreview(detail({ executionGapR: '-1.0000' }));
-    expect(model.executionGapR).toBe('-1.0000');
+    expect(model.executionGap).toEqual({ status: 'legacy_derived', executionGapR: '-1.0000' });
     expect(model.actualR).toBe('2.0000');
-    expect(model.systemR).toBe('3.0000');
+    expect(model.systemResult).toEqual({ status: 'legacy_derived', systemR: '3.0000' });
   });
 
   it('keeps the Gap null while a side is incomplete instead of inventing a zero', () => {
     const model = composeTradeQuickPreview(
       detail({ systemStatus: 'pending', systemR: null, systemOutcome: null, executionGapR: null }),
     );
-    expect(model.executionGapR).toBeNull();
-    expect(model.systemR).toBeNull();
+    expect(model.executionGap).toEqual({ status: 'unavailable', reason: 'not_comparable' });
+    expect(model.systemResult).toEqual({ status: 'unavailable', reason: 'not_resolved' });
+  });
+
+  /*
+    A contract row's Actual R is canonical and its stored System R is not, so
+    the preview must not hand the sheet two numbers that invite subtraction
+    (contract §25, §28).
+  */
+  it('offers no System Result and no Gap for an Add Trade contract row', () => {
+    const model = composeTradeQuickPreview(
+      detail({ recordingContract: 'add_trade_v1', executionGapR: '-1.0000' }),
+    );
+    expect(model.actualR).toBe('2.0000');
+    expect(model.systemResult).toEqual({
+      status: 'unavailable',
+      reason: 'no_canonical_system_result',
+    });
+    expect(model.executionGap).toEqual({
+      status: 'unavailable',
+      reason: 'no_canonical_system_result',
+    });
+    expect(model.traderOutcome).toEqual({ status: 'unavailable', reason: 'outcome_not_selected' });
   });
 });
 

@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actions';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { formatR, formatTradeInstant, formatTradeMoney } from '@/components/trades/trade-format';
 import { TradeOutcomeBadge } from '@/components/trades/trade-outcome-badge';
 import { Button } from '@/components/ui/button';
@@ -168,12 +169,26 @@ export function SystemSection({
           <p className="font-medium">{t('status.system.cannot_determine')}</p>
         ) : (
           <>
+            {/*
+              LEGACY EVIDENCE, NAMED (contract §28). Every stored System
+              result predates the trader-confirmed System Assessment, so this
+              section shows the figures it has while saying what they are —
+              rather than letting them read as this Trade's canonical System
+              Result beside a canonical Actual R.
+            */}
+            <p
+              data-system-legacy-note=""
+              className="text-muted-foreground border-border bg-muted/30 rounded-md border px-3 py-2 text-sm"
+            >
+              {t('evidence.systemLegacyNote')}
+            </p>
             <div className="flex flex-wrap items-baseline gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs">
+                <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
                   {trade.systemR === null
                     ? t('lifecycle.system.assessment.gross')
                     : t('field.systemR')}
+                  <LegacyEvidenceBadge />
                 </span>
                 <span className="text-metric numeric">
                   {formatR(trade.systemR ?? trade.systemGrossR) ?? t('common.notAvailable')}

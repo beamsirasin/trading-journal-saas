@@ -9,6 +9,7 @@ import type { TradeDetailSection } from '@/lib/trades/section';
 import { cn } from '@/lib/utils';
 import type { TradeListItem } from '@/server/dal/trades';
 import { StatusBadge } from '@/components/status/status-badge';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { formatR } from '@/components/trades/trade-format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -86,8 +87,18 @@ function SystemSummary({ trade, t }: { trade: TradeListView; t: Translation }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <LabeledStatus kind={kind} label={t(`status.system.${trade.systemStatus}`)} />
+      {/*
+        The figure stays readable, and says what it is: no stored System
+        result is canonical yet (contract §28), so an unmarked R here would
+        read as this Trade's approved System Result.
+      */}
       {trade.systemStatus === 'resolved' ? (
-        <RValue value={trade.systemR} label={t('list.systemR')} />
+        <>
+          <RValue value={trade.systemR} label={t('list.systemR')} />
+          {trade.systemR === null ? null : (
+            <LegacyEvidenceBadge className="px-1.5 py-0 text-[10px]" />
+          )}
+        </>
       ) : null}
     </div>
   );

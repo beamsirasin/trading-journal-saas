@@ -34,6 +34,8 @@ function makeTrade(overrides: Partial<TradeListView> = {}): TradeListView {
     strategyVersionNumber: 2,
     status: 'closed',
     systemStatus: 'resolved',
+    // A pre-contract row: its stored outcome and System R are legacy evidence.
+    recordingContract: null,
     plannedR: '5.0000',
     actualR: '-0.5000',
     systemR: '2.0000',

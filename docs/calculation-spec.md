@@ -213,6 +213,12 @@ maxDrawdownR = max over t of (runningPeak(ΣR) − ΣR at t)     (positive magni
 
 **Population A — Trader eligible (the R predicate).** `isTraderEligible` requires `status = 'closed'`, no soft deletion, `actual_r` and `exited_at`. A Trader Outcome is **not** required: an unanswered outcome is a missing observation (contract §24), so it leaves outcome metrics only. Strategy, Setup, and System resolution do not gate global eligibility (classification matters only when its corresponding filter is selected). The date axis and deterministic ordering are `exited_at`, then Trade ID. The canonical SQL population above narrows this to contract rows.
 
+**One Trade's record surfaces (implemented 2026-09-18).** The population gate above answers the question for a cohort; `src/lib/trades/record-evidence.ts` answers it one row at a time, and every record surface — the Trades table, the mobile card list, Trade Details (header, Overview and Plan), and the Dashboard Quick Preview — reads it rather than the raw columns, so no two surfaces can disagree about the same Trade.
+
+- **Trader Outcome.** On a contract row it is `unavailable` with reason `outcome_not_selected`: any stored `trader_outcome` there was derived from R under the pre-contract rules, and Win / BE / Loss is the trader's own answer (contract §12). The Result column says NOT ANSWERED, distinct from a legacy row's NO RESULT. A legacy row keeps its classification, marked legacy-derived.
+- **System Result.** No stored System result is canonical (see above), so a contract row's System figure is `unavailable` with reason `no_canonical_system_result` and the surface says "No System Assessment yet". The figure itself is not deleted: the Plan tab shows it under a note naming it earlier-model evidence, and the Trade Log marks it `Legacy`.
+- **Per-Trade Execution Gap.** Offered only when both sides are the same kind of evidence. On a contract row — canonical Actual R, legacy System R — there is no Gap, not a zero and not the subtraction done anyway.
+
 **Still pending:** canonical System Positive Rate replaces the current System Win Rate once canonical System Results exist; a separately labelled legacy analytics cohort is not built.
 
 **Population B — System eligible (the predicate; the canonical population admits nothing today).** A Trade requires no soft deletion,

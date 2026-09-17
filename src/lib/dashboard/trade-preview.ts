@@ -1,3 +1,11 @@
+import {
+  tradeExecutionGapEvidence,
+  tradeOutcomeEvidence,
+  tradeSystemResultEvidence,
+  type TradeExecutionGapEvidence,
+  type TradeOutcomeEvidence,
+  type TradeSystemResultEvidence,
+} from '@/lib/trades/record-evidence';
 import type { TradeDetail } from '@/server/dal/trades';
 
 /**
@@ -52,9 +60,16 @@ export interface TradeQuickPreviewModel {
   readonly tradingAccountBaseCurrency: string;
 
   readonly actualR: string | null;
-  readonly systemR: string | null;
-  /** Already derived server-side by the calc engine; `null` while either side is incomplete. */
-  readonly executionGapR: string | null;
+  /**
+   * WHAT THIS ROW MAY CLAIM, decided once in `record-evidence.ts` rather than
+   * by the sheet. A contract row's Actual R is canonical while its stored
+   * System R is not, so the preview carries the evidence — not two bare
+   * numbers a reader would take as comparable.
+   */
+  readonly traderOutcome: TradeOutcomeEvidence;
+  readonly systemResult: TradeSystemResultEvidence;
+  /** Derived server-side by the calc engine, and offered only when both sides mean the same thing. */
+  readonly executionGap: TradeExecutionGapEvidence;
 
   readonly enteredAt: string | null;
   readonly exitedAt: string | null;
@@ -130,8 +145,9 @@ export function composeTradeQuickPreview(trade: TradeDetail): TradeQuickPreviewM
     tradingAccountBaseCurrency: trade.tradingAccountBaseCurrency,
 
     actualR: trade.actualR,
-    systemR: trade.systemR,
-    executionGapR: trade.executionGapR,
+    traderOutcome: tradeOutcomeEvidence(trade),
+    systemResult: tradeSystemResultEvidence(trade),
+    executionGap: tradeExecutionGapEvidence(trade),
 
     enteredAt: trade.enteredAt,
     exitedAt: trade.exitedAt,
