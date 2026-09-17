@@ -1096,6 +1096,35 @@ describe('trades DAL (real database)', () => {
       expect(list.items.find((item) => item.tradeId === tradeId)?.realizedRToDate).toBeNull();
     });
 
+    it('reports no Realized R for a legacy open Price-mode Trade with no exits, on Detail and List alike', async () => {
+      const { userId, workspaceId } = await freshWorkspace();
+      const fw = await createFramework(db, workspaceId, userId);
+      const created = await createTrade(workspaceId, userId, basePlanInput(fw));
+      if (!created.ok) throw new Error(`create failed: ${created.code}`);
+      // Price mode has a price-geometry denominator and no monetary risk at all,
+      // so this is the other route to a fabricated 0.00R with nothing realized.
+      const opened = await openTrade(workspaceId, userId, created.tradeId, {
+        actualResultMode: 'price',
+        actualEntry: '1.1000000000',
+        actualInitialStop: '1.0950000000',
+        enteredAt: new Date('2026-08-01T09:00:00Z'),
+      });
+      if (!opened.ok) throw new Error('open failed');
+
+      const detail = await getWorkspaceTradeDetail(created.tradeId);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.trade.recordingContract).toBeNull();
+      expect(detail.trade.actualResultMode).toBe('price');
+      expect(detail.trade.realizedRToDate).toBeNull();
+      expect(detail.trade.closedBps).toBe(0);
+
+      const list = await listWorkspaceTrades({});
+      expect(
+        list.items.find((item) => item.tradeId === created.tradeId)?.realizedRToDate,
+      ).toBeNull();
+    });
+
     it('reports no Realized R for a contract open Trade with no exits', async () => {
       const { userId, workspaceId } = await freshWorkspace();
       const fw = await createFramework(db, workspaceId, userId);
