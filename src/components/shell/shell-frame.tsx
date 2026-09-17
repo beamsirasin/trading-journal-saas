@@ -80,6 +80,7 @@ export function ShellFrame({
   children,
   banner,
   user,
+  draftOwnerKey,
   defaultExpanded,
   activeAccount,
   switchableAccounts,
@@ -89,6 +90,8 @@ export function ShellFrame({
   /** Server-rendered entitlement banner, or `null`. Passed in rather than rendered here so it stays a server component. */
   banner: ReactNode;
   user: SessionUser;
+  /** Opaque, server-derived owner of this browser's unsaved Add Trade drafts — what sign-out warns about and clears. */
+  draftOwnerKey: string;
   /** `true` when the persisted preference shows the secondary navigation panel beside the rail. */
   defaultExpanded: boolean;
   activeAccount: ActiveTradingAccountSummary | null;
@@ -239,7 +242,7 @@ export function ShellFrame({
               />
             )}
 
-            <AccountMenu user={user} />
+            <AccountMenu user={user} draftOwnerKey={draftOwnerKey} />
           </div>
         </div>
       </header>

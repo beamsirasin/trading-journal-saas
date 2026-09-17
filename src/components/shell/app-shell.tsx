@@ -6,6 +6,7 @@ import type {
   EffectiveEntitlement,
   SessionUser,
 } from '@/server/auth/dal';
+import { recordingDraftOwnerKey } from '@/server/services/recording-draft-scope';
 import { PreferencesSync } from '@/components/auth/preferences-sync';
 import { TrialBanner } from '@/components/entitlements/trial-banner';
 
@@ -67,6 +68,7 @@ export async function AppShell({
 
       <ShellFrame
         user={user}
+        draftOwnerKey={recordingDraftOwnerKey(user.id)}
         defaultExpanded={expanded}
         activeAccount={activeAccount}
         switchableAccounts={switchableAccounts}

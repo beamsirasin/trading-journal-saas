@@ -6,6 +6,20 @@ import { useState, useTransition } from 'react';
 
 import { signOut } from '@/lib/auth/client';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
+import {
+  clearOwnerRecordingDrafts,
+  ownerRecordingDrafts,
+} from '@/components/trades/recording-draft-storage';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -51,20 +65,47 @@ export interface AccountMenuUser {
  * the self-evident. Removing them took four elements out of a menu that has
  * six things to say.
  */
-export function AccountMenu({ user }: { user: AccountMenuUser }) {
+export function AccountMenu({
+  user,
+  draftOwnerKey,
+}: {
+  user: AccountMenuUser;
+  /** Opaque owner of this browser's unsaved Add Trade drafts (server-derived). */
+  draftOwnerKey: string;
+}) {
   const t = useTranslations('appNav.account');
   const tAppNav = useTranslations('appNav');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
+  /* The unsaved drafts sign-out would remove, named while the warning is open. */
+  const [draftsAtRisk, setDraftsAtRisk] = useState<readonly (string | null)[] | null>(null);
 
-  function handleLogout() {
-    setOpen(false);
+  function signOutNow() {
+    setDraftsAtRisk(null);
     startTransition(async () => {
-      await signOut();
+      const result = await signOut();
+      /*
+        SIGN-OUT CLEARS THIS USER'S LOCAL DRAFTS (UX Rules §5.8), and only after
+        the session has actually ended: a failed sign-out leaves the trader
+        signed in with their draft intact. Other users' drafts on a shared
+        browser are keyed to their own owner and are never touched.
+      */
+      if (!result.error) clearOwnerRecordingDrafts(draftOwnerKey);
       router.push('/login');
       router.refresh();
     });
+  }
+
+  function handleLogout() {
+    setOpen(false);
+    const drafts = ownerRecordingDrafts(draftOwnerKey, new Date());
+    if (drafts.length > 0) {
+      // Warn first, naming what will be lost; nothing is removed yet.
+      setDraftsAtRisk(drafts.map((draft) => draft.symbol));
+      return;
+    }
+    signOutNow();
   }
 
   return (
@@ -181,6 +222,35 @@ export function AccountMenu({ user }: { user: AccountMenuUser }) {
           {t('logout')}
         </DropdownMenuItem>
       </DropdownMenuContent>
+      <AlertDialog
+        open={draftsAtRisk !== null}
+        onOpenChange={(next) => {
+          if (!next) setDraftsAtRisk(null);
+        }}
+      >
+        <AlertDialogContent data-sign-out-draft-warning="">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('signOutDraft.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('signOutDraft.description', {
+                count: draftsAtRisk?.length ?? 0,
+                items: (draftsAtRisk ?? [])
+                  .map((symbol) => symbol ?? t('signOutDraft.unnamed'))
+                  .join(', '),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('signOutDraft.stay')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={signOutNow}
+            >
+              {t('signOutDraft.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DropdownMenu>
   );
 }

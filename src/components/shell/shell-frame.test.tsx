@@ -79,6 +79,7 @@ function renderShell(expanded = true) {
       <ThemeProvider>
         <ShellFrame
           user={USER}
+          draftOwnerKey="test-owner"
           defaultExpanded={expanded}
           activeAccount={ACCOUNT}
           switchableAccounts={[ACCOUNT]}
@@ -315,6 +316,7 @@ describe('ShellFrame — landmarks', () => {
         <ThemeProvider>
           <ShellFrame
             user={USER}
+            draftOwnerKey="test-owner"
             defaultExpanded
             activeAccount={null}
             switchableAccounts={[]}
