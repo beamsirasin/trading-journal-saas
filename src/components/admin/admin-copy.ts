@@ -9,6 +9,14 @@ export const adminCopy = {
     badge: 'Admin',
     backToApp: 'Back to app',
     signOut: 'Sign out',
+    signOutDraft: {
+      title: 'Sign out and remove your unsaved trade drafts?',
+      description:
+        'Signing out removes the unsaved trade drafts kept on this browser for your account: {items}. Trades already saved are not affected.',
+      unnamed: 'a draft with no symbol yet',
+      stay: 'Stay signed in',
+      confirm: 'Sign out and remove',
+    },
     nav: {
       overview: 'Overview',
       users: 'Users',

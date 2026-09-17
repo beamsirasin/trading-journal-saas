@@ -979,8 +979,9 @@ Implementation evidence only, recorded so redesign and migration work can find t
     timeframe and session. Condition answers, the Exit Plan and an explicit Actual Risk "Different"
     do not cross, because After Trade cannot yet represent Unanswered conditions, an Exit Plan or
     Actual Risk; they stay in their own mode's section of the Draft and are never deleted.
-  - **The `/admin` shell's sign-out** does not warn or clear Add Trade drafts. Drafts stay scoped to
-    their owner, so they never surface to another user.
+  - ~~**The `/admin` shell's sign-out** does not warn or clear Add Trade drafts.~~ Closed
+    2026-09-18: `/admin` sign-out now warns, names the drafts and clears only that owner's, reusing
+    the product shell's own mechanism.
 - After Trade redirects straight to the Review tab instead of offering Trade Saved → Review Trade /
   Done (§5.9–§5.10).
 - A Complete-history exit conflict blocks saving, and a live close derives net P&L from exit legs
@@ -991,5 +992,14 @@ Implementation evidence only, recorded so redesign and migration work can find t
 - Setup condition checks store only Met / Not Met, exit rows cannot be reason-only, and no
   observation origin is stored for psychology, Strategy, Setup, conditions or Exit Plan (§4,
   §12.7–§12.9).
+- **Retrospective recording is no longer disclosed on a Trade record (contract §28, Phase 15G.5C).**
+  `recordedRetrospectively` is still derived by the DAL and carried on the Trade, but the only
+  surface that ever showed it was the retired five-section Trade Detail
+  (`src/components/trades/trade-entry-section.tsx`, unwired since the Trades workspace rebuilt the
+  record as a six-tab Details sheet). A trader can no longer see that a Trade's entry context was
+  recorded after the outcome was known. The capture-origin columns migration 0022 enforces
+  (`*_origin`, `entered_at_source`) have no record-surface presentation either. Its browser test
+  (`e2e/trades.spec.ts`, "discloses retrospective recording once at Entry Snapshot level") is left
+  failing rather than rewritten to match the gap.
 - Timestamp fields use native date-time inputs (§8.5 — acceptable only if they meet the timezone,
   clearing and accessibility rules).

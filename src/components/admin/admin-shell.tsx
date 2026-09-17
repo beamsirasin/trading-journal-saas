@@ -19,9 +19,12 @@ import { AdminSignOutButton } from './admin-sign-out-button';
  */
 export function AdminShell({
   user,
+  draftOwnerKey,
   children,
 }: {
   user: { readonly name: string; readonly email: string };
+  /** Opaque, server-derived owner of this browser's unsaved Add Trade drafts. */
+  draftOwnerKey: string;
   children: ReactNode;
 }) {
   return (
@@ -99,7 +102,7 @@ export function AdminShell({
             >
               {adminCopy.shell.backToApp}
             </Link>
-            <AdminSignOutButton />
+            <AdminSignOutButton draftOwnerKey={draftOwnerKey} />
           </div>
         </Container>
       </header>

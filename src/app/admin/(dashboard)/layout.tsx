@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { getOptionalPlatformAdmin } from '@/server/auth/admin-dal';
 import { getOptionalSession } from '@/server/auth/dal';
+import { recordingDraftOwnerKey } from '@/server/services/recording-draft-scope';
 import { AdminShell } from '@/components/admin/admin-shell';
 import { routing } from '@/i18n/routing';
 
@@ -41,5 +42,18 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
     notFound();
   }
 
-  return <AdminShell user={adminContext.user}>{children}</AdminShell>;
+  /*
+    The same Add Trade drafts the product shell warns about (UX Rules §5.11).
+    An operator signing out here is the same person with the same browser, so
+    sign-out must not quietly destroy — or quietly keep — what the product
+    sign-out would have named.
+  */
+  return (
+    <AdminShell
+      user={adminContext.user}
+      draftOwnerKey={recordingDraftOwnerKey(adminContext.user.id)}
+    >
+      {children}
+    </AdminShell>
+  );
 }
