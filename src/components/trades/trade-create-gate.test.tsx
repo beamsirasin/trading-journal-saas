@@ -35,10 +35,13 @@ const strategy = {
 };
 const emotionCatalog = [{ key: 'calm', label: 'Calm' }];
 
-function renderGate(props: React.ComponentProps<typeof TradeCreateGate>) {
+function renderGate(props: Omit<React.ComponentProps<typeof TradeCreateGate>, 'draftScope'>) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeCreateGate {...props} />
+      <TradeCreateGate
+        {...props}
+        draftScope={{ ownerKey: 'test-owner', workspaceKey: 'test-workspace' }}
+      />
     </NextIntlClientProvider>,
   );
 }

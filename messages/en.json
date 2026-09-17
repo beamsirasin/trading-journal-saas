@@ -55,6 +55,13 @@
         "demo": "Demo",
         "prop": "Prop",
         "backtest": "Backtest"
+      },
+      "signOutDraft": {
+        "title": "Sign out and remove your unsaved trade draft?",
+        "description": "Signing out removes the unsaved trade drafts kept on this browser ({count}): {items}. Trades you have already saved are not affected.",
+        "unnamed": "a draft with no symbol yet",
+        "stay": "Stay signed in",
+        "confirm": "Sign out and remove"
       }
     },
     "logTrade": "Log a trade"
@@ -2314,11 +2321,6 @@
             "review": "Review"
           }
         },
-        "changeConfirm": {
-          "title": "Change how you are recording this trade?",
-          "description": "Going back to the choice discards what you have entered so far. The two modes record different things, so nothing is carried across.",
-          "continue": "Discard and change"
-        },
         "continue": "Continue",
         "continuing": "Opening…"
       },
@@ -2326,6 +2328,23 @@
         "progressLabel": "Log a trade progress",
         "stepStatus": "Step {current} of {total}",
         "close": "Close"
+      },
+      "draft": {
+        "recovered": "We restored your unsaved trade draft from this browser.",
+        "unrecoverable": "A trade draft kept on this browser couldn't be restored, so nothing was filled in from it. Anything you enter now replaces it.",
+        "notDurable": "This browser isn't keeping drafts right now, so reloading would lose what you've entered.",
+        "dismiss": "Dismiss",
+        "discard": "Discard draft",
+        "discardTitle": "Discard this trade draft?",
+        "discardDescription": "Everything you've entered for this trade will be removed from this browser, in both recording modes. Trades you've already saved aren't affected.",
+        "keep": "Keep draft",
+        "discardConfirm": "Discard draft",
+        "resume": {
+          "title": "You have an unsaved trade draft",
+          "description": "{symbol} · last in {mode}",
+          "continue": "Continue draft",
+          "noSymbol": "No symbol yet"
+        }
       }
     },
     "prerequisite": {

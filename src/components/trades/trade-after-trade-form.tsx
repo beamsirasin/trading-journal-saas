@@ -2,7 +2,7 @@
 
 import { Check, HeartPulse, Lightbulb, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { composePlannedR, composeTraderCloseV2 } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
@@ -30,6 +30,7 @@ import {
   meaningfulAfterTradeExit,
   type AfterTradeBasis,
   type AfterTradeCompleteness,
+  type AfterTradeDraft,
   type AfterTradeExitDraft,
   type AfterTradeExitScope,
   type AfterTradeValues,
@@ -158,10 +159,22 @@ export function TradeAfterTradeForm({
   options,
   activeTradingAccountId = null,
   timezone,
+  initialDraft = null,
+  mutationKey: draftMutationKey,
+  onDraftChange,
+  onSaved,
 }: {
   options: TradeCreateOptions;
   activeTradingAccountId?: string | null;
   timezone: string;
+  /** This mode's section of the Recording Draft, when one exists. */
+  initialDraft?: AfterTradeDraft | null;
+  /** The Recording Draft's idempotency key, so a retry after reload cannot duplicate a Trade. */
+  mutationKey?: string;
+  /** Type → Draft: called with every change. */
+  onDraftChange?: (draft: AfterTradeDraft) => void;
+  /** Called only after the server has confirmed the Trade. */
+  onSaved?: () => void;
 }) {
   const t = useTranslations('trades');
   const r = useTranslations('trades.create.recording');
@@ -171,7 +184,9 @@ export function TradeAfterTradeForm({
   const locale = useLocale();
   const router = useRouter();
   const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
-  const [mutationKey] = useState(generateId);
+  const [fallbackMutationKey] = useState(generateId);
+  const mutationKey = draftMutationKey ?? fallbackMutationKey;
+  const submitting = useRef(false);
   const initialAccount =
     (activeTradingAccountId !== null &&
     options.tradingAccounts.some((item) => item.tradingAccountId === activeTradingAccountId)
@@ -179,17 +194,41 @@ export function TradeAfterTradeForm({
       : undefined) ??
     (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
   const pristine = useMemo(() => emptyAfterTradeValues(initialAccount), [initialAccount]);
-  const [values, setValues] = useState(pristine);
-  const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
-  const [planBasis, setPlanBasis] = useState<Basis>('money');
-  const [actualBasis, setActualBasis] = useState<Basis>('money');
-  const [exits, setExits] = useState<ExitDraft[]>([]);
+  /*
+    The Recording Draft's After Trade section seeds every piece of work this
+    form holds; the form's rules for that state are unchanged.
+  */
+  const [values, setValues] = useState(initialDraft?.values ?? pristine);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(
+    (initialDraft?.values.tradingAccountId ?? initialAccount) === '',
+  );
+  const [planBasis, setPlanBasis] = useState<Basis>(initialDraft?.planBasis ?? 'money');
+  const [actualBasis, setActualBasis] = useState<Basis>(initialDraft?.actualBasis ?? 'money');
+  const [exits, setExits] = useState<ExitDraft[]>(() => [...(initialDraft?.exits ?? [])]);
   const [exitsOpen, setExitsOpen] = useState(false);
   const [editingExitId, setEditingExitId] = useState<string | null>(null);
-  const [completeness, setCompleteness] = useState<Completeness>('unknown');
-  const [conditionMet, setConditionMet] = useState<Record<string, boolean>>({});
+  const [completeness, setCompleteness] = useState<Completeness>(
+    initialDraft?.completeness ?? 'unknown',
+  );
+  const [conditionMet, setConditionMet] = useState<Record<string, boolean>>(() => ({
+    ...(initialDraft?.conditionMet ?? {}),
+  }));
   /* `null` = never answered; `[]` = explicitly none of these. */
-  const [emotions, setEmotions] = useState<readonly string[] | null>(null);
+  const [emotions, setEmotions] = useState<readonly string[] | null>(
+    initialDraft?.emotions ?? null,
+  );
+  // Type → Draft.
+  useEffect(() => {
+    onDraftChange?.({
+      values,
+      planBasis,
+      actualBasis,
+      exits,
+      completeness,
+      conditionMet,
+      emotions,
+    });
+  }, [values, planBasis, actualBasis, exits, completeness, conditionMet, emotions, onDraftChange]);
   const [journalArea, setJournalArea] = useState<JournalArea | null>(null);
   const [journalDraft, setJournalDraft] = useState<JournalDraft>({
     confirmationNotes: '',
@@ -389,11 +428,6 @@ export function TradeAfterTradeForm({
   const exitTimesDiffer =
     closingExit !== null && finalExit?.ok === true && !finalMatchesClosingExit;
 
-  const isDirty =
-    recordedExits.length > 0 ||
-    emotions !== null ||
-    (Object.keys(pristine) as (keyof Values)[]).some((key) => values[key] !== pristine[key]);
-
   const confidenceStep = confidenceOf(values.confidence);
   const ideaPreview = [
     values.confirmationNotes.trim() === '' ? null : excerpt(values.confirmationNotes),
@@ -521,6 +555,8 @@ export function TradeAfterTradeForm({
   }
 
   async function submit(unmetConfirmed = false) {
+    // One Save at a time: a second press while one is in flight is ignored.
+    if (submitting.current) return;
     const next = collectErrors();
     if (Object.keys(next).length > 0) {
       setErrors(next);
@@ -569,9 +605,10 @@ export function TradeAfterTradeForm({
     });
     const symbol = values.symbol.trim().toUpperCase();
 
+    submitting.current = true;
     setPending(true);
     setServerError(null);
-    const result = await createCompletedTradeAction({
+    const payload = {
       mutationKey,
       tradingAccountId: values.tradingAccountId,
       recordingTiming: 'after_trade',
@@ -615,13 +652,28 @@ export function TradeAfterTradeForm({
       exitedAt: exited?.ok ? exited.value : null,
       ...(completedExits.length === 0 ? {} : { exitHistoryCompleteness: completeness }),
       exits: completedExits,
-    });
+    } as const;
+    let result: Awaited<ReturnType<typeof createCompletedTradeAction>>;
+    try {
+      result = await createCompletedTradeAction(payload);
+    } catch {
+      // A network failure keeps the draft exactly as entered; the same
+      // mutation key makes the retry safe.
+      submitting.current = false;
+      setPending(false);
+      setServerError(t('errors.unexpected_error'));
+      return;
+    }
+    // Released once the server has answered: only an in-flight Save is guarded.
+    submitting.current = false;
     setPending(false);
     if (!result.ok) {
       setServerError(t(`errors.${result.error.code}`));
       return;
     }
     symbolFavorites.recordUse(symbol);
+    // Save → Persist: only now, with the Trade confirmed, does the draft go.
+    onSaved?.();
     router.push(`/app/trades?trade=${result.data.tradeId}&tab=review`);
   }
 
@@ -634,7 +686,7 @@ export function TradeAfterTradeForm({
         data-recording-mode="after_trade"
         className="text-muted-foreground mx-auto max-w-prose text-center text-sm text-pretty"
       >
-        {tMode('after_trade.description')} <TradeRecordingModeChange isDirty={isDirty} />
+        {tMode('after_trade.description')} <TradeRecordingModeChange />
       </p>
 
       <div

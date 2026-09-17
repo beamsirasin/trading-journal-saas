@@ -10,6 +10,8 @@ import en from '../../../messages/en.json';
 import th from '../../../messages/th.json';
 import { TradeRecordingForm } from './trade-recording-form';
 
+const TEST_DRAFT_SCOPE = { ownerKey: 'test-owner', workspaceKey: 'test-workspace' };
+
 const pushMock = vi.fn();
 
 vi.mock('@/i18n/navigation', () => ({
@@ -52,13 +54,19 @@ const options = {
 function renderForm(locale: 'en' | 'th' = 'en', timing: RecordingTiming = 'at_entry') {
   return render(
     <NextIntlClientProvider locale={locale} messages={locale === 'en' ? en : th}>
-      <TradeRecordingForm options={options} timing={timing} timezone="Asia/Bangkok" />
+      <TradeRecordingForm
+        options={options}
+        timing={timing}
+        timezone="Asia/Bangkok"
+        draftScope={TEST_DRAFT_SCOPE}
+      />
     </NextIntlClientProvider>,
   );
 }
 
 beforeEach(() => {
   pushMock.mockReset();
+  window.localStorage.clear();
 });
 
 describe('TradeRecordingForm — the production mode boundary', () => {
@@ -93,13 +101,15 @@ describe('TradeRecordingForm — the production mode boundary', () => {
     expect(screen.getByRole('link', { name: 'Change' })).toHaveAttribute('href', '/app/trades/new');
   });
 
-  it('asks before discarding a draft on the way back to the choice', () => {
+  it('changes mode as plain navigation that keeps the draft, never a discard warning', () => {
+    // Contract §23: changing recording mode is routine navigation. The draft
+    // survives, so there is nothing to warn about and nothing to confirm.
     renderForm();
     fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
-    expect(
-      screen.getByRole('alertdialog', { name: 'Change how you are recording this trade?' }),
-    ).toBeVisible();
+    const change = screen.getByRole('link', { name: 'Change' });
+    expect(change).toHaveAttribute('href', '/app/trades/new');
+    fireEvent.click(change);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
   it('translates the mode statement', () => {

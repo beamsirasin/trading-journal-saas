@@ -6,11 +6,14 @@ import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
 import { parseRecordingTiming } from '@/lib/trades/recording-timing';
 import {
   getActiveTradingAccount,
+  getActiveWorkspaceContext,
   getCurrentUserPreferences,
   getWorkspaceEntitlement,
 } from '@/server/auth/dal';
 import { getTradeCreateOptions } from '@/server/dal/trades';
+import { recordingDraftScopeKeys } from '@/server/services/recording-draft-scope';
 import { TradeCreateGate } from '@/components/trades/trade-create-gate';
+import { RecordingDraftResumeNotice } from '@/components/trades/trade-recording-draft-status';
 import { TradeRecordingModeSelection } from '@/components/trades/trade-recording-mode-selection';
 import { WizardShell } from '@/components/trades/trade-wizard-shell';
 import { Button } from '@/components/ui/button';
@@ -97,7 +100,7 @@ export default async function NewTradePage({
   setRequestLocale(locale as AppLocale);
   const t = await getTranslations('trades');
   const timing = parseRecordingTiming(query.timing);
-  const [options, entitlement, preferences, activeAccount] = await Promise.all([
+  const [options, entitlement, preferences, activeAccount, workspaceContext] = await Promise.all([
     getTradeCreateOptions(),
     getWorkspaceEntitlement(),
     getCurrentUserPreferences(),
@@ -119,7 +122,10 @@ export default async function NewTradePage({
       nothing here is trusted as authorization.
     */
     getActiveTradingAccount(),
+    getActiveWorkspaceContext(),
   ]);
+  // The Recording Draft belongs to this user in this workspace, and only here.
+  const draftScope = recordingDraftScopeKeys(workspaceContext.userId, workspaceContext.workspaceId);
   const authorization = authorizeWorkspaceMutation(entitlement, 'ordinary_write');
 
   /*
@@ -136,7 +142,10 @@ export default async function NewTradePage({
         description={t('create.mode.helper')}
         exitHref="/app/trades"
       >
-        <TradeRecordingModeSelection />
+        <div className="flex min-w-0 flex-col gap-4">
+          <RecordingDraftResumeNotice draftScope={draftScope} />
+          <TradeRecordingModeSelection />
+        </div>
       </WizardShell>
     );
   }
@@ -169,6 +178,7 @@ export default async function NewTradePage({
             timing={timing}
             activeTradingAccountId={activeAccount?.id ?? null}
             timezone={preferences.timezone}
+            draftScope={draftScope}
           />
         </div>
       </div>
@@ -195,6 +205,7 @@ export default async function NewTradePage({
         timing={timing}
         activeTradingAccountId={activeAccount?.id ?? null}
         timezone={preferences.timezone}
+        draftScope={draftScope}
       />
     </WizardShell>
   );

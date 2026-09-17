@@ -5,6 +5,7 @@ import type { MutationDenialReason } from '@/lib/entitlements/resolve';
 import type { RecordingTiming } from '@/lib/trades/recording-timing';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 import { EmptyState } from '@/components/product/empty-state';
+import type { RecordingDraftScope } from '@/components/trades/recording-draft-storage';
 import { TradeRecordingForm } from '@/components/trades/trade-recording-form';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
@@ -16,6 +17,7 @@ export function TradeCreateGate({
   timing,
   activeTradingAccountId,
   timezone,
+  draftScope,
 }: {
   options: TradeCreateOptions;
   canWrite: boolean;
@@ -25,6 +27,8 @@ export function TradeCreateGate({
   /** The workspace's persisted active Account, used only to seed the form's own field. */
   activeTradingAccountId?: string | null;
   timezone: string;
+  /** Server-derived, opaque scope of this user's Recording Draft in this workspace. */
+  draftScope: RecordingDraftScope;
 }) {
   const t = useTranslations('trades');
 
@@ -62,6 +66,7 @@ export function TradeCreateGate({
       timing={timing}
       activeTradingAccountId={activeTradingAccountId ?? null}
       timezone={timezone}
+      draftScope={draftScope}
     />
   );
 }

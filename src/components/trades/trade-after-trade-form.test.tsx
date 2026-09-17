@@ -9,6 +9,8 @@ import type { TradeCreateOptions } from '@/server/dal/trades';
 import en from '../../../messages/en.json';
 import { TradeRecordingForm } from './trade-recording-form';
 
+const TEST_DRAFT_SCOPE = { ownerKey: 'test-owner', workspaceKey: 'test-workspace' };
+
 const createCompletedTradeActionMock = vi.fn();
 const createTradeActionMock = vi.fn();
 const pushMock = vi.fn();
@@ -70,7 +72,12 @@ const withStrategy = {
 function renderForm(formOptions: TradeCreateOptions = options) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeRecordingForm options={formOptions} timing="after_trade" timezone="Asia/Bangkok" />
+      <TradeRecordingForm
+        options={formOptions}
+        timing="after_trade"
+        timezone="Asia/Bangkok"
+        draftScope={TEST_DRAFT_SCOPE}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -105,6 +112,8 @@ beforeEach(() => {
   });
   createTradeActionMock.mockReset();
   pushMock.mockReset();
+  // The Recording Draft persists in this browser; each test starts without one.
+  window.localStorage.clear();
 });
 
 describe('production After Trade recording', () => {
@@ -416,7 +425,12 @@ describe('production After Trade recording', () => {
   it('keeps the At Entry form on the other branch', () => {
     render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <TradeRecordingForm options={options} timing="at_entry" timezone="Asia/Bangkok" />
+        <TradeRecordingForm
+          options={options}
+          timing="at_entry"
+          timezone="Asia/Bangkok"
+          draftScope={TEST_DRAFT_SCOPE}
+        />
       </NextIntlClientProvider>,
     );
     expect(document.querySelector('[data-at-entry-linear-form]')).not.toBeNull();

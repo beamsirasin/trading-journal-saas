@@ -31,12 +31,19 @@ vi.mock('@/server/auth/dal', () => ({
   getActiveTradingAccount: async () => ({ id: 'account-1' }),
   getCurrentUserPreferences: async () => ({ locale: 'en', theme: 'dark', timezone: 'UTC' }),
   getWorkspaceEntitlement: async () => null,
+  getActiveWorkspaceContext: async () => ({ workspaceId: 'workspace-1', userId: 'user-1' }),
+}));
+vi.mock('@/server/services/recording-draft-scope', () => ({
+  recordingDraftScopeKeys: () => ({ ownerKey: 'owner', workspaceKey: 'workspace' }),
 }));
 vi.mock('@/server/dal/trades', () => ({
   getTradeCreateOptions: async () => ({ tradingAccounts: [], strategies: [], emotions: [] }),
 }));
 vi.mock('@/components/trades/trade-create-gate', () => ({
   TradeCreateGate: () => <div data-testid="create-gate" />,
+}));
+vi.mock('@/components/trades/trade-recording-draft-status', () => ({
+  RecordingDraftResumeNotice: () => null,
 }));
 vi.mock('@/components/trades/trade-recording-mode-selection', () => ({
   TradeRecordingModeSelection: () => <div data-testid="mode-selection" />,

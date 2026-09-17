@@ -2,7 +2,7 @@
 
 import { BarChart3, CircleAlert, Clock, GitBranch } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useId, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { composePlannedR } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
@@ -30,7 +30,6 @@ import {
   createAtEntryDraft,
   editEntryTime,
   followClock,
-  hasUserWork,
   removeEmotionsAnswer,
   removeSetupAnswer,
   removeStrategyAnswer,
@@ -160,10 +159,22 @@ export function TradeAtEntryForm({
   options: serverOptions,
   activeTradingAccountId = null,
   timezone,
+  initialDraft = null,
+  mutationKey: draftMutationKey,
+  onDraftChange,
+  onSaved,
 }: {
   options: TradeCreateOptions;
   activeTradingAccountId?: string | null;
   timezone: string;
+  /** This mode's section of the Recording Draft, when one exists. */
+  initialDraft?: AtEntryDraft | null;
+  /** The Recording Draft's idempotency key, so a retry after reload cannot duplicate a Trade. */
+  mutationKey?: string;
+  /** Type → Draft: called with every change. */
+  onDraftChange?: (draft: AtEntryDraft) => void;
+  /** Called only after the server has confirmed the Trade. */
+  onSaved?: () => void;
 }) {
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -190,7 +201,9 @@ export function TradeAtEntryForm({
   const keyboardOpen = useKeyboardObscuringViewport();
   const wide = useIsWideViewport();
   const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
-  const [mutationKey] = useState(generateId);
+  const [fallbackMutationKey] = useState(generateId);
+  const mutationKey = draftMutationKey ?? fallbackMutationKey;
+  const submitting = useRef(false);
   const formId = useId();
   const ids = { trade: useId(), plan: useId(), read: useId() };
 
@@ -206,7 +219,15 @@ export function TradeAtEntryForm({
       : undefined) ??
     (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
   const pristine = useMemo(() => createAtEntryDraft(initialAccount), [initialAccount]);
-  const [storedDraft, setStoredDraft] = useState(pristine);
+  const [storedDraft, setStoredDraft] = useState(initialDraft ?? pristine);
+  /*
+    TYPE → DRAFT. The stored draft, not the clock-followed view of it, is what
+    persists: an untouched entry time stays a default in storage too, so a
+    reload keeps following the clock instead of freezing a stale "now".
+  */
+  useEffect(() => {
+    onDraftChange?.(storedDraft);
+  }, [storedDraft, onDraftChange]);
   const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -334,6 +355,8 @@ export function TradeAtEntryForm({
   }
 
   async function submit() {
+    // One Save at a time: a second press while one is in flight is ignored.
+    if (submitting.current) return;
     setAttempted(true);
     setServerErrors({});
     const current = followClock(storedDraft, nowLocal());
@@ -351,9 +374,22 @@ export function TradeAtEntryForm({
     const payload = buildAtEntryPayload(current, { currency, timezone, mutationKey, options });
     if (payload === null) return;
 
+    submitting.current = true;
     setPending(true);
     setServerMessage(null);
-    const result = await createTradeAction(payload);
+    let result: Awaited<ReturnType<typeof createTradeAction>>;
+    try {
+      result = await createTradeAction(payload);
+    } catch {
+      // A network failure keeps the draft exactly as entered; the same
+      // mutation key makes the retry safe.
+      submitting.current = false;
+      setPending(false);
+      setServerMessage(t('errors.unexpected_error'));
+      return;
+    }
+    // Released once the server has answered: only an in-flight Save is guarded.
+    submitting.current = false;
     setPending(false);
     if (!result.ok) {
       const mapped: AtEntryErrors = {};
@@ -366,6 +402,8 @@ export function TradeAtEntryForm({
       return;
     }
     symbolFavorites.recordUse(payload.symbol);
+    // Save → Persist: only now, with the Trade confirmed, does the draft go.
+    onSaved?.();
     router.push(`/app/trades?trade=${result.data.tradeId}`);
   }
 
@@ -437,7 +475,7 @@ export function TradeAtEntryForm({
         className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
       >
         <span>{c('subtitle')}</span>
-        <TradeRecordingModeChange isDirty={hasUserWork(storedDraft, pristine)} />
+        <TradeRecordingModeChange />
       </p>
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-8">
