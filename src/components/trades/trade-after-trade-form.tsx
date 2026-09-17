@@ -25,6 +25,15 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from '@/i18n/navigation';
 
+import {
+  emptyAfterTradeValues,
+  meaningfulAfterTradeExit,
+  type AfterTradeBasis,
+  type AfterTradeCompleteness,
+  type AfterTradeExitDraft,
+  type AfterTradeExitScope,
+  type AfterTradeValues,
+} from './after-trade-draft';
 import { NativeSelect } from './trade-action-form';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import { TradeConfidenceChoice } from './trade-confidence-choice';
@@ -51,48 +60,13 @@ import {
 } from './trade-recording-surface';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
-type Basis = 'money' | 'price';
-type Direction = '' | 'long' | 'short';
-type ExitScope = '' | 'part' | 'all_remaining';
-type Completeness = 'unknown' | 'incomplete' | 'complete';
+type Basis = AfterTradeBasis;
+type ExitScope = AfterTradeExitScope;
+type Completeness = AfterTradeCompleteness;
+type ExitDraft = AfterTradeExitDraft;
+type Values = AfterTradeValues;
 type JournalArea = 'idea' | 'feelings';
 type ErrorMap = Record<string, string>;
-
-interface ExitDraft {
-  readonly id: string;
-  closedPercent: string;
-  scope: ExitScope;
-  value: string;
-  exitedAt: string;
-  reason: string;
-}
-
-interface Values {
-  tradingAccountId: string;
-  symbol: string;
-  direction: Direction;
-  enteredAt: string;
-  exitedAt: string;
-  strategyId: string;
-  setupId: string;
-  timeframe: string;
-  session: string;
-  plannedEntry: string;
-  plannedStop: string;
-  plannedTarget: string;
-  plannedPositionSize: string;
-  plannedRisk: string;
-  plannedReward: string;
-  actualEntry: string;
-  actualStop: string;
-  actualPositionSize: string;
-  actualRisk: string;
-  finalPnl: string;
-  confirmationNotes: string;
-  tradingviewUrl: string;
-  notes: string;
-  confidence: string;
-}
 
 /** Everything the two journal overlays edit, held as a working copy until Done. */
 interface JournalDraft {
@@ -108,35 +82,6 @@ interface JournalDraft {
   emotions: readonly string[] | null;
 }
 
-function emptyValues(tradingAccountId: string): Values {
-  return {
-    tradingAccountId,
-    symbol: '',
-    direction: '',
-    enteredAt: '',
-    exitedAt: '',
-    strategyId: '',
-    setupId: '',
-    timeframe: '',
-    session: '',
-    plannedEntry: '',
-    plannedStop: '',
-    plannedTarget: '',
-    plannedPositionSize: '',
-    plannedRisk: '',
-    plannedReward: '',
-    actualEntry: '',
-    actualStop: '',
-    actualPositionSize: '',
-    actualRisk: '',
-    finalPnl: '',
-    confirmationNotes: '',
-    tradingviewUrl: '',
-    notes: '',
-    confidence: '',
-  };
-}
-
 function blankExit(): ExitDraft {
   return {
     id: generateId(),
@@ -146,15 +91,6 @@ function blankExit(): ExitDraft {
     exitedAt: '',
     reason: '',
   };
-}
-
-function meaningfulExit(exit: ExitDraft): boolean {
-  return (
-    exit.closedPercent.trim() !== '' ||
-    exit.scope !== '' ||
-    exit.value.trim() !== '' ||
-    exit.exitedAt !== ''
-  );
 }
 
 function percentToBps(value: string): number | null | undefined {
@@ -242,7 +178,7 @@ export function TradeAfterTradeForm({
       ? activeTradingAccountId
       : undefined) ??
     (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
-  const pristine = useMemo(() => emptyValues(initialAccount), [initialAccount]);
+  const pristine = useMemo(() => emptyAfterTradeValues(initialAccount), [initialAccount]);
   const [values, setValues] = useState(pristine);
   const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
   const [planBasis, setPlanBasis] = useState<Basis>('money');
@@ -285,7 +221,7 @@ export function TradeAfterTradeForm({
     (item) => item.strategyId === journalDraft.strategyId,
   );
   const draftSetup = draftStrategy?.setups.find((item) => item.setupId === journalDraft.setupId);
-  const recordedExits = exits.filter(meaningfulExit);
+  const recordedExits = exits.filter(meaningfulAfterTradeExit);
   const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
   const emotionLabel = new Map(options.emotionCatalog.map((item) => [item.key, item.label]));
 
