@@ -129,19 +129,22 @@ async function seedStressData(userId: string): Promise<void> {
       setupId: setup.id,
       setupVersionId: setupVersion.id,
       direction: 'long' as const,
-      plannedEntry: '100.0000000000',
-      plannedStop: '99.0000000000',
-      plannedTarget: '102.0000000000',
+      // Add Trade contract v1 (migration 0021): the only rows whose Actual R
+      // canonical analytics read. Price is context only, so the plan is a Money
+      // plan aiming at twice its Risk at Entry and no Price plan is stored.
+      recordingContract: 'add_trade_v1' as const,
+      plannedRiskMinor: 100n,
+      plannedRewardMinor: 200n,
+      targetState: 'fixed' as const,
       plannedR: '2.0000',
     };
     const trader = (exitedAt: Date, actualR: string, outcome: 'win' | 'loss') => ({
       status: 'closed' as const,
       actualResultMode: 'money' as const,
-      actualEntry: '100.0000000000',
-      actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
+      actualRiskAnswer: 'matched' as const,
       enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000),
-      actualExit: '101.0000000000',
+      // Final Net P&L / Risk at Entry is exactly the stored Actual R.
       netPnlMinor: BigInt(Math.round(Number(actualR) * 100)),
       exitedAt,
       actualR,
@@ -154,6 +157,9 @@ async function seedStressData(userId: string): Promise<void> {
       systemExitedAt,
       systemExitReason: 'target_hit' as const,
       systemResolvedAt: systemExitedAt,
+      // Migrations 0017/0018: gross R and a known cost, net = gross - cost.
+      systemGrossR: systemR,
+      systemCostR: '0.0000',
       systemR,
       systemOutcome: outcome,
     });
@@ -174,7 +180,6 @@ async function seedStressData(userId: string): Promise<void> {
             mutationKey: crypto.randomUUID(),
             sequence,
             closedBps: leg.closedBps,
-            exitPrice: values.actualExit ?? null,
             realizedPnlMinor: values.netPnlMinor ?? null,
             exitedAt: leg.exitedAt,
           });

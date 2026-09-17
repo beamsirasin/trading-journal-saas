@@ -60,11 +60,18 @@ function seedAnchor(): { readonly month: string; readonly day: (offset: number) 
 const ANCHOR = seedAnchor();
 const DATE = (offset: number) => ANCHOR.day(offset).toISOString().slice(0, 10);
 
-/** The five seeded local dates, named for what each one proves. */
-const POSITIVE_ACTUAL_DAY = DATE(0); // +0.50R Actual, -2.00R Gap
-const SYSTEM_ONLY_DAY = DATE(1); // a System exit with no Actual exit of its own
-const MATCHED_GAP_DAY = DATE(2); // +1.00R Actual, 0.00R Gap, partially closed
-const NEGATIVE_ACTUAL_DAY = DATE(3); // -1.00R Actual, -2.00R Gap
+/**
+ * The five seeded local dates, named for what each one proves.
+ *
+ * Every Trader row is an Add Trade contract v1 row, so its Actual R is
+ * canonical. Every stored System result is legacy System R (no trader-confirmed
+ * System Assessment exists yet), so the System and Gap calendars admit none of
+ * them; the Gap figures below are what the legacy pairing WOULD have shown.
+ */
+const POSITIVE_ACTUAL_DAY = DATE(0); // +0.50R Actual (legacy Gap -2.00R)
+const SYSTEM_ONLY_DAY = DATE(1); // a legacy System exit with no Actual exit of its own
+const MATCHED_GAP_DAY = DATE(2); // +1.00R Actual (legacy Gap 0.00R), partially closed
+const NEGATIVE_ACTUAL_DAY = DATE(3); // -1.00R Actual (legacy Gap -2.00R)
 const BREAK_EVEN_DAY = DATE(4); // 0.00R Actual, System still pending
 
 async function provisionCalendarUser(prefix: string, seed: boolean) {
@@ -151,19 +158,22 @@ async function seedCalendarData(userId: string): Promise<void> {
       setupId: setup.id,
       setupVersionId: setupVersion.id,
       direction: 'long' as const,
-      plannedEntry: '100.0000000000',
-      plannedStop: '99.0000000000',
-      plannedTarget: '102.0000000000',
+      // Add Trade contract v1 (migration 0021): the only rows whose Actual R
+      // canonical analytics read. Price is context only, so the plan is a Money
+      // plan aiming at twice its Risk at Entry and no Price plan is stored.
+      recordingContract: 'add_trade_v1' as const,
+      plannedRiskMinor: 100n,
+      plannedRewardMinor: 200n,
+      targetState: 'fixed' as const,
       plannedR: '2.0000',
     };
     const trader = (exitedAt: Date, actualR: string, outcome: 'win' | 'loss' | 'break_even') => ({
       status: 'closed' as const,
       actualResultMode: 'money' as const,
-      actualEntry: '100.0000000000',
-      actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
+      actualRiskAnswer: 'matched' as const,
       enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000),
-      actualExit: '101.0000000000',
+      // Final Net P&L / Risk at Entry is exactly the stored Actual R.
       netPnlMinor: BigInt(Math.round(Number(actualR) * 100)),
       exitedAt,
       actualR,
@@ -176,6 +186,9 @@ async function seedCalendarData(userId: string): Promise<void> {
       systemExitedAt,
       systemExitReason: 'target_hit' as const,
       systemResolvedAt: systemExitedAt,
+      // Migrations 0017/0018: gross R and a known cost, net = gross - cost.
+      systemGrossR: systemR,
+      systemCostR: '0.0000',
       systemR,
       systemOutcome: outcome,
     });
@@ -198,7 +211,6 @@ async function seedCalendarData(userId: string): Promise<void> {
             mutationKey: crypto.randomUUID(),
             sequence,
             closedBps: leg.closedBps,
-            exitPrice: values.actualExit ?? null,
             realizedPnlMinor: values.netPnlMinor ?? null,
             exitedAt: leg.exitedAt,
           });
@@ -359,8 +371,14 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
     // state. This is a direct setup load, not a transition retry.
     await page.goto(monthUrl());
 
-    // §5 — switching mode is a URL change, and the axes genuinely differ: the
-    // day that was empty in Actual is populated in System.
+    /*
+      §5 — switching mode is a URL change. The axes are still separate, but no
+      System result is canonical yet: every seeded System result is legacy
+      System R, so the System calendar admits none of them — not even the
+      System-only day, which the legacy axis showed as +3.00R. It says so as
+      an intentional empty month, and the Dashboard discloses the four
+      excluded System results rather than letting the month read as lost.
+    */
     await page.waitForLoadState('networkidle');
     await page.locator('[data-calendar-mode-option="system"]').click();
     await expect(page).toHaveURL(/mode=system/, { timeout: 20_000 });
@@ -368,8 +386,22 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
       'aria-current',
       'page',
     );
-    await expect(cell(page, SYSTEM_ONLY_DAY)).toHaveAttribute('data-calendar-cell', 'populated');
-    await expect(cell(page, SYSTEM_ONLY_DAY)).toContainText('+3.00R');
+    await expect(page.locator('[data-calendar-mode]')).toHaveAttribute(
+      'data-calendar-mode',
+      'system',
+    );
+    await expect(calendar(page).locator('[data-calendar-state="empty"]')).toBeVisible();
+    await expect(
+      calendar(page).getByText(
+        'No eligible System result in this month within the current filters. A System result is recorded separately from your exit.',
+      ),
+    ).toBeVisible();
+    await expect(calendar(page).locator('[data-calendar-grid]')).toHaveCount(0);
+    await expect(cell(page, SYSTEM_ONLY_DAY)).toHaveCount(0);
+    await expect(calendar(page).getByText('+3.00R')).toHaveCount(0);
+    const coverage = page.locator('[data-legacy-coverage]');
+    await expect(coverage).toHaveAttribute('data-legacy-system', '4');
+    await expect(coverage).toHaveAttribute('data-legacy-actual', '0');
 
     // The mode survives a full reload — it is not component state.
     await page.reload();
@@ -377,16 +409,25 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
       'aria-current',
       'page',
     );
+    await expect(calendar(page).locator('[data-calendar-state="empty"]')).toBeVisible();
 
-    // §14 — Gap mode: relative vocabulary, and a matched day that is neither
-    // a win nor a loss.
+    /*
+      §14 — Gap mode needs both sides, and with no canonical System result no
+      day has both: an empty month that names the missing side, never the
+      legacy -2.00R / 0.00R Gap days.
+    */
     await page.waitForLoadState('networkidle');
     await page.locator('[data-calendar-mode-option="gap"]').click();
     await expect(page).toHaveURL(/mode=gap/, { timeout: 20_000 });
-    await expect(cell(page, MATCHED_GAP_DAY)).toHaveAttribute('data-calendar-tone', 'neutral');
-    await expect(cell(page, POSITIVE_ACTUAL_DAY)).toHaveAttribute('data-calendar-tone', 'negative');
-    await expect(cell(page, POSITIVE_ACTUAL_DAY)).toContainText('-2.00R');
-    await expect(calendar(page).getByText('Execution Gap')).toBeVisible();
+    await expect(page.locator('[data-calendar-mode]')).toHaveAttribute('data-calendar-mode', 'gap');
+    await expect(
+      calendar(page).getByText(
+        'No eligible Trade in this month has both an Actual and a System result yet. The Gap needs both sides.',
+      ),
+    ).toBeVisible();
+    await expect(calendar(page).locator('[data-calendar-grid]')).toHaveCount(0);
+    await expect(cell(page, MATCHED_GAP_DAY)).toHaveCount(0);
+    await expect(calendar(page).getByText('-2.00R')).toHaveCount(0);
 
     // §6 — paging the month keeps the mode AND every Dashboard filter.
     await page.waitForLoadState('networkidle');
@@ -417,6 +458,17 @@ test.describe('Dashboard Calendar, Day Review and Quick Preview', () => {
     await expect(review.locator('[data-day-review-headline="actual"]')).toContainText('+0.50R');
     await expect(review.getByText('Eligible Trades')).toBeVisible();
     await expect(review.locator('[data-day-review-row]')).toHaveCount(2);
+    /*
+      No Trader Outcome is canonical yet (Add Trade contract §12, §25): the
+      day states that rather than a 1 won / 1 lost split derived from R. And
+      no row carries a legacy System R beside its canonical Actual R, so each
+      row's Gap is unavailable rather than the legacy -1.00R / -1.00R.
+    */
+    await expect(review.locator('[data-day-review-outcomes="none"]')).toHaveText(
+      'No Trader Outcomes chosen for this day yet.',
+    );
+    await expect(review.locator('[data-day-review-gap-status="unavailable"]')).toHaveCount(2);
+    await expect(review.locator('[data-day-review-gap-status="available"]')).toHaveCount(0);
 
     // §15/§16 — selecting a Trade opens the Quick Preview beside the day.
     await page.waitForLoadState('networkidle');

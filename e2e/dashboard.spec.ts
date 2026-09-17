@@ -124,20 +124,42 @@ async function seedDashboardData(userId: string): Promise<SeededDashboardIds> {
       setupId: setup.id,
       setupVersionId: setupVersion.id,
       direction: 'long' as const,
-      plannedEntry: '100.0000000000',
-      plannedStop: '99.0000000000',
-      plannedTarget: '102.0000000000',
-      plannedR: '2.0000',
     };
-    const traderFields = (exitedAt: Date, actualR: string, traderOutcome: 'win' | 'loss') => ({
+    /*
+      ADD TRADE CONTRACT v1 ROWS (migration 0021). Canonical analytics read only
+      these (Add Trade contract §25, §28): Actual R = Final Net P&L / Risk at
+      Entry. Price is context only, so no Price plan or Price actual is stored;
+      the plan is a Money plan aiming at twice its risk, which is the 1:2 plan
+      Avg Planned RR reads from `planned_r`. `planned` rows cannot be contract
+      rows and stay legacy.
+    */
+    const contractPlan = (riskMinor: bigint) => ({
+      recordingContract: 'add_trade_v1' as const,
+      plannedRiskMinor: riskMinor,
+      plannedRewardMinor: riskMinor * 2n,
+      targetState: 'fixed' as const,
+      plannedR: '2.0000',
+    });
+    /*
+      Final Net P&L and Risk at Entry are chosen so the stored Actual R is
+      exactly their quotient: -$1.00 / $1.00 = -1R, +$1.00 / $0.50 = +2R and
+      +$1.00 / $1.00 = +1R. The money totals stay ±$1.00 per Trade, which is
+      what the Risk Performance figures below are written against.
+    */
+    const traderFields = (
+      exitedAt: Date,
+      actualR: string,
+      traderOutcome: 'win' | 'loss',
+      netPnlMinor: bigint,
+      riskMinor: bigint,
+    ) => ({
+      ...contractPlan(riskMinor),
       status: 'closed' as const,
       actualResultMode: 'money' as const,
-      actualEntry: '100.0000000000',
-      actualInitialStop: '99.0000000000',
-      actualInitialRiskMinor: 100n,
+      actualInitialRiskMinor: riskMinor,
+      actualRiskAnswer: 'matched' as const,
       enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000),
-      actualExit: '101.0000000000',
-      netPnlMinor: actualR.startsWith('-') ? -100n : 100n,
+      netPnlMinor,
       exitedAt,
       actualR,
       traderOutcome,
@@ -153,6 +175,10 @@ async function seedDashboardData(userId: string): Promise<SeededDashboardIds> {
       systemExitedAt,
       systemExitReason: 'target_hit' as const,
       systemResolvedAt: systemExitedAt,
+      // Migrations 0017/0018: a resolved System result stores its gross R and a
+      // known cost, and net R must equal gross minus cost.
+      systemGrossR: systemR,
+      systemCostR: '0.0000',
       systemR,
       systemOutcome,
     });
@@ -168,7 +194,6 @@ async function seedDashboardData(userId: string): Promise<SeededDashboardIds> {
             mutationKey: crypto.randomUUID(),
             sequence: 1,
             closedBps: 10_000,
-            exitPrice: values.actualExit ?? null,
             realizedPnlMinor: values.netPnlMinor ?? null,
             exitedAt: values.exitedAt as Date,
           });
@@ -177,28 +202,35 @@ async function seedDashboardData(userId: string): Promise<SeededDashboardIds> {
       });
     }
 
+    /*
+      The System results below are stored exactly as before, and they are all
+      LEGACY System R: no trader-confirmed System Assessment exists yet, so
+      canonical analytics admit none of them and disclose them as excluded
+      coverage instead (docs/calculation-spec.md, "Canonical analytics
+      populations").
+    */
     const divergentExit = daysAgo(5, 10);
     await insertTrade({
       ...framework,
       symbol: 'XAUUSD',
-      ...traderFields(divergentExit, '-1.0000', 'loss'),
+      ...traderFields(divergentExit, '-1.0000', 'loss', -100n, 100n),
       ...systemFields(new Date(divergentExit.getTime() + 30 * 60 * 1000), '3.0000', 'win'),
     });
     const pendingExit = daysAgo(8, 10);
     await insertTrade({
       ...framework,
       symbol: 'EURUSD',
-      ...traderFields(pendingExit, '2.0000', 'win'),
+      ...traderFields(pendingExit, '2.0000', 'win', 100n, 50n),
     });
     const openTime = daysAgo(10, 10);
     await db.insert(trades).values({
       ...framework,
+      ...contractPlan(100n),
       symbol: 'NAS100',
       status: 'open',
       actualResultMode: 'money',
-      actualEntry: '100.0000000000',
-      actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
+      actualRiskAnswer: 'matched',
       enteredAt: openTime,
       ...systemFields(new Date(openTime.getTime() + 30 * 60 * 1000), '-1.0000', 'loss'),
     });
@@ -206,7 +238,7 @@ async function seedDashboardData(userId: string): Promise<SeededDashboardIds> {
     await insertTrade({
       ...framework,
       symbol: 'GBPUSD',
-      ...traderFields(olderExit, '1.0000', 'win'),
+      ...traderFields(olderExit, '1.0000', 'win', 100n, 100n),
       ...systemFields(new Date(olderExit.getTime() + 30 * 60 * 1000), '2.0000', 'win'),
     });
     await db.insert(trades).values({
@@ -263,8 +295,9 @@ test.describe('real Dashboard', () => {
     await expect(page.getByText(/fictional demo data/i)).toHaveCount(0);
     await expect(page.getByText(/trade journaling is coming/i)).toHaveCount(0);
 
-    // D3 Basic KPI row. The seeded 90D Trader population is XAUUSD -1R
-    // (-100 minor), EURUSD +2R (+100) and GBPUSD +1R (+100), all USD.
+    // D3 Basic KPI row. The seeded Trader population is three Add Trade
+    // contract rows: XAUUSD -1R (-100 minor), EURUSD +2R (+100) and GBPUSD +1R
+    // (+100), all USD.
     const netPnl = page.locator('[data-dashboard-widget="basic.net-pnl"]');
     const totalR = page.locator('[data-dashboard-widget="basic.total-r"]');
     const winRate = page.locator('[data-dashboard-widget="basic.trade-win-rate"]');
@@ -278,15 +311,25 @@ test.describe('real Dashboard', () => {
     await expect(netPnl.getByText('3 Trades')).toBeVisible();
     await expect(netPnl.getByText('USD · 3 Trades')).toHaveCount(0);
     /*
-      -1R + 2R + 1R = +2.00R over three Trades, so +0.67R each. Every seeded
-      Trade plans 100 -> 102 against a 99 stop, which is a 1:2 plan, and the
-      Trader axis is what Total R and Avg R / Trade read — never the System
-      axis beside them, which totals +4.00R over its own population.
+      -1R + 2R + 1R = +2.00R over three Trades, so +0.67R each, each measured
+      against its own Risk at Entry. Every seeded Trade plans a reward of twice
+      its risk, which is a 1:2 plan.
     */
     await expect(totalR.getByText('+2.00R')).toBeVisible();
-    await expect(winRate.getByText('66.67%')).toBeVisible();
     await expect(plannedRr.getByText('1 : 2.00')).toBeVisible();
     await expect(avgRPerTrade.getByText('+0.67R')).toBeVisible();
+    /*
+      WIN RATE HAS NO CANONICAL OUTCOMES TO COUNT (Add Trade contract §12, §25).
+      Every stored Trader Outcome, contract rows included, is still derived
+      from R on close; the trader has chosen none. So the card says so instead
+      of printing the 66.67% a derived outcome would give, and it has no
+      outcome ring or W/BE/L breakdown to open.
+    */
+    await expect(winRate).toHaveAttribute('data-kpi-status', 'unavailable');
+    await expect(winRate).toHaveAttribute('data-kpi-reason', 'no_outcomes_answered');
+    await expect(winRate.getByText('No outcomes chosen yet')).toBeVisible();
+    await expect(winRate.getByText('66.67%')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Show Win Rate breakdown' })).toHaveCount(0);
 
     // The three retired cards are gone from the band, not merely renamed.
     for (const retired of ['Profit Factor', 'Day Win %', 'Avg Win / Loss', 'Trade Win %']) {
@@ -295,12 +338,30 @@ test.describe('real Dashboard', () => {
     // Nothing is permanently printed under those four figures any more.
     await expect(winRate.getByText('2W · 0BE · 1L')).toHaveCount(0);
 
-    // Four cards carry an indicator; Net P&L has none, because no Population
-    // A money series is published to draw one from.
+    /*
+      Every Trader row here is canonical, so nothing Actual is disclosed as
+      excluded. The three stored System results are legacy System R (no
+      trader-confirmed System Assessment exists yet), and the page says so in
+      one sentence rather than letting the empty comparison below read as lost
+      data.
+    */
+    const coverage = page.locator('[data-legacy-coverage]');
+    await expect(coverage).toHaveCount(1);
+    await expect(coverage).toHaveAttribute('data-legacy-actual', '0');
+    await expect(coverage).toHaveAttribute('data-legacy-system', '3');
+    await expect(
+      coverage.getByText(
+        '3 System results use the earlier System model and are not included. System figures return once System Assessment is recorded under the new model.',
+      ),
+    ).toBeVisible();
+
+    // Three cards carry an indicator; Net P&L has none, because no Population
+    // A money series is published to draw one from, and Win Rate has none
+    // because it has no canonical outcomes to split.
     await expect(netPnl.locator('[data-kpi-indicator]')).toHaveCount(0);
+    await expect(winRate.locator('[data-kpi-indicator]')).toHaveCount(0);
     for (const [card, kind] of [
       [totalR, 'cumulativeR'],
-      [winRate, 'outcomeSplit'],
       [plannedRr, 'riskRewardSplit'],
       [avgRPerTrade, 'divergingBar'],
     ] as const) {
@@ -328,17 +389,18 @@ test.describe('real Dashboard', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByText(/for every 1R of risk/i)).toHaveCount(0);
 
-    // So is the indicator, and it is where the breakdowns went. Reached from
-    // the keyboard, read back in words, closed with Escape.
-    await page.getByRole('button', { name: 'Show Win Rate breakdown' }).focus();
+    /*
+      So is the indicator, and it is where the breakdowns went. With no
+      canonical outcomes the Win Rate breakdown no longer exists (asserted
+      above), so the keyboard path is exercised on the Avg Planned RR detail:
+      reached from the keyboard, read back in words, closed with Escape.
+    */
+    await page.getByRole('button', { name: 'Show Avg Planned RR detail' }).focus();
     await page.keyboard.press('Enter');
     const breakdown = page.locator('[data-slot="kpi-indicator-content"]');
-    await expect(breakdown.getByText('Wins')).toBeVisible();
-    await expect(breakdown.locator('[data-kpi-detail-row="wins"]').getByText('2')).toBeVisible();
     await expect(
-      breakdown.locator('[data-kpi-detail-row="breakEvens"]').getByText('0'),
+      breakdown.getByText('For every 1R you risked, your Plans aimed at 2.00R.'),
     ).toBeVisible();
-    await expect(breakdown.locator('[data-kpi-detail-row="losses"]').getByText('1')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(breakdown).toHaveCount(0);
 
@@ -405,95 +467,60 @@ test.describe('real Dashboard', () => {
       await expect(trigger).toBeFocused();
     }
 
-    const system = page.locator('[data-dashboard-panel="system"]');
-    const trader = page.locator('[data-dashboard-panel="trader"]');
-    const comparison = page.locator('[data-dashboard-panel="execution-gap"]');
-    await expect(system.getByRole('heading', { name: 'System Performance' })).toBeVisible();
-    await expect(trader.getByRole('heading', { name: 'Trader Performance' })).toBeVisible();
-    const metric = (side: typeof system, key: string) =>
-      side.locator(`[data-performance-metric="${key}"]`);
     /*
-      THREE VISIBLE METRICS A SIDE, AND EXACTLY THESE THREE.
+      THE SYSTEM vs TRADER CARD — one merged card since the Dashboard folded
+      the System baseline, the Trader baseline and the Execution Gap together
+      (every figure in it reads the paired Population C).
 
-      The section was cut from seven values a side to Total R, Win Rate and
-      Avg Win / Loss. The retired figures are still computed and still on the
-      Dashboard payload; the assertion below is that none of them RENDER.
+      No stored System result is canonical yet: the trader-confirmed System
+      Assessment is not implemented, so every seeded System result is legacy
+      System R and Population C admits nothing (docs/calculation-spec.md,
+      "Canonical analytics populations"). The card must therefore say that
+      nothing is comparable — never pair a legacy System R with a canonical
+      Actual R, and never draw a plot or a table of nothing.
     */
-    await expect(system.getByText('+4.00R')).toBeVisible();
-    await expect(trader.getByText('+2.00R')).toBeVisible();
-    await expect(system.getByText('System Total R')).toBeVisible();
-    await expect(trader.getByText('Actual Total R')).toBeVisible();
-    await expect(metric(system, 'winRate').getByText('66.67%')).toBeVisible();
-    await expect(metric(trader, 'winRate').getByText('66.67%')).toBeVisible();
-    // Avg Win / Loss, from the canonical `payoffRatio` on each side's own
-    // population. System wins +3R/+3R avg +3R against a -1R loss -> 3.00x;
-    // Trader wins +2R/+1R avg +1.5R against a -1R loss -> 1.50x.
-    await expect(metric(system, 'payoffRatio').getByText('Avg Win / Loss')).toBeVisible();
-    await expect(metric(trader, 'payoffRatio').getByText('Avg Win / Loss')).toBeVisible();
-    for (const side of [system, trader]) {
-      await expect(side.locator('[data-performance-metric]')).toHaveCount(2);
-      for (const retired of [
-        'averageR',
-        'expectancyR',
-        'profitFactor',
-        'maximumDrawdownR',
-        'sampleCount',
-      ]) {
-        await expect(side.locator(`[data-performance-metric="${retired}"]`)).toHaveCount(0);
-      }
-      // The taglines and the W/BE/L composition went with them.
-      await expect(side.getByText('2W · 0BE · 1L')).toHaveCount(0);
-      await expect(side.getByText(/Avg R|Expectancy|Profit Factor|Max Drawdown/)).toHaveCount(0);
-    }
-    await expect(system.getByText('Strategy outcomes')).toHaveCount(0);
-    await expect(trader.getByText('Your actual execution')).toHaveCount(0);
-    // D5 material stays out of both cards.
-    for (const side of [system, trader]) {
-      await expect(side.getByText(/Execution Gap|System Edge Captured/)).toHaveCount(0);
-    }
-
-    // Two equal halves sharing a top edge, neither side dominant.
-    const [systemDesktopBox, traderDesktopBox] = await Promise.all([
-      system.boundingBox(),
-      trader.boundingBox(),
-    ]);
-    expect(Math.round(systemDesktopBox?.y ?? -1)).toBe(Math.round(traderDesktopBox?.y ?? -2));
-    expect(
-      Math.abs((systemDesktopBox?.width ?? 0) - (traderDesktopBox?.width ?? 0)),
-    ).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs((systemDesktopBox?.height ?? 0) - (traderDesktopBox?.height ?? 0)),
-    ).toBeLessThanOrEqual(1);
-    // D5B — the Execution Gap section, reading Population C only.
+    const comparison = page.locator('[data-dashboard-panel="execution-gap"]');
+    await expect(page.locator('[data-execution-gap-status]')).toHaveAttribute(
+      'data-execution-gap-status',
+      'empty',
+    );
+    await expect(
+      comparison.getByRole('heading', { level: 2, name: 'System vs Trader' }),
+    ).toBeVisible();
+    await expect(comparison.locator('[data-execution-gap-state="empty"]')).toBeVisible();
+    await expect(
+      comparison.getByText(
+        'A Trade joins this comparison only once it has both a completed Actual result and a confirmed System result. No eligible Trade in this range has both yet.',
+      ),
+    ).toBeVisible();
     const gapSummary = comparison.locator('[data-execution-gap-summary]');
     const gapMetric = (key: string) => gapSummary.locator(`[data-execution-gap-metric="${key}"]`);
-    /*
-      TWO HEADLINE FIGURES AND ONE CHART.
-
-      The Execution Gap headline is the SUM over the paired population —
-      -4R + -1R = -5R — by explicit product decision; Average Execution Gap
-      is still computed but is no longer a Dashboard headline, and the paired
-      count is no longer a third KPI. Population C itself is untouched: the
-      -5R total is still the same two paired Trades it always was.
-    */
-    await expect(gapMetric('totalGap').getByText('-5.00R')).toBeVisible();
-    await expect(gapSummary.getByText('Execution Gap')).toBeVisible();
-    await expect(gapMetric('systemEdgeCaptured').getByText('0.00%')).toBeVisible();
-    await expect(gapSummary.getByText('System Edge Captured')).toBeVisible();
+    // The two headline figures stay in place and say why they have no value.
     await expect(gapSummary.locator('[data-execution-gap-metric]')).toHaveCount(2);
+    for (const key of ['totalGap', 'systemEdgeCaptured']) {
+      await expect(gapMetric(key)).toHaveAttribute('data-metric-status', 'unavailable');
+      await expect(gapMetric(key).getByText('No comparable Trades')).toBeVisible();
+    }
+    await expect(gapSummary.getByText('Execution Gap')).toBeVisible();
+    await expect(gapSummary.getByText('System Edge Captured')).toBeVisible();
     for (const retired of ['averageGap', 'pairedTrades']) {
       await expect(gapSummary.locator(`[data-execution-gap-metric="${retired}"]`)).toHaveCount(0);
     }
-    // Exactly one plot, reachable by name rather than as bare SVG. The daily
-    // strip and the distribution bar left the Dashboard presentation; their
-    // data and their components are untouched.
-    await expect(
-      comparison.getByRole('img', { name: /Cumulative paired System R/i }),
-    ).toBeVisible();
-    await expect(comparison.getByRole('img')).toHaveCount(1);
-    await expect(comparison.getByRole('img', { name: /Execution Gap per day/i })).toHaveCount(0);
+    // The legacy figures the seed WOULD have produced never appear: a -5.00R
+    // summed gap and a +4.00R System total over legacy System R.
+    await expect(comparison.getByText(/-5\.00R|\+4\.00R|0\.00%/)).toHaveCount(0);
+    // No plot, no comparison table, no retired strip or distribution bar.
+    await expect(comparison.getByRole('img')).toHaveCount(0);
+    await expect(comparison.locator('[data-comparison-table]')).toHaveCount(0);
     await expect(comparison.locator('[data-execution-gap-distribution]')).toHaveCount(0);
     await expect(comparison.getByText('Underperformed System')).toHaveCount(0);
+    // The two retired baseline cards did not come back beside it.
+    await expect(page.locator('[data-dashboard-panel="system"]')).toHaveCount(0);
+    await expect(page.locator('[data-dashboard-panel="trader"]')).toHaveCount(0);
+    // And no Recent Trades row prints a System R or a Gap beside its Actual R.
+    await expect(
+      page.locator('[data-dashboard-panel="recent-trades"]').getByText('System R'),
+    ).toHaveCount(0);
     // §14 — the Recent Trades preview is three fields (day, symbol, Actual R),
     // so the Strategy and Setup names no longer render anywhere on the
     // Dashboard. The pinned-vs-renamed version-name invariant they used to
@@ -532,15 +559,24 @@ test.describe('real Dashboard', () => {
     );
     // The retired section-local control must not have come back.
     await expect(page.getByRole('link', { name: '30D' })).toHaveCount(0);
-    // The range change reaches both independent baselines. Asserted on the
-    // hero Total R rather than on a Trade count, which is no longer one of
-    // this section's rendered metrics.
-    await expect(system.getByText('+2.00R')).toBeVisible();
-    await expect(trader.getByText('+1.00R')).toBeVisible();
-    // The one 30D pair is Actual -1R minus System +3R = -4R, and with a
-    // single pair the summed headline equals that pair's own gap.
-    await expect(gapMetric('totalGap').getByText('-4.00R')).toBeVisible();
-    await expect(gapMetric('systemEdgeCaptured').getByText('-33.33%')).toBeVisible();
+    /*
+      The range change reaches the canonical Trader figures: 30D holds XAUUSD
+      -1R and EURUSD +2R, so +1.00R over two Trades, and the 45-day GBPUSD
+      +1R has left the total.
+    */
+    await expect(totalR.getByText('+1.00R', { exact: true })).toBeVisible();
+    await expect(avgRPerTrade.getByText('+0.50R', { exact: true })).toBeVisible();
+    // It reaches the coverage disclosure on the System axis's own date gate
+    // too: only the XAUUSD (5 days) and NAS100 (10 days) System exits remain.
+    await expect(coverage).toHaveAttribute('data-legacy-system', '2');
+    // Still no comparable pair — the XAUUSD Actual -1R against its legacy
+    // System +3R would have been a -4.00R Gap and -33.33% captured.
+    await expect(page.locator('[data-execution-gap-status]')).toHaveAttribute(
+      'data-execution-gap-status',
+      'empty',
+    );
+    await expect(gapMetric('totalGap').getByText('No comparable Trades')).toBeVisible();
+    await expect(comparison.getByText(/-4\.00R|-33\.33%/)).toHaveCount(0);
     // 30D Net P&L is -100 + 100 = exactly zero: unsigned and neutral, never "+$0.00".
     await expect(netPnl.getByText('$0.00', { exact: true })).toBeVisible();
 
@@ -558,15 +594,15 @@ test.describe('real Dashboard', () => {
     */
     await page.locator('[data-recent-trade-row] a').filter({ hasText: 'XAUUSD' }).first().click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
-    await expect(page.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
-    await expect(page.getByText('Pinned Momentum v1').first()).toBeVisible();
+    const details = page.locator('[data-trade-details]');
+    await expect(details.getByRole('heading', { name: 'XAUUSD' })).toBeVisible();
     await expect(page.getByText('Current Momentum Name')).toHaveCount(0);
-    // The Setup snapshot name lives in the preview's own Strategy & Setup
-    // section rather than on its overview, so it is opened rather than
-    // assumed — this is the surface that now owns both pinned names.
-    await page.getByRole('link', { name: /Strategy & Setup Recorded/i }).click();
-    await expect(page).toHaveURL(/section=strategy/, { timeout: 20_000 });
-    await expect(page.getByText('Pinned Opening Retest').first()).toBeVisible();
+    // The Trades workspace opens the Trade in its Details sheet, whose Plan
+    // tab owns both pinned names. It is opened rather than assumed, and read
+    // inside the sheet so the Trade table behind it cannot satisfy it.
+    await details.locator('[data-trade-details-tab="plan"]').click();
+    await expect(details.getByText('Pinned Momentum v1').first()).toBeVisible();
+    await expect(details.getByText('Pinned Opening Retest').first()).toBeVisible();
     await expect(page.getByText('Current Momentum Name')).toHaveCount(0);
     await page.goto('/en/app');
     await page.getByRole('link', { name: /View full analytics/i }).click();
@@ -582,22 +618,25 @@ test.describe('real Dashboard', () => {
     await loginAs(page, 'en', user);
     await page.goto('/en/app');
 
-    const system = page.locator('[data-dashboard-panel="system"]');
-    const trader = page.locator('[data-dashboard-panel="trader"]');
+    /*
+      The System and Trader baselines were merged into the one System vs
+      Trader card, which is what stacks here now. Its canonical state for this
+      seed is empty: every seeded System result is legacy System R.
+    */
     const comparison = page.locator('[data-dashboard-panel="execution-gap"]');
     // Assert the count rather than letting strict mode throw on it. Under a
     // loaded machine the streamed server tree and the hydrated one can both be
     // attached for a frame; `toHaveCount` polls through that, while a panel
     // that genuinely rendered twice still fails here.
-    await expect(system).toHaveCount(1);
-    await expect(trader).toHaveCount(1);
-    await expect(system).toBeVisible();
-    await expect(trader).toBeVisible();
+    await expect(comparison).toHaveCount(1);
     await expect(comparison).toBeVisible();
+    await expect(page.locator('[data-dashboard-panel="system"]')).toHaveCount(0);
+    await expect(page.locator('[data-dashboard-panel="trader"]')).toHaveCount(0);
 
     // Two-column KPI grid at narrow widths, with the fifth card spanning both.
     const netPnl = page.locator('[data-dashboard-widget="basic.net-pnl"]');
     const totalR = page.locator('[data-dashboard-widget="basic.total-r"]');
+    const winRate = page.locator('[data-dashboard-widget="basic.trade-win-rate"]');
     const avgRPerTrade = page.locator('[data-dashboard-widget="basic.avg-r-per-trade"]');
     for (const width of [390, 320]) {
       await page.setViewportSize({ width, height: 800 });
@@ -611,32 +650,18 @@ test.describe('real Dashboard', () => {
       expect(second?.x ?? 0).toBeGreaterThan((first?.x ?? 0) + (first?.width ?? 0) - 1);
       expect(last?.width ?? 0).toBeGreaterThan((first?.width ?? 0) * 1.5);
       await expect(netPnl.getByText('+$1.00')).toBeVisible();
+      await expect(totalR.getByText('+2.00R')).toBeVisible();
+      // The unavailable Win Rate reason is a sentence, and it must stay
+      // readable inside its half-width card rather than overflow it.
+      await expect(winRate.getByText('No outcomes chosen yet')).toBeVisible();
+      const winRateInner = await winRate.evaluate((node) => ({
+        scroll: node.scrollWidth,
+        client: node.clientWidth,
+      }));
+      expect(winRateInner.scroll).toBeLessThanOrEqual(winRateInner.client + 1);
 
-      // D4: the two performance cards stack full width and never scroll
-      // sideways, and their figures stay legible at this width.
-      const [systemBox, traderBox] = await Promise.all([
-        system.boundingBox(),
-        trader.boundingBox(),
-      ]);
-      expect(traderBox?.y ?? 0).toBeGreaterThan((systemBox?.y ?? 0) + (systemBox?.height ?? 0) - 1);
-      expect(Math.abs((systemBox?.width ?? 0) - (traderBox?.width ?? 0))).toBeLessThanOrEqual(1);
-      expect(systemBox?.width ?? 0).toBeGreaterThan(width * 0.7);
-      for (const side of [system, trader]) {
-        const inner = await side.evaluate((node) => ({
-          scroll: node.scrollWidth,
-          client: node.clientWidth,
-        }));
-        expect(inner.scroll).toBeLessThanOrEqual(inner.client + 1);
-        const size = await side
-          .locator('[data-performance-metric="winRate"] dd span')
-          .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
-        expect(size).toBeGreaterThanOrEqual(12);
-      }
-      await expect(system.getByText('System Total R')).toBeVisible();
-      await expect(trader.getByText('Actual Total R')).toBeVisible();
-
-      // D5B stacks full width and the plots must fit the viewport: a chart the
-      // reader has to pan sideways is the failure this asserts against.
+      // The merged comparison card stacks full width and never scrolls
+      // sideways; its empty state and headline labels stay legible.
       const gapBox = await comparison.boundingBox();
       expect(gapBox?.width ?? 0).toBeGreaterThan(width * 0.7);
       const gapInner = await comparison.evaluate((node) => ({
@@ -645,9 +670,11 @@ test.describe('real Dashboard', () => {
       }));
       expect(gapInner.scroll).toBeLessThanOrEqual(gapInner.client + 1);
       await expect(comparison.getByText('Execution Gap', { exact: true }).first()).toBeVisible();
-      await expect(
-        comparison.getByRole('img', { name: /Cumulative paired System R/i }),
-      ).toBeVisible();
+      await expect(comparison.locator('[data-execution-gap-state="empty"]')).toBeVisible();
+      const size = await comparison
+        .locator('[data-execution-gap-metric="totalGap"] dd')
+        .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+      expect(size).toBeGreaterThanOrEqual(12);
       await expect(page.getByRole('button', { name: 'About Net P&L' })).toBeVisible();
       const kpiOverflow = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,
@@ -656,9 +683,10 @@ test.describe('real Dashboard', () => {
       expect(kpiOverflow.scroll).toBeLessThanOrEqual(kpiOverflow.client + 1);
     }
     await page.setViewportSize({ width: 320, height: 800 });
-    const systemBox = await system.boundingBox();
-    const traderBox = await trader.boundingBox();
-    expect(traderBox?.y ?? 0).toBeGreaterThan((systemBox?.y ?? 0) + (systemBox?.height ?? 0));
+    // The comparison card sits below the KPI band, never beside it.
+    const kpiBox = await avgRPerTrade.boundingBox();
+    const comparisonBox = await comparison.boundingBox();
+    expect(comparisonBox?.y ?? 0).toBeGreaterThan((kpiBox?.y ?? 0) + (kpiBox?.height ?? 0) - 1);
 
     const range = page.locator('[data-dashboard-toolbar-control="date-range"]');
     const rangeBox = await range.boundingBox();
@@ -693,8 +721,8 @@ test.describe('real Dashboard', () => {
 
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/en/app?range=90d');
-    await expect(system).toBeVisible();
-    await expect(trader).toBeVisible();
+    await expect(comparison).toBeVisible();
+    await expect(page.locator('[data-dashboard-widget="basic.total-r"]')).toBeVisible();
     const tabletDimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,
@@ -1158,16 +1186,17 @@ test.describe('Dashboard insight pillars', () => {
               setupVersionId,
               symbol: ['XAUUSD', 'EURUSD', 'GBPUSD', 'NAS100'][index % 4] as string,
               direction: 'long',
-              plannedEntry: '100.0000000000',
-              plannedStop: '99.0000000000',
-              plannedTarget: '102.0000000000',
+              // An Add Trade contract v1 Money row: Actual R is Final Net P&L
+              // over Risk at Entry, the only Actual R canonical analytics read.
+              recordingContract: 'add_trade_v1',
+              plannedRiskMinor: 10_000n,
+              plannedRewardMinor: 20_000n,
+              targetState: 'fixed',
               plannedR: '2.0000',
               status: 'closed',
               actualResultMode: 'money',
-              actualEntry: '100.0000000000',
-              actualInitialStop: '99.0000000000',
               actualInitialRiskMinor: 10_000n,
-              actualExit: '101.0000000000',
+              actualRiskAnswer: 'matched',
               enteredAt: new Date(exitedAt.getTime() - 3_600_000),
               exitedAt,
               netPnlMinor: BigInt(Math.round(Number(actualR) * 10_000)),
@@ -1181,6 +1210,7 @@ test.describe('Dashboard insight pillars', () => {
               systemExitedAt: new Date(exitedAt.getTime() + 1_800_000),
               systemExitReason: 'target_hit',
               systemResolvedAt: new Date(exitedAt.getTime() + 1_800_000),
+              systemGrossR: systemR,
               systemR,
               systemOutcome: Number(systemR) >= 0 ? 'win' : 'loss',
             })
@@ -1192,7 +1222,6 @@ test.describe('Dashboard insight pillars', () => {
             mutationKey: crypto.randomUUID(),
             sequence: 1,
             closedBps: 10_000,
-            exitPrice: '101.0000000000',
             realizedPnlMinor: BigInt(Math.round(Number(actualR) * 10_000)),
             exitedAt,
           });
@@ -1293,8 +1322,28 @@ test.describe('Dashboard insight pillars', () => {
     await expect(
       page.getByRole('heading', { level: 3, name: 'Discipline Performance' }),
     ).toBeVisible();
-    await expect(pillar(page, 'strategy')).toHaveAttribute('data-insight-status', 'available');
+    /*
+      THE UNFILTERED STRATEGY CARD RANKS STRATEGIES BY SYSTEM EXPECTANCY, AND
+      NO SYSTEM RESULT IS CANONICAL YET. The 24 seeded System results are
+      legacy System R, so no Strategy has the five System observations a
+      ranking needs: the card reports a sample below policy instead of naming a
+      "strongest" Strategy from legacy evidence. It is not an empty card — the
+      24 canonical Actual results are still in scope.
+    */
+    await expect(pillar(page, 'strategy')).toHaveAttribute(
+      'data-insight-status',
+      'insufficient_sample',
+    );
+    await expect(pillar(page, 'strategy')).toHaveAttribute(
+      'data-insight-reason',
+      'sample_below_policy',
+    );
+    await expect(pillar(page, 'strategy').locator('[data-insight-headline]')).toHaveCount(0);
+    await expect(pillar(page, 'strategy').getByText('Strongest observed Strategy')).toHaveCount(0);
+    // Discipline reads rule checks over the canonical Actual population: 22 of
+    // the 24 Trades completed their required check, a supported sample.
     await expect(pillar(page, 'discipline')).toHaveAttribute('data-insight-status', 'available');
+    await expect(pillar(page, 'discipline').locator('[data-insight-headline]')).not.toHaveCount(0);
 
     // §5 — typography only. No chart, gauge, meter or ranking table anywhere
     // in the section.
@@ -1321,12 +1370,21 @@ test.describe('Dashboard insight pillars', () => {
       page.getByRole('link', { name: 'View Discipline Performance in Analytics' }),
     ).toHaveAttribute('href', /view=results/);
 
-    // THE DATE RANGE MOVES THE INSIGHTS. 30D reaches only the most recent
-    // Trades, which is a genuinely smaller cohort than All.
+    /*
+      THE DATE RANGE MOVES THE INSIGHTS. 30D reaches only the most recent
+      Trades, which is a genuinely smaller cohort than All: seven evaluated
+      Trades instead of 22, so Discipline drops from a supported to a limited
+      sample. (Asserted on Discipline because the Strategy card is below
+      policy in every range until canonical System results exist.)
+    */
     await gotoInsights(page, `/en/app?range=30d&unit=r&${rich}`);
+    await expect(pillar(page, 'discipline')).toHaveAttribute(
+      'data-insight-status',
+      'limited_sample',
+    );
     await expect(pillar(page, 'strategy')).toHaveAttribute(
       'data-insight-status',
-      /limited_sample|insufficient_sample/,
+      'insufficient_sample',
     );
 
     /*
@@ -1346,7 +1404,7 @@ test.describe('Dashboard insight pillars', () => {
       the assertion names WHICH section it means rather than the copy being
       changed to dodge a strict-mode collision.
     */
-    await expect(pillar(page, 'strategy').getByText('No closed Trades yet')).toBeVisible();
+    await expect(pillar(page, 'strategy').getByText('No eligible closed Trades yet')).toBeVisible();
     await expect(pillar(page, 'psychology').getByText('No eligible Trades yet')).toBeVisible();
     await expect(pillar(page, 'discipline').getByText('No evaluated Trades yet')).toBeVisible();
 
@@ -1433,10 +1491,12 @@ test.describe('Dashboard insight pillars', () => {
         expect(current?.y ?? 0).toBeGreaterThan((previous?.y ?? 0) + (previous?.height ?? 0) - 1);
       }
       // The primary insight is still readable, not squeezed into a third of
-      // the screen.
+      // the screen. Read on Discipline: the unfiltered Strategy card has no
+      // canonical System results to rank and states that instead.
       await expect(
-        pillar(page, 'strategy').locator('[data-insight-headline]').first(),
+        pillar(page, 'discipline').locator('[data-insight-headline]').first(),
       ).toBeVisible();
+      await expect(pillar(page, 'strategy').getByText('Not enough Trades yet')).toBeVisible();
 
       const document_ = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,

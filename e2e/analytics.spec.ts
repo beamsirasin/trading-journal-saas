@@ -188,9 +188,13 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       setupVersionId: framework.setupVersionId,
       symbol,
       direction: 'long' as const,
-      plannedEntry: '100.0000000000',
-      plannedStop: '99.0000000000',
-      plannedTarget: '102.0000000000',
+      // Add Trade contract v1 (migration 0021): canonical analytics read only
+      // these rows. Price is context only, so the plan is a Money plan aiming
+      // at twice its Risk at Entry, and no Price plan or Price actual is stored.
+      recordingContract: 'add_trade_v1' as const,
+      plannedRiskMinor: 100n,
+      plannedRewardMinor: 200n,
+      targetState: 'fixed' as const,
       plannedR: '2.0000',
     });
     const trader = (exitedAt: Date, actualR: string, outcome: 'win' | 'loss') => ({
@@ -199,22 +203,25 @@ async function seedAnalyticsData(userId: string): Promise<void> {
       // under the Phase 15G.5C durable timestamp rule.
       createdAt: new Date(exitedAt.getTime() - 4 * 3_600_000),
       actualResultMode: 'money' as const,
-      actualEntry: '100.0000000000',
-      actualInitialStop: '99.0000000000',
       actualInitialRiskMinor: 100n,
+      actualRiskAnswer: 'matched' as const,
       enteredAt: new Date(exitedAt.getTime() - 3_600_000),
-      actualExit: '101.0000000000',
-      netPnlMinor: actualR.startsWith('-') ? -100n : 100n,
+      // Final Net P&L / Risk at Entry is exactly the stored Actual R.
+      netPnlMinor: BigInt(Math.round(Number(actualR) * 100)),
       exitedAt,
       actualR,
       traderOutcome: outcome,
     });
     const system = (exitedAt: Date, systemR: string, outcome: 'win' | 'loss') => ({
       systemStatus: 'resolved' as const,
+      systemResolutionKind: 'price_exit' as const,
       systemExitPrice: '102.0000000000',
       systemExitedAt: exitedAt,
       systemExitReason: 'target_hit' as const,
       systemResolvedAt: exitedAt,
+      // Migrations 0017/0018: gross R and a known cost, net = gross - cost.
+      systemGrossR: systemR,
+      systemCostR: '0.0000',
       systemR,
       systemOutcome: outcome,
     });
@@ -230,7 +237,6 @@ async function seedAnalyticsData(userId: string): Promise<void> {
             mutationKey: crypto.randomUUID(),
             sequence: 1,
             closedBps: 10_000,
-            exitPrice: values.actualExit ?? null,
             realizedPnlMinor: values.netPnlMinor ?? null,
             exitedAt: values.exitedAt as Date,
           });
@@ -303,9 +309,8 @@ async function seedAnalyticsData(userId: string): Promise<void> {
           ...base(activeAccount.id, primary, `NAS10${index}`),
           status: 'open',
           actualResultMode: 'money',
-          actualEntry: '100.0000000000',
-          actualInitialStop: '99.0000000000',
           actualInitialRiskMinor: 100n,
+          actualRiskAnswer: 'matched',
           enteredAt: exitedAt,
           ...system(
             new Date(exitedAt.getTime() + 1_800_000),
@@ -484,7 +489,34 @@ test.describe('real deep Analytics', () => {
       'href',
       '/en/app/trades?view=log&attention=system-pending',
     );
-    await expect(resultsZone.getByText(/captured less than the System/)).toBeVisible();
+    /*
+      CANONICAL POPULATIONS (Add Trade contract §25, §28). The Trader rows are
+      contract rows, so the 90D active-Account Trader total is theirs: XAUUSD
+      -1R, EURUSD +2R, GBPUSD +1R, AUDUSD +1R and USDJPY +3R = +6.00R. Every
+      stored System result is legacy System R — no trader-confirmed System
+      Assessment exists yet — so the System side resolves nothing and there is
+      no comparison to summarize. The page discloses the six excluded System
+      results (XAUUSD, EURUSD, GBPUSD, AUDUSD, NAS100, NAS101) instead of
+      letting the empty System side read as lost data.
+    */
+    const coverage = page.locator('[data-legacy-coverage]');
+    await expect(coverage).toHaveCount(1);
+    await expect(coverage).toHaveAttribute('data-legacy-actual', '0');
+    await expect(coverage).toHaveAttribute('data-legacy-system', '6');
+    await expect(
+      coverage.getByText(/^6 System results use the earlier System model and are not included\./),
+    ).toBeVisible();
+    await expect(resultsZone.getByText('Trader Total R')).toBeVisible();
+    await expect(resultsZone.getByText('+6.00R', { exact: true })).toBeVisible();
+    await expect(resultsZone.getByText('5 Trades', { exact: true })).toBeVisible();
+    await expect(resultsZone.getByText('System Total R')).toBeVisible();
+    await expect(resultsZone.getByText('0 resolved', { exact: true })).toBeVisible();
+    await expect(
+      resultsZone.getByText('Trader and System results are tracked independently.'),
+    ).toBeVisible();
+    // The legacy pairing would have said the Trader captured less than the
+    // System; with no canonical System result that claim cannot be made.
+    await expect(resultsZone.getByText(/captured less than the System/)).toHaveCount(0);
     await expect(resultsZone.getByRole('link', { name: 'Explore' })).toHaveAttribute(
       'href',
       '/en/app/analytics?view=results&range=90d',
@@ -521,20 +553,30 @@ test.describe('real deep Analytics', () => {
 
     const systemPanel = page.locator('[data-analytics-panel="system"]');
     const traderPanel = page.locator('[data-analytics-panel="trader"]');
-    await expect(systemPanel.getByText('6 Trades')).toBeVisible();
-    await expect(traderPanel.getByText('5 Trades')).toBeVisible();
+    const comparisonPanel = page.locator('[data-analytics-panel="comparison"]');
+    // Trader: five canonical Trades, +6.00R, +1.20R each. Win Rate has no
+    // trader-chosen outcome to count, so it says so rather than printing a
+    // rate from outcomes derived from R.
+    await expect(traderPanel.getByText('5 Trades', { exact: true })).toBeVisible();
+    await expect(traderPanel.getByText('+6.00R', { exact: true })).toBeVisible();
+    await expect(traderPanel.getByText('+1.20R', { exact: true })).toBeVisible();
+    await expect(traderPanel.getByText('No outcomes chosen yet').first()).toBeVisible();
+    await expect(traderPanel.getByText('80.00%')).toHaveCount(0);
+    // System: nothing canonical, stated as an empty population rather than
+    // the six legacy results.
+    await expect(systemPanel.getByText('0 Trades', { exact: true })).toBeVisible();
     await expect(
-      page.locator('[data-analytics-panel="comparison"]').getByText('-0.50R'),
+      systemPanel.getByText('No eligible System results in this scope yet.'),
     ).toBeVisible();
-    await expect(
-      page.locator('[data-analytics-panel="comparison"]').getByText('-2.00R'),
-    ).toBeVisible();
-    await expect(
-      page.locator('[data-analytics-panel="comparison"]').getByText('60.00%'),
-    ).toBeVisible();
+    await expect(systemPanel.getByText('6 Trades')).toHaveCount(0);
+    // Comparison: no comparable Trade, so none of the legacy paired figures.
+    await expect(comparisonPanel.getByText('No comparable Trades').first()).toBeVisible();
+    await expect(comparisonPanel.getByText(/-0\.50R|-2\.00R|60\.00%/)).toHaveCount(0);
     await expect(page.getByText('Trader Equity Curve')).toBeVisible();
     await expect(page.getByText('System Equity Curve')).toBeVisible();
-    await expect(page.locator('.recharts-wrapper')).toHaveCount(2);
+    await expect(page.getByText('No eligible System equity points in this scope.')).toBeVisible();
+    // One drawn curve: the Trader's. The System curve has no points to plot.
+    await expect(page.locator('.recharts-wrapper')).toHaveCount(1);
     await expect(page.locator('[data-analytics-panel="rules"]').getByText('66.67%')).toBeVisible();
     await expect(
       page.locator('[data-analytics-panel="rules"]').getByText('Not Checked', { exact: true }),
@@ -546,9 +588,13 @@ test.describe('real deep Analytics', () => {
       page.getByRole('option', { name: 'Archived History Account · Archived' }),
     ).toBeAttached();
 
-    // Behavioral analytics (Phase 13H completion): NAS101 is System-only (still
-    // open — never Trader-eligible) while GBPUSD is fully closed and eligible on
-    // both axes. Every dimension must independently show Trader=1, System=2.
+    /*
+      Behavioral analytics (Phase 13H completion): NAS101 is System-only (still
+      open — never Trader-eligible) while GBPUSD is closed and Trader-eligible.
+      Both carry legacy System results, which canonical analytics exclude, so
+      every dimension must independently show Trader=1 and System=0 — the
+      System side empty, never borrowing the two legacy results.
+    */
     await page.goto('/en/app/analytics?view=edge&range=90d');
     await expect(page.getByRole('heading', { level: 2, name: 'Edge Explore' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 2, name: 'Results Explore' })).toHaveCount(0);
@@ -558,14 +604,14 @@ test.describe('real deep Analytics', () => {
       '1 Trade',
     );
     await expect(adherenceBucket100.locator('[data-analytics-axis="system"]')).toContainText(
-      '2 Trades',
+      '0 Trades',
     );
 
     const conditionsPanel = page.locator('[data-analytics-panel="conditions"]');
     const conditionMet = conditionsPanel.locator('[data-analytics-condition-status="met"]');
     const conditionNotMet = conditionsPanel.locator('[data-analytics-condition-status="notMet"]');
     await expect(conditionMet.locator('[data-analytics-axis="trader"]')).toContainText('1 Trade');
-    await expect(conditionMet.locator('[data-analytics-axis="system"]')).toContainText('2 Trades');
+    await expect(conditionMet.locator('[data-analytics-axis="system"]')).toContainText('0 Trades');
     await expect(conditionNotMet.locator('[data-analytics-axis="trader"]')).toContainText(
       '0 Trades',
     );
@@ -582,13 +628,13 @@ test.describe('real deep Analytics', () => {
       '1 Trade',
     );
     await expect(confidenceLevel75.locator('[data-analytics-axis="system"]')).toContainText(
-      '2 Trades',
+      '0 Trades',
     );
 
     const emotionsPanel = page.locator('[data-analytics-panel="emotions"]');
     const fearfulGroup = emotionsPanel.locator('li', { hasText: 'Fearful' });
     await expect(fearfulGroup.locator('[data-analytics-axis="trader"]')).toContainText('1 Trade');
-    await expect(fearfulGroup.locator('[data-analytics-axis="system"]')).toContainText('2 Trades');
+    await expect(fearfulGroup.locator('[data-analytics-axis="system"]')).toContainText('0 Trades');
 
     // Phase 15D — Edge Explore: Strategy/Setup Performance groups by identity
     // across Strategy Versions (Breakout Momentum v1 + v2 collapse into one
@@ -651,6 +697,10 @@ test.describe('real deep Analytics', () => {
       `/en/app/analytics?view=edge&range=all&account=all&strategy=${strategyId}&setup=${setupId}&version=${versionId}`,
     );
     await expect(page.getByLabel('Account', { exact: true })).toHaveValue('all');
+    // Counted first: under load the streamed server tree and the hydrated one
+    // can both be attached for a frame, and a strict locator throws on that
+    // instant instead of polling through it. A scope rendered twice still fails.
+    await expect(page.getByLabel('Current analytics scope')).toHaveCount(1);
     await expect(page.getByLabel('Current analytics scope')).toContainText('All Accounts');
 
     const persistedUrl = page.url();
@@ -752,15 +802,24 @@ test.describe('real deep Analytics', () => {
         await expect(page.locator('#analytics-performance-heading')).toHaveCount(0);
 
         await page.locator(`nav a[href="/${locale}/app/analytics?view=results"]`).first().click();
+        // A real RSC navigation; the same bounded allowance this file gives its
+        // other view/filter transitions.
+        await expect(page).toHaveURL(/view=results/, { timeout: 120_000 });
         await expect(page.locator('#analytics-performance-heading')).toBeVisible();
         await expect(page.locator('#analytics-setup-quality-heading')).toHaveCount(0);
         await expect(page.locator('#analytics-psychology-heading')).toHaveCount(0);
 
         await page.locator(`nav a[href="/${locale}/app/analytics?view=edge"]`).first().click();
+        // A real RSC navigation; the same bounded allowance this file gives its
+        // other view/filter transitions.
+        await expect(page).toHaveURL(/view=edge/, { timeout: 120_000 });
         await expect(page.locator('#analytics-setup-quality-heading')).toBeVisible();
         await expect(page.locator('#analytics-performance-heading')).toHaveCount(0);
 
         await page.locator(`nav a[href="/${locale}/app/analytics?view=behavior"]`).first().click();
+        // A real RSC navigation; the same bounded allowance this file gives its
+        // other view/filter transitions.
+        await expect(page).toHaveURL(/view=behavior/, { timeout: 120_000 });
         await expect(page.locator('#analytics-psychology-heading')).toBeVisible();
         await expect(page.locator('#analytics-setup-quality-heading')).toHaveCount(0);
 
