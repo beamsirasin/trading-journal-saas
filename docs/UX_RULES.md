@@ -940,16 +940,16 @@ The UX/product boundary questions raised in v1 of this document are resolved by 
 decisions 24–40 and applied above. What remains is **deliberately deferred**. None of these items
 blocks visual design or interaction design; each has a safe rule to follow meanwhile.
 
-| Item                                                          | Deferred to                 | Meanwhile                                                                                                                  |
-| ------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Final Thai copy for new concepts                              | UX/copy prototyping         | Follow the glossary; treat proposed Thai terms as unvalidated (§9.8).                                                      |
-| Deviation Type / Reason taxonomy                              | UX prototyping              | Keep the provisional options changeable, with "Other"; never freeze them into a rigid definition (§8.12) _(contract §18)_. |
-| Cancel Trade creation / transition UX                         | After Add Trade redesign v1 | Canceled stays a lifecycle state; no Cancel flow is designed (§13.12) _(contract §20)_.                                    |
-| Durable reload recovery for Record Exit, Final Close, editing | Later than v1               | Preserve work across routine dismissal during the interaction; claim no reload recovery (§5.4) _(contract §23)_.           |
-| Automatic draft-retention time (TTL)                          | Implementation policy       | Drafts stay user/workspace-scoped and are cleared by explicit sign-out after a warning (§5.11) _(contract §23)_.           |
-| Price-derived context displays (distance, pips)               | Later exploration           | None required; if explored, labelled context only, never calculation authority (§8.2) _(contract §3)_.                     |
-| Cross-device draft sync                                       | Not a requirement           | Never imply a draft is synced (§5.4) _(contract §23)_.                                                                     |
-| Astra interaction/data-integrity findings                     | Not available               | None exist in the repository and none are reconstructed; the contract and these rules are the current authorities.         |
+| Item                                                          | Deferred to                 | Meanwhile                                                                                                                                                                                                      |
+| ------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Final Thai copy for new concepts                              | UX/copy prototyping         | Follow the glossary; treat proposed Thai terms as unvalidated (§9.8).                                                                                                                                          |
+| Deviation Type / Reason taxonomy                              | UX prototyping              | Keep the provisional options changeable, with "Other"; never freeze them into a rigid definition (§8.12) _(contract §18)_.                                                                                     |
+| Cancel Trade creation / transition UX                         | After Add Trade redesign v1 | Canceled stays a lifecycle state; no Cancel flow is designed (§13.12) _(contract §20)_.                                                                                                                        |
+| Durable reload recovery for Record Exit, Final Close, editing | Later than v1               | Preserve work across routine dismissal during the interaction; claim no reload recovery (§5.4) _(contract §23)_.                                                                                               |
+| Automatic draft-retention time (TTL)                          | Implementation policy       | Drafts stay user/workspace-scoped and are cleared by explicit sign-out after a warning (§5.11) _(contract §23)_. Current policy: an Add Trade Recording Draft untouched for 30 days is removed when next read. |
+| Price-derived context displays (distance, pips)               | Later exploration           | None required; if explored, labelled context only, never calculation authority (§8.2) _(contract §3)_.                                                                                                         |
+| Cross-device draft sync                                       | Not a requirement           | Never imply a draft is synced (§5.4) _(contract §23)_.                                                                                                                                                         |
+| Astra interaction/data-integrity findings                     | Not available               | None exist in the repository and none are reconstructed; the contract and these rules are the current authorities.                                                                                             |
 
 If new questions arise, record them here and stop rather than deciding them in UI (§18.6).
 
@@ -967,8 +967,20 @@ Implementation evidence only, recorded so redesign and migration work can find t
 - Trader Outcome is derived from R with a ±0.05R band or from P&L sign, and a Win/Loss/BE
   `system_outcome` and System Win Rate are still shown (§8.10, §9.5, §15.3).
 - Journal overlays treat Cancel / Escape as discard (§5.2).
-- Changing mode discards the entered form after a confirmation (§5.5).
-- There is no reload draft recovery, and no user/workspace-scoped draft storage (§5.4, §5.11).
+- **Add Trade Recording Draft (implemented 2026-09-17, §5.1, §5.3–§5.8, §5.11):** one durable,
+  browser-local draft per user and workspace backs At Entry and After Trade; reload recovery with a
+  recovered notice, non-destructive mode change, one confirmed whole-draft discard, save-failure
+  preservation with an idempotent retry key, clear only after a confirmed Save, and a naming
+  sign-out warning. Two gaps remain, both caused by the legacy After Trade form (see
+  [`docs/data-dictionary.md`](data-dictionary.md) _Browser-local Add Trade Recording Draft_):
+  - **Carry across modes is narrower than §5.5.** Only values whose meaning is identical in both
+    forms cross — Account, Symbol, Direction, an explicit Entry time, a manually entered Risk at
+    Entry, a manually selected Strategy and Setup, confidence, emotions, reason, chart URL, notes,
+    timeframe and session. Condition answers, the Exit Plan and an explicit Actual Risk "Different"
+    do not cross, because After Trade cannot yet represent Unanswered conditions, an Exit Plan or
+    Actual Risk; they stay in their own mode's section of the Draft and are never deleted.
+  - **The `/admin` shell's sign-out** does not warn or clear Add Trade drafts. Drafts stay scoped to
+    their owner, so they never surface to another user.
 - After Trade redirects straight to the Review tab instead of offering Trade Saved → Review Trade /
   Done (§5.9–§5.10).
 - A Complete-history exit conflict blocks saving, and a live close derives net P&L from exit legs
