@@ -961,41 +961,45 @@ Implementation evidence only, recorded so redesign and migration work can find t
 **current implementation pending migration**, not approved behaviour
 (see [`CLAUDE.md`](../CLAUDE.md) §6 _Current implementation pending migration_):
 
-- Add Trade offers a Money/Price basis switch, and After Trade offers a Price actual result (§8.1).
-- A Stop or Target on the wrong side of Entry is rejected as a validation error rather than shown as
-  a non-blocking notice (§6.2, §7.7).
-- Trader Outcome is derived from R with a ±0.05R band or from P&L sign, and a Win/Loss/BE
+- The live exit/close and execution-correction flows offer a Money/Price basis and a Price actual
+  result (§8.1). At Entry and After Trade no longer do.
+- A Stop or Target on the wrong side of Entry is rejected as a validation error in the legacy plan
+  and execution paths rather than shown as a non-blocking notice (§6.2, §7.7). At Entry and After
+  Trade show the notice.
+- Trader Outcome is derived from R with a ±0.05R band or from P&L sign on a live close (After Trade
+  records the trader's own choice since migration 0023), and a Win/Loss/BE
   `system_outcome` and System Win Rate are still shown (§8.10, §9.5, §15.3).
 - Journal overlays treat Cancel / Escape as discard (§5.2).
 - **Add Trade Recording Draft (implemented 2026-09-17, §5.1, §5.3–§5.8, §5.11):** one durable,
   browser-local draft per user and workspace backs At Entry and After Trade; reload recovery with a
   recovered notice, non-destructive mode change, one confirmed whole-draft discard, save-failure
   preservation with an idempotent retry key, clear only after a confirmed Save, and a naming
-  sign-out warning. Two gaps remain, both caused by the legacy After Trade form (see
-  [`docs/data-dictionary.md`](data-dictionary.md) _Browser-local Add Trade Recording Draft_):
-  - **Carry across modes is narrower than §5.5.** Only values whose meaning is identical in both
-    forms cross — Account, Symbol, Direction, an explicit Entry time, a manually entered Risk at
-    Entry, a manually selected Strategy and Setup, confidence, emotions, reason, chart URL, notes,
-    timeframe and session. Condition answers, the Exit Plan and an explicit Actual Risk "Different"
-    do not cross, because After Trade cannot yet represent Unanswered conditions, an Exit Plan or
-    Actual Risk; they stay in their own mode's section of the Draft and are never deleted.
+  sign-out warning (see [`docs/data-dictionary.md`](data-dictionary.md) _Browser-local Add Trade
+  Recording Draft_):
+  - ~~**Carry across modes is narrower than §5.5.**~~ Closed with the After Trade migration: every
+    explicit shared answer now crosses both ways, including condition answers, the Target answer,
+    an explicit Exit Plan and an explicit Actual Risk "Different"; envelope version 2 upgrades a
+    version-1 draft once, explicitly.
   - ~~**The `/admin` shell's sign-out** does not warn or clear Add Trade drafts.~~ Closed
     2026-09-18: `/admin` sign-out now warns, names the drafts and clears only that owner's, reusing
     the product shell's own mechanism.
-- After Trade redirects straight to the Review tab instead of offering Trade Saved → Review Trade /
-  Done (§5.9–§5.10).
-- A Complete-history exit conflict blocks saving, and a live close derives net P&L from exit legs
-  (§6.2, §13.8).
+- ~~After Trade redirects straight to the Review tab instead of offering Trade Saved → Review Trade /
+  Done (§5.9–§5.10).~~ Closed with the After Trade migration.
+- A Complete-history exit conflict blocks saving on a legacy row, and a live close derives net P&L
+  from exit legs (§6.2, §13.8). After Trade keeps Final Net P&L authoritative with a non-blocking
+  discrepancy notice.
 - A closed Trade counts as reviewed when review notes exist, rather than by an explicit Reviewed
   action (§14.5).
 - `plan_adherence` has no Not Applicable answer (§14.8).
-- Setup condition checks store only Met / Not Met, exit rows cannot be reason-only, and no
+- ~~Setup condition checks store only Met / Not Met, exit rows cannot be reason-only, and no
   observation origin is stored for psychology, Strategy, Setup, conditions or Exit Plan (§4,
-  §12.7–§12.9).
-- **Capture origin has no record-surface presentation.** The capture-origin columns migration 0022
-  enforces (`*_origin`, `entered_at_source`) are stored but not shown on a Trade record. The
-  whole-Trade "Recorded retrospectively" disclosure (contract §28, Phase 15G.5C) was lost when the
-  five-section Trade Detail was retired and was restored on the Trade Details Plan tab on
-  2026-09-18.
+  §12.7–§12.9).~~ Closed by migrations 0021–0023: conditions may be Don't remember (`unknown`),
+  After Trade exits may be reason-only with an Unknown scope, and capture origin is stored.
+- ~~**Capture origin has no record-surface presentation.**~~ Closed with the After Trade migration:
+  Trade Details names when Strategy, Setup, Exit Plan, confidence, setup conditions and entry
+  emotions were captured ("Recorded at entry", "Added during trade", "Recalled after close"); a
+  legacy row falls back to "Captured at entry" / "Added after entry" from the assignment time. The
+  whole-Trade "Recorded retrospectively" disclosure (contract §28, Phase 15G.5C) stays on the Trade
+  Details Plan tab.
 - Timestamp fields use native date-time inputs (§8.5 — acceptable only if they meet the timezone,
   clearing and accessibility rules).

@@ -15,7 +15,9 @@
 >
 > **Implementation status:** approved target behaviour, not yet fully implemented. Current
 > production behaviour that differs is pending migration and must not be read as approved product
-> behaviour.
+> behaviour. Implemented so far: At Entry (migrations 0021–0022) and After Trade / Save Closed
+> Trade (migration 0023). Record Exit, Partial / Final Close, Review and System Assessment remain
+> pending.
 
 ## 1. Product model
 

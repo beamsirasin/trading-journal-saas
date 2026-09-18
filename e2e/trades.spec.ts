@@ -1383,19 +1383,28 @@ test.describe('real Trade Journal creation', () => {
         await expect(page.locator('[id^="entry-confidence-"]')).toHaveCount(5);
         await expect(page.locator('#entry-strategy')).toBeVisible();
 
-        // After Trade is a dedicated linear historical form on this same real
-        // route. It must not regress to the retired four-panel UI.
+        // After Trade is the contract capture workspace on this same real
+        // route: history is never defaulted to now, Final Net P&L leads, Actual
+        // R waits for the figures it needs, and the Exit Plan starts Not
+        // recorded rather than inherited.
         await page.goto(`/${locale}/app/trades/new?timing=after_trade`);
         const afterForm = page.locator('[data-after-trade-linear-form]:visible');
         await expect(afterForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
         await expect(afterForm.locator('[data-account-context]')).toBeVisible();
-        await expect(afterForm.locator('#after-strategy')).toHaveCount(0);
-        await expect(afterForm.locator('[data-journal-area]')).toHaveCount(2);
-        await expect(afterForm.locator('#after-entered-at')).toHaveValue('');
-        await expect(afterForm.locator('#after-exited-at')).toHaveValue('');
-        await expect(afterForm.locator('[data-actual-result]')).toBeVisible();
-        await expect(afterForm.locator('[data-global-save]')).toBeVisible();
+        await expect(afterForm.locator('#after-enteredAt')).toHaveValue('');
+        await expect(afterForm.locator('#after-exitedAt')).toHaveValue('');
+        await expect(afterForm.locator('#after-finalPnl')).toBeVisible();
+        await expect(afterForm.locator('#after-risk')).toBeVisible();
+        await expect(afterForm.locator('[data-actual-r="unavailable"]')).toBeVisible();
+        await expect(afterForm.locator('[data-exit-plan-state]')).toHaveCount(1);
+        await expect(afterForm.locator('[data-journal-area]')).toHaveCount(0);
+        await expect(page.locator('[data-global-save]:visible button[type="submit"]')).toHaveCount(
+          1,
+        );
+        const afterToggle = page.locator('#after-analysis-toggle');
+        if (await afterToggle.isVisible()) await afterToggle.click();
+        await expect(page.locator('#after-strategy')).toBeVisible();
 
         const dimensions = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,
@@ -1406,97 +1415,104 @@ test.describe('real Trade Journal creation', () => {
     }
   });
 
-  test('After Trade records evidence, saves, and continues in persisted Review', async ({
+  test('After Trade records a closed trade under the contract and offers Review without forcing it', async ({
     page,
   }) => {
     test.skip(test.info().project.name !== 'chromium', 'Desktop Chromium coverage');
     test.setTimeout(240_000);
-    const user = await provisionJournalUser('e2e-trades-after-trade-record-review');
+    const user = await provisionJournalUser('e2e-trades-after-trade-contract');
     await loginAs(page, 'en', user);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/en/app/trades/new?timing=after_trade');
     const afterForm = page.locator('[data-after-trade-linear-form]:visible');
+    const actualR = afterForm.locator('[data-actual-r]');
 
-    await expect(afterForm.locator('#after-entered-at')).toHaveValue('');
-    await expect(afterForm.locator('#after-exited-at')).toHaveValue('');
     await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
     await chooseRadio(afterForm, 'Long');
-    await afterForm.getByLabel(/Final net P&L/).fill('400');
-    await afterForm.getByLabel(/Actual risk at entry/).fill('100');
-    await expect(afterForm.getByText('+4.00R')).toBeVisible();
-    await expect(afterForm.getByText('Win', { exact: true })).toBeVisible();
 
-    await afterForm.getByRole('button', { name: 'Add exit details' }).click();
-    await expect(afterForm.getByText(/No exits recorded/)).toBeVisible();
+    // Final Net P&L and Risk at Entry give Actual R; nothing derives the outcome.
+    await afterForm.locator('#after-finalPnl').fill('400');
+    await expect(actualR).toHaveAttribute('data-actual-r', 'unavailable');
+    await afterForm.locator('#after-risk').fill('100');
+    await expect(actualR).toHaveAttribute('data-actual-r', 'known');
+    await expect(actualR).toContainText('+4.00R');
+    for (const outcome of ['Win', 'BE', 'Loss']) {
+      await expect(afterForm.getByRole('radio', { name: outcome, exact: true })).not.toBeChecked();
+    }
+
+    // A sign-contradicting outcome is the trader's to choose: a quiet notice only.
+    await chooseRadio(afterForm, 'Loss');
+    await expect(
+      afterForm.getByText(/You chose Loss, but your final net P&L is positive/),
+    ).toBeVisible();
+    await chooseRadio(afterForm, 'Win');
+    await expect(afterForm.getByText(/You chose Loss/)).toHaveCount(0);
+
+    // Actual Risk is Risk Discipline evidence; restating Risk at Entry as
+    // "different" is the one blocking answer.
+    await chooseRadio(afterForm, 'It was different');
+    await afterForm.locator('#after-actual-risk-amount').fill('100');
+    await expect(afterForm.getByText(/This is the same as your risk at entry/)).toBeVisible();
+    await afterForm.locator('#after-actual-risk-amount').fill('120');
+    await expect(afterForm.getByText(/This is the same as your risk at entry/)).toHaveCount(0);
+    await expect(actualR).toContainText('+4.00R');
+
+    // Exit history is supporting evidence; a Complete, fully priced history
+    // that differs is a non-blocking discrepancy with an explicit adoption.
+    await afterForm.locator('#after-exits-toggle').click();
     await afterForm.getByRole('button', { name: 'Record an exit' }).click();
-    await expect(afterForm.locator('[data-global-save]')).toBeHidden();
-    await afterForm.getByLabel(/Realized P&L/).fill('100');
-    await afterForm.getByLabel(/Closed %/).fill('25');
-    await afterForm.getByRole('button', { name: 'Done' }).click();
-    await afterForm.getByRole('radio', { name: 'Some exits are missing' }).click();
-    await expect(
-      afterForm.getByText(/supporting subtotal does not replace the final result/),
-    ).toBeVisible();
-
+    const firstExit = afterForm.locator('[data-after-exit]').nth(0);
+    await firstExit.locator('input[id$="-pnl"]').fill('150');
+    await firstExit.locator('input[id$="-closedPercent"]').fill('25');
+    await firstExit.locator('input[id$="-reason"]').fill('Partial at 1R');
     await afterForm.getByRole('button', { name: 'Record an exit' }).click();
-    await afterForm.getByLabel(/Realized P&L/).fill('150');
-    await afterForm.getByLabel(/Closed %/).fill('75');
-    await afterForm.getByRole('button', { name: 'Done' }).click();
-    await afterForm.getByRole('radio', { name: 'These are all the exits' }).click();
-    await expect(
-      afterForm.getByText(/complete exit history conflicts with the final result/),
-    ).toBeVisible();
+    const secondExit = afterForm.locator('[data-after-exit]').nth(1);
+    await secondExit.locator('input[id$="-pnl"]').fill('200');
+    await chooseRadio(afterForm, 'Some exits are missing');
+    await expect(afterForm.getByText(/Your recorded exits add up to/)).toHaveCount(0);
+    await chooseRadio(afterForm, 'These are all the exits');
+    await expect(afterForm.getByText(/Your recorded exits add up to/)).toBeVisible();
+    await afterForm.getByRole('button', { name: 'Use recorded exits as final result' }).click();
+    await expect(afterForm.locator('#after-finalPnl')).toHaveValue('350.00');
+    await expect(afterForm.getByText(/Your recorded exits add up to/)).toHaveCount(0);
+    await expect(actualR).toContainText('+3.50R');
 
-    await afterForm.getByLabel(/Final net P&L/).fill('');
-    await expect(
-      afterForm.getByText(/After saving, you can explicitly use this subtotal/),
-    ).toBeVisible();
-    await afterForm.getByRole('button', { name: /Trade idea/ }).click();
-    await page.getByLabel('Why did you take this trade?').fill('Breakout after consolidation');
-    await actionDialog(page).getByRole('button', { name: 'Done' }).click();
+    await chooseRadio(afterForm, 'High');
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(afterForm.getByRole('button', { name: /Exit 1/ })).toBeVisible();
-    await afterForm.getByRole('button', { name: /Exit 1/ }).click();
-    await expect(afterForm.locator('[data-global-save]')).toBeHidden();
-    await expect(afterForm.locator('[data-exit-editor]')).toBeVisible();
-    await afterForm.locator('[data-exit-editor]').getByRole('button', { name: 'Done' }).click();
-    await afterForm.getByRole('button', { name: /Feelings at entry/ }).click();
-    await expect(actionDialog(page)).toBeVisible();
-    await actionDialog(page).getByRole('button', { name: 'Done' }).click();
-
-    // Persist from a fresh complete/no-final fixture. The draft above is the
-    // visual state matrix; this one keeps the write-path proof deliberately
-    // minimal and independently diagnosable.
-    await page.goto('/en/app/trades/new?timing=after_trade');
-    await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('REVIEWNEXT');
-    await chooseRadio(afterForm, 'Long');
-    await afterForm.getByRole('button', { name: 'Add exit details' }).click();
-    await afterForm.getByRole('button', { name: 'Record an exit' }).click();
-    await afterForm.getByLabel(/Realized P&L/).fill('250');
-    await afterForm.getByRole('button', { name: 'Done' }).click();
-    await afterForm.getByRole('radio', { name: 'These are all the exits' }).click();
-    await expect(
-      afterForm.getByText(/After saving, you can explicitly use this subtotal/),
-    ).toBeVisible();
-    await afterForm.getByRole('button', { name: 'Save closed trade' }).click();
+    await page.locator('[data-global-save]:visible button[type="submit"]').click();
+    const saved = page.locator('[data-after-trade-saved]');
+    await expect(saved.getByRole('heading', { name: 'Trade saved' })).toBeFocused({
+      timeout: 60_000,
+    });
+    await expect(saved.getByRole('button', { name: 'Done' })).toBeVisible();
+    await saved.getByRole('button', { name: 'Review trade' }).click();
 
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+&tab=review/, {
       timeout: 60_000,
     });
-    await expect(page.getByRole('tab', { name: 'Review' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await expect(page.getByText('Reflection', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: /System assessment/ })).toBeVisible();
-    await page.getByRole('tab', { name: 'Execution' }).click();
-    await expect(page.getByRole('button', { name: /Use .* as final result/ })).toBeVisible();
+    await openTradeSection(page, 'actual');
+    const execution = activePanel(page);
+    await expect(execution.getByLabel('Actual Result').getByText('+3.50R')).toBeVisible();
+    await expect(execution.getByText('Risk at entry', { exact: true })).toBeVisible();
+    await expect(execution.getByText(/It was different/)).toBeVisible();
+    await expect(execution.locator('[data-exit-scope]')).toHaveCount(0);
+    // The stated result is never rebuilt from exit legs.
+    await expect(execution.getByRole('button', { name: /as final result/ })).toHaveCount(0);
+    await openTradeSection(page, 'entry');
+    await expect(activePanel(page).getByText('Recalled after close').first()).toBeVisible();
+
+    // Nothing written has leaked into a second Trade, and nothing about the
+    // entry time was invented.
+    await page.goto('/en/app/trades/new?timing=after_trade');
+    await expect(afterForm.getByRole('textbox', { name: 'Symbol' })).toHaveValue('');
+    await expect(afterForm.locator('#after-enteredAt')).toHaveValue('');
 
     await page.setViewportSize({ width: 320, height: 844 });
-    await page.goto('/en/app/trades/new?timing=after_trade');
+    await page.reload();
     const narrowForm = page.locator('[data-after-trade-linear-form]:visible');
-    await narrowForm.getByLabel(/Final net P&L/).fill('123456789.12');
+    await narrowForm.locator('#after-finalPnl').fill('123456789.12');
+    await narrowForm.locator('#after-exits-toggle').click();
+    await narrowForm.getByRole('button', { name: 'Record an exit' }).click();
     const narrowDimensions = await page.evaluate(() => ({
       scroll: document.documentElement.scrollWidth,
       client: document.documentElement.clientWidth,

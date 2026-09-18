@@ -128,6 +128,9 @@ test.describe('Add Trade Recording Draft', () => {
       await page.goto('/en/app/trades/new?timing=after_trade');
       await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
       await expect(page.getByRole('radio', { name: 'Long', exact: true })).toBeChecked();
+      await expect(page.locator('#after-risk')).toHaveValue('100');
+      // At Entry's untouched "now" is not a remembered entry time.
+      await expect(page.locator('#after-enteredAt')).toHaveValue('');
       await expect(page.getByText(RECOVERED)).toBeVisible();
 
       // Browser Back returns to At Entry with its own section intact.
