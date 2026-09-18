@@ -1325,19 +1325,19 @@ test.describe('Dashboard insight pillars', () => {
     /*
       THE UNFILTERED STRATEGY CARD RANKS STRATEGIES BY SYSTEM EXPECTANCY, AND
       NO SYSTEM RESULT IS CANONICAL YET. The 24 seeded System results are
-      legacy System R, so no Strategy has the five System observations a
-      ranking needs: the card reports a sample below policy instead of naming a
-      "strongest" Strategy from legacy evidence. It is not an empty card — the
-      24 canonical Actual results are still in scope.
+      legacy System R, so no Strategy can be ranked at all: the card says the
+      System evidence is missing rather than blaming the number of Trades —
+      24 canonical Actual results are in scope.
     */
-    await expect(pillar(page, 'strategy')).toHaveAttribute(
-      'data-insight-status',
-      'insufficient_sample',
-    );
+    await expect(pillar(page, 'strategy')).toHaveAttribute('data-insight-status', 'unavailable');
     await expect(pillar(page, 'strategy')).toHaveAttribute(
       'data-insight-reason',
-      'sample_below_policy',
+      'system_results_unavailable',
     );
+    await expect(
+      pillar(page, 'strategy').getByText('No System results to compare yet'),
+    ).toBeVisible();
+    await expect(pillar(page, 'strategy').getByText('Not enough Trades yet')).toHaveCount(0);
     await expect(pillar(page, 'strategy').locator('[data-insight-headline]')).toHaveCount(0);
     await expect(pillar(page, 'strategy').getByText('Strongest observed Strategy')).toHaveCount(0);
     // Discipline reads rule checks over the canonical Actual population: 22 of
@@ -1374,18 +1374,15 @@ test.describe('Dashboard insight pillars', () => {
       THE DATE RANGE MOVES THE INSIGHTS. 30D reaches only the most recent
       Trades, which is a genuinely smaller cohort than All: seven evaluated
       Trades instead of 22, so Discipline drops from a supported to a limited
-      sample. (Asserted on Discipline because the Strategy card is below
-      policy in every range until canonical System results exist.)
+      sample. (Asserted on Discipline because the Strategy card has no
+      canonical System results to rank in any range.)
     */
     await gotoInsights(page, `/en/app?range=30d&unit=r&${rich}`);
     await expect(pillar(page, 'discipline')).toHaveAttribute(
       'data-insight-status',
       'limited_sample',
     );
-    await expect(pillar(page, 'strategy')).toHaveAttribute(
-      'data-insight-status',
-      'insufficient_sample',
-    );
+    await expect(pillar(page, 'strategy')).toHaveAttribute('data-insight-status', 'unavailable');
 
     /*
       THE ACCOUNT MOVES THE INSIGHTS, AND AN EMPTY ACCOUNT KEEPS ALL THREE
@@ -1496,7 +1493,9 @@ test.describe('Dashboard insight pillars', () => {
       await expect(
         pillar(page, 'discipline').locator('[data-insight-headline]').first(),
       ).toBeVisible();
-      await expect(pillar(page, 'strategy').getByText('Not enough Trades yet')).toBeVisible();
+      await expect(
+        pillar(page, 'strategy').getByText('No System results to compare yet'),
+      ).toBeVisible();
 
       const document_ = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,
