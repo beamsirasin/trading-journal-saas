@@ -1318,7 +1318,8 @@
       },
       "conditions": {
         "met": "ตรงตามเงื่อนไข",
-        "notMet": "ไม่ตรงตามเงื่อนไข"
+        "notMet": "ไม่ตรงตามเงื่อนไข",
+        "unknown": "จำไม่ได้"
       },
       "overview": {
         "actual": "การเทรดจริง",
@@ -2789,6 +2790,28 @@
           "entry": "เข้าเทรด",
           "entryPrice": "{direction} ที่ {price}",
           "exit": "ปิดไม้ที่ {sequence} · {percent}%"
+        },
+        "origin": {
+          "recorded_at_entry": "บันทึกตอนเข้า",
+          "recorded_during_trade": "เพิ่มระหว่างเทรด",
+          "recalled_after_trade": "นึกย้อนหลังปิดเทรด",
+          "legacy_at_entry": "บันทึกไว้ตั้งแต่ตอนเข้าเทรด",
+          "legacy_after_entry": "เพิ่มภายหลังจากเข้าเทรด"
+        },
+        "exitPlan": {
+          "title": "แผนการออก",
+          "notRecorded": "ไม่ได้บันทึก",
+          "noRule": "ไม่มีกฎการออกที่กำหนดไว้",
+          "customized": "ปรับแต่งสำหรับเทรดนี้",
+          "basedOn": "อ้างอิงจาก {name}"
+        },
+        "noStrategy": "ไม่มีกลยุทธ์",
+        "noSetup": "ไม่มี Setup",
+        "postTrade": {
+          "title": "หลังเทรด",
+          "meaning": "ความรู้สึกต่อเทรดนี้หลังจบ แยกจากความรู้สึกตอนเข้า",
+          "unanswered": "ยังไม่ได้ตอบ",
+          "none": "ไม่มีข้อใดเลย"
         }
       },
       "state": {

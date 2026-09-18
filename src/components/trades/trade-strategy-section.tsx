@@ -61,7 +61,8 @@ function SetupChecklistSummary({
         ? t('create.conditions.notConfigured')
         : t('detail.overview.checklistCount', {
             met: trade.setupConditionChecks.filter((check) => check.checkStatus === 'met').length,
-            total: trade.setupConditionChecks.length,
+            total: trade.setupConditionChecks.filter((check) => check.checkStatus !== 'unknown')
+              .length,
           });
 
   return (

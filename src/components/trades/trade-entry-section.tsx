@@ -23,8 +23,10 @@ function SetupConditionsDetail({
     return <p className="text-muted-foreground text-sm">{t('create.conditions.notConfigured')}</p>;
   }
 
-  const met = trade.setupConditionChecks.filter((check) => check.checkStatus === 'met').length;
-  const total = trade.setupConditionChecks.length;
+  // "Don't remember" is neither Met nor Not Met, so it is not in the ratio.
+  const answered = trade.setupConditionChecks.filter((check) => check.checkStatus !== 'unknown');
+  const met = answered.filter((check) => check.checkStatus === 'met').length;
+  const total = answered.length;
   const percentage = total === 0 ? 0 : Math.round((met / total) * 100);
 
   return (
@@ -39,8 +41,24 @@ function SetupConditionsDetail({
             className="border-border flex items-start justify-between gap-3 rounded-md border p-3 text-sm"
           >
             <span>{check.label}</span>
-            <Badge variant={check.checkStatus === 'met' ? 'positive' : 'negative'}>
-              {t(`detail.conditions.${check.checkStatus === 'met' ? 'met' : 'notMet'}`)}
+            <Badge
+              variant={
+                check.checkStatus === 'met'
+                  ? 'positive'
+                  : check.checkStatus === 'not_met'
+                    ? 'negative'
+                    : 'neutral'
+              }
+            >
+              {t(
+                `detail.conditions.${
+                  check.checkStatus === 'met'
+                    ? 'met'
+                    : check.checkStatus === 'not_met'
+                      ? 'notMet'
+                      : 'unknown'
+                }`,
+              )}
             </Badge>
           </li>
         ))}
@@ -57,7 +75,7 @@ function checklistSummary(
   if (trade.setupConditionState === 'not_configured') return t('create.conditions.notConfigured');
   return t('detail.overview.checklistCount', {
     met: trade.setupConditionChecks.filter((check) => check.checkStatus === 'met').length,
-    total: trade.setupConditionChecks.length,
+    total: trade.setupConditionChecks.filter((check) => check.checkStatus !== 'unknown').length,
   });
 }
 

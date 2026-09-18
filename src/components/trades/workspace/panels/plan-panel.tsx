@@ -2,12 +2,14 @@
 
 import { useTranslations } from 'next-intl';
 
+import { captureOriginLabel } from '@/lib/trades/capture-origin';
 import { CONFIDENCE_LEVELS, confidenceLevelKey } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
 import type { TradeCreateStrategyOption, TradeDetail } from '@/server/dal/trades';
 import { AssignClassificationDialog } from '@/components/trades/trade-classification-actions';
 import { formatPlannedRr } from '@/components/trades/trade-format';
 import { SystemSection } from '@/components/trades/trade-system-section';
+import { CaptureOriginTag } from '@/components/trades/workspace/capture-origin-tag';
 import {
   Fact,
   FactGrid,
@@ -65,7 +67,7 @@ export function TradePlanPanel({
         </p>
       ) : null}
       <PanelSection title={t('groups.classification')}>
-        {trade.strategyName === null ? (
+        {trade.strategyName === null && !trade.noStrategy ? (
           <div className="flex flex-col gap-3">
             <PanelEmpty
               title={t('empty.classification.title')}
@@ -82,23 +84,41 @@ export function TradePlanPanel({
             <Fact
               label={tTrades('field.strategy')}
               value={
-                <span className="inline-flex flex-wrap items-center gap-2">
-                  {trade.strategyName}
-                  {trade.strategyIsArchived ? (
-                    <Badge className="px-2 py-0.5">{tTrades('common.archived')}</Badge>
-                  ) : null}
+                <span className="inline-flex flex-col gap-1">
+                  <span className="inline-flex flex-wrap items-center gap-2">
+                    {trade.strategyName ?? t('noStrategy')}
+                    {trade.strategyIsArchived ? (
+                      <Badge className="px-2 py-0.5">{tTrades('common.archived')}</Badge>
+                    ) : null}
+                  </span>
+                  <CaptureOriginTag
+                    origin={captureOriginLabel(
+                      trade,
+                      trade.captureOrigins.strategy,
+                      trade.strategyAssignedAt,
+                    )}
+                  />
                 </span>
               }
             />
             <Fact
               label={tTrades('field.setup')}
               value={
-                trade.setupName === null ? null : (
-                  <span className="inline-flex flex-wrap items-center gap-2">
-                    {trade.setupName}
-                    {trade.setupIsArchived ? (
-                      <Badge className="px-2 py-0.5">{tTrades('common.archived')}</Badge>
-                    ) : null}
+                trade.setupName === null && !trade.noSetup ? null : (
+                  <span className="inline-flex flex-col gap-1">
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {trade.setupName ?? t('noSetup')}
+                      {trade.setupIsArchived ? (
+                        <Badge className="px-2 py-0.5">{tTrades('common.archived')}</Badge>
+                      ) : null}
+                    </span>
+                    <CaptureOriginTag
+                      origin={captureOriginLabel(
+                        trade,
+                        trade.captureOrigins.setup,
+                        trade.setupAssignedAt,
+                      )}
+                    />
                   </span>
                 )
               }
@@ -108,6 +128,8 @@ export function TradePlanPanel({
           </FactGrid>
         )}
       </PanelSection>
+
+      {trade.recordingContract === null ? null : <ExitPlanBlock trade={trade} />}
 
       <ConfidenceBlock trade={trade} />
 
@@ -190,6 +212,7 @@ function ConfidenceBlock({ trade }: { trade: TradeDetail }) {
       <p data-trade-confidence={trade.confidence} className="text-foreground text-sm font-semibold">
         {tTrades(`create.confidence.level.${activeKey}`)}
       </p>
+      <CaptureOriginTag origin={captureOriginLabel(trade, trade.captureOrigins.confidence)} />
       {/*
         The scale is decorative reinforcement of the label above, so it is
         hidden from assistive technology entirely rather than announced as five
@@ -234,28 +257,81 @@ function SetupChecklist({ trade }: { trade: TradeDetail }) {
     );
   }
 
-  const met = trade.setupConditionChecks.filter((check) => check.checkStatus === 'met').length;
-  const total = trade.setupConditionChecks.length;
+  // "Don't remember" is an answer but neither Met nor Not Met (contract §8).
+  const answered = trade.setupConditionChecks.filter((check) => check.checkStatus !== 'unknown');
+  const met = answered.filter((check) => check.checkStatus === 'met').length;
+  const total = answered.length;
+  const origin = trade.setupConditionChecks[0]?.origin ?? null;
 
   return (
     <PanelSection title={tTrades('detail.sections.conditions')}>
       <p className="text-sm font-medium">{t('checklistCount', { met, total })}</p>
+      <CaptureOriginTag origin={captureOriginLabel(trade, origin)} />
       <ul className="flex min-w-0 flex-col gap-1.5">
         {trade.setupConditionChecks.map((check) => (
           <li
             key={check.conditionKey}
+            data-condition-status={check.checkStatus}
             className="border-border flex min-w-0 items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm"
           >
             <span className="min-w-0 break-words">{check.label}</span>
             <Badge
-              variant={check.checkStatus === 'met' ? 'positive' : 'negative'}
+              variant={
+                check.checkStatus === 'met'
+                  ? 'positive'
+                  : check.checkStatus === 'not_met'
+                    ? 'negative'
+                    : 'neutral'
+              }
               className="shrink-0 px-2 py-0.5"
             >
-              {tTrades(`detail.conditions.${check.checkStatus === 'met' ? 'met' : 'notMet'}`)}
+              {tTrades(
+                `detail.conditions.${
+                  check.checkStatus === 'met'
+                    ? 'met'
+                    : check.checkStatus === 'not_met'
+                      ? 'notMet'
+                      : 'unknown'
+                }`,
+              )}
             </Badge>
           </li>
         ))}
       </ul>
+    </PanelSection>
+  );
+}
+
+/**
+ * The Exit Plan a contract row carries — the snapshot taken when it was chosen,
+ * never today's library wording — with when it was captured.
+ */
+function ExitPlanBlock({ trade }: { trade: TradeDetail }) {
+  const t = useTranslations('trades.workspace.details');
+  return (
+    <PanelSection title={t('exitPlan.title')}>
+      <div data-exit-plan-record={trade.exitPlanState ?? 'not_recorded'} className="min-w-0">
+        {trade.exitPlanState === null ? (
+          <p className="text-muted-foreground text-sm">{t('exitPlan.notRecorded')}</p>
+        ) : trade.exitPlanState === 'no_rule' ? (
+          <p className="text-foreground text-sm font-semibold">{t('exitPlan.noRule')}</p>
+        ) : (
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="text-foreground text-sm font-semibold break-words">
+              {trade.exitPlanState === 'customized' ? t('exitPlan.customized') : trade.exitPlanName}
+            </p>
+            {trade.exitPlanState === 'customized' && trade.exitPlanName !== null ? (
+              <p className="text-muted-foreground text-xs">
+                {t('exitPlan.basedOn', { name: trade.exitPlanName })}
+              </p>
+            ) : null}
+            <p className="text-muted-foreground text-sm leading-relaxed break-words whitespace-pre-wrap">
+              {trade.exitPlanInstructions}
+            </p>
+          </div>
+        )}
+      </div>
+      <CaptureOriginTag origin={captureOriginLabel(trade, trade.captureOrigins.exitPlan)} />
     </PanelSection>
   );
 }

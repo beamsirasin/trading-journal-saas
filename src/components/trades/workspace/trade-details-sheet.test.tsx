@@ -552,3 +552,108 @@ describe('Trade Details — closing', () => {
     expect(push).toHaveBeenCalledWith('/app/trades?range=30d&view=log', { scroll: false });
   });
 });
+
+/*
+  AN AFTER TRADE RECORD SAYS WHAT IT HOLDS AND WHEN IT WAS CAPTURED (contract
+  §7, §9, §13; UX Rules §2.8). Recalled answers read as recalled, "Don't
+  remember" is never shown as Not met, Post-Trade Emotion stays its own
+  observation, and a stated result offers no correction that would rebuild it.
+*/
+describe('Trade Details — an After Trade record', () => {
+  const CORRECT_EXECUTION = en.trades.lifecycle.execution.correct;
+  const afterTrade: Partial<TradeDetail> = {
+    recordingContract: 'add_trade_v1',
+    recordedRetrospectively: true,
+    traderOutcome: 'break_even',
+    traderOutcomeSelected: true,
+    actualR: '0.2000',
+    netPnlMinor: '1000',
+    plannedRiskMinor: '5000',
+    actualResultMode: 'money',
+    actualRiskAnswer: 'unknown',
+    actualInitialRiskMinor: null,
+    systemStatus: 'pending',
+    systemR: null,
+    systemOutcome: null,
+    exitPlanState: 'saved',
+    exitPlanProvenance: 'selected',
+    exitPlanName: 'Trail structure',
+    exitPlanInstructions: 'Trail beneath each higher low.',
+    captureOrigins: {
+      strategy: 'recalled_after_trade',
+      setup: 'recalled_after_trade',
+      exitPlan: 'recalled_after_trade',
+      confidence: 'recalled_after_trade',
+      emotions: 'recalled_after_trade',
+    },
+    setupConditionState: 'recorded',
+    setupConditionChecks: [
+      {
+        conditionKey: 'c1',
+        label: 'Retest held',
+        sortOrder: 0,
+        checkStatus: 'met',
+        origin: 'recalled_after_trade',
+      },
+      {
+        conditionKey: 'c2',
+        label: 'News clear',
+        sortOrder: 1,
+        checkStatus: 'unknown',
+        origin: 'recalled_after_trade',
+      },
+    ],
+    postTradeEmotionsRecordedAt: '2026-08-24T12:00:00.000Z',
+    postTradeEmotions: [{ key: 'frustrated', label: 'Frustrated' }],
+  };
+
+  it('shows the trader’s own outcome, never marked legacy', () => {
+    renderSheet(afterTrade);
+    expect(within(identity()).getByText('BE')).toBeInTheDocument();
+    expect(screen.queryByText('Legacy')).toBeNull();
+  });
+
+  it('labels each recalled answer as recalled after close, on the Plan tab', () => {
+    renderSheet(afterTrade, 'plan');
+    const tags = Array.from(document.body.querySelectorAll('[data-capture-origin]'));
+    expect(tags.length).toBeGreaterThanOrEqual(4);
+    for (const tag of tags) {
+      expect(tag).toHaveAttribute('data-capture-origin', 'recalled_after_trade');
+      expect(tag).toHaveTextContent('Recalled after close');
+    }
+    expect(find('[data-exit-plan-record="saved"]')).toHaveTextContent('Trail structure');
+  });
+
+  it('shows "Don’t remember" as its own answer, outside the Met ratio', () => {
+    renderSheet(afterTrade, 'plan');
+    expect(find('[data-condition-status="unknown"]')).toHaveTextContent("Don't remember");
+    expect(find('[data-condition-status="unknown"]')).not.toHaveTextContent('Not met');
+    expect(within(panel()).getByText('1 of 1 conditions met')).toBeInTheDocument();
+  });
+
+  it('shows No Strategy as an answer rather than an empty classification', () => {
+    renderSheet(
+      { ...afterTrade, strategyName: null, setupName: null, strategyId: null, noStrategy: true },
+      'plan',
+    );
+    expect(within(panel()).getByText('No strategy')).toBeInTheDocument();
+  });
+
+  it('keeps Post-Trade Emotion separate on the Review tab, and withholds the legacy quadrant', () => {
+    renderSheet({ ...afterTrade, systemOutcome: 'win' }, 'review');
+    expect(find('[data-post-trade-emotions="selected"]')).toHaveTextContent('Frustrated');
+    expect(find('[data-trade-quadrant="unavailable"]')).not.toBeNull();
+  });
+
+  it('states Risk at Entry and the Actual Risk answer, and offers no rebuild-from-legs correction', () => {
+    renderSheet(afterTrade, 'execution');
+    expect(within(panel()).getByText('Risk at entry')).toBeInTheDocument();
+    expect(within(panel()).getByText("Don't know")).toBeInTheDocument();
+    expect(within(panel()).queryByRole('button', { name: CORRECT_EXECUTION })).toBeNull();
+  });
+
+  it('still offers that correction on a legacy closed Trade', () => {
+    renderSheet({}, 'execution');
+    expect(within(panel()).getByRole('button', { name: CORRECT_EXECUTION })).toBeInTheDocument();
+  });
+});

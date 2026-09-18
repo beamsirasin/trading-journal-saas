@@ -97,6 +97,26 @@ export function recalculatedTraderOutcome(
 }
 
 /**
+ * A CLOSED CONTRACT ROW WITH A STATED RESULT — Save Closed Trade's record,
+ * whose outcome is the trader's own or still Unanswered (never derived). Its
+ * Final Net P&L is what the trader stated; live exit and execution
+ * corrections, which rebuild the result from exit legs, never apply to it.
+ */
+export function hasStatedClosedResult(trade: {
+  readonly recordingContract: string | null;
+  readonly status: string;
+  readonly traderOutcome: string | null;
+  readonly traderOutcomeSelectedAt?: Date | null;
+  readonly traderOutcomeSelected?: boolean;
+}): boolean {
+  if (!isContractRow(trade) || trade.status !== 'closed') return false;
+  const selected =
+    trade.traderOutcomeSelected === true ||
+    (trade.traderOutcomeSelectedAt !== undefined && trade.traderOutcomeSelectedAt !== null);
+  return selected || trade.traderOutcome === null;
+}
+
+/**
  * THE QUIET SIGN NOTICE (contract §12; UX Rules §7.7). Only Win beside a
  * negative Final Net P&L, or Loss beside a positive one. BE never carries it,
  * and an unknown P&L never does.

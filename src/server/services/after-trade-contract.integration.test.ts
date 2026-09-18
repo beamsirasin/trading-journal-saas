@@ -30,6 +30,7 @@ import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { createSetup, createSetupCondition, createStrategy } from './strategy-management';
 import { createCompletedTrade, type CreateCompletedTradeInput } from './trade-completed';
+import { correctTradeExit } from './trade-execution';
 import {
   adoptHistoricalExitSubtotal,
   applyHistoricalExitHistoryCorrection,
@@ -831,6 +832,26 @@ describe('Add Trade contract After Trade (real database)', () => {
         actualR: '0.2500',
         traderOutcome: 'loss',
       });
+    });
+
+    it('refuses a live exit correction that would rebuild the stated result', async () => {
+      const fw = await freshFramework();
+      const exitedAt = new Date(Date.now() - HOUR);
+      const result = await save(fw, {
+        enteredAt: new Date(exitedAt.getTime() - HOUR),
+        exitedAt,
+        finalPnlMinor: 1_000n,
+        exits: [{ closedBps: 10_000, realizedPnlMinor: 900n, exitedAt }],
+      });
+      const [exit] = await readExits(result.tradeId);
+      expect(
+        await correctTradeExit(workspaceId, actorUserId, result.tradeId, exit!.id, {
+          closedBps: 10_000,
+          realizedPnlMinor: 1_000n,
+          exitedAt,
+        }),
+      ).toEqual({ ok: false, code: 'invalid_status_transition' });
+      expect(await readTrade(result.tradeId)).toMatchObject({ netPnlMinor: 1_000n });
     });
 
     it('refuses the live execution correction that would rebuild the result from exit legs', async () => {

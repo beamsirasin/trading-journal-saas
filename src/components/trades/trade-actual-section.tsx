@@ -1,5 +1,6 @@
 import { useTranslations } from 'next-intl';
 
+import { hasStatedClosedResult, isContractRow } from '@/lib/trades/add-trade-contract';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
 import { TraderOutcomeEvidence } from '@/components/trades/trade-evidence';
@@ -24,6 +25,11 @@ export function ActualSection({
   canWrite: boolean;
 }) {
   const t = useTranslations('trades');
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const contract = isContractRow(trade);
+  // Save Closed Trade's record: its Final Net P&L is stated, never rebuilt from legs.
+  const statedResult = hasStatedClosedResult(trade);
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale) ?? '—';
   const money = (value: string | null) =>
     formatTradeMoney(value, trade.tradingAccountBaseCurrency) ?? '—';
@@ -79,6 +85,19 @@ export function ActualSection({
               <span className="text-metric numeric">
                 {formatR(trade.actualR) ?? t('common.notAvailable')}
               </span>
+              {contract && trade.actualR === null ? (
+                <span data-actual-r-reason="" className="text-muted-foreground text-xs">
+                  {a(
+                    `result.unavailable.${
+                      trade.netPnlMinor === null && trade.plannedRiskMinor === null
+                        ? 'needs_pnl_and_risk'
+                        : trade.plannedRiskMinor === null
+                          ? 'needs_risk'
+                          : 'needs_pnl'
+                    }`,
+                  )}
+                </span>
+              ) : null}
             </div>
             <TraderOutcomeEvidence trade={trade} />
           </div>
@@ -134,6 +153,31 @@ export function ActualSection({
                 <DetailRow label={t('field.actualPositionSize')} value={trade.actualPositionSize} />
               )}
             </>
+          ) : contract ? (
+            <>
+              <DetailRow
+                label={a('risk.label')}
+                value={
+                  trade.plannedRiskMinor === null
+                    ? a('times.notRecorded')
+                    : money(trade.plannedRiskMinor)
+                }
+              />
+              <DetailRow
+                label={a('actualRisk.legend')}
+                value={
+                  trade.actualRiskAnswer === null
+                    ? c('notAnswered')
+                    : trade.actualRiskAnswer === 'matched'
+                      ? a('actualRisk.matched')
+                      : trade.actualRiskAnswer === 'unknown'
+                        ? a('actualRisk.unknown')
+                        : trade.actualInitialRiskMinor === null
+                          ? c('actualRisk.unknownState')
+                          : `${a('actualRisk.different')} · ${money(trade.actualInitialRiskMinor)}`
+                }
+              />
+            </>
           ) : trade.actualResultMode === 'money' ? (
             <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
           ) : null}
@@ -164,6 +208,16 @@ export function ActualSection({
             {trade.exitedAt === null ? null : (
               <DetailRow label={t('field.exitedAt')} value={instant(trade.exitedAt)} />
             )}
+            {contract && trade.exits.length > 0 ? (
+              <DetailRow
+                label={a('exits.completeness')}
+                value={
+                  trade.exitHistoryCompleteness === null
+                    ? c('notAnswered')
+                    : a(`exits.${trade.exitHistoryCompleteness}`)
+                }
+              />
+            ) : null}
           </dl>
         )}
         {trade.exits.map((exit) => (
@@ -175,6 +229,16 @@ export function ActualSection({
               <h5 className="font-semibold">
                 {t('lifecycle.execution.exitNumber', { sequence: exit.sequence })}
               </h5>
+              {contract && exit.exitScope !== null ? (
+                <p data-exit-scope={exit.exitScope}>
+                  {a('exits.scope')}{' '}
+                  {exit.exitScope === 'part'
+                    ? a('exits.scopePart')
+                    : exit.exitScope === 'all_remaining'
+                      ? a('exits.scopeAll')
+                      : a('exits.scopeUnknown')}
+                </p>
+              ) : null}
               {exit.closedBps === null ? null : (
                 <p>
                   {t('field.closedPercent')}:{' '}
@@ -191,16 +255,18 @@ export function ActualSection({
                   {t('field.realizedPnl')}: {money(exit.realizedPnlMinor)}
                 </p>
               )}
-              <p>
-                {t('field.exitedAt')}: {instant(exit.exitedAt)}
-              </p>
+              {contract && exit.exitedAt === null ? null : (
+                <p>
+                  {t('field.exitedAt')}: {instant(exit.exitedAt)}
+                </p>
+              )}
               {exit.exitReason === null ? null : (
                 <p>
                   {t('field.exitReason')}: {exit.exitReason}
                 </p>
               )}
             </div>
-            {canWrite && exit.closedBps !== null && exit.exitedAt !== null ? (
+            {canWrite && !statedResult && exit.closedBps !== null && exit.exitedAt !== null ? (
               <CorrectExitDialog trade={trade} exit={exit} timezone={timezone} />
             ) : null}
           </article>
@@ -214,7 +280,7 @@ export function ActualSection({
             {t('detail.actualGroups.actions')}
           </h4>
           <div className="flex flex-wrap gap-2">
-            {isClosed ? (
+            {statedResult ? null : isClosed ? (
               <ExecutionCorrectionDialog trade={trade} timezone={timezone} />
             ) : (
               <>

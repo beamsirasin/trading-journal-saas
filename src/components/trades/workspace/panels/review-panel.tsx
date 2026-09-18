@@ -3,9 +3,11 @@
 import { useTranslations } from 'next-intl';
 
 import { deriveTradeAttributionQuadrant } from '@/lib/trades/attribution-quadrant';
+import { captureOriginLabel } from '@/lib/trades/capture-origin';
 import type { TradeDetail } from '@/server/dal/trades';
 import { TradeEmotionsEditor } from '@/components/trades/trade-reflection-editor';
 import { ReviewSection } from '@/components/trades/trade-review-section';
+import { CaptureOriginTag } from '@/components/trades/workspace/capture-origin-tag';
 import { PanelSection } from '@/components/trades/workspace/panel-primitives';
 
 /**
@@ -47,7 +49,9 @@ export function TradeReviewPanel({
 }) {
   const t = useTranslations('trades.workspace.details');
   const tTrades = useTranslations('trades');
-  const quadrant = deriveTradeAttributionQuadrant(trade);
+  // A contract row has no canonical System Result yet, so pairing its trader
+  // outcome with a legacy System outcome would mix the two (contract §16, §28).
+  const quadrant = trade.recordingContract === null ? deriveTradeAttributionQuadrant(trade) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -78,6 +82,7 @@ export function TradeReviewPanel({
         title={tTrades('lifecycle.reflection.emotions')}
         description={t('emotionsMeaning')}
       >
+        <CaptureOriginTag origin={captureOriginLabel(trade, trade.captureOrigins.emotions)} />
         <TradeEmotionsEditor
           tradeId={trade.tradeId}
           emotions={trade.emotions}
@@ -86,6 +91,44 @@ export function TradeReviewPanel({
           canWrite={canWrite}
         />
       </PanelSection>
+
+      {trade.recordingContract === null ? null : (
+        <PanelSection title={t('postTrade.title')} description={t('postTrade.meaning')}>
+          <PostTradeEmotions trade={trade} />
+        </PanelSection>
+      )}
     </div>
+  );
+}
+
+/** Post-Trade Emotion — its own observation, never folded into Entry Emotion (contract §9). */
+function PostTradeEmotions({ trade }: { trade: TradeDetail }) {
+  const t = useTranslations('trades.workspace.details');
+  const tTrades = useTranslations('trades');
+  if (trade.postTradeEmotionsRecordedAt === null) {
+    return (
+      <p data-post-trade-emotions="unanswered" className="text-muted-foreground text-sm">
+        {t('postTrade.unanswered')}
+      </p>
+    );
+  }
+  if (trade.postTradeEmotions.length === 0) {
+    return (
+      <p data-post-trade-emotions="none" className="text-foreground text-sm">
+        {t('postTrade.none')}
+      </p>
+    );
+  }
+  return (
+    <ul data-post-trade-emotions="selected" className="flex min-w-0 flex-wrap gap-2">
+      {trade.postTradeEmotions.map((emotion) => (
+        <li
+          key={emotion.key}
+          className="border-border text-foreground rounded-full border px-3 py-1 text-sm"
+        >
+          {tTrades(`emotions.${emotion.key}`)}
+        </li>
+      ))}
+    </ul>
   );
 }

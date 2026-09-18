@@ -1318,7 +1318,8 @@
       },
       "conditions": {
         "met": "Met",
-        "notMet": "Not met"
+        "notMet": "Not met",
+        "unknown": "Don't remember"
       },
       "overview": {
         "actual": "Actual",
@@ -2789,6 +2790,28 @@
           "entry": "Entry",
           "entryPrice": "{direction} at {price}",
           "exit": "Exit {sequence} · {percent}%"
+        },
+        "origin": {
+          "recorded_at_entry": "Recorded at entry",
+          "recorded_during_trade": "Added during trade",
+          "recalled_after_trade": "Recalled after close",
+          "legacy_at_entry": "Captured at entry",
+          "legacy_after_entry": "Added after entry"
+        },
+        "exitPlan": {
+          "title": "Exit plan",
+          "notRecorded": "Not recorded",
+          "noRule": "No defined exit rule",
+          "customized": "Customized for this trade",
+          "basedOn": "Based on {name}"
+        },
+        "noStrategy": "No strategy",
+        "noSetup": "No setup",
+        "postTrade": {
+          "title": "After the trade",
+          "meaning": "How you felt about the trade once it was over. Separate from how you felt at entry.",
+          "unanswered": "Not answered",
+          "none": "None of these"
         }
       },
       "state": {

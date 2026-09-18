@@ -22,6 +22,7 @@ import { systemClock, type Clock } from '@/lib/time';
 import {
   actualRDenominatorMinor,
   contractActualRiskMinor,
+  hasStatedClosedResult,
   isContractRow,
   laterCaptureOrigin,
   RECORDING_CONTRACT_ADD_TRADE_V1,
@@ -2263,13 +2264,7 @@ export async function correctTradeExecution(
       and derives the outcome — both forbidden there (contract §11, §12). Its
       result is corrected through the historical-execution service instead.
     */
-    if (
-      isContractRow(trade) &&
-      status === 'closed' &&
-      (trade.traderOutcomeSelectedAt !== null || trade.traderOutcome === null)
-    ) {
-      return { ok: false, code: 'invalid_execution_context' };
-    }
+    if (hasStatedClosedResult(trade)) return { ok: false, code: 'invalid_execution_context' };
 
     const exits = await tx
       .select()

@@ -5,7 +5,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { composeRealizedActual, composeTraderCloseV2 } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { systemClock, type Clock } from '@/lib/time';
-import { actualRDenominatorMinor } from '@/lib/trades/add-trade-contract';
+import { actualRDenominatorMinor, hasStatedClosedResult } from '@/lib/trades/add-trade-contract';
 import { CLOSED_BPS_TOTAL, type OutcomeValue } from '@/lib/trades/constants';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb, type Database } from '@/server/db/client';
@@ -320,6 +320,10 @@ export async function correctTradeExit(
     if (trade.status !== 'open' && trade.status !== 'closed') {
       return { ok: false, code: 'invalid_status_transition' };
     }
+    // A closed contract row whose outcome is the trader's (or Unanswered) holds
+    // a stated Final Net P&L; rebuilding it from exit legs is forbidden
+    // (contract §11). Its exits are supporting history only.
+    if (hasStatedClosedResult(trade)) return { ok: false, code: 'invalid_status_transition' };
     if (trade.enteredAt === null || input.exitedAt.getTime() < trade.enteredAt.getTime()) {
       return { ok: false, code: 'invalid_exit_time' };
     }
