@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createAfterTradeDraft } from './after-trade-draft';
+import {
+  answerCondition as answerAfterTradeCondition,
+  createAfterTradeDraft,
+  selectSetup as selectAfterTradeSetup,
+  selectStrategy as selectAfterTradeStrategy,
+  setActualRiskAnswer,
+  type AfterTradeDraft,
+} from './after-trade-draft';
 import {
   answerCondition,
   answerNoStrategy,
+  chooseNoExitRule,
   chooseSavedExitPlan,
   confirmEntryTime,
   createAtEntryDraft,
@@ -12,6 +20,7 @@ import {
   selectSetup,
   selectStrategy,
   setActualRiskAmount,
+  setActualRiskMode,
   setConfidence,
   setTargetValue,
   toggleEmotion,
@@ -21,6 +30,7 @@ import {
   createRecordingDraft,
   parseRecordingDraft,
   RECORDING_DRAFT_RETENTION_MS,
+  RECORDING_DRAFT_VERSION,
   recordingDraftHasWork,
   serializeRecordingDraft,
   switchRecordingMode,
@@ -55,6 +65,18 @@ function envelopeWith(atEntry: AtEntryDraft): RecordingDraftEnvelope {
   };
 }
 
+function afterTradeEnvelope(afterTrade: AfterTradeDraft): RecordingDraftEnvelope {
+  return {
+    ...createRecordingDraft({
+      mode: 'after_trade',
+      tradingAccountId: ACCOUNT,
+      mutationKey: KEY,
+      now: NOW,
+    }),
+    afterTrade,
+  };
+}
+
 /** An At Entry draft full of explicit answers AND untouched defaults. */
 function workedAtEntry(): AtEntryDraft {
   let draft = createAtEntryDraft(ACCOUNT);
@@ -70,75 +92,91 @@ function workedAtEntry(): AtEntryDraft {
     ...draft,
     context: { ...draft.context, reason: 'Breakout retest held', entryPrice: '2400' },
   };
-  // The entry time still follows the clock: an untouched default.
+  // The entry time still follows the clock, and Actual Risk is still the
+  // Matched assumption: two untouched defaults.
   return followClock(draft, '2026-09-17T15:00');
 }
 
 describe('At Entry → After Trade', () => {
-  it('carries explicit shared values', () => {
+  it('carries explicit shared answers whose meaning is the same in both modes', () => {
     const switched = switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
     expect(switched.activeMode).toBe('after_trade');
-    expect(switched.afterTrade?.values).toMatchObject({
+    expect(switched.afterTrade).toMatchObject({
       tradingAccountId: ACCOUNT,
       symbol: 'XAUUSD',
       direction: 'long',
-      plannedRisk: '100',
-      strategyId: BREAKOUT,
-      setupId: RETEST,
-      confidence: '75',
-      confirmationNotes: 'Breakout retest held',
+      risk: '100',
+      target: { state: 'fixed', profit: '200', price: '' },
+      exitPlan: { choice: { kind: 'saved', exitPlanId: SCALE_OUT } },
+      confidence: 75,
+      emotions: { answer: 'selected', keys: ['calm'] },
+      context: { reason: 'Breakout retest held', entryPrice: '2400' },
+      classification: {
+        strategy: 'selected',
+        strategyId: BREAKOUT,
+        setupByStrategy: { [BREAKOUT]: { answer: 'selected', setupId: RETEST } },
+        conditions: { [BREAKOUT]: { [RETEST]: { candle: 'met' } } },
+      },
     });
-    expect(switched.afterTrade?.emotions).toEqual(['calm']);
   });
 
   it('never turns an untouched "now" entry time into a historical answer', () => {
     const switched = switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
-    expect(switched.afterTrade?.values.enteredAt).toBe('');
+    expect(switched.afterTrade?.enteredAt).toBe('');
   });
 
   it('carries an entry time the trader confirmed or edited', () => {
     const confirmed = confirmEntryTime(workedAtEntry());
     expect(
-      switchRecordingMode(envelopeWith(confirmed), 'after_trade', CONTEXT).afterTrade?.values
-        .enteredAt,
+      switchRecordingMode(envelopeWith(confirmed), 'after_trade', CONTEXT).afterTrade?.enteredAt,
     ).toBe('2026-09-17T15:00');
     const edited = editEntryTime(workedAtEntry(), '2026-09-17T09:30');
     expect(
-      switchRecordingMode(envelopeWith(edited), 'after_trade', CONTEXT).afterTrade?.values
-        .enteredAt,
+      switchRecordingMode(envelopeWith(edited), 'after_trade', CONTEXT).afterTrade?.enteredAt,
     ).toBe('2026-09-17T09:30');
   });
 
-  it('leaves Actual Risk, the Exit Plan, Target and conditions out of After Trade', () => {
-    // A Different Actual Risk amount, a saved Exit Plan, a Fixed Target and a Met
-    // condition exist At Entry. Current After Trade cannot represent any of
-    // them honestly, so none becomes an After Trade answer.
-    const atEntry = setActualRiskAmount(workedAtEntry(), '150');
-    const switched = switchRecordingMode(envelopeWith(atEntry), 'after_trade', CONTEXT);
-    expect(switched.afterTrade?.values).toMatchObject({
-      actualRisk: '',
-      plannedReward: '',
-      plannedEntry: '',
-    });
-    expect(switched.afterTrade?.conditionMet).toEqual({});
-    // …and every one of them is still in the draft.
-    expect(switched.atEntry).toEqual(atEntry);
+  it('does not carry the Matched Actual Risk assumption: After Trade starts Unanswered', () => {
+    const switched = switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
+    expect(switched.afterTrade?.actualRisk).toEqual({ answer: 'unanswered', amount: '' });
   });
 
-  it('does not carry the Matched Actual Risk default', () => {
-    const switched = switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
-    expect(switched.afterTrade?.values.actualRisk).toBe('');
+  it('carries an explicit Actual Risk "Different", with or without its amount', () => {
+    const withAmount = switchRecordingMode(
+      envelopeWith(setActualRiskAmount(workedAtEntry(), '150')),
+      'after_trade',
+      CONTEXT,
+    );
+    expect(withAmount.afterTrade?.actualRisk).toEqual({ answer: 'different', amount: '150' });
+    const unknownAmount = switchRecordingMode(
+      envelopeWith(setActualRiskMode(workedAtEntry(), 'different_unknown')),
+      'after_trade',
+      CONTEXT,
+    );
+    expect(unknownAmount.afterTrade?.actualRisk).toEqual({ answer: 'different', amount: '' });
   });
 
   it('does not carry an automatically inherited Strategy Exit Plan', () => {
-    // `inherit` is the untouched default choice; After Trade has no Exit Plan to receive it.
     const inherited = {
       ...workedAtEntry(),
       exitPlan: { choice: { kind: 'inherit' as const }, customText: '', customBaseId: null },
     };
     const switched = switchRecordingMode(envelopeWith(inherited), 'after_trade', CONTEXT);
-    expect(JSON.stringify(switched.afterTrade)).not.toContain(SCALE_OUT);
+    expect(switched.afterTrade?.exitPlan.choice).toEqual({ kind: 'unanswered' });
     expect(switched.atEntry?.exitPlan.choice).toEqual({ kind: 'inherit' });
+  });
+
+  it('carries an explicit No Defined Exit Rule and No Strategy', () => {
+    const answered = answerNoStrategy(chooseNoExitRule(workedAtEntry()));
+    const switched = switchRecordingMode(envelopeWith(answered), 'after_trade', CONTEXT);
+    expect(switched.afterTrade?.exitPlan.choice).toEqual({ kind: 'no_rule' });
+    expect(switched.afterTrade?.classification.strategy).toBe('none');
+  });
+
+  it('keeps every At Entry answer in its own section', () => {
+    const atEntry = setActualRiskAmount(workedAtEntry(), '150');
+    const switched = switchRecordingMode(envelopeWith(atEntry), 'after_trade', CONTEXT);
+    expect(switched.atEntry).toEqual(atEntry);
   });
 });
 
@@ -151,48 +189,48 @@ describe('round trips', () => {
     expect(back.afterTrade).toEqual(there.afterTrade);
   });
 
-  it('carries back only what was changed in After Trade', () => {
+  it('carries back only what was changed in After Trade, and keeps After Trade work', () => {
     const noStrategy = answerNoStrategy({ ...createAtEntryDraft(ACCOUNT), symbol: 'EURUSD' });
     const there = switchRecordingMode(envelopeWith(noStrategy), 'after_trade', CONTEXT);
     const edited: RecordingDraftEnvelope = {
       ...there,
       afterTrade: there.afterTrade && {
         ...there.afterTrade,
-        values: { ...there.afterTrade.values, symbol: 'GBPUSD', finalPnl: '50' },
+        symbol: 'GBPUSD',
+        finalPnl: '50',
+        outcome: 'win',
       },
     };
     const back = switchRecordingMode(edited, 'at_entry', CONTEXT);
     expect(back.atEntry?.symbol).toBe('GBPUSD');
-    // After Trade has no "No Strategy" answer and its blank never erases one.
     expect(back.atEntry?.classification.strategy).toBe('none');
-    // The After Trade result stays in the draft.
-    expect(back.afterTrade?.values.finalPnl).toBe('50');
+    // The After Trade result stays in its own section, never an At Entry answer.
+    expect(back.afterTrade).toMatchObject({ finalPnl: '50', outcome: 'win' });
   });
 
   it('After Trade → At Entry → After Trade restores After Trade work and never invents At Entry assertions', () => {
-    const afterTrade = createAfterTradeDraft(ACCOUNT);
-    const start: RecordingDraftEnvelope = {
-      ...createRecordingDraft({
-        mode: 'after_trade',
-        tradingAccountId: ACCOUNT,
-        mutationKey: KEY,
-        now: NOW,
-      }),
-      afterTrade: {
-        ...afterTrade,
-        values: {
-          ...afterTrade.values,
-          symbol: 'NAS100',
-          direction: 'short',
-          finalPnl: '-40',
-          exitedAt: '2026-09-16T20:00',
+    const afterTrade: AfterTradeDraft = {
+      ...setActualRiskAnswer(createAfterTradeDraft(ACCOUNT), 'unknown'),
+      symbol: 'NAS100',
+      direction: 'short',
+      finalPnl: '-40',
+      outcome: 'loss',
+      exitedAt: '2026-09-16T20:00',
+      completeness: 'incomplete',
+      exits: [
+        {
+          id: 'leg',
+          scope: 'unknown',
+          pnl: '-20',
+          closedPercent: '',
+          exitedAt: '',
+          price: '',
+          reason: 'Stopped out',
         },
-        completeness: 'incomplete',
-        exits: [
-          { id: 'leg', closedPercent: '50', scope: 'part', value: '-20', exitedAt: '', reason: '' },
-        ],
-      },
+      ],
+      postTradeEmotions: { answer: 'selected', keys: ['frustrated'] },
     };
+    const start = afterTradeEnvelope(afterTrade);
     const atEntry = switchRecordingMode(start, 'at_entry', CONTEXT);
     // Shared identity arrives; no historical answer becomes an At Entry assertion.
     expect(atEntry.atEntry).toMatchObject({ symbol: 'NAS100', direction: 'short' });
@@ -203,13 +241,34 @@ describe('round trips', () => {
     expect(back.afterTrade).toEqual(start.afterTrade);
   });
 
+  it('never shows a "Don’t remember" condition in At Entry, and keeps it in After Trade', () => {
+    let afterTrade = selectAfterTradeStrategy(createAfterTradeDraft(ACCOUNT), BREAKOUT);
+    afterTrade = selectAfterTradeSetup(afterTrade, RETEST);
+    afterTrade = answerAfterTradeCondition(afterTrade, 'candle', 'met');
+    afterTrade = answerAfterTradeCondition(afterTrade, 'retest', 'unknown');
+    const atEntry = switchRecordingMode(afterTradeEnvelope(afterTrade), 'at_entry', CONTEXT);
+    expect(atEntry.atEntry?.classification.conditions).toEqual({
+      [BREAKOUT]: { [RETEST]: { candle: 'met' } },
+    });
+    // Answering the Met condition differently in At Entry crosses back; the
+    // unknown one At Entry never saw stays as it was.
+    const changed: RecordingDraftEnvelope = {
+      ...atEntry,
+      atEntry: atEntry.atEntry && answerCondition(atEntry.atEntry, 'candle', 'not_met'),
+    };
+    const back = switchRecordingMode(changed, 'after_trade', CONTEXT);
+    expect(back.afterTrade?.classification.conditions).toEqual({
+      [BREAKOUT]: { [RETEST]: { candle: 'not_met', retest: 'unknown' } },
+    });
+  });
+
   it('a clear made in the other mode crosses back as a clear', () => {
     const there = switchRecordingMode(envelopeWith(workedAtEntry()), 'after_trade', CONTEXT);
     const cleared: RecordingDraftEnvelope = {
       ...there,
       afterTrade: there.afterTrade && {
         ...there.afterTrade,
-        values: { ...there.afterTrade.values, strategyId: '', setupId: '' },
+        classification: { ...there.afterTrade.classification, strategy: 'unanswered' },
       },
     };
     const back = switchRecordingMode(cleared, 'at_entry', CONTEXT);
@@ -221,13 +280,27 @@ describe('round trips', () => {
     });
   });
 
+  it('withdrawing "Different" in After Trade returns At Entry to its visible Matched assumption', () => {
+    const there = switchRecordingMode(
+      envelopeWith(setActualRiskAmount(workedAtEntry(), '150')),
+      'after_trade',
+      CONTEXT,
+    );
+    const withdrawn: RecordingDraftEnvelope = {
+      ...there,
+      afterTrade: there.afterTrade && setActualRiskAnswer(there.afterTrade, 'unknown'),
+    };
+    const back = switchRecordingMode(withdrawn, 'at_entry', CONTEXT);
+    expect(back.atEntry?.actualRisk.mode).toBe('matched');
+  });
+
   it('does not overwrite an account the first time the arriving mode is fresh and the source has none', () => {
     const blank = envelopeWith({ ...createAtEntryDraft(''), symbol: 'XAUUSD' });
     const switched = switchRecordingMode(blank, 'after_trade', {
       defaultTradingAccountId: OTHER_ACCOUNT,
       now: NOW,
     });
-    expect(switched.afterTrade?.values.tradingAccountId).toBe(OTHER_ACCOUNT);
+    expect(switched.afterTrade?.tradingAccountId).toBe(OTHER_ACCOUNT);
   });
 });
 
@@ -263,8 +336,8 @@ describe('persisted shape', () => {
     });
   });
 
-  it('refuses another schema version instead of reinterpreting its answers', () => {
-    const future = { ...JSON.parse(serializeRecordingDraft(envelope())), version: 2 };
+  it('refuses an unknown schema version instead of reinterpreting its answers', () => {
+    const future = { ...JSON.parse(serializeRecordingDraft(envelope())), version: 3 };
     expect(parseRecordingDraft(JSON.stringify(future), NOW)).toEqual({
       status: 'unrecoverable',
       reason: 'unsupported_version',
@@ -285,15 +358,130 @@ describe('persisted shape', () => {
     ).toBe('expired');
   });
 
-  it('knows a pristine draft holds no work', () => {
-    const pristine = createRecordingDraft({
-      mode: 'at_entry',
-      tradingAccountId: ACCOUNT,
-      mutationKey: KEY,
-      now: NOW,
-    });
-    expect(recordingDraftHasWork(pristine, ACCOUNT)).toBe(false);
+  it('knows a pristine draft holds no work, in either mode', () => {
+    for (const mode of ['at_entry', 'after_trade'] as const) {
+      const pristine = createRecordingDraft({
+        mode,
+        tradingAccountId: ACCOUNT,
+        mutationKey: KEY,
+        now: NOW,
+      });
+      expect(recordingDraftHasWork(pristine, ACCOUNT)).toBe(false);
+    }
     expect(recordingDraftHasWork(envelope(), ACCOUNT)).toBe(true);
+  });
+});
+
+describe('version 1 drafts', () => {
+  /** A v1 draft exactly as the pre-contract After Trade form stored it. */
+  function v1Draft(overrides: Record<string, unknown> = {}) {
+    return {
+      version: 1,
+      activeMode: 'after_trade',
+      mutationKey: KEY,
+      updatedAt: NOW.toISOString(),
+      atEntry: workedAtEntry(),
+      afterTrade: {
+        values: {
+          tradingAccountId: ACCOUNT,
+          symbol: 'XAUUSD',
+          direction: 'long',
+          enteredAt: '2026-09-16T09:00',
+          exitedAt: '2026-09-16T11:00',
+          strategyId: BREAKOUT,
+          setupId: RETEST,
+          timeframe: '15m',
+          session: 'London',
+          plannedEntry: '',
+          plannedStop: '',
+          plannedTarget: '',
+          plannedPositionSize: '',
+          plannedRisk: '100',
+          plannedReward: '250',
+          actualEntry: '',
+          actualStop: '',
+          actualPositionSize: '',
+          actualRisk: '80',
+          finalPnl: '120',
+          confirmationNotes: 'Retest',
+          tradingviewUrl: '',
+          notes: 'Kept my stop',
+          confidence: '50',
+        },
+        planBasis: 'money',
+        actualBasis: 'money',
+        exits: [
+          {
+            id: 'leg',
+            closedPercent: '100',
+            scope: 'all_remaining',
+            value: '120',
+            exitedAt: '2026-09-16T11:00',
+            reason: 'Target',
+          },
+        ],
+        completeness: 'unknown',
+        conditionMet: { candle: true, retest: false },
+        emotions: [],
+      },
+      lastCarried: null,
+      ...overrides,
+    };
+  }
+
+  it('is upgraded, keeping the At Entry section whole and only unchanged-meaning After Trade values', () => {
+    const parsed = parseRecordingDraft(JSON.stringify(v1Draft()), NOW);
+    expect(parsed.status).toBe('recovered');
+    if (parsed.status !== 'recovered') return;
+    const { envelope } = parsed;
+    expect(envelope.version).toBe(RECORDING_DRAFT_VERSION);
+    expect(envelope.mutationKey).toBe(KEY);
+    expect(envelope.atEntry).toEqual(workedAtEntry());
+    expect(envelope.afterTrade).toMatchObject({
+      symbol: 'XAUUSD',
+      direction: 'long',
+      enteredAt: '2026-09-16T09:00',
+      exitedAt: '2026-09-16T11:00',
+      risk: '100',
+      finalPnl: '120',
+      confidence: 50,
+      emotions: { answer: 'none', keys: [] },
+      context: { timeframe: '15m', session: 'London', reason: 'Retest', notes: 'Kept my stop' },
+      exits: [
+        {
+          id: 'leg',
+          scope: 'all_remaining',
+          pnl: '120',
+          closedPercent: '100',
+          exitedAt: '2026-09-16T11:00',
+          price: '',
+          reason: 'Target',
+        },
+      ],
+    });
+  });
+
+  it('leaves behind what the old form could not say honestly', () => {
+    const parsed = parseRecordingDraft(JSON.stringify(v1Draft()), NOW);
+    if (parsed.status !== 'recovered') throw new Error('expected recovery');
+    const upgraded = parsed.envelope.afterTrade;
+    // An unchecked box was saved as Not Met; "Not sure" was preselected; the old
+    // actual risk was a denominator; the reward implied no explicit Target answer.
+    expect(upgraded?.classification.conditions).toEqual({});
+    expect(upgraded?.completeness).toBe('unanswered');
+    expect(upgraded?.actualRisk).toEqual({ answer: 'unanswered', amount: '' });
+    expect(upgraded?.target.state).toBe('unanswered');
+    expect(upgraded?.outcome).toBeNull();
+  });
+
+  it('keeps a Price exit value as the exit price, never as a P&L', () => {
+    const priceDraft = v1Draft();
+    priceDraft.afterTrade.actualBasis = 'price';
+    priceDraft.afterTrade.exits[0]!.value = '2410.5';
+    const parsed = parseRecordingDraft(JSON.stringify(priceDraft), NOW);
+    if (parsed.status !== 'recovered') throw new Error('expected recovery');
+    expect(parsed.envelope.afterTrade?.exits[0]).toMatchObject({ pnl: '', price: '2410.5' });
+    expect(parsed.envelope.afterTrade?.finalPnl).toBe('');
   });
 });
 

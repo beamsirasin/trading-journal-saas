@@ -145,6 +145,15 @@ export const trades = pgTable(
     reviewNotes: text('review_notes'),
     /** NULL on historical rows; non-NULL means emotion capture occurred, including a zero selection. */
     emotionsRecordedAt: timestamp('emotions_recorded_at', { withTimezone: true }),
+    /**
+     * Post-Trade Emotion capture (contract §9, migration 0023) — the same
+     * NULL-is-Unanswered / zero-rows-is-None convention as `emotions_recorded_at`,
+     * for `trade_emotions` rows with `phase = 'post_trade'`. Never overwrites
+     * Entry Emotion.
+     */
+    postTradeEmotionsRecordedAt: timestamp('post_trade_emotions_recorded_at', {
+      withTimezone: true,
+    }),
 
     // -------------------------------------------------------------------
     // Chart attachment — Image upload (migration 0010). Distinct from
@@ -317,6 +326,17 @@ export const trades = pgTable(
     actualR: numeric('actual_r', { precision: 12, scale: 4 }),
     systemR: numeric('system_r', { precision: 12, scale: 4 }),
     traderOutcome: text('trader_outcome'),
+    /**
+     * WHEN THE TRADER CHOSE `trader_outcome` (contract §12, migration 0023).
+     *
+     * Non-NULL only on a contract row whose Win / BE / Loss was selected by the
+     * trader. NULL beside a stored `trader_outcome` is the pre-contract
+     * derivation (from R or P&L sign) — kept, visible, and never presented or
+     * counted as the trader's answer (contract §28). A selected outcome is
+     * independent of P&L and R, so it is exempt from the sign and tolerance
+     * shapes in `trades_status_consistency_check`.
+     */
+    traderOutcomeSelectedAt: timestamp('trader_outcome_selected_at', { withTimezone: true }),
     systemOutcome: text('system_outcome'),
     calcVersion: integer('calc_version').notNull().default(CALC_VERSION),
 
@@ -542,6 +562,18 @@ export const trades = pgTable(
       'trades_trader_outcome_check',
       sql`${table.traderOutcome} IS NULL OR ${table.traderOutcome} IN ('win', 'loss', 'break_even')`,
     ),
+    // A selected Trader Outcome is contract-era evidence and names an outcome.
+    check(
+      'trades_trader_outcome_selection_check',
+      sql`${table.traderOutcomeSelectedAt} IS NULL OR (
+        ${table.recordingContract} IS NOT NULL
+        AND ${table.traderOutcome} IS NOT NULL
+      )`,
+    ),
+    check(
+      'trades_post_trade_emotions_check',
+      sql`${table.postTradeEmotionsRecordedAt} IS NULL OR ${table.recordingContract} IS NOT NULL`,
+    ),
     check(
       'trades_system_outcome_check',
       sql`${table.systemOutcome} IS NULL OR ${table.systemOutcome} IN ('win', 'loss', 'break_even')`,
@@ -630,11 +662,20 @@ export const trades = pgTable(
     // may be exactly zero but never negative, and a Reward can never appear
     // without a Risk to normalize it against (the Money-mode equivalent of
     // "a Target with neither Entry nor Stop").
+    //
+    // EXCEPT ON A CONTRACT ROW (migration 0023). There `planned_reward_minor`
+    // is a Fixed Target's Target Profit, and a historical Trade may remember
+    // its Target without its Risk at Entry (contract §5, §13): both are
+    // independently optional, and Planned R is simply unavailable.
     check(
       'trades_planned_money_check',
       sql`(${table.plannedRiskMinor} IS NULL OR ${table.plannedRiskMinor} > 0)
         AND (${table.plannedRewardMinor} IS NULL OR ${table.plannedRewardMinor} >= 0)
-        AND (${table.plannedRewardMinor} IS NULL OR ${table.plannedRiskMinor} IS NOT NULL)`,
+        AND (
+          ${table.plannedRewardMinor} IS NULL
+          OR ${table.plannedRiskMinor} IS NOT NULL
+          OR ${table.recordingContract} IS NOT NULL
+        )`,
     ),
 
     // The Founder-UAT "minimum plan validity" floor (migration 0010,
@@ -995,7 +1036,16 @@ export const trades = pgTable(
     // exact set of actual-execution fields. A historical Money result may
     // know its authoritative final P&L (and therefore its sign outcome) while
     // lacking monetary risk; that one shape keeps Actual R null without
-    // discarding the known outcome. `canceled` is deliberately
+    // discarding the known outcome.
+    //
+    // THE CONTRACT CLOSED SHAPE (migration 0023, contract §9, §12, §13). On a
+    // contract row the Trader Outcome is either Unanswered or the trader's own
+    // choice, independent of P&L sign and R — so it is not tied to either.
+    // What stays structural: Money is the only result basis, and Actual R
+    // exists only when both of its inputs do (Final Net P&L / Risk at Entry).
+    // The legacy shapes stay exactly as they were, so a derived
+    // outcome (legacy row, or a contract row closed by the pre-contract Final
+    // Close) is still held to its sign/tolerance derivation. `canceled` is deliberately
     // unconstrained in shape (a Trade may be canceled from `planned` with
     // nothing filled in, or from `open` with partial data already present);
     // exclusion from Trader metrics is a query-level filter
@@ -1080,6 +1130,14 @@ export const trades = pgTable(
                 )
                 AND ${table.netPnlMinor} IS NOT NULL
               )
+            )
+          ) OR (
+            ${table.recordingContract} IS NOT NULL
+            AND (${table.traderOutcome} IS NULL OR ${table.traderOutcomeSelectedAt} IS NOT NULL)
+            AND ${table.actualResultMode} IS NOT DISTINCT FROM 'money'
+            AND (
+              ${table.actualR} IS NULL
+              OR (${table.netPnlMinor} IS NOT NULL AND ${table.plannedRiskMinor} IS NOT NULL)
             )
           )
         )

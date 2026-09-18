@@ -6,44 +6,58 @@
  * lives in `recording-draft-storage.ts` and nothing here renders or touches I/O.
  *
  * ONE ENVELOPE, ONE SECTION PER MODE. A trader who starts At Entry and switches
- * to After Trade still has ONE draft: the At Entry section keeps every At Entry
- * answer (Exit Plan, Target states, condition answers, Actual Risk) as draft
- * data, and the After Trade section holds that form's own state. Only the
- * ACTIVE mode's section is ever turned into a Save payload.
+ * to After Trade still has ONE draft: each section keeps its own mode's answers
+ * as draft data, and only the ACTIVE mode's section is ever turned into a Save
+ * payload. Mode-specific work — Final Net P&L, Trader Outcome, exit history,
+ * Post-Trade Emotion on one side; the At Entry "now" and Matched assumptions on
+ * the other — stays in its section, hidden while inactive, never deleted.
  *
- * WHAT CROSSES MODES: IDENTICAL MEANING ONLY. `SharedRecordingValues` lists the
- * explicit values whose meaning is the same in both current forms. Everything
- * else stays in its own section, never deleted and never activated in the other
- * mode (product decision 2026-09-17: current After Trade cannot represent an
- * Unanswered condition, an Exit Plan, a Target state or an Actual Risk answer
- * without falsifying it — its checklist would save Unanswered as Not Met).
+ * WHAT CROSSES MODES: EXPLICIT ANSWERS WHOSE MEANING IS THE SAME IN BOTH
+ * (contract §23, decision 40; UX Rules §5.5). `SharedRecordingValues` lists
+ * them: identity, an explicit entry time, Risk at Entry, the Strategy and Setup
+ * answers (including No Strategy / No Setup), Met / Not Met condition answers,
+ * the Target, an explicitly chosen Exit Plan, an explicit Actual Risk
+ * "Different", Confidence, Entry Emotion and the context fields.
  *
- * DEFAULTS NEVER CROSS. An untouched At Entry entry time ("now") is not a shared
- * value, so After Trade shows Entry time unanswered; the At Entry Matched Actual
- * Risk assumption and an automatically inherited Strategy Exit Plan are not
- * shared values at all (contract §23 Recording mode switch).
+ * DEFAULTS NEVER CROSS. An untouched At Entry entry time ("now"), the At Entry
+ * Matched Actual Risk assumption and an automatically inherited Strategy Exit
+ * Plan are not shared values, so After Trade shows each of them Unanswered. An
+ * After Trade "Don't remember" condition and "Don't know" Actual Risk have no
+ * At Entry answer; they stay in the After Trade section and are never turned
+ * into something At Entry can show.
  *
  * ONLY WHAT WAS CHANGED CROSSES BACK. After the first switch the envelope
  * remembers the shared values it last handed over. Switching again carries only
- * the shared fields the trader changed since then, so a richer answer the other
- * mode cannot represent — "No Strategy", "No Setup", "None of these" emotions
- * already recorded — is never overwritten by that mode's blank.
+ * the shared fields the trader changed since then, so an answer only one mode
+ * can hold is never overwritten by the other mode's blank.
  *
  * PROVENANCE IS NOT DECIDED HERE. A mode switch rewrites no capture origin: the
- * origin a Save writes reflects the recording context at Save (UX Rules §5.5),
- * and an untouched default has no observation provenance to carry.
+ * origin a Save writes reflects the recording context at Save (UX Rules §5.5).
  */
 import { z } from 'zod';
 
 import {
   createAfterTradeDraft,
-  emptyAfterTradeValues,
   hasAfterTradeWork,
   type AfterTradeDraft,
+  type RecalledConditionStatus,
 } from './after-trade-draft';
-import { createAtEntryDraft, hasUserWork, type AtEntryDraft } from './at-entry-draft';
+import {
+  createAtEntryDraft,
+  hasUserWork,
+  type AnswerState,
+  type AtEntryDraft,
+  type ConditionStatus,
+  type TargetDraft,
+} from './at-entry-draft';
 
-export const RECORDING_DRAFT_VERSION = 1;
+/**
+ * v2 (2026-09-18): the After Trade section follows the Add Trade contract. A v1
+ * draft is upgraded by `upgradeV1Envelope`, which keeps the At Entry section
+ * whole and carries only the legacy After Trade values whose meaning did not
+ * change. Any other version is never guessed.
+ */
+export const RECORDING_DRAFT_VERSION = 2;
 
 /**
  * Conservative automatic retention: a draft untouched for 30 days is dropped
@@ -55,19 +69,47 @@ export const RECORDING_DRAFT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type RecordingMode = 'at_entry' | 'after_trade';
 
+/** Condition answers both modes hold: Met / Not Met, per Strategy and Setup. */
+export type SharedConditionAnswers = Readonly<
+  Record<string, Readonly<Record<string, Readonly<Record<string, ConditionStatus>>>>>
+>;
+
+/** An Exit Plan the trader chose. An inherited default is never one. */
+export type SharedExitPlan =
+  | { readonly kind: 'saved'; readonly exitPlanId: string }
+  | {
+      readonly kind: 'customized';
+      readonly customText: string;
+      readonly customBaseId: string | null;
+    }
+  | { readonly kind: 'no_rule' };
+
 export interface SharedRecordingValues {
   readonly tradingAccountId: string;
   readonly symbol: string;
   readonly direction: '' | 'long' | 'short';
   /** An explicit entry time only; '' is Unanswered, never "now". */
   readonly enteredAt: string;
-  /** A manually entered Risk at Entry (After Trade's Money plan risk). */
+  /** A manually entered Risk at Entry. */
   readonly riskAtEntry: string;
-  readonly strategyId: string;
-  readonly setupId: string;
+  readonly classification: {
+    readonly strategy: AnswerState;
+    readonly strategyId: string;
+    readonly setup: AnswerState;
+    readonly setupId: string;
+  };
+  readonly conditions: SharedConditionAnswers;
+  readonly target: TargetDraft;
+  /** `null` when no explicit Exit Plan answer exists. */
+  readonly exitPlan: SharedExitPlan | null;
+  /** An explicit "Actual risk differed", with its amount or ''; `null` otherwise. */
+  readonly actualRiskDifferent: { readonly amount: string } | null;
   readonly confidence: number | null;
-  /** `null` Unanswered, `[]` None of these, or the chosen emotions. */
+  /** `null` Unanswered, `[]` None of these, or the chosen Entry emotions. */
   readonly emotions: readonly string[] | null;
+  readonly entryPrice: string;
+  readonly stopPrice: string;
+  readonly positionSize: string;
   readonly reason: string;
   readonly tradingviewUrl: string;
   readonly notes: string;
@@ -95,25 +137,85 @@ export interface RecordingDraftEnvelope {
 // Shared values
 // ---------------------------------------------------------------------------
 
+function emotionsShared(answer: { answer: AnswerState; keys: readonly string[] }) {
+  return answer.answer === 'selected' ? answer.keys : answer.answer === 'none' ? [] : null;
+}
+
+function emotionsFromShared(
+  emotions: readonly string[] | null,
+  previousKeys: readonly string[],
+): { answer: AnswerState; keys: readonly string[] } {
+  return emotions === null
+    ? { answer: 'unanswered', keys: previousKeys }
+    : emotions.length === 0
+      ? { answer: 'none', keys: previousKeys }
+      : { answer: 'selected', keys: emotions };
+}
+
+/** The Met / Not Met answers only; "Don't remember" stays in After Trade. */
+function metOrNotMet(
+  conditions: Readonly<
+    Record<string, Readonly<Record<string, Readonly<Record<string, RecalledConditionStatus>>>>>
+  >,
+): SharedConditionAnswers {
+  const result: Record<string, Record<string, Record<string, ConditionStatus>>> = {};
+  for (const [strategyId, bySetup] of Object.entries(conditions)) {
+    for (const [setupId, answers] of Object.entries(bySetup)) {
+      for (const [key, status] of Object.entries(answers)) {
+        if (status === 'unknown') continue;
+        ((result[strategyId] ??= {})[setupId] ??= {})[key] = status;
+      }
+    }
+  }
+  return result;
+}
+
 export function sharedFromAtEntry(draft: AtEntryDraft): SharedRecordingValues {
   const { classification } = draft;
-  const strategyId = classification.strategy === 'selected' ? classification.strategyId : '';
-  const setup = strategyId === '' ? undefined : classification.setupByStrategy[strategyId];
+  const setup =
+    classification.strategy === 'selected'
+      ? classification.setupByStrategy[classification.strategyId]
+      : undefined;
+  const { choice } = draft.exitPlan;
   return {
     tradingAccountId: draft.tradingAccountId,
     symbol: draft.symbol,
     direction: draft.direction,
     enteredAt: draft.entryTime.source === 'trader' ? draft.entryTime.value : '',
     riskAtEntry: draft.risk,
-    strategyId,
-    setupId: setup?.answer === 'selected' ? setup.setupId : '',
-    confidence: draft.confidence,
-    emotions:
-      draft.emotions.answer === 'selected'
-        ? draft.emotions.keys
-        : draft.emotions.answer === 'none'
-          ? []
+    classification: {
+      strategy: classification.strategy,
+      strategyId: classification.strategy === 'selected' ? classification.strategyId : '',
+      setup: setup?.answer ?? 'unanswered',
+      setupId: setup?.answer === 'selected' ? setup.setupId : '',
+    },
+    conditions: classification.conditions,
+    target: draft.target,
+    // `inherit` is the Strategy default applying without a choice: never shared.
+    exitPlan:
+      choice.kind === 'saved'
+        ? { kind: 'saved', exitPlanId: choice.exitPlanId }
+        : choice.kind === 'customized'
+          ? {
+              kind: 'customized',
+              customText: draft.exitPlan.customText,
+              customBaseId: draft.exitPlan.customBaseId,
+            }
+          : choice.kind === 'no_rule'
+            ? { kind: 'no_rule' }
+            : null,
+    // Matched is At Entry's visible assumption, not an After Trade answer.
+    actualRiskDifferent:
+      draft.actualRisk.mode === 'different'
+        ? { amount: draft.actualRisk.amount }
+        : draft.actualRisk.mode === 'different_unknown'
+          ? { amount: '' }
           : null,
+    confidence: draft.confidence,
+    emotions: emotionsShared(draft.emotions),
+    entryPrice: draft.context.entryPrice,
+    stopPrice: draft.context.stopPrice,
+    positionSize: draft.context.positionSize,
     reason: draft.context.reason,
     tradingviewUrl: draft.context.tradingviewUrl,
     notes: draft.context.notes,
@@ -122,29 +224,51 @@ export function sharedFromAtEntry(draft: AtEntryDraft): SharedRecordingValues {
   };
 }
 
-function confidenceFromText(value: string): number | null {
-  if (!/^\d+$/.test(value)) return null;
-  const parsed = Number(value);
-  return [0, 25, 50, 75, 100].includes(parsed) ? parsed : null;
-}
-
 export function sharedFromAfterTrade(draft: AfterTradeDraft): SharedRecordingValues {
-  const { values } = draft;
+  const { classification } = draft;
+  const setup =
+    classification.strategy === 'selected'
+      ? classification.setupByStrategy[classification.strategyId]
+      : undefined;
+  const { choice } = draft.exitPlan;
   return {
-    tradingAccountId: values.tradingAccountId,
-    symbol: values.symbol,
-    direction: values.direction,
-    enteredAt: values.enteredAt,
-    riskAtEntry: draft.planBasis === 'money' ? values.plannedRisk : '',
-    strategyId: values.strategyId,
-    setupId: values.strategyId === '' ? '' : values.setupId,
-    confidence: confidenceFromText(values.confidence),
-    emotions: draft.emotions,
-    reason: values.confirmationNotes,
-    tradingviewUrl: values.tradingviewUrl,
-    notes: values.notes,
-    timeframe: values.timeframe,
-    session: values.session,
+    tradingAccountId: draft.tradingAccountId,
+    symbol: draft.symbol,
+    direction: draft.direction,
+    enteredAt: draft.enteredAt,
+    riskAtEntry: draft.risk,
+    classification: {
+      strategy: classification.strategy,
+      strategyId: classification.strategy === 'selected' ? classification.strategyId : '',
+      setup: setup?.answer ?? 'unanswered',
+      setupId: setup?.answer === 'selected' ? setup.setupId : '',
+    },
+    conditions: metOrNotMet(classification.conditions),
+    target: draft.target,
+    exitPlan:
+      choice.kind === 'saved'
+        ? { kind: 'saved', exitPlanId: choice.exitPlanId }
+        : choice.kind === 'customized'
+          ? {
+              kind: 'customized',
+              customText: draft.exitPlan.customText,
+              customBaseId: draft.exitPlan.customBaseId,
+            }
+          : choice.kind === 'no_rule'
+            ? { kind: 'no_rule' }
+            : null,
+    actualRiskDifferent:
+      draft.actualRisk.answer === 'different' ? { amount: draft.actualRisk.amount } : null,
+    confidence: draft.confidence,
+    emotions: emotionsShared(draft.emotions),
+    entryPrice: draft.context.entryPrice,
+    stopPrice: draft.context.stopPrice,
+    positionSize: draft.context.positionSize,
+    reason: draft.context.reason,
+    tradingviewUrl: draft.context.tradingviewUrl,
+    notes: draft.context.notes,
+    timeframe: draft.context.timeframe,
+    session: draft.context.session,
   };
 }
 
@@ -155,10 +279,16 @@ const SHARED_FIELDS: readonly SharedField[] = [
   'direction',
   'enteredAt',
   'riskAtEntry',
-  'strategyId',
-  'setupId',
+  'classification',
+  'conditions',
+  'target',
+  'exitPlan',
+  'actualRiskDifferent',
   'confidence',
   'emotions',
+  'entryPrice',
+  'stopPrice',
+  'positionSize',
   'reason',
   'tradingviewUrl',
   'notes',
@@ -170,18 +300,64 @@ function sameValue(a: SharedRecordingValues[SharedField], b: SharedRecordingValu
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function hasAnyCondition(conditions: SharedConditionAnswers): boolean {
+  return Object.values(conditions).some((bySetup) =>
+    Object.values(bySetup).some((answers) => Object.keys(answers).length > 0),
+  );
+}
+
+/** Whether a shared value holds no answer at all — the first switch never carries one. */
+function isUnanswered(field: SharedField, source: SharedRecordingValues): boolean {
+  switch (field) {
+    case 'classification':
+      return source.classification.strategy === 'unanswered';
+    case 'conditions':
+      return !hasAnyCondition(source.conditions);
+    case 'target':
+      return (
+        source.target.state === 'unanswered' &&
+        source.target.profit === '' &&
+        source.target.price === ''
+      );
+    default: {
+      const value = source[field];
+      return value === '' || value === null;
+    }
+  }
+}
+
 /** Which shared fields a switch carries: every answered one the first time, then only changed ones. */
 function fieldsToCarry(
   source: SharedRecordingValues,
   lastCarried: SharedRecordingValues | null,
 ): readonly SharedField[] {
-  if (lastCarried === null) {
-    return SHARED_FIELDS.filter((field) => {
-      const value = source[field];
-      return value !== '' && value !== null;
-    });
-  }
+  if (lastCarried === null) return SHARED_FIELDS.filter((field) => !isUnanswered(field, source));
   return SHARED_FIELDS.filter((field) => !sameValue(source[field], lastCarried[field]));
+}
+
+function withSharedClassification<
+  C extends {
+    readonly strategy: AnswerState;
+    readonly strategyId: string;
+    readonly setupByStrategy: Readonly<
+      Record<string, { readonly answer: AnswerState; readonly setupId: string }>
+    >;
+  },
+>(classification: C, shared: SharedRecordingValues['classification']): C {
+  if (shared.strategy !== 'selected') return { ...classification, strategy: shared.strategy };
+  const previous = classification.setupByStrategy[shared.strategyId];
+  return {
+    ...classification,
+    strategy: 'selected',
+    strategyId: shared.strategyId,
+    setupByStrategy: {
+      ...classification.setupByStrategy,
+      [shared.strategyId]: {
+        answer: shared.setup,
+        setupId: shared.setup === 'selected' ? shared.setupId : (previous?.setupId ?? ''),
+      },
+    },
+  };
 }
 
 export function applySharedToAtEntry(
@@ -206,46 +382,53 @@ export function applySharedToAtEntry(
     };
   }
   if (has('riskAtEntry')) next = { ...next, risk: shared.riskAtEntry };
-  if (has('strategyId') || has('setupId')) {
-    const { classification } = next;
-    if (shared.strategyId === '') {
-      if (has('strategyId')) {
-        next = { ...next, classification: { ...classification, strategy: 'unanswered' } };
-      }
-    } else {
-      const previous = classification.setupByStrategy[shared.strategyId];
-      next = {
-        ...next,
-        classification: {
-          ...classification,
-          strategy: 'selected',
-          strategyId: shared.strategyId,
-          setupByStrategy: has('setupId')
+  if (has('classification')) {
+    next = {
+      ...next,
+      classification: withSharedClassification(next.classification, shared.classification),
+    };
+  }
+  if (has('conditions')) {
+    next = { ...next, classification: { ...next.classification, conditions: shared.conditions } };
+  }
+  if (has('target')) next = { ...next, target: shared.target };
+  if (has('exitPlan')) {
+    const plan = shared.exitPlan;
+    next = {
+      ...next,
+      exitPlan:
+        plan === null
+          ? // Withdrawn in After Trade: At Entry returns to its own default.
+            { ...next.exitPlan, choice: { kind: 'inherit' } }
+          : plan.kind === 'customized'
             ? {
-                ...classification.setupByStrategy,
-                [shared.strategyId]:
-                  shared.setupId === ''
-                    ? { answer: 'unanswered', setupId: previous?.setupId ?? '' }
-                    : { answer: 'selected', setupId: shared.setupId },
+                choice: { kind: 'customized' },
+                customText: plan.customText,
+                customBaseId: plan.customBaseId,
               }
-            : classification.setupByStrategy,
-        },
-      };
-    }
+            : { ...next.exitPlan, choice: plan },
+    };
+  }
+  if (has('actualRiskDifferent')) {
+    const different = shared.actualRiskDifferent;
+    next = {
+      ...next,
+      actualRisk:
+        different === null
+          ? { ...next.actualRisk, mode: 'matched' }
+          : different.amount === ''
+            ? { ...next.actualRisk, mode: 'different_unknown' }
+            : { mode: 'different', amount: different.amount },
+    };
   }
   if (has('confidence')) next = { ...next, confidence: shared.confidence };
   if (has('emotions')) {
-    next = {
-      ...next,
-      emotions:
-        shared.emotions === null
-          ? { answer: 'unanswered', keys: next.emotions.keys }
-          : shared.emotions.length === 0
-            ? { answer: 'none', keys: next.emotions.keys }
-            : { answer: 'selected', keys: shared.emotions },
-    };
+    next = { ...next, emotions: emotionsFromShared(shared.emotions, next.emotions.keys) };
   }
   const context = { ...next.context };
+  if (has('entryPrice')) context.entryPrice = shared.entryPrice;
+  if (has('stopPrice')) context.stopPrice = shared.stopPrice;
+  if (has('positionSize')) context.positionSize = shared.positionSize;
   if (has('reason')) context.reason = shared.reason;
   if (has('tradingviewUrl')) context.tradingviewUrl = shared.tradingviewUrl;
   if (has('notes')) context.notes = shared.notes;
@@ -254,35 +437,101 @@ export function applySharedToAtEntry(
   return { ...next, context };
 }
 
+/** Met / Not Met answers from At Entry, keeping each "Don't remember" At Entry could not see. */
+function mergeConditions(
+  own: AfterTradeDraft['classification']['conditions'],
+  shared: SharedConditionAnswers,
+): AfterTradeDraft['classification']['conditions'] {
+  const result: Record<string, Record<string, Record<string, RecalledConditionStatus>>> = {};
+  for (const [strategyId, bySetup] of Object.entries(own)) {
+    for (const [setupId, answers] of Object.entries(bySetup)) {
+      for (const [key, status] of Object.entries(answers)) {
+        if (status === 'unknown') ((result[strategyId] ??= {})[setupId] ??= {})[key] = status;
+      }
+    }
+  }
+  for (const [strategyId, bySetup] of Object.entries(shared)) {
+    for (const [setupId, answers] of Object.entries(bySetup)) {
+      for (const [key, status] of Object.entries(answers)) {
+        ((result[strategyId] ??= {})[setupId] ??= {})[key] = status;
+      }
+    }
+  }
+  return result;
+}
+
 export function applySharedToAfterTrade(
   draft: AfterTradeDraft,
   shared: SharedRecordingValues,
   fields: readonly SharedField[],
 ): AfterTradeDraft {
+  let next = draft;
   const has = (field: SharedField) => fields.includes(field);
-  const values = { ...draft.values };
-  if (has('tradingAccountId')) values.tradingAccountId = shared.tradingAccountId;
-  if (has('symbol')) values.symbol = shared.symbol;
-  if (has('direction')) values.direction = shared.direction;
-  if (has('enteredAt')) values.enteredAt = shared.enteredAt;
-  // Risk at Entry is After Trade's Money plan risk. The plan basis is the
-  // trader's own choice and is never switched to make the value active.
-  if (has('riskAtEntry')) values.plannedRisk = shared.riskAtEntry;
-  if (has('strategyId')) values.strategyId = shared.strategyId;
-  if (has('setupId') || has('strategyId')) values.setupId = shared.setupId;
-  if (has('confidence')) {
-    values.confidence = shared.confidence === null ? '' : String(shared.confidence);
+  if (has('tradingAccountId')) next = { ...next, tradingAccountId: shared.tradingAccountId };
+  if (has('symbol')) next = { ...next, symbol: shared.symbol };
+  if (has('direction')) next = { ...next, direction: shared.direction };
+  if (has('enteredAt')) next = { ...next, enteredAt: shared.enteredAt };
+  if (has('riskAtEntry')) next = { ...next, risk: shared.riskAtEntry };
+  if (has('classification')) {
+    next = {
+      ...next,
+      classification: withSharedClassification(next.classification, shared.classification),
+    };
   }
-  if (has('reason')) values.confirmationNotes = shared.reason;
-  if (has('tradingviewUrl')) values.tradingviewUrl = shared.tradingviewUrl;
-  if (has('notes')) values.notes = shared.notes;
-  if (has('timeframe')) values.timeframe = shared.timeframe;
-  if (has('session')) values.session = shared.session;
-  return {
-    ...draft,
-    values,
-    emotions: has('emotions') ? shared.emotions : draft.emotions,
-  };
+  if (has('conditions')) {
+    next = {
+      ...next,
+      classification: {
+        ...next.classification,
+        conditions: mergeConditions(next.classification.conditions, shared.conditions),
+      },
+    };
+  }
+  if (has('target')) next = { ...next, target: shared.target };
+  if (has('exitPlan')) {
+    const plan = shared.exitPlan;
+    next = {
+      ...next,
+      exitPlan:
+        plan === null
+          ? { ...next.exitPlan, choice: { kind: 'unanswered' } }
+          : plan.kind === 'customized'
+            ? {
+                choice: { kind: 'customized' },
+                customText: plan.customText,
+                customBaseId: plan.customBaseId,
+              }
+            : { ...next.exitPlan, choice: plan },
+    };
+  }
+  if (has('actualRiskDifferent')) {
+    const different = shared.actualRiskDifferent;
+    next = {
+      ...next,
+      actualRisk:
+        different !== null
+          ? { answer: 'different', amount: different.amount }
+          : // Withdrawn in At Entry. At Entry's Matched is an assumption, not
+            // an After Trade answer, so this returns to Unanswered.
+            next.actualRisk.answer === 'different'
+            ? { ...next.actualRisk, answer: 'unanswered' }
+            : next.actualRisk,
+    };
+  }
+  if (has('confidence')) next = { ...next, confidence: shared.confidence };
+  if (has('emotions')) {
+    next = { ...next, emotions: emotionsFromShared(shared.emotions, next.emotions.keys) };
+  }
+  const context = { ...next.context };
+  if (has('entryPrice')) context.entryPrice = shared.entryPrice;
+  if (has('stopPrice')) context.stopPrice = shared.stopPrice;
+  if (has('positionSize')) context.positionSize = shared.positionSize;
+  if (has('reason')) context.reason = shared.reason;
+  if (has('tradingviewUrl')) context.tradingviewUrl = shared.tradingviewUrl;
+  if (has('notes')) context.notes = shared.notes;
+  if (has('timeframe')) context.timeframe = shared.timeframe;
+  if (has('session')) context.session = shared.session;
+  return { ...next, context };
 }
 
 // ---------------------------------------------------------------------------
@@ -367,16 +616,14 @@ export function recordingDraftHasWork(
     (envelope.atEntry !== null &&
       hasUserWork(envelope.atEntry, createAtEntryDraft(defaultTradingAccountId))) ||
     (envelope.afterTrade !== null &&
-      hasAfterTradeWork(envelope.afterTrade, emptyAfterTradeValues(defaultTradingAccountId)))
+      hasAfterTradeWork(envelope.afterTrade, createAfterTradeDraft(defaultTradingAccountId)))
   );
 }
 
 /** A short, trader-recognisable label for what a draft holds — used to name what sign-out would remove. */
 export function recordingDraftSymbol(envelope: RecordingDraftEnvelope): string | null {
   const symbol =
-    envelope.activeMode === 'at_entry'
-      ? envelope.atEntry?.symbol
-      : envelope.afterTrade?.values.symbol;
+    envelope.activeMode === 'at_entry' ? envelope.atEntry?.symbol : envelope.afterTrade?.symbol;
   const trimmed = symbol?.trim().toUpperCase() ?? '';
   return trimmed === '' ? null : trimmed;
 }
@@ -387,6 +634,35 @@ export function recordingDraftSymbol(envelope: RecordingDraftEnvelope): string |
 
 const text = z.string().max(20_000);
 const direction = z.enum(['', 'long', 'short']);
+const answerState = z.enum(['unanswered', 'none', 'selected']);
+const targetSchema = z.object({
+  state: z.enum(['unanswered', 'fixed', 'no_fixed']),
+  profit: text,
+  price: text,
+});
+const exitPlanSchema = z.object({
+  choice: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('inherit') }),
+    z.object({ kind: z.literal('unanswered') }),
+    z.object({ kind: z.literal('saved'), exitPlanId: text }),
+    z.object({ kind: z.literal('customized') }),
+    z.object({ kind: z.literal('no_rule') }),
+  ]),
+  customText: text,
+  customBaseId: text.nullable(),
+});
+const setupByStrategySchema = z.record(text, z.object({ answer: answerState, setupId: text }));
+const emotionsSchema = z.object({ answer: answerState, keys: z.array(text) });
+const contextSchema = z.object({
+  entryPrice: text,
+  stopPrice: text,
+  positionSize: text,
+  timeframe: text,
+  session: text,
+  reason: text,
+  tradingviewUrl: text,
+  notes: text,
+});
 
 const atEntrySchema = z.object({
   tradingAccountId: text,
@@ -398,46 +674,117 @@ const atEntrySchema = z.object({
     mode: z.enum(['matched', 'different', 'different_unknown']),
     amount: text,
   }),
-  target: z.object({
-    state: z.enum(['unanswered', 'fixed', 'no_fixed']),
-    profit: text,
-    price: text,
-  }),
-  exitPlan: z.object({
-    choice: z.discriminatedUnion('kind', [
-      z.object({ kind: z.literal('inherit') }),
-      z.object({ kind: z.literal('unanswered') }),
-      z.object({ kind: z.literal('saved'), exitPlanId: text }),
-      z.object({ kind: z.literal('customized') }),
-      z.object({ kind: z.literal('no_rule') }),
-    ]),
-    customText: text,
-    customBaseId: text.nullable(),
-  }),
+  target: targetSchema,
+  exitPlan: exitPlanSchema,
   classification: z.object({
-    strategy: z.enum(['unanswered', 'none', 'selected']),
+    strategy: answerState,
     strategyId: text,
-    setupByStrategy: z.record(
-      text,
-      z.object({ answer: z.enum(['unanswered', 'none', 'selected']), setupId: text }),
-    ),
+    setupByStrategy: setupByStrategySchema,
     conditions: z.record(text, z.record(text, z.record(text, z.enum(['met', 'not_met'])))),
   }),
   confidence: z.number().int().nullable(),
-  emotions: z.object({ answer: z.enum(['unanswered', 'none', 'selected']), keys: z.array(text) }),
-  context: z.object({
-    entryPrice: text,
-    stopPrice: text,
-    positionSize: text,
-    timeframe: text,
-    session: text,
-    reason: text,
-    tradingviewUrl: text,
-    notes: text,
-  }),
+  emotions: emotionsSchema,
+  context: contextSchema,
 }) satisfies z.ZodType<AtEntryDraft>;
 
 const afterTradeSchema = z.object({
+  tradingAccountId: text,
+  symbol: text,
+  direction,
+  enteredAt: text,
+  exitedAt: text,
+  risk: text,
+  actualRisk: z.object({
+    answer: z.enum(['unanswered', 'matched', 'different', 'unknown']),
+    amount: text,
+  }),
+  target: targetSchema,
+  exitPlan: exitPlanSchema,
+  finalPnl: text,
+  outcome: z.enum(['win', 'loss', 'break_even']).nullable(),
+  exits: z
+    .array(
+      z.object({
+        id: text,
+        scope: z.enum(['', 'part', 'all_remaining', 'unknown']),
+        pnl: text,
+        closedPercent: text,
+        exitedAt: text,
+        price: text,
+        reason: text,
+      }),
+    )
+    .max(200),
+  completeness: z.enum(['unanswered', 'unknown', 'incomplete', 'complete']),
+  classification: z.object({
+    strategy: answerState,
+    strategyId: text,
+    setupByStrategy: setupByStrategySchema,
+    conditions: z.record(
+      text,
+      z.record(text, z.record(text, z.enum(['met', 'not_met', 'unknown']))),
+    ),
+  }),
+  confidence: z.number().int().nullable(),
+  emotions: emotionsSchema,
+  postTradeEmotions: emotionsSchema,
+  context: contextSchema,
+}) satisfies z.ZodType<AfterTradeDraft>;
+
+const sharedSchema = z.object({
+  tradingAccountId: text,
+  symbol: text,
+  direction,
+  enteredAt: text,
+  riskAtEntry: text,
+  classification: z.object({
+    strategy: answerState,
+    strategyId: text,
+    setup: answerState,
+    setupId: text,
+  }),
+  conditions: z.record(text, z.record(text, z.record(text, z.enum(['met', 'not_met'])))),
+  target: targetSchema,
+  exitPlan: z
+    .discriminatedUnion('kind', [
+      z.object({ kind: z.literal('saved'), exitPlanId: text }),
+      z.object({
+        kind: z.literal('customized'),
+        customText: text,
+        customBaseId: text.nullable(),
+      }),
+      z.object({ kind: z.literal('no_rule') }),
+    ])
+    .nullable(),
+  actualRiskDifferent: z.object({ amount: text }).nullable(),
+  confidence: z.number().int().nullable(),
+  emotions: z.array(text).nullable(),
+  entryPrice: text,
+  stopPrice: text,
+  positionSize: text,
+  reason: text,
+  tradingviewUrl: text,
+  notes: text,
+  timeframe: text,
+  session: text,
+}) satisfies z.ZodType<SharedRecordingValues>;
+
+const envelopeSchema = z.object({
+  version: z.literal(RECORDING_DRAFT_VERSION),
+  activeMode: z.enum(['at_entry', 'after_trade']),
+  mutationKey: z.string().uuid(),
+  updatedAt: z.string().datetime({ offset: true }),
+  atEntry: atEntrySchema.nullable(),
+  afterTrade: afterTradeSchema.nullable(),
+  lastCarried: sharedSchema.nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// v1 → v2
+// ---------------------------------------------------------------------------
+
+/** The pre-contract After Trade section, exactly as v1 stored it. */
+const v1AfterTradeSchema = z.object({
   values: z.object({
     tradingAccountId: text,
     symbol: text,
@@ -479,9 +826,9 @@ const afterTradeSchema = z.object({
   completeness: z.enum(['unknown', 'incomplete', 'complete']),
   conditionMet: z.record(text, z.boolean()),
   emotions: z.array(text).nullable(),
-}) satisfies z.ZodType<AfterTradeDraft>;
+});
 
-const sharedSchema = z.object({
+const v1SharedSchema = z.object({
   tradingAccountId: text,
   symbol: text,
   direction,
@@ -496,17 +843,130 @@ const sharedSchema = z.object({
   notes: text,
   timeframe: text,
   session: text,
-}) satisfies z.ZodType<SharedRecordingValues>;
+});
 
-const envelopeSchema = z.object({
-  version: z.literal(RECORDING_DRAFT_VERSION),
+const v1EnvelopeSchema = z.object({
+  version: z.literal(1),
   activeMode: z.enum(['at_entry', 'after_trade']),
   mutationKey: z.string().uuid(),
   updatedAt: z.string().datetime({ offset: true }),
   atEntry: atEntrySchema.nullable(),
-  afterTrade: afterTradeSchema.nullable(),
-  lastCarried: sharedSchema.nullable(),
+  afterTrade: v1AfterTradeSchema.nullable(),
+  lastCarried: v1SharedSchema.nullable(),
 });
+
+function confidenceFromText(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return [0, 25, 50, 75, 100].includes(parsed) ? parsed : null;
+}
+
+/**
+ * THE ONE EXPLICIT UPGRADE. Only values whose meaning is unchanged cross:
+ * identity, times, a Money Risk at Entry and Final Net P&L, exit rows (a Price
+ * exit value becomes the exit's price context), Strategy / Setup, Confidence,
+ * emotions and the context text. Left behind, because the old form could not
+ * say what they now mean: the boolean condition checklist (an unchecked box was
+ * saved as Not Met), the pre-selected "Not sure" completeness, the old Actual
+ * Risk denominator and the Price plan. Nothing is inferred from them.
+ */
+export function upgradeV1AfterTrade(legacy: z.infer<typeof v1AfterTradeSchema>): AfterTradeDraft {
+  const { values } = legacy;
+  const base = createAfterTradeDraft(values.tradingAccountId);
+  const money = legacy.actualBasis === 'money';
+  const emotions = legacy.emotions;
+  return {
+    ...base,
+    symbol: values.symbol,
+    direction: values.direction,
+    enteredAt: values.enteredAt,
+    exitedAt: values.exitedAt,
+    risk: legacy.planBasis === 'money' ? values.plannedRisk : '',
+    finalPnl: money ? values.finalPnl : '',
+    exits: legacy.exits.map((exit) => ({
+      id: exit.id,
+      scope: exit.scope,
+      pnl: money ? exit.value : '',
+      closedPercent: exit.closedPercent,
+      exitedAt: exit.exitedAt,
+      price: money ? '' : exit.value,
+      reason: exit.reason,
+    })),
+    classification:
+      values.strategyId === ''
+        ? base.classification
+        : {
+            strategy: 'selected',
+            strategyId: values.strategyId,
+            setupByStrategy:
+              values.setupId === ''
+                ? {}
+                : { [values.strategyId]: { answer: 'selected', setupId: values.setupId } },
+            conditions: {},
+          },
+    confidence: confidenceFromText(values.confidence),
+    emotions:
+      emotions === null
+        ? base.emotions
+        : emotions.length === 0
+          ? { answer: 'none', keys: [] }
+          : { answer: 'selected', keys: emotions },
+    context: {
+      ...base.context,
+      entryPrice: money ? '' : values.actualEntry,
+      stopPrice: money ? '' : values.actualStop,
+      positionSize: money ? '' : values.actualPositionSize,
+      timeframe: values.timeframe,
+      session: values.session,
+      reason: values.confirmationNotes,
+      tradingviewUrl: values.tradingviewUrl,
+      notes: values.notes,
+    },
+  };
+}
+
+function upgradeV1Shared(legacy: z.infer<typeof v1SharedSchema>): SharedRecordingValues {
+  return {
+    tradingAccountId: legacy.tradingAccountId,
+    symbol: legacy.symbol,
+    direction: legacy.direction,
+    enteredAt: legacy.enteredAt,
+    riskAtEntry: legacy.riskAtEntry,
+    classification: {
+      strategy: legacy.strategyId === '' ? 'unanswered' : 'selected',
+      strategyId: legacy.strategyId,
+      setup: legacy.setupId === '' ? 'unanswered' : 'selected',
+      setupId: legacy.setupId,
+    },
+    // Never handed over in v1: an answer in either section now carries once.
+    conditions: {},
+    target: { state: 'unanswered', profit: '', price: '' },
+    exitPlan: null,
+    actualRiskDifferent: null,
+    confidence: legacy.confidence,
+    emotions: legacy.emotions,
+    entryPrice: '',
+    stopPrice: '',
+    positionSize: '',
+    reason: legacy.reason,
+    tradingviewUrl: legacy.tradingviewUrl,
+    notes: legacy.notes,
+    timeframe: legacy.timeframe,
+    session: legacy.session,
+  };
+}
+
+function upgradeV1Envelope(legacy: z.infer<typeof v1EnvelopeSchema>): RecordingDraftEnvelope {
+  return {
+    version: RECORDING_DRAFT_VERSION,
+    activeMode: legacy.activeMode,
+    mutationKey: legacy.mutationKey,
+    updatedAt: legacy.updatedAt,
+    atEntry: legacy.atEntry,
+    afterTrade: legacy.afterTrade === null ? null : upgradeV1AfterTrade(legacy.afterTrade),
+    lastCarried: legacy.lastCarried === null ? null : upgradeV1Shared(legacy.lastCarried),
+  };
+}
 
 export type ParsedRecordingDraft =
   | { readonly status: 'recovered'; readonly envelope: RecordingDraftEnvelope }
@@ -514,10 +974,12 @@ export type ParsedRecordingDraft =
   | { readonly status: 'unrecoverable'; readonly reason: 'corrupt' | 'unsupported_version' };
 
 /**
- * NEVER GUESSES. A draft from another version is not migrated field by field
- * or coerced into today's shape: its answers could mean something else now, so
- * it is reported unrecoverable and nothing is filled in. Malformed JSON and a
- * shape that no longer validates are reported the same way.
+ * NEVER GUESSES. A draft from an unknown version is not coerced into today's
+ * shape: its answers could mean something else now, so it is reported
+ * unrecoverable and nothing is filled in. Version 1 is the one exception, and
+ * it is upgraded by an explicit, reviewed rule (`upgradeV1AfterTrade`), not by
+ * guessing. Malformed JSON and a shape that no longer validates are reported
+ * as corrupt.
  */
 export function parseRecordingDraft(raw: string, now: Date): ParsedRecordingDraft {
   let value: unknown;
@@ -526,19 +988,25 @@ export function parseRecordingDraft(raw: string, now: Date): ParsedRecordingDraf
   } catch {
     return { status: 'unrecoverable', reason: 'corrupt' };
   }
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'version' in value &&
-    (value as { version: unknown }).version !== RECORDING_DRAFT_VERSION
-  ) {
+  const version =
+    typeof value === 'object' && value !== null && 'version' in value
+      ? (value as { version: unknown }).version
+      : undefined;
+  let envelope: RecordingDraftEnvelope;
+  if (version === 1) {
+    const parsed = v1EnvelopeSchema.safeParse(value);
+    if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
+    envelope = upgradeV1Envelope(parsed.data);
+  } else if (version === undefined || version === RECORDING_DRAFT_VERSION) {
+    const parsed = envelopeSchema.safeParse(value);
+    if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
+    envelope = parsed.data;
+  } else {
     return { status: 'unrecoverable', reason: 'unsupported_version' };
   }
-  const parsed = envelopeSchema.safeParse(value);
-  if (!parsed.success) return { status: 'unrecoverable', reason: 'corrupt' };
-  const updated = Date.parse(parsed.data.updatedAt);
+  const updated = Date.parse(envelope.updatedAt);
   if (now.getTime() - updated > RECORDING_DRAFT_RETENTION_MS) return { status: 'expired' };
-  return { status: 'recovered', envelope: parsed.data };
+  return { status: 'recovered', envelope };
 }
 
 export function serializeRecordingDraft(envelope: RecordingDraftEnvelope): string {

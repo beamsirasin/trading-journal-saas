@@ -41,6 +41,7 @@ function makeTrade(overrides: Partial<TradeListView> = {}): TradeListView {
     systemR: '2.0000',
     netPnlMinor: '-5000',
     traderOutcome: 'loss',
+    traderOutcomeSelected: false,
     systemOutcome: 'win',
     hasReviewNotes: true,
     closedBps: 10_000,

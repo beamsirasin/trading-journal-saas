@@ -38,6 +38,7 @@ export async function snapshotTradeSetupConditionsInTx(
     readonly setupVersionId: string;
     readonly answers: readonly SetupConditionAnswer[];
     readonly allowUnanswered?: boolean;
+    readonly allowUnknown?: boolean;
     readonly origin?: CaptureOrigin | null;
   },
 ): Promise<SnapshotTradeSetupConditionsResult> {
@@ -66,6 +67,7 @@ export async function snapshotTradeSetupConditionsInTx(
     );
   const prepared = prepareSetupConditionSnapshots(authoritative, params.answers, {
     allowUnanswered: params.allowUnanswered === true,
+    allowUnknown: params.allowUnknown === true,
   });
   if (!prepared.ok) return prepared;
   if (prepared.snapshots.length === 0) return { ok: true, count: 0 };

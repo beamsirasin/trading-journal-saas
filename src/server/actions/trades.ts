@@ -43,7 +43,10 @@ import {
   getActiveWorkspaceContext,
   requireTradeManagement,
 } from '@/server/auth/dal';
-import { createCompletedTrade } from '@/server/services/trade-completed';
+import {
+  createCompletedTrade,
+  type CreateCompletedTradeInput,
+} from '@/server/services/trade-completed';
 import {
   attachTradeMistake,
   removeTradeMistake,
@@ -321,13 +324,12 @@ export interface CreateCompletedTradeData {
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly systemStatus: SystemStatus;
-  readonly systemR: string | null;
-  readonly systemOutcome: OutcomeValue | null;
   readonly recordedRetrospectively: boolean;
 }
 
 export type CreateCompletedTradeActionResult = TradeActionResult<CreateCompletedTradeData>;
 
+/** Save Closed Trade — the Add Trade contract After Trade write. */
 export async function createCompletedTradeAction(
   input: unknown,
 ): Promise<CreateCompletedTradeActionResult> {
@@ -341,26 +343,7 @@ export async function createCompletedTradeAction(
     const result = await createCompletedTrade(
       ctx.workspaceId,
       ctx.userId,
-      asServiceInput({
-        ...parsed.data,
-        plannedEntry: parsed.data.plannedEntry ?? null,
-        plannedStop: parsed.data.plannedStop ?? null,
-        plannedTarget: parsed.data.plannedTarget ?? null,
-        plannedPositionSize: parsed.data.plannedPositionSize ?? null,
-        plannedRiskMinor: parsed.data.plannedRiskMinor ?? null,
-        plannedRewardMinor: parsed.data.plannedRewardMinor ?? null,
-        timeframe: parsed.data.timeframe ?? null,
-        session: parsed.data.session ?? null,
-        confirmationNotes: parsed.data.confirmationNotes ?? null,
-        confidence: parsed.data.confidence ?? null,
-        tradingviewUrl: parsed.data.tradingviewUrl ?? null,
-        notes: parsed.data.notes ?? null,
-        chartAttachmentStorageKey: parsed.data.chartAttachmentStorageKey ?? null,
-        actualEntry: parsed.data.actualEntry ?? null,
-        actualInitialStop: parsed.data.actualInitialStop ?? null,
-        actualInitialRiskMinor: parsed.data.actualInitialRiskMinor ?? null,
-        actualPositionSize: parsed.data.actualPositionSize ?? null,
-      }),
+      asServiceInput<CreateCompletedTradeInput>(parsed.data),
     );
     if (!result.ok) return planFailure(result);
     revalidateTradeRoutes();
@@ -373,8 +356,6 @@ export async function createCompletedTradeAction(
         actualR: result.actualR,
         traderOutcome: result.traderOutcome,
         systemStatus: result.systemStatus,
-        systemR: result.systemR,
-        systemOutcome: result.systemOutcome,
         recordedRetrospectively: result.recordedRetrospectively,
       },
     };

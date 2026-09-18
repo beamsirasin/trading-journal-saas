@@ -34,7 +34,12 @@ export const tradeExits = pgTable(
     sequence: smallint('sequence').notNull(),
     /** Nullable for incomplete historical execution evidence; live/open remains strict. */
     closedBps: integer('closed_bps'),
-    /** Optional historical scope declaration. NULL preserves legacy/live unknown provenance. */
+    /**
+     * Optional historical scope declaration. NULL is Unanswered (or legacy/live
+     * unknown provenance); `unknown` is an explicit After Trade "Don't know"
+     * (contract §10, migration 0023) and never drives remaining-position
+     * lifecycle.
+     */
     exitScope: text('exit_scope'),
     exitPrice: numeric('exit_price', { precision: 20, scale: 10 }),
     realizedPnlMinor: bigint('realized_pnl_minor', { mode: 'bigint' }),
@@ -59,15 +64,17 @@ export const tradeExits = pgTable(
     ),
     check(
       'trade_exits_scope_check',
-      sql`${table.exitScope} IS NULL OR ${table.exitScope} IN ('part', 'all_remaining')`,
+      sql`${table.exitScope} IS NULL OR ${table.exitScope} IN ('part', 'all_remaining', 'unknown')`,
     ),
+    // A reason-only exit is a valid historical observation (contract §10).
     check(
       'trade_exits_evidence_present_check',
       sql`${table.exitScope} IS NOT NULL
         OR ${table.closedBps} IS NOT NULL
         OR ${table.exitedAt} IS NOT NULL
         OR ${table.exitPrice} IS NOT NULL
-        OR ${table.realizedPnlMinor} IS NOT NULL`,
+        OR ${table.realizedPnlMinor} IS NOT NULL
+        OR ${table.exitReason} IS NOT NULL`,
     ),
     check(
       'trade_exits_reason_not_blank_check',

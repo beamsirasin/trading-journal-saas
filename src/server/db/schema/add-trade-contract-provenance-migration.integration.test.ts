@@ -143,8 +143,8 @@ describe('migration 0022 — Add Trade contract provenance hardening', () => {
     await raw.end();
   });
 
-  it('is the latest migration and is named for the hardening', () => {
-    expect(migrationFiles.at(-1)).toBe('0022_add_trade_contract_provenance_hardening.sql');
+  it('is present and named for the hardening', () => {
+    expect(migrationFiles).toContain('0022_add_trade_contract_provenance_hardening.sql');
   });
 
   describe('capture provenance belongs to contract rows only', () => {

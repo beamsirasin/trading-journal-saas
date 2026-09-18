@@ -187,3 +187,67 @@ describe('historical execution provenance transitions', () => {
     });
   });
 });
+
+describe('Add Trade contract rows (contract §11, §12)', () => {
+  const contract = (overrides: Partial<HistoricalExecutionState> = {}) =>
+    state({
+      contract: true,
+      keptTraderOutcome: { traderOutcome: 'break_even' },
+      ...overrides,
+    });
+
+  it('never refuses a Complete history that disagrees with Final Net P&L', () => {
+    const transition = beginHistoricalManualFinalEdit(contract(), 999n);
+    expect(transition).toMatchObject({
+      ok: true,
+      snapshot: { reconciliation: 'conflict', canAdoptExitSubtotal: true },
+    });
+  });
+
+  it('keeps the selected outcome while Actual R follows the new result', () => {
+    const transition = beginHistoricalManualFinalEdit(contract(), -200n);
+    expect(transition).toMatchObject({
+      ok: true,
+      snapshot: { actualR: '-2.0000', traderOutcome: 'break_even' },
+    });
+  });
+
+  it('keeps an Unanswered outcome Unanswered, and needs Risk at Entry for Actual R', () => {
+    const transition = beginHistoricalManualFinalEdit(
+      contract({ actualInitialRiskMinor: null, keptTraderOutcome: { traderOutcome: null } }),
+      500n,
+    );
+    expect(transition).toMatchObject({
+      ok: true,
+      snapshot: { actualR: null, traderOutcome: null },
+    });
+  });
+
+  it('offers explicit adoption even when a different Final Net P&L exists', () => {
+    const view = deriveHistoricalExecutionSnapshot(
+      contract({ finalPnlMinor: 350n, finalPnlSource: 'manual_total' }),
+    );
+    expect(view.canAdoptExitSubtotal).toBe(true);
+    const adoptedTransition = adoptHistoricalExitSubtotal(
+      contract({ finalPnlMinor: 350n, finalPnlSource: 'manual_total' }),
+    );
+    expect(adoptedTransition).toMatchObject({
+      ok: true,
+      state: { finalPnlMinor: 400n, finalPnlSource: 'exit_history' },
+    });
+  });
+
+  it('never rewrites an adopted Final Net P&L when exits are edited afterwards', () => {
+    const transition = applyHistoricalExitCorrection(
+      contract({ finalPnlMinor: 400n, finalPnlSource: 'exit_history' }),
+      {
+        exitHistoryCompleteness: 'complete',
+        exits: [{ realizedPnlMinor: 100n }, { realizedPnlMinor: 100n }],
+      },
+    );
+    expect(transition).toMatchObject({
+      ok: true,
+      state: { finalPnlMinor: 400n, finalPnlSource: 'manual_total' },
+    });
+  });
+});

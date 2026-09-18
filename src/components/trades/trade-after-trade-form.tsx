@@ -1,162 +1,168 @@
 'use client';
 
-import { Check, HeartPulse, Lightbulb, Plus, Trash2 } from 'lucide-react';
+import { BarChart3, CircleAlert, History, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { composePlannedR, composeTraderCloseV2 } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
-import { confidenceLevelKey } from '@/lib/trades/constants';
-import { deriveHistoricalExecutionSnapshot } from '@/lib/trades/historical-execution';
+import { CONFIDENCE_LEVELS, confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
-import type { TradeCreateOptions } from '@/server/dal/trades';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from '@/i18n/navigation';
 
 import {
-  emptyAfterTradeValues,
-  meaningfulAfterTradeExit,
-  type AfterTradeBasis,
-  type AfterTradeCompleteness,
+  activeAfterTradeClassification,
+  addExit,
+  adoptExitSubtotal,
+  afterTradeAnalysisSummary,
+  afterTradeFieldSection,
+  afterTradeReadiness,
+  answerCondition,
+  answerNoEmotions,
+  answerNoSetup,
+  answerNoStrategy,
+  buildAfterTradePayload,
+  canDeselectEmotion,
+  createAfterTradeDraft,
+  exitField,
+  meaningfulExit,
+  removeEmotionsAnswer,
+  removeExit,
+  removeSetupAnswer,
+  removeStrategyAnswer,
+  selectSetup,
+  selectStrategy,
+  setActualRiskAmount,
+  setActualRiskAnswer,
+  setCompleteness,
+  setConfidence,
+  setOutcome,
+  setTargetState,
+  setTargetValue,
+  toggleEmotion,
+  updateExit,
+  validateAfterTradeDraft,
   type AfterTradeDraft,
+  type AfterTradeErrorCode,
+  type AfterTradeErrors,
   type AfterTradeExitDraft,
-  type AfterTradeExitScope,
-  type AfterTradeValues,
+  type AfterTradeField,
+  type EmotionPhase,
+  type RecalledConditionStatus,
 } from './after-trade-draft';
-import { NativeSelect } from './trade-action-form';
-import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import { TradeConfidenceChoice } from './trade-confidence-choice';
-import { TradeEmotionChips } from './trade-emotion-chips';
-import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
+import { createAtEntryDraft } from './at-entry-draft';
+import {
+  Chip,
+  ChoiceGroup,
+  Disclosure,
+  GroupHeading,
+  Helper,
+  InlineAction,
+  Legend,
+  Notice,
+  RequirementRow,
+  SelectField,
+  StateText,
+  Tag,
+  TextAreaField,
+  TextField,
+} from './trade-at-entry-controls';
+import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
+import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
-import { confidenceOf } from './trade-recording-primitives';
-import {
-  Band,
-  ContextLine,
-  FieldPair,
-  FormFooter,
-  InlineNote,
-  JournalLauncherSurface,
-  PrimaryAmountField,
-  QuietAction,
-  ResultLine,
-  SectionLabel,
-  SegmentedChoice,
-  SelectField,
-  TaskSurface,
-  TextInputField,
-} from './trade-recording-surface';
+import { groupEmotionCatalog } from './trade-recording-primitives';
+import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
-type Basis = AfterTradeBasis;
-type ExitScope = AfterTradeExitScope;
-type Completeness = AfterTradeCompleteness;
-type ExitDraft = AfterTradeExitDraft;
-type Values = AfterTradeValues;
-type JournalArea = 'idea' | 'feelings';
-type ErrorMap = Record<string, string>;
-
-/** Everything the two journal overlays edit, held as a working copy until Done. */
-interface JournalDraft {
-  confirmationNotes: string;
-  tradingviewUrl: string;
-  notes: string;
-  strategyId: string;
-  setupId: string;
-  timeframe: string;
-  session: string;
-  conditionMet: Record<string, boolean>;
-  confidence: string;
-  emotions: readonly string[] | null;
-}
-
-function blankExit(): ExitDraft {
-  return {
-    id: generateId(),
-    closedPercent: '',
-    scope: '',
-    value: '',
-    exitedAt: '',
-    reason: '',
-  };
-}
-
-function percentToBps(value: string): number | null | undefined {
-  const trimmed = value.trim();
-  if (trimmed === '') return null;
-  if (!/^\d{1,3}(?:\.\d{1,2})?$/.test(trimmed)) return undefined;
-  const bps = Math.round(Number(trimmed) * 100);
-  return bps > 0 && bps <= 10_000 ? bps : undefined;
-}
-
-function signedMoney(minor: string | null, currency: string): string | null {
-  const formatted = formatTradeMoney(minor, currency);
-  if (formatted === null || minor === null) return null;
-  return BigInt(minor) > 0n ? `+${formatted}` : formatted;
-}
-
-function excerpt(text: string): string {
-  const trimmed = text.trim();
-  return trimmed.length <= 64 ? trimmed : `${trimmed.slice(0, 63)}…`;
-}
-
-function isPresent<T>(value: T | null): value is T {
-  return value !== null;
-}
-
+const NONE = '__none';
 const RECENT_SYMBOL_LIMIT = 3;
-const PLAN_FIELDS = [
-  'plannedEntry',
-  'plannedStop',
-  'plannedTarget',
-  'plannedPositionSize',
-  'plannedRisk',
-  'plannedReward',
-] as const;
-const ACTUAL_FIELDS = [
-  'actualEntry',
-  'actualStop',
-  'actualPositionSize',
-  'actualRisk',
-  'finalPnl',
-] as const;
+
+/** One Save in the document at a time — see `trade-at-entry-form.tsx`. */
+const WIDE_VIEWPORT_QUERY = '(min-width: 64rem)';
+
+function subscribeWideViewport(onChange: () => void): () => void {
+  const media = window.matchMedia(WIDE_VIEWPORT_QUERY);
+  media.addEventListener('change', onChange);
+  return () => media.removeEventListener('change', onChange);
+}
+
+function useIsWideViewport(): boolean {
+  return useSyncExternalStore(
+    subscribeWideViewport,
+    () => window.matchMedia(WIDE_VIEWPORT_QUERY).matches,
+    () => true,
+  );
+}
+
+/** Where a failed Save sends focus for each field — always a real, focusable control. */
+function fieldTargetId(field: AfterTradeField): string {
+  if (field.startsWith('exit:')) {
+    const [, id, part] = field.split(':');
+    return `after-exit-${id}-${part}`;
+  }
+  switch (field) {
+    case 'tradingAccountId':
+      return 'after-account';
+    case 'direction':
+      return 'after-direction-long';
+    case 'actualRisk':
+      return 'after-actual-risk-amount';
+    default:
+      return `after-${field}`;
+  }
+}
+
+/** Server field names mapped onto the fields a trader can see and correct. */
+const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
+  tradingAccountId: 'tradingAccountId',
+  symbol: 'symbol',
+  direction: 'direction',
+  enteredAt: 'enteredAt',
+  exitedAt: 'exitedAt',
+  plannedRiskMinor: 'risk',
+  actualRiskAnswer: 'actualRisk',
+  actualInitialRiskMinor: 'actualRisk',
+  targetState: 'targetProfit',
+  plannedRewardMinor: 'targetProfit',
+  targetPrice: 'targetPrice',
+  finalPnlMinor: 'finalPnl',
+  exits: 'exits',
+  exitHistoryCompleteness: 'exits',
+  contextEntryPrice: 'contextEntryPrice',
+  contextStopPrice: 'contextStopPrice',
+  contextPositionSize: 'contextPositionSize',
+};
+
+function isRendered(element: Element): boolean {
+  return element.getClientRects().length > 0;
+}
+
+interface SavedTrade {
+  readonly tradeId: string;
+  readonly symbol: string;
+}
 
 /**
- * AFTER TRADE — a finished trade, written up from memory, in the same task-surface
- * language as At Entry.
+ * AFTER TRADE — "Record a closed trade", Add Trade contract v1 (§13).
  *
- * ONE SURFACE, FOUR BANDS: the account as context, the trade (Symbol, Direction,
- * and two independently optional timestamps that start blank), a compact plan at
- * entry, and the Actual Result — the one band this lifecycle exists for. Strategy,
- * Setup, the checklist, timeframe, session, the chart and notes live in the Trade
- * idea, exactly as At Entry places them, so they describe the trade instead of
- * competing with its result.
+ * THE MOMENT'S QUESTION IS "WHAT ACTUALLY HAPPENED?" (UX Rules §12). The trade,
+ * then its result and the trader's own classification of it, then risk and
+ * plan as remembered, then optional exit history, the trader's read and
+ * context. Only Account, Symbol and Direction are needed to save; Final Net
+ * P&L and the outcome are prompted, never required.
  *
- * THE ACTUAL RESULT KEEPS EVERY ACCEPTED RULE. The final whole-trade net P&L is the
- * authority and may stay unknown; Actual R is unavailable without a recorded risk;
- * the outcome is derived, never chosen; exit reconstruction is optional supporting
- * evidence with explicit completeness, reconciliation that picks neither figure, and
- * adoption only after save. None of that moved — only its presentation did.
+ * ALL SEMANTICS LIVE IN `after-trade-draft`. This component renders a draft and
+ * applies that module's transitions. Nothing is preselected, nothing is
+ * derived into an answer, and a notice never blocks.
  *
- * THE ONE CAPTURE ALIGNMENT is Feelings: emotions are recorded only when chosen, or
- * when "None of these" is chosen, so opening Feelings to set a confidence no longer
- * records "no emotions" — the same contract At Entry uses.
+ * AFTER A SAVE the trader chooses: Review Trade or Done (contract §20). The
+ * Recording Draft is cleared only after the server confirms the Trade.
  */
 export function TradeAfterTradeForm({
-  options,
+  options: serverOptions,
   activeTradingAccountId = null,
   timezone,
   initialDraft = null,
@@ -177,482 +183,230 @@ export function TradeAfterTradeForm({
   onSaved?: () => void;
 }) {
   const t = useTranslations('trades');
-  const r = useTranslations('trades.create.recording');
-  const a = useTranslations('trades.create.recording.after');
-  const tConfidence = useTranslations('trades.create.confidence');
-  const tMode = useTranslations('trades.create.mode');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const a = useTranslations('trades.create.recording.contractAfter');
   const locale = useLocale();
   const router = useRouter();
+  const [adoptedExitPlans, setAdoptedExitPlans] = useState<
+    readonly TradeCreateExitPlanOption[] | null
+  >(null);
+  const options = useMemo<TradeCreateOptions>(
+    () =>
+      adoptedExitPlans === null ? serverOptions : { ...serverOptions, exitPlans: adoptedExitPlans },
+    [serverOptions, adoptedExitPlans],
+  );
+  const keyboardOpen = useKeyboardObscuringViewport();
+  const wide = useIsWideViewport();
   const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
   const [fallbackMutationKey] = useState(generateId);
   const mutationKey = draftMutationKey ?? fallbackMutationKey;
   const submitting = useRef(false);
+  const formId = useId();
+  const ids = { trade: useId(), result: useId(), plan: useId(), read: useId(), saved: useId() };
+  const savedHeading = useRef<HTMLHeadingElement>(null);
+
   const initialAccount =
     (activeTradingAccountId !== null &&
     options.tradingAccounts.some((item) => item.tradingAccountId === activeTradingAccountId)
       ? activeTradingAccountId
       : undefined) ??
     (options.tradingAccounts.length === 1 ? options.tradingAccounts[0]!.tradingAccountId : '');
-  const pristine = useMemo(() => emptyAfterTradeValues(initialAccount), [initialAccount]);
-  /*
-    The Recording Draft's After Trade section seeds every piece of work this
-    form holds; the form's rules for that state are unchanged.
-  */
-  const [values, setValues] = useState(initialDraft?.values ?? pristine);
-  const [accountPickerOpen, setAccountPickerOpen] = useState(
-    (initialDraft?.values.tradingAccountId ?? initialAccount) === '',
-  );
-  const [planBasis, setPlanBasis] = useState<Basis>(initialDraft?.planBasis ?? 'money');
-  const [actualBasis, setActualBasis] = useState<Basis>(initialDraft?.actualBasis ?? 'money');
-  const [exits, setExits] = useState<ExitDraft[]>(() => [...(initialDraft?.exits ?? [])]);
-  const [exitsOpen, setExitsOpen] = useState(false);
-  const [editingExitId, setEditingExitId] = useState<string | null>(null);
-  const [completeness, setCompleteness] = useState<Completeness>(
-    initialDraft?.completeness ?? 'unknown',
-  );
-  const [conditionMet, setConditionMet] = useState<Record<string, boolean>>(() => ({
-    ...(initialDraft?.conditionMet ?? {}),
-  }));
-  /* `null` = never answered; `[]` = explicitly none of these. */
-  const [emotions, setEmotions] = useState<readonly string[] | null>(
-    initialDraft?.emotions ?? null,
-  );
-  // Type → Draft.
+  const pristine = useMemo(() => createAfterTradeDraft(initialAccount), [initialAccount]);
+  const [draft, setDraft] = useState(initialDraft ?? pristine);
+  const [saved, setSaved] = useState<SavedTrade | null>(null);
+  // Type → Draft, until the Trade exists: a saved Trade has no draft left to keep.
   useEffect(() => {
-    onDraftChange?.({
-      values,
-      planBasis,
-      actualBasis,
-      exits,
-      completeness,
-      conditionMet,
-      emotions,
-    });
-  }, [values, planBasis, actualBasis, exits, completeness, conditionMet, emotions, onDraftChange]);
-  const [journalArea, setJournalArea] = useState<JournalArea | null>(null);
-  const [journalDraft, setJournalDraft] = useState<JournalDraft>({
-    confirmationNotes: '',
-    tradingviewUrl: '',
-    notes: '',
-    strategyId: '',
-    setupId: '',
-    timeframe: '',
-    session: '',
-    conditionMet: {},
-    confidence: '',
-    emotions: null,
-  });
-  const ideaTrigger = useRef<HTMLButtonElement>(null);
-  const feelingsTrigger = useRef<HTMLButtonElement>(null);
-  const [errors, setErrors] = useState<ErrorMap>({});
-  /* Only a server refusal is held; the "check the highlighted fields" banner is derived. */
-  const [serverError, setServerError] = useState<string | null>(null);
+    if (saved === null) onDraftChange?.(draft);
+  }, [draft, onDraftChange, saved]);
+  useEffect(() => {
+    if (saved !== null) savedHeading.current?.focus();
+  }, [saved]);
+
+  const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
+  const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const [serverErrors, setServerErrors] = useState<AfterTradeErrors>({});
+  const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [confirmUnmetOpen, setConfirmUnmetOpen] = useState(false);
+  const [emotionHint, setEmotionHint] = useState<EmotionPhase | null>(null);
+  const [adoptedMessage, setAdoptedMessage] = useState<string | null>(null);
 
-  const selectedAccount = options.tradingAccounts.find(
-    (item) => item.tradingAccountId === values.tradingAccountId,
-  );
-  const currency = selectedAccount?.baseCurrency ?? 'USD';
-  const selectedStrategy = options.strategies.find((item) => item.strategyId === values.strategyId);
-  const selectedSetup = selectedStrategy?.setups.find((item) => item.setupId === values.setupId);
-  const draftStrategy = options.strategies.find(
-    (item) => item.strategyId === journalDraft.strategyId,
-  );
-  const draftSetup = draftStrategy?.setups.find((item) => item.setupId === journalDraft.setupId);
-  const recordedExits = exits.filter(meaningfulAfterTradeExit);
-  const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
-  const emotionLabel = new Map(options.emotionCatalog.map((item) => [item.key, item.label]));
-
-  function clearErrors(fields: readonly string[]) {
-    setErrors((current) => {
-      if (!fields.some((field) => field in current)) return current;
-      const next = { ...current };
-      for (const field of fields) delete next[field];
-      return next;
-    });
-  }
-
-  const setField = <K extends keyof Values>(field: K, value: Values[K]) => {
-    setValues((current) => ({ ...current, [field]: value }));
-    clearErrors([field]);
+  const apply = (change: (current: AfterTradeDraft) => AfterTradeDraft) => {
+    setDraft((current) => change(current));
+    setServerMessage(null);
+    setAdoptedMessage(null);
   };
 
+  const selectedAccount = options.tradingAccounts.find(
+    (item) => item.tradingAccountId === draft.tradingAccountId,
+  );
+  const currency = selectedAccount?.baseCurrency ?? 'USD';
+  const now = new Date();
+  const validation = validateAfterTradeDraft(draft, { currency, timezone, now });
+  const readiness = afterTradeReadiness(draft, validation);
+  const summary = afterTradeAnalysisSummary(draft, options);
+  const recordedExits = draft.exits.filter(meaningfulExit);
+
   /*
-    SWITCHING BASIS CLEARS THE FIELDS THE PREVIOUS BASIS OWNED (Phase 15 §62), so
-    no hidden value from the other representation survives to be saved — or, for
-    an exit, to be saved under the other basis's meaning: the leg's one value is
-    a realized P&L in Money and an exit price in Price, and a P&L of 150 must not
-    quietly become an exit at 150. Basis-neutral leg facts (allocation, scope,
-    time, reason) stay.
+    WHICH ERRORS SPEAK. Before a Save attempt only a malformed value the trader
+    already typed is flagged; after an attempt every blocking error is shown.
   */
-  function changePlanBasis(next: Basis) {
-    setPlanBasis(next);
-    setValues((current) => ({
-      ...current,
-      ...Object.fromEntries(PLAN_FIELDS.map((field) => [field, ''])),
-    }));
-    clearErrors(PLAN_FIELDS);
-  }
-
-  function changeActualBasis(next: Basis) {
-    setActualBasis(next);
-    setValues((current) => ({
-      ...current,
-      ...Object.fromEntries(ACTUAL_FIELDS.map((field) => [field, ''])),
-    }));
-    setExits((current) => current.map((exit) => ({ ...exit, value: '' })));
-    setErrors({});
-  }
-
-  const parsedRisk =
-    values.actualRisk.trim() === ''
-      ? null
-      : parseTradeMoneyInput(values.actualRisk, currency, { allowZero: false });
-  const parsedFinal =
-    values.finalPnl.trim() === ''
-      ? null
-      : parseTradeMoneyInput(values.finalPnl, currency, {
-          allowNegative: true,
-          allowZero: true,
-        });
-  const monetarySnapshot = deriveHistoricalExecutionSnapshot({
-    actualInitialRiskMinor: parsedRisk?.ok ? BigInt(parsedRisk.value) : null,
-    finalPnlMinor: parsedFinal?.ok ? BigInt(parsedFinal.value) : null,
-    finalPnlSource: parsedFinal?.ok ? 'manual_total' : null,
-    exitHistoryCompleteness: recordedExits.length === 0 ? null : completeness,
-    exits: recordedExits.map((exit) => {
-      const parsed =
-        exit.value.trim() === ''
-          ? null
-          : parseTradeMoneyInput(exit.value, currency, {
-              allowNegative: true,
-              allowZero: true,
-            });
-      return { realizedPnlMinor: parsed?.ok ? BigInt(parsed.value) : null };
-    }),
-  });
-
-  const priceActual = (() => {
-    if (actualBasis !== 'price' || values.direction === '') return null;
-    const priceExits = recordedExits.map((exit) => ({
-      closedBps: percentToBps(exit.closedPercent) ?? 0,
-      exitPrice: exit.value.trim(),
-      realizedPnlMinor: null,
-    }));
-    /*
-      THE PREVIEW ASKS WHAT THE SERVICE ASKS. `composeActualSnapshot` derives no
-      Price result while any exit lacks its allocation, price or time, so a
-      preview that ignored the time promised an outcome the saved trade would
-      not carry.
-    */
-    if (
-      values.actualEntry.trim() === '' ||
-      values.actualStop.trim() === '' ||
-      priceExits.length === 0 ||
-      recordedExits.some((exit) => exit.exitedAt === '') ||
-      priceExits.some((exit) => exit.closedBps === 0 || exit.exitPrice === '') ||
-      priceExits.reduce((sum, exit) => sum + exit.closedBps, 0) !== 10_000
-    )
-      return null;
-    const result = composeTraderCloseV2({
-      actualResultMode: 'price',
-      direction: values.direction,
-      actualEntry: values.actualEntry,
-      actualInitialStop: values.actualStop,
-      exits: priceExits,
-    });
-    return result.ok ? result.value : null;
-  })();
-
-  const plannedRisk =
-    values.plannedRisk.trim() === ''
-      ? null
-      : parseTradeMoneyInput(values.plannedRisk, currency, { allowZero: false });
-  const plannedReward =
-    values.plannedReward.trim() === ''
-      ? null
-      : parseTradeMoneyInput(values.plannedReward, currency, { allowZero: true });
-  const planHasData =
-    planBasis === 'money'
-      ? values.plannedRisk.trim() !== '' || values.plannedReward.trim() !== ''
-      : [
-          values.plannedEntry,
-          values.plannedStop,
-          values.plannedTarget,
-          values.plannedPositionSize,
-        ].some((value) => value.trim() !== '');
-  const plannedPreview =
-    values.direction === '' || !planHasData
-      ? null
-      : composePlannedR({
-          direction: values.direction,
-          plannedEntry: planBasis === 'price' ? values.plannedEntry.trim() || null : null,
-          plannedStop: planBasis === 'price' ? values.plannedStop.trim() || null : null,
-          plannedTarget: planBasis === 'price' ? values.plannedTarget.trim() || null : null,
-          plannedRiskMinor:
-            planBasis === 'money' && plannedRisk?.ok ? BigInt(plannedRisk.value) : null,
-          plannedRewardMinor:
-            planBasis === 'money' && plannedReward?.ok ? BigInt(plannedReward.value) : null,
-        });
-  const targetR =
-    plannedPreview?.ok && plannedPreview.value.plannedR !== null
-      ? plannedPreview.value.plannedR
-      : null;
-
-  const actualR =
-    actualBasis === 'money' ? monetarySnapshot.actualR : (priceActual?.actualR ?? null);
-  const outcome =
-    actualBasis === 'money' ? monetarySnapshot.traderOutcome : (priceActual?.traderOutcome ?? null);
-  /*
-    A LEG'S TIME MAY STAND FOR THE TRADE'S ONLY IF THAT LEG CLOSED IT. An `All
-    remaining` exit is the one leg that says nothing was left afterwards, so the
-    latest such leg's time is OFFERED for Final exit time — never written — and a
-    disagreement between the two is stated without choosing either or refusing
-    the save. A partial leg's time is a mid-trade timestamp and is never offered.
-  */
-  let closingExit: { local: string; iso: string } | null = null;
-  for (const exit of recordedExits) {
-    if (exit.scope !== 'all_remaining' || exit.exitedAt === '') continue;
-    const iso = datetimeLocalToIso(exit.exitedAt, timezone);
-    if (iso.ok && (closingExit === null || iso.value > closingExit.iso))
-      closingExit = { local: exit.exitedAt, iso: iso.value };
-  }
-  const finalExit = values.exitedAt === '' ? null : datetimeLocalToIso(values.exitedAt, timezone);
-  const closingExitLabel =
-    closingExit === null
-      ? null
-      : (formatTradeInstant(closingExit.iso, timezone, locale) ?? closingExit.local);
-  const finalMatchesClosingExit =
-    closingExit !== null && finalExit?.ok === true && finalExit.value === closingExit.iso;
-  const exitTimesDiffer =
-    closingExit !== null && finalExit?.ok === true && !finalMatchesClosingExit;
-
-  const confidenceStep = confidenceOf(values.confidence);
-  const ideaPreview = [
-    values.confirmationNotes.trim() === '' ? null : excerpt(values.confirmationNotes),
-    selectedStrategy === undefined
-      ? null
-      : [selectedStrategy.name, selectedSetup?.name].filter(Boolean).join(' · '),
-  ].filter(isPresent);
-  if (
-    ideaPreview.length === 0 &&
-    [values.tradingviewUrl, values.notes, values.timeframe, values.session].some(
-      (value) => value.trim() !== '',
-    )
-  ) {
-    ideaPreview.push(a('journal.idea.detailsAdded'));
-  }
-  const feelingsParts = [
-    confidenceStep === undefined
-      ? null
-      : a('journal.feelings.confidencePreview', {
-          level: t(`create.confidence.level.${confidenceLevelKey(confidenceStep)}`),
-        }),
-    emotions === null
-      ? null
-      : emotions.length === 0
-        ? a('journal.feelings.noneOfThese')
-        : emotions.map((key) => emotionLabel.get(key) ?? key).join(', '),
-  ].filter(isPresent);
-  const feelingsPreview = feelingsParts.length === 0 ? [] : [feelingsParts.join(' · ')];
-
-  function openJournal(area: JournalArea) {
-    setJournalDraft({
-      confirmationNotes: values.confirmationNotes,
-      tradingviewUrl: values.tradingviewUrl,
-      notes: values.notes,
-      strategyId: values.strategyId,
-      setupId: values.setupId,
-      timeframe: values.timeframe,
-      session: values.session,
-      conditionMet: { ...conditionMet },
-      confidence: values.confidence,
-      emotions,
-    });
-    setJournalArea(area);
-  }
-
-  function commitJournal() {
-    if (journalArea === 'idea') {
-      setValues((current) => ({
-        ...current,
-        confirmationNotes: journalDraft.confirmationNotes,
-        tradingviewUrl: journalDraft.tradingviewUrl,
-        notes: journalDraft.notes,
-        strategyId: journalDraft.strategyId,
-        setupId: journalDraft.setupId,
-        timeframe: journalDraft.timeframe,
-        session: journalDraft.session,
-      }));
-      setConditionMet(journalDraft.conditionMet);
-    } else if (journalArea === 'feelings') {
-      setValues((current) => ({ ...current, confidence: journalDraft.confidence }));
-      setEmotions(journalDraft.emotions);
+  const typed = (field: AfterTradeField): string => {
+    if (field.startsWith('exit:')) {
+      const [, id, part] = field.split(':') as [string, string, keyof AfterTradeExitDraft];
+      const exit = draft.exits.find((item) => item.id === id);
+      return exit === undefined ? '' : String(exit[part] ?? '');
     }
-    setJournalArea(null);
+    switch (field) {
+      case 'enteredAt':
+        return draft.enteredAt;
+      case 'exitedAt':
+        return draft.exitedAt;
+      case 'finalPnl':
+        return draft.finalPnl;
+      case 'risk':
+        return draft.risk;
+      case 'actualRisk':
+        return draft.actualRisk.answer === 'matched' ? 'matched' : draft.actualRisk.amount;
+      case 'targetProfit':
+        return draft.target.state === 'fixed' ? draft.target.profit : '';
+      case 'targetPrice':
+        return draft.target.state === 'fixed' ? draft.target.price : '';
+      case 'contextEntryPrice':
+        return draft.context.entryPrice;
+      case 'contextStopPrice':
+        return draft.context.stopPrice;
+      case 'contextPositionSize':
+        return draft.context.positionSize;
+      default:
+        return '';
+    }
+  };
+  const visibleErrors: AfterTradeErrors = { ...serverErrors };
+  for (const [field, code] of Object.entries(validation.errors) as [
+    AfterTradeField,
+    AfterTradeErrorCode,
+  ][]) {
+    if (attempted || typed(field).trim() !== '') visibleErrors[field] = code;
   }
 
-  function collectErrors(): ErrorMap {
-    const next: ErrorMap = {};
-    if (values.tradingAccountId === '') next.tradingAccountId = t('validation.requiredAccount');
-    if (values.symbol.trim() === '') next.symbol = t('validation.requiredSymbol');
-    if (values.direction === '') next.direction = t('validation.requiredDirection');
-
-    const entered = values.enteredAt === '' ? null : datetimeLocalToIso(values.enteredAt, timezone);
-    const exited = values.exitedAt === '' ? null : datetimeLocalToIso(values.exitedAt, timezone);
-    if (entered !== null && !entered.ok) next.enteredAt = t('lifecycle.validation.time');
-    if (exited !== null && !exited.ok) next.exitedAt = t('lifecycle.validation.time');
-    if (entered?.ok && exited?.ok && exited.value < entered.value)
-      next.exitedAt = r('validation.exitBeforeEntry');
-
-    if (planBasis === 'money') {
-      if (plannedRisk !== null && !plannedRisk.ok)
-        next.plannedRisk = t('lifecycle.validation.money');
-      if (plannedReward !== null && !plannedReward.ok)
-        next.plannedReward = t('lifecycle.validation.money');
-      if (values.plannedReward.trim() !== '' && values.plannedRisk.trim() === '')
-        next.plannedRisk = t('validation.incompleteMoneyPlan');
-    } else if (planHasData) {
-      if (values.plannedEntry.trim() === '') next.plannedEntry = t('validation.requiredEntry');
-      if (values.plannedStop.trim() === '') next.plannedStop = t('validation.requiredStop');
-      if (plannedPreview !== null && !plannedPreview.ok)
-        next.plannedEntry = t('errors.invalid_plan');
+  function errorText(field: AfterTradeField): string | undefined {
+    const code = visibleErrors[field];
+    if (code === undefined) return undefined;
+    switch (code) {
+      case 'required':
+        return field === 'tradingAccountId'
+          ? c('errors.requiredAccount')
+          : field === 'symbol'
+            ? c('errors.requiredSymbol')
+            : c('errors.requiredDirection');
+      case 'invalid_money':
+        return c('errors.invalidMoney');
+      case 'must_be_positive':
+        return c('errors.mustBePositive');
+      case 'invalid_datetime':
+        return a('errors.invalidDatetime');
+      case 'future_time':
+        return a('errors.futureTime');
+      case 'exit_before_entry':
+        return a('errors.exitBeforeEntry');
+      case 'exit_outside_trade':
+        return a('errors.exitOutsideTrade');
+      case 'invalid_price':
+        return c('errors.invalidPrice');
+      case 'invalid_percent':
+        return a('errors.invalidPercent');
+      case 'percent_over_total':
+        return a('errors.percentOverTotal');
+      case 'fixed_target_requires_value':
+        return c('errors.fixedTargetRequiresValue');
+      case 'matched_requires_risk_at_entry':
+        return a('errors.matchedRequiresRisk');
+      case 'actual_risk_equals_risk_at_entry':
+        return a('errors.actualRiskEqualsRiskAtEntry');
     }
+  }
 
-    if (actualBasis === 'money') {
-      if (parsedRisk !== null && !parsedRisk.ok) next.actualRisk = t('lifecycle.validation.money');
-      if (parsedFinal !== null && !parsedFinal.ok) next.finalPnl = t('lifecycle.validation.money');
-    } else {
-      const hasActualContext = values.actualEntry.trim() !== '' || values.actualStop.trim() !== '';
-      if (hasActualContext && values.actualEntry.trim() === '')
-        next.actualEntry = r('validation.actualEntry');
-      if (hasActualContext && values.actualStop.trim() === '')
-        next.actualStop = r('validation.actualStop');
-    }
+  const requirements = [
+    { key: 'account', field: 'tradingAccountId', done: draft.tradingAccountId !== '' },
+    { key: 'symbol', field: 'symbol', done: draft.symbol.trim() !== '' },
+    { key: 'direction', field: 'direction', done: draft.direction !== '' },
+  ] as const;
+  const remaining = requirements.filter((item) => !item.done).length;
+  const blockedCount = readiness.status === 'blocked' ? readiness.count : 0;
+  const statusBlocked = readiness.status === 'blocked' && (attempted || remaining === 0);
+  const statusLine = pending
+    ? a('save.saving')
+    : (serverMessage ??
+      (readiness.status === 'ready'
+        ? a('save.ready')
+        : statusBlocked
+          ? a('save.blocked', { count: blockedCount })
+          : a('save.remaining', { count: remaining })));
+  const statusTone =
+    serverMessage !== null || (attempted && readiness.status === 'blocked')
+      ? 'text-destructive'
+      : 'text-muted-foreground';
+  const recommended = [
+    { key: 'finalPnl', done: validation.finalPnlMinor !== null },
+    { key: 'outcome', done: draft.outcome !== null },
+  ] as const;
+  const promptMissing = recommended.some((item) => !item.done);
 
-    let totalBps = 0;
-    for (const exit of recordedExits) {
-      const bps = percentToBps(exit.closedPercent);
-      if (bps === undefined) next[`exit-${exit.id}-percent`] = a('validation.allocation');
-      else totalBps += bps ?? 0;
-      if (exit.value.trim() !== '') {
-        if (actualBasis === 'money') {
-          const amount = parseTradeMoneyInput(exit.value, currency, {
-            allowNegative: true,
-            allowZero: true,
-          });
-          if (!amount.ok) next[`exit-${exit.id}-value`] = t('lifecycle.validation.money');
+  function focusFirstError(fields: readonly AfterTradeField[]) {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        for (const field of fields) {
+          const target = document.getElementById(fieldTargetId(field));
+          if (target !== null && isRendered(target)) {
+            target.focus();
+            return;
+          }
         }
-      }
-      if (exit.exitedAt !== '' && !datetimeLocalToIso(exit.exitedAt, timezone).ok)
-        next[`exit-${exit.id}-time`] = t('lifecycle.validation.time');
-    }
-    if (totalBps > 10_000) next.exits = a('validation.coverage');
-    if (actualBasis === 'money' && monetarySnapshot.reconciliation === 'conflict')
-      next.exits = t('errors.historical_exit_conflict');
-    return next;
+        const status = Array.from(
+          document.querySelectorAll<HTMLElement>('[data-save-status]'),
+        ).find(isRendered);
+        status?.focus();
+      }),
+    );
   }
 
-  async function submit(unmetConfirmed = false) {
+  async function submit() {
     // One Save at a time: a second press while one is in flight is ignored.
-    if (submitting.current) return;
-    const next = collectErrors();
-    if (Object.keys(next).length > 0) {
-      setErrors(next);
-      if (next.tradingAccountId !== undefined) setAccountPickerOpen(true);
-      if (Object.keys(next).some((key) => key.startsWith('exit'))) setExitsOpen(true);
-      requestAnimationFrame(() =>
-        document
-          .querySelector<HTMLElement>(
-            '[data-after-trade-linear-form] :is([aria-invalid="true"], [data-invalid="true"])',
-          )
-          ?.focus(),
-      );
-      return;
-    }
-
-    const conditionAnswers = (selectedSetup?.conditions ?? []).map((condition) => ({
-      conditionKey: condition.conditionKey,
-      status: conditionMet[condition.conditionKey] ? ('met' as const) : ('not_met' as const),
-    }));
-    if (!unmetConfirmed && conditionAnswers.some((answer) => answer.status === 'not_met')) {
-      setConfirmUnmetOpen(true);
-      return;
-    }
-
-    const entered = values.enteredAt === '' ? null : datetimeLocalToIso(values.enteredAt, timezone);
-    const exited = values.exitedAt === '' ? null : datetimeLocalToIso(values.exitedAt, timezone);
-    const completedExits = recordedExits.map((exit) => {
-      const exitTime = exit.exitedAt === '' ? null : datetimeLocalToIso(exit.exitedAt, timezone);
-      const parsedValue =
-        exit.value.trim() === ''
-          ? null
-          : actualBasis === 'money'
-            ? parseTradeMoneyInput(exit.value, currency, {
-                allowNegative: true,
-                allowZero: true,
-              })
-            : null;
-      return {
-        closedBps: percentToBps(exit.closedPercent),
-        exitScope: exit.scope === '' ? null : exit.scope,
-        exitPrice: actualBasis === 'price' ? exit.value.trim() || null : null,
-        realizedPnlMinor: actualBasis === 'money' && parsedValue?.ok ? parsedValue.value : null,
-        ...(exit.reason.trim() === '' ? {} : { exitReason: exit.reason.trim() }),
-        exitedAt: exitTime?.ok ? exitTime.value : null,
-      };
+    if (submitting.current || saved !== null) return;
+    setAttempted(true);
+    setServerErrors({});
+    const current = draft;
+    const currentNow = new Date();
+    const currentValidation = validateAfterTradeDraft(current, {
+      currency,
+      timezone,
+      now: currentNow,
     });
-    const symbol = values.symbol.trim().toUpperCase();
+    const currentReadiness = afterTradeReadiness(current, currentValidation);
+    if (currentReadiness.status === 'blocked') {
+      setServerMessage(null);
+      const sections = new Set(currentReadiness.fields.map(afterTradeFieldSection));
+      if (currentReadiness.fields.includes('tradingAccountId')) setAccountPickerOpen(true);
+      if (sections.has('exits')) setExitsOpen(true);
+      if (sections.has('context')) setContextOpen(true);
+      focusFirstError(currentReadiness.fields);
+      return;
+    }
+    const payload = buildAfterTradePayload(current, {
+      currency,
+      timezone,
+      now: currentNow,
+      mutationKey,
+      options,
+    });
+    if (payload === null) return;
 
     submitting.current = true;
     setPending(true);
-    setServerError(null);
-    const payload = {
-      mutationKey,
-      tradingAccountId: values.tradingAccountId,
-      recordingTiming: 'after_trade',
-      systemPlanBasis: planHasData ? planBasis : null,
-      ...(values.strategyId === '' ? {} : { strategyId: values.strategyId }),
-      ...(values.setupId === '' ? {} : { setupId: values.setupId }),
-      ...(selectedSetup === undefined
-        ? {}
-        : { conditionSetToken: selectedSetup.conditionSetToken, conditionAnswers }),
-      symbol,
-      direction: values.direction,
-      plannedEntry: planHasData && planBasis === 'price' ? values.plannedEntry.trim() : null,
-      plannedStop: planHasData && planBasis === 'price' ? values.plannedStop.trim() : null,
-      plannedTarget:
-        planHasData && planBasis === 'price' ? values.plannedTarget.trim() || null : null,
-      plannedPositionSize:
-        planHasData && planBasis === 'price' ? values.plannedPositionSize.trim() || null : null,
-      plannedRiskMinor:
-        planHasData && planBasis === 'money' && plannedRisk?.ok ? plannedRisk.value : null,
-      plannedRewardMinor:
-        planHasData && planBasis === 'money' && plannedReward?.ok ? plannedReward.value : null,
-      ...(values.timeframe.trim() === '' ? {} : { timeframe: values.timeframe.trim() }),
-      ...(values.session.trim() === '' ? {} : { session: values.session.trim() }),
-      ...(values.confirmationNotes.trim() === ''
-        ? {}
-        : { confirmationNotes: values.confirmationNotes.trim() }),
-      ...(confidenceStep === undefined ? {} : { confidence: confidenceStep }),
-      ...(emotions === null ? {} : { emotionKeys: [...emotions] }),
-      ...(values.tradingviewUrl.trim() === ''
-        ? {}
-        : { tradingviewUrl: values.tradingviewUrl.trim() }),
-      ...(values.notes.trim() === '' ? {} : { notes: values.notes.trim() }),
-      chartAttachmentStorageKey: null,
-      actualResultBasis: actualBasis,
-      actualEntry: actualBasis === 'price' ? values.actualEntry.trim() || null : null,
-      actualInitialStop: actualBasis === 'price' ? values.actualStop.trim() || null : null,
-      actualInitialRiskMinor: actualBasis === 'money' && parsedRisk?.ok ? parsedRisk.value : null,
-      actualPositionSize: actualBasis === 'price' ? values.actualPositionSize.trim() || null : null,
-      finalPnlMinor: actualBasis === 'money' && parsedFinal?.ok ? parsedFinal.value : null,
-      enteredAt: entered?.ok ? entered.value : null,
-      exitedAt: exited?.ok ? exited.value : null,
-      ...(completedExits.length === 0 ? {} : { exitHistoryCompleteness: completeness }),
-      exits: completedExits,
-    } as const;
+    setServerMessage(null);
     let result: Awaited<ReturnType<typeof createCompletedTradeAction>>;
     try {
       result = await createCompletedTradeAction(payload);
@@ -661,985 +415,1330 @@ export function TradeAfterTradeForm({
       // mutation key makes the retry safe.
       submitting.current = false;
       setPending(false);
-      setServerError(t('errors.unexpected_error'));
+      setServerMessage(t('errors.unexpected_error'));
       return;
     }
-    // Released once the server has answered: only an in-flight Save is guarded.
     submitting.current = false;
     setPending(false);
     if (!result.ok) {
-      setServerError(t(`errors.${result.error.code}`));
+      const mapped: AfterTradeErrors = {};
+      for (const key of Object.keys(result.error.fieldErrors ?? {})) {
+        const field = SERVER_FIELD[key];
+        if (field !== undefined && field !== 'exits') mapped[field] = 'invalid_price';
+      }
+      setServerErrors(mapped);
+      setServerMessage(t(`errors.${result.error.code}`));
       return;
     }
-    symbolFavorites.recordUse(symbol);
+    symbolFavorites.recordUse(payload.symbol);
     // Save → Persist: only now, with the Trade confirmed, does the draft go.
     onSaved?.();
-    router.push(`/app/trades?trade=${result.data.tradeId}&tab=review`);
+    setSaved({ tradeId: result.data.tradeId, symbol: payload.symbol });
   }
 
-  const formError =
-    serverError ?? (Object.keys(errors).length > 0 ? r('validation.fixFields') : null);
+  if (saved !== null) {
+    return (
+      <section
+        aria-labelledby={ids.saved}
+        data-after-trade-saved=""
+        className="bg-card border-border shadow-card mx-auto flex w-full max-w-xl min-w-0 flex-col gap-4 rounded-xl border px-5 py-6 sm:px-7"
+      >
+        <div role="status" aria-live="polite" className="flex min-w-0 flex-col gap-1">
+          <h2
+            id={ids.saved}
+            ref={savedHeading}
+            tabIndex={-1}
+            className="text-foreground text-xl font-semibold outline-none"
+          >
+            {a('saved.title')}
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            {a('saved.description', { symbol: saved.symbol })}
+          </p>
+        </div>
+        <div className="flex min-w-0 flex-wrap gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="min-h-12"
+            onClick={() => router.push(`/app/trades?trade=${saved.tradeId}&tab=review`)}
+          >
+            {a('saved.review')}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            className="min-h-12"
+            onClick={() => router.push('/app/trades')}
+          >
+            {a('saved.done')}
+          </Button>
+        </div>
+        <p className="text-muted-foreground text-sm">{a('saved.hint')}</p>
+      </section>
+    );
+  }
+
+  const contextErrorCount = Object.keys(visibleErrors).filter(
+    (field) => afterTradeFieldSection(field as AfterTradeField) === 'context',
+  ).length;
+  const exitErrorCount = Object.keys(visibleErrors).filter(
+    (field) => afterTradeFieldSection(field as AfterTradeField) === 'exits',
+  ).length;
+  const contextFilled = [
+    draft.context.reason,
+    draft.context.tradingviewUrl,
+    draft.context.timeframe,
+    draft.context.session,
+    draft.context.entryPrice,
+    draft.context.stopPrice,
+    draft.context.positionSize,
+    draft.context.notes,
+  ].filter((value) => value.trim() !== '').length;
+
+  const analysisLines: string[] = [];
+  if (summary.strategy.answer === 'none') analysisLines.push(c('summary.noStrategy'));
+  if (summary.strategy.answer === 'selected' && summary.strategy.name !== null) {
+    const setupPart =
+      summary.setup.answer === 'none'
+        ? c('summary.noSetup')
+        : summary.setup.answer === 'selected'
+          ? summary.setup.name
+          : null;
+    analysisLines.push([summary.strategy.name, setupPart].filter(Boolean).join(' · '));
+    if (summary.conditions !== null) {
+      analysisLines.push(
+        c('summary.conditions', {
+          answered: summary.conditions.answered,
+          total: summary.conditions.total,
+        }),
+      );
+    }
+  }
+  if (summary.confidence !== null) {
+    analysisLines.push(
+      c('summary.confidence', {
+        level: t(`create.confidence.level.${confidenceLevelKey(summary.confidence)}`),
+      }),
+    );
+  }
+  if (summary.emotions.answer === 'none') analysisLines.push(c('summary.emotionsNone'));
+  if (summary.emotions.answer === 'selected') {
+    analysisLines.push(c('summary.emotionsCount', { count: summary.emotions.count }));
+  }
+  if (summary.postTradeEmotions.answer === 'none') analysisLines.push(a('summary.postTradeNone'));
+  if (summary.postTradeEmotions.answer === 'selected') {
+    analysisLines.push(a('summary.postTradeCount', { count: summary.postTradeEmotions.count }));
+  }
+
+  // The latest recorded exit time, offered — never applied — as the final exit time.
+  const latestExitLocal = (() => {
+    if (draft.exitedAt !== '') return null;
+    let latest: { local: string; time: number } | null = null;
+    for (const exit of recordedExits) {
+      if (exit.exitedAt === '') continue;
+      const iso = datetimeLocalToIso(exit.exitedAt, timezone);
+      if (!iso.ok) continue;
+      const time = Date.parse(iso.value);
+      if (latest === null || time > latest.time) latest = { local: exit.exitedAt, time };
+    }
+    return latest;
+  })();
+
+  const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
+  const formatMoney = (minor: string) => formatTradeMoney(minor, currency) ?? minor;
+  const outcomeNotice = validation.notices.find(
+    (notice) => notice.kind === 'outcome_contradicts_pnl',
+  );
+  const discrepancy = validation.notices.find((notice) => notice.kind === 'exit_discrepancy');
+
+  // At Entry's Exit Plan editor, shown a draft with no Strategy selected: no
+  // default exists to inherit, so nothing is ever inherited (contract §5).
+  const exitPlanView = { ...createAtEntryDraft(''), exitPlan: draft.exitPlan };
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-4">
+    <div className="flex w-full min-w-0 flex-col gap-6">
       <p
         data-recording-mode="after_trade"
-        className="text-muted-foreground mx-auto max-w-prose text-center text-sm text-pretty"
+        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
       >
-        {tMode('after_trade.description')} <TradeRecordingModeChange />
+        <span>{a('subtitle')}</span>
+        <TradeRecordingModeChange />
       </p>
 
-      <div
-        role="status"
-        aria-live="polite"
-        className={
-          formError === null
-            ? 'sr-only'
-            : 'border-destructive/30 bg-destructive/10 text-destructive rounded-lg border p-3 text-sm'
-        }
-      >
-        {formError ?? r('ready')}
-      </div>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-8">
+        <form
+          id={formId}
+          data-after-trade-linear-form=""
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+          className="bg-card border-border shadow-card flex min-w-0 flex-col rounded-xl border"
+        >
+          {/* 1 — THE TRADE */}
+          <section
+            aria-labelledby={ids.trade}
+            className="flex min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6"
+          >
+            <GroupHeading id={ids.trade} title={a('sections.trade')} />
 
-      <form
-        data-after-trade-linear-form=""
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-        className="flex min-w-0 flex-col gap-3 md:gap-4"
-      >
-        <TaskSurface>
-          <Band className="gap-3 py-3.5 sm:py-3.5">
             {accountPickerOpen || selectedAccount === undefined ? (
               <SelectField
                 id="after-account"
-                label={t('field.account')}
-                error={errors.tradingAccountId}
-              >
-                <NativeSelect
-                  id="after-account"
-                  value={values.tradingAccountId}
-                  aria-invalid={errors.tradingAccountId !== undefined}
-                  aria-describedby={
-                    errors.tradingAccountId === undefined ? undefined : 'after-account-error'
-                  }
-                  onChange={(event) => setField('tradingAccountId', event.target.value)}
-                >
-                  <option value="">{t('create.chooseAccount')}</option>
-                  {options.tradingAccounts.map((account) => (
-                    <option key={account.tradingAccountId} value={account.tradingAccountId}>
-                      {account.name} · {account.baseCurrency}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </SelectField>
-            ) : (
-              <ContextLine
-                primary={selectedAccount.name}
-                secondary={selectedAccount.baseCurrency}
-                {...(options.tradingAccounts.length > 1
-                  ? {
-                      action: (
-                        <QuietAction onClick={() => setAccountPickerOpen(true)}>
-                          {a('trade.change')}{' '}
-                          <span className="sr-only">{a('trade.changeAccountSr')}</span>
-                        </QuietAction>
-                      ),
-                    }
-                  : {})}
+                label={c('account.label')}
+                value={draft.tradingAccountId}
+                error={errorText('tradingAccountId')}
+                onChange={(tradingAccountId) =>
+                  apply((current) => ({ ...current, tradingAccountId }))
+                }
+                options={[
+                  { value: '', label: c('account.choose') },
+                  ...options.tradingAccounts.map((account) => ({
+                    value: account.tradingAccountId,
+                    label: `${account.name} · ${account.baseCurrency}`,
+                  })),
+                ]}
               />
+            ) : (
+              <div
+                data-account-context=""
+                className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+              >
+                <p className="min-w-0 text-sm break-words">
+                  <span className="text-muted-foreground">{c('account.label')} </span>
+                  <span className="text-foreground font-semibold">{selectedAccount.name}</span>
+                  <span className="text-muted-foreground"> · {selectedAccount.baseCurrency}</span>
+                </p>
+                <InlineAction
+                  ariaLabel={c('account.changeAria')}
+                  onClick={() => setAccountPickerOpen(true)}
+                >
+                  {c('account.change')}
+                </InlineAction>
+              </div>
             )}
-          </Band>
 
-          {/* THE TRADE — what was traded, which way, and when it ran, if remembered. */}
-          <Band>
-            <SectionLabel>{a('trade.title')}</SectionLabel>
-            <FieldPair>
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <TextInputField
+            <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-2">
+                <TextField
                   id="after-symbol"
-                  label={t('field.symbol')}
-                  value={values.symbol}
-                  onChange={(value) => setField('symbol', value.toUpperCase())}
-                  error={errors.symbol}
-                  placeholder="e.g. XAUUSD"
+                  label={c('symbol.label')}
+                  value={draft.symbol}
+                  onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
+                  placeholder={c('symbol.placeholder')}
+                  autoCapitalize="characters"
+                  error={errorText('symbol')}
                 />
                 {recentSymbols.length === 0 ? null : (
-                  <div
-                    role="group"
-                    aria-label={a('trade.recentSymbols')}
-                    className="flex min-w-0 flex-wrap gap-1.5"
-                  >
-                    {recentSymbols.map((recent) => (
-                      <button
-                        key={recent}
-                        type="button"
-                        aria-pressed={values.symbol === recent}
-                        onClick={() => setField('symbol', recent)}
-                        className="border-border text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring aria-pressed:border-primary aria-pressed:text-foreground relative rounded-full border px-2.5 py-1 text-xs outline-none after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[''] focus-visible:ring-2"
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
+                    {recentSymbols.map((symbol) => (
+                      <InlineAction
+                        key={symbol}
+                        ariaLabel={c('symbol.useRecent', { symbol })}
+                        onClick={() => apply((current) => ({ ...current, symbol }))}
                       >
-                        {recent}
-                      </button>
+                        {symbol}
+                      </InlineAction>
                     ))}
                   </div>
                 )}
               </div>
-              <SegmentedChoice
-                legend={t('field.direction')}
-                value={values.direction}
-                onChange={(value) => setField('direction', value)}
-                error={errors.direction}
-                errorId="after-direction-error"
+              <ChoiceGroup
+                idPrefix="after-direction"
+                legend={c('direction.label')}
+                value={draft.direction === '' ? null : draft.direction}
+                compact
+                error={errorText('direction')}
+                onChange={(direction) => apply((current) => ({ ...current, direction }))}
                 options={[
-                  { value: 'long', label: t('direction.long') },
-                  { value: 'short', label: t('direction.short') },
+                  { value: 'long', label: c('direction.long') },
+                  { value: 'short', label: c('direction.short') },
                 ]}
               />
-            </FieldPair>
+            </div>
 
-            {/*
-              BOTH TIMESTAMPS BEGIN BLANK AND STAY INDEPENDENT. A historical trade
-              silently dated now is a wrong record that looks like a right one.
-            */}
+            <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
+              <TimeField
+                id="after-enteredAt"
+                label={a('times.entry')}
+                value={draft.enteredAt}
+                error={errorText('enteredAt')}
+                onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
+              />
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <TimeField
+                  id="after-exitedAt"
+                  label={a('times.exit')}
+                  value={draft.exitedAt}
+                  error={errorText('exitedAt')}
+                  onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
+                />
+                {latestExitLocal === null ? null : (
+                  <div>
+                    <InlineAction
+                      onClick={() =>
+                        apply((current) => ({ ...current, exitedAt: latestExitLocal.local }))
+                      }
+                    >
+                      {a('times.useLatestExit', {
+                        time:
+                          formatTradeInstant(
+                            new Date(latestExitLocal.time).toISOString(),
+                            timezone,
+                            locale,
+                          ) ?? latestExitLocal.local,
+                      })}
+                    </InlineAction>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Helper>{a('times.hint', { timezone })}</Helper>
+          </section>
+
+          {/* 2 — WHAT HAPPENED */}
+          <section
+            aria-labelledby={ids.result}
+            className="border-border flex min-w-0 flex-col gap-5 border-t px-4 py-5 sm:px-6 sm:py-6"
+          >
+            <GroupHeading
+              id={ids.result}
+              title={a('sections.result')}
+              description={a('sections.resultDescription')}
+            />
+            <TextField
+              id="after-finalPnl"
+              label={a('result.finalPnl')}
+              value={draft.finalPnl}
+              onChange={(finalPnl) => apply((current) => ({ ...current, finalPnl }))}
+              suffix={currency}
+              inputMode="decimal"
+              size="lead"
+              figure
+              hint={a('result.finalPnlHint', { currency })}
+              error={errorText('finalPnl')}
+            />
             <div className="flex min-w-0 flex-col gap-2">
-              <p id="after-timezone" className="text-subtle-foreground text-xs">
-                {a('trade.timezone', { timezone })}
-              </p>
-              <FieldPair>
-                <TextInputField
-                  id="after-entered-at"
-                  type="datetime-local"
-                  label={a('trade.entryTime')}
-                  optionalLabel={a('trade.optional')}
-                  value={values.enteredAt}
-                  onChange={(value) => setField('enteredAt', value)}
-                  error={errors.enteredAt}
-                  extraDescribedBy="after-timezone"
-                  numeric
-                />
-                <TextInputField
-                  id="after-exited-at"
-                  type="datetime-local"
-                  label={a('trade.finalExitTime')}
-                  optionalLabel={a('trade.optional')}
-                  value={values.exitedAt}
-                  onChange={(value) => setField('exitedAt', value)}
-                  error={errors.exitedAt}
-                  extraDescribedBy="after-timezone"
-                  numeric
-                />
-              </FieldPair>
-              {closingExit === null ||
-              closingExitLabel === null ||
-              finalMatchesClosingExit ? null : (
-                <QuietAction
-                  className="text-muted-foreground hover:text-foreground self-start font-normal"
-                  onClick={() => setField('exitedAt', closingExit.local)}
-                >
-                  {a('trade.useClosingExitTime', { time: closingExitLabel })}
-                </QuietAction>
+              <ChoiceGroup
+                idPrefix="after-outcome"
+                legend={a('result.outcome')}
+                value={draft.outcome}
+                status={c('notAnswered')}
+                columns={3}
+                compact
+                aside={
+                  <InlineAction
+                    ariaLabel={a('result.removeOutcomeAria')}
+                    onClick={() => apply((current) => setOutcome(current, null))}
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(outcome: OutcomeValue) =>
+                  apply((current) => setOutcome(current, outcome))
+                }
+                options={[
+                  { value: 'win', label: a('result.win') },
+                  { value: 'break_even', label: a('result.breakEven') },
+                  { value: 'loss', label: a('result.loss') },
+                ]}
+              />
+              <Helper>{a('result.outcomeHint')}</Helper>
+              {outcomeNotice === undefined ? null : (
+                <Notice>
+                  {draft.outcome === 'win' ? a('result.winNegative') : a('result.lossPositive')}
+                </Notice>
               )}
-              {exitTimesDiffer && closingExitLabel !== null ? (
-                <InlineNote tone="warning" data-exit-time-mismatch="">
-                  {a('trade.exitTimesDiffer', { time: closingExitLabel })}
-                </InlineNote>
+            </div>
+            <div
+              data-actual-r={validation.actualR.status}
+              className="border-border flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-md border px-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="text-foreground text-sm font-medium">{a('result.actualR')}</p>
+                <p className="text-muted-foreground text-xs">{a('result.actualRBasis')}</p>
+              </div>
+              {validation.actualR.status === 'known' ? (
+                <p className="text-foreground text-lg font-semibold tabular-nums">
+                  {formatR(validation.actualR.value)}
+                </p>
+              ) : (
+                <p className="text-muted-foreground min-w-0 text-sm">
+                  {a(`result.unavailable.${validation.actualR.reason}`)}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* 3 — RISK AND PLAN AT ENTRY */}
+          <section
+            aria-labelledby={ids.plan}
+            className="border-border flex min-w-0 flex-col gap-6 border-t px-4 py-5 sm:px-6 sm:py-6"
+          >
+            <GroupHeading
+              id={ids.plan}
+              title={a('sections.plan')}
+              description={a('sections.planDescription')}
+            />
+            <TextField
+              id="after-risk"
+              label={a('risk.label')}
+              value={draft.risk}
+              onChange={(risk) => apply((current) => ({ ...current, risk }))}
+              suffix={currency}
+              inputMode="decimal"
+              figure
+              hint={a('risk.hint')}
+              error={errorText('risk')}
+            />
+            <div className="flex min-w-0 flex-col gap-3">
+              <ChoiceGroup
+                idPrefix="after-actual-risk"
+                legend={a('actualRisk.legend')}
+                value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
+                status={c('notAnswered')}
+                columns={3}
+                compact
+                error={draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined}
+                aside={
+                  <InlineAction
+                    ariaLabel={a('actualRisk.removeAria')}
+                    onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
+                options={[
+                  { value: 'matched', label: a('actualRisk.matched') },
+                  { value: 'different', label: a('actualRisk.different') },
+                  { value: 'unknown', label: a('actualRisk.unknown') },
+                ]}
+              />
+              {draft.actualRisk.answer === 'different' ? (
+                <div className="border-control-border border-l-2 pl-4">
+                  <TextField
+                    id="after-actual-risk-amount"
+                    label={a('actualRisk.amount')}
+                    value={draft.actualRisk.amount}
+                    onChange={(amount) => apply((current) => setActualRiskAmount(current, amount))}
+                    suffix={currency}
+                    inputMode="decimal"
+                    figure
+                    hint={a('actualRisk.amountHint')}
+                    error={errorText('actualRisk')}
+                  />
+                </div>
               ) : null}
             </div>
-          </Band>
 
-          {/* PLAN AT ENTRY — reconstructed, compact, and never inferred from the result. */}
-          <Band>
-            <div className="flex min-w-0 flex-col gap-1">
-              <SectionLabel>{a('plan.title')}</SectionLabel>
-              <InlineNote>{a('plan.description')}</InlineNote>
+            <div className="flex min-w-0 flex-col gap-3">
+              <ChoiceGroup
+                idPrefix="after-target"
+                legend={c('target.legend')}
+                value={draft.target.state === 'unanswered' ? null : draft.target.state}
+                status={c('notAnswered')}
+                aside={
+                  <InlineAction
+                    ariaLabel={c('target.removeAria')}
+                    onClick={() => apply((current) => setTargetState(current, 'unanswered'))}
+                  >
+                    {c('removeAnswer')}
+                  </InlineAction>
+                }
+                onChange={(state) => apply((current) => setTargetState(current, state))}
+                options={[
+                  {
+                    value: 'fixed',
+                    label: c('target.fixed'),
+                    description: c('target.fixedDescription'),
+                  },
+                  {
+                    value: 'no_fixed',
+                    label: c('target.noFixed'),
+                    description: c('target.noFixedDescription'),
+                  },
+                ]}
+              />
+              {draft.target.state === 'fixed' ? (
+                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+                  <TextField
+                    id="after-targetProfit"
+                    label={c('target.profit')}
+                    value={draft.target.profit}
+                    onChange={(value) =>
+                      apply((current) => setTargetValue(current, 'profit', value))
+                    }
+                    suffix={currency}
+                    inputMode="decimal"
+                    figure
+                    error={errorText('targetProfit')}
+                  />
+                  <TextField
+                    id="after-targetPrice"
+                    label={c('target.price')}
+                    value={draft.target.price}
+                    onChange={(value) =>
+                      apply((current) => setTargetValue(current, 'price', value))
+                    }
+                    inputMode="decimal"
+                    figure
+                    labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+                    error={errorText('targetPrice')}
+                  />
+                </div>
+              ) : null}
             </div>
 
-            {planBasis === 'money' ? (
-              <FieldPair>
-                <PrimaryAmountField
-                  size="compact"
-                  id="after-planned-risk"
-                  label={a('plan.plannedRisk')}
-                  currency={currency}
-                  value={values.plannedRisk}
-                  onChange={(value) => setField('plannedRisk', value)}
-                  error={errors.plannedRisk}
-                  optionalLabel={a('trade.optional')}
-                />
-                <PrimaryAmountField
-                  size="compact"
-                  id="after-planned-reward"
-                  label={a('plan.targetProfit')}
-                  currency={currency}
-                  value={values.plannedReward}
-                  onChange={(value) => setField('plannedReward', value)}
-                  error={errors.plannedReward}
-                  optionalLabel={a('trade.optional')}
-                />
-              </FieldPair>
-            ) : (
-              <div className="flex min-w-0 flex-col gap-4">
-                <InlineNote>{a('plan.priceHint')}</InlineNote>
-                <FieldPair>
-                  <TextInputField
-                    id="after-plan-entry"
-                    label={r('plannedEntry')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.plannedEntry}
-                    onChange={(value) => setField('plannedEntry', value)}
-                    error={errors.plannedEntry}
-                    inputMode="decimal"
-                    numeric
-                  />
-                  <TextInputField
-                    id="after-plan-stop"
-                    label={r('plannedStop')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.plannedStop}
-                    onChange={(value) => setField('plannedStop', value)}
-                    error={errors.plannedStop}
-                    inputMode="decimal"
-                    numeric
-                  />
-                </FieldPair>
-                <FieldPair>
-                  <TextInputField
-                    id="after-plan-target"
-                    label={r('takeProfit')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.plannedTarget}
-                    onChange={(value) => setField('plannedTarget', value)}
-                    inputMode="decimal"
-                    numeric
-                  />
-                  <TextInputField
-                    id="after-plan-size"
-                    label={t('field.positionSizeSimple')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.plannedPositionSize}
-                    onChange={(value) => setField('plannedPositionSize', value)}
-                    inputMode="decimal"
-                    numeric
-                  />
-                </FieldPair>
-              </div>
-            )}
-
-            {targetR === null ? null : (
-              <div data-target-r="" className="border-border/70 min-w-0 border-t pt-3">
-                <ResultLine label={a('plan.targetR')} value={formatR(targetR) ?? targetR} />
-              </div>
-            )}
-
-            <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
-              <QuietAction
-                className="text-muted-foreground hover:text-foreground font-normal"
-                onClick={() => changePlanBasis(planBasis === 'money' ? 'price' : 'money')}
-              >
-                {planBasis === 'money' ? a('plan.usePrice') : a('plan.useMoney')}
-              </QuietAction>
-            </div>
-          </Band>
-
-          {/*
-            ACTUAL RESULT — the band this lifecycle exists for, and the strongest on
-            the page: the one large figure, the derived outcome and Actual R at the
-            product's metric size, and reconstruction as a disclosure beneath them.
-          */}
-          <div data-actual-result="" className="border-primary/40 min-w-0 border-t-2">
-            <Band divided={false} className="gap-4 py-5 sm:py-5">
-              <div className="flex min-w-0 flex-col gap-1">
-                <SectionLabel className="text-primary">{a('actual.title')}</SectionLabel>
-                <InlineNote>{a('actual.description')}</InlineNote>
-              </div>
-
-              {actualBasis === 'money' ? (
-                <div className="flex min-w-0 flex-col gap-4">
-                  <PrimaryAmountField
-                    id="after-final-pnl"
-                    label={a('actual.finalPnl')}
-                    currency={currency}
-                    value={values.finalPnl}
-                    onChange={(value) => setField('finalPnl', value)}
-                    error={errors.finalPnl}
-                    hint={a('actual.finalPnlHint', { currency })}
-                    optionalLabel={a('trade.optional')}
-                  />
-                  <FieldPair>
-                    <PrimaryAmountField
-                      size="compact"
-                      id="after-actual-risk"
-                      label={a('actual.risk')}
-                      currency={currency}
-                      value={values.actualRisk}
-                      onChange={(value) => setField('actualRisk', value)}
-                      error={errors.actualRisk}
-                      hint={a('actual.riskHint', { currency })}
-                      optionalLabel={a('trade.optional')}
-                    />
-                  </FieldPair>
-                </div>
-              ) : (
-                <FieldPair>
-                  <TextInputField
-                    id="after-actual-entry"
-                    label={r('actualEntry')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.actualEntry}
-                    onChange={(value) => setField('actualEntry', value)}
-                    error={errors.actualEntry}
-                    inputMode="decimal"
-                    numeric
-                  />
-                  <TextInputField
-                    id="after-actual-stop"
-                    label={r('actualInitialStop')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.actualStop}
-                    onChange={(value) => setField('actualStop', value)}
-                    error={errors.actualStop}
-                    inputMode="decimal"
-                    numeric
-                  />
-                  <TextInputField
-                    id="after-actual-size"
-                    label={t('field.actualPositionSize')}
-                    optionalLabel={a('trade.optional')}
-                    value={values.actualPositionSize}
-                    onChange={(value) => setField('actualPositionSize', value)}
-                    inputMode="decimal"
-                    numeric
-                  />
-                </FieldPair>
-              )}
-
-              <div
-                data-result-summary=""
-                className="border-border/70 flex min-w-0 flex-wrap items-end justify-between gap-x-6 gap-y-3 border-t pt-4"
-              >
-                <div className="min-w-0">
-                  <p className="text-muted-foreground text-xs font-medium">{a('actual.outcome')}</p>
-                  <p
-                    className={cn(
-                      'mt-0.5 font-semibold',
-                      outcome === null ? 'text-subtle-foreground text-base' : 'text-metric',
-                    )}
-                  >
-                    {outcome === null
-                      ? a('actual.unknown')
-                      : r(`outcome.${outcome === 'break_even' ? 'breakEven' : outcome}`)}
-                  </p>
-                </div>
-                <div className="min-w-0 sm:text-right">
-                  <p className="text-muted-foreground text-xs font-medium">{r('actualR')}</p>
-                  <p
-                    className={cn(
-                      'numeric mt-0.5 font-semibold',
-                      actualR === null ? 'text-subtle-foreground text-base' : 'text-metric',
-                    )}
-                  >
-                    {actualR === null ? a('actual.unavailable') : formatR(actualR)}
-                  </p>
-                  {actualBasis === 'money' && parsedFinal?.ok && !parsedRisk?.ok ? (
-                    <InlineNote className="mt-1">{a('actual.rNeedsRisk')}</InlineNote>
-                  ) : null}
-                </div>
-              </div>
-
-              <QuietAction
-                className="text-muted-foreground hover:text-foreground self-start font-normal"
-                onClick={() => changeActualBasis(actualBasis === 'money' ? 'price' : 'money')}
-              >
-                {actualBasis === 'money' ? a('actual.usePrice') : a('actual.useMoney')}
-              </QuietAction>
-
-              {/* EXIT RECONSTRUCTION — optional supporting evidence, never the result. */}
-              <div className="border-border/70 flex min-w-0 flex-col gap-3 border-t pt-4">
-                <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <h3 className="text-foreground text-sm font-medium">{a('exits.title')}</h3>
-                  <QuietAction
-                    expanded={exitsOpen}
-                    controls="after-exit-reconstruction"
-                    onClick={() => {
-                      setExitsOpen((current) => !current);
-                      if (exitsOpen) setEditingExitId(null);
-                    }}
-                  >
-                    {exitsOpen ? a('exits.hide') : a('exits.addDetails')}
-                  </QuietAction>
-                </div>
-                {exitsOpen ? null : <InlineNote>{a('exits.collapsedHint')}</InlineNote>}
-
-                {exitsOpen ? (
-                  <div
-                    id="after-exit-reconstruction"
-                    className="border-border min-w-0 overflow-hidden rounded-lg border"
-                  >
-                    {exits.length === 0 ? (
-                      <p className="text-muted-foreground px-3 py-3 text-sm">{a('exits.empty')}</p>
-                    ) : (
-                      <ol className="divide-border min-w-0 divide-y">
-                        {exits.map((exit, index) => (
-                          <li key={exit.id} className="min-w-0">
-                            {editingExitId === exit.id ? (
-                              <ExitEditor
-                                exit={exit}
-                                index={index}
-                                actualBasis={actualBasis}
-                                currency={currency}
-                                timezone={timezone}
-                                errors={errors}
-                                optionalLabel={a('trade.optional')}
-                                onChange={(patch) =>
-                                  setExits((current) =>
-                                    current.map((item) =>
-                                      item.id === exit.id ? { ...item, ...patch } : item,
-                                    ),
-                                  )
-                                }
-                                onRemove={() => {
-                                  setExits((current) =>
-                                    current.filter((item) => item.id !== exit.id),
-                                  );
-                                  setEditingExitId(null);
-                                }}
-                                onDone={() => setEditingExitId(null)}
-                              />
-                            ) : (
-                              <button
-                                type="button"
-                                className="hover:bg-accent/40 focus-visible:ring-ring flex min-h-12 w-full min-w-0 items-center justify-between gap-3 px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:-outline-offset-2"
-                                onClick={() => setEditingExitId(exit.id)}
-                              >
-                                <span className="min-w-0">
-                                  <span className="text-foreground block text-sm">
-                                    {a('exits.exitNumber', { number: index + 1 })}
-                                  </span>
-                                  <span className="text-muted-foreground numeric block truncate text-xs">
-                                    {exit.value.trim() === '' ? a('exits.sparse') : exit.value}
-                                  </span>
-                                </span>
-                                <span className="text-primary shrink-0 text-xs font-medium">
-                                  {a('exits.edit')}
-                                </span>
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-
-                    <div className="border-border border-t px-3 py-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto min-h-11 min-w-0 py-2 text-left whitespace-normal"
-                        onClick={() => {
-                          const exit = blankExit();
-                          setExits((current) => [...current, exit]);
-                          setEditingExitId(exit.id);
-                        }}
-                      >
-                        <Plus className="size-4" aria-hidden="true" />
-                        {a('exits.add')}
-                      </Button>
-                    </div>
-
-                    {recordedExits.length === 0 ? null : (
-                      <div className="border-border bg-muted/30 flex min-w-0 flex-col gap-3 border-t px-3 py-3">
-                        <fieldset className="flex min-w-0 flex-col gap-1">
-                          <legend className="text-muted-foreground mb-1 text-xs font-medium">
-                            {a('exits.completeness')}
-                          </legend>
-                          {(['unknown', 'incomplete', 'complete'] as const).map((value) => (
-                            <label
-                              key={value}
-                              className="hover:bg-accent/40 flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-sm"
-                            >
-                              <input
-                                type="radio"
-                                name="after-exit-completeness"
-                                value={value}
-                                checked={completeness === value}
-                                onChange={() => setCompleteness(value)}
-                                className="size-4 shrink-0"
-                              />
-                              <span className="min-w-0">
-                                {a(`exits.completenessOptions.${value}`)}
-                              </span>
-                            </label>
-                          ))}
-                        </fieldset>
-
-                        <ReconciliationSummary
-                          currency={currency}
-                          finalMinor={parsedFinal?.ok ? parsedFinal.value : null}
-                          subtotalMinor={monetarySnapshot.exitSubtotalMinor?.toString() ?? null}
-                          reconciliation={
-                            actualBasis === 'money'
-                              ? monetarySnapshot.reconciliation
-                              : 'not_applicable'
-                          }
-                          canAdoptAfterSave={
-                            actualBasis === 'money' && monetarySnapshot.canAdoptExitSubtotal
-                          }
-                          error={errors.exits}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </Band>
-          </div>
-        </TaskSurface>
-
-        <JournalLauncherSurface
-          headingId="after-journal-heading"
-          heading={a('journal.title')}
-          aside={a('journal.aside')}
-          areas={[
-            {
-              id: 'idea',
-              label: a('journal.idea.label'),
-              Icon: Lightbulb,
-              invitation: a('journal.idea.prompt'),
-              preview: ideaPreview,
-              onOpen: () => openJournal('idea'),
-              triggerRef: ideaTrigger,
-            },
-            {
-              id: 'feelings',
-              label: a('journal.feelings.label'),
-              Icon: HeartPulse,
-              invitation: a('journal.feelings.prompt'),
-              preview: feelingsPreview,
-              onOpen: () => openJournal('feelings'),
-              triggerRef: feelingsTrigger,
-            },
-          ]}
-        />
-
-        <FormFooter
-          action={a('save.action')}
-          pendingLabel={r('saving')}
-          pending={pending}
-          helper={a('save.helper')}
-          suppressed={editingExitId !== null}
-        />
-      </form>
-
-      <TradeAdaptiveOverlay
-        open={journalArea === 'idea'}
-        onOpenChange={(open) => {
-          if (!open) setJournalArea(null);
-        }}
-        title={a('journal.idea.label')}
-        description={a('journal.idea.description')}
-        closeLabel={t('lifecycle.common.close')}
-        returnFocusRef={ideaTrigger}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setJournalArea(null)}>
-              {t('lifecycle.common.cancel')}
-            </Button>
-            <Button type="button" onClick={commitJournal}>
-              {a('journal.done')}
-            </Button>
-          </div>
-        }
-      >
-        <div className="flex min-w-0 flex-col gap-6">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <label htmlFor="after-idea" className="text-muted-foreground text-xs font-medium">
-              {a('journal.idea.prompt')}
-            </label>
-            <Textarea
-              id="after-idea"
-              rows={4}
-              placeholder={a('journal.idea.placeholder')}
-              value={journalDraft.confirmationNotes}
-              onChange={(event) =>
-                setJournalDraft((current) => ({
-                  ...current,
-                  confirmationNotes: event.target.value,
-                }))
-              }
-              className="min-h-28 text-base"
+            <AtEntryExitPlan
+              draft={exitPlanView}
+              options={options}
+              onChange={(next) => apply((current) => ({ ...current, exitPlan: next.exitPlan }))}
+              onLibraryChanged={setAdoptedExitPlans}
+              copy={{
+                notRecordedHint: a('exitPlan.notRecordedHint'),
+                editorDescription: a('exitPlan.editorDescription'),
+              }}
             />
-          </div>
+          </section>
 
-          <div className="flex min-w-0 flex-col gap-4">
-            <p className="text-foreground text-sm font-medium">
-              {a('journal.idea.strategyQuestion')}
-            </p>
-            <SelectField
-              id="after-strategy"
-              label={t('field.strategy')}
-              optionalLabel={a('trade.optional')}
-              hint={a('journal.idea.strategyHint')}
+          {/* 4 — EXIT HISTORY (supporting evidence) */}
+          <section className="border-border min-w-0 border-t px-2 py-3 sm:px-3">
+            <Disclosure
+              id="after-exits-toggle"
+              title={a('sections.exits')}
+              summary={
+                exitErrorCount > 0 ? (
+                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
+                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                    {c('summary.hasErrors', { count: exitErrorCount })}
+                  </span>
+                ) : recordedExits.length === 0 ? (
+                  a('exits.summaryEmpty')
+                ) : (
+                  a('exits.summaryCount', { count: recordedExits.length })
+                )
+              }
+              open={exitsOpen}
+              onToggle={() => setExitsOpen((open) => !open)}
             >
-              <NativeSelect
-                id="after-strategy"
-                value={journalDraft.strategyId}
-                aria-describedby="after-strategy-hint"
-                onChange={(event) => {
-                  const strategyId = event.target.value;
-                  setJournalDraft((current) => ({
-                    ...current,
-                    strategyId,
-                    setupId: '',
-                    conditionMet: {},
-                  }));
+              <ExitHistoryFields
+                draft={draft}
+                currency={currency}
+                errorText={errorText}
+                subtotal={validation.exitSubtotalMinor}
+                canAdopt={validation.canAdoptExitSubtotal}
+                discrepancy={
+                  discrepancy?.kind === 'exit_discrepancy'
+                    ? {
+                        subtotal: formatMoney(discrepancy.subtotalMinor),
+                        final: formatMoney(discrepancy.finalPnlMinor),
+                      }
+                    : null
+                }
+                adoptedMessage={adoptedMessage}
+                formatMoney={formatMoney}
+                onAdd={() => apply((current) => addExit(current, generateId()))}
+                onRemove={(id) => apply((current) => removeExit(current, id))}
+                onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+                onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+                onAdopt={() => {
+                  if (validation.exitSubtotalMinor === null) return;
+                  const amount = formatMoney(validation.exitSubtotalMinor);
+                  setDraft((current) =>
+                    adoptExitSubtotal(current, validation, (minor) =>
+                      tradeMoneyInputValue(minor, currency),
+                    ),
+                  );
+                  setServerMessage(null);
+                  setAdoptedMessage(a('exits.adopted', { amount }));
                 }}
-              >
-                <option value="">{t('create.chooseStrategy')}</option>
-                {options.strategies.map((strategy) => (
-                  <option key={strategy.strategyId} value={strategy.strategyId}>
-                    {strategy.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </SelectField>
+              />
+            </Disclosure>
+          </section>
 
-            {draftStrategy === undefined ? null : (
-              <SelectField
-                id="after-setup"
-                label={t('field.setup')}
-                optionalLabel={a('trade.optional')}
-                hint={a('journal.idea.setupHint')}
-              >
-                <NativeSelect
-                  id="after-setup"
-                  value={journalDraft.setupId}
-                  aria-describedby="after-setup-hint"
-                  onChange={(event) => {
-                    const setupId = event.target.value;
-                    setJournalDraft((current) => ({ ...current, setupId, conditionMet: {} }));
-                  }}
-                >
-                  <option value="">{t('create.chooseSetup')}</option>
-                  {draftStrategy.setups.map((setup) => (
-                    <option key={setup.setupId} value={setup.setupId}>
-                      {setup.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </SelectField>
-            )}
-
-            {draftSetup !== undefined && draftSetup.conditions.length > 0 ? (
-              <fieldset className="border-border flex min-w-0 flex-col gap-1 border-y py-3">
-                <legend className="text-foreground text-sm font-medium">
-                  {a('journal.idea.checklistTitle')}
-                </legend>
-                <p className="text-muted-foreground text-xs">{a('plan.setupHint')}</p>
-                {draftSetup.conditions.map((condition) => (
-                  <label
-                    key={condition.conditionKey}
-                    className="flex min-h-11 min-w-0 items-center gap-3 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      className="size-4 shrink-0"
-                      checked={journalDraft.conditionMet[condition.conditionKey] === true}
-                      onChange={(event) => {
-                        const checked = event.target.checked;
-                        setJournalDraft((current) => ({
-                          ...current,
-                          conditionMet: {
-                            ...current.conditionMet,
-                            [condition.conditionKey]: checked,
-                          },
-                        }));
+          {/* 5 — THE TRADER'S READ (core analytical data, optional to save) */}
+          <section
+            aria-labelledby={ids.read}
+            className="border-border flex min-w-0 flex-col gap-5 border-t px-4 py-5 sm:px-6 sm:py-6"
+          >
+            <GroupHeading
+              id={ids.read}
+              title={a('sections.read')}
+              description={a('sections.readDescription')}
+              aside={
+                <span className="text-muted-foreground hidden items-center gap-1.5 text-sm lg:inline-flex">
+                  <BarChart3 className="size-4" aria-hidden="true" />
+                  {c('sections.usedInAnalytics')}
+                </span>
+              }
+            />
+            <Disclosure
+              id="after-analysis-toggle"
+              title={analysisOpen ? a('summary.hide') : a('summary.open')}
+              summary={
+                <span data-analysis-summary="" className="flex min-w-0 flex-col">
+                  {(analysisLines.length === 0 ? [c('summary.notAnswered')] : analysisLines).map(
+                    (line) => (
+                      <span key={line} className="block min-w-0 break-words">
+                        {line}
+                      </span>
+                    ),
+                  )}
+                </span>
+              }
+              open={analysisOpen}
+              onToggle={() => setAnalysisOpen((open) => !open)}
+              openFromDesktop
+            >
+              <div className="flex min-w-0 flex-col gap-6 pb-2">
+                <StrategyFields
+                  draft={draft}
+                  options={options}
+                  onSelectStrategy={(value) =>
+                    apply((current) =>
+                      value === ''
+                        ? removeStrategyAnswer(current)
+                        : value === NONE
+                          ? answerNoStrategy(current)
+                          : selectStrategy(current, value),
+                    )
+                  }
+                  onSelectSetup={(value) =>
+                    apply((current) =>
+                      value === ''
+                        ? removeSetupAnswer(current)
+                        : value === NONE
+                          ? answerNoSetup(current)
+                          : selectSetup(current, value),
+                    )
+                  }
+                  onCondition={(key, status) =>
+                    apply((current) => answerCondition(current, key, status))
+                  }
+                />
+                <div className="border-border border-t pt-5">
+                  <ChoiceGroup
+                    idPrefix="after-confidence"
+                    legend={a('confidence.label')}
+                    value={draft.confidence === null ? null : String(draft.confidence)}
+                    status={c('notAnswered')}
+                    columns={5}
+                    compact
+                    aside={
+                      <InlineAction
+                        ariaLabel={c('confidence.removeAria')}
+                        onClick={() => apply((current) => setConfidence(current, null))}
+                      >
+                        {c('removeAnswer')}
+                      </InlineAction>
+                    }
+                    onChange={(value) =>
+                      apply((current) => setConfidence(current, Number.parseInt(value, 10)))
+                    }
+                    options={CONFIDENCE_LEVELS.map((level) => ({
+                      value: String(level.value),
+                      label: t(`create.confidence.level.${level.key}`),
+                    }))}
+                  />
+                  <Helper>{a('confidence.hint')}</Helper>
+                </div>
+                {(['emotions', 'postTradeEmotions'] as const).map((phase) => (
+                  <div key={phase} className="border-border border-t pt-5">
+                    <EmotionFields
+                      phase={phase}
+                      answer={draft[phase]}
+                      legend={
+                        phase === 'emotions' ? a('emotions.entryLegend') : a('emotions.postLegend')
+                      }
+                      hint={phase === 'postTradeEmotions' ? a('emotions.postHint') : undefined}
+                      removeAria={
+                        phase === 'emotions'
+                          ? c('emotions.removeAria')
+                          : a('emotions.removePostAria')
+                      }
+                      catalog={options.emotionCatalog}
+                      showLastOneHint={emotionHint === phase}
+                      onToggle={(key) => {
+                        if (!canDeselectEmotion(draft[phase], key)) {
+                          setEmotionHint(phase);
+                          return;
+                        }
+                        setEmotionHint(null);
+                        apply((current) => toggleEmotion(current, phase, key));
+                      }}
+                      onNone={() => {
+                        setEmotionHint(null);
+                        apply((current) => answerNoEmotions(current, phase));
+                      }}
+                      onRemove={() => {
+                        setEmotionHint(null);
+                        apply((current) => removeEmotionsAnswer(current, phase));
                       }}
                     />
-                    <span className="min-w-0 break-words">{condition.label}</span>
-                  </label>
+                  </div>
                 ))}
-              </fieldset>
-            ) : null}
-          </div>
+              </div>
+            </Disclosure>
+          </section>
 
-          <FieldPair>
-            <TextInputField
-              id="after-timeframe"
-              label={t('field.timeframe')}
-              optionalLabel={a('trade.optional')}
-              value={journalDraft.timeframe}
-              onChange={(timeframe) => setJournalDraft((current) => ({ ...current, timeframe }))}
-            />
-            <TextInputField
-              id="after-session"
-              label={t('field.session')}
-              optionalLabel={a('trade.optional')}
-              value={journalDraft.session}
-              onChange={(session) => setJournalDraft((current) => ({ ...current, session }))}
-            />
-          </FieldPair>
-
-          <TextInputField
-            id="after-chart-link"
-            type="url"
-            inputMode="url"
-            label={r('chartLink')}
-            optionalLabel={a('trade.optional')}
-            value={journalDraft.tradingviewUrl}
-            placeholder="https://www.tradingview.com/x/…"
-            onChange={(tradingviewUrl) =>
-              setJournalDraft((current) => ({ ...current, tradingviewUrl }))
-            }
-          />
-
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <label htmlFor="after-notes" className="text-muted-foreground text-xs font-medium">
-              {a('journal.idea.notes')}
-            </label>
-            <Textarea
-              id="after-notes"
-              rows={2}
-              value={journalDraft.notes}
-              onChange={(event) =>
-                setJournalDraft((current) => ({ ...current, notes: event.target.value }))
+          {/* 6 — CONTEXT */}
+          <section className="border-border min-w-0 border-t px-2 py-3 sm:px-3">
+            <Disclosure
+              id="after-context-toggle"
+              title={a('sections.context')}
+              summary={
+                contextErrorCount > 0 ? (
+                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
+                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                    {c('summary.hasErrors', { count: contextErrorCount })}
+                  </span>
+                ) : contextFilled === 0 ? (
+                  c('summary.contextEmpty')
+                ) : (
+                  c('summary.contextFilled', { count: contextFilled })
+                )
               }
-              className="min-h-20 text-base"
-            />
-          </div>
-        </div>
-      </TradeAdaptiveOverlay>
+              open={contextOpen}
+              onToggle={() => setContextOpen((open) => !open)}
+            >
+              <ContextFields
+                draft={draft}
+                notices={validation.notices.map((notice) => notice.kind)}
+                errorText={errorText}
+                onChange={(patch) =>
+                  apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+                }
+              />
+            </Disclosure>
+          </section>
 
-      <TradeAdaptiveOverlay
-        open={journalArea === 'feelings'}
-        onOpenChange={(open) => {
-          if (!open) setJournalArea(null);
-        }}
-        title={a('journal.feelings.label')}
-        description={a('journal.feelings.description')}
-        closeLabel={t('lifecycle.common.close')}
-        returnFocusRef={feelingsTrigger}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setJournalArea(null)}>
-              {t('lifecycle.common.cancel')}
-            </Button>
-            <Button type="button" onClick={commitJournal}>
-              {a('journal.done')}
-            </Button>
-          </div>
+          {wide ? null : (
+            <div
+              data-global-save=""
+              data-action-bar={keyboardOpen ? 'inline' : 'docked'}
+              className={cn(
+                'border-border bg-card flex min-w-0 flex-col gap-2 rounded-b-xl border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden',
+                !keyboardOpen && 'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <p
+                  data-save-status=""
+                  tabIndex={-1}
+                  aria-live="polite"
+                  className={cn('min-w-0 flex-1 text-sm leading-snug outline-none', statusTone)}
+                >
+                  {statusLine}
+                </p>
+                <Button type="submit" size="lg" className="min-h-12 shrink-0" disabled={pending}>
+                  {pending ? a('save.saving') : a('save.action')}
+                </Button>
+              </div>
+              {promptMissing ? (
+                <p data-save-prompt="" className="text-muted-foreground text-xs">
+                  {a('save.promptMissing')}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </form>
+
+        {wide ? (
+          <aside
+            aria-label={a('save.panelTitle')}
+            className="hidden lg:sticky lg:top-[calc(var(--shell-header-height)+1.5rem)] lg:block"
+          >
+            <div
+              data-global-save=""
+              className="bg-card border-border shadow-card flex flex-col gap-4 rounded-xl border p-5"
+            >
+              <div>
+                <h2 className="text-foreground text-base font-semibold">{a('save.panelTitle')}</h2>
+                <p className="text-muted-foreground mt-0.5 text-sm">{a('save.panelDescription')}</p>
+              </div>
+              <ul className="flex flex-col gap-2.5">
+                {requirements.map((item) => (
+                  <RequirementRow
+                    key={item.key}
+                    label={c(`save.requirement.${item.key}`)}
+                    done={item.done && visibleErrors[item.field] === undefined}
+                    addedLabel={c('save.added')}
+                    neededLabel={c('save.needed')}
+                  />
+                ))}
+              </ul>
+              <div className="border-border flex flex-col gap-2 border-t pt-4">
+                <div>
+                  <p className="text-foreground text-sm font-medium">
+                    {a('save.recommendedTitle')}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {a('save.recommendedDescription')}
+                  </p>
+                </div>
+                <ul data-save-prompt="" className="flex flex-col gap-1.5">
+                  {recommended.map((item) => (
+                    <li key={item.key} className="flex min-w-0 items-baseline gap-2 text-sm">
+                      <span className="text-foreground">{a(`save.recommended.${item.key}`)}</span>
+                      <StateText>
+                        {item.done ? a('save.recorded') : a('save.notRecorded')}
+                      </StateText>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Button
+                type="submit"
+                form={formId}
+                size="lg"
+                className="min-h-12 w-full"
+                disabled={pending}
+              >
+                {pending ? a('save.saving') : a('save.action')}
+              </Button>
+              <p
+                data-save-status=""
+                tabIndex={-1}
+                aria-live="polite"
+                className={cn('text-sm outline-none', statusTone)}
+              >
+                {statusLine}
+              </p>
+              <p className="text-muted-foreground text-xs">{a('save.helper')}</p>
+            </div>
+          </aside>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** An optional historical time: blank is not recorded, and clearing it is always one action away. */
+function TimeField({
+  id,
+  label,
+  value,
+  error,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  error?: string | undefined;
+  onChange: (value: string) => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <TextField
+        id={id}
+        type="datetime-local"
+        label={label}
+        value={value}
+        onChange={onChange}
+        figure
+        error={error}
+        labelAside={value === '' ? <StateText>{a('times.notRecorded')}</StateText> : null}
+      />
+      {value === '' ? null : (
+        <div>
+          <InlineAction ariaLabel={`${a('times.clear')}: ${label}`} onClick={() => onChange('')}>
+            {a('times.clear')}
+          </InlineAction>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExitHistoryFields({
+  draft,
+  currency,
+  errorText,
+  subtotal,
+  canAdopt,
+  discrepancy,
+  adoptedMessage,
+  formatMoney,
+  onAdd,
+  onRemove,
+  onChange,
+  onCompleteness,
+  onAdopt,
+}: {
+  draft: AfterTradeDraft;
+  currency: string;
+  errorText: (field: AfterTradeField) => string | undefined;
+  subtotal: string | null;
+  canAdopt: boolean;
+  discrepancy: { readonly subtotal: string; readonly final: string } | null;
+  adoptedMessage: string | null;
+  formatMoney: (minor: string) => string;
+  onAdd: () => void;
+  onRemove: (id: string) => void;
+  onChange: (id: string, patch: Partial<Omit<AfterTradeExitDraft, 'id'>>) => void;
+  onCompleteness: (value: AfterTradeDraft['completeness']) => void;
+  onAdopt: () => void;
+}) {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const hasExits = draft.exits.some(meaningfulExit);
+  return (
+    <div className="flex min-w-0 flex-col gap-4 pb-3">
+      <Helper>{a('exits.description')}</Helper>
+      {draft.exits.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{a('exits.empty')}</p>
+      ) : (
+        <ol className="flex min-w-0 flex-col gap-3">
+          {draft.exits.map((exit, index) => {
+            const number = index + 1;
+            const prefix = `after-exit-${exit.id}`;
+            return (
+              <li
+                key={exit.id}
+                data-after-exit=""
+                className="border-border flex min-w-0 flex-col gap-4 rounded-md border px-3 py-3 sm:px-4"
+              >
+                <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p className="text-foreground text-sm font-semibold">
+                    {a('exits.exitNumber', { number })}
+                  </p>
+                  <InlineAction
+                    ariaLabel={a('exits.removeAria', { number })}
+                    onClick={() => onRemove(exit.id)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                      {a('exits.remove')}
+                    </span>
+                  </InlineAction>
+                </div>
+                <ChoiceGroup
+                  idPrefix={`${prefix}-scope`}
+                  legend={a('exits.scope')}
+                  value={exit.scope === '' ? null : exit.scope}
+                  status={c('notAnswered')}
+                  columns={3}
+                  compact
+                  aside={
+                    <InlineAction
+                      ariaLabel={a('exits.removeScopeAria', { number })}
+                      onClick={() => onChange(exit.id, { scope: '' })}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(scope) => onChange(exit.id, { scope })}
+                  options={[
+                    { value: 'part', label: a('exits.scopePart') },
+                    { value: 'all_remaining', label: a('exits.scopeAll') },
+                    { value: 'unknown', label: a('exits.scopeUnknown') },
+                  ]}
+                />
+                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+                  <TextField
+                    id={`${prefix}-pnl`}
+                    label={a('exits.pnl')}
+                    value={exit.pnl}
+                    onChange={(pnl) => onChange(exit.id, { pnl })}
+                    suffix={currency}
+                    inputMode="decimal"
+                    figure
+                    error={errorText(exitField(exit.id, 'pnl'))}
+                  />
+                  <TextField
+                    id={`${prefix}-closedPercent`}
+                    label={a('exits.percent')}
+                    value={exit.closedPercent}
+                    onChange={(closedPercent) => onChange(exit.id, { closedPercent })}
+                    suffix="%"
+                    inputMode="decimal"
+                    figure
+                    error={errorText(exitField(exit.id, 'closedPercent'))}
+                  />
+                  <TextField
+                    id={`${prefix}-exitedAt`}
+                    type="datetime-local"
+                    label={a('exits.time')}
+                    value={exit.exitedAt}
+                    onChange={(exitedAt) => onChange(exit.id, { exitedAt })}
+                    figure
+                    error={errorText(exitField(exit.id, 'exitedAt'))}
+                  />
+                  <TextField
+                    id={`${prefix}-price`}
+                    label={a('exits.price')}
+                    value={exit.price}
+                    onChange={(price) => onChange(exit.id, { price })}
+                    inputMode="decimal"
+                    figure
+                    labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+                    error={errorText(exitField(exit.id, 'price'))}
+                  />
+                </div>
+                <TextField
+                  id={`${prefix}-reason`}
+                  label={a('exits.reason')}
+                  value={exit.reason}
+                  onChange={(reason) => onChange(exit.id, { reason })}
+                />
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <div>
+        <Button type="button" variant="outline" size="sm" onClick={onAdd}>
+          <Plus aria-hidden="true" />
+          {a('exits.add')}
+        </Button>
+      </div>
+
+      {hasExits ? (
+        <ChoiceGroup
+          idPrefix="after-completeness"
+          legend={a('exits.completeness')}
+          value={draft.completeness === 'unanswered' ? null : draft.completeness}
+          status={c('notAnswered')}
+          columns={3}
+          compact
+          aside={
+            <InlineAction
+              ariaLabel={a('exits.removeCompletenessAria')}
+              onClick={() => onCompleteness('unanswered')}
+            >
+              {c('removeAnswer')}
+            </InlineAction>
+          }
+          onChange={onCompleteness}
+          options={[
+            { value: 'complete', label: a('exits.complete') },
+            { value: 'incomplete', label: a('exits.incomplete') },
+            { value: 'unknown', label: a('exits.unknown') },
+          ]}
+        />
+      ) : null}
+
+      {subtotal === null ? null : (
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <p className="text-foreground text-sm tabular-nums">
+            {a('exits.subtotal', { amount: formatMoney(subtotal) })}
+          </p>
+          <p className="text-muted-foreground text-xs">{a('exits.subtotalSupporting')}</p>
+          {canAdopt ? (
+            <div>
+              <InlineAction onClick={onAdopt}>{a('exits.adopt')}</InlineAction>
+            </div>
+          ) : null}
+        </div>
+      )}
+      <p aria-live="polite" className="text-muted-foreground text-sm empty:hidden">
+        {adoptedMessage ?? ''}
+      </p>
+      {discrepancy === null ? null : (
+        <Notice
+          icon={
+            <History className="text-muted-foreground mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          }
+        >
+          {a('exits.discrepancy', discrepancy)}
+        </Notice>
+      )}
+    </div>
+  );
+}
+
+function StrategyFields({
+  draft,
+  options,
+  onSelectStrategy,
+  onSelectSetup,
+  onCondition,
+}: {
+  draft: AfterTradeDraft;
+  options: TradeCreateOptions;
+  onSelectStrategy: (value: string) => void;
+  onSelectSetup: (value: string) => void;
+  onCondition: (conditionKey: string, status: RecalledConditionStatus | null) => void;
+}) {
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const active = activeAfterTradeClassification(draft, options);
+  const strategyValue =
+    active.strategyAnswer === 'none'
+      ? NONE
+      : active.strategy === null
+        ? ''
+        : active.strategy.strategyId;
+  const setupValue =
+    active.setupAnswer === 'none' ? NONE : active.setup === null ? '' : active.setup.setupId;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+        <SelectField
+          id="after-strategy"
+          label={c('strategy.label')}
+          value={strategyValue}
+          onChange={onSelectStrategy}
+          aside={
+            strategyValue === '' ? null : (
+              <InlineAction
+                ariaLabel={c('strategy.removeStrategyAria')}
+                onClick={() => onSelectStrategy('')}
+              >
+                {c('removeAnswer')}
+              </InlineAction>
+            )
+          }
+          options={[
+            { value: '', label: c('strategy.notAnswered') },
+            { value: NONE, label: c('strategy.none') },
+            ...options.strategies.map((strategy) => ({
+              value: strategy.strategyId,
+              label: strategy.name,
+            })),
+          ]}
+        />
+        <SelectField
+          id="after-setup"
+          label={c('strategy.setup')}
+          value={setupValue}
+          disabled={active.strategy === null}
+          onChange={onSelectSetup}
+          aside={
+            active.strategy === null || setupValue === '' ? null : (
+              <InlineAction
+                ariaLabel={c('strategy.removeSetupAria')}
+                onClick={() => onSelectSetup('')}
+              >
+                {c('removeAnswer')}
+              </InlineAction>
+            )
+          }
+          options={[
+            {
+              value: '',
+              label:
+                active.strategy === null
+                  ? c('strategy.setupNeedsStrategy')
+                  : c('strategy.notAnswered'),
+            },
+            { value: NONE, label: c('strategy.noSetup') },
+            ...(active.strategy?.setups ?? []).map((setup) => ({
+              value: setup.setupId,
+              label: setup.name,
+            })),
+          ]}
+        />
+      </div>
+
+      {active.setup === null || active.setup.conditions.length === 0 ? null : (
+        <div className="flex min-w-0 flex-col gap-1">
+          <p className="text-foreground text-sm font-medium">{c('strategy.conditions')}</p>
+          <Helper>{a('conditions.hint')}</Helper>
+          <ul className="divide-border mt-2 flex min-w-0 flex-col divide-y">
+            {active.setup.conditions.map((condition) => (
+              <li key={condition.conditionKey} className="min-w-0 py-3">
+                <ChoiceGroup
+                  idPrefix={`after-condition-${condition.conditionKey}`}
+                  legend={condition.label}
+                  value={active.conditionAnswers[condition.conditionKey] ?? null}
+                  compact
+                  columns={3}
+                  status={c('notAnswered')}
+                  aside={
+                    <InlineAction
+                      ariaLabel={c('strategy.removeConditionAria', {
+                        condition: condition.label,
+                      })}
+                      onClick={() => onCondition(condition.conditionKey, null)}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(status) => onCondition(condition.conditionKey, status)}
+                  options={[
+                    { value: 'met', label: c('strategy.met') },
+                    { value: 'not_met', label: c('strategy.notMet') },
+                    { value: 'unknown', label: a('conditions.dontRemember') },
+                  ]}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmotionFields({
+  phase,
+  answer,
+  legend,
+  hint,
+  removeAria,
+  catalog,
+  showLastOneHint,
+  onToggle,
+  onNone,
+  onRemove,
+}: {
+  phase: EmotionPhase;
+  answer: AfterTradeDraft['emotions'];
+  legend: string;
+  hint?: string | undefined;
+  removeAria: string;
+  catalog: TradeCreateOptions['emotionCatalog'];
+  showLastOneHint: boolean;
+  onToggle: (key: string) => void;
+  onNone: () => void;
+  onRemove: () => void;
+}) {
+  const t = useTranslations('trades');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  return (
+    <fieldset className="min-w-0" data-emotions-phase={phase} data-emotions-answer={answer.answer}>
+      <Legend
+        aside={
+          answer.answer === 'unanswered' ? (
+            <StateText>{c('notAnswered')}</StateText>
+          ) : (
+            <InlineAction ariaLabel={removeAria} onClick={onRemove}>
+              {c('removeAnswer')}
+            </InlineAction>
+          )
         }
       >
-        <div className="flex min-w-0 flex-col gap-6">
-          <TradeConfidenceChoice
-            id="after-confidence"
-            label={t('field.confidence')}
-            hint={tConfidence('hintHindsight')}
-            value={confidenceOf(journalDraft.confidence) ?? null}
-            onChange={(value) =>
-              setJournalDraft((current) => ({
-                ...current,
-                confidence: value === null ? '' : String(value),
-              }))
-            }
+        {legend}
+      </Legend>
+      {hint === undefined ? null : <Helper>{hint}</Helper>}
+      <div className="mt-2 grid min-w-0 gap-x-6 gap-y-3 min-[560px]:grid-cols-2">
+        {groupEmotionCatalog(catalog).map((group) => (
+          <div key={group.key} className="flex min-w-0 flex-col gap-1.5">
+            <p className="text-muted-foreground text-sm">
+              {t(`create.recording.emotionGroups.${group.key}`)}
+            </p>
+            <div className="flex min-w-0 flex-wrap gap-2">
+              {group.emotions.map((emotion) => (
+                <Chip
+                  key={emotion.key}
+                  selected={answer.answer === 'selected' && answer.keys.includes(emotion.key)}
+                  onClick={() => onToggle(emotion.key)}
+                >
+                  {t(`emotions.${emotion.key}`)}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="border-border mt-3 flex min-w-0 flex-wrap items-center gap-3 border-t pt-3">
+        <Chip selected={answer.answer === 'none'} onClick={onNone}>
+          {c('emotions.none')}
+        </Chip>
+      </div>
+      <p aria-live="polite" className="text-muted-foreground mt-2 text-sm empty:hidden">
+        {showLastOneHint ? c('emotions.lastOne') : ''}
+      </p>
+    </fieldset>
+  );
+}
+
+function ContextFields({
+  draft,
+  notices,
+  errorText,
+  onChange,
+}: {
+  draft: AfterTradeDraft;
+  notices: readonly string[];
+  errorText: (field: AfterTradeField) => string | undefined;
+  onChange: (patch: Partial<AfterTradeDraft['context']>) => void;
+}) {
+  const c = useTranslations('trades.create.recording.contractEntry.context');
+  return (
+    <div className="flex min-w-0 flex-col gap-4 pb-3">
+      <TextAreaField
+        id="after-context-reason"
+        label={c('reason')}
+        value={draft.context.reason}
+        onChange={(reason) => onChange({ reason })}
+        placeholder={c('reasonPlaceholder')}
+      />
+      <TextField
+        id="after-context-chart"
+        label={c('chart')}
+        value={draft.context.tradingviewUrl}
+        onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
+        inputMode="url"
+        placeholder="https://www.tradingview.com/x/…"
+      />
+      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+        <TextField
+          id="after-context-timeframe"
+          label={c('timeframe')}
+          value={draft.context.timeframe}
+          onChange={(timeframe) => onChange({ timeframe })}
+          placeholder="15m"
+        />
+        <TextField
+          id="after-context-session"
+          label={c('session')}
+          value={draft.context.session}
+          onChange={(session) => onChange({ session })}
+          placeholder="London"
+        />
+      </div>
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <p className="text-foreground text-sm font-medium">{c('prices')}</p>
+          <StateText>{c('pricesHint')}</StateText>
+        </div>
+        <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-3">
+          <TextField
+            id="after-contextEntryPrice"
+            label={c('entryPrice')}
+            value={draft.context.entryPrice}
+            onChange={(entryPrice) => onChange({ entryPrice })}
+            inputMode="decimal"
+            figure
+            error={errorText('contextEntryPrice')}
           />
-          <TradeEmotionChips
-            legend={a('journal.feelings.emotions')}
-            catalog={options.emotionCatalog}
-            value={journalDraft.emotions}
-            onChange={(next) => setJournalDraft((current) => ({ ...current, emotions: next }))}
-            groupLabel={(key) => r(`emotionGroups.${key}`)}
-            noneLabel={a('journal.feelings.noneOfThese')}
-            notRecordedLabel={a('journal.notRecorded')}
+          <TextField
+            id="after-contextStopPrice"
+            label={c('stopPrice')}
+            value={draft.context.stopPrice}
+            onChange={(stopPrice) => onChange({ stopPrice })}
+            inputMode="decimal"
+            figure
+            error={errorText('contextStopPrice')}
+          />
+          <TextField
+            id="after-contextPositionSize"
+            label={c('size')}
+            value={draft.context.positionSize}
+            onChange={(positionSize) => onChange({ positionSize })}
+            inputMode="decimal"
+            figure
+            error={errorText('contextPositionSize')}
           />
         </div>
-      </TradeAdaptiveOverlay>
-
-      <AlertDialog open={confirmUnmetOpen} onOpenChange={setConfirmUnmetOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{r('unmet.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{r('unmet.description')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('lifecycle.common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setConfirmUnmetOpen(false);
-                void submit(true);
-              }}
-            >
-              {r('unmet.continue')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-/** One exit, being edited. Its own actions finish it; the page's Save stands aside meanwhile. */
-function ExitEditor({
-  exit,
-  index,
-  actualBasis,
-  currency,
-  timezone,
-  errors,
-  optionalLabel,
-  onChange,
-  onRemove,
-  onDone,
-}: {
-  exit: ExitDraft;
-  index: number;
-  actualBasis: Basis;
-  currency: string;
-  timezone: string;
-  errors: ErrorMap;
-  optionalLabel: string;
-  onChange: (patch: Partial<ExitDraft>) => void;
-  onRemove: () => void;
-  onDone: () => void;
-}) {
-  const a = useTranslations('trades.create.recording.after');
-  const r = useTranslations('trades.create.recording');
-  return (
-    <div data-exit-editor="" className="bg-accent/20 flex min-w-0 flex-col gap-4 px-3 py-3.5">
-      <h4 className="text-foreground text-sm font-medium">
-        {a('exits.exitNumber', { number: index + 1 })}
-      </h4>
-      <FieldPair>
-        <TextInputField
-          id={`exit-${exit.id}-value`}
-          label={actualBasis === 'money' ? r('realizedPnl') : r('exitPrice')}
-          optionalLabel={optionalLabel}
-          value={exit.value}
-          onChange={(value) => onChange({ value })}
-          error={errors[`exit-${exit.id}-value`]}
-          inputMode="decimal"
-          hint={actualBasis === 'money' ? currency : undefined}
-          numeric
-        />
-        <TextInputField
-          id={`exit-${exit.id}-percent`}
-          label={r('closedPercent')}
-          optionalLabel={optionalLabel}
-          value={exit.closedPercent}
-          onChange={(closedPercent) => onChange({ closedPercent })}
-          error={errors[`exit-${exit.id}-percent`]}
-          inputMode="decimal"
-          numeric
-        />
-      </FieldPair>
-      <FieldPair>
-        <SelectField
-          id={`exit-${exit.id}-scope`}
-          label={a('exits.scope')}
-          optionalLabel={optionalLabel}
-        >
-          <NativeSelect
-            id={`exit-${exit.id}-scope`}
-            value={exit.scope}
-            onChange={(event) => onChange({ scope: event.target.value as ExitScope })}
-          >
-            <option value="">{a('exits.scopeOptions.unknown')}</option>
-            <option value="part">{a('exits.scopeOptions.part')}</option>
-            <option value="all_remaining">{a('exits.scopeOptions.allRemaining')}</option>
-          </NativeSelect>
-        </SelectField>
-        <TextInputField
-          id={`exit-${exit.id}-time`}
-          type="datetime-local"
-          label={r('exitTime')}
-          optionalLabel={optionalLabel}
-          value={exit.exitedAt}
-          onChange={(exitedAt) => onChange({ exitedAt })}
-          error={errors[`exit-${exit.id}-time`]}
-          hint={timezone}
-          numeric
-        />
-      </FieldPair>
-      <TextInputField
-        id={`exit-${exit.id}-reason`}
-        label={a('exits.reason')}
-        optionalLabel={optionalLabel}
-        value={exit.reason}
-        onChange={(reason) => onChange({ reason })}
+        {notices.includes('stop_wrong_side') ? <Notice>{c('stopWrongSide')}</Notice> : null}
+        {notices.includes('target_wrong_side') ? <Notice>{c('targetWrongSide')}</Notice> : null}
+      </div>
+      <TextAreaField
+        id="after-context-notes"
+        label={c('notes')}
+        value={draft.context.notes}
+        onChange={(notes) => onChange({ notes })}
       />
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onRemove}
-          className="text-muted-foreground min-h-11"
-        >
-          <Trash2 className="size-4" aria-hidden="true" />
-          {a('exits.remove')}
-        </Button>
-        <Button type="button" size="sm" onClick={onDone} className="min-h-11">
-          <Check className="size-4" aria-hidden="true" />
-          {a('exits.done')}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** The supporting subtotal beside the authoritative final result; it picks neither in a conflict. */
-function ReconciliationSummary({
-  currency,
-  finalMinor,
-  subtotalMinor,
-  reconciliation,
-  canAdoptAfterSave,
-  error,
-}: {
-  currency: string;
-  finalMinor: string | null;
-  subtotalMinor: string | null;
-  reconciliation: 'not_recorded' | 'unreconciled' | 'matched' | 'conflict' | 'not_applicable';
-  canAdoptAfterSave: boolean;
-  error?: string | undefined;
-}) {
-  const a = useTranslations('trades.create.recording.after');
-  if (reconciliation === 'not_recorded') return null;
-  return (
-    <div
-      data-reconciliation={reconciliation}
-      className={cn(
-        'flex min-w-0 flex-col gap-1.5 border-t pt-3',
-        reconciliation === 'conflict' ? 'border-warning/40' : 'border-border/70',
-      )}
-    >
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-        <span className="text-muted-foreground text-xs font-medium">{a('exits.subtotal')}</span>
-        <strong className="numeric text-sm break-all">
-          {signedMoney(subtotalMinor, currency) ?? a('actual.unavailable')}
-        </strong>
-      </div>
-      <p
-        className={cn(
-          'text-xs leading-relaxed',
-          reconciliation === 'conflict' ? 'text-warning' : 'text-muted-foreground',
-        )}
-      >
-        {a(`exits.reconciliation.${reconciliation}`, {
-          final: signedMoney(finalMinor, currency) ?? a('actual.unknown'),
-        })}
-      </p>
-      {canAdoptAfterSave ? (
-        <p className="text-subtle-foreground text-xs leading-relaxed">
-          {a('exits.adoptAfterSave')}
-        </p>
-      ) : null}
-      {error === undefined ? null : (
-        <p role="alert" className="text-destructive text-xs">
-          {error}
-        </p>
-      )}
     </div>
   );
 }

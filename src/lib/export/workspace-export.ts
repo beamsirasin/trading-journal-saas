@@ -11,8 +11,13 @@ import { strToU8, zipSync } from 'fflate';
  *
  * v8 adds nullable historical exit-completeness/P&L provenance and exit
  * scope. No financial column is removed or reinterpreted.
+ *
+ * v9 (Add Trade contract After Trade) adds `trader_outcome_selected_at` and
+ * `post_trade_emotions_recorded_at` to `trades`, and `phase` to
+ * `trade_emotions`, so a Post-Trade Emotion never exports as an Entry Emotion
+ * and a selected Trader Outcome stays distinguishable from a derived one.
  */
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 8 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 9 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -229,6 +234,7 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('notes', 'notes', 'user_text'),
       column('reviewNotes', 'review_notes', 'user_text'),
       column('emotionsRecordedAt', 'emotions_recorded_at', 'timestamp'),
+      column('postTradeEmotionsRecordedAt', 'post_trade_emotions_recorded_at', 'timestamp'),
       // The internal private-storage key is deliberately never exported
       // (Founder review: "internal storage keys must not leak through
       // customer export unless explicitly required for portability and
@@ -271,6 +277,7 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('actualR', 'actual_r', 'decimal'),
       column('systemR', 'system_r', 'decimal'),
       column('traderOutcome', 'trader_outcome', 'text'),
+      column('traderOutcomeSelectedAt', 'trader_outcome_selected_at', 'timestamp'),
       column('systemOutcome', 'system_outcome', 'text'),
       column('calcVersion', 'calc_version', 'integer'),
       column('status', 'status', 'text'),
@@ -372,6 +379,7 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('tradeId', 'trade_id', 'id'),
       column('emotionTypeId', 'emotion_type_id', 'id'),
       column('workspaceId', 'workspace_id', 'id'),
+      column('phase', 'phase', 'text'),
       column('createdAt', 'created_at', 'timestamp'),
     ],
   },

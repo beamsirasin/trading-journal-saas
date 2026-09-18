@@ -2,13 +2,17 @@ import { z } from 'zod';
 
 import { EMOTION_KEYS } from '@/config/emotions';
 import { exitPlanInstructionsField } from '@/lib/exit-plans/schemas';
-import { SETUP_CONDITION_CHECK_STATUSES } from '@/lib/setup-conditions/snapshots';
+import {
+  RECALLED_SETUP_CONDITION_CHECK_STATUSES,
+  SETUP_CONDITION_CHECK_STATUSES,
+} from '@/lib/setup-conditions/snapshots';
 import {
   CHART_ATTACHMENT_STORAGE_KEY_MAX_LENGTH,
   isValidChartAttachmentStorageKey,
 } from '@/lib/storage/chart-attachment';
 import { parseInstant } from '@/lib/time/parse';
 import {
+  ACTUAL_RISK_ANSWERS,
   ENTERED_AT_SOURCES,
   EXIT_PLAN_PROVENANCES,
   RECORDING_CONTRACT_ADD_TRADE_V1,
@@ -25,10 +29,11 @@ import {
   CONFIRMATION_NOTES_MAX_LENGTH,
   EXIT_HISTORY_COMPLETENESS_VALUES,
   EXIT_REASON_MAX_LENGTH,
-  EXIT_SCOPES,
+  HISTORICAL_EXIT_SCOPES,
   isConfidenceStep,
   MISTAKE_NOTE_MAX_LENGTH,
   NOTES_MAX_LENGTH,
+  OUTCOME_VALUES,
   PLAN_ADHERENCE_VALUES,
   RESOLVABLE_SYSTEM_EXIT_REASONS,
   REVIEW_NOTES_MAX_LENGTH,
@@ -74,6 +79,14 @@ const setupConditionAnswerField = () =>
     .object({
       conditionKey: uuidField(),
       status: z.enum(SETUP_CONDITION_CHECK_STATUSES),
+    })
+    .strict();
+/** After Trade also accepts "Don't remember" (contract §8). */
+const recalledSetupConditionAnswerField = () =>
+  z
+    .object({
+      conditionKey: uuidField(),
+      status: z.enum(RECALLED_SETUP_CONDITION_CHECK_STATUSES),
     })
     .strict();
 
@@ -287,9 +300,6 @@ const nullablePositiveMinorField = () =>
     (value) => (value === '' ? null : value),
     positiveMinorField().nullable().optional(),
   );
-
-const nullableDecimalField = () =>
-  z.preprocess((value) => (value === '' ? null : value), decimalField().nullable().optional());
 
 const nullableClosedBpsField = () =>
   z.preprocess(
@@ -969,14 +979,32 @@ export type ResolveSystemTradeActionData = z.output<typeof ResolveSystemTradeSch
 // 8a. createCompletedTrade (Phase 15G.5B service/action foundation)
 // ---------------------------------------------------------------------------
 
+/** A price recorded as context only: blank is not recorded, never zero. */
+const nullablePositiveDecimalField = () =>
+  z.preprocess(
+    (value) => (value === '' ? null : value),
+    positiveDecimalField().nullable().optional(),
+  );
+
+const nullableUnsignedMinorField = () =>
+  z.preprocess(
+    (value) => (value === '' ? null : value),
+    unsignedMinorField().nullable().optional(),
+  );
+
+/**
+ * One reconstructed exit (contract §10). Every field is optional and a
+ * reason-only exit is valid; scope may be an explicit Unknown. P&L and price
+ * are independent — price is context and never computes the P&L.
+ */
 const CompletedTradeExitSchema = z
   .object({
     closedBps: nullableClosedBpsField(),
     exitScope: z.preprocess(
       (value) => (value === '' ? null : value),
-      z.enum(EXIT_SCOPES).nullable().optional(),
+      z.enum(HISTORICAL_EXIT_SCOPES).nullable().optional(),
     ),
-    exitPrice: nullableDecimalField(),
+    exitPrice: nullablePositiveDecimalField(),
     realizedPnlMinor: nullableSignedMinorField(),
     exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
     exitedAt: nullableInstantField(),
@@ -988,112 +1016,149 @@ const CompletedTradeExitSchema = z
       exit.exitScope != null ||
       exit.exitPrice != null ||
       exit.realizedPnlMinor != null ||
+      exit.exitReason != null ||
       exit.exitedAt != null,
     { message: 'empty_historical_exit' },
   );
 
-const CompletedTradeObjectSchema = CreateTradeObjectSchema.omit({
-  recordingTiming: true,
-  systemPlanBasis: true,
-  actualResultMode: true,
-  actualEntry: true,
-  actualInitialStop: true,
-  actualInitialRiskMinor: true,
-  actualPositionSize: true,
-  enteredAt: true,
-}).extend({
-  recordingTiming: z.literal('after_trade'),
-  systemPlanBasis: z.enum(SYSTEM_PLAN_BASES).nullable().optional(),
-  actualResultBasis: z.enum(SYSTEM_PLAN_BASES),
-  actualEntry: nullableDecimalField(),
-  actualInitialStop: nullableDecimalField(),
-  actualInitialRiskMinor: nullablePositiveMinorField(),
-  actualPositionSize: nullableDecimalField(),
-  enteredAt: nullableInstantField(),
-  exitedAt: nullableInstantField(),
-  finalPnlMinor: nullableSignedMinorField(),
-  exitHistoryCompleteness: z
-    .union([z.enum(EXIT_HISTORY_COMPLETENESS_VALUES), z.literal(''), z.null()])
-    .optional()
-    .transform((value) => (value === '' || value === null ? undefined : value)),
-  exits: z.array(CompletedTradeExitSchema).optional().default([]),
-});
+const HISTORICAL_EXIT_LIMIT = 50;
 
-export const CreateCompletedTradeSchema = applyPlanShapeRefinements(CompletedTradeObjectSchema)
-  .refine((data) => data.setupId === undefined || data.strategyId !== undefined, {
-    message: 'setup_requires_strategy',
-    path: ['setupId'],
+/**
+ * SAVE CLOSED TRADE — the Add Trade contract After Trade write (contract §13).
+ *
+ * Only Account, Symbol and Direction are required. Every other answer may be
+ * absent, and absent means Unanswered or not recorded — never zero, None, a
+ * loss or Not Met. Money is the only result authority: there is no result
+ * basis, no price geometry, and Trader Outcome is the trader's own choice,
+ * accepted as given and never derived from P&L or R.
+ */
+const CompletedTradeObjectSchema = z
+  .object({
+    mutationKey: uuidField(),
+    tradingAccountId: uuidField(),
+    recordingTiming: z.literal('after_trade'),
+    recordingContract: z.literal(RECORDING_CONTRACT_ADD_TRADE_V1),
+    symbol: requiredTextField(SYMBOL_MAX_LENGTH),
+    direction: directionField(),
+    enteredAt: nullableInstantField(),
+    exitedAt: nullableInstantField(),
+    /** Risk at Entry — the 1R baseline. Blank is not recorded. */
+    plannedRiskMinor: nullablePositiveMinorField(),
+    /** Absent = Unanswered. */
+    actualRiskAnswer: z.enum(ACTUAL_RISK_ANSWERS).optional(),
+    /** Only with Different; blank is Different, amount unknown. */
+    actualInitialRiskMinor: nullablePositiveMinorField(),
+    /** Absent = Unanswered. */
+    targetState: z.enum(TARGET_STATES).optional(),
+    /** Target Profit — monetary intent. */
+    plannedRewardMinor: nullableUnsignedMinorField(),
+    /** TP price — context only. */
+    targetPrice: nullablePositiveDecimalField(),
+    /** Price levels and size — context only, never calculation inputs. */
+    contextEntryPrice: nullablePositiveDecimalField(),
+    contextStopPrice: nullablePositiveDecimalField(),
+    contextPositionSize: nullablePositiveDecimalField(),
+    /** Absent = Not recorded. */
+    exitPlan: exitPlanChoiceField().optional(),
+    /** The authoritative whole-Trade result. Blank is not recorded. */
+    finalPnlMinor: nullableSignedMinorField(),
+    /** The trader's own classification. Absent = Unanswered. */
+    traderOutcome: z.enum(OUTCOME_VALUES).optional(),
+    /** Absent = Unanswered; asked only once an exit is recorded. */
+    exitHistoryCompleteness: z.enum(EXIT_HISTORY_COMPLETENESS_VALUES).optional(),
+    exits: z.array(CompletedTradeExitSchema).max(HISTORICAL_EXIT_LIMIT).optional().default([]),
+    strategyId: uuidField().optional(),
+    setupId: uuidField().optional(),
+    noStrategy: z.boolean().optional(),
+    noSetup: z.boolean().optional(),
+    conditionSetToken: conditionSetTokenField().optional(),
+    /** A partial set is valid; an omitted condition stays Unanswered. */
+    conditionAnswers: z.array(recalledSetupConditionAnswerField()).optional(),
+    /** Recalled Entry Confidence. */
+    confidence: confidenceField().optional(),
+    /** Recalled Entry Emotion: omitted = Unanswered, `[]` = None of these. */
+    emotionKeys: emotionKeysField().optional(),
+    /** Post-Trade Emotion, separate from Entry Emotion. Same conventions. */
+    postTradeEmotionKeys: emotionKeysField().optional(),
+    timeframe: optionalTextField(TIMEFRAME_MAX_LENGTH),
+    session: optionalTextField(SESSION_MAX_LENGTH),
+    confirmationNotes: optionalTextField(CONFIRMATION_NOTES_MAX_LENGTH),
+    tradingviewUrl: tradingViewUrlField(),
+    notes: optionalTextField(NOTES_MAX_LENGTH),
+    chartAttachmentStorageKey: chartAttachmentStorageKeyField().nullable().optional(),
   })
-  .refine((data) => (data.setupId === undefined) === (data.conditionSetToken === undefined), {
-    message: 'setup_requires_condition_token',
-    path: ['conditionSetToken'],
-  })
-  .refine((data) => data.setupId !== undefined || (data.conditionAnswers ?? []).length === 0, {
-    message: 'condition_answers_require_setup',
-    path: ['conditionAnswers'],
-  })
-  .superRefine((data, context) => {
-    const authority = validateNewWritePlanAuthority(data, data.systemPlanBasis, {
-      allowInferredBasis: false,
-    });
-    if (!authority.ok) {
-      context.addIssue({
-        code: 'custom',
-        message: authority.code,
-        path: ['systemPlanBasis'],
-      });
-    }
+  .strict();
 
-    const hasPartialPriceContext = (data.actualEntry == null) !== (data.actualInitialStop == null);
-    if (hasPartialPriceContext) {
-      context.addIssue({
-        code: 'custom',
-        message: 'incomplete_actual_price_context',
-        path: ['actualEntry'],
-      });
-    }
-    if (data.actualResultBasis === 'price' && data.actualInitialRiskMinor != null) {
-      context.addIssue({
-        code: 'custom',
-        message: 'price_mode_forbids_money_risk',
-        path: ['actualInitialRiskMinor'],
-      });
-    }
-    if (data.actualInitialRiskMinor != null && data.actualInitialRiskMinor <= 0n) {
-      context.addIssue({
-        code: 'custom',
-        message: 'invalid_initial_risk',
-        path: ['actualInitialRiskMinor'],
-      });
-    }
+type CompletedTradeObject = z.output<typeof CompletedTradeObjectSchema>;
 
-    if (data.actualResultBasis === 'price' && data.finalPnlMinor != null) {
-      context.addIssue({
-        code: 'custom',
-        message: 'price_mode_forbids_money_result',
-        path: ['finalPnlMinor'],
-      });
+/**
+ * The After Trade blocking rules: malformed values, and an explicitly selected
+ * answer that is incomplete as chosen. Nothing here requires an optional
+ * answer, and nothing here rewrites one.
+ */
+function addAfterTradeContractIssues(
+  data: CompletedTradeObject,
+  issue: (message: string, path: (string | number)[]) => void,
+): void {
+  if (data.setupId !== undefined && data.strategyId === undefined) {
+    issue('setup_requires_strategy', ['setupId']);
+  }
+  if ((data.setupId === undefined) !== (data.conditionSetToken === undefined)) {
+    issue('setup_requires_condition_token', ['conditionSetToken']);
+  }
+  if (data.setupId === undefined && (data.conditionAnswers ?? []).length > 0) {
+    issue('condition_answers_require_setup', ['conditionAnswers']);
+  }
+  if (data.noStrategy === true && data.strategyId !== undefined) {
+    issue('no_strategy_conflicts_with_strategy', ['noStrategy']);
+  }
+  if (data.noSetup === true && (data.strategyId === undefined || data.setupId !== undefined)) {
+    issue('no_setup_requires_strategy_without_setup', ['noSetup']);
+  }
+  // After Trade never inherits today's Strategy default (contract §5).
+  if (data.exitPlan?.state === 'saved' && data.exitPlan.provenance !== 'selected') {
+    issue('after_trade_exit_plan_is_selected', ['exitPlan']);
+  }
+
+  const hasTargetProfit = data.plannedRewardMinor != null;
+  const hasTargetPrice = data.targetPrice != null;
+  if (data.targetState === 'fixed') {
+    if (!hasTargetProfit && !hasTargetPrice) {
+      issue('fixed_target_requires_representation', ['targetState']);
     }
-    for (const [index, exit] of data.exits.entries()) {
-      if (
-        (data.actualResultBasis === 'price' && exit.realizedPnlMinor != null) ||
-        (data.actualResultBasis === 'money' && exit.exitPrice != null)
-      ) {
-        context.addIssue({
-          code: 'custom',
-          message: 'conflicting_exit_evidence',
-          path: ['exits', index],
-        });
-      }
+    if (data.plannedRewardMinor === 0n) {
+      issue('target_profit_must_be_positive', ['plannedRewardMinor']);
     }
-    if (data.exits.length === 0 && data.exitHistoryCompleteness !== undefined) {
-      context.addIssue({
-        code: 'custom',
-        message: 'exit_completeness_requires_history',
-        path: ['exitHistoryCompleteness'],
-      });
-    }
-  });
+  } else if (hasTargetProfit || hasTargetPrice) {
+    issue('target_values_require_fixed_target', ['targetState']);
+  }
+
+  if (data.actualRiskAnswer === 'matched' && data.plannedRiskMinor == null) {
+    issue('matched_actual_risk_requires_risk_at_entry', ['actualRiskAnswer']);
+  }
+  if (data.actualRiskAnswer !== 'different' && data.actualInitialRiskMinor != null) {
+    issue('actual_risk_amount_requires_different', ['actualInitialRiskMinor']);
+  }
+  if (
+    data.actualRiskAnswer === 'different' &&
+    data.actualInitialRiskMinor != null &&
+    data.actualInitialRiskMinor === data.plannedRiskMinor
+  ) {
+    issue('different_actual_risk_equals_risk_at_entry', ['actualInitialRiskMinor']);
+  }
+
+  if (data.exits.length === 0 && data.exitHistoryCompleteness !== undefined) {
+    issue('exit_completeness_requires_history', ['exitHistoryCompleteness']);
+  }
+}
+
+export const CreateCompletedTradeSchema = CompletedTradeObjectSchema.superRefine(
+  (data, context) => {
+    addAfterTradeContractIssues(data, (message, path) =>
+      context.addIssue({ code: 'custom', message, path }),
+    );
+  },
+);
 export type CreateCompletedTradeActionInput = z.input<typeof CreateCompletedTradeSchema>;
 export type CreateCompletedTradeActionData = z.output<typeof CreateCompletedTradeSchema>;
 
@@ -1111,9 +1176,10 @@ const HistoricalExitCorrectionSchema = z
   .object({
     exitId: uuidField().optional(),
     closedBps: nullableClosedBpsField(),
+    /** `unknown` is refused by the service on a legacy row. */
     exitScope: z.preprocess(
       (value) => (value === '' ? null : value),
-      z.enum(EXIT_SCOPES).nullable().optional(),
+      z.enum(HISTORICAL_EXIT_SCOPES).nullable().optional(),
     ),
     realizedPnlMinor: nullableSignedMinorField(),
     exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
@@ -1125,6 +1191,7 @@ const HistoricalExitCorrectionSchema = z
       exit.closedBps != null ||
       exit.exitScope != null ||
       exit.realizedPnlMinor != null ||
+      exit.exitReason != null ||
       exit.exitedAt != null,
     { message: 'empty_historical_exit' },
   );

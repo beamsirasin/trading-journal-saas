@@ -294,11 +294,19 @@ export async function replaceTradeEmotions(
       return { ok: false, code: 'emotion_type_not_usable' };
     }
 
-    await tx.delete(tradeEmotions).where(eq(tradeEmotions.tradeId, tradeId));
+    // Entry Emotion only: a Post-Trade Emotion is a separate observation.
+    await tx
+      .delete(tradeEmotions)
+      .where(and(eq(tradeEmotions.tradeId, tradeId), eq(tradeEmotions.phase, 'entry')));
     if (selected.length > 0) {
-      await tx
-        .insert(tradeEmotions)
-        .values(selected.map((emotion) => ({ tradeId, emotionTypeId: emotion.id, workspaceId })));
+      await tx.insert(tradeEmotions).values(
+        selected.map((emotion) => ({
+          tradeId,
+          emotionTypeId: emotion.id,
+          workspaceId,
+          phase: 'entry',
+        })),
+      );
     }
     const recordedAt = clock.now();
     await tx

@@ -33,7 +33,7 @@ import type { OutcomeValue } from './constants';
  */
 
 export type TradeOutcomeEvidence =
-  /** The trader chose this outcome. No writer produces this yet; the case exists so the migration has one place to switch on. */
+  /** The trader chose this outcome (After Trade, contract §12). */
   | { readonly status: 'selected'; readonly outcome: OutcomeValue }
   /** A legacy row's historical classification, derived from R or P&L sign. */
   | { readonly status: 'legacy_derived'; readonly outcome: OutcomeValue }
@@ -66,15 +66,23 @@ interface EvidenceRow {
 /**
  * The Trader Outcome a record surface may present.
  *
- * On a contract row this is always unavailable today: `trader_outcome` there
- * is whatever the pre-contract close derived, and contract §12 reserves
- * Win / BE / Loss for a choice the trader makes. When Final Close records
- * that choice, this function returns `selected` and every surface follows.
+ * On a contract row only the trader's own choice is an outcome (contract §12):
+ * After Trade records it as selected. A contract row closed by the
+ * pre-contract Final Close still stores a DERIVED outcome, which is never
+ * shown as an answer — it reads as not yet selected until Final Close asks the
+ * trader.
  */
 export function tradeOutcomeEvidence(
-  trade: EvidenceRow & { readonly traderOutcome: OutcomeValue | null },
+  trade: EvidenceRow & {
+    readonly traderOutcome: OutcomeValue | null;
+    readonly traderOutcomeSelected: boolean;
+  },
 ): TradeOutcomeEvidence {
-  if (isContractRow(trade)) return { status: 'unavailable', reason: 'outcome_not_selected' };
+  if (isContractRow(trade)) {
+    return trade.traderOutcomeSelected && trade.traderOutcome !== null
+      ? { status: 'selected', outcome: trade.traderOutcome }
+      : { status: 'unavailable', reason: 'outcome_not_selected' };
+  }
   if (trade.traderOutcome === null) return { status: 'unavailable', reason: 'not_recorded' };
   return { status: 'legacy_derived', outcome: trade.traderOutcome };
 }

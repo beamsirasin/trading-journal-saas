@@ -1716,7 +1716,7 @@ describe('analytics service (real PostgreSQL)', () => {
       mutationKey: crypto.randomUUID(),
       tradingAccountId: accountId,
       recordingTiming: 'after_trade',
-      systemPlanBasis: 'money',
+      recordingContract: 'add_trade_v1',
       strategyId: framework.strategyId,
       setupId: framework.setupId,
       conditionSetToken: createConditionSetToken(framework.setupVersionId),
@@ -1724,9 +1724,8 @@ describe('analytics service (real PostgreSQL)', () => {
       symbol: 'EURUSD',
       direction: 'long',
       plannedRiskMinor: 100n,
+      targetState: 'fixed',
       plannedRewardMinor: 400n,
-      actualResultBasis: 'money',
-      actualInitialRiskMinor: 100n,
       finalPnlMinor: 300n,
       enteredAt: new Date('2026-08-01T09:00:00.000Z'),
       exitedAt,
@@ -1868,12 +1867,13 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(raw.data.confidenceSystem).toEqual([]);
     expect(raw.data.emotionsSystem).toEqual([]);
 
-    // `createCompletedTrade` records a legacy (pre-contract) Trade, so its
-    // Actual R is not canonical: it leaves the Trader population and is
-    // disclosed as legacy Actual coverage instead.
+    // Save Closed Trade records an Add Trade contract Trade: its Actual R is
+    // Final Net P&L / Risk at Entry, so it joins the Trader population even
+    // though its recalled entry context stays out of the behavioral reads.
     expect(affectedTradeIds(raw.data.trader)).toEqual(
       [
         liveTradeId,
+        retrospectiveResolvedId,
         noChecklistId,
         retrospectiveNoTradeId,
         retrospectivePendingId,
@@ -1885,7 +1885,7 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(raw.data.system).toEqual([]);
     expect(selectComparisonEligible(raw.data.comparisonCandidates)).toEqual([]);
     expect(raw.data.legacyCoverage).toEqual({
-      excludedActualCount: 1,
+      excludedActualCount: 0,
       // Every resolved System result: all but the pending and no-trade Trades.
       excludedSystemCount: 9,
     });
@@ -1895,7 +1895,7 @@ describe('analytics service (real PostgreSQL)', () => {
 
     const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ_OPTIONS);
     if (!result.ok) throw new Error(result.code);
-    expect(result.data.trader.sampleCount).toBe(10);
+    expect(result.data.trader.sampleCount).toBe(11);
     expect(result.data.system.sampleCount).toBe(0);
     expect(result.data.comparison.comparableCount).toBe(0);
     expect(result.data.setupAdherence).toMatchObject({
@@ -1926,10 +1926,10 @@ describe('analytics service (real PostgreSQL)', () => {
       result.data.strategyPerformance.strategies.find(
         (strategy) => strategy.strategyId === framework.strategyId,
       ),
-    ).toMatchObject({ trader: { tradeCount: 9 }, system: { tradeCount: 0 } });
+    ).toMatchObject({ trader: { tradeCount: 10 }, system: { tradeCount: 0 } });
     expect(
       result.data.setupPerformance.setups.find((setup) => setup.setupId === framework.setupId),
-    ).toMatchObject({ trader: { tradeCount: 9 }, system: { tradeCount: 0 } });
+    ).toMatchObject({ trader: { tradeCount: 10 }, system: { tradeCount: 0 } });
     expect(result.data.rules.followedCount).toBe(8);
     expect(result.data.mistakes.map((mistake) => mistake.tradeCount)).toEqual([2, 1]);
 

@@ -4,6 +4,7 @@ import { and, eq, isNotNull, not, sql, type SQL } from 'drizzle-orm';
 
 import type { LegacyAnalyticsCoverage } from '@/lib/analytics/canonical-population';
 import { RECORDING_CONTRACT_ADD_TRADE_V1 } from '@/lib/trades/add-trade-contract';
+import type { OutcomeValue } from '@/lib/trades/constants';
 import { getDb } from '@/server/db/client';
 import { trades } from '@/server/db/schema';
 
@@ -68,13 +69,15 @@ export function canonicalSystemConditions(): SQL[] {
 }
 
 /**
- * The Trader Outcome canonical analytics may read for a row: none. No column
- * records an outcome the trader chose, and a derived outcome must never be
- * counted as one (contract §25). Returning `null` keeps the Trade's Actual R in
- * every R metric while removing it from outcome metrics only.
+ * The Trader Outcome canonical analytics may read for a row: only one the
+ * trader selected on a contract row (contract §12, §25). A derived outcome —
+ * every legacy row, and a contract row closed by the pre-contract Final Close —
+ * reads as NULL, which keeps the Trade's Actual R in every R metric while
+ * leaving it out of outcome metrics. Unanswered is NULL too, never a loss.
  */
-export function canonicalTraderOutcome(): null {
-  return null;
+export function canonicalTraderOutcome(): SQL<OutcomeValue | null> {
+  return sql<OutcomeValue | null>`(case when ${trades.recordingContract} is not distinct from ${RECORDING_CONTRACT_ADD_TRADE_V1}
+    and ${trades.traderOutcomeSelectedAt} is not null then ${trades.traderOutcome} end)`;
 }
 
 /**

@@ -15,11 +15,11 @@ import { tradeOutcomeEvidence } from './record-evidence';
  * lie about a break-even, and printing `LOSS` would be worse.
  *
  * `outcome_unanswered` is a different real state: an Add Trade contract row
- * whose result is recorded but whose Trader Outcome is the trader's to choose
- * and has not been asked for yet (contract §12). Its stored `trader_outcome`,
- * where one exists at all, was derived from R under the pre-contract rules,
- * so showing it as WIN or LOSS would attribute to the trader a judgement they
- * never made.
+ * whose Trader Outcome is the trader's to choose and has not been chosen
+ * (contract §12). A stored `trader_outcome` there that the trader did not
+ * select was derived from R under the pre-contract rules, so showing it as WIN
+ * or LOSS would attribute to the trader a judgement they never made. A
+ * selected outcome is shown as the trader's own.
  */
 export type TradeResultKind =
   OutcomeValue | 'open' | 'planned' | 'canceled' | 'unresolved' | 'outcome_unanswered';
@@ -27,6 +27,7 @@ export type TradeResultKind =
 export interface TradeResultInput {
   readonly status: TradeStatus;
   readonly traderOutcome: OutcomeValue | null;
+  readonly traderOutcomeSelected: boolean;
   readonly recordingContract: string | null;
 }
 

@@ -36,7 +36,10 @@ export function isActualResultMode(value: unknown): value is ActualResultMode {
 export const CLOSED_BPS_TOTAL = 10_000;
 export const EXIT_REASON_MAX_LENGTH = 500;
 
-/** Declared knowledge about a historical closed Trade's supporting exit history. */
+/**
+ * Declared knowledge about a historical closed Trade's supporting exit history.
+ * On a contract row NULL is Unanswered, distinct from an explicit `unknown`.
+ */
 export const EXIT_HISTORY_COMPLETENESS_VALUES = ['unknown', 'incomplete', 'complete'] as const;
 export type ExitHistoryCompleteness = (typeof EXIT_HISTORY_COMPLETENESS_VALUES)[number];
 
@@ -44,9 +47,17 @@ export type ExitHistoryCompleteness = (typeof EXIT_HISTORY_COMPLETENESS_VALUES)[
 export const FINAL_PNL_SOURCES = ['manual_total', 'exit_history'] as const;
 export type FinalPnlSource = (typeof FINAL_PNL_SOURCES)[number];
 
-/** Optional future historical-exit scope; legacy and live exit rows remain NULL. */
+/** A live exit's scope — it drives lifecycle, so it is always Part or All Remaining. */
 export const EXIT_SCOPES = ['part', 'all_remaining'] as const;
 export type ExitScope = (typeof EXIT_SCOPES)[number];
+
+/**
+ * An After Trade reconstruction may also say the scope is not known (contract
+ * §10). Such an exit never drives remaining-position lifecycle. NULL remains
+ * Unanswered.
+ */
+export const HISTORICAL_EXIT_SCOPES = ['part', 'all_remaining', 'unknown'] as const;
+export type HistoricalExitScope = (typeof HISTORICAL_EXIT_SCOPES)[number];
 
 /**
  * The System axis's own lifecycle, independent of `TRADE_STATUSES`. `pending`

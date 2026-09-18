@@ -4,11 +4,11 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { generateId } from '@/lib/identifiers';
 import { systemClock, type Clock } from '@/lib/time';
-import { actualRDenominatorMinor } from '@/lib/trades/add-trade-contract';
+import { actualRDenominatorMinor, isContractRow } from '@/lib/trades/add-trade-contract';
 import type {
   ExitHistoryCompleteness,
-  ExitScope,
   FinalPnlSource,
+  HistoricalExitScope,
   OutcomeValue,
 } from '@/lib/trades/constants';
 import {
@@ -35,7 +35,8 @@ export interface HistoricalExitCorrectionInput {
   /** Existing row identity. Omit only for a newly-added supporting leg. */
   readonly exitId?: string;
   readonly closedBps?: number | null;
-  readonly exitScope?: ExitScope | null;
+  /** `unknown` is accepted on a contract row only. */
+  readonly exitScope?: HistoricalExitScope | null;
   readonly realizedPnlMinor?: bigint | null;
   readonly exitReason?: string | null;
   readonly exitedAt?: Date | null;
@@ -77,12 +78,21 @@ export type HistoricalExecutionMutationResult =
     };
 
 function stateFromRows(trade: TradeRow, exits: readonly ExitRow[]): HistoricalExecutionState {
+  const contract = isContractRow(trade);
+  // A trader-selected outcome, or a contract row's Unanswered, is never
+  // re-derived from the new P&L. Only a derived outcome follows the numbers.
+  const keepOutcome =
+    trade.traderOutcomeSelectedAt !== null || (contract && trade.traderOutcome === null);
   return {
     actualInitialRiskMinor: actualRDenominatorMinor(trade),
     finalPnlMinor: trade.netPnlMinor,
     finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
     exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,
     exits: exits.map((exit) => ({ realizedPnlMinor: exit.realizedPnlMinor })),
+    contract,
+    ...(keepOutcome
+      ? { keptTraderOutcome: { traderOutcome: trade.traderOutcome as OutcomeValue | null } }
+      : {}),
   };
 }
 
@@ -253,6 +263,10 @@ function validateCorrection(
     return 'invalid_exit_shape';
   }
 
+  // A contract row accepts what After Trade accepts (contract §10): a
+  // reason-only exit and an explicit Unknown scope. A legacy row keeps its
+  // original evidence rules. Neither may close more than the whole position.
+  const contract = isContractRow(trade);
   const existingIds = new Set(existingExits.map((exit) => exit.id));
   const suppliedIds = new Set<string>();
   let knownClosedBps = 0;
@@ -262,20 +276,20 @@ function validateCorrection(
         return 'invalid_exit_shape';
       suppliedIds.add(exit.exitId);
     }
+    if (!contract && exit.exitScope === 'unknown') return 'invalid_exit_shape';
     const meaningful =
       exit.closedBps != null ||
       exit.exitScope != null ||
       exit.realizedPnlMinor != null ||
-      exit.exitedAt != null;
+      exit.exitedAt != null ||
+      (contract && normalizeOptionalText(exit.exitReason) !== null);
     if (!meaningful) return 'invalid_exit_shape';
     if (exit.closedBps != null) {
       if (!Number.isSafeInteger(exit.closedBps) || exit.closedBps <= 0 || exit.closedBps > 10_000) {
         return 'invalid_completed_exit_coverage';
       }
       knownClosedBps += exit.closedBps;
-      if (!Number.isSafeInteger(knownClosedBps) || knownClosedBps > 10_000) {
-        return 'invalid_completed_exit_coverage';
-      }
+      if (knownClosedBps > 10_000) return 'invalid_completed_exit_coverage';
     }
     const exitedAt = exit.exitedAt ?? null;
     if (
@@ -318,10 +332,11 @@ async function persistExitCorrection(
     if (exit.exitId === undefined) continue;
     await tx
       .update(tradeExits)
+      // `exit_price` is not part of this correction: a retained exit keeps the
+      // price context it was recorded with.
       .set({
         closedBps: exit.closedBps ?? null,
         exitScope: exit.exitScope ?? null,
-        exitPrice: null,
         realizedPnlMinor: exit.realizedPnlMinor ?? null,
         exitReason: normalizeOptionalText(exit.exitReason),
         exitedAt: exit.exitedAt ?? null,

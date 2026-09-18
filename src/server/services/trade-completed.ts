@@ -2,22 +2,26 @@ import 'server-only';
 
 import { eq } from 'drizzle-orm';
 
-import { composeRealizedActual, composeTraderClose, composeTraderCloseV2 } from '@/lib/calc/trade';
+import { actualR } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 import { generateId } from '@/lib/identifiers';
+import type { SetupConditionAnswer } from '@/lib/setup-conditions/snapshots';
 import { getChartAttachmentStorage } from '@/lib/storage/chart-attachment-storage';
 import { systemClock, type Clock } from '@/lib/time';
+import {
+  RECORDING_CONTRACT_ADD_TRADE_V1,
+  type ActualRiskAnswer,
+  type TargetState,
+} from '@/lib/trades/add-trade-contract';
 import type {
-  ActualResultMode,
   ExitHistoryCompleteness,
-  ExitScope,
+  HistoricalExitScope,
   OutcomeValue,
   SystemStatus,
 } from '@/lib/trades/constants';
 import {
   isRecordedRetrospectively,
   validateCompletedTradeTimestamps,
-  type SystemPlanBasis,
 } from '@/lib/trades/recording-model';
 import { normalizeOptionalText } from '@/lib/trades/validation';
 import { getDb } from '@/server/db/client';
@@ -27,42 +31,87 @@ import { insertAuditLog } from './audit-log';
 import {
   createTradeInTx,
   SetupConditionSnapshotFailure,
+  type ContractClosedColumns,
   type CreateTradeErrorCode,
+  type CreateTradeExitPlanChoice,
   type CreateTradeInput,
 } from './trade-management';
 
+/**
+ * SAVE CLOSED TRADE — the Add Trade contract After Trade write (contract §13).
+ *
+ * A historical Trade is born closed, from what the trader remembers. Only
+ * Account, Symbol and Direction are required; everything else may be
+ * Unanswered or not recorded and stays that way. The rules this service keeps:
+ *
+ * - Final Net P&L is the authoritative result, stored exactly as given. Exit
+ *   rows are supporting history and never replace it (contract §11).
+ * - Trader Outcome is the trader's choice, stored as given and marked selected.
+ *   It is never derived from P&L, R or a tolerance (contract §12).
+ * - Actual R = Final Net P&L / Risk at Entry, and only when both are known
+ *   (contract §4). Actual Risk is Risk Discipline evidence, never the
+ *   denominator. Price never computes anything (contract §3).
+ * - A Complete exit history whose subtotal differs from Final Net P&L is a
+ *   discrepancy to show, not a reason to refuse the Save (contract §11).
+ */
+
 export interface CompletedTradeExitInput {
   readonly closedBps?: number | null;
-  readonly exitScope?: ExitScope | null;
+  readonly exitScope?: HistoricalExitScope | null;
+  /** Context only — never an input to P&L or R. */
   readonly exitPrice?: string | null;
   readonly realizedPnlMinor?: bigint | null;
   readonly exitReason?: string | null;
   readonly exitedAt?: Date | null;
 }
 
-export interface CreateCompletedTradeInput extends Omit<
-  CreateTradeInput,
-  'recordingTiming' | 'systemPlanBasis' | 'actualResultMode' | 'enteredAt'
-> {
+export interface CreateCompletedTradeInput {
+  readonly mutationKey: string;
+  readonly tradingAccountId: string;
   readonly recordingTiming: 'after_trade';
-  readonly systemPlanBasis?: SystemPlanBasis | null;
-  readonly actualResultBasis: ActualResultMode;
+  readonly recordingContract: typeof RECORDING_CONTRACT_ADD_TRADE_V1;
+  readonly symbol: string;
+  readonly direction: string;
   readonly enteredAt?: Date | null;
   readonly exitedAt?: Date | null;
-  /** Canonical whole-Trade result, independent from supporting Exit evidence. */
+  /** Risk at Entry. */
+  readonly plannedRiskMinor?: bigint | null;
+  readonly actualRiskAnswer?: ActualRiskAnswer | undefined;
+  readonly actualInitialRiskMinor?: bigint | null;
+  readonly targetState?: TargetState | undefined;
+  /** Target Profit. */
+  readonly plannedRewardMinor?: bigint | null;
+  readonly targetPrice?: string | null;
+  readonly contextEntryPrice?: string | null;
+  readonly contextStopPrice?: string | null;
+  readonly contextPositionSize?: string | null;
+  readonly exitPlan?: CreateTradeExitPlanChoice | undefined;
   readonly finalPnlMinor?: bigint | null;
-  readonly exitHistoryCompleteness?: ExitHistoryCompleteness;
+  readonly traderOutcome?: OutcomeValue | undefined;
+  readonly exitHistoryCompleteness?: ExitHistoryCompleteness | undefined;
   readonly exits?: readonly CompletedTradeExitInput[];
+  readonly strategyId?: string | undefined;
+  readonly setupId?: string | undefined;
+  readonly noStrategy?: boolean | undefined;
+  readonly noSetup?: boolean | undefined;
+  readonly conditionSetToken?: string | undefined;
+  readonly conditionAnswers?: readonly SetupConditionAnswer[] | undefined;
+  readonly confidence?: number | null;
+  readonly emotionKeys?: readonly string[] | undefined;
+  readonly postTradeEmotionKeys?: readonly string[] | undefined;
+  readonly timeframe?: string | null;
+  readonly session?: string | null;
+  readonly confirmationNotes?: string | null;
+  readonly tradingviewUrl?: string | null;
+  readonly notes?: string | null;
+  readonly chartAttachmentStorageKey?: string | null;
 }
 
 export type CreateCompletedTradeErrorCode =
   | CreateTradeErrorCode
   | 'invalid_completed_trade_time'
   | 'invalid_completed_exit_coverage'
-  | 'historical_exit_conflict'
   | 'completed_trade_replay_conflict'
-  | 'invalid_initial_risk'
-  | 'invalid_execution_context'
   | 'invalid_exit_shape'
   | 'invalid_exit_time';
 
@@ -75,8 +124,6 @@ export type CreateCompletedTradeResult =
       readonly actualR: string | null;
       readonly traderOutcome: OutcomeValue | null;
       readonly systemStatus: SystemStatus;
-      readonly systemR: string | null;
-      readonly systemOutcome: OutcomeValue | null;
       readonly recordedRetrospectively: boolean;
     }
   | {
@@ -87,28 +134,23 @@ export type CreateCompletedTradeResult =
 
 type CompletedFailureResult = Extract<CreateCompletedTradeResult, { readonly ok: false }>;
 
-interface ActualSnapshot {
-  readonly actualExit: string | null;
-  readonly actualR: string | null;
-  readonly traderOutcome: OutcomeValue | null;
-  readonly calcVersion?: number;
-}
-
-function classifyMoneyOutcome(netPnlMinor: bigint): OutcomeValue {
-  if (netPnlMinor === 0n) return 'break_even';
-  return netPnlMinor > 0n ? 'win' : 'loss';
-}
-
 function isMeaningfulExit(exit: CompletedTradeExitInput): boolean {
   return (
     exit.closedBps != null ||
     exit.exitScope != null ||
     exit.exitPrice != null ||
     exit.realizedPnlMinor != null ||
+    normalizeOptionalText(exit.exitReason) !== null ||
     exit.exitedAt != null
   );
 }
 
+/**
+ * Refuses only what is malformed or impossible as entered — including exits
+ * that together close more than the whole position. Missing answers, an
+ * incomplete exit history, percentages that stop short of 100% and a subtotal
+ * that differs from Final Net P&L are all saved as they are.
+ */
 function preflightCompletedInput(
   input: CreateCompletedTradeInput,
   now: Date,
@@ -116,26 +158,14 @@ function preflightCompletedInput(
   if (input.recordingTiming !== 'after_trade') {
     return { ok: false, code: 'completed_trade_path_required' };
   }
-  if (input.actualResultBasis !== 'price' && input.actualResultBasis !== 'money') {
-    return { ok: false, code: 'invalid_execution_context' };
+  if (input.recordingContract !== RECORDING_CONTRACT_ADD_TRADE_V1) {
+    return { ok: false, code: 'invalid_plan_authority' };
   }
 
   const enteredAt = input.enteredAt ?? null;
   const exitedAt = input.exitedAt ?? null;
   if (!validateCompletedTradeTimestamps({ enteredAt, exitedAt, now }).ok) {
     return { ok: false, code: 'invalid_completed_trade_time' };
-  }
-  const actualEntry = input.actualEntry ?? null;
-  const actualInitialStop = input.actualInitialStop ?? null;
-  if ((actualEntry === null) !== (actualInitialStop === null)) {
-    return { ok: false, code: 'invalid_execution_context' };
-  }
-  const risk = input.actualInitialRiskMinor ?? null;
-  if (risk !== null && risk <= 0n) return { ok: false, code: 'invalid_initial_risk' };
-  if (input.actualResultBasis === 'price') {
-    if (risk !== null || (input.finalPnlMinor ?? null) !== null) {
-      return { ok: false, code: 'invalid_execution_context' };
-    }
   }
 
   const exits = input.exits ?? [];
@@ -146,22 +176,13 @@ function preflightCompletedInput(
 
   let knownClosedBps = 0;
   for (const exit of exits) {
-    if (
-      (input.actualResultBasis === 'price' && exit.realizedPnlMinor != null) ||
-      (input.actualResultBasis === 'money' && exit.exitPrice != null)
-    ) {
-      return { ok: false, code: 'invalid_exit_shape' };
-    }
     if (exit.closedBps != null) {
       if (!Number.isSafeInteger(exit.closedBps) || exit.closedBps <= 0 || exit.closedBps > 10_000) {
         return { ok: false, code: 'invalid_completed_exit_coverage' };
       }
       knownClosedBps += exit.closedBps;
-      if (!Number.isSafeInteger(knownClosedBps) || knownClosedBps > 10_000) {
-        return { ok: false, code: 'invalid_completed_exit_coverage' };
-      }
+      if (knownClosedBps > 10_000) return { ok: false, code: 'invalid_completed_exit_coverage' };
     }
-
     const legExitedAt = exit.exitedAt ?? null;
     if (
       legExitedAt !== null &&
@@ -172,109 +193,40 @@ function preflightCompletedInput(
       return { ok: false, code: 'invalid_exit_time' };
     }
   }
-
-  if (input.exitHistoryCompleteness === 'complete' && input.finalPnlMinor != null) {
-    let subtotal = 0n;
-    let allExitPnlKnown = exits.length > 0;
-    for (const exit of exits) {
-      if (exit.realizedPnlMinor == null) {
-        allExitPnlKnown = false;
-        break;
-      }
-      subtotal += exit.realizedPnlMinor;
-    }
-    if (allExitPnlKnown && subtotal !== input.finalPnlMinor) {
-      return { ok: false, code: 'historical_exit_conflict' };
-    }
-  }
-
   return null;
 }
 
-function composeActualSnapshot(
+/** The closed result, exactly as the trader gave it. */
+function composeClosedColumns(
   input: CreateCompletedTradeInput,
-): { readonly ok: true; readonly value: ActualSnapshot } | CompletedFailureResult {
-  const actualEntry = input.actualEntry ?? null;
-  const actualInitialStop = input.actualInitialStop ?? null;
-  if (actualEntry !== null && actualInitialStop !== null) {
-    const context = composeRealizedActual({
-      actualResultMode: 'price',
-      direction: input.direction,
-      actualEntry,
-      actualInitialStop,
-      exits: [],
-    });
-    if (!context.ok) {
-      return { ok: false, code: 'invalid_execution_context', calcReason: context.reason };
+  now: Date,
+): { readonly ok: true; readonly value: ContractClosedColumns } | CompletedFailureResult {
+  const finalPnlMinor = input.finalPnlMinor ?? null;
+  const riskAtEntryMinor = input.plannedRiskMinor ?? null;
+  let canonicalActualR: string | null = null;
+  if (finalPnlMinor !== null && riskAtEntryMinor !== null) {
+    const computed = actualR(finalPnlMinor, riskAtEntryMinor);
+    if (!computed.ok) {
+      return { ok: false, code: 'invalid_initial_risk', calcReason: computed.reason };
     }
+    canonicalActualR = computed.value;
   }
-
-  if (input.actualResultBasis === 'money') {
-    const finalPnlMinor = input.finalPnlMinor ?? null;
-    if (finalPnlMinor === null) {
-      return { ok: true, value: { actualExit: null, actualR: null, traderOutcome: null } };
-    }
-    const risk = input.actualInitialRiskMinor ?? null;
-    if (risk === null) {
-      return {
-        ok: true,
-        value: {
-          actualExit: null,
-          actualR: null,
-          traderOutcome: classifyMoneyOutcome(finalPnlMinor),
-        },
-      };
-    }
-    const snapshot = composeTraderClose(finalPnlMinor, risk);
-    if (!snapshot.ok) {
-      return { ok: false, code: 'invalid_execution_context', calcReason: snapshot.reason };
-    }
-    return { ok: true, value: { actualExit: null, ...snapshot.value } };
-  }
-
-  if (actualEntry === null || actualInitialStop === null) {
-    return { ok: true, value: { actualExit: null, actualR: null, traderOutcome: null } };
-  }
-  const completePriceExits: Array<{
-    readonly closedBps: number;
-    readonly exitPrice: string;
-    readonly exitedAt: Date;
-  }> = [];
-  for (const exit of input.exits ?? []) {
-    if (exit.closedBps == null || exit.exitPrice == null || exit.exitedAt == null) {
-      return { ok: true, value: { actualExit: null, actualR: null, traderOutcome: null } };
-    }
-    completePriceExits.push({
-      closedBps: exit.closedBps,
-      exitPrice: exit.exitPrice,
-      exitedAt: exit.exitedAt,
-    });
-  }
-  if (
-    completePriceExits.length === 0 ||
-    completePriceExits.reduce((sum, exit) => sum + exit.closedBps, 0) !== 10_000
-  ) {
-    return { ok: true, value: { actualExit: null, actualR: null, traderOutcome: null } };
-  }
-
-  const snapshot = composeTraderCloseV2({
-    actualResultMode: 'price',
-    direction: input.direction,
-    actualEntry,
-    actualInitialStop,
-    exits: completePriceExits.map((exit) => ({
-      closedBps: exit.closedBps,
-      exitPrice: exit.exitPrice,
-      realizedPnlMinor: null,
-    })),
-  });
-  if (!snapshot.ok) {
-    return { ok: false, code: 'invalid_exit_shape', calcReason: snapshot.reason };
-  }
-  const chronologicalFinal = completePriceExits.reduce((latest, exit) =>
-    latest.exitedAt.getTime() <= exit.exitedAt.getTime() ? exit : latest,
-  );
-  return { ok: true, value: { actualExit: chronologicalFinal.exitPrice, ...snapshot.value } };
+  const traderOutcome = input.traderOutcome ?? null;
+  const exits = input.exits ?? [];
+  return {
+    ok: true,
+    value: {
+      exitedAt: input.exitedAt ?? null,
+      netPnlMinor: finalPnlMinor,
+      finalPnlSource: finalPnlMinor === null ? null : 'manual_total',
+      actualR: canonicalActualR,
+      traderOutcome,
+      traderOutcomeSelectedAt: traderOutcome === null ? null : now,
+      // NULL is Unanswered on a contract row; the question needs an exit.
+      exitHistoryCompleteness: exits.length === 0 ? null : (input.exitHistoryCompleteness ?? null),
+      actualExit: null,
+    },
+  };
 }
 
 function successFromRow(
@@ -290,8 +242,6 @@ function successFromRow(
     actualR: trade.actualR,
     traderOutcome: trade.traderOutcome as OutcomeValue | null,
     systemStatus: trade.systemStatus as SystemStatus,
-    systemR: trade.systemR,
-    systemOutcome: trade.systemOutcome as OutcomeValue | null,
     recordedRetrospectively: isRecordedRetrospectively({
       createdAt: trade.createdAt,
       exitedAt: trade.exitedAt,
@@ -310,53 +260,68 @@ async function cleanupOrphanChart(input: CreateCompletedTradeInput): Promise<voi
   }
 }
 
-/** Creates one historical closed Trade without routing sparse evidence through live exit mutation rules. */
+/** Creates one historical closed Trade under the Add Trade contract. */
 export async function createCompletedTrade(
   workspaceId: string,
   userId: string,
   input: CreateCompletedTradeInput,
   clock: Clock = systemClock,
 ): Promise<CreateCompletedTradeResult> {
-  const invalid = preflightCompletedInput(input, clock.now());
+  const now = clock.now();
+  const invalid = preflightCompletedInput(input, now);
   if (invalid !== null) {
     await cleanupOrphanChart(input);
     return invalid;
   }
-  const actualSnapshot = composeActualSnapshot(input);
-  if (!actualSnapshot.ok) {
+  const closed = composeClosedColumns(input, now);
+  if (!closed.ok) {
     await cleanupOrphanChart(input);
-    return actualSnapshot;
+    return closed;
   }
 
   let result: CreateCompletedTradeResult;
   try {
     result = await getDb().transaction(async (tx): Promise<CreateCompletedTradeResult> => {
-      const createInput = {
+      const enteredAt = input.enteredAt ?? null;
+      const createInput: CreateTradeInput = {
         mutationKey: input.mutationKey,
         tradingAccountId: input.tradingAccountId,
         recordingTiming: 'after_trade',
-        ...(input.systemPlanBasis == null ? {} : { systemPlanBasis: input.systemPlanBasis }),
-        strategyId: input.strategyId,
-        setupId: input.setupId,
-        conditionSetToken: input.conditionSetToken,
-        conditionAnswers: input.conditionAnswers,
+        recordingContract: RECORDING_CONTRACT_ADD_TRADE_V1,
         symbol: input.symbol,
         direction: input.direction,
-        plannedEntry: input.plannedEntry,
-        plannedStop: input.plannedStop,
-        plannedTarget: input.plannedTarget,
-        plannedPositionSize: input.plannedPositionSize,
-        plannedRiskMinor: input.plannedRiskMinor,
-        plannedRewardMinor: input.plannedRewardMinor,
-        timeframe: input.timeframe,
-        session: input.session,
-        confirmationNotes: input.confirmationNotes,
-        confidence: input.confidence,
-        emotionKeys: input.emotionKeys,
-        tradingviewUrl: input.tradingviewUrl,
-        notes: input.notes,
-        chartAttachmentStorageKey: input.chartAttachmentStorageKey,
-      } as CreateTradeInput;
+        ...(enteredAt === null ? {} : { enteredAt, enteredAtSource: 'trader' as const }),
+        // Money is the only plan basis a contract row has (contract §3).
+        ...(input.plannedRiskMinor != null || input.plannedRewardMinor != null
+          ? { systemPlanBasis: 'money' as const }
+          : {}),
+        plannedRiskMinor: input.plannedRiskMinor ?? null,
+        actualRiskAnswer: input.actualRiskAnswer,
+        actualInitialRiskMinor: input.actualInitialRiskMinor ?? null,
+        targetState: input.targetState,
+        plannedRewardMinor: input.plannedRewardMinor ?? null,
+        targetPrice: input.targetPrice ?? null,
+        contextEntryPrice: input.contextEntryPrice ?? null,
+        contextStopPrice: input.contextStopPrice ?? null,
+        contextPositionSize: input.contextPositionSize ?? null,
+        exitPlan: input.exitPlan,
+        strategyId: input.strategyId,
+        setupId: input.setupId,
+        noStrategy: input.noStrategy,
+        noSetup: input.noSetup,
+        conditionSetToken: input.conditionSetToken,
+        conditionAnswers: input.conditionAnswers,
+        confidence: input.confidence ?? null,
+        ...(input.emotionKeys === undefined ? {} : { emotionKeys: input.emotionKeys }),
+        postTradeEmotionKeys: input.postTradeEmotionKeys,
+        timeframe: input.timeframe ?? null,
+        session: input.session ?? null,
+        confirmationNotes: input.confirmationNotes ?? null,
+        tradingviewUrl: input.tradingviewUrl ?? null,
+        notes: input.notes ?? null,
+        chartAttachmentStorageKey: input.chartAttachmentStorageKey ?? null,
+        closedAtCreation: closed.value,
+      };
       const created = await createTradeInTx(
         tx,
         workspaceId,
@@ -367,37 +332,13 @@ export async function createCompletedTrade(
       );
       if (!created.ok) return created;
 
-      const existing = await tx.query.trades.findFirst({ where: eq(trades.id, created.tradeId) });
-      if (existing === undefined) throw new Error('createCompletedTrade: created Trade missing');
-      if (created.alreadyCreated) return successFromRow(existing, true);
+      if (created.alreadyCreated) {
+        const existing = await tx.query.trades.findFirst({ where: eq(trades.id, created.tradeId) });
+        if (existing === undefined) throw new Error('createCompletedTrade: replayed Trade missing');
+        return successFromRow(existing, true);
+      }
 
       const exits = input.exits ?? [];
-      const now = clock.now();
-      await tx
-        .update(trades)
-        .set({
-          status: 'closed',
-          actualResultMode: input.actualResultBasis,
-          actualEntry: input.actualEntry ?? null,
-          actualInitialStop: input.actualInitialStop ?? null,
-          actualInitialRiskMinor: input.actualInitialRiskMinor ?? null,
-          actualPositionSize: input.actualPositionSize ?? null,
-          actualExit: actualSnapshot.value.actualExit,
-          netPnlMinor: input.finalPnlMinor ?? null,
-          finalPnlSource: input.finalPnlMinor == null ? null : 'manual_total',
-          exitHistoryCompleteness:
-            exits.length === 0 ? null : (input.exitHistoryCompleteness ?? 'unknown'),
-          enteredAt: input.enteredAt ?? null,
-          exitedAt: input.exitedAt ?? null,
-          actualR: actualSnapshot.value.actualR,
-          traderOutcome: actualSnapshot.value.traderOutcome,
-          ...(actualSnapshot.value.calcVersion === undefined
-            ? {}
-            : { calcVersion: actualSnapshot.value.calcVersion }),
-          updatedAt: now,
-        })
-        .where(eq(trades.id, created.tradeId));
-
       if (exits.length > 0) {
         await tx.insert(tradeExits).values(
           exits.map((exit, index) => ({

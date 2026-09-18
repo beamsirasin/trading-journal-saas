@@ -1,4 +1,4 @@
-import { composeTraderClose } from '@/lib/calc/trade';
+import { actualR, composeTraderClose } from '@/lib/calc/trade';
 import type { CalcFailureReason } from '@/lib/calc/types';
 
 import type { ExitHistoryCompleteness, FinalPnlSource, OutcomeValue } from './constants';
@@ -18,6 +18,17 @@ export interface HistoricalExecutionState {
   readonly finalPnlSource: FinalPnlSource | null;
   readonly exitHistoryCompleteness: ExitHistoryCompleteness | null;
   readonly exits: readonly HistoricalExitEvidence[];
+  /**
+   * An Add Trade contract row (contract §11): a discrepancy between a Complete
+   * history and Final Net P&L is shown, never refused, and the recorded exits
+   * may be adopted explicitly whenever they are Complete and fully priced.
+   */
+  readonly contract?: boolean;
+  /**
+   * The Trader Outcome to keep, when it is not derived: the trader's own choice,
+   * or a contract row's Unanswered. Present means "never re-derive it".
+   */
+  readonly keptTraderOutcome?: { readonly traderOutcome: OutcomeValue | null } | undefined;
 }
 
 export type HistoricalReconciliationStatus =
@@ -74,6 +85,7 @@ function outcomeOf(finalPnlMinor: bigint): OutcomeValue {
 function deriveActual(
   finalPnlMinor: bigint | null,
   actualInitialRiskMinor: bigint | null,
+  kept: HistoricalExecutionState['keptTraderOutcome'],
 ):
   | {
       readonly ok: true;
@@ -82,6 +94,14 @@ function deriveActual(
       readonly calcVersion?: number;
     }
   | { readonly ok: false; readonly calcReason: CalcFailureReason } {
+  if (kept !== undefined) {
+    if (finalPnlMinor === null || actualInitialRiskMinor === null) {
+      return { ok: true, actualR: null, traderOutcome: kept.traderOutcome };
+    }
+    const measured = actualR(finalPnlMinor, actualInitialRiskMinor);
+    if (!measured.ok) return { ok: false, calcReason: measured.reason };
+    return { ok: true, actualR: measured.value, traderOutcome: kept.traderOutcome };
+  }
   if (finalPnlMinor === null) {
     return { ok: true, actualR: null, traderOutcome: null };
   }
@@ -93,10 +113,30 @@ function deriveActual(
   return { ok: true, ...calculated.value };
 }
 
+/**
+ * Whether "Use recorded exits as final result" may be offered. Legacy: only
+ * to fill an unrecorded final. Contract (§11): whenever the history is Complete
+ * and fully priced and its subtotal is not already the final result.
+ */
+function canAdopt(state: HistoricalExecutionState, subtotal: bigint | null): boolean {
+  if (state.exitHistoryCompleteness !== 'complete' || subtotal === null) return false;
+  if (state.contract === true) return subtotal !== state.finalPnlMinor;
+  return state.finalPnlMinor === null && state.finalPnlSource === null;
+}
+
+/** A contract row shows a discrepancy; only a legacy row refuses it. */
+function refusesConflict(state: HistoricalExecutionState): boolean {
+  return state.contract !== true && deriveHistoricalReconciliation(state) === 'conflict';
+}
+
 export function deriveHistoricalExecutionSnapshot(
   state: HistoricalExecutionState,
 ): HistoricalExecutionSnapshot {
-  const actual = deriveActual(state.finalPnlMinor, state.actualInitialRiskMinor);
+  const actual = deriveActual(
+    state.finalPnlMinor,
+    state.actualInitialRiskMinor,
+    state.keptTraderOutcome,
+  );
   if (!actual.ok) {
     throw new Error(`Invalid historical execution state: ${actual.calcReason}`);
   }
@@ -106,31 +146,28 @@ export function deriveHistoricalExecutionSnapshot(
     traderOutcome: actual.traderOutcome,
     exitSubtotalMinor: subtotal,
     reconciliation: deriveHistoricalReconciliation(state),
-    canAdoptExitSubtotal:
-      state.exitHistoryCompleteness === 'complete' &&
-      subtotal !== null &&
-      state.finalPnlMinor === null &&
-      state.finalPnlSource === null,
+    canAdoptExitSubtotal: canAdopt(state, subtotal),
   };
 }
 
 function completeTransition(state: HistoricalExecutionState): HistoricalExecutionTransition {
-  const actual = deriveActual(state.finalPnlMinor, state.actualInitialRiskMinor);
+  const actual = deriveActual(
+    state.finalPnlMinor,
+    state.actualInitialRiskMinor,
+    state.keptTraderOutcome,
+  );
   if (!actual.ok) {
     return { ok: false, code: 'invalid_execution_context', calcReason: actual.calcReason };
   }
+  const subtotal = historicalExitSubtotal(state.exits);
   return {
     ok: true,
     state,
     snapshot: {
       ...actual,
-      exitSubtotalMinor: historicalExitSubtotal(state.exits),
+      exitSubtotalMinor: subtotal,
       reconciliation: deriveHistoricalReconciliation(state),
-      canAdoptExitSubtotal:
-        state.exitHistoryCompleteness === 'complete' &&
-        historicalExitSubtotal(state.exits) !== null &&
-        state.finalPnlMinor === null &&
-        state.finalPnlSource === null,
+      canAdoptExitSubtotal: canAdopt(state, subtotal),
     },
   };
 }
@@ -160,9 +197,7 @@ export function beginHistoricalManualFinalEdit(
     finalPnlMinor,
     finalPnlSource: finalPnlMinor === null ? null : 'manual_total',
   };
-  if (deriveHistoricalReconciliation(next) === 'conflict') {
-    return { ok: false, code: 'historical_exit_conflict' };
-  }
+  if (refusesConflict(next)) return { ok: false, code: 'historical_exit_conflict' };
   return completeTransition(next);
 }
 
@@ -180,7 +215,14 @@ export function applyHistoricalExitCorrection(
   let finalPnlSource = state.finalPnlSource;
 
   if (state.finalPnlSource === 'exit_history') {
-    if (correction.exitHistoryCompleteness === 'complete' && nextSubtotal !== null) {
+    if (state.contract === true) {
+      // Adoption was a one-time explicit copy (contract §11): editing exits
+      // afterwards never rewrites Final Net P&L; it only stops calling it
+      // "from exits" once the two no longer agree.
+      if (correction.exitHistoryCompleteness !== 'complete' || nextSubtotal !== finalPnlMinor) {
+        finalPnlSource = 'manual_total';
+      }
+    } else if (correction.exitHistoryCompleteness === 'complete' && nextSubtotal !== null) {
       finalPnlMinor = nextSubtotal;
     } else {
       finalPnlSource = state.finalPnlMinor === null ? null : 'manual_total';
@@ -194,8 +236,6 @@ export function applyHistoricalExitCorrection(
     finalPnlMinor,
     finalPnlSource,
   };
-  if (deriveHistoricalReconciliation(next) === 'conflict') {
-    return { ok: false, code: 'historical_exit_conflict' };
-  }
+  if (refusesConflict(next)) return { ok: false, code: 'historical_exit_conflict' };
   return completeTransition(next);
 }

@@ -52,11 +52,14 @@ export function AtEntryExitPlan({
   options,
   onChange,
   onLibraryChanged,
+  copy,
 }: {
   draft: AtEntryDraft;
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
   onChange: (next: AtEntryDraft) => void;
   onLibraryChanged: (plans: readonly TradeCreateExitPlanOption[]) => void;
+  /** Wording for a historical reconstruction (After Trade); At Entry's own by default. */
+  copy?: { readonly notRecordedHint: string; readonly editorDescription: string };
 }) {
   const t = useTranslations('trades.create.recording.contractEntry.exitPlan');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -139,7 +142,9 @@ export function AtEntryExitPlan({
         )}
       >
         {resolved.status === 'not_recorded' ? (
-          <p className="text-muted-foreground text-sm">{t('notRecordedHint')}</p>
+          <p className="text-muted-foreground text-sm">
+            {copy?.notRecordedHint ?? t('notRecordedHint')}
+          </p>
         ) : resolved.status === 'no_rule' ? (
           <p className="text-foreground text-sm font-semibold">{t('noRule')}</p>
         ) : (
@@ -262,6 +267,7 @@ export function AtEntryExitPlan({
           );
         }}
         strategyName={strategyName}
+        editorDescription={copy?.editorDescription ?? t('editorDescription')}
         managing={managing}
         libraryForm={libraryForm}
         onLibraryForm={setLibraryForm}
@@ -280,6 +286,7 @@ function ExitPlanEditor({
   options,
   customText,
   strategyName,
+  editorDescription,
   onClose,
   onView,
   onChooseSaved,
@@ -295,6 +302,7 @@ function ExitPlanEditor({
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
   customText: string;
   strategyName: string;
+  editorDescription: string;
   onClose: (intent: 'keep' | 'discard') => void;
   onView: (view: 'choose' | 'customize') => void;
   onChooseSaved: (plan: TradeCreateExitPlanOption) => void;
@@ -373,7 +381,7 @@ function ExitPlanEditor({
         if (!next) onClose('keep');
       }}
       title={t('title')}
-      description={t('editorDescription')}
+      description={editorDescription}
       closeLabel={t('close')}
       footer={
         <div className="flex min-w-0 flex-wrap-reverse items-center justify-between gap-3">

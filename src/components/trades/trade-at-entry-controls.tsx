@@ -399,7 +399,7 @@ export function ChoiceGroup<T extends string>({
   status?: string;
   /** Shown beside the legend once answered, e.g. "Remove answer". */
   aside?: ReactNode;
-  columns?: 2 | 5;
+  columns?: 2 | 3 | 5;
   compact?: boolean;
 }) {
   const name = useId();
@@ -419,9 +419,11 @@ export function ChoiceGroup<T extends string>({
             'grid min-w-0 gap-2',
             columns === 5
               ? 'grid-cols-1 min-[560px]:grid-cols-5'
-              : options.some((option) => option.description !== undefined)
-                ? 'grid-cols-1 min-[420px]:grid-cols-2'
-                : 'grid-cols-2',
+              : columns === 3
+                ? 'grid-cols-1 min-[420px]:grid-cols-3'
+                : options.some((option) => option.description !== undefined)
+                  ? 'grid-cols-1 min-[420px]:grid-cols-2'
+                  : 'grid-cols-2',
           )}
         >
           {options.map((option, index) => {

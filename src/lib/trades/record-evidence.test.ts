@@ -6,8 +6,8 @@ import {
   tradeSystemResultEvidence,
 } from './record-evidence';
 
-const CONTRACT = { recordingContract: 'add_trade_v1' } as const;
-const LEGACY = { recordingContract: null } as const;
+const CONTRACT = { recordingContract: 'add_trade_v1', traderOutcomeSelected: false } as const;
+const LEGACY = { recordingContract: null, traderOutcomeSelected: false } as const;
 
 describe('Trader Outcome evidence', () => {
   /*
@@ -24,6 +24,12 @@ describe('Trader Outcome evidence', () => {
       status: 'unavailable',
       reason: 'outcome_not_selected',
     });
+  });
+
+  it('presents an outcome the trader selected as the trader’s own', () => {
+    expect(
+      tradeOutcomeEvidence({ ...CONTRACT, traderOutcomeSelected: true, traderOutcome: 'win' }),
+    ).toEqual({ status: 'selected', outcome: 'win' });
   });
 
   it('keeps a legacy row’s classification, marked as legacy-derived', () => {

@@ -9,6 +9,8 @@
  * Pure: no I/O. Shared by the Zod boundary, services and UI.
  */
 
+import type { ExitHistoryCompleteness, OutcomeValue } from './constants';
+
 export const RECORDING_CONTRACT_ADD_TRADE_V1 = 'add_trade_v1' as const;
 export type RecordingContract = typeof RECORDING_CONTRACT_ADD_TRADE_V1;
 
@@ -56,6 +58,93 @@ export function actualRDenominatorMinor(trade: {
   readonly actualInitialRiskMinor: bigint | null;
 }): bigint | null {
   return isContractRow(trade) ? trade.plannedRiskMinor : trade.actualInitialRiskMinor;
+}
+
+/**
+ * THE STORED ACTUAL RISK AMOUNT for a contract write (contract §4).
+ *
+ * Matched copies Risk at Entry; Different keeps the stated amount, or NULL
+ * when the amount is unknown; Don't know and Unanswered store no amount. It is
+ * Risk Discipline evidence only — never the Actual R denominator.
+ */
+export function contractActualRiskMinor(params: {
+  readonly answer: ActualRiskAnswer | undefined;
+  readonly riskAtEntryMinor: bigint | null;
+  readonly statedMinor: bigint | null;
+}): bigint | null {
+  if (params.answer === 'matched') return params.riskAtEntryMinor;
+  if (params.answer === 'different') return params.statedMinor;
+  return null;
+}
+
+/**
+ * A TRADER-SELECTED OUTCOME SURVIVES RECALCULATION (contract §12, §22).
+ *
+ * Writers that recompute Actual R after an edit may also re-derive the legacy
+ * outcome. Once the trader has chosen Win / BE / Loss, that choice is kept
+ * whatever the new P&L or R — only a derived outcome follows the numbers.
+ */
+export function recalculatedTraderOutcome(
+  trade: {
+    readonly traderOutcome: string | null;
+    readonly traderOutcomeSelectedAt: Date | null;
+  },
+  derived: OutcomeValue | null,
+): OutcomeValue | null {
+  return trade.traderOutcomeSelectedAt !== null
+    ? (trade.traderOutcome as OutcomeValue | null)
+    : derived;
+}
+
+/**
+ * THE QUIET SIGN NOTICE (contract §12; UX Rules §7.7). Only Win beside a
+ * negative Final Net P&L, or Loss beside a positive one. BE never carries it,
+ * and an unknown P&L never does.
+ */
+export function traderOutcomeContradictsPnl(
+  outcome: OutcomeValue | null,
+  finalNetPnlMinor: bigint | null,
+): boolean {
+  if (outcome === null || finalNetPnlMinor === null) return false;
+  return (
+    (outcome === 'win' && finalNetPnlMinor < 0n) || (outcome === 'loss' && finalNetPnlMinor > 0n)
+  );
+}
+
+export interface ExitHistoryReconciliation {
+  /** The recorded exit subtotal — only when every recorded exit carries P&L. */
+  readonly subtotalMinor: bigint | null;
+  /** "Use recorded exits as final result" may be offered (contract §11). */
+  readonly adoptable: boolean;
+  /** A discrepancy in the contract's sense: Complete, fully priced, and different. */
+  readonly discrepancy: boolean;
+}
+
+/**
+ * EXIT HISTORY AGAINST FINAL NET P&L (contract §11).
+ *
+ * Adoption and discrepancy both need an explicitly Complete history in which
+ * every recorded exit has P&L. With Incomplete, Unknown or Unanswered history,
+ * a difference between the two figures is not a discrepancy, and the subtotal
+ * is not offered as the final result. Neither figure is ever overwritten here.
+ */
+export function reconcileExitHistory(params: {
+  readonly completeness: ExitHistoryCompleteness | null;
+  readonly exitPnlMinor: readonly (bigint | null)[];
+  readonly finalNetPnlMinor: bigint | null;
+}): ExitHistoryReconciliation {
+  const everyExitPriced =
+    params.exitPnlMinor.length > 0 && params.exitPnlMinor.every((pnl) => pnl !== null);
+  const subtotalMinor = everyExitPriced
+    ? params.exitPnlMinor.reduce<bigint>((sum, pnl) => sum + (pnl ?? 0n), 0n)
+    : null;
+  const complete = params.completeness === 'complete' && subtotalMinor !== null;
+  return {
+    subtotalMinor,
+    adoptable: complete && subtotalMinor !== params.finalNetPnlMinor,
+    discrepancy:
+      complete && params.finalNetPnlMinor !== null && subtotalMinor !== params.finalNetPnlMinor,
+  };
 }
 
 /**

@@ -34,7 +34,6 @@ type PageSearchParams = { timing?: string | string[] | undefined };
  */
 const RECORDING_FLOW_STEPS = 2;
 const CHOICE_STEP = 1;
-const FORM_STEP = 2;
 
 export async function generateMetadata({
   params,
@@ -151,62 +150,37 @@ export default async function NewTradePage({
   }
 
   /*
-    AT ENTRY IS A CAPTURE WORKSPACE, NOT A WIZARD STEP. "Record an open trade"
-    is a long form with a sticky save panel beside it, so it takes a compact
-    flow header and the workspace width instead of the centred step frame. The
-    way back to the recording choice is the guarded "Change" the form renders.
+    BOTH RECORDING FORMS ARE CAPTURE WORKSPACES, NOT WIZARD STEPS. "Record an
+    open trade" and "Record a closed trade" are long forms with a sticky save
+    panel beside them, so they take a compact flow header and the workspace
+    width instead of the centred step frame. The way back to the recording
+    choice is the "Change" each form renders.
   */
-  if (timing === 'at_entry') {
-    return (
-      <div className="mx-auto w-full max-w-[70rem] min-w-0 px-4 pt-4 pb-10 sm:px-6 lg:px-8 lg:pt-8 lg:pb-16">
-        <header className="flex min-w-0 flex-col items-start gap-1">
-          <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-3">
-            <Link href="/app/trades">
-              <ArrowLeft aria-hidden="true" />
-              {t('create.recording.contractEntry.back')}
-            </Link>
-          </Button>
-          <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
-            {t('create.recording.contractEntry.title')}
-          </h1>
-        </header>
-        <div className="mt-2 min-w-0">
-          <TradeCreateGate
-            options={options}
-            canWrite={authorization.allowed}
-            writeBlockReason={authorization.allowed ? null : authorization.code}
-            timing={timing}
-            activeTradingAccountId={activeAccount?.id ?? null}
-            timezone={preferences.timezone}
-            draftScope={draftScope}
-          />
-        </div>
-      </div>
-    );
-  }
-
+  const copy = timing === 'at_entry' ? 'contractEntry' : 'contractAfter';
   return (
-    <WizardShell
-      step={FORM_STEP}
-      totalSteps={RECORDING_FLOW_STEPS}
-      eyebrow={t('create.pageTitle')}
-      title={t(`create.mode.${timing}.title`)}
-      exitHref="/app/trades"
-      /*
-        Both recording forms are one task surface plus its journal, so both take
-        the same focused reading measure (720px) and read as one flow.
-      */
-      className="max-w-[45rem]"
-    >
-      <TradeCreateGate
-        options={options}
-        canWrite={authorization.allowed}
-        writeBlockReason={authorization.allowed ? null : authorization.code}
-        timing={timing}
-        activeTradingAccountId={activeAccount?.id ?? null}
-        timezone={preferences.timezone}
-        draftScope={draftScope}
-      />
-    </WizardShell>
+    <div className="mx-auto w-full max-w-[70rem] min-w-0 px-4 pt-4 pb-10 sm:px-6 lg:px-8 lg:pt-8 lg:pb-16">
+      <header className="flex min-w-0 flex-col items-start gap-1">
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-3">
+          <Link href="/app/trades">
+            <ArrowLeft aria-hidden="true" />
+            {t(`create.recording.${copy}.back`)}
+          </Link>
+        </Button>
+        <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
+          {t(`create.recording.${copy}.title`)}
+        </h1>
+      </header>
+      <div className="mt-2 min-w-0">
+        <TradeCreateGate
+          options={options}
+          canWrite={authorization.allowed}
+          writeBlockReason={authorization.allowed ? null : authorization.code}
+          timing={timing}
+          activeTradingAccountId={activeAccount?.id ?? null}
+          timezone={preferences.timezone}
+          draftScope={draftScope}
+        />
+      </div>
+    </div>
   );
 }

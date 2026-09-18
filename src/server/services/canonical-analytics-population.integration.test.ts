@@ -14,6 +14,7 @@ import { activePaidPeriod } from '@/test/entitlement-fixtures';
 import { closeTestDb, getTestDb } from '@/test/integration-db';
 
 import { closeDb } from '../db/client';
+import { createCompletedTrade } from './trade-completed';
 import { addTradeExit } from './trade-execution';
 import { closeTrade, createTrade, openTrade, resolveSystemTrade } from './trade-management';
 
@@ -501,5 +502,37 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
     expect(review.data.trades.map((row) => row.tradeId)).toEqual([ids.contractA]);
     expect(review.data.trades[0]?.systemR).toBeNull();
     expect(review.data.headline).toMatchObject({ outcomes: null });
+  });
+
+  // Runs last: it adds a Trade, and every case above counts the fixture as-is.
+  it('Trader Win Rate: an outcome the trader selected in After Trade counts; a derived one still does not', async () => {
+    const saved = must(
+      await createCompletedTrade(workspaceId, userId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: accountId,
+        recordingTiming: 'after_trade',
+        recordingContract: 'add_trade_v1',
+        symbol: 'XAUUSD',
+        direction: 'long',
+        plannedRiskMinor: 10_000n,
+        finalPnlMinor: 2_000n,
+        // A small profit the trader calls a scratch: BE, not Win.
+        traderOutcome: 'break_even',
+        enteredAt: new Date('2026-08-06T09:00:00Z'),
+        exitedAt: new Date('2026-08-06T10:00:00Z'),
+      }),
+      'After Trade save',
+    );
+    if (!saved.ok) throw new Error('unreachable');
+
+    const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ);
+    if (!result.ok) throw new Error(result.code);
+    const { trader } = result.data;
+    // Its Actual R (+0.2) joins canonical R beside contract A and B.
+    expect(trader.sampleCount).toBe(3);
+    // Only its selected BE is an answered outcome: BE is in the denominator,
+    // not the numerator, and the derived outcomes on A and B stay out.
+    expect(trader.outcomeCounts).toEqual({ wins: 0, breakEvens: 1, losses: 0 });
+    expect(trader.winRate).toMatchObject({ status: 'available' });
   });
 });

@@ -5,6 +5,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { isCanonicalEmotionKey } from '@/config/emotions';
 import { buildSystemDependencySnapshot } from '@/lib/calc/system-assessment';
 import {
+  actualR,
   composePlannedR,
   composeRealizedActual,
   composeSystemResolveGrossOnly,
@@ -20,6 +21,7 @@ import { getChartAttachmentStorage } from '@/lib/storage/chart-attachment-storag
 import { systemClock, type Clock } from '@/lib/time';
 import {
   actualRDenominatorMinor,
+  contractActualRiskMinor,
   isContractRow,
   laterCaptureOrigin,
   RECORDING_CONTRACT_ADD_TRADE_V1,
@@ -505,12 +507,33 @@ export interface CreateTradeInput {
   readonly contextEntryPrice?: string | null;
   readonly contextStopPrice?: string | null;
   readonly contextPositionSize?: string | null;
-  readonly actualRiskAnswer?: Extract<ActualRiskAnswer, 'matched' | 'different'> | undefined;
+  /** At Entry: `matched` or `different`. After Trade may also say `unknown`, or leave it Unanswered. */
+  readonly actualRiskAnswer?: ActualRiskAnswer | undefined;
   readonly enteredAtSource?: EnteredAtSource | undefined;
   readonly exitPlan?: CreateTradeExitPlanChoice | undefined;
   readonly exitPlanInheritanceDeclined?: boolean | undefined;
   readonly noStrategy?: boolean | undefined;
   readonly noSetup?: boolean | undefined;
+  /** Post-Trade Emotion (After Trade). Omitted = Unanswered; `[]` = None of these. */
+  readonly postTradeEmotionKeys?: readonly string[] | undefined;
+  /**
+   * The closed result a contract After Trade write carries, inserted with the
+   * row itself — a contract row is never `planned`, so it cannot be inserted
+   * first and closed afterwards. Internal: set only by `createCompletedTrade`.
+   */
+  readonly closedAtCreation?: ContractClosedColumns | undefined;
+}
+
+/** The whole-Trade result columns of a Save Closed Trade (contract §11–§13). */
+export interface ContractClosedColumns {
+  readonly exitedAt: Date | null;
+  readonly netPnlMinor: bigint | null;
+  readonly finalPnlSource: 'manual_total' | null;
+  readonly actualR: string | null;
+  readonly traderOutcome: OutcomeValue | null;
+  readonly traderOutcomeSelectedAt: Date | null;
+  readonly exitHistoryCompleteness: 'unknown' | 'incomplete' | 'complete' | null;
+  readonly actualExit: string | null;
 }
 
 export type CreateTradeErrorCode =
@@ -568,16 +591,33 @@ export type CreateTradeResult =
     };
 
 /**
- * The Add Trade contract At Entry write, validated before any lock or read
- * beyond membership: Money is result authority, price is context, Risk at
- * Entry is required and positive, Actual Risk is matched or different, and an
- * explicit Fixed Target carries Target Profit or a TP price.
+ * The Add Trade contract write, validated before any lock or read beyond
+ * membership. Common to both recording modes: Money is result authority,
+ * price is context, a known Risk at Entry is positive, and an explicit Fixed
+ * Target carries Target Profit or a TP price.
+ *
+ * At Entry (Save Open Trade) requires Risk at Entry and a Matched / Different
+ * Actual Risk answer, and may inherit the Strategy's default Exit Plan.
+ *
+ * After Trade (Save Closed Trade) requires nothing beyond identity: Risk at
+ * Entry, Actual Risk and every other answer may be Unanswered. It never
+ * inherits a current default, and "Matched" needs a Risk at Entry to match.
  */
 function validateContractCreate(
   input: CreateTradeInput,
   actualResultMode: ActualResultMode | undefined,
+  path: 'at_entry' | 'completed',
 ): CreateTradeErrorCode | null {
-  if (input.recordingTiming !== 'at_entry' || actualResultMode !== 'money') {
+  const afterTrade = path === 'completed';
+  if (afterTrade) {
+    if (
+      input.recordingTiming !== 'after_trade' ||
+      actualResultMode !== undefined ||
+      input.closedAtCreation === undefined
+    ) {
+      return 'invalid_plan_authority';
+    }
+  } else if (input.recordingTiming !== 'at_entry' || actualResultMode !== 'money') {
     return 'invalid_plan_authority';
   }
   if (
@@ -593,8 +633,30 @@ function validateContractCreate(
   ) {
     return 'invalid_plan_authority';
   }
-  if (input.plannedRiskMinor == null || input.plannedRiskMinor <= 0n) return 'invalid_initial_risk';
-  if (input.actualRiskAnswer === undefined) return 'invalid_initial_risk';
+  if (input.plannedRiskMinor != null && input.plannedRiskMinor <= 0n) return 'invalid_initial_risk';
+  if (afterTrade) {
+    if (input.actualRiskAnswer === 'matched' && input.plannedRiskMinor == null) {
+      return 'invalid_initial_risk';
+    }
+    if (input.actualRiskAnswer !== 'different' && input.actualInitialRiskMinor != null) {
+      return 'invalid_initial_risk';
+    }
+    if (input.enteredAtSource !== undefined && input.enteredAtSource !== 'trader') {
+      return 'invalid_execution_context';
+    }
+    if (input.exitPlan?.state === 'saved' && input.exitPlan.provenance !== 'selected') {
+      return 'invalid_exit_plan';
+    }
+    if (input.exitPlanInheritanceDeclined === true) return 'invalid_exit_plan';
+  } else {
+    if (input.plannedRiskMinor == null) return 'invalid_initial_risk';
+    if (input.actualRiskAnswer !== 'matched' && input.actualRiskAnswer !== 'different') {
+      return 'invalid_initial_risk';
+    }
+    if (input.postTradeEmotionKeys !== undefined || input.closedAtCreation !== undefined) {
+      return 'invalid_plan_authority';
+    }
+  }
   if (input.actualRiskAnswer === 'matched' && input.actualInitialRiskMinor != null) {
     return 'invalid_initial_risk';
   }
@@ -637,6 +699,36 @@ function validateContractCreate(
     return 'invalid_exit_plan';
   }
   return null;
+}
+
+/** Stable emotion keys → usable system emotion types, or the refusal code. */
+async function resolveEmotionTypesInTx(
+  tx: Executor,
+  keys: readonly string[],
+): Promise<
+  | { readonly ok: true; readonly value: readonly { readonly id: string }[] }
+  | {
+      readonly ok: false;
+      readonly code: 'duplicate_emotion_key' | 'unknown_emotion_key' | 'emotion_type_not_usable';
+    }
+> {
+  if (new Set(keys).size !== keys.length) return { ok: false, code: 'duplicate_emotion_key' };
+  if (!keys.every(isCanonicalEmotionKey)) return { ok: false, code: 'unknown_emotion_key' };
+  if (keys.length === 0) return { ok: true, value: [] };
+  const found = await tx
+    .select({ id: emotionTypes.id, workspaceId: emotionTypes.workspaceId })
+    .from(emotionTypes)
+    .where(
+      and(
+        inArray(emotionTypes.key, [...keys]),
+        eq(emotionTypes.isSystem, true),
+        eq(emotionTypes.isArchived, false),
+      ),
+    );
+  if (found.length !== keys.length || found.some((emotion) => emotion.workspaceId !== null)) {
+    return { ok: false, code: 'emotion_type_not_usable' };
+  }
+  return { ok: true, value: found };
 }
 
 interface ContractExitPlanSnapshot {
@@ -753,36 +845,12 @@ export async function createTradeInTx(
   if (denial !== null) return { ok: false, code: denial };
 
   const emotionsRecorded = input.emotionKeys !== undefined;
-  const emotionKeys = input.emotionKeys ?? [];
-  if (new Set(emotionKeys).size !== emotionKeys.length) {
-    return { ok: false, code: 'duplicate_emotion_key' };
-  }
-  if (!emotionKeys.every(isCanonicalEmotionKey)) {
-    return { ok: false, code: 'unknown_emotion_key' };
-  }
-  const selectedEmotionTypes =
-    emotionKeys.length === 0
-      ? []
-      : await tx
-          .select({
-            id: emotionTypes.id,
-            key: emotionTypes.key,
-            workspaceId: emotionTypes.workspaceId,
-          })
-          .from(emotionTypes)
-          .where(
-            and(
-              inArray(emotionTypes.key, emotionKeys),
-              eq(emotionTypes.isSystem, true),
-              eq(emotionTypes.isArchived, false),
-            ),
-          );
-  if (
-    selectedEmotionTypes.length !== emotionKeys.length ||
-    selectedEmotionTypes.some((emotion) => emotion.workspaceId !== null)
-  ) {
-    return { ok: false, code: 'emotion_type_not_usable' };
-  }
+  const entryEmotions = await resolveEmotionTypesInTx(tx, input.emotionKeys ?? []);
+  if (!entryEmotions.ok) return entryEmotions;
+  const selectedEmotionTypes = entryEmotions.value;
+  const postTradeEmotionsRecorded = input.postTradeEmotionKeys !== undefined;
+  const postTradeEmotions = await resolveEmotionTypesInTx(tx, input.postTradeEmotionKeys ?? []);
+  if (!postTradeEmotions.ok) return postTradeEmotions;
 
   const symbol = normalizeRequiredText(input.symbol);
   if (!symbol.ok) return { ok: false, code: 'blank_symbol' };
@@ -811,13 +879,17 @@ export async function createTradeInTx(
   // (never hand-duplicating the risk-per-unit/Money-ratio formulas) and
   // detects a Price/Money disagreement rather than silently picking one —
   // see `src/lib/calc/trade.ts`'s own doc comment.
+  const contract = input.recordingContract === RECORDING_CONTRACT_ADD_TRADE_V1;
   const composed = composePlannedR({
     direction: input.direction,
     plannedEntry: input.plannedEntry ?? null,
     plannedStop: input.plannedStop ?? null,
     plannedTarget: input.plannedTarget ?? null,
     plannedRiskMinor: input.plannedRiskMinor ?? null,
-    plannedRewardMinor: input.plannedRewardMinor ?? null,
+    // A contract Target Profit without Risk at Entry is a remembered Target,
+    // not an incomplete plan: Planned R is simply unavailable (contract §13).
+    plannedRewardMinor:
+      contract && input.plannedRiskMinor == null ? null : (input.plannedRewardMinor ?? null),
   });
   if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
   if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
@@ -843,19 +915,24 @@ export async function createTradeInTx(
   // Add Trade contract v1: Risk at Entry is the 1R baseline and Actual Risk
   // is separate Risk Discipline evidence. Matched copies Risk at Entry;
   // Different keeps the stated amount, or NULL when the amount is unknown.
-  const contract = input.recordingContract === RECORDING_CONTRACT_ADD_TRADE_V1;
   const actualInitialRiskMinor = contract
-    ? input.actualRiskAnswer === 'different'
-      ? (input.actualInitialRiskMinor ?? null)
-      : (input.plannedRiskMinor ?? null)
+    ? contractActualRiskMinor({
+        answer: input.actualRiskAnswer,
+        riskAtEntryMinor: input.plannedRiskMinor ?? null,
+        statedMinor: input.actualInitialRiskMinor ?? null,
+      })
     : defaultingActualFromPlan && actualResultMode === 'money'
       ? (input.plannedRiskMinor ?? null)
       : (input.actualInitialRiskMinor ?? null);
   const openAtCreation = actualResultMode !== undefined;
   if (contract) {
-    const contractFailure = validateContractCreate(input, actualResultMode);
+    const contractFailure = validateContractCreate(input, actualResultMode, path);
     if (contractFailure !== null) return { ok: false, code: contractFailure };
+  } else if (input.closedAtCreation !== undefined || input.postTradeEmotionKeys !== undefined) {
+    // Closed-at-creation and Post-Trade Emotion are contract-era writes only.
+    return { ok: false, code: 'invalid_plan_authority' };
   }
+  const closedAtCreation = contract ? input.closedAtCreation : undefined;
   if (openAtCreation) {
     if (input.enteredAt === undefined && !contract) {
       return { ok: false, code: 'invalid_execution_context' };
@@ -1054,6 +1131,18 @@ export async function createTradeInTx(
             setupOrigin: input.setupId !== undefined || input.noSetup === true ? origin : null,
             confidenceOrigin: input.confidence != null ? origin : null,
             emotionsOrigin: emotionsRecorded ? origin : null,
+            postTradeEmotionsRecordedAt: postTradeEmotionsRecorded ? clock.now() : null,
+          }
+        : {}),
+      // Save Closed Trade: the row is born closed, with the trader's own
+      // result and outcome exactly as given (contract §11–§13).
+      ...(closedAtCreation !== undefined
+        ? {
+            status: 'closed' as const,
+            actualResultMode: 'money' as const,
+            actualInitialRiskMinor,
+            enteredAt: input.enteredAt ?? null,
+            ...closedAtCreation,
           }
         : {}),
       // Phase 14E — one atomic insert, never insert-then-update. Absent
@@ -1100,6 +1189,8 @@ export async function createTradeInTx(
       setupVersionId,
       answers: input.conditionAnswers ?? [],
       allowUnanswered: contract,
+      // "Don't remember" is an After Trade answer only (contract §8).
+      allowUnknown: contract && path === 'completed',
       origin,
     });
     if (!conditionSnapshots.ok) {
@@ -1131,14 +1222,17 @@ export async function createTradeInTx(
     });
   }
 
-  if (selectedEmotionTypes.length > 0) {
-    await tx.insert(tradeEmotions).values(
-      selectedEmotionTypes.map((emotion) => ({
-        tradeId: created.id,
-        emotionTypeId: emotion.id,
-        workspaceId,
-      })),
-    );
+  const emotionRows = [
+    ...selectedEmotionTypes.map((emotion) => ({ emotionTypeId: emotion.id, phase: 'entry' })),
+    ...postTradeEmotions.value.map((emotion) => ({
+      emotionTypeId: emotion.id,
+      phase: 'post_trade',
+    })),
+  ];
+  if (emotionRows.length > 0) {
+    await tx
+      .insert(tradeEmotions)
+      .values(emotionRows.map((row) => ({ ...row, tradeId: created.id, workspaceId })));
   }
 
   // Step 16. Atomic completed creation defers its sole audit write until
@@ -1368,9 +1462,11 @@ export async function updateTradePlan(
     if (resolved.planFieldsTouched) {
       // The Founder-UAT "minimum plan validity" floor — an edit must never
       // leave a Trade with neither a Price nor a Money representation.
+      // A contract row's Risk at Entry rule is its own (see below): required
+      // while open, optional once closed.
       const hasPricePlan = resolved.plannedEntry !== null && resolved.plannedStop !== null;
       const hasMoneyPlan = resolved.plannedRiskMinor !== null;
-      if (!hasPricePlan && !hasMoneyPlan) {
+      if (!hasPricePlan && !hasMoneyPlan && !isContractRow(trade)) {
         return { ok: false, code: 'no_plan_representation' };
       }
 
@@ -1380,7 +1476,10 @@ export async function updateTradePlan(
         plannedStop: resolved.plannedStop,
         plannedTarget: resolved.plannedTarget,
         plannedRiskMinor: resolved.plannedRiskMinor,
-        plannedRewardMinor: resolved.plannedRewardMinor,
+        plannedRewardMinor:
+          isContractRow(trade) && resolved.plannedRiskMinor === null
+            ? null
+            : resolved.plannedRewardMinor,
       });
       if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
       if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
@@ -1410,7 +1509,19 @@ export async function updateTradePlan(
     let nextTraderOutcome = trade.traderOutcome;
     let nextCalcVersion = trade.calcVersion;
     if (isContractRow(trade)) {
-      if (resolved.plannedRiskMinor === null) return { ok: false, code: 'no_plan_representation' };
+      /*
+        RISK AT ENTRY IS REQUIRED WHILE OPEN, OPTIONAL ONCE CLOSED (contract §6,
+        §13). A historical Trade may have none. It still cannot be removed where
+        something rests on it: a Matched Actual Risk, or an outcome the
+        pre-contract close derived from R.
+      */
+      const derivedOutcome = trade.traderOutcome !== null && trade.traderOutcomeSelectedAt === null;
+      if (
+        resolved.plannedRiskMinor === null &&
+        (trade.status !== 'closed' || derivedOutcome || trade.actualRiskAnswer === 'matched')
+      ) {
+        return { ok: false, code: 'no_plan_representation' };
+      }
       if (resolved.plannedRewardMinor !== trade.plannedRewardMinor) {
         if (resolved.plannedRewardMinor !== null) {
           if (resolved.plannedRewardMinor <= 0n) return { ok: false, code: 'invalid_plan' };
@@ -1435,13 +1546,24 @@ export async function updateTradePlan(
           return { ok: false, code: 'invalid_plan' };
         }
         if (trade.status === 'closed' && trade.netPnlMinor !== null) {
-          const recomputed = composeTraderClose(trade.netPnlMinor, resolved.plannedRiskMinor);
-          if (!recomputed.ok) {
-            return { ok: false, code: 'invalid_plan', calcReason: recomputed.reason };
+          if (derivedOutcome) {
+            const recomputed = composeTraderClose(trade.netPnlMinor, resolved.plannedRiskMinor);
+            if (!recomputed.ok) {
+              return { ok: false, code: 'invalid_plan', calcReason: recomputed.reason };
+            }
+            nextActualR = recomputed.value.actualR;
+            nextTraderOutcome = recomputed.value.traderOutcome;
+            nextCalcVersion = recomputed.value.calcVersion;
+          } else if (resolved.plannedRiskMinor === null) {
+            // No 1R baseline, no Actual R — never a stale or invented figure.
+            nextActualR = null;
+          } else {
+            // The trader's outcome (or Unanswered) stays; only R is re-measured.
+            const measured = actualR(trade.netPnlMinor, resolved.plannedRiskMinor);
+            if (!measured.ok)
+              return { ok: false, code: 'invalid_plan', calcReason: measured.reason };
+            nextActualR = measured.value;
           }
-          nextActualR = recomputed.value.actualR;
-          nextTraderOutcome = recomputed.value.traderOutcome;
-          nextCalcVersion = recomputed.value.calcVersion;
         }
       }
     }
@@ -1643,7 +1765,8 @@ export async function correctTradeIdentity(
         plannedStop: nextStop,
         plannedTarget: trade.plannedTarget,
         plannedRiskMinor: trade.plannedRiskMinor,
-        plannedRewardMinor: trade.plannedRewardMinor,
+        plannedRewardMinor:
+          isContractRow(trade) && trade.plannedRiskMinor === null ? null : trade.plannedRewardMinor,
       });
       if (!composed.ok) return { ok: false, code: 'invalid_plan', calcReason: composed.reason };
       if (composed.value.mismatch) return { ok: false, code: 'planned_r_mismatch' };
@@ -2134,6 +2257,19 @@ export async function correctTradeExecution(
 
     const status = trade.status as TradeStatus;
     if (!hasActualExecution(status)) return { ok: false, code: 'no_actual_execution' };
+    /*
+      A CLOSED CONTRACT ROW WHOSE OUTCOME IS THE TRADER'S (or Unanswered) holds
+      a stated Final Net P&L. This correction rebuilds the result from exit legs
+      and derives the outcome — both forbidden there (contract §11, §12). Its
+      result is corrected through the historical-execution service instead.
+    */
+    if (
+      isContractRow(trade) &&
+      status === 'closed' &&
+      (trade.traderOutcomeSelectedAt !== null || trade.traderOutcome === null)
+    ) {
+      return { ok: false, code: 'invalid_execution_context' };
+    }
 
     const exits = await tx
       .select()

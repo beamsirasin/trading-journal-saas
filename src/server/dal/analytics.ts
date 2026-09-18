@@ -459,7 +459,7 @@ async function selectTraderAnalyticsRecords(
       tradeId: trades.id,
       status: trades.status,
       actualR: trades.actualR,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
       exitedAt: trades.exitedAt,
       tradingAccountId: trades.tradingAccountId,
       netPnlMinor: trades.netPnlMinor,
@@ -490,7 +490,7 @@ async function selectTraderAnalyticsRecords(
     status: row.status as TradeStatus,
     deletedAt: null,
     actualR: row.actualR as string,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
     exitedAt: (row.exitedAt as Date).toISOString(),
     netPnlMinor: row.netPnlMinor?.toString() ?? null,
     direction: row.direction as TradeDirection,
@@ -749,7 +749,7 @@ async function selectComparisonCandidateRecords(
       tradeId: trades.id,
       status: trades.status,
       actualR: trades.actualR,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
       systemStatus: trades.systemStatus,
       systemR: trades.systemR,
       systemOutcome: trades.systemOutcome,
@@ -786,7 +786,7 @@ async function selectComparisonCandidateRecords(
     status: row.status as TradeStatus,
     deletedAt: null,
     systemStatus: row.systemStatus as SystemStatus,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
     /*
       THE SQL GATE ONLY GUARDS THE SYSTEM-ONLY BRANCH. A candidate admitted for
       its canonical Actual R still carries whatever System result its row holds,
@@ -863,7 +863,7 @@ async function selectDashboardRecentTrades(
       direction: trades.direction,
       tradingAccountName: tradingAccounts.name,
       status: trades.status,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
       actualR: trades.actualR,
       actualExitedAt: trades.exitedAt,
       systemStatus: trades.systemStatus,
@@ -908,7 +908,7 @@ async function selectDashboardRecentTrades(
     occurredAt: new Date(row.occurredAt).toISOString(),
     direction: row.direction as TradeDirection,
     status: row.status as TradeStatus,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
     actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
     systemStatus: row.systemStatus as SystemStatus,
     // No stored System result is canonical yet, so no row shows a paired Gap.
@@ -1086,7 +1086,7 @@ async function selectSetupAdherenceAnalyticsRecords(
     .select({
       tradeId: trades.id,
       actualR: trades.actualR,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
       metCount: sql<number>`count(*) filter (where ${tradeSetupConditionChecks.checkStatus} = 'met')::int`,
       totalCount: sql<number>`count(*)::int`,
     })
@@ -1107,7 +1107,7 @@ async function selectSetupAdherenceAnalyticsRecords(
   return rows.map((row) => ({
     ...row,
     actualR: row.actualR as string,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
   }));
 }
 
@@ -1209,7 +1209,7 @@ async function selectConditionAnalyticsRecords(
       label: tradeSetupConditionChecks.label,
       checkStatus: tradeSetupConditionChecks.checkStatus,
       actualR: trades.actualR,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
       exitedAt: trades.exitedAt,
     })
     .from(tradeSetupConditionChecks)
@@ -1229,7 +1229,7 @@ async function selectConditionAnalyticsRecords(
     ...row,
     checkStatus: row.checkStatus as SetupConditionCheckStatus,
     actualR: row.actualR as string,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
     exitedAt: (row.exitedAt as Date).toISOString(),
   }));
 }
@@ -1325,7 +1325,7 @@ async function selectConfidenceAnalyticsRecords(
       tradeId: trades.id,
       confidence: trades.confidence,
       actualR: trades.actualR,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
     })
     .from(trades)
     .where(
@@ -1344,7 +1344,7 @@ async function selectConfidenceAnalyticsRecords(
     ...row,
     confidence: row.confidence as number,
     actualR: row.actualR as string,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
   }));
 }
 
@@ -1433,7 +1433,7 @@ async function selectEmotionAnalyticsRecords(
       key: emotionTypes.key,
       label: emotionTypes.label,
       actualR: trades.actualR,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
     })
     .from(tradeEmotions)
     .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
@@ -1442,6 +1442,7 @@ async function selectEmotionAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
+        eq(tradeEmotions.phase, 'entry'),
         ...canonicalActualConditions(),
         entryContextAnalyticsEligible(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
@@ -1452,7 +1453,7 @@ async function selectEmotionAnalyticsRecords(
   return rows.map((row) => ({
     ...row,
     actualR: row.actualR as string,
-    traderOutcome: canonicalTraderOutcome(),
+    traderOutcome: row.traderOutcome,
   }));
 }
 
@@ -1502,6 +1503,7 @@ async function selectEmotionSystemAnalyticsRecords(
         ...canonicalSystemConditions(),
         isNotNull(trades.systemExitedAt),
         entryContextAnalyticsEligible(),
+        eq(tradeEmotions.phase, 'entry'),
         ...dateConditions(trades.systemExitedAt, context.filters.dateBounds),
       ),
     )
@@ -1771,7 +1773,7 @@ export async function getCalendarMonthRecords(
         tradeId: trades.id,
         exitedAt: trades.exitedAt,
         actualR: trades.actualR,
-        traderOutcome: trades.traderOutcome,
+        traderOutcome: canonicalTraderOutcome(),
       })
       .from(trades)
       .where(
@@ -1792,7 +1794,7 @@ export async function getCalendarMonthRecords(
           tradeId: row.tradeId,
           exitedAt: (row.exitedAt as Date).toISOString(),
           actualR: row.actualR as string,
-          traderOutcome: canonicalTraderOutcome(),
+          traderOutcome: row.traderOutcome,
         })),
       },
     };
@@ -1926,7 +1928,7 @@ export async function getDayReviewRecords(
       direction: trades.direction,
       tradingAccountName: tradingAccounts.name,
       status: trades.status,
-      traderOutcome: trades.traderOutcome,
+      traderOutcome: canonicalTraderOutcome(),
       actualR: trades.actualR,
       actualExitedAt: trades.exitedAt,
       systemStatus: trades.systemStatus,
@@ -1961,7 +1963,7 @@ export async function getDayReviewRecords(
       direction: row.direction as TradeDirection,
       tradingAccountName: row.tradingAccountName,
       status: row.status as TradeStatus,
-      traderOutcome: canonicalTraderOutcome(),
+      traderOutcome: row.traderOutcome,
       actualR: row.actualR,
       actualExitedAt: row.actualExitedAt?.toISOString() ?? null,
       systemStatus: row.systemStatus as SystemStatus,

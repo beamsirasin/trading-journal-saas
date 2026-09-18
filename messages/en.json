@@ -2297,6 +2297,152 @@
             "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target.",
             "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all."
           }
+        },
+        "contractAfter": {
+          "title": "Record a closed trade",
+          "back": "Trades",
+          "subtitle": "After trade: the position is already closed. Record what you know and leave the rest blank.",
+          "sections": {
+            "trade": "The trade",
+            "result": "What happened",
+            "resultDescription": "The whole trade's result and how you classify it. Both are optional, and both drive your trader results.",
+            "plan": "Risk and plan at entry",
+            "planDescription": "As you remember them. Nothing here is filled in from today's defaults.",
+            "exits": "Exit history",
+            "read": "Your read on the trade",
+            "readDescription": "Not needed to save. Answers given now are recorded as recalled after the trade.",
+            "context": "Trade idea, chart and price levels"
+          },
+          "times": {
+            "entry": "Entry time",
+            "exit": "Final exit time",
+            "hint": "Times use {timezone}. Leave a time blank if you do not know it.",
+            "clear": "Clear time",
+            "notRecorded": "Not recorded",
+            "useLatestExit": "Use {time}, your latest recorded exit"
+          },
+          "result": {
+            "finalPnl": "Final net P&L",
+            "finalPnlHint": "The whole trade's result after costs, in {currency}. Use a minus sign for a loss.",
+            "outcome": "Your outcome",
+            "win": "Win",
+            "breakEven": "BE",
+            "loss": "Loss",
+            "outcomeHint": "Your own call, and it can differ from the P&L sign: a small profit you treat as a scratch can be BE.",
+            "removeOutcomeAria": "Remove outcome answer",
+            "winNegative": "You chose Win, but your final net P&L is negative. Check it if that is not what you meant. This does not block saving.",
+            "lossPositive": "You chose Loss, but your final net P&L is positive. Check it if that is not what you meant. This does not block saving.",
+            "actualR": "Actual R",
+            "actualRBasis": "Final net P&L ÷ risk at entry",
+            "unavailable": {
+              "needs_pnl_and_risk": "Actual R needs your final net P&L and risk at entry.",
+              "needs_risk": "Actual R needs your risk at entry.",
+              "needs_pnl": "Actual R needs your final net P&L."
+            }
+          },
+          "risk": {
+            "label": "Risk at entry",
+            "hint": "What you intended to risk: your 1R. Leave it blank if you do not know it."
+          },
+          "actualRisk": {
+            "legend": "Actual risk",
+            "matched": "Matched risk at entry",
+            "different": "It was different",
+            "unknown": "Don't know",
+            "amount": "Actual risk amount",
+            "amountHint": "Leave it blank if you do not know the amount. Your 1R stays your risk at entry.",
+            "removeAria": "Remove actual risk answer"
+          },
+          "exitPlan": {
+            "notRecordedHint": "How you planned to manage and close this trade, as you remember it. A plan you choose now is recorded as recalled after the trade.",
+            "editorDescription": "Choose the exit plan you had for this trade. Closing this panel keeps a real change."
+          },
+          "exits": {
+            "summaryEmpty": "No exits recorded",
+            "summaryCount": "{count, plural, one {# exit recorded} other {# exits recorded}}",
+            "description": "Optional supporting detail. Your final net P&L stays the trade's result.",
+            "empty": "No exits recorded. You can save the trade without them.",
+            "add": "Record an exit",
+            "exitNumber": "Exit {number}",
+            "remove": "Remove exit",
+            "removeAria": "Remove exit {number}",
+            "scope": "What did this exit close?",
+            "scopePart": "Part",
+            "scopeAll": "All remaining",
+            "scopeUnknown": "Don't know",
+            "removeScopeAria": "Remove scope answer for exit {number}",
+            "pnl": "P&L for this exit",
+            "percent": "% of original position",
+            "time": "Exit time",
+            "price": "Exit price",
+            "reason": "Exit reason",
+            "completeness": "Is this every exit?",
+            "complete": "These are all the exits",
+            "incomplete": "Some exits are missing",
+            "unknown": "Not sure",
+            "removeCompletenessAria": "Remove answer about exit history",
+            "subtotal": "Recorded exits add up to {amount}.",
+            "subtotalSupporting": "Supporting detail only. It does not replace your final net P&L.",
+            "adopt": "Use recorded exits as final result",
+            "adopted": "Final net P&L set to {amount} from your recorded exits.",
+            "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving."
+          },
+          "conditions": {
+            "hint": "Answer the ones you remember. Skipped ones and ones you don't remember are never counted as not met.",
+            "dontRemember": "Don't remember"
+          },
+          "confidence": {
+            "label": "Confidence at entry",
+            "hint": "How sure you were as you entered, as you remember it."
+          },
+          "emotions": {
+            "entryLegend": "How you felt as you entered",
+            "postLegend": "How you feel about the trade now",
+            "postHint": "Separate from how you felt at entry.",
+            "removePostAria": "Remove post-trade emotions answer"
+          },
+          "summary": {
+            "open": "Answer these now",
+            "hide": "Hide these questions",
+            "postTradeNone": "After: no emotions",
+            "postTradeCount": "After: {count, plural, one {# emotion} other {# emotions}}"
+          },
+          "save": {
+            "action": "Save closed trade",
+            "saving": "Saving…",
+            "panelTitle": "Needed to save",
+            "panelDescription": "Only these three. Everything else is optional.",
+            "ready": "Ready to save.",
+            "remaining": "{count} of 3 needed to save",
+            "blocked": "{count, plural, one {# thing needs attention} other {# things need attention}} before saving",
+            "recommendedTitle": "Worth recording",
+            "recommendedDescription": "Not required, but your trader results use them.",
+            "recommended": {
+              "finalPnl": "Final net P&L",
+              "outcome": "Your outcome"
+            },
+            "recorded": "recorded",
+            "notRecorded": "not recorded yet",
+            "promptMissing": "Final net P&L and your outcome are not recorded yet. You can still save.",
+            "helper": "You can review this trade now or later."
+          },
+          "saved": {
+            "title": "Trade saved",
+            "description": "{symbol} was saved as a closed trade.",
+            "review": "Review trade",
+            "done": "Done",
+            "hint": "Reviewing is optional. You can start it any time from the trade."
+          },
+          "errors": {
+            "invalidDatetime": "Enter a valid date and time in your saved timezone.",
+            "futureTime": "This time is in the future.",
+            "exitBeforeEntry": "The final exit time is before the entry time.",
+            "exitOutsideTrade": "This exit time is outside the trade's entry and final exit times.",
+            "invalidPercent": "Enter a percentage above 0 and up to 100, with at most two decimals.",
+            "matchedRequiresRisk": "Matched needs a risk at entry. Enter your risk at entry, or choose another answer.",
+            "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter what you really had at risk, or choose Matched risk at entry.",
+            "percentOverTotal": "Together your exits close more than the whole position. Check the percentages."
+          }
         }
       },
       "backToTrades": "Back to Trades",

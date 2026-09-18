@@ -40,6 +40,16 @@ function detail(overrides: Partial<TradeDetail> = {}): TradeDetail {
     exitPlanInheritanceDeclined: false,
     noStrategy: false,
     noSetup: false,
+    captureOrigins: {
+      strategy: null,
+      setup: null,
+      exitPlan: null,
+      confidence: null,
+      emotions: null,
+    },
+    traderOutcomeSelected: false,
+    postTradeEmotionsRecordedAt: null,
+    postTradeEmotions: [],
 
     symbol: 'XAUUSD',
     direction: 'long',

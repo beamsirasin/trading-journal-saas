@@ -51,6 +51,7 @@ function row(overrides: Partial<TradesWorkspaceRow> = {}): TradesWorkspaceRow {
     systemR: '3.0000',
     netPnlMinor: '22000',
     traderOutcome: 'win',
+    traderOutcomeSelected: false,
     systemOutcome: 'win',
     hasReviewNotes: true,
     closedBps: 10_000,

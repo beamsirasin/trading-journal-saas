@@ -162,6 +162,13 @@
       "when": 1789564179185,
       "tag": "0022_add_trade_contract_provenance_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789747175177,
+      "tag": "0023_after_trade_contract",
+      "breakpoints": true
     }
   ]
 }

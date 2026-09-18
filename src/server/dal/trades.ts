@@ -9,7 +9,9 @@ import type { SetupConditionCheckStatus } from '@/lib/setup-conditions/snapshots
 import { isChartAttachmentStorageConfigured } from '@/lib/storage/chart-attachment-storage';
 import {
   actualRDenominatorMinor,
+  isContractRow,
   type ActualRiskAnswer,
+  type CaptureOrigin,
   type EnteredAtSource,
   type ExitPlanProvenance,
   type ExitPlanState,
@@ -19,8 +21,8 @@ import {
 import type {
   ActualResultMode,
   ExitHistoryCompleteness,
-  ExitScope,
   FinalPnlSource,
+  HistoricalExitScope,
   MistakeSeverity,
   OutcomeValue,
   PlanAdherence,
@@ -165,6 +167,8 @@ export interface TradeListItem {
    */
   readonly netPnlMinor: string | null;
   readonly traderOutcome: OutcomeValue | null;
+  /** The trader chose `traderOutcome` (contract §12); false beside a derived outcome. */
+  readonly traderOutcomeSelected: boolean;
   readonly systemOutcome: OutcomeValue | null;
   /**
    * Whether a Post-Trade Review note exists — the exact field
@@ -406,6 +410,7 @@ export async function listWorkspaceTrades(
       systemR: trades.systemR,
       netPnlMinor: trades.netPnlMinor,
       traderOutcome: trades.traderOutcome,
+      traderOutcomeSelected: sql<boolean>`${trades.traderOutcomeSelectedAt} is not null`,
       systemOutcome: trades.systemOutcome,
       hasReviewNotes: sql<boolean>`${trades.reviewNotes} is not null`,
       actualResultMode: trades.actualResultMode,
@@ -482,6 +487,9 @@ export async function listWorkspaceTrades(
           .groupBy(tradeSetupConditionChecks.tradeId, tradeSetupConditionChecks.checkStatus);
   const conditionCountsByTradeId = new Map<string, { met: number; total: number }>();
   for (const row of conditionCountRows) {
+    // "Don't remember" is an answer but neither Met nor Not Met, so it is not
+    // part of the Met / total ratio (contract §8).
+    if (row.checkStatus === 'unknown') continue;
     const current = conditionCountsByTradeId.get(row.tradeId) ?? { met: 0, total: 0 };
     current.total += row.count;
     if (row.checkStatus === 'met') current.met += row.count;
@@ -526,6 +534,7 @@ export async function listWorkspaceTrades(
         systemR: row.systemR,
         netPnlMinor: row.netPnlMinor === null ? null : row.netPnlMinor.toString(),
         traderOutcome: row.traderOutcome as OutcomeValue | null,
+        traderOutcomeSelected: row.traderOutcomeSelected,
         systemOutcome: row.systemOutcome as OutcomeValue | null,
         hasReviewNotes: row.hasReviewNotes,
         closedBps,
@@ -582,6 +591,21 @@ export interface TradeSetupConditionCheckDetail {
   readonly label: string;
   readonly sortOrder: number;
   readonly checkStatus: SetupConditionCheckStatus;
+  /** When this answer was first supplied. NULL on a legacy row. */
+  readonly origin: CaptureOrigin | null;
+}
+
+/**
+ * When each analytical answer was FIRST supplied (contract §7, §9) — at entry,
+ * during the trade, or recalled after close. NULL where the answer is absent,
+ * and on every legacy row, which never carried the question.
+ */
+export interface TradeCaptureOrigins {
+  readonly strategy: CaptureOrigin | null;
+  readonly setup: CaptureOrigin | null;
+  readonly exitPlan: CaptureOrigin | null;
+  readonly confidence: CaptureOrigin | null;
+  readonly emotions: CaptureOrigin | null;
 }
 
 /**
@@ -646,6 +670,9 @@ export interface TradeDetail {
   readonly exitPlanInheritanceDeclined: boolean;
   readonly noStrategy: boolean;
   readonly noSetup: boolean;
+  readonly captureOrigins: TradeCaptureOrigins;
+  /** The trader chose `traderOutcome` (contract §12). False beside a derived outcome. */
+  readonly traderOutcomeSelected: boolean;
 
   readonly symbol: string;
   readonly direction: TradeDirection;
@@ -658,6 +685,8 @@ export interface TradeDetail {
   readonly reviewNotes: string | null;
   /** Null means the historical Trade predates explicit emotion capture. */
   readonly emotionsRecordedAt: string | null;
+  /** Post-Trade Emotion: null = Unanswered; a timestamp with no emotions = None of these. */
+  readonly postTradeEmotionsRecordedAt: string | null;
   /**
    * Never the storage key or a URL (Founder review, private-storage
    * correction) — presentation-only presence flag. When `true`, the client
@@ -704,7 +733,7 @@ export interface TradeDetail {
     readonly exitId: string;
     readonly sequence: number;
     readonly closedBps: number | null;
-    readonly exitScope: ExitScope | null;
+    readonly exitScope: HistoricalExitScope | null;
     readonly exitPrice: string | null;
     readonly realizedPnlMinor: string | null;
     readonly exitReason: string | null;
@@ -745,7 +774,10 @@ export interface TradeDetail {
   readonly mistakes: readonly TradeMistakeDetail[];
   /** The nine active, platform-owned mistake types available in the Phase 08 journal UI. */
   readonly mistakeCatalog: readonly TradeMistakeOption[];
+  /** Entry Emotion only. */
   readonly emotions: readonly TradeEmotionOption[];
+  /** Post-Trade Emotion — a separate observation, never merged into `emotions`. */
+  readonly postTradeEmotions: readonly TradeEmotionOption[];
   readonly emotionCatalog: readonly TradeEmotionOption[];
 
   readonly createdAt: string;
@@ -832,12 +864,18 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .where(and(eq(mistakeTypes.isSystem, true), eq(mistakeTypes.isArchived, false)))
     .orderBy(asc(mistakeTypes.sortOrder), asc(mistakeTypes.key));
 
-  const emotionRows = await db
-    .select({ key: emotionTypes.key, label: emotionTypes.label })
+  const emotionPhaseRows = await db
+    .select({ key: emotionTypes.key, label: emotionTypes.label, phase: tradeEmotions.phase })
     .from(tradeEmotions)
     .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
     .where(eq(tradeEmotions.tradeId, tradeId))
     .orderBy(asc(emotionTypes.sortOrder), asc(emotionTypes.key));
+  const emotionRows = emotionPhaseRows
+    .filter((emotion) => emotion.phase === 'entry')
+    .map(({ key, label }) => ({ key, label }));
+  const postTradeEmotionRows = emotionPhaseRows
+    .filter((emotion) => emotion.phase === 'post_trade')
+    .map(({ key, label }) => ({ key, label }));
 
   const emotionCatalogRows = await db
     .select({ key: emotionTypes.key, label: emotionTypes.label })
@@ -861,6 +899,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       label: tradeSetupConditionChecks.label,
       sortOrder: tradeSetupConditionChecks.sortOrder,
       checkStatus: tradeSetupConditionChecks.checkStatus,
+      origin: tradeSetupConditionChecks.origin,
     })
     .from(tradeSetupConditionChecks)
     .where(eq(tradeSetupConditionChecks.tradeId, tradeId))
@@ -895,6 +934,9 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     finalPnlSource: trade.finalPnlSource as FinalPnlSource | null,
     exitHistoryCompleteness: trade.exitHistoryCompleteness as ExitHistoryCompleteness | null,
     exits: exitRows,
+    contract: isContractRow(trade),
+    // Read-only: the stored outcome is reported, never re-derived here.
+    keptTraderOutcome: { traderOutcome: trade.traderOutcome as OutcomeValue | null },
   });
   const gap = executionGapR(trade.actualR, trade.systemR);
 
@@ -938,6 +980,14 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       exitPlanInheritanceDeclined: trade.exitPlanInheritanceDeclined,
       noStrategy: trade.noStrategy,
       noSetup: trade.noSetup,
+      captureOrigins: {
+        strategy: trade.strategyOrigin as CaptureOrigin | null,
+        setup: trade.setupOrigin as CaptureOrigin | null,
+        exitPlan: trade.exitPlanOrigin as CaptureOrigin | null,
+        confidence: trade.confidenceOrigin as CaptureOrigin | null,
+        emotions: trade.emotionsOrigin as CaptureOrigin | null,
+      },
+      traderOutcomeSelected: trade.traderOutcomeSelectedAt !== null,
 
       symbol: trade.symbol,
       direction: trade.direction as TradeDirection,
@@ -949,6 +999,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       notes: trade.notes,
       reviewNotes: trade.reviewNotes,
       emotionsRecordedAt: dateToIso(trade.emotionsRecordedAt),
+      postTradeEmotionsRecordedAt: dateToIso(trade.postTradeEmotionsRecordedAt),
       hasChartAttachment: trade.chartAttachmentStorageKey !== null,
       chartAttachmentUploadedAt: dateToIso(trade.chartAttachmentUploadedAt),
 
@@ -984,7 +1035,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
         exitId: exit.id,
         sequence: exit.sequence,
         closedBps: exit.closedBps,
-        exitScope: exit.exitScope as ExitScope | null,
+        exitScope: exit.exitScope as HistoricalExitScope | null,
         exitPrice: exit.exitPrice,
         realizedPnlMinor: minorToString(exit.realizedPnlMinor),
         exitReason: exit.exitReason,
@@ -1035,6 +1086,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
               label: c.label,
               sortOrder: c.sortOrder,
               checkStatus: c.checkStatus as SetupConditionCheckStatus,
+              origin: c.origin as CaptureOrigin | null,
             }))
           : [],
 
@@ -1058,6 +1110,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       })),
       mistakeCatalog: mistakeCatalogRows,
       emotions: emotionRows,
+      postTradeEmotions: postTradeEmotionRows,
       emotionCatalog: emotionCatalogRows,
 
       createdAt: trade.createdAt.toISOString(),

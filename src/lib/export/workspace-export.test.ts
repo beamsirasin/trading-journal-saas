@@ -55,7 +55,7 @@ function completeSource(): WorkspaceExportSource {
 
 describe('workspace export schema-v7 registry', () => {
   it('defines the complete normalized dataset and CSV inventory once', () => {
-    expect(WORKSPACE_EXPORT_SCHEMA_VERSION).toBe(8);
+    expect(WORKSPACE_EXPORT_SCHEMA_VERSION).toBe(9);
     expect(WORKSPACE_EXPORT_REGISTRY.map(({ name }) => name)).toEqual([
       'workspace',
       'trading_accounts',
@@ -120,7 +120,7 @@ describe('workspace export schema-v7 registry', () => {
         ],
       },
     });
-    expect(envelope.schemaVersion).toBe(8);
+    expect(envelope.schemaVersion).toBe(9);
     expect(envelope.exportedAt).toBe('2026-08-09T12:34:56.789Z');
     expect(envelope.scope).toEqual({ type: 'workspace', workspaceId: 'workspace-a' });
     expect(envelope.data.trades[0]?.actualInitialRiskMinor).toBe('10000000000000001');
@@ -207,7 +207,7 @@ describe('workspace CSV security and parity', () => {
       expect(strFromU8(archived)).toBe(contents.slice(1));
     }
     expect(JSON.parse(strFromU8(archive['manifest.json'] as Uint8Array))).toMatchObject({
-      schemaVersion: 8,
+      schemaVersion: 9,
       productVersion: '0.1.0',
       nullRepresentation: 'empty CSV field',
     });

@@ -5,25 +5,55 @@ import { deriveTradeResult } from './result';
 describe('deriveTradeResult — the Trader axis, and only the Trader axis', () => {
   it('reports the stored trader outcome for a closed Trade', () => {
     expect(
-      deriveTradeResult({ status: 'closed', traderOutcome: 'win', recordingContract: null }),
+      deriveTradeResult({
+        status: 'closed',
+        traderOutcome: 'win',
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('win');
     expect(
-      deriveTradeResult({ status: 'closed', traderOutcome: 'loss', recordingContract: null }),
+      deriveTradeResult({
+        status: 'closed',
+        traderOutcome: 'loss',
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('loss');
     expect(
-      deriveTradeResult({ status: 'closed', traderOutcome: 'break_even', recordingContract: null }),
+      deriveTradeResult({
+        status: 'closed',
+        traderOutcome: 'break_even',
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('break_even');
   });
 
   it('reports the lifecycle state while there is no settled outcome', () => {
     expect(
-      deriveTradeResult({ status: 'open', traderOutcome: null, recordingContract: null }),
+      deriveTradeResult({
+        status: 'open',
+        traderOutcome: null,
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('open');
     expect(
-      deriveTradeResult({ status: 'planned', traderOutcome: null, recordingContract: null }),
+      deriveTradeResult({
+        status: 'planned',
+        traderOutcome: null,
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('planned');
     expect(
-      deriveTradeResult({ status: 'canceled', traderOutcome: null, recordingContract: null }),
+      deriveTradeResult({
+        status: 'canceled',
+        traderOutcome: null,
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('canceled');
   });
 
@@ -31,7 +61,12 @@ describe('deriveTradeResult — the Trader axis, and only the Trader axis', () =
     // Printing BE here would claim a tolerance-banded classification that was
     // never made; printing LOSS would be worse still.
     expect(
-      deriveTradeResult({ status: 'closed', traderOutcome: null, recordingContract: null }),
+      deriveTradeResult({
+        status: 'closed',
+        traderOutcome: null,
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('unresolved');
   });
 
@@ -45,6 +80,7 @@ describe('deriveTradeResult — the Trader axis, and only the Trader axis', () =
       deriveTradeResult({
         status: 'closed',
         traderOutcome: 'win',
+        traderOutcomeSelected: false,
         recordingContract: 'add_trade_v1',
       }),
     ).toBe('outcome_unanswered');
@@ -52,6 +88,7 @@ describe('deriveTradeResult — the Trader axis, and only the Trader axis', () =
       deriveTradeResult({
         status: 'closed',
         traderOutcome: null,
+        traderOutcomeSelected: false,
         recordingContract: 'add_trade_v1',
       }),
     ).toBe('outcome_unanswered');
@@ -59,13 +96,34 @@ describe('deriveTradeResult — the Trader axis, and only the Trader axis', () =
 
   it('keeps the lifecycle ahead of the outcome question on a contract row', () => {
     expect(
-      deriveTradeResult({ status: 'open', traderOutcome: null, recordingContract: 'add_trade_v1' }),
+      deriveTradeResult({
+        status: 'open',
+        traderOutcome: null,
+        traderOutcomeSelected: false,
+        recordingContract: 'add_trade_v1',
+      }),
     ).toBe('open');
   });
 
   it('lets the lifecycle win over a stale outcome on a reopened Trade', () => {
     expect(
-      deriveTradeResult({ status: 'open', traderOutcome: 'win', recordingContract: null }),
+      deriveTradeResult({
+        status: 'open',
+        traderOutcome: 'win',
+        traderOutcomeSelected: false,
+        recordingContract: null,
+      }),
     ).toBe('open');
+  });
+
+  it('shows an outcome the trader selected in After Trade as theirs', () => {
+    expect(
+      deriveTradeResult({
+        status: 'closed',
+        traderOutcome: 'break_even',
+        traderOutcomeSelected: true,
+        recordingContract: 'add_trade_v1',
+      }),
+    ).toBe('break_even');
   });
 });

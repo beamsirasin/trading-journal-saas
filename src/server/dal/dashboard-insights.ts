@@ -92,7 +92,7 @@ export async function getDashboardInsightRawData(
       .select({
         tradeId: trades.id,
         actualR: trades.actualR,
-        traderOutcome: trades.traderOutcome,
+        traderOutcome: canonicalTraderOutcome(),
         actualExitedAt: trades.exitedAt,
         systemR: trades.systemR,
         systemOutcome: trades.systemOutcome,
@@ -134,7 +134,7 @@ export async function getDashboardInsightRawData(
       .from(tradeEmotions)
       .innerJoin(emotionTypes, eq(emotionTypes.id, tradeEmotions.emotionTypeId))
       .innerJoin(trades, eq(trades.id, tradeEmotions.tradeId))
-      .where(and(...actualConditions))
+      .where(and(...actualConditions, eq(tradeEmotions.phase, 'entry')))
       .orderBy(asc(trades.exitedAt), asc(trades.id), asc(emotionTypes.sortOrder)),
     db
       .select({
@@ -178,7 +178,7 @@ export async function getDashboardInsightRawData(
       actualTrades: actualRows.map((row) => ({
         ...row,
         actualR: row.actualR as string,
-        traderOutcome: canonicalTraderOutcome(),
+        traderOutcome: row.traderOutcome,
         actualExitedAt: (row.actualExitedAt as Date).toISOString(),
         // A canonical Actual R never pairs with a legacy System R (contract §28).
         systemR: canonicalSystemR(),

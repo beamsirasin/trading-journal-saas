@@ -76,9 +76,11 @@ export const tradeSetupConditionChecks = pgTable(
         setupConditions.workspaceId,
       ],
     }),
+    // `unknown` is the After Trade "Don't remember" (contract §8, migration
+    // 0023) — an answer, never counted as Not Met. Unanswered has no row.
     check(
       'trade_setup_condition_checks_status_check',
-      sql`${table.checkStatus} IN ('met', 'not_met')`,
+      sql`${table.checkStatus} IN ('met', 'not_met', 'unknown')`,
     ),
     check(
       'trade_setup_condition_checks_origin_check',

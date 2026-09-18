@@ -92,7 +92,7 @@ describe('TradeRecordingForm — the production mode boundary', () => {
     expect(
       afterTrade.container.querySelector('[data-recording-mode="after_trade"]'),
     ).not.toBeNull();
-    expect(screen.getByText(/Record a trade that has already finished/)).toBeVisible();
+    expect(screen.getByText(/After trade: the position is already closed/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'At Entry' })).not.toBeInTheDocument();
   });
 

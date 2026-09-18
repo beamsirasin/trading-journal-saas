@@ -1004,31 +1004,36 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
   // Public error mapping / serialization proof
   // -------------------------------------------------------------------------
   describe('createCompletedTradeAction', () => {
+    /** Save Closed Trade: the Add Trade contract After Trade payload. */
     function completedPayload(fw: Framework, overrides: Record<string, unknown> = {}) {
-      const exitedAt = new Date(Date.now() - 60 * 60 * 1000);
-      const exitedAtIso = exitedAt.toISOString();
-      return baseCreateInput(fw, {
+      return {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
         recordingTiming: 'after_trade',
-        systemPlanBasis: 'price',
-        actualResultBasis: 'price',
-        actualEntry: '1.1000000000',
-        actualInitialStop: '1.0950000000',
-        enteredAt: new Date(exitedAt.getTime() - 60 * 60 * 1000).toISOString(),
-        exitedAt: exitedAtIso,
-        exits: [{ closedBps: 10_000, exitPrice: '1.1100000000', exitedAt: exitedAtIso }],
+        recordingContract: 'add_trade_v1',
+        symbol: 'EURUSD',
+        direction: 'long' as const,
         ...overrides,
-      });
+      };
     }
 
     it('returns a stable serializable closed result and exact replay', async () => {
       const { fw } = await freshFixture();
-      const input = completedPayload(fw);
+      const exitedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const input = completedPayload(fw, {
+        exitedAt,
+        plannedRiskMinor: '5000',
+        finalPnlMinor: '10000',
+        traderOutcome: 'win',
+      });
       const first = await createCompletedTradeAction(input);
       expect(first).toMatchObject({
         ok: true,
         data: {
           alreadyCreated: false,
           status: 'closed',
+          actualR: '2.0000',
+          traderOutcome: 'win',
           systemStatus: 'pending',
           recordedRetrospectively: true,
         },
@@ -1036,20 +1041,18 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(first);
       if (!first.ok) return;
 
-      const createdTrade = await db.query.trades.findFirst({
-        where: eq(trades.id, first.data.tradeId),
-      });
-      expect(createdTrade).toMatchObject({
+      expect(
+        await db.query.trades.findFirst({ where: eq(trades.id, first.data.tradeId) }),
+      ).toMatchObject({
         status: 'closed',
+        recordingContract: 'add_trade_v1',
+        actualResultMode: 'money',
+        netPnlMinor: 10000n,
         actualR: '2.0000',
         traderOutcome: 'win',
         systemStatus: 'pending',
-        systemCostR: null,
-        systemResolutionKind: null,
-        systemGrossR: null,
         systemR: null,
         systemOutcome: null,
-        systemDependencySnapshot: null,
       });
 
       const replay = await createCompletedTradeAction(input);
@@ -1060,23 +1063,22 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       assertJsonSerializable(replay);
     });
 
-    it('normalizes blank historical facts and returns nullable R without fabricating data', async () => {
+    it('normalizes blank historical facts to not recorded, never zero, and chooses no outcome', async () => {
       const { fw } = await freshFixture();
       const result = await createCompletedTradeAction(
         completedPayload(fw, {
-          actualResultBasis: 'money',
-          actualEntry: '',
-          actualInitialStop: '',
-          actualInitialRiskMinor: '',
           enteredAt: '',
           exitedAt: '',
+          plannedRiskMinor: '',
           finalPnlMinor: '400',
+          plannedRewardMinor: '',
+          targetPrice: '',
           exits: [],
         }),
       );
       expect(result).toMatchObject({
         ok: true,
-        data: { actualR: null, traderOutcome: 'win', recordedRetrospectively: false },
+        data: { actualR: null, traderOutcome: null, recordedRetrospectively: false },
       });
       assertJsonSerializable(result);
       if (!result.ok) return;
@@ -1085,40 +1087,79 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       ).toMatchObject({
         enteredAt: null,
         exitedAt: null,
-        actualInitialRiskMinor: null,
+        plannedRiskMinor: null,
         netPnlMinor: 400n,
         finalPnlSource: 'manual_total',
         actualR: null,
-        traderOutcome: 'win',
+        traderOutcome: null,
+        traderOutcomeSelectedAt: null,
       });
     });
 
-    it('rejects unknown fields and malformed coverage at the strict boundary', async () => {
+    it('accepts an outcome that contradicts the P&L sign — a notice, never a block', async () => {
       const { fw } = await freshFixture();
-      const mutationKey = crypto.randomUUID();
       const result = await createCompletedTradeAction(
+        completedPayload(fw, { finalPnlMinor: '-250', traderOutcome: 'win' }),
+      );
+      expect(result).toMatchObject({ ok: true, data: { traderOutcome: 'win' } });
+    });
+
+    it('refuses the retired result basis, unknown fields and malformed coverage at the strict boundary', async () => {
+      const { fw } = await freshFixture();
+      for (const invalid of [
+        completedPayload(fw, { actualResultBasis: 'price' }),
+        completedPayload(fw, { actualEntry: '1.1', actualInitialStop: '1.09' }),
+        completedPayload(fw, { exits: [{ closedBps: 9_999, injected: true }] }),
+        completedPayload(fw, { recordingContract: undefined }),
+      ]) {
+        const result = await createCompletedTradeAction(invalid);
+        expect(result).toMatchObject({ ok: false, error: { code: 'validation_error' } });
+        expect(
+          await db.query.trades.findFirst({ where: eq(trades.mutationKey, invalid.mutationKey) }),
+        ).toBeUndefined();
+        assertJsonSerializable(result);
+      }
+      expect(revalidatePath).not.toHaveBeenCalled();
+    });
+
+    it('blocks only an explicitly chosen answer that is incomplete as chosen', async () => {
+      const { fw } = await freshFixture();
+      const fixed = await createCompletedTradeAction(
+        completedPayload(fw, { targetState: 'fixed' }),
+      );
+      expect(fixed).toMatchObject({
+        ok: false,
+        error: { code: 'validation_error', fieldErrors: { targetState: expect.any(Array) } },
+      });
+      const matched = await createCompletedTradeAction(
+        completedPayload(fw, { actualRiskAnswer: 'matched' }),
+      );
+      expect(matched).toMatchObject({
+        ok: false,
+        error: { code: 'validation_error', fieldErrors: { actualRiskAnswer: expect.any(Array) } },
+      });
+      const inherited = await createCompletedTradeAction(
         completedPayload(fw, {
-          mutationKey,
-          exits: [{ closedBps: 9_999, exitPrice: '1.11', injected: true }],
+          strategyId: fw.strategyId,
+          exitPlan: {
+            state: 'saved',
+            exitPlanId: crypto.randomUUID(),
+            provenance: 'strategy_default',
+          },
         }),
       );
-      expect(result).toMatchObject({ ok: false, error: { code: 'validation_error' } });
-      expect(
-        await db.query.trades.findFirst({ where: eq(trades.mutationKey, mutationKey) }),
-      ).toBeUndefined();
-      expect(revalidatePath).not.toHaveBeenCalled();
-      assertJsonSerializable(result);
+      expect(inherited).toMatchObject({
+        ok: false,
+        error: { code: 'validation_error', fieldErrors: { exitPlan: expect.any(Array) } },
+      });
     });
 
     it('exposes serializable explicit adoption, correction, and manual-ownership actions', async () => {
       const { fw } = await freshFixture();
       const created = await createCompletedTradeAction(
         completedPayload(fw, {
-          actualResultBasis: 'money',
-          actualEntry: '',
-          actualInitialStop: '',
-          actualInitialRiskMinor: '200',
-          finalPnlMinor: '',
+          plannedRiskMinor: '200',
+          traderOutcome: 'win',
           exitHistoryCompleteness: 'complete',
           exits: [
             { closedBps: 4000, exitScope: 'part', realizedPnlMinor: '100', exitedAt: '' },
@@ -1153,6 +1194,7 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
         .from(tradeExits)
         .where(eq(tradeExits.tradeId, created.data.tradeId))
         .orderBy(tradeExits.sequence);
+      // Editing exits after adoption never rewrites Final Net P&L on a contract row.
       const corrected = await applyHistoricalExitHistoryCorrectionAction({
         tradeId: created.data.tradeId,
         exitHistoryCompleteness: 'complete',
@@ -1163,7 +1205,12 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       });
       expect(corrected).toMatchObject({
         ok: true,
-        data: { netPnlMinor: '0', finalPnlSource: 'exit_history', traderOutcome: 'break_even' },
+        data: {
+          netPnlMinor: '400',
+          finalPnlSource: 'manual_total',
+          reconciliation: 'conflict',
+          traderOutcome: 'win',
+        },
       });
       assertJsonSerializable(corrected);
 
@@ -1173,7 +1220,12 @@ describe('Trade Server Actions (real PostgreSQL)', () => {
       });
       expect(manual).toMatchObject({
         ok: true,
-        data: { netPnlMinor: '0', finalPnlSource: 'manual_total', reconciliation: 'matched' },
+        data: {
+          netPnlMinor: '0',
+          finalPnlSource: 'manual_total',
+          reconciliation: 'matched',
+          traderOutcome: 'win',
+        },
       });
       assertJsonSerializable(manual);
     });

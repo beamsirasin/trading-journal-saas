@@ -1,5 +1,12 @@
+/** The answers At Entry offers. Unanswered is the absence of an answer. */
 export const SETUP_CONDITION_CHECK_STATUSES = ['met', 'not_met'] as const;
-export type SetupConditionCheckStatus = (typeof SETUP_CONDITION_CHECK_STATUSES)[number];
+/**
+ * The answers After Trade offers: also `unknown`, the trader's "Don't remember"
+ * (contract §8). Unknown is an answer, and never a Not Met.
+ */
+export const RECALLED_SETUP_CONDITION_CHECK_STATUSES = ['met', 'not_met', 'unknown'] as const;
+/** Any stored answer. */
+export type SetupConditionCheckStatus = (typeof RECALLED_SETUP_CONDITION_CHECK_STATUSES)[number];
 
 export interface SetupConditionAnswer {
   readonly conditionKey: string;
@@ -40,14 +47,22 @@ export function prepareSetupConditionSnapshots(
    * Add Trade contract rows keep Unanswered conditions unanswered: only the
    * answered subset is snapshotted, and a missing answer is never a Not Met.
    */
-  options: { readonly allowUnanswered?: boolean } = {},
+  options: {
+    readonly allowUnanswered?: boolean;
+    /** After Trade only: accept "Don't remember" as an answer. */
+    readonly allowUnknown?: boolean;
+  } = {},
 ): PrepareSetupConditionSnapshotsResult {
+  const accepted: readonly string[] =
+    options.allowUnknown === true
+      ? RECALLED_SETUP_CONDITION_CHECK_STATUSES
+      : SETUP_CONDITION_CHECK_STATUSES;
   const answerByKey = new Map<string, string>();
   for (const answer of answers) {
     if (answerByKey.has(answer.conditionKey)) {
       return { ok: false, code: 'duplicate_condition_answer' };
     }
-    if (!(SETUP_CONDITION_CHECK_STATUSES as readonly string[]).includes(answer.status)) {
+    if (!accepted.includes(answer.status)) {
       return { ok: false, code: 'invalid_condition_status' };
     }
     answerByKey.set(answer.conditionKey, answer.status);
@@ -73,10 +88,15 @@ export function prepareSetupConditionSnapshots(
   };
 }
 
-/** Domain-only derivation; `null` is the explicit zero-Condition N/A state. */
+/**
+ * Domain-only derivation over Met / Not Met answers only; `null` is the
+ * zero-answer N/A state. An Unknown answer is excluded, never counted as a
+ * failure (contract §8).
+ */
 export function deriveSetupAdherence(
   checks: readonly Readonly<{ checkStatus: SetupConditionCheckStatus }>[],
 ): number | null {
-  if (checks.length === 0) return null;
-  return checks.filter((check) => check.checkStatus === 'met').length / checks.length;
+  const answered = checks.filter((check) => check.checkStatus !== 'unknown');
+  if (answered.length === 0) return null;
+  return answered.filter((check) => check.checkStatus === 'met').length / answered.length;
 }

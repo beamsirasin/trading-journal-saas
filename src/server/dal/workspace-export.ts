@@ -233,6 +233,7 @@ export async function readWorkspaceExportSource(
           notes: trades.notes,
           reviewNotes: trades.reviewNotes,
           emotionsRecordedAt: trades.emotionsRecordedAt,
+          postTradeEmotionsRecordedAt: trades.postTradeEmotionsRecordedAt,
           chartAttachmentStorageKey: trades.chartAttachmentStorageKey,
           chartAttachmentUploadedAt: trades.chartAttachmentUploadedAt,
           plannedEntry: trades.plannedEntry,
@@ -270,6 +271,7 @@ export async function readWorkspaceExportSource(
           systemGrossR: trades.systemGrossR,
           systemPlanProvenance: trades.systemPlanProvenance,
           traderOutcome: trades.traderOutcome,
+          traderOutcomeSelectedAt: trades.traderOutcomeSelectedAt,
           systemOutcome: trades.systemOutcome,
           calcVersion: trades.calcVersion,
           status: trades.status,
@@ -369,11 +371,16 @@ export async function readWorkspaceExportSource(
           tradeId: tradeEmotions.tradeId,
           emotionTypeId: tradeEmotions.emotionTypeId,
           workspaceId: tradeEmotions.workspaceId,
+          phase: tradeEmotions.phase,
           createdAt: tradeEmotions.createdAt,
         })
         .from(tradeEmotions)
         .where(eq(tradeEmotions.workspaceId, workspaceId))
-        .orderBy(asc(tradeEmotions.tradeId), asc(tradeEmotions.emotionTypeId));
+        .orderBy(
+          asc(tradeEmotions.tradeId),
+          asc(tradeEmotions.phase),
+          asc(tradeEmotions.emotionTypeId),
+        );
 
       const emotionTypeRows = await tx
         .select({

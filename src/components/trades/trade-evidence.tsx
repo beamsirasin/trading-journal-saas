@@ -26,15 +26,19 @@ export function LegacyEvidenceBadge({ className }: { className?: string }) {
 /**
  * The Trader Outcome, or an honest absence.
  *
- * On an Add Trade contract row the outcome is the trader's to choose and
- * nothing has asked yet, so this says so rather than showing the derived
- * Win/Loss the pre-contract close wrote. A legacy row keeps its historical
- * classification, marked as legacy-derived.
+ * On an Add Trade contract row the outcome is the trader's to choose: a
+ * selected outcome is shown as theirs, and an unchosen one says so rather than
+ * showing the derived Win/Loss a pre-contract close wrote. A legacy row keeps
+ * its historical classification, marked as legacy-derived.
  */
 export function TraderOutcomeEvidence({
   trade,
 }: {
-  trade: { readonly recordingContract: string | null; readonly traderOutcome: OutcomeValue | null };
+  trade: {
+    readonly recordingContract: string | null;
+    readonly traderOutcome: OutcomeValue | null;
+    readonly traderOutcomeSelected: boolean;
+  };
 }) {
   const t = useTranslations('trades.evidence');
   const evidence = tradeOutcomeEvidence(trade);

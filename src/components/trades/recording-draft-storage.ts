@@ -20,6 +20,7 @@
  */
 import {
   parseRecordingDraft,
+  recordingDraftSymbol,
   serializeRecordingDraft,
   type ParsedRecordingDraft,
   type RecordingDraftEnvelope,
@@ -117,13 +118,7 @@ export function ownerRecordingDrafts(
       const parsed = parseRecordingDraft(raw, now);
       if (parsed.status === 'expired') return [];
       if (parsed.status === 'unrecoverable') return [{ symbol: null }];
-      const { envelope } = parsed;
-      const symbol =
-        envelope.activeMode === 'at_entry'
-          ? envelope.atEntry?.symbol
-          : envelope.afterTrade?.values.symbol;
-      const trimmed = symbol?.trim().toUpperCase() ?? '';
-      return [{ symbol: trimmed === '' ? null : trimmed }];
+      return [{ symbol: recordingDraftSymbol(parsed.envelope) }];
     });
   } catch {
     return [];

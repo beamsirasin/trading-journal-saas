@@ -73,30 +73,14 @@ describe('NewTradePage', () => {
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', 'Step 1 of 2');
   });
 
-  it('names the recording mode in the heading on step two: after_trade', async () => {
+  it('gives After Trade the same capture-workspace header as At Entry', async () => {
     await renderPage('after_trade');
 
-    // The heading is the mode, not the flow. "Log a trade" is the eyebrow
-    // above it and must not be the `<h1>` as well.
-    expect(screen.getByRole('heading', { level: 1, name: 'After Trade' })).toBeVisible();
-    expect(
-      screen.queryByRole('heading', { level: 1, name: 'Log a trade' }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Record a closed trade' })).toBeVisible();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-
-    // Same frame as step one, one step further along — the progress bar is
-    // what makes the two steps read as one flow.
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', 'Step 2 of 2');
     expect(screen.getByTestId('create-gate')).toBeVisible();
-
-    // The boxed "Back to Trades" action the form step used to carry is gone;
-    // the shell's two quiet exits replace it.
-    expect(screen.queryByRole('button', { name: 'Back to Trades' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to Trades' })).toHaveAttribute(
-      'href',
-      '/en/app/trades',
-    );
-    expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute('href', '/en/app/trades');
+    expect(screen.getByRole('link', { name: 'Trades' })).toHaveAttribute('href', '/en/app/trades');
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   /**

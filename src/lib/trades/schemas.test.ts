@@ -46,22 +46,13 @@ function baseCreateInput() {
 }
 
 function baseCompletedInput() {
-  const {
-    strategyId: _strategyId,
-    setupId: _setupId,
-    conditionSetToken: _token,
-    ...base
-  } = baseCreateInput();
   return {
-    ...base,
+    mutationKey: uuid1,
+    tradingAccountId: uuid2,
     recordingTiming: 'after_trade' as const,
-    systemPlanBasis: 'price' as const,
-    actualResultBasis: 'price' as const,
-    actualEntry: '1.1000000000',
-    actualInitialStop: '1.0950000000',
-    enteredAt: '2026-08-01T09:00:00Z',
-    exitedAt: '2026-08-01T12:00:00Z',
-    exits: [{ closedBps: 10_000, exitPrice: '1.1100000000' }],
+    recordingContract: 'add_trade_v1' as const,
+    symbol: 'EURUSD',
+    direction: 'long' as const,
   };
 }
 
@@ -220,33 +211,33 @@ describe('trades/schemas — valid input', () => {
     ).toBe(true);
   });
 
-  it('CreateCompletedTradeSchema accepts Price completion without a create-time System result', () => {
+  it('CreateCompletedTradeSchema accepts Save Closed Trade from Account, Symbol and Direction alone', () => {
     const result = CreateCompletedTradeSchema.safeParse(baseCompletedInput());
     expect(result.success).toBe(true);
   });
 
-  it('CreateCompletedTradeSchema accepts Money Plan + Money Actual with partial exits', () => {
-    const {
-      plannedEntry: _entry,
-      plannedStop: _stop,
-      plannedTarget: _target,
-      actualEntry: _actualEntry,
-      actualInitialStop: _actualStop,
-      ...base
-    } = baseCompletedInput();
+  it('accepts every optional After Trade answer, including a sign-contradicting outcome', () => {
     const result = CreateCompletedTradeSchema.safeParse({
-      ...base,
-      systemPlanBasis: 'money',
+      ...baseCompletedInput(),
+      enteredAt: '2026-08-01T09:00:00Z',
+      exitedAt: '2026-08-01T12:00:00Z',
       plannedRiskMinor: '5000',
+      actualRiskAnswer: 'different',
+      targetState: 'fixed',
       plannedRewardMinor: '10000',
-      actualResultBasis: 'money',
-      actualInitialRiskMinor: '5000',
-      finalPnlMinor: '10000',
-      exitHistoryCompleteness: 'complete',
+      targetPrice: '1.1100',
+      exitPlan: { state: 'no_rule' },
+      finalPnlMinor: '-2500',
+      traderOutcome: 'win',
+      exitHistoryCompleteness: 'incomplete',
       exits: [
-        { closedBps: 4000, realizedPnlMinor: '3000', exitedAt: '2026-08-01T11:00:00Z' },
-        { closedBps: 6000, realizedPnlMinor: '7000' },
+        { exitReason: 'Half off at the level' },
+        { exitScope: 'unknown', realizedPnlMinor: '-2500', exitPrice: '1.0980' },
       ],
+      noStrategy: true,
+      confidence: 50,
+      emotionKeys: [],
+      postTradeEmotionKeys: ['calm'],
     });
     expect(result.success).toBe(true);
   });
@@ -254,13 +245,9 @@ describe('trades/schemas — valid input', () => {
   it('normalizes blank historical facts to NULL without converting zero', () => {
     const result = CreateCompletedTradeSchema.safeParse({
       ...baseCompletedInput(),
-      systemPlanBasis: 'price',
-      actualResultBasis: 'money',
-      actualEntry: null,
-      actualInitialStop: null,
-      actualInitialRiskMinor: null,
       enteredAt: '',
       exitedAt: '',
+      plannedRiskMinor: '',
       finalPnlMinor: '0',
       exits: [{ exitScope: 'part', realizedPnlMinor: '' }],
     });
@@ -269,22 +256,20 @@ describe('trades/schemas — valid input', () => {
     expect(result.data).toMatchObject({
       enteredAt: null,
       exitedAt: null,
+      plannedRiskMinor: null,
       finalPnlMinor: 0n,
       exits: [{ exitScope: 'part', realizedPnlMinor: null }],
     });
   });
 
-  it('accepts zero exits and sparse exits, but rejects an empty exit shell', () => {
+  it('accepts zero exits and a reason-only exit, but rejects an empty exit shell', () => {
     expect(
       CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), exits: [] }).success,
     ).toBe(true);
     expect(
       CreateCompletedTradeSchema.safeParse({
         ...baseCompletedInput(),
-        actualResultBasis: 'money',
-        actualEntry: null,
-        actualInitialStop: null,
-        exits: [{ exitScope: null, exitedAt: '2026-08-01T11:00:00Z' }],
+        exits: [{ exitReason: 'Stopped at break-even' }],
       }).success,
     ).toBe(true);
     expect(
@@ -301,22 +286,53 @@ describe('trades/schemas — valid input', () => {
     ).toBe(false);
   });
 
-  it('CreateCompletedTradeSchema rejects At Entry, mixed Actual authority, and unknown fields', () => {
-    expect(
-      CreateCompletedTradeSchema.safeParse({
-        ...baseCompletedInput(),
-        recordingTiming: 'at_entry',
-      }).success,
-    ).toBe(false);
-    expect(
-      CreateCompletedTradeSchema.safeParse({
-        ...baseCompletedInput(),
-        exits: [{ closedBps: 10_000, realizedPnlMinor: '5000' }],
-      }).success,
-    ).toBe(false);
-    expect(
-      CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), workspaceId: uuid3 }).success,
-    ).toBe(false);
+  it('refuses At Entry, the retired result basis, Price authority, and unknown fields', () => {
+    for (const invalid of [
+      { recordingTiming: 'at_entry' },
+      { recordingContract: undefined },
+      { actualResultBasis: 'price' },
+      { systemPlanBasis: 'money' },
+      { actualEntry: '1.1', actualInitialStop: '1.09' },
+      { workspaceId: uuid3 },
+    ]) {
+      expect(
+        CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), ...invalid }).success,
+      ).toBe(false);
+    }
+  });
+
+  it.each([
+    ['a Fixed Target with no representation', { targetState: 'fixed' }, 'targetState'],
+    ['Target values without a Fixed Target', { plannedRewardMinor: '100' }, 'targetState'],
+    ['Matched without a Risk at Entry', { actualRiskAnswer: 'matched' }, 'actualRiskAnswer'],
+    [
+      'an Actual Risk amount without Different',
+      { plannedRiskMinor: '100', actualRiskAnswer: 'unknown', actualInitialRiskMinor: '50' },
+      'actualInitialRiskMinor',
+    ],
+    [
+      'a Different amount equal to Risk at Entry',
+      { plannedRiskMinor: '100', actualRiskAnswer: 'different', actualInitialRiskMinor: '100' },
+      'actualInitialRiskMinor',
+    ],
+    [
+      'an inherited Strategy default Exit Plan',
+      {
+        strategyId: uuid1,
+        exitPlan: { state: 'saved', exitPlanId: uuid2, provenance: 'strategy_default' },
+      },
+      'exitPlan',
+    ],
+    [
+      'completeness with no exits',
+      { exitHistoryCompleteness: 'complete' },
+      'exitHistoryCompleteness',
+    ],
+  ] as const)('refuses %s at the field', (_label, overrides, field) => {
+    const result = CreateCompletedTradeSchema.safeParse({ ...baseCompletedInput(), ...overrides });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.map((issue) => issue.path[0])).toContain(field);
   });
 
   it.each(['money_target', 'money_stop', 'money_break_even'] as const)(

@@ -75,3 +75,29 @@ describe('prepareSetupConditionSnapshots', () => {
     expect(deriveSetupAdherence([{ checkStatus: 'met' }, { checkStatus: 'not_met' }])).toBe(0.5);
   });
 });
+
+describe('"Don’t remember" (contract §8)', () => {
+  const conditions = [
+    { id: 'a', conditionKey: 'k1', label: 'Trend', sortOrder: 0 },
+    { id: 'b', conditionKey: 'k2', label: 'Retest', sortOrder: 1 },
+  ];
+
+  it('is accepted only where it is allowed', () => {
+    const answers = [{ conditionKey: 'k1', status: 'unknown' }];
+    expect(prepareSetupConditionSnapshots(conditions, answers, { allowUnanswered: true })).toEqual({
+      ok: false,
+      code: 'invalid_condition_status',
+    });
+    expect(
+      prepareSetupConditionSnapshots(conditions, answers, {
+        allowUnanswered: true,
+        allowUnknown: true,
+      }),
+    ).toMatchObject({ ok: true, snapshots: [{ conditionKey: 'k1', checkStatus: 'unknown' }] });
+  });
+
+  it('never counts as Not Met in adherence', () => {
+    expect(deriveSetupAdherence([{ checkStatus: 'met' }, { checkStatus: 'unknown' }])).toBe(1);
+    expect(deriveSetupAdherence([{ checkStatus: 'unknown' }])).toBeNull();
+  });
+});
