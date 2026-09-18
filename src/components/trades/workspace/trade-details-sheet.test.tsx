@@ -225,6 +225,25 @@ describe('Trade Details — the six tabs', () => {
     expect(screen.getByRole('tab', { name: 'Chart' })).toBeInTheDocument();
   });
 
+  /*
+    PROVENANCE ON THE LIVE RECORD (contract §28, Phase 15G.5C). The disclosure
+    was lost when the five-section Trade Detail was retired; a Trade whose
+    entry context was recorded after the outcome was known says so, once, on
+    the Plan tab that holds that context — and a normal Trade says nothing.
+  */
+  it('discloses retrospective recording on the Plan tab, and only for such a Trade', () => {
+    const { unmount } = renderSheet({ recordedRetrospectively: true }, 'plan');
+    const disclosure = document.body.querySelectorAll('[data-recorded-retrospectively]');
+    expect(disclosure).toHaveLength(1);
+    expect(disclosure[0]).toHaveTextContent('Recorded retrospectively');
+    expect(disclosure[0]).toHaveClass('text-muted-foreground');
+    unmount();
+
+    renderSheet({ recordedRetrospectively: false }, 'plan');
+    expect(document.body.querySelector('[data-recorded-retrospectively]')).toBeNull();
+    expect(screen.queryByText('Recorded retrospectively')).toBeNull();
+  });
+
   it('opens on the tab the URL asked for', () => {
     renderSheet({}, 'review');
     expect(screen.getByRole('tab', { name: 'Review', selected: true })).toBeInTheDocument();

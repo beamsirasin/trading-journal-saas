@@ -52,6 +52,18 @@ export function TradePlanPanel({
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
+      {/*
+        PROVENANCE, STATED ONCE (contract §28, Phase 15G.5C). The entry
+        context on this tab was recorded after the outcome was known, and the
+        trader reading it should know that. Informational, not a warning:
+        recording retrospectively is legitimate, it is only never the same
+        evidence as a note written at entry.
+      */}
+      {trade.recordedRetrospectively ? (
+        <p data-recorded-retrospectively="" className="text-muted-foreground text-xs">
+          {tTrades('lifecycle.reflection.recordedRetrospectively')}
+        </p>
+      ) : null}
       <PanelSection title={t('groups.classification')}>
         {trade.strategyName === null ? (
           <div className="flex flex-col gap-3">

@@ -992,14 +992,10 @@ Implementation evidence only, recorded so redesign and migration work can find t
 - Setup condition checks store only Met / Not Met, exit rows cannot be reason-only, and no
   observation origin is stored for psychology, Strategy, Setup, conditions or Exit Plan (§4,
   §12.7–§12.9).
-- **Retrospective recording is no longer disclosed on a Trade record (contract §28, Phase 15G.5C).**
-  `recordedRetrospectively` is still derived by the DAL and carried on the Trade, but the only
-  surface that ever showed it was the retired five-section Trade Detail
-  (`src/components/trades/trade-entry-section.tsx`, unwired since the Trades workspace rebuilt the
-  record as a six-tab Details sheet). A trader can no longer see that a Trade's entry context was
-  recorded after the outcome was known. The capture-origin columns migration 0022 enforces
-  (`*_origin`, `entered_at_source`) have no record-surface presentation either. Its browser test
-  (`e2e/trades.spec.ts`, "discloses retrospective recording once at Entry Snapshot level") is left
-  failing rather than rewritten to match the gap.
+- **Capture origin has no record-surface presentation.** The capture-origin columns migration 0022
+  enforces (`*_origin`, `entered_at_source`) are stored but not shown on a Trade record. The
+  whole-Trade "Recorded retrospectively" disclosure (contract §28, Phase 15G.5C) was lost when the
+  five-section Trade Detail was retired and was restored on the Trade Details Plan tab on
+  2026-09-18.
 - Timestamp fields use native date-time inputs (§8.5 — acceptable only if they meet the timezone,
   clearing and accessibility rules).
