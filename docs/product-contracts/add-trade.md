@@ -4,7 +4,11 @@
 > TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
 > final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
-> decisions 24–37 and pre-design decisions 38–40 are recorded in the [Decision log](#decision-log).
+> decisions 24–37, pre-design decisions 38–40 and Review / System Assessment decisions 41–49 are
+> recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
+> contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
+> 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
+> place.
 >
 > **Authority:** where [`docs/UX_RULES.md`](../UX_RULES.md), `CLAUDE.md`, canonical technical
 > documentation (such as `docs/calculation-spec.md`, `docs/data-dictionary.md` or
@@ -363,6 +367,8 @@ Conceptual mapping:
 `Not Applicable` ยังคงเป็น state ที่ valid
 
 `Not Checked` / Unanswered ห้ามถูกนับเป็น violation
+
+**Amended 2026-09-20 (decisions 41–42):** rule-check answers are **Unanswered** (no Review answer), **Followed**, **Violated**, **Not Applicable**, **Not Checked** (the trader explicitly did not check or apply the rule at the time) and **Unknown** (the trader cannot remember or determine what happened). Unanswered, Not Checked and Unknown are distinct and never collapsed, and only Violated is a violation. A historical `not_checked` on an Add Trade v1 row created before this state model is read as Unanswered, because it may have been a system default; legacy rows keep their historical Not Checked with legacy provenance. See [Review & System Assessment §5](review-system-assessment.md#5-rule-check-semantics).
 
 Exit Plan Adherence (§18) เป็น trade-level summary และอยู่ร่วมกับ granular exit-rule checks ได้ แต่ห้ามกลายเป็นคำตอบที่แข่งกันสำหรับคำถามเดียวกัน
 
@@ -763,12 +769,17 @@ Exit Plan Adherence เป็นแกนแยกจาก System Result แล
 - Followed
 - Partly
 - Not Followed
+- Unknown / Cannot Determine — trader ตัดสินไม่ได้ว่าทำตามหรือไม่ (amended 2026-09-20, decision 44)
 - Not Applicable — เฉพาะเมื่อ Trade มี Exit Plan เป็น `No Defined Exit Rule` อย่าง explicit
 - Not Answered
 
 ถ้า Exit Plan เป็นเพียง `Not recorded` ห้าม infer `Not Applicable` adherence ยังคงเป็น Not Answered จนกว่า trader จะตอบ
 
 แสดงได้ทั้งใน Discipline และ System Assessment แต่ห้ามเก็บเป็นคำตอบซ้ำสองชุด
+
+Exit Plan ที่ Not recorded หรือ recalled ไม่ได้ทำให้คำตอบเป็น Unknown อัตโนมัติ ถ้า trader ยังตัดสินได้ก็ตอบได้
+
+**Commit concurrency (decision 45):** the one adherence field may be committed by Finish Review or by Confirm / Update System Assessment. There is no silent last-write-wins: a commit whose starting value has since changed shows the latest saved answer and the draft answer, and only an explicit Replace overwrites the newer saved value. See [Review & System Assessment §7.3](review-system-assessment.md#73-adherence-concurrency).
 
 Entry Discipline และ Risk Discipline เป็นแกนแยกต่างหาก
 
@@ -901,11 +912,12 @@ Review แบ่ง conceptually เป็น:
 
 ## Reflection
 
-- What happened?
 - What would you repeat?
 - What would you change?
 
-`Reviewed — nothing else to add` เป็น valid completion
+ทั้งสองข้อเป็น optional การกด Finish Review โดยเว้นว่างทั้งสองข้อคือ `Reviewed — nothing else to add` ซึ่งเป็น valid completion และไม่ต้องเก็บค่าแยก
+
+**Amended 2026-09-20 (decision 43):** "What happened?" is removed. Capture is authoritative for what happened, and Review never asks the trader to narrate Capture again.
 
 ## Discipline / Behavior
 
@@ -1126,7 +1138,7 @@ Denominator ใช้เฉพาะ eligible canonical System Results และ
 - No Trade
 - Cannot Determine
 - assessment ที่ stale / Needs Review จนกว่าจะ reconfirm
-- gross-only result ที่ไม่ eligible สำหรับ canonical comparable metric
+- gross-only result — ทุก gross-only result ถูก exclude จาก canonical aggregate System metrics ใน v1 (System Positive Rate, System Result Distribution, System R aggregates, Execution Gap และ net / comparable aggregate อื่น) แต่ยังเก็บ แสดงบน Trade และรายงานเป็น coverage ห้ามปน gross-only กับ net / comparable (clarified 2026-09-20, decision 47)
 - legacy System results (§28)
 
 record ที่ถูก exclude ต้องแสดงเป็น coverage อย่างซื่อสัตย์ ห้ามนับเป็น Negative โดยเงียบ ๆ
@@ -1364,7 +1376,8 @@ Analytics decisions, 2026-09-14 (items 22–23):
     Result buckets are Positive (> 0), Flat (= 0) and Negative (< 0) with no ±0.05R tolerance; an
     exit mechanism such as a break-even rule is separate from the bucket. The rate uses only
     eligible canonical System Results, excluding No Trade, Cannot Determine, stale assessments until
-    reconfirmed, ineligible gross-only results and legacy results, with coverage reported honestly.
+    reconfirmed, gross-only results (every gross-only result in v1 — decision 47) and legacy results,
+    with coverage reported honestly.
     (§16, §25)
 23. **Trader Win Rate and legacy outcomes** — canonical Trader Win Rate uses only trader-selected
     Trader Outcomes; legacy-derived outcomes stay stored, visible and provenance-marked but are
@@ -1435,3 +1448,39 @@ Pre-design semantics decisions, 2026-09-15 (items 38–40):
     values do; hidden mode-specific data is kept but never treated as confirmed. Draft
     preservation preserves user work, not unconfirmed system assumptions. Refines item 29.
     (§23)
+
+Review & System Assessment decisions, 2026-09-20 (items 41–49). Defined in full in
+[Review & System Assessment](review-system-assessment.md):
+
+41. **Rule-check answers** — Unanswered, Followed, Violated, Not Applicable, Not Checked (explicitly
+    not checked at the time) and Unknown (cannot remember or determine) are distinct; only Violated
+    is a violation. Amends §8.
+42. **Historical `not_checked`** — on an Add Trade v1 row created before the new rule-check model it
+    is read as Unanswered, because it may have been a system default; no explicit answer is
+    manufactured. Legacy rows keep their historical Not Checked. Amends §8.
+43. **Reflection** — _What would you repeat?_ and _What would you change?_, both optional; Finish
+    Review with both blank is a valid explicit completion and no separate "nothing to add" value is
+    stored. "What happened?" is removed because Capture is authoritative for it. Amends §21.
+44. **Exit Plan Adherence Unknown** — Unknown / Cannot Determine joins Followed / Partly / Not
+    Followed / Not Answered, and Not Applicable remains only for No Defined Exit Rule. A recalled or
+    unrecorded plan does not make the answer Unknown automatically. Amends §18.
+45. **Adherence concurrency** — the one adherence field is committed by Finish Review or Confirm /
+    Update System Assessment under an optimistic check on that field; a changed base shows the latest
+    saved and draft answers, and only an explicit Replace overwrites. Amends §18.
+46. **System Result helpers** — _Use −1R / −Risk at Entry_ and _Use my Target Profit_ fill only the
+    chosen basis (Money or R) where Capture supports it, on an explicit click; they never confirm,
+    never decide Net vs Gross only, and never use Price. Elaborates §15.
+47. **Gross-only results** — every gross-only System Result is excluded from every canonical
+    aggregate System metric in v1 and reported as coverage; gross-only and net populations never mix.
+    Resolves the "ineligible gross-only" wording of §25 and decision 22.
+48. **Drafts, confirmation and corrections** — the Review Draft and the System Assessment Draft are
+    browser-local until Finish / Confirm; System Assessment is confirmed independently of Finish
+    Review, and only a confirmed finding is canonical or can become Needs Review; mistakes have an
+    explicit _No mistake identified_; missing Capture evidence is added from Review only as a Capture
+    correction with revision metadata; a later Capture change shows _Changed since your last Review_
+    and creates no second stale state. Elaborates §14, §20–§23.
+49. **Provenance and legacy** — confirmed assessments count in canonical System analytics whatever
+    their rule provenance, with provenance preserved and reported as coverage, recalled evidence
+    never called verified, and Q5 kept as a trader claim beside Capture origin; legacy notes never
+    imply Reviewed, legacy closed Trades get no new Review attention, and no new legacy System
+    resolutions are made once canonical System Assessment ships. Elaborates §7, §15, §28.

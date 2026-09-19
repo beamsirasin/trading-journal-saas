@@ -4,9 +4,10 @@ A Product Contract records **approved intended product behaviour and semantics**
 domain. It describes product intent rather than implementation detail, and it may describe behaviour
 the code does not implement yet.
 
-| Contract                  | Domain                                                                                                                            | Status                   |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| [Add Trade](add-trade.md) | At Entry, After Trade, Partial / Final Close, Review, System Assessment, and related Strategy / Psychology / Discipline semantics | Approved v1 (2026-09-14) |
+| Contract                                                  | Domain                                                                                                                                                                                 | Status                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| [Add Trade](add-trade.md)                                 | At Entry, After Trade, Partial / Final Close, Review, System Assessment, and related Strategy / Psychology / Discipline semantics                                                      | Approved v1 (2026-09-14) |
+| [Review & System Assessment](review-system-assessment.md) | Trade Review lifecycle and drafts, reflection, rule checks, mistakes, Exit Plan Adherence, System Assessment, System Result and its analytics — elaborates Add Trade §14–§22, §25, §28 | Approved v1 (2026-09-20) |
 
 ## Documentation precedence
 

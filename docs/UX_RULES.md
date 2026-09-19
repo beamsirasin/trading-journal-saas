@@ -29,7 +29,9 @@
 > [Add Trade](product-contracts/add-trade.md) (v1), so the detailed rules cover At Entry, After
 > Trade, Partial / Final Close, Review, System Assessment and the analytics that read them. The
 > general rules (§1–§10, §15–§19) apply to every TradeChemist surface unless a later approved
-> contract says otherwise.
+> contract says otherwise. Review and System Assessment additionally follow the
+> [Review & System Assessment contract](product-contracts/review-system-assessment.md) (v1,
+> 2026-09-20), which elaborates the Add Trade contract; its decisions 41–49 are applied in §14–§15.
 >
 > **Sources, in precedence order:** (1) the approved Add Trade Product Contract; (2) `CLAUDE.md` and
 > the governing technical documents; (3) the reconstructed prototype behaviour
@@ -661,7 +663,9 @@ a state showing that it is still only a default until the trader confirms or cha
 4. **No completion percentage.** Reviewed never requires a note, a mistake, a Strategy or a System
    Assessment _(contract §21)_.
 5. **Reviewed is an explicit trader action (Finish)** _(contract §20–§21)_.
-   - "Reviewed — nothing else to add" is a valid completion.
+   - "Reviewed — nothing else to add" is a valid completion: Finish with both reflection prompts
+     (_What would you repeat?_, _What would you change?_) blank. No separate value is stored, and
+     Review never asks "What happened?" _(decision 43)_.
    - A Reviewed Trade never returns to Not Reviewed, and the interface offers no "mark as not
      reviewed" action.
    - A Review can be reopened and edited, then Finished again, which updates review completion
@@ -684,11 +688,16 @@ a state showing that it is still only a default until the trader confirms or cha
      the System Result in Money or R.
    - Price is never used to fill it _(contract §5, §15)_.
 8. **One Exit Plan Adherence answer** _(contract §18)_.
-   - It appears in both Discipline and System Assessment as the same field. An edit in one place
-     shows immediately in the other, and the interface never offers two answers that could
+   - It appears in both Discipline and System Assessment as the same field. The committed answer
+     shows in both places, and the interface never offers two committed answers that could
      disagree.
-   - Answers are Followed / Partly / Not Followed / Not Answered, plus **Not Applicable** only when
-     the Trade explicitly has No Defined Exit Rule.
+   - Answers are Followed / Partly / Not Followed / Unknown / Not Answered, plus **Not Applicable**
+     only when the Trade explicitly has No Defined Exit Rule _(decision 44)_. A recalled or
+     unrecorded plan does not make the answer Unknown automatically.
+   - Finish Review and Confirm System Assessment both commit it. If the saved answer changed since a
+     draft began editing it, the commit stops and shows the latest saved answer and the draft
+     answer with **Use latest saved answer**, **Replace with my draft answer** and **Go back**;
+     only Replace overwrites _(decision 45)_.
    - When the Exit Plan is merely Not recorded, Not Applicable is never inferred; adherence stays
      Not Answered until the trader answers.
 9. **System vs Actual shows System R, Actual R and Difference.**
@@ -720,8 +729,8 @@ a state showing that it is still only a default until the trader confirms or cha
 3. **System Positive Rate** _(contract §16, §25)_:
    - It is Positive ÷ eligible canonical System Results.
    - It excludes Not Assessed, No Trade, Cannot Determine, Needs Review (until reconfirmed),
-     ineligible gross-only and legacy results. The exclusions are shown as coverage, never as
-     Negative.
+     gross-only (every gross-only result in v1, _decision 47_) and legacy results. The exclusions
+     are shown as coverage, never as Negative.
    - Positive / Flat / Negative may be shown as a distribution and never labelled Win / Loss / BE.
 4. **Canonical and legacy never mix silently.**
    - Legacy R, legacy outcomes and Price-mode results may appear on historical Trades with their
