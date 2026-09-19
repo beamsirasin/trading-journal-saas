@@ -2496,6 +2496,20 @@
               "notes": "Trade notes",
               "market": "Market context",
               "price": "Price levels"
+            },
+            "optional": "Optional",
+            "required": "Required",
+            "requiredMissing": "{count, plural, one {# required field missing} other {# required fields missing}}",
+            "quickSave": "Save now",
+            "quickSaveHint": "You can add the rest later.",
+            "cards": {
+              "identity": "What you traded",
+              "timing": "When you entered",
+              "risk": "Risk",
+              "strategy": "Strategy and setup",
+              "mindset": "Entry mindset",
+              "afterTrade": "After the trade",
+              "thesis": "Why you took it"
             }
           }
         }

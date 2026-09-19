@@ -73,7 +73,6 @@ import {
   InlineAction,
   Legend,
   Notice,
-  RequirementRow,
   SelectField,
   StateText,
   Tag,
@@ -112,6 +111,13 @@ const LAST_STEP = STEPS.length - 1;
 
 /** The step that shows a field — where a failed Save goes to reach it. */
 function fieldStep(field: AfterTradeField): number {
+  /*
+    The final exit time is read on the Result step: it says how the trade
+    ended, not which trade it was. `afterTradeFieldSection` still groups it
+    with the trade — that grouping belongs to the draft module and to Save's
+    own disclosure handling, and is not this step map.
+  */
+  if (field === 'exitedAt') return STEP_INDEX.result;
   switch (afterTradeFieldSection(field)) {
     case 'result':
     case 'exits':
@@ -261,6 +267,7 @@ export function TradeAfterTradeForm({
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
+  const cx = useTranslations('trades.create.recording.contractEntry.context');
   const r = useTranslations('trades.create.replay');
   const locale = useLocale();
   const router = useRouter();
@@ -791,6 +798,19 @@ export function TradeAfterTradeForm({
     context: joinParts(analysisLines),
     details: contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
   };
+  const missingRequirements = requirements.filter(
+    (item) => !item.done || visibleErrors[item.field] !== undefined,
+  );
+  /*
+    QUICK SAVE. Account, Symbol and Direction are everything Save needs, so
+    once they are answered the trader can stop here — from any step. It is the
+    SAME `submit()`: the same validation, the same inactive-mode confirmation,
+    the same Save key and replay handling, the same server confirmation and
+    draft clearing, and it saves the whole current draft, including answers on
+    steps the trader never walked back to. It stays a quiet secondary action;
+    Next remains the step's primary one.
+  */
+  const canQuickSave = missingRequirements.length === 0 && !pending;
   const stepLabel = (key: StepKey) => a(`steps.${key}.label`);
   const currentKey = STEPS[step] ?? 'trade';
   const onLastStep = step === LAST_STEP;
@@ -841,17 +861,25 @@ export function TradeAfterTradeForm({
                   >
                     {stepLabel(key)}
                   </span>
-                  {/* A step with nothing in it says nothing, rather than saying so five times. */}
-                  {errors === 0 && line === null ? null : (
-                    <span
-                      className={cn(
-                        'block truncate text-xs',
-                        errors > 0 ? 'text-destructive' : 'text-muted-foreground',
-                      )}
-                    >
-                      {errors > 0 ? a('steps.needsAttention') : line}
-                    </span>
-                  )}
+                  {/*
+                    AN UNANSWERED OPTIONAL STEP IS OPTIONAL, NOT UNFINISHED.
+                    Everything but the trade's identity can be left alone and
+                    still saved, so an untouched step reads "Optional" rather
+                    than as work outstanding. Step 1 says what is still needed
+                    instead, because that is the only step that needs anything.
+                  */}
+                  <span
+                    className={cn(
+                      'block truncate text-xs',
+                      errors > 0 ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                  >
+                    {errors > 0
+                      ? a('steps.needsAttention')
+                      : key === 'trade' && missingRequirements.length > 0
+                        ? a('steps.requiredMissing', { count: missingRequirements.length })
+                        : (line ?? a('steps.optional'))}
+                  </span>
                 </span>
               </button>
             </li>
@@ -900,15 +928,61 @@ export function TradeAfterTradeForm({
     </nav>
   );
 
+  /** One emotion question, folded to its answer until the trader opens it. */
+  const emotionQuestion = (phase: EmotionPhase) => {
+    const answer = draft[phase];
+    const legend = phase === 'emotions' ? a('emotions.entryLegend') : a('emotions.postLegend');
+    return (
+      <Disclosure
+        id={`after-${phase}-toggle`}
+        title={legend}
+        summary={
+          answer.answer === 'selected'
+            ? answer.keys.map((key) => t(`emotions.${key}`)).join(', ')
+            : answer.answer === 'none'
+              ? c('emotions.none')
+              : c('notAnswered')
+        }
+        open={emotionsOpen[phase]}
+        onToggle={() => setEmotionsOpen((current) => ({ ...current, [phase]: !current[phase] }))}
+      >
+        <EmotionFields
+          phase={phase}
+          answer={answer}
+          legend={legend}
+          hint={phase === 'postTradeEmotions' ? a('emotions.postHint') : undefined}
+          removeAria={
+            phase === 'emotions' ? c('emotions.removeAria') : a('emotions.removePostAria')
+          }
+          catalog={options.emotionCatalog}
+          showLastOneHint={emotionHint === phase}
+          onToggle={(key) => {
+            if (!canDeselectEmotion(draft[phase], key)) {
+              setEmotionHint(phase);
+              return;
+            }
+            setEmotionHint(null);
+            apply((current) => toggleEmotion(current, phase, key));
+          }}
+          onNone={() => {
+            setEmotionHint(null);
+            apply((current) => answerNoEmotions(current, phase));
+          }}
+          onRemove={() => {
+            setEmotionHint(null);
+            apply((current) => removeEmotionsAnswer(current, phase));
+          }}
+        />
+      </Disclosure>
+    );
+  };
+
   const stepAttention = stepErrorCounts[step] ?? 0;
   /** The steps a Save would stop on, named so the last step can point at them. */
   const attentionSteps = STEPS.map((key) => ({
     key,
     errors: stepErrorCounts[STEP_INDEX[key]] ?? 0,
   })).filter((item) => item.errors > 0);
-  const missingRequirements = requirements.filter(
-    (item) => !item.done || visibleErrors[item.field] !== undefined,
-  );
 
   const section = (key: StepKey, className: string, children: ReactNode) => (
     <section
@@ -1011,89 +1085,99 @@ export function TradeAfterTradeForm({
             )}
           </header>
 
-          {/* 1 — THE TRADE */}
+          {/* 1 — THE TRADE: account, what was traded, when it was entered */}
           {section(
             'trade',
-            'gap-5',
+            'gap-4',
             <>
-              {accountPickerOpen || selectedAccount === undefined ? (
-                <SelectField
-                  id="after-account"
-                  label={c('account.label')}
-                  value={draft.tradingAccountId}
-                  error={errorText('tradingAccountId')}
-                  onChange={(tradingAccountId) =>
-                    apply((current) => ({ ...current, tradingAccountId }))
-                  }
-                  options={[
-                    { value: '', label: c('account.choose') },
-                    ...options.tradingAccounts.map((account) => ({
-                      value: account.tradingAccountId,
-                      label: `${account.name} · ${account.baseCurrency}`,
-                    })),
-                  ]}
-                />
-              ) : (
-                <div
-                  data-account-context=""
-                  className="bg-muted/40 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-md px-3 py-2"
-                >
-                  <p className="min-w-0 text-sm break-words">
-                    <span className="text-muted-foreground">{c('account.label')} </span>
-                    <span className="text-foreground font-semibold">{selectedAccount.name}</span>
-                    <span className="text-muted-foreground"> · {selectedAccount.baseCurrency}</span>
-                  </p>
-                  <InlineAction
-                    ariaLabel={c('account.changeAria')}
-                    onClick={() => setAccountPickerOpen(true)}
-                  >
-                    {c('account.change')}
-                  </InlineAction>
-                </div>
-              )}
-
-              <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
-                <div className="flex min-w-0 flex-col gap-2">
-                  <TextField
-                    id="after-symbol"
-                    label={c('symbol.label')}
-                    value={draft.symbol}
-                    onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
-                    placeholder={c('symbol.placeholder')}
-                    autoCapitalize="characters"
-                    error={errorText('symbol')}
+              <GroupCard title={c('account.label')} aside={<RequiredTag />}>
+                {accountPickerOpen || selectedAccount === undefined ? (
+                  <SelectField
+                    id="after-account"
+                    label={c('account.label')}
+                    value={draft.tradingAccountId}
+                    error={errorText('tradingAccountId')}
+                    onChange={(tradingAccountId) =>
+                      apply((current) => ({ ...current, tradingAccountId }))
+                    }
+                    options={[
+                      { value: '', label: c('account.choose') },
+                      ...options.tradingAccounts.map((account) => ({
+                        value: account.tradingAccountId,
+                        label: `${account.name} · ${account.baseCurrency}`,
+                      })),
+                    ]}
                   />
-                  {recentSymbols.length === 0 ? null : (
-                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
-                      {recentSymbols.map((symbol) => (
-                        <InlineAction
-                          key={symbol}
-                          ariaLabel={c('symbol.useRecent', { symbol })}
-                          onClick={() => apply((current) => ({ ...current, symbol }))}
-                        >
-                          {symbol}
-                        </InlineAction>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <ChoiceGroup
-                  idPrefix="after-direction"
-                  legend={c('direction.label')}
-                  value={draft.direction === '' ? null : draft.direction}
-                  compact
-                  fit="row"
-                  error={errorText('direction')}
-                  onChange={(direction) => apply((current) => ({ ...current, direction }))}
-                  options={[
-                    { value: 'long', label: c('direction.long') },
-                    { value: 'short', label: c('direction.short') },
-                  ]}
-                />
-              </div>
+                ) : (
+                  <div
+                    data-account-context=""
+                    className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+                  >
+                    <p className="min-w-0 text-sm break-words">
+                      <span className="text-foreground font-semibold">{selectedAccount.name}</span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        · {selectedAccount.baseCurrency}
+                      </span>
+                    </p>
+                    <InlineAction
+                      ariaLabel={c('account.changeAria')}
+                      onClick={() => setAccountPickerOpen(true)}
+                    >
+                      {c('account.change')}
+                    </InlineAction>
+                  </div>
+                )}
+              </GroupCard>
 
-              <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
+              <GroupCard title={a('steps.cards.identity')} aside={<RequiredTag />}>
+                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <TextField
+                      id="after-symbol"
+                      label={c('symbol.label')}
+                      value={draft.symbol}
+                      onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
+                      placeholder={c('symbol.placeholder')}
+                      autoCapitalize="characters"
+                      error={errorText('symbol')}
+                    />
+                    {recentSymbols.length === 0 ? null : (
+                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                        <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
+                        {recentSymbols.map((symbol) => (
+                          <InlineAction
+                            key={symbol}
+                            ariaLabel={c('symbol.useRecent', { symbol })}
+                            onClick={() => apply((current) => ({ ...current, symbol }))}
+                          >
+                            {symbol}
+                          </InlineAction>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <ChoiceGroup
+                    idPrefix="after-direction"
+                    legend={c('direction.label')}
+                    value={draft.direction === '' ? null : draft.direction}
+                    compact
+                    fit="row"
+                    error={errorText('direction')}
+                    onChange={(direction) => apply((current) => ({ ...current, direction }))}
+                    options={[
+                      { value: 'long', label: c('direction.long') },
+                      { value: 'short', label: c('direction.short') },
+                    ]}
+                  />
+                </div>
+              </GroupCard>
+
+              {/* The final exit time belongs to how the trade ended — Step 2. */}
+              <GroupCard
+                title={a('steps.cards.timing')}
+                aside={<StateText>{a('steps.optional')}</StateText>}
+              >
                 <TimeField
                   id="after-enteredAt"
                   label={a('times.entry')}
@@ -1101,47 +1185,42 @@ export function TradeAfterTradeForm({
                   error={errorText('enteredAt')}
                   onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
                 />
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <TimeField
-                    id="after-exitedAt"
-                    label={a('times.exit')}
-                    value={draft.exitedAt}
-                    error={errorText('exitedAt')}
-                    onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-                  />
-                  {latestExitLocal === null ? null : (
-                    <div>
-                      <InlineAction
-                        onClick={() =>
-                          apply((current) => ({ ...current, exitedAt: latestExitLocal.local }))
-                        }
-                      >
-                        {a('times.useLatestExit', {
-                          time:
-                            formatTradeInstant(
-                              new Date(latestExitLocal.time).toISOString(),
-                              timezone,
-                              locale,
-                            ) ?? latestExitLocal.local,
-                        })}
-                      </InlineAction>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <Helper>{a('times.hint', { timezone })}</Helper>
+                <Helper>{a('times.hint', { timezone })}</Helper>
+              </GroupCard>
             </>,
           )}
 
           {/* 2 — WHAT HAPPENED: the moment's question, and the strongest step */}
           {section(
             'result',
-            'gap-6',
+            'gap-4',
             <>
-              <div
-                data-result-panel=""
-                className="border-border bg-muted/30 flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:p-5"
-              >
+              <GroupCard filled data-result-panel="">
+                <TimeField
+                  id="after-exitedAt"
+                  label={a('times.exit')}
+                  value={draft.exitedAt}
+                  error={errorText('exitedAt')}
+                  onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
+                />
+                {latestExitLocal === null ? null : (
+                  <div className="-mt-2">
+                    <InlineAction
+                      onClick={() =>
+                        apply((current) => ({ ...current, exitedAt: latestExitLocal.local }))
+                      }
+                    >
+                      {a('times.useLatestExit', {
+                        time:
+                          formatTradeInstant(
+                            new Date(latestExitLocal.time).toISOString(),
+                            timezone,
+                            locale,
+                          ) ?? latestExitLocal.local,
+                      })}
+                    </InlineAction>
+                  </div>
+                )}
                 <TextField
                   id="after-finalPnl"
                   label={a('result.finalPnl')}
@@ -1156,9 +1235,9 @@ export function TradeAfterTradeForm({
                 />
                 {/*
                   ACTUAL R IS DERIVED, AND READS LIKE IT. It is not another
-                  field: it is what the two figures above it come to, so it
-                  carries the panel's largest number when it has one and says
-                  plainly what is still missing when it does not.
+                  field: it is what the figures above it come to, so it carries
+                  the group's largest number when it has one and says plainly
+                  what is still missing when it does not. Never a fabricated 0R.
                 */}
                 <div
                   data-actual-r={validation.actualR.status}
@@ -1180,24 +1259,30 @@ export function TradeAfterTradeForm({
                     </p>
                   )}
                 </div>
-              </div>
+              </GroupCard>
 
-              <div className="flex min-w-0 flex-col gap-2">
-                <ChoiceGroup
-                  idPrefix="after-outcome"
-                  legend={a('result.outcome')}
-                  value={draft.outcome}
-                  status={c('notAnswered')}
-                  columns={3}
-                  fit="row"
-                  aside={
+              <GroupCard
+                title={a('result.outcome')}
+                aside={
+                  draft.outcome === null ? (
+                    <StateText>{c('notAnswered')}</StateText>
+                  ) : (
                     <InlineAction
                       ariaLabel={a('result.removeOutcomeAria')}
                       onClick={() => apply((current) => setOutcome(current, null))}
                     >
                       {c('removeAnswer')}
                     </InlineAction>
-                  }
+                  )
+                }
+              >
+                <ChoiceGroup
+                  idPrefix="after-outcome"
+                  legend={a('result.outcome')}
+                  hideLegend
+                  value={draft.outcome}
+                  columns={3}
+                  fit="row"
                   onChange={(outcome: OutcomeValue) =>
                     apply((current) => setOutcome(current, outcome))
                   }
@@ -1213,184 +1298,200 @@ export function TradeAfterTradeForm({
                     {draft.outcome === 'win' ? a('result.winNegative') : a('result.lossPositive')}
                   </Notice>
                 )}
-              </div>
+              </GroupCard>
 
               {/* Exit history: optional supporting evidence, never the result */}
-              <div className="border-border min-w-0 rounded-lg border px-1 py-1 sm:px-1.5">
-                <Disclosure
-                  id="after-exits-toggle"
-                  title={a('sections.exits')}
-                  summary={
-                    exitErrorCount > 0 ? (
-                      <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                        <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                        {c('summary.hasErrors', { count: exitErrorCount })}
-                      </span>
-                    ) : recordedExits.length === 0 ? (
-                      a('exits.summaryEmpty')
-                    ) : (
-                      a('exits.summaryCount', { count: recordedExits.length })
-                    )
+              <FoldedGroup
+                id="after-exits-toggle"
+                title={a('sections.exits')}
+                summary={
+                  exitErrorCount > 0 ? (
+                    <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
+                      <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                      {c('summary.hasErrors', { count: exitErrorCount })}
+                    </span>
+                  ) : recordedExits.length === 0 ? (
+                    a('exits.summaryEmpty')
+                  ) : (
+                    a('exits.summaryCount', { count: recordedExits.length })
+                  )
+                }
+                open={exitsOpen || exitErrorCount > 0}
+                onToggle={() => setExitsOpen((open) => !open)}
+              >
+                <ExitHistoryFields
+                  draft={draft}
+                  currency={currency}
+                  errorText={errorText}
+                  subtotal={validation.exitSubtotalMinor}
+                  canAdopt={validation.canAdoptExitSubtotal}
+                  discrepancy={
+                    discrepancy?.kind === 'exit_discrepancy'
+                      ? {
+                          subtotal: formatMoney(discrepancy.subtotalMinor),
+                          final: formatMoney(discrepancy.finalPnlMinor),
+                        }
+                      : null
                   }
-                  open={exitsOpen}
-                  onToggle={() => setExitsOpen((open) => !open)}
-                >
-                  <ExitHistoryFields
-                    draft={draft}
-                    currency={currency}
-                    errorText={errorText}
-                    subtotal={validation.exitSubtotalMinor}
-                    canAdopt={validation.canAdoptExitSubtotal}
-                    discrepancy={
-                      discrepancy?.kind === 'exit_discrepancy'
-                        ? {
-                            subtotal: formatMoney(discrepancy.subtotalMinor),
-                            final: formatMoney(discrepancy.finalPnlMinor),
-                          }
-                        : null
-                    }
-                    adoptedMessage={adoptedMessage}
-                    formatMoney={formatMoney}
-                    onAdd={() => apply((current) => addExit(current, generateId()))}
-                    onRemove={(id) => apply((current) => removeExit(current, id))}
-                    onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
-                    onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
-                    onAdopt={() => {
-                      if (validation.exitSubtotalMinor === null) return;
-                      const amount = formatMoney(validation.exitSubtotalMinor);
-                      setDraft((current) =>
-                        adoptExitSubtotal(current, validation, (minor) =>
-                          tradeMoneyInputValue(minor, currency),
-                        ),
-                      );
-                      setServerMessage(null);
-                      setAdoptedMessage(a('exits.adopted', { amount }));
-                    }}
-                  />
-                </Disclosure>
-              </div>
+                  adoptedMessage={adoptedMessage}
+                  formatMoney={formatMoney}
+                  onAdd={() => apply((current) => addExit(current, generateId()))}
+                  onRemove={(id) => apply((current) => removeExit(current, id))}
+                  onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+                  onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+                  onAdopt={() => {
+                    if (validation.exitSubtotalMinor === null) return;
+                    const amount = formatMoney(validation.exitSubtotalMinor);
+                    setDraft((current) =>
+                      adoptExitSubtotal(current, validation, (minor) =>
+                        tradeMoneyInputValue(minor, currency),
+                      ),
+                    );
+                    setServerMessage(null);
+                    setAdoptedMessage(a('exits.adopted', { amount }));
+                  }}
+                />
+              </FoldedGroup>
             </>,
           )}
 
           {/* 3 — RISK AND PLAN AT ENTRY, as remembered */}
           {section(
             'plan',
-            'gap-6',
+            'gap-4',
             <>
-              <TextField
-                id="after-risk"
-                label={a('risk.label')}
-                value={draft.risk}
-                onChange={(risk) => apply((current) => ({ ...current, risk }))}
-                suffix={currency}
-                inputMode="decimal"
-                figure
-                hint={a('risk.hint')}
-                error={errorText('risk')}
-              />
-              <div className="flex min-w-0 flex-col gap-3">
-                <ChoiceGroup
-                  idPrefix="after-actual-risk"
-                  legend={a('actualRisk.legend')}
-                  value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
-                  status={c('notAnswered')}
-                  columns={3}
-                  compact
-                  fit="split"
-                  error={
-                    draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
-                  }
-                  aside={
-                    <InlineAction
-                      ariaLabel={a('actualRisk.removeAria')}
-                      onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
-                  options={[
-                    { value: 'matched', label: a('actualRisk.matched') },
-                    { value: 'different', label: a('actualRisk.different') },
-                    { value: 'unknown', label: a('actualRisk.unknown') },
-                  ]}
+              {/* Intended risk and what was really at risk read as one idea. */}
+              <GroupCard
+                title={a('steps.cards.risk')}
+                aside={<StateText>{a('steps.optional')}</StateText>}
+              >
+                <TextField
+                  id="after-risk"
+                  label={a('risk.label')}
+                  value={draft.risk}
+                  onChange={(risk) => apply((current) => ({ ...current, risk }))}
+                  suffix={currency}
+                  inputMode="decimal"
+                  figure
+                  hint={a('risk.hint')}
+                  error={errorText('risk')}
                 />
-                {draft.actualRisk.answer === 'different' ? (
-                  <div className="border-control-border border-l-2 pl-4">
-                    <TextField
-                      id="after-actual-risk-amount"
-                      label={a('actualRisk.amount')}
-                      value={draft.actualRisk.amount}
-                      onChange={(amount) =>
-                        apply((current) => setActualRiskAmount(current, amount))
-                      }
-                      suffix={currency}
-                      inputMode="decimal"
-                      figure
-                      hint={a('actualRisk.amountHint')}
-                      error={errorText('actualRisk')}
-                    />
-                  </div>
-                ) : null}
-              </div>
+                <div className="flex min-w-0 flex-col gap-3">
+                  <ChoiceGroup
+                    idPrefix="after-actual-risk"
+                    legend={a('actualRisk.legend')}
+                    value={
+                      draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer
+                    }
+                    status={c('notAnswered')}
+                    columns={3}
+                    compact
+                    fit="split"
+                    error={
+                      draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
+                    }
+                    aside={
+                      <InlineAction
+                        ariaLabel={a('actualRisk.removeAria')}
+                        onClick={() =>
+                          apply((current) => setActualRiskAnswer(current, 'unanswered'))
+                        }
+                      >
+                        {c('removeAnswer')}
+                      </InlineAction>
+                    }
+                    onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
+                    options={[
+                      { value: 'matched', label: a('actualRisk.matched') },
+                      { value: 'different', label: a('actualRisk.different') },
+                      { value: 'unknown', label: a('actualRisk.unknown') },
+                    ]}
+                  />
+                  {draft.actualRisk.answer === 'different' ? (
+                    <div className="border-control-border border-l-2 pl-4">
+                      <TextField
+                        id="after-actual-risk-amount"
+                        label={a('actualRisk.amount')}
+                        value={draft.actualRisk.amount}
+                        onChange={(amount) =>
+                          apply((current) => setActualRiskAmount(current, amount))
+                        }
+                        suffix={currency}
+                        inputMode="decimal"
+                        figure
+                        hint={a('actualRisk.amountHint')}
+                        error={errorText('actualRisk')}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </GroupCard>
 
-              <div className="flex min-w-0 flex-col gap-3">
-                <ChoiceGroup
-                  idPrefix="after-target"
-                  legend={c('target.legend')}
-                  value={draft.target.state === 'unanswered' ? null : draft.target.state}
-                  status={c('notAnswered')}
-                  aside={
+              <GroupCard
+                title={c('target.legend')}
+                aside={
+                  draft.target.state === 'unanswered' ? (
+                    <StateText>{c('notAnswered')}</StateText>
+                  ) : (
                     <InlineAction
                       ariaLabel={c('target.removeAria')}
                       onClick={() => apply((current) => setTargetState(current, 'unanswered'))}
                     >
                       {c('removeAnswer')}
                     </InlineAction>
-                  }
-                  onChange={(state) => apply((current) => setTargetState(current, state))}
-                  options={[
-                    {
-                      value: 'fixed',
-                      label: c('target.fixed'),
-                      description: c('target.fixedDescription'),
-                    },
-                    {
-                      value: 'no_fixed',
-                      label: c('target.noFixed'),
-                      description: c('target.noFixedDescription'),
-                    },
-                  ]}
-                />
-                {draft.target.state === 'fixed' ? (
-                  <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-                    <TextField
-                      id="after-targetProfit"
-                      label={c('target.profit')}
-                      value={draft.target.profit}
-                      onChange={(value) =>
-                        apply((current) => setTargetValue(current, 'profit', value))
-                      }
-                      suffix={currency}
-                      inputMode="decimal"
-                      figure
-                      error={errorText('targetProfit')}
-                    />
-                    <TextField
-                      id="after-targetPrice"
-                      label={c('target.price')}
-                      value={draft.target.price}
-                      onChange={(value) =>
-                        apply((current) => setTargetValue(current, 'price', value))
-                      }
-                      inputMode="decimal"
-                      figure
-                      labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
-                      error={errorText('targetPrice')}
-                    />
-                  </div>
-                ) : null}
-              </div>
+                  )
+                }
+              >
+                <div className="flex min-w-0 flex-col gap-3">
+                  <ChoiceGroup
+                    idPrefix="after-target"
+                    legend={c('target.legend')}
+                    hideLegend
+                    value={draft.target.state === 'unanswered' ? null : draft.target.state}
+                    onChange={(state) => apply((current) => setTargetState(current, state))}
+                    options={[
+                      {
+                        value: 'fixed',
+                        label: c('target.fixed'),
+                        description: c('target.fixedDescription'),
+                      },
+                      {
+                        value: 'no_fixed',
+                        label: c('target.noFixed'),
+                        description: c('target.noFixedDescription'),
+                      },
+                    ]}
+                  />
+                  {draft.target.state === 'fixed' ? (
+                    <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+                      <TextField
+                        id="after-targetProfit"
+                        label={c('target.profit')}
+                        value={draft.target.profit}
+                        onChange={(value) =>
+                          apply((current) => setTargetValue(current, 'profit', value))
+                        }
+                        suffix={currency}
+                        inputMode="decimal"
+                        figure
+                        error={errorText('targetProfit')}
+                      />
+                      <TextField
+                        id="after-targetPrice"
+                        label={c('target.price')}
+                        value={draft.target.price}
+                        onChange={(value) =>
+                          apply((current) => setTargetValue(current, 'price', value))
+                        }
+                        inputMode="decimal"
+                        figure
+                        labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+                        error={errorText('targetPrice')}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </GroupCard>
 
               <AtEntryExitPlan
                 draft={exitPlanView}
@@ -1406,12 +1507,15 @@ export function TradeAfterTradeForm({
             </>,
           )}
 
-          {/* 4 — THE TRADER'S READ (core analytical data, optional to save) */}
+          {/* 4 — THE TRADER'S READ: optional analysis, grouped by when it happened */}
           {section(
             'context',
-            'gap-0',
+            'gap-4',
             <>
-              <div className="pb-5">
+              <GroupCard
+                title={a('steps.cards.strategy')}
+                aside={<StateText>{a('steps.optional')}</StateText>}
+              >
                 <StrategyFields
                   draft={draft}
                   options={options}
@@ -1441,8 +1545,13 @@ export function TradeAfterTradeForm({
                     apply((current) => answerCondition(current, key, status))
                   }
                 />
-              </div>
-              <div className="border-border border-t py-5">
+              </GroupCard>
+
+              {/* Entry mindset: how sure the trader was, and how they felt. */}
+              <GroupCard
+                title={a('steps.cards.mindset')}
+                aside={<StateText>{a('steps.optional')}</StateText>}
+              >
                 <ChoiceGroup
                   idPrefix="after-confidence"
                   legend={a('confidence.label')}
@@ -1468,61 +1577,34 @@ export function TradeAfterTradeForm({
                   }))}
                 />
                 <Helper>{a('confidence.hint')}</Helper>
-              </div>
-              {(['emotions', 'postTradeEmotions'] as const).map((phase) => {
-                const answer = draft[phase];
-                const legend =
-                  phase === 'emotions' ? a('emotions.entryLegend') : a('emotions.postLegend');
-                return (
-                  <div key={phase} className="border-border -mx-3 border-t px-0 pt-2 pb-1">
-                    <Disclosure
-                      id={`after-${phase}-toggle`}
-                      title={legend}
-                      summary={
-                        answer.answer === 'selected'
-                          ? answer.keys.map((key) => t(`emotions.${key}`)).join(', ')
-                          : answer.answer === 'none'
-                            ? c('emotions.none')
-                            : c('notAnswered')
-                      }
-                      open={emotionsOpen[phase]}
-                      onToggle={() =>
-                        setEmotionsOpen((current) => ({ ...current, [phase]: !current[phase] }))
-                      }
-                    >
-                      <EmotionFields
-                        phase={phase}
-                        answer={answer}
-                        legend={legend}
-                        hint={phase === 'postTradeEmotions' ? a('emotions.postHint') : undefined}
-                        removeAria={
-                          phase === 'emotions'
-                            ? c('emotions.removeAria')
-                            : a('emotions.removePostAria')
-                        }
-                        catalog={options.emotionCatalog}
-                        showLastOneHint={emotionHint === phase}
-                        onToggle={(key) => {
-                          if (!canDeselectEmotion(draft[phase], key)) {
-                            setEmotionHint(phase);
-                            return;
-                          }
-                          setEmotionHint(null);
-                          apply((current) => toggleEmotion(current, phase, key));
-                        }}
-                        onNone={() => {
-                          setEmotionHint(null);
-                          apply((current) => answerNoEmotions(current, phase));
-                        }}
-                        onRemove={() => {
-                          setEmotionHint(null);
-                          apply((current) => removeEmotionsAnswer(current, phase));
-                        }}
-                      />
-                    </Disclosure>
-                  </div>
-                );
-              })}
+                <div className="border-border border-t pt-1">{emotionQuestion('emotions')}</div>
+              </GroupCard>
+
+              <GroupCard
+                title={a('steps.cards.afterTrade')}
+                aside={<StateText>{a('steps.optional')}</StateText>}
+              >
+                {emotionQuestion('postTradeEmotions')}
+              </GroupCard>
+
+              {/* The thesis belongs with the read on the trade, not with details. */}
+              <GroupCard
+                title={a('steps.cards.thesis')}
+                aside={<StateText>{a('steps.optional')}</StateText>}
+              >
+                <TextAreaField
+                  id="after-context-reason"
+                  label={cx('reason')}
+                  value={draft.context.reason}
+                  onChange={(reason) =>
+                    apply((current) => ({
+                      ...current,
+                      context: { ...current.context, reason },
+                    }))
+                  }
+                  placeholder={cx('reasonPlaceholder')}
+                />
+              </GroupCard>
             </>,
           )}
 
@@ -1617,9 +1699,13 @@ export function TradeAfterTradeForm({
                                     : 'text-foreground',
                               )}
                             >
+                              {/* Nothing recorded is a choice, not a shortfall. */}
                               {errors > 0
                                 ? a('steps.needsAttention')
-                                : (stepSummaries[key] ?? a('steps.summaryNotRecorded'))}
+                                : (stepSummaries[key] ??
+                                  (key === 'trade'
+                                    ? a('steps.summaryNotRecorded')
+                                    : a('steps.optional')))}
                               {times === null ? null : (
                                 <span className="text-muted-foreground block text-xs tabular-nums">
                                   {times}
@@ -1639,11 +1725,20 @@ export function TradeAfterTradeForm({
                   </dl>
                 </div>
               )}
-              {replayConflictPanel}
             </>,
           )}
 
-          {/* STEP NAVIGATION — Save exists only on the last step */}
+          {/*
+            WHAT A SAVE SAID, WHERE THE TRADER IS. Quick Save can be pressed
+            from any step, so its answer — a server refusal, or a Save key that
+            already created a different Trade — belongs beside the action that
+            was pressed, not inside a step that is not being shown.
+          */}
+          {replayConflict === null ? null : (
+            <div className="min-w-0 px-0 pb-4 sm:px-6">{replayConflictPanel}</div>
+          )}
+
+          {/* STEP NAVIGATION — the last step's Save, and the quiet one before it */}
           <div
             data-step-actions=""
             {...(onLastStep ? { 'data-global-save': '' } : {})}
@@ -1655,7 +1750,7 @@ export function TradeAfterTradeForm({
                 'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
             )}
           >
-            {onLastStep ? (
+            {onLastStep || pending || serverMessage !== null ? (
               <p
                 data-save-status=""
                 tabIndex={-1}
@@ -1665,6 +1760,25 @@ export function TradeAfterTradeForm({
                 {statusLine}
               </p>
             ) : null}
+            {/*
+              THE SHORT WAY OUT, ONCE IT IS HONEST TO OFFER IT. Nothing beyond
+              this step is required, so a trader who is done can save from
+              here. It sits above the step's own Back/Next as a quiet line, and
+              runs the very same Save as the last step's button — including
+              every answer already given on steps further on.
+            */}
+            {onLastStep || !canQuickSave ? null : (
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                <InlineAction
+                  id="after-quick-save"
+                  ariaLabel={a('save.action')}
+                  onClick={() => void submit()}
+                >
+                  {a('steps.quickSave')}
+                </InlineAction>
+                <span className="text-muted-foreground text-xs">{a('steps.quickSaveHint')}</span>
+              </div>
+            )}
             <div className="flex min-w-0 items-center justify-between gap-3">
               {step === 0 ? (
                 <span aria-hidden="true" />
@@ -1729,23 +1843,22 @@ export function TradeAfterTradeForm({
                 for nothing. Three permanent ticks beside a form that can
                 already be saved are noise, not awareness.
               */}
-              <div className="border-border flex flex-col gap-2 border-t px-3 pt-3 pb-2">
+              <div
+                data-required-status={missingRequirements.length === 0 ? 'ready' : 'missing'}
+                className="border-border flex flex-col gap-1 border-t px-3 pt-3 pb-2"
+              >
                 {missingRequirements.length === 0 ? (
                   <p className="text-muted-foreground text-sm">{a('save.ready')}</p>
                 ) : (
                   <>
-                    <p className="text-foreground text-sm font-medium">{a('save.panelTitle')}</p>
-                    <ul className="flex flex-col gap-2">
-                      {missingRequirements.map((item) => (
-                        <RequirementRow
-                          key={item.key}
-                          label={c(`save.requirement.${item.key}`)}
-                          done={false}
-                          addedLabel={c('save.added')}
-                          neededLabel={c('save.needed')}
-                        />
-                      ))}
-                    </ul>
+                    <p className="text-foreground text-sm font-medium">
+                      {a('steps.requiredMissing', { count: missingRequirements.length })}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {missingRequirements
+                        .map((item) => c(`save.requirement.${item.key}`))
+                        .join(' · ')}
+                    </p>
                   </>
                 )}
               </div>
@@ -1755,6 +1868,80 @@ export function TradeAfterTradeForm({
       </div>
     </div>
   );
+}
+
+/**
+ * A CONCEPT, NOT A FIELD. One surface per idea the trader thinks in — the
+ * account, what was traded, risk, the outcome — so a step reads as two or
+ * three things instead of eight rows. Controls inside never add a second
+ * border, and `filled` marks the one group a step is really about.
+ */
+function GroupCard({
+  title,
+  aside,
+  filled = false,
+  children,
+  ...rest
+}: {
+  /** Left out where the step's own heading already names the group. */
+  title?: string;
+  aside?: ReactNode;
+  /** The step's own subject, given a tint rather than a heavier border. */
+  filled?: boolean;
+  children: ReactNode;
+} & Record<`data-${string}`, string | undefined>) {
+  return (
+    <section
+      {...rest}
+      className={cn(
+        'border-border flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:p-5',
+        filled && 'bg-muted/30',
+      )}
+    >
+      {title === undefined && aside === undefined ? null : (
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          {title === undefined ? (
+            <span aria-hidden="true" />
+          ) : (
+            <h3 className="text-foreground text-sm font-semibold">{title}</h3>
+          )}
+          {aside}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+/** A group whose contents stay folded behind their own summary. */
+function FoldedGroup({
+  id,
+  title,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  summary: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="border-border min-w-0 rounded-lg border px-1 py-1 sm:px-1.5">
+      <Disclosure id={id} title={title} summary={summary} open={open} onToggle={onToggle}>
+        {children}
+      </Disclosure>
+    </div>
+  );
+}
+
+/** Said where the field is, not only in a panel somewhere else. */
+function RequiredTag() {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  return <Tag tone="context">{a('steps.required')}</Tag>;
 }
 
 /** An optional historical time: blank is not recorded, and clearing it is always one action away. */
@@ -2246,37 +2433,22 @@ function ContextFields({
   const a = useTranslations('trades.create.recording.contractAfter');
   const summary = useTranslations('trades.create.recording.contractEntry.summary');
   /*
-    THREE SMALL GROUPS INSTEAD OF EIGHT FIELDS IN A COLUMN. A group opens when
-    it already holds something the trader wrote or when an error is in it, so
-    nothing entered is ever folded out of sight, and a group that is closed
-    says how much is in it rather than hiding the fact.
+    THREE FOLDED GROUPS, EACH SAYING WHAT IS IN IT. The last step is where a
+    trader finishes, not another form to work through, so every group starts
+    closed behind a summary of its own values. A group holding an error opens
+    itself: nothing that stops a Save is ever folded away.
   */
+  const preview = (value: string) =>
+    value.trim().length > 60 ? `${value.trim().slice(0, 60)}…` : value.trim();
   const groups = [
-    {
-      key: 'notes' as const,
-      filled: [draft.context.reason, draft.context.notes],
-      errors: 0,
-      fields: (
-        <div className="flex min-w-0 flex-col gap-4 pb-2">
-          <TextAreaField
-            id="after-context-reason"
-            label={c('reason')}
-            value={draft.context.reason}
-            onChange={(reason) => onChange({ reason })}
-            placeholder={c('reasonPlaceholder')}
-          />
-          <TextAreaField
-            id="after-context-notes"
-            label={c('notes')}
-            value={draft.context.notes}
-            onChange={(notes) => onChange({ notes })}
-          />
-        </div>
-      ),
-    },
     {
       key: 'market' as const,
       filled: [draft.context.timeframe, draft.context.session, draft.context.tradingviewUrl],
+      summary: [
+        draft.context.timeframe.trim(),
+        draft.context.session.trim(),
+        draft.context.tradingviewUrl.trim() === '' ? '' : c('chart'),
+      ],
       errors: 0,
       fields: (
         <div className="flex min-w-0 flex-col gap-4 pb-2">
@@ -2308,8 +2480,35 @@ function ContextFields({
       ),
     },
     {
+      key: 'notes' as const,
+      filled: [draft.context.notes],
+      summary: [preview(draft.context.notes)],
+      errors: 0,
+      fields: (
+        <div className="flex min-w-0 flex-col gap-4 pb-2">
+          <TextAreaField
+            id="after-context-notes"
+            label={c('notes')}
+            value={draft.context.notes}
+            onChange={(notes) => onChange({ notes })}
+          />
+        </div>
+      ),
+    },
+    {
       key: 'price' as const,
       filled: [draft.context.entryPrice, draft.context.stopPrice, draft.context.positionSize],
+      summary: [
+        draft.context.entryPrice.trim() === ''
+          ? ''
+          : `${c('entryPrice')} ${draft.context.entryPrice.trim()}`,
+        draft.context.stopPrice.trim() === ''
+          ? ''
+          : `${c('stopPrice')} ${draft.context.stopPrice.trim()}`,
+        draft.context.positionSize.trim() === ''
+          ? ''
+          : `${c('size')} ${draft.context.positionSize.trim()}`,
+      ],
       errors: (['contextEntryPrice', 'contextStopPrice', 'contextPositionSize'] as const).filter(
         (field) => errorText(field) !== undefined,
       ).length,
@@ -2371,10 +2570,9 @@ function ContextFields({
               ) : count === 0 ? (
                 summary('contextEmpty')
               ) : (
-                summary('contextFilled', { count })
+                group.summary.filter((part) => part !== '').join(' · ')
               )
             }
-            startOpen={count > 0}
             forceOpen={group.errors > 0}
           >
             {group.fields}
@@ -2386,25 +2584,23 @@ function ContextFields({
 }
 
 /**
- * One Step 5 group: open from the start when it already holds something, and
- * never closed over an error the trader has to reach.
+ * One Step 5 group: folded behind its own summary, and never closed over an
+ * error the trader has to reach.
  */
 function ContextGroup({
   id,
   title,
   summary,
-  startOpen,
   forceOpen,
   children,
 }: {
   id: string;
   title: string;
   summary: ReactNode;
-  startOpen: boolean;
   forceOpen: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(startOpen);
+  const [open, setOpen] = useState(false);
   return (
     <div className="min-w-0 px-1 py-1">
       <Disclosure

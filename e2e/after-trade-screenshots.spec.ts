@@ -66,6 +66,11 @@ test.describe('After Trade step-flow captures', () => {
           }
           await capture(page, `${width}-${theme}-${step}`);
         }
+        // Quick Save: offered from an earlier step once identity is answered.
+        await goTo(page, 'result');
+        await expect(page.locator('#after-quick-save')).toBeVisible();
+        await capture(page, `${width}-${theme}-quick-save`);
+
         // A blocked Save from the last step lands on the control that needs it.
         await goTo(page, 'plan');
         await page.locator('#after-risk').fill('12..5');
@@ -110,8 +115,9 @@ test.describe('After Trade step-flow captures', () => {
       await next.focus();
       await page.keyboard.press('Enter');
       await expect(page.getByRole('heading', { level: 2, name: 'Result' })).toBeFocused();
+      // The Result step now opens on the final exit time: how the trade ended.
       await page.keyboard.press('Tab');
-      await expect(page.locator('#after-finalPnl')).toBeFocused();
+      await expect(page.locator('#after-exitedAt')).toBeFocused();
       await capture(page, `${width}-dark-keyboard-focus`);
 
       // Reload recovery: the Shared Recording Draft brings every answer back.
@@ -174,6 +180,12 @@ async function openGroup(page: Page, group: 'notes' | 'market' | 'price') {
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
 }
 
+/** Fold it back, so the capture shows the state a trader arrives at. */
+async function foldGroup(page: Page, group: 'notes' | 'market' | 'price') {
+  const toggle = page.locator(`#after-details-${group}`);
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
+}
+
 async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') {
   const toggle = page.locator(`#after-${phase}-toggle`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
@@ -185,9 +197,10 @@ async function fillEverything(page: Page) {
   await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
   await clickChoice(page, 'Long');
   await page.locator('#after-enteredAt').fill('2026-09-18T09:30');
-  await page.locator('#after-exitedAt').fill('2026-09-18T14:05');
 
+  // The final exit time says how the trade ended, so it asks on Result.
   await goTo(page, 'result');
+  await page.locator('#after-exitedAt').fill('2026-09-18T14:05');
   await page.locator('#after-finalPnl').fill('400');
   await clickChoice(page, 'Win');
   await page.locator('#after-exits-toggle').click();
@@ -223,18 +236,19 @@ async function fillEverything(page: Page) {
     .click();
   // Collapse it again: the capture shows the summary a trader returns to.
   await openEmotion(page, 'postTradeEmotions');
-  await page.locator('#after-postTradeEmotions-toggle').click();
+  // The thesis reads with the rest of the trader's read on the trade.
+  await page.getByLabel('Why this trade').fill('Clean retest of the London high.');
 
   await goTo(page, 'save');
-  // Step 5's groups: each opens on request and stays open once it holds work.
-  await openGroup(page, 'notes');
-  await page.getByLabel('Why this trade').fill('Clean retest of the London high.');
+  // Step 5's groups open on request and fold back to a summary of their values.
   await openGroup(page, 'market');
   await page.getByLabel('Timeframe').fill('15m');
   await page.getByLabel('Session').fill('London');
   await openGroup(page, 'price');
   await page.getByLabel('Entry price').fill('2398.5');
   await page.getByLabel('SL price').fill('2394.5');
+  await foldGroup(page, 'market');
+  await foldGroup(page, 'price');
 }
 
 async function capture(page: Page, name: string) {

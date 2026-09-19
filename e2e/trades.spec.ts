@@ -1406,9 +1406,11 @@ test.describe('real Trade Journal creation', () => {
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
         await expect(afterForm.locator('[data-account-context]')).toBeVisible();
         await expect(afterForm.locator('#after-enteredAt')).toHaveValue('');
-        await expect(afterForm.locator('#after-exitedAt')).toHaveValue('');
         await expect(page.locator('button[type="submit"]:visible')).toHaveCount(0);
         await afterTradeStep(page, 'result');
+        // The final exit time is read here: it says how the trade ended.
+        await expect(afterForm.locator('#after-exitedAt')).toBeVisible();
+        await expect(afterForm.locator('#after-exitedAt')).toHaveValue('');
         await expect(afterForm.locator('#after-finalPnl')).toBeVisible();
         await expect(afterForm.locator('[data-actual-r="unavailable"]')).toBeVisible();
         await afterTradeStep(page, 'plan');

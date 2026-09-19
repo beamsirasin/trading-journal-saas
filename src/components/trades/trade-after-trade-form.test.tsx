@@ -116,6 +116,11 @@ function goTo(step: keyof typeof STEP_LABEL) {
   );
 }
 
+/** One step's own section, mounted whether or not it is the step being shown. */
+function stepSection(step: 'trade' | 'result' | 'plan' | 'context' | 'details'): HTMLElement {
+  return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
+}
+
 function currentStep(): string | null {
   return document.querySelector('[data-after-trade-form]')!.getAttribute('data-after-trade-step');
 }
@@ -243,8 +248,8 @@ describe('After Trade — the moment and its steps', () => {
   it('starts every answer Unanswered: no time, no outcome, no Actual Risk, no Target', () => {
     renderForm();
     expect(screen.getByLabelText('Entry time')).toHaveValue('');
-    expect(screen.getByLabelText('Final exit time')).toHaveValue('');
     goTo('result');
+    expect(screen.getByLabelText('Final exit time')).toHaveValue('');
     for (const name of ['Win', 'BE', 'Loss']) {
       expect(screen.getByRole('radio', { name })).not.toBeChecked();
     }
@@ -254,6 +259,60 @@ describe('After Trade — the moment and its steps', () => {
     }
     expect(screen.getByRole('radio', { name: /^Fixed target/ })).not.toBeChecked();
     expect(screen.getByRole('radio', { name: /^No fixed target/ })).not.toBeChecked();
+  });
+
+  it('reads the final exit time on Result and the thesis on Context, saving both unchanged', async () => {
+    renderForm();
+    fillIdentity();
+    // Each field is on the step that asks its question...
+    expect(within(stepSection('trade')).queryByLabelText('Final exit time')).toBeNull();
+    expect(within(stepSection('result')).getByLabelText('Final exit time')).toBeInTheDocument();
+    expect(within(stepSection('details')).queryByLabelText('Why this trade')).toBeNull();
+    expect(within(stepSection('context')).getByLabelText('Why this trade')).toBeInTheDocument();
+
+    // ...and each is sent exactly as it was before the move.
+    goTo('result');
+    type('Final exit time', '2026-09-18T14:05');
+    goTo('context');
+    type('Why this trade', 'Clean retest of the London high.');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({
+      exitedAt: '2026-09-18T07:05:00.000Z',
+      confirmationNotes: 'Clean retest of the London high.',
+    });
+  });
+
+  it('keeps Step 5 groups folded, holding what was typed in them', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('save');
+    const market = screen.getByRole('button', { name: /^Market context/ });
+    expect(market).toHaveAttribute('aria-expanded', 'false');
+    expect(market).toHaveTextContent('Nothing added');
+    fireEvent.click(market);
+    type('Timeframe', '15m');
+    type('Session', 'London');
+    fireEvent.click(market);
+    // Folded, it says what it holds, and it still holds it.
+    expect(market).toHaveAttribute('aria-expanded', 'false');
+    expect(market).toHaveTextContent('15m · London');
+    fireEvent.click(market);
+    expect(screen.getByLabelText('Timeframe')).toHaveValue('15m');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ timeframe: '15m', session: 'London' });
+  });
+
+  it('calls an untouched optional step Optional, never unfinished', () => {
+    renderForm();
+    fillIdentity();
+    goTo('save');
+    const review = document.querySelector('[data-trade-summary]')!;
+    expect(review).toHaveTextContent(/XAUUSD · Long/);
+    // Result, Plan and Context are untouched — and that is a complete answer.
+    expect(within(review as HTMLElement).getAllByText('Optional')).toHaveLength(3);
+    expect(review).not.toHaveTextContent('needs attention');
   });
 
   it('says on the step itself how much needs attention, beside the field error', async () => {
@@ -310,6 +369,91 @@ describe('After Trade — the moment and its steps', () => {
       ),
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Quick Save — the short way out once identity is answered', () => {
+  const quickSave = () => screen.queryByRole('button', { name: 'Save closed trade' });
+
+  it('is offered only once Account, Symbol and Direction are answered', () => {
+    renderForm();
+    expect(quickSave()).toBeNull();
+    goTo('result');
+    expect(quickSave()).toBeNull();
+    fillIdentity();
+    expect(quickSave()).not.toBeNull();
+    expect(screen.getByText('You can add the rest later.')).toBeInTheDocument();
+  });
+
+  it('saves everything already answered on later steps, not only this step', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('result');
+    type('Final net P&L', '400');
+    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    goTo('plan');
+    type('Risk at entry', '100');
+    // Back on Step 1, the quiet Save still carries the later answers.
+    goTo('trade');
+    fireEvent.click(quickSave()!);
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      symbol: 'XAUUSD',
+      direction: 'long',
+      finalPnlMinor: '40000',
+      traderOutcome: 'win',
+      plannedRiskMinor: '10000',
+    });
+    expect(await screen.findByRole('heading', { name: 'Trade saved' })).toBeInTheDocument();
+    expect(window.localStorage.getItem(DRAFT_KEY)).toBeNull();
+  });
+
+  it('runs the one Save lifecycle: the same key on retry, and the replay conflict', async () => {
+    createCompletedTradeActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'unexpected_error' },
+    });
+    renderForm();
+    fillIdentity();
+    goTo('context');
+    fireEvent.click(quickSave()!);
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    const firstKey = payload().mutationKey;
+    expect(window.localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+
+    createCompletedTradeActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'mutation_replay_conflict',
+        existingTradeId: TRADE_ID,
+        replayConflict: 'different',
+      },
+    });
+    fireEvent.click(quickSave()!);
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(2));
+    expect(payload().mutationKey).toBe(firstKey);
+    expect(
+      await screen.findByText('A different version of this trade was already saved'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('[data-save-replay-conflict="different"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Save this draft as a new trade' })).toBeVisible();
+    // Nothing was written, so the draft and its Save key stay exactly as they are.
+    expect(window.localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Trade saved' })).toBeNull();
+  });
+
+  it('is blocked by the same validation as the last step, landing on the problem', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('plan');
+    type('Risk at entry', '12..5');
+    goTo('context');
+    fireEvent.click(quickSave()!);
+    await waitFor(() => expect(currentStep()).toBe('plan'));
+    expect(
+      screen.getByText("Enter a valid amount with the currency's supported precision."),
+    ).toBeInTheDocument();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 });

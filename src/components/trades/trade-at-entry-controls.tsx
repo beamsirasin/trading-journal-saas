@@ -389,6 +389,7 @@ export function ChoiceGroup<T extends string>({
   columns = 2,
   compact = false,
   fit,
+  hideLegend = false,
 }: {
   idPrefix: string;
   legend: string;
@@ -414,6 +415,11 @@ export function ChoiceGroup<T extends string>({
    * Five across always stacks each marker above its label.
    */
   fit?: 'row' | 'split';
+  /**
+   * The group sits under a heading that already asks the question, so the
+   * legend stays for the accessible name and drops out of the picture.
+   */
+  hideLegend?: boolean;
 }) {
   const name = useId();
   const stacked = fit !== undefined && columns === 5;
@@ -425,7 +431,7 @@ export function ChoiceGroup<T extends string>({
           value === null ? status === undefined ? null : <StateText>{status}</StateText> : aside
         }
       >
-        {legend}
+        {hideLegend ? <span className="sr-only">{legend}</span> : legend}
       </Legend>
       <div className="flex min-w-0 flex-col gap-2">
         <div
