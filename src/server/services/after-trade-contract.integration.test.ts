@@ -275,6 +275,73 @@ describe('Add Trade contract After Trade (real database)', () => {
       expect(rows).toHaveLength(1);
     });
 
+    it('refuses the same key with different answers, and never overwrites the saved Trade', async () => {
+      const fw = await freshFramework();
+      const request = input(fw, { finalPnlMinor: 1_500n, traderOutcome: 'win' });
+      const first = await createCompletedTrade(workspaceId, actorUserId, request);
+      if (!first.ok) throw new Error('first save failed');
+      // An edit made after a Save whose answer was lost, retried with the old key.
+      const edited = await createCompletedTrade(workspaceId, actorUserId, {
+        ...request,
+        finalPnlMinor: 1_700n,
+      });
+      expect(edited).toEqual({
+        ok: false,
+        code: 'mutation_replay_conflict',
+        existingTradeId: first.tradeId,
+      });
+      expect(await readTrade(first.tradeId)).toMatchObject({ netPnlMinor: 1_500n });
+      const rows = await db
+        .select({ id: trades.id })
+        .from(trades)
+        .where(
+          and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, request.mutationKey)),
+        );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('refuses a Save key replayed across recording modes, in both directions', async () => {
+      const fw = await freshFramework();
+      const atEntryRequest = {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: fw.tradingAccountId,
+        recordingTiming: 'at_entry' as const,
+        recordingContract: 'add_trade_v1' as const,
+        systemPlanBasis: 'money' as const,
+        symbol: 'XAUUSD',
+        direction: 'long',
+        plannedRiskMinor: 10_000n,
+        actualRiskAnswer: 'matched' as const,
+      };
+      const open = await createTrade(workspaceId, actorUserId, atEntryRequest);
+      if (!open.ok) throw new Error('At Entry save failed');
+      // At Entry key replayed as After Trade.
+      expect(
+        await createCompletedTrade(
+          workspaceId,
+          actorUserId,
+          input(fw, { mutationKey: atEntryRequest.mutationKey }),
+        ),
+      ).toEqual({ ok: false, code: 'mutation_replay_conflict', existingTradeId: open.tradeId });
+
+      // After Trade key replayed as At Entry.
+      const closed = await save(fw);
+      const closedRow = await readTrade(closed.tradeId);
+      expect(
+        await createTrade(workspaceId, actorUserId, {
+          ...atEntryRequest,
+          mutationKey: closedRow.mutationKey,
+        }),
+      ).toEqual({ ok: false, code: 'mutation_replay_conflict', existingTradeId: closed.tradeId });
+      expect(await readTrade(closed.tradeId)).toMatchObject({ status: 'closed' });
+    });
+
+    it('stores the request fingerprint with the Trade', async () => {
+      const fw = await freshFramework();
+      const result = await save(fw);
+      expect((await readTrade(result.tradeId)).mutationFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    });
+
     it('never writes into another workspace from a foreign account', async () => {
       const fw = await freshFramework();
       expect(await createCompletedTrade(otherWorkspaceId, actorUserId, input(fw))).toMatchObject({
@@ -748,6 +815,66 @@ describe('Add Trade contract After Trade (real database)', () => {
   });
 
   describe('later edits keep what the trader stated', () => {
+    it('records an adoption chosen during capture as exit history, after checking it', async () => {
+      const fw = await freshFramework();
+      const adopted = await save(fw, {
+        plannedRiskMinor: 1_000n,
+        finalPnlMinor: 1_500n,
+        finalPnlAdoptedFromExits: true,
+        exitHistoryCompleteness: 'complete',
+        exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
+      });
+      expect(await readTrade(adopted.tradeId)).toMatchObject({
+        netPnlMinor: 1_500n,
+        finalPnlSource: 'exit_history',
+      });
+
+      const manual = await save(fw, {
+        finalPnlMinor: 1_500n,
+        exitHistoryCompleteness: 'complete',
+        exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
+      });
+      expect(await readTrade(manual.tradeId)).toMatchObject({ finalPnlSource: 'manual_total' });
+    });
+
+    it('refuses an adoption the exit history does not support, and writes nothing', async () => {
+      const fw = await freshFramework();
+      const cases: Partial<CreateCompletedTradeInput>[] = [
+        // Not declared Complete.
+        {
+          finalPnlMinor: 1_500n,
+          exitHistoryCompleteness: 'incomplete',
+          exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
+        },
+        // An exit without P&L.
+        {
+          finalPnlMinor: 800n,
+          exitHistoryCompleteness: 'complete',
+          exits: [{ realizedPnlMinor: 800n }, { exitReason: 'rest at stop' }],
+        },
+        // Final Net P&L is not the subtotal.
+        {
+          finalPnlMinor: 1_400n,
+          exitHistoryCompleteness: 'complete',
+          exits: [{ realizedPnlMinor: 800n }, { realizedPnlMinor: 700n }],
+        },
+        // No Final Net P&L at all.
+        { exitHistoryCompleteness: 'complete', exits: [{ realizedPnlMinor: 800n }] },
+      ];
+      for (const overrides of cases) {
+        const request = input(fw, { ...overrides, finalPnlAdoptedFromExits: true });
+        expect(await createCompletedTrade(workspaceId, actorUserId, request)).toEqual({
+          ok: false,
+          code: 'exit_history_not_adoptable',
+        });
+        const rows = await db
+          .select({ id: trades.id })
+          .from(trades)
+          .where(eq(trades.mutationKey, request.mutationKey));
+        expect(rows).toHaveLength(0);
+      }
+    });
+
     it('adopts a Complete exit subtotal only when asked, keeping the selected outcome', async () => {
       const fw = await freshFramework();
       const result = await save(fw, {

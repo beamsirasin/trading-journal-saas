@@ -2207,7 +2207,9 @@
                 "validation": "Check the name and instructions, then try again.",
                 "unexpected": "Something went wrong. Nothing was changed. Try again."
               }
-            }
+            },
+            "unavailable": "The plan you chose is no longer available",
+            "unavailableHint": "It was archived or removed from your library. Your answer is kept until you choose another plan or remove it. Saving waits for your choice."
           },
           "strategy": {
             "label": "Strategy",
@@ -2223,7 +2225,10 @@
             "conditionsHint": "Answer the ones you checked. Skipped ones are never counted as not met.",
             "met": "Met",
             "notMet": "Not met",
-            "removeConditionAria": "Remove answer for {condition}"
+            "removeConditionAria": "Remove answer for {condition}",
+            "unavailableOption": "No longer available",
+            "strategyUnavailable": "The Strategy you chose was archived or removed. Your answer is kept until you choose another or remove it. Saving waits for your choice.",
+            "setupUnavailable": "The Setup you chose was archived or removed. Your answer is kept until you choose another or remove it. Saving waits for your choice."
           },
           "removeAnswer": "Remove answer",
           "notAnswered": "Not answered",
@@ -2283,7 +2288,8 @@
               "risk": "Risk at entry"
             },
             "added": "added",
-            "needed": "still needed"
+            "needed": "still needed",
+            "staleBlocked": "Choose another option or remove the answer marked no longer available, then save."
           },
           "errors": {
             "requiredAccount": "Choose a Trading Account.",
@@ -2296,7 +2302,8 @@
             "invalidDatetime": "Enter a valid date and time in your saved timezone.",
             "invalidPrice": "Enter a price greater than zero, using digits and one decimal point.",
             "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target.",
-            "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all."
+            "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all.",
+            "notAccepted": "This value wasn't accepted. Check it and try again."
           }
         },
         "contractAfter": {
@@ -2386,7 +2393,8 @@
             "subtotalSupporting": "Supporting detail only. It does not replace your final net P&L.",
             "adopt": "Use recorded exits as final result",
             "adopted": "Final net P&L set to {amount} from your recorded exits.",
-            "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving."
+            "discrepancy": "Your recorded exits add up to {subtotal}, but your final net P&L is {final}. Your final net P&L stays the result. This does not block saving.",
+            "limitReached": "A trade can hold up to {limit} exits."
           },
           "conditions": {
             "hint": "Answer the ones you remember. Skipped ones and ones you don't remember are never counted as not met.",
@@ -2495,7 +2503,35 @@
           "description": "{symbol} · last in {mode}",
           "continue": "Continue draft",
           "noSymbol": "No symbol yet"
+        },
+        "changedElsewhere": "This draft was changed in another tab. Load the latest version before you continue, or anything you type here will replace it.",
+        "removedElsewhere": "This draft was saved or discarded in another tab. What you see here is only in this tab now.",
+        "loadLatest": "Load the latest version",
+        "inactive": {
+          "title": "Save without your After Trade answers?",
+          "description": "This draft also holds answers you gave in After Trade that an open trade can't keep. Saving the open trade removes them from the draft:",
+          "items": {
+            "finalPnl": "Final net P&L",
+            "outcome": "Trader outcome",
+            "exits": "{count, plural, one {# recorded exit} other {# recorded exits}}",
+            "completeness": "Whether the exit history is complete",
+            "exitedAt": "Final exit time",
+            "postTradeEmotions": "Post-trade emotion",
+            "actualRiskUnknown": "Actual risk: Don't know",
+            "conditionsUnknown": "Conditions marked Don't remember"
+          },
+          "keep": "Keep editing",
+          "confirm": "Remove them and save"
         }
+      },
+      "replay": {
+        "conflictTitle": "A different version of this trade was already saved",
+        "conflictDescription": "It was saved from another tab, or by an earlier Save whose answer didn't reach you. Nothing was overwritten, and your draft here is unchanged.",
+        "openSaved": "Open saved trade",
+        "saveAsNew": "Save this draft as a new trade",
+        "alreadyTitle": "This trade was already saved",
+        "alreadyDescription": "An earlier Save of exactly these answers reached us, so nothing new was created.",
+        "openTrade": "Open trade"
       }
     },
     "prerequisite": {
@@ -2584,7 +2620,7 @@
       "invalid_completed_exit_coverage": "Known exit allocations must be valid and cannot exceed 100% of the position.",
       "historical_exit_conflict": "The final result does not match the subtotal of the complete exit history. Resolve the conflict before saving.",
       "exit_history_not_adoptable": "Only a complete exit history with every result recorded can be used as the final result.",
-      "completed_trade_replay_conflict": "This completed-Trade request conflicts with an existing unfinished Trade. Start again with a new request.",
+      "mutation_replay_conflict": "A different version of this trade was already saved. Your draft is still here.",
       "no_plan_representation": "This change would leave the Trade with no Plan at all. Enter a Price plan (Entry/Stop) or a Money plan (planned risk), or cancel this edit.",
       "planned_r_mismatch": "The Price plan and Money plan imply different Planned R. Adjust one before creating this Trade.",
       "system_requires_price_plan": "The System result needs a Price plan (Entry/Stop) — this Trade currently has none.",
@@ -2734,7 +2770,6 @@
         },
         "confidenceMeaning": "How confident you were before entering this Trade. It is never calculated from the result.",
         "emotionsMeaning": "What you were feeling around entry.",
-        "checklistCount": "{met} of {total} conditions met",
         "chartAlt": "Chart attached to the {symbol} Trade",
         "quadrant": {
           "win_win": "Good idea, and you captured it.",
@@ -2812,6 +2847,18 @@
           "meaning": "How you felt about the trade once it was over. Separate from how you felt at entry.",
           "unanswered": "Not answered",
           "none": "None of these"
+        },
+        "intent": {
+          "title": "Risk and target",
+          "meaning": "What you intended when you took the trade. This is your plan, not a System result.",
+          "notRecorded": "Not recorded",
+          "enteredAtDefault": "Set automatically when saved"
+        },
+        "conditionCoverage": {
+          "met": "{count} met",
+          "notMet": "{count} not met",
+          "unknown": "{count} don't remember",
+          "unanswered": "{count} unanswered"
         }
       },
       "state": {
@@ -3313,7 +3360,9 @@
     },
     "legacyCoverage": {
       "actual": "{count, plural, one {# closed Trade was recorded before the Add Trade update, so its R is} other {# closed Trades were recorded before the Add Trade update, so their R is}} not included in these R figures. Net P&L still counts every closed Trade.",
-      "system": "{count, plural, one {# System result uses the earlier System model and is} other {# System results use the earlier System model and are}} not included. System figures return once System Assessment is recorded under the new model."
+      "system": "{count, plural, one {# System result uses the earlier System model and is} other {# System results use the earlier System model and are}} not included. System figures return once System Assessment is recorded under the new model.",
+      "undatedInRange": "{count, plural, one {# closed Trade has no final exit time, so it can't be placed in this date range and isn't counted here.} other {# closed Trades have no final exit time, so they can't be placed in this date range and aren't counted here.}}",
+      "undatedAll": "{count, plural, one {# closed Trade has no final exit time. It counts in these totals, but not on the equity curve, in drawdown or on the calendar.} other {# closed Trades have no final exit time. They count in these totals, but not on the equity curve, in drawdown or on the calendar.}}"
     }
   },
   "mistakes": {

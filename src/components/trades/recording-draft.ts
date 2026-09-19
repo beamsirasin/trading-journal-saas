@@ -39,6 +39,7 @@ import { z } from 'zod';
 import {
   createAfterTradeDraft,
   hasAfterTradeWork,
+  meaningfulExit,
   type AfterTradeDraft,
   type RecalledConditionStatus,
 } from './after-trade-draft';
@@ -620,6 +621,57 @@ export function recordingDraftHasWork(
   );
 }
 
+export type InactiveModeWorkItem =
+  | { readonly kind: 'finalPnl' }
+  | { readonly kind: 'outcome' }
+  | { readonly kind: 'exits'; readonly count: number }
+  | { readonly kind: 'completeness' }
+  | { readonly kind: 'exitedAt' }
+  | { readonly kind: 'postTradeEmotions' }
+  | { readonly kind: 'actualRiskUnknown' }
+  | { readonly kind: 'conditionsUnknown' };
+
+/**
+ * WHAT A SAVE WOULD SILENTLY THROW AWAY (contract §23).
+ *
+ * A successful Save clears the whole Recording Draft. Any explicit answer in
+ * the OTHER mode's section that the saved Trade cannot hold would go with it,
+ * so the Save must name it and ask first. Only mode-specific answers count:
+ * shared answers were carried into the saving mode (and the trader may have
+ * changed them there), and untouched defaults were never work.
+ *
+ * Saving After Trade: At Entry has no answer of its own that a closed Trade
+ * cannot hold — its entry time, risk and Exit Plan are shared, and its "now",
+ * Matched and inherited plan are defaults — so nothing is listed.
+ *
+ * Saving At Entry: the After Trade result, exit history, final exit time and
+ * Post-Trade Emotion have no place on an open Trade, and neither have "Don't
+ * know" Actual Risk or "Don't remember" conditions, which At Entry cannot say.
+ * They are never carried into the open Trade to avoid the question.
+ */
+export function inactiveModeWork(
+  envelope: RecordingDraftEnvelope,
+): readonly InactiveModeWorkItem[] {
+  if (envelope.activeMode !== 'at_entry' || envelope.afterTrade === null) return [];
+  const after = envelope.afterTrade;
+  const items: InactiveModeWorkItem[] = [];
+  if (after.finalPnl.trim() !== '') items.push({ kind: 'finalPnl' });
+  if (after.outcome !== null) items.push({ kind: 'outcome' });
+  const exits = after.exits.filter(meaningfulExit).length;
+  if (exits > 0) items.push({ kind: 'exits', count: exits });
+  if (exits > 0 && after.completeness !== 'unanswered') items.push({ kind: 'completeness' });
+  if (after.exitedAt !== '') items.push({ kind: 'exitedAt' });
+  if (after.postTradeEmotions.answer !== 'unanswered') items.push({ kind: 'postTradeEmotions' });
+  if (after.actualRisk.answer === 'unknown') items.push({ kind: 'actualRiskUnknown' });
+  const unknownCondition = Object.values(after.classification.conditions).some((bySetup) =>
+    Object.values(bySetup).some((answers) =>
+      Object.values(answers).some((status) => status === 'unknown'),
+    ),
+  );
+  if (unknownCondition) items.push({ kind: 'conditionsUnknown' });
+  return items;
+}
+
 /** A short, trader-recognisable label for what a draft holds — used to name what sign-out would remove. */
 export function recordingDraftSymbol(envelope: RecordingDraftEnvelope): string | null {
   const symbol =
@@ -701,6 +753,7 @@ const afterTradeSchema = z.object({
   target: targetSchema,
   exitPlan: exitPlanSchema,
   finalPnl: text,
+  finalPnlAdopted: z.literal(true).optional(),
   outcome: z.enum(['win', 'loss', 'break_even']).nullable(),
   exits: z
     .array(
@@ -714,6 +767,8 @@ const afterTradeSchema = z.object({
         reason: text,
       }),
     )
+    // Storage tolerates more than a Save accepts; the form never adds more
+    // than HISTORICAL_EXIT_LIMIT, so a recovered draft is never refused for it.
     .max(200),
   completeness: z.enum(['unanswered', 'unknown', 'incomplete', 'complete']),
   classification: z.object({

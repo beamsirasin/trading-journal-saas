@@ -128,6 +128,12 @@ type FieldErrors = Readonly<Record<string, readonly string[]>>;
 export interface TradeActionError {
   readonly code: TradePublicErrorCode;
   readonly fieldErrors?: FieldErrors;
+  /**
+   * With `mutation_replay_conflict` only: the Trade this Save key already
+   * created. It belongs to the caller's own workspace (the replay lookup is
+   * workspace-scoped), so offering "Open saved trade" discloses nothing.
+   */
+  readonly existingTradeId?: string;
 }
 
 interface TradeActionFailure {
@@ -171,6 +177,18 @@ function serviceFailure(code: string): TradeActionFailure {
 interface CalcFailureResult {
   readonly code: string;
   readonly calcReason?: CalcFailureReason;
+  readonly existingTradeId?: string;
+}
+
+/** A create refused because its Save key already belongs to a different request (contract §23). */
+function createFailure(result: CalcFailureResult): TradeActionFailure {
+  if (result.code === 'mutation_replay_conflict' && result.existingTradeId !== undefined) {
+    return {
+      ok: false,
+      error: { code: 'mutation_replay_conflict', existingTradeId: result.existingTradeId },
+    };
+  }
+  return planFailure(result);
 }
 
 /** `invalid_plan` failures from `createTrade`/`updateTradePlan`/`correctTradeIdentity` — attaches a field error only when the service actually supplied a `calcReason`. */
@@ -305,7 +323,7 @@ export async function createTradeAction(input: unknown): Promise<CreateTradeActi
       noStrategy: parsed.data.noStrategy,
       noSetup: parsed.data.noSetup,
     });
-    if (!result.ok) return planFailure(result);
+    if (!result.ok) return createFailure(result);
     revalidateTradeRoutes();
     return { ok: true, data: { tradeId: result.tradeId, alreadyCreated: result.alreadyCreated } };
   } catch {
@@ -345,7 +363,7 @@ export async function createCompletedTradeAction(
       ctx.userId,
       asServiceInput<CreateCompletedTradeInput>(parsed.data),
     );
-    if (!result.ok) return planFailure(result);
+    if (!result.ok) return createFailure(result);
     revalidateTradeRoutes();
     return {
       ok: true,

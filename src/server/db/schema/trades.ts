@@ -98,6 +98,14 @@ export const trades = pgTable(
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     /** Create-idempotency, identical pattern to `strategies.mutation_key`. */
     mutationKey: uuid('mutation_key').notNull().$defaultFn(generateId),
+    /**
+     * What the create request that used `mutation_key` actually said — a
+     * SHA-256 of the normalized request (`trade-mutation-fingerprint.ts`). A
+     * later request with the same key is an honest replay only when this
+     * matches; anything else is a replay conflict, never a second success.
+     * NULL on a row created before migration 0024.
+     */
+    mutationFingerprint: text('mutation_fingerprint'),
 
     // -------------------------------------------------------------------
     // Pinned framework — every field below is required and immutable from a

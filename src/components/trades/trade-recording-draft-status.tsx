@@ -23,7 +23,15 @@ import {
   type RecordingDraftScope,
 } from './recording-draft-storage';
 
-export type RecordingDraftNotice = 'recovered' | 'unrecoverable' | 'not_durable' | null;
+export type RecordingDraftNotice =
+  | 'recovered'
+  | 'unrecoverable'
+  | 'not_durable'
+  /** Another tab wrote a different version of this draft. */
+  | 'changed_elsewhere'
+  /** Another tab saved or discarded this draft. */
+  | 'removed_elsewhere'
+  | null;
 
 /**
  * THE ONE PLACE A TRADER SEES THE DRAFT ITSELF (UX Rules §5.4, §5.6).
@@ -34,6 +42,8 @@ export type RecordingDraftNotice = 'recovered' | 'unrecoverable' | 'not_durable'
  *   in from it.
  * - When this browser cannot keep drafts, it says so, so a reload is never
  *   trusted to recover work it will not.
+ * - When another tab changed or removed the same draft, it says so, and offers
+ *   to load the other tab's latest version instead of overwriting it.
  * - "Discard draft" is always behind a confirmation that says what is removed
  *   and what is not. Nothing else on the page destroys the draft.
  */
@@ -42,11 +52,13 @@ export function RecordingDraftStatus({
   hasWork,
   onDismissNotice,
   onDiscard,
+  onLoadLatest,
 }: {
   notice: RecordingDraftNotice;
   hasWork: boolean;
   onDismissNotice: () => void;
   onDiscard: () => void;
+  onLoadLatest?: () => void;
 }) {
   const t = useTranslations('trades.create.draft');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -60,7 +72,11 @@ export function RecordingDraftStatus({
         ? t('unrecoverable')
         : notice === 'not_durable'
           ? t('notDurable')
-          : null;
+          : notice === 'changed_elsewhere'
+            ? t('changedElsewhere')
+            : notice === 'removed_elsewhere'
+              ? t('removedElsewhere')
+              : null;
 
   return (
     <div
@@ -77,7 +93,17 @@ export function RecordingDraftStatus({
           <span className="min-w-0">{message}</span>
         </p>
       )}
-      {notice === 'unrecoverable' ? (
+      {notice === 'changed_elsewhere' && onLoadLatest !== undefined ? (
+        <button
+          type="button"
+          data-recording-draft-load-latest=""
+          onClick={onLoadLatest}
+          className="text-primary focus-visible:ring-ring min-h-11 rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+        >
+          {t('loadLatest')}
+        </button>
+      ) : null}
+      {notice === 'unrecoverable' || notice === 'removed_elsewhere' ? (
         <button
           type="button"
           onClick={onDismissNotice}

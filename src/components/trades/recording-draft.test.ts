@@ -28,6 +28,7 @@ import {
 } from './at-entry-draft';
 import {
   createRecordingDraft,
+  inactiveModeWork,
   parseRecordingDraft,
   RECORDING_DRAFT_RETENTION_MS,
   RECORDING_DRAFT_VERSION,
@@ -539,5 +540,71 @@ describe('browser storage scope', () => {
       loadRecordingDraft(USER_A, new Date(NOW.getTime() + RECORDING_DRAFT_RETENTION_MS + 1)),
     ).toEqual({ status: 'expired' });
     expect(loadRecordingDraft(USER_A, NOW)).toEqual({ status: 'none' });
+  });
+});
+
+describe('inactive-mode work a Save would remove (contract §23)', () => {
+  const NOW_DATE = new Date('2026-09-18T12:00:00.000Z');
+  const KEY_ID = '018f0000-0000-7000-8000-0000000000aa';
+  const ACCOUNT_ID = '018f0000-0000-7000-8000-000000000001';
+
+  function withAfterTrade(patch: Partial<ReturnType<typeof createAfterTradeDraft>>) {
+    const envelope = createRecordingDraft({
+      mode: 'at_entry',
+      tradingAccountId: ACCOUNT_ID,
+      mutationKey: KEY_ID,
+      now: NOW_DATE,
+    });
+    return { ...envelope, afterTrade: { ...createAfterTradeDraft(ACCOUNT_ID), ...patch } };
+  }
+
+  it('names every After Trade answer an open Trade cannot hold', () => {
+    const items = inactiveModeWork(
+      withAfterTrade({
+        finalPnl: '10',
+        outcome: 'win',
+        exits: [
+          { id: 'e', scope: '', pnl: '', closedPercent: '', exitedAt: '', price: '', reason: 'r' },
+        ],
+        completeness: 'complete',
+        exitedAt: '2026-09-18T10:00',
+        postTradeEmotions: { answer: 'none', keys: [] },
+        actualRisk: { answer: 'unknown', amount: '' },
+        classification: {
+          strategy: 'selected',
+          strategyId: 's',
+          setupByStrategy: {},
+          conditions: { s: { u: { c: 'unknown' } } },
+        },
+      }),
+    ).map((item) => item.kind);
+    expect(items).toEqual([
+      'finalPnl',
+      'outcome',
+      'exits',
+      'completeness',
+      'exitedAt',
+      'postTradeEmotions',
+      'actualRiskUnknown',
+      'conditionsUnknown',
+    ]);
+  });
+
+  it('names nothing for shared answers, blank exit rows or an untouched section', () => {
+    expect(inactiveModeWork(withAfterTrade({ symbol: 'x', risk: '50' }))).toEqual([]);
+    expect(
+      inactiveModeWork(
+        withAfterTrade({
+          exits: [
+            { id: 'e', scope: '', pnl: '', closedPercent: '', exitedAt: '', price: '', reason: '' },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('never asks when After Trade is the mode being saved', () => {
+    const envelope = { ...withAfterTrade({ finalPnl: '10' }), activeMode: 'after_trade' as const };
+    expect(inactiveModeWork(envelope)).toEqual([]);
   });
 });

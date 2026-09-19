@@ -1021,7 +1021,8 @@ const CompletedTradeExitSchema = z
     { message: 'empty_historical_exit' },
   );
 
-const HISTORICAL_EXIT_LIMIT = 50;
+/** The most exit events one historical Trade may record. The After Trade form enforces the same limit. */
+export const HISTORICAL_EXIT_LIMIT = 50;
 
 /**
  * SAVE CLOSED TRADE — the Add Trade contract After Trade write (contract §13).
@@ -1062,6 +1063,12 @@ const CompletedTradeObjectSchema = z
     exitPlan: exitPlanChoiceField().optional(),
     /** The authoritative whole-Trade result. Blank is not recorded. */
     finalPnlMinor: nullableSignedMinorField(),
+    /**
+     * "Use recorded exits as final result" was chosen explicitly (contract
+     * §11). A claim only: the service re-checks the history before it
+     * records Final Net P&L as adopted from exit history.
+     */
+    finalPnlAdoptedFromExits: z.literal(true).optional(),
     /** The trader's own classification. Absent = Unanswered. */
     traderOutcome: z.enum(OUTCOME_VALUES).optional(),
     /** Absent = Unanswered; asked only once an exit is recorded. */

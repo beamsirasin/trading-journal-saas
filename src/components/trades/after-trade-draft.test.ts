@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CreateCompletedTradeSchema } from '@/lib/trades/schemas';
+import { CreateCompletedTradeSchema, HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 
 import {
@@ -8,6 +8,7 @@ import {
   adoptExitSubtotal,
   afterTradeReadiness,
   buildAfterTradePayload,
+  canAddExit,
   createAfterTradeDraft,
   exitField,
   hasAfterTradeWork,
@@ -15,6 +16,7 @@ import {
   setActualRiskAmount,
   setActualRiskAnswer,
   setCompleteness,
+  setFinalPnl,
   setOutcome,
   setTargetState,
   updateExit,
@@ -198,5 +200,55 @@ describe('work', () => {
     expect(hasAfterTradeWork(pristine, pristine)).toBe(false);
     expect(hasAfterTradeWork(addExit(pristine, 'a'), pristine)).toBe(false);
     expect(hasAfterTradeWork(setOutcome(pristine, 'loss'), pristine)).toBe(true);
+  });
+});
+
+describe('adopting the exit subtotal is recorded as adoption (contract §11)', () => {
+  function completeHistory(): AfterTradeDraft {
+    let draft = identified();
+    draft = addExit(addExit(draft, 'e1'), 'e2');
+    draft = updateExit(draft, 'e1', { pnl: '150' });
+    draft = updateExit(draft, 'e2', { pnl: '200' });
+    return setCompleteness(draft, 'complete');
+  }
+  const format = (minor: string) => (Number(minor) / 100).toFixed(2);
+
+  it('sends the adoption claim with the adopted figure', () => {
+    const draft = completeHistory();
+    const adopted = adoptExitSubtotal(draft, validateAfterTradeDraft(draft, CONTEXT), format);
+    const payload = payloadOf(adopted);
+    expect(payload?.finalPnlMinor).toBe('35000');
+    expect(payload?.finalPnlAdoptedFromExits).toBe(true);
+    expect(CreateCompletedTradeSchema.safeParse(payload).success).toBe(true);
+  });
+
+  it('a typed Final Net P&L is manual, even when it equals the subtotal', () => {
+    const draft = completeHistory();
+    const adopted = adoptExitSubtotal(draft, validateAfterTradeDraft(draft, CONTEXT), format);
+    const typed = setFinalPnl(adopted, '350.00');
+    expect(typed.finalPnlAdopted).toBeUndefined();
+    expect(payloadOf(typed)?.finalPnlAdoptedFromExits).toBeUndefined();
+    expect(payloadOf(setFinalPnl(draft, '350.00'))?.finalPnlAdoptedFromExits).toBeUndefined();
+  });
+
+  it('an exit edited after adoption makes the figure manual again', () => {
+    const draft = completeHistory();
+    const adopted = adoptExitSubtotal(draft, validateAfterTradeDraft(draft, CONTEXT), format);
+    const edited = updateExit(adopted, 'e2', { pnl: '210' });
+    expect(payloadOf(edited)?.finalPnlAdoptedFromExits).toBeUndefined();
+    const incomplete = setCompleteness(adopted, 'incomplete');
+    expect(payloadOf(incomplete)?.finalPnlAdoptedFromExits).toBeUndefined();
+  });
+});
+
+describe('the exit limit is the server limit', () => {
+  it('stops adding exits at the limit a Save accepts', () => {
+    let draft = identified();
+    for (let index = 0; index < HISTORICAL_EXIT_LIMIT + 5; index += 1) {
+      draft = updateExit(addExit(draft, `e${index}`), `e${index}`, { reason: 'r' });
+    }
+    expect(draft.exits).toHaveLength(HISTORICAL_EXIT_LIMIT);
+    expect(canAddExit(draft)).toBe(false);
+    expect(CreateCompletedTradeSchema.safeParse(payloadOf(draft)).success).toBe(true);
   });
 });

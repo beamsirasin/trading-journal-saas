@@ -72,6 +72,7 @@ import { insertAuditLog } from './audit-log';
 import { lockAndResolveEntitlement } from './entitlement';
 import { snapshotTradeSetupConditionsInTx } from './setup-condition-snapshots';
 import { lockStrategyVersionForReferenceInTx } from './strategy-versioning';
+import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
 import {
   canCancelFromStatus,
   canCloseFromStatus,
@@ -529,7 +530,7 @@ export interface CreateTradeInput {
 export interface ContractClosedColumns {
   readonly exitedAt: Date | null;
   readonly netPnlMinor: bigint | null;
-  readonly finalPnlSource: 'manual_total' | null;
+  readonly finalPnlSource: 'manual_total' | 'exit_history' | null;
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
   readonly traderOutcomeSelectedAt: Date | null;
@@ -566,7 +567,9 @@ export type CreateTradeErrorCode =
   | 'invalid_initial_risk'
   | 'invalid_execution_context'
   | 'invalid_exit_plan'
-  | 'invalid_classification_request';
+  | 'invalid_classification_request'
+  /** The Save key was already used by a request that said something else (contract §23). */
+  | 'mutation_replay_conflict';
 
 export type SetupConditionInputErrorCode = Extract<
   CreateTradeErrorCode,
@@ -589,7 +592,32 @@ export type CreateTradeResult =
       readonly ok: false;
       readonly code: CreateTradeErrorCode;
       readonly calcReason?: CalcFailureReason;
+      /** With `mutation_replay_conflict`: the Trade the key already created, in this workspace. */
+      readonly existingTradeId?: string;
     };
+
+/**
+ * AN HONEST REPLAY SAID THE SAME THING (contract §23).
+ *
+ * The key found a Trade. It is that Trade's replay only when the stored
+ * fingerprint of the committed request matches this one; otherwise the key was
+ * reused for different content — a second tab, an edit after a lost answer, the
+ * other recording mode — and answering with the existing Trade would report a
+ * Save that never happened. The existing Trade is never overwritten.
+ *
+ * A row from before migration 0024 has no fingerprint and keeps its earlier
+ * replay behaviour; the completed path still checks that such a row is closed
+ * (`trade-completed.ts`).
+ */
+function replayOf(
+  existing: { readonly id: string; readonly mutationFingerprint: string | null },
+  fingerprint: string,
+): CreateTradeResult {
+  if (existing.mutationFingerprint !== null && existing.mutationFingerprint !== fingerprint) {
+    return { ok: false, code: 'mutation_replay_conflict', existingTradeId: existing.id };
+  }
+  return { ok: true, tradeId: existing.id, alreadyCreated: true };
+}
 
 /**
  * The Add Trade contract write, validated before any lock or read beyond
@@ -825,21 +853,22 @@ export async function createTradeInTx(
   input: CreateTradeInput,
   clock: Clock,
   path: 'at_entry' | 'completed',
+  /** `tradeMutationFingerprint(path, <the caller's request>)`. */
+  fingerprint: string,
 ): Promise<CreateTradeResult> {
   // Steps 1–2.
   const membershipDenial = await lockWorkspaceAndVerifyMembership(tx, workspaceId, userId);
   if (membershipDenial !== null) return { ok: false, code: membershipDenial };
 
   // Step 3 — exact workspace-scoped mutation-key replay lookup, BEFORE
-  // entitlement. The replay request's mutable Plan fields are never
-  // compared against the stored Trade — they may legitimately have
-  // changed since the original create (locked Phase 08B decision).
+  // entitlement. The replay is compared with the REQUEST that created the
+  // Trade (its stored fingerprint), never with the stored Trade, whose fields
+  // may legitimately have been edited since (locked Phase 08B decision) —
+  // see `replayOf`.
   const existing = await tx.query.trades.findFirst({
     where: and(eq(trades.workspaceId, workspaceId), eq(trades.mutationKey, input.mutationKey)),
   });
-  if (existing !== undefined) {
-    return { ok: true, tradeId: existing.id, alreadyCreated: true };
-  }
+  if (existing !== undefined) return replayOf(existing, fingerprint);
 
   // Step 4.
   const denial = await resolveMutationDenial(tx, workspaceId, clock);
@@ -1074,6 +1103,7 @@ export async function createTradeInTx(
     .values({
       workspaceId,
       mutationKey: input.mutationKey,
+      mutationFingerprint: fingerprint,
       tradingAccountId: input.tradingAccountId,
       strategyId: input.strategyId ?? null,
       strategyVersionId,
@@ -1178,7 +1208,7 @@ export async function createTradeInTx(
         `createTrade: conflict reported but no row found for mutation key in workspace ${workspaceId}`,
       );
     }
-    return { ok: true, tradeId: raced.id, alreadyCreated: true };
+    return replayOf(raced, fingerprint);
   }
 
   // Step 14 — skipped entirely without a Setup (Phase 14B): a Trade with
@@ -1283,8 +1313,9 @@ export async function createTrade(
 
   let result: CreateTradeResult;
   try {
+    const fingerprint = tradeMutationFingerprint('at_entry', input);
     result = await db.transaction((tx) =>
-      createTradeInTx(tx, workspaceId, userId, input, clock, 'at_entry'),
+      createTradeInTx(tx, workspaceId, userId, input, clock, 'at_entry', fingerprint),
     );
   } catch (error) {
     if (error instanceof SetupConditionSnapshotFailure) {

@@ -169,6 +169,13 @@
       "when": 1789747175177,
       "tag": "0023_after_trade_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789818074433,
+      "tag": "0024_trade_mutation_fingerprint",
+      "breakpoints": true
     }
   ]
 }

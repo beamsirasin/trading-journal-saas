@@ -34,6 +34,7 @@ import type {
   TradeCreateStrategyOption,
 } from '@/server/dal/trades';
 
+import { hasStaleSelection, staleSelections } from './stale-selection';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 
 export type Direction = '' | 'long' | 'short';
@@ -391,7 +392,13 @@ export type ResolvedExitPlan =
       readonly base: TradeCreateExitPlanOption | null;
       readonly instructions: string;
     }
-  | { readonly status: 'no_rule' };
+  | { readonly status: 'no_rule' }
+  /**
+   * A saved plan the trader chose that is no longer in the library (archived
+   * or removed). The answer is kept, never read as Not recorded; Save waits
+   * until the trader chooses another plan or removes the answer.
+   */
+  | { readonly status: 'unavailable'; readonly exitPlanId: string };
 
 export interface ExitPlanResolution {
   readonly resolved: ResolvedExitPlan;
@@ -431,7 +438,10 @@ export function resolveExitPlan(
       break;
     case 'saved': {
       const plan = planById(choice.exitPlanId);
-      resolved = plan === null ? { status: 'not_recorded' } : { status: 'saved', plan };
+      resolved =
+        plan === null
+          ? { status: 'unavailable', exitPlanId: choice.exitPlanId }
+          : { status: 'saved', plan };
       break;
     }
     case 'customized':
@@ -614,7 +624,9 @@ export type AtEntryErrorCode =
   | 'invalid_datetime'
   | 'invalid_price'
   | 'fixed_target_requires_value'
-  | 'actual_risk_equals_risk_at_entry';
+  | 'actual_risk_equals_risk_at_entry'
+  /** Server-side only: a field the server refused that no specific code describes. */
+  | 'not_accepted';
 
 export type AtEntryNotice = 'stop_wrong_side' | 'target_wrong_side';
 
@@ -836,6 +848,8 @@ export function buildAtEntryPayload(
 ): CreateTradePayload | null {
   const validation = validateAtEntryDraft(draft, context);
   if (atEntryReadiness(validation).status !== 'ready' || validation.riskMinor === null) return null;
+  // A chosen answer whose source went away is resolved by the trader, never dropped.
+  if (hasStaleSelection(staleSelections(draft, context.options))) return null;
   if (draft.direction === '') return null;
 
   const active = activeClassification(draft, context.options);

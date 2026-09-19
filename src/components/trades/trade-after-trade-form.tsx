@@ -6,6 +6,7 @@ import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } fro
 
 import { generateId } from '@/lib/identifiers';
 import { CONFIDENCE_LEVELS, confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
+import { HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
@@ -24,6 +25,7 @@ import {
   answerNoSetup,
   answerNoStrategy,
   buildAfterTradePayload,
+  canAddExit,
   canDeselectEmotion,
   createAfterTradeDraft,
   exitField,
@@ -38,6 +40,7 @@ import {
   setActualRiskAnswer,
   setCompleteness,
   setConfidence,
+  setFinalPnl,
   setOutcome,
   setTargetState,
   setTargetValue,
@@ -53,6 +56,7 @@ import {
   type RecalledConditionStatus,
 } from './after-trade-draft';
 import { createAtEntryDraft } from './at-entry-draft';
+import { hasStaleSelection, staleSelections, UNAVAILABLE_OPTION } from './stale-selection';
 import {
   Chip,
   ChoiceGroup,
@@ -72,9 +76,11 @@ import {
 import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
+import type { RecordingSaveControls } from './trade-recording-form';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
 import { groupEmotionCatalog } from './trade-recording-primitives';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
+import { TradeSaveReplayConflict } from './trade-save-replay';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 const NONE = '__none';
@@ -143,6 +149,33 @@ function isRendered(element: Element): boolean {
 interface SavedTrade {
   readonly tradeId: string;
   readonly symbol: string;
+  /** An honest replay: these exact answers were already saved earlier. */
+  readonly alreadyCreated: boolean;
+}
+
+/**
+ * What a field-level refusal from the server says. Only a price field can be
+ * "not a valid price" and only a money field "not a valid amount"; anything
+ * else is named honestly as not accepted rather than as a price problem.
+ */
+function serverFieldErrorCode(field: AfterTradeField): AfterTradeErrorCode {
+  switch (field) {
+    case 'targetPrice':
+    case 'contextEntryPrice':
+    case 'contextStopPrice':
+    case 'contextPositionSize':
+      return 'invalid_price';
+    case 'risk':
+    case 'actualRisk':
+    case 'targetProfit':
+    case 'finalPnl':
+      return 'invalid_money';
+    case 'enteredAt':
+    case 'exitedAt':
+      return 'invalid_datetime';
+    default:
+      return 'not_accepted';
+  }
 }
 
 /**
@@ -169,6 +202,7 @@ export function TradeAfterTradeForm({
   mutationKey: draftMutationKey,
   onDraftChange,
   onSaved,
+  saveControls,
 }: {
   options: TradeCreateOptions;
   activeTradingAccountId?: string | null;
@@ -181,10 +215,13 @@ export function TradeAfterTradeForm({
   onDraftChange?: (draft: AfterTradeDraft) => void;
   /** Called only after the server has confirmed the Trade. */
   onSaved?: () => void;
+  /** The Recording Draft's Save safeguards: inactive-mode confirmation and "Save as new". */
+  saveControls?: RecordingSaveControls;
 }) {
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
+  const r = useTranslations('trades.create.replay');
   const locale = useLocale();
   const router = useRouter();
   const [adoptedExitPlans, setAdoptedExitPlans] = useState<
@@ -229,6 +266,8 @@ export function TradeAfterTradeForm({
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<AfterTradeErrors>({});
   const [serverMessage, setServerMessage] = useState<string | null>(null);
+  /** The Trade a reused Save key already created from different answers. */
+  const [replayConflict, setReplayConflict] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [emotionHint, setEmotionHint] = useState<EmotionPhase | null>(null);
   const [adoptedMessage, setAdoptedMessage] = useState<string | null>(null);
@@ -326,6 +365,8 @@ export function TradeAfterTradeForm({
         return a('errors.matchedRequiresRisk');
       case 'actual_risk_equals_risk_at_entry':
         return a('errors.actualRiskEqualsRiskAtEntry');
+      case 'not_accepted':
+        return c('errors.notAccepted');
     }
   }
 
@@ -373,7 +414,7 @@ export function TradeAfterTradeForm({
     );
   }
 
-  async function submit() {
+  async function submit(saveAsNewKey?: string) {
     // One Save at a time: a second press while one is in flight is ignored.
     if (submitting.current || saved !== null) return;
     setAttempted(true);
@@ -395,18 +436,43 @@ export function TradeAfterTradeForm({
       focusFirstError(currentReadiness.fields);
       return;
     }
+    // A chosen answer whose source went away waits for the trader's choice.
+    const stale = staleSelections(current, options);
+    if (hasStaleSelection(stale)) {
+      setServerMessage(c('save.staleBlocked'));
+      if (stale.strategy || stale.setup) setAnalysisOpen(true);
+      const target = stale.strategy ? 'after-strategy' : stale.setup ? 'after-setup' : null;
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const element =
+            target === null
+              ? document.querySelector<HTMLElement>('[data-exit-plan-unavailable]')
+              : document.getElementById(target);
+          if (typeof element?.scrollIntoView === 'function') {
+            element.scrollIntoView({ block: 'center' });
+          }
+          if (target !== null) element?.focus();
+        }),
+      );
+      return;
+    }
     const payload = buildAfterTradePayload(current, {
       currency,
       timezone,
       now: currentNow,
-      mutationKey,
+      mutationKey: saveAsNewKey ?? mutationKey,
       options,
     });
     if (payload === null) return;
 
     submitting.current = true;
+    if (saveControls !== undefined && !(await saveControls.confirmBeforeSave())) {
+      submitting.current = false;
+      return;
+    }
     setPending(true);
     setServerMessage(null);
+    setReplayConflict(null);
     let result: Awaited<ReturnType<typeof createCompletedTradeAction>>;
     try {
       result = await createCompletedTradeAction(payload);
@@ -421,10 +487,19 @@ export function TradeAfterTradeForm({
     submitting.current = false;
     setPending(false);
     if (!result.ok) {
+      if (
+        result.error.code === 'mutation_replay_conflict' &&
+        result.error.existingTradeId !== undefined
+      ) {
+        // Nothing was written: the draft stays exactly as it is.
+        setReplayConflict(result.error.existingTradeId);
+        setServerMessage(t('errors.mutation_replay_conflict'));
+        return;
+      }
       const mapped: AfterTradeErrors = {};
       for (const key of Object.keys(result.error.fieldErrors ?? {})) {
         const field = SERVER_FIELD[key];
-        if (field !== undefined && field !== 'exits') mapped[field] = 'invalid_price';
+        if (field !== undefined && field !== 'exits') mapped[field] = serverFieldErrorCode(field);
       }
       setServerErrors(mapped);
       setServerMessage(t(`errors.${result.error.code}`));
@@ -433,8 +508,27 @@ export function TradeAfterTradeForm({
     symbolFavorites.recordUse(payload.symbol);
     // Save → Persist: only now, with the Trade confirmed, does the draft go.
     onSaved?.();
-    setSaved({ tradeId: result.data.tradeId, symbol: payload.symbol });
+    setSaved({
+      tradeId: result.data.tradeId,
+      symbol: payload.symbol,
+      alreadyCreated: result.data.alreadyCreated,
+    });
   }
+
+  const replayConflictPanel =
+    replayConflict === null ? null : (
+      <TradeSaveReplayConflict
+        existingTradeId={replayConflict}
+        pending={pending}
+        onSaveAsNew={() => {
+          if (saveControls === undefined) return;
+          // Only this explicit press issues a new Save key.
+          const key = saveControls.rotateMutationKey();
+          setReplayConflict(null);
+          void submit(key);
+        }}
+      />
+    );
 
   if (saved !== null) {
     return (
@@ -450,10 +544,12 @@ export function TradeAfterTradeForm({
             tabIndex={-1}
             className="text-foreground text-xl font-semibold outline-none"
           >
-            {a('saved.title')}
+            {saved.alreadyCreated ? r('alreadyTitle') : a('saved.title')}
           </h2>
           <p className="text-muted-foreground text-sm">
-            {a('saved.description', { symbol: saved.symbol })}
+            {saved.alreadyCreated
+              ? r('alreadyDescription')
+              : a('saved.description', { symbol: saved.symbol })}
           </p>
         </div>
         <div className="flex min-w-0 flex-wrap gap-3">
@@ -714,7 +810,7 @@ export function TradeAfterTradeForm({
               id="after-finalPnl"
               label={a('result.finalPnl')}
               value={draft.finalPnl}
-              onChange={(finalPnl) => apply((current) => ({ ...current, finalPnl }))}
+              onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
               suffix={currency}
               inputMode="decimal"
               size="lead"
@@ -1001,20 +1097,24 @@ export function TradeAfterTradeForm({
                   options={options}
                   onSelectStrategy={(value) =>
                     apply((current) =>
-                      value === ''
-                        ? removeStrategyAnswer(current)
-                        : value === NONE
-                          ? answerNoStrategy(current)
-                          : selectStrategy(current, value),
+                      value === UNAVAILABLE_OPTION
+                        ? current
+                        : value === ''
+                          ? removeStrategyAnswer(current)
+                          : value === NONE
+                            ? answerNoStrategy(current)
+                            : selectStrategy(current, value),
                     )
                   }
                   onSelectSetup={(value) =>
                     apply((current) =>
-                      value === ''
-                        ? removeSetupAnswer(current)
-                        : value === NONE
-                          ? answerNoSetup(current)
-                          : selectSetup(current, value),
+                      value === UNAVAILABLE_OPTION
+                        ? current
+                        : value === ''
+                          ? removeSetupAnswer(current)
+                          : value === NONE
+                            ? answerNoSetup(current)
+                            : selectSetup(current, value),
                     )
                   }
                   onCondition={(key, status) =>
@@ -1117,6 +1217,8 @@ export function TradeAfterTradeForm({
             </Disclosure>
           </section>
 
+          {wide ? null : replayConflictPanel}
+
           {wide ? null : (
             <div
               data-global-save=""
@@ -1209,6 +1311,7 @@ export function TradeAfterTradeForm({
               >
                 {statusLine}
               </p>
+              {replayConflictPanel}
               <p className="text-muted-foreground text-xs">{a('save.helper')}</p>
             </div>
           </aside>
@@ -1392,11 +1495,24 @@ function ExitHistoryFields({
           })}
         </ol>
       )}
-      <div>
-        <Button type="button" variant="outline" size="sm" onClick={onAdd}>
-          <Plus aria-hidden="true" />
-          {a('exits.add')}
-        </Button>
+      <div className="flex min-w-0 flex-col gap-1">
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onAdd}
+            disabled={!canAddExit(draft)}
+          >
+            <Plus aria-hidden="true" />
+            {a('exits.add')}
+          </Button>
+        </div>
+        {canAddExit(draft) ? null : (
+          <p className="text-muted-foreground text-xs">
+            {a('exits.limitReached', { limit: HISTORICAL_EXIT_LIMIT })}
+          </p>
+        )}
       </div>
 
       {hasExits ? (
@@ -1469,14 +1585,24 @@ function StrategyFields({
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
   const active = activeAfterTradeClassification(draft, options);
+  // A chosen Strategy or Setup that is no longer offered stays chosen, shown as unavailable.
+  const stale = staleSelections(draft, options);
   const strategyValue =
     active.strategyAnswer === 'none'
       ? NONE
-      : active.strategy === null
-        ? ''
-        : active.strategy.strategyId;
+      : stale.strategy
+        ? UNAVAILABLE_OPTION
+        : active.strategy === null
+          ? ''
+          : active.strategy.strategyId;
   const setupValue =
-    active.setupAnswer === 'none' ? NONE : active.setup === null ? '' : active.setup.setupId;
+    active.setupAnswer === 'none'
+      ? NONE
+      : stale.setup
+        ? UNAVAILABLE_OPTION
+        : active.setup === null
+          ? ''
+          : active.setup.setupId;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -1499,6 +1625,9 @@ function StrategyFields({
           options={[
             { value: '', label: c('strategy.notAnswered') },
             { value: NONE, label: c('strategy.none') },
+            ...(stale.strategy
+              ? [{ value: UNAVAILABLE_OPTION, label: c('strategy.unavailableOption') }]
+              : []),
             ...options.strategies.map((strategy) => ({
               value: strategy.strategyId,
               label: strategy.name,
@@ -1530,6 +1659,9 @@ function StrategyFields({
                   : c('strategy.notAnswered'),
             },
             { value: NONE, label: c('strategy.noSetup') },
+            ...(stale.setup
+              ? [{ value: UNAVAILABLE_OPTION, label: c('strategy.unavailableOption') }]
+              : []),
             ...(active.strategy?.setups ?? []).map((setup) => ({
               value: setup.setupId,
               label: setup.name,
@@ -1537,6 +1669,12 @@ function StrategyFields({
           ]}
         />
       </div>
+
+      {stale.strategy || stale.setup ? (
+        <p role="alert" data-classification-unavailable="" className="text-warning text-sm">
+          {stale.strategy ? c('strategy.strategyUnavailable') : c('strategy.setupUnavailable')}
+        </p>
+      ) : null}
 
       {active.setup === null || active.setup.conditions.length === 0 ? null : (
         <div className="flex min-w-0 flex-col gap-1">

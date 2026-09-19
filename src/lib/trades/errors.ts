@@ -28,7 +28,7 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'invalid_completed_exit_coverage',
   'historical_exit_conflict',
   'exit_history_not_adoptable',
-  'completed_trade_replay_conflict',
+  'mutation_replay_conflict',
   'no_plan_representation',
   'planned_r_mismatch',
   'system_requires_price_plan',
@@ -116,7 +116,7 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'invalid_completed_exit_coverage',
   'historical_exit_conflict',
   'exit_history_not_adoptable',
-  'completed_trade_replay_conflict',
+  'mutation_replay_conflict',
   'no_plan_representation',
   'planned_r_mismatch',
   'system_requires_price_plan',
@@ -181,7 +181,7 @@ export function mapServiceErrorToPublicCode(
     case 'invalid_completed_exit_coverage':
     case 'historical_exit_conflict':
     case 'exit_history_not_adoptable':
-    case 'completed_trade_replay_conflict':
+    case 'mutation_replay_conflict':
     case 'no_plan_representation':
     case 'planned_r_mismatch':
     case 'system_requires_price_plan':

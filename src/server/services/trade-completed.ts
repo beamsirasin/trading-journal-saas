@@ -36,6 +36,7 @@ import {
   type CreateTradeExitPlanChoice,
   type CreateTradeInput,
 } from './trade-management';
+import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
 
 /**
  * SAVE CLOSED TRADE — the Add Trade contract After Trade write (contract §13).
@@ -87,6 +88,8 @@ export interface CreateCompletedTradeInput {
   readonly contextPositionSize?: string | null;
   readonly exitPlan?: CreateTradeExitPlanChoice | undefined;
   readonly finalPnlMinor?: bigint | null;
+  /** The trader chose "Use recorded exits as final result"; re-checked here, never trusted. */
+  readonly finalPnlAdoptedFromExits?: true | undefined;
   readonly traderOutcome?: OutcomeValue | undefined;
   readonly exitHistoryCompleteness?: ExitHistoryCompleteness | undefined;
   readonly exits?: readonly CompletedTradeExitInput[];
@@ -109,9 +112,9 @@ export interface CreateCompletedTradeInput {
 
 export type CreateCompletedTradeErrorCode =
   | CreateTradeErrorCode
+  | 'exit_history_not_adoptable'
   | 'invalid_completed_trade_time'
   | 'invalid_completed_exit_coverage'
-  | 'completed_trade_replay_conflict'
   | 'invalid_exit_shape'
   | 'invalid_exit_time';
 
@@ -130,6 +133,8 @@ export type CreateCompletedTradeResult =
       readonly ok: false;
       readonly code: CreateCompletedTradeErrorCode;
       readonly calcReason?: CalcFailureReason;
+      /** With `mutation_replay_conflict`: the Trade the key already created. */
+      readonly existingTradeId?: string;
     };
 
 type CompletedFailureResult = Extract<CreateCompletedTradeResult, { readonly ok: false }>;
@@ -196,12 +201,38 @@ function preflightCompletedInput(
   return null;
 }
 
+/**
+ * AN ADOPTION IS CHECKED, NOT TRUSTED (contract §11).
+ *
+ * Final Net P&L is recorded as adopted from exit history only when the client
+ * says the trader chose it AND the history itself still supports it: declared
+ * Complete, every exit carrying P&L, and a subtotal exactly equal to the Final
+ * Net P&L sent. Anything less is refused rather than stored as manual — the
+ * trader asked for adoption, and silently recording something else would
+ * misstate what they did.
+ */
+function adoptionHolds(input: CreateCompletedTradeInput): boolean {
+  const exits = input.exits ?? [];
+  const final = input.finalPnlMinor ?? null;
+  if (final === null || exits.length === 0 || input.exitHistoryCompleteness !== 'complete') {
+    return false;
+  }
+  let subtotal = 0n;
+  for (const exit of exits) {
+    if (exit.realizedPnlMinor == null) return false;
+    subtotal += exit.realizedPnlMinor;
+  }
+  return subtotal === final;
+}
+
 /** The closed result, exactly as the trader gave it. */
 function composeClosedColumns(
   input: CreateCompletedTradeInput,
   now: Date,
 ): { readonly ok: true; readonly value: ContractClosedColumns } | CompletedFailureResult {
   const finalPnlMinor = input.finalPnlMinor ?? null;
+  const adopted = input.finalPnlAdoptedFromExits === true;
+  if (adopted && !adoptionHolds(input)) return { ok: false, code: 'exit_history_not_adoptable' };
   const riskAtEntryMinor = input.plannedRiskMinor ?? null;
   let canonicalActualR: string | null = null;
   if (finalPnlMinor !== null && riskAtEntryMinor !== null) {
@@ -218,7 +249,7 @@ function composeClosedColumns(
     value: {
       exitedAt: input.exitedAt ?? null,
       netPnlMinor: finalPnlMinor,
-      finalPnlSource: finalPnlMinor === null ? null : 'manual_total',
+      finalPnlSource: finalPnlMinor === null ? null : adopted ? 'exit_history' : 'manual_total',
       actualR: canonicalActualR,
       traderOutcome,
       traderOutcomeSelectedAt: traderOutcome === null ? null : now,
@@ -233,7 +264,11 @@ function successFromRow(
   trade: typeof trades.$inferSelect,
   alreadyCreated: boolean,
 ): CreateCompletedTradeResult {
-  if (trade.status !== 'closed') return { ok: false, code: 'completed_trade_replay_conflict' };
+  // A pre-0024 row has no fingerprint to compare; an open Trade under this key
+  // was certainly created by another request (At Entry), never this one.
+  if (trade.status !== 'closed') {
+    return { ok: false, code: 'mutation_replay_conflict', existingTradeId: trade.id };
+  }
   return {
     ok: true,
     tradeId: trade.id,
@@ -279,6 +314,7 @@ export async function createCompletedTrade(
     return closed;
   }
 
+  const fingerprint = tradeMutationFingerprint('completed', input);
   let result: CreateCompletedTradeResult;
   try {
     result = await getDb().transaction(async (tx): Promise<CreateCompletedTradeResult> => {
@@ -329,6 +365,7 @@ export async function createCompletedTrade(
         createInput,
         clock,
         'completed',
+        fingerprint,
       );
       if (!created.ok) return created;
 

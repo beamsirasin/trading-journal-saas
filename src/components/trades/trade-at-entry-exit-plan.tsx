@@ -147,6 +147,11 @@ export function AtEntryExitPlan({
           </p>
         ) : resolved.status === 'no_rule' ? (
           <p className="text-foreground text-sm font-semibold">{t('noRule')}</p>
+        ) : resolved.status === 'unavailable' ? (
+          <div data-exit-plan-unavailable="" className="flex min-w-0 flex-col gap-1" role="alert">
+            <p className="text-foreground text-sm font-semibold">{t('unavailable')}</p>
+            <p className="text-muted-foreground text-sm">{t('unavailableHint')}</p>
+          </div>
         ) : (
           <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -200,6 +205,10 @@ export function AtEntryExitPlan({
                 {t('noRule')}
               </InlineAction>
             </>
+          ) : resolved.status === 'unavailable' ? (
+            <InlineAction onClick={(event) => openEditor('choose', event.currentTarget)}>
+              {t('chooseAnother')}
+            </InlineAction>
           ) : resolved.status === 'inherited' ? (
             <>
               <InlineAction

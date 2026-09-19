@@ -26,7 +26,7 @@ import { isCanonicalEmotionKey, type EmotionKey } from '@/config/emotions';
 import { actualR } from '@/lib/calc/trade';
 import { reconcileExitHistory, traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
 import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constants';
-import type { CreateCompletedTradeSchema } from '@/lib/trades/schemas';
+import { HISTORICAL_EXIT_LIMIT, type CreateCompletedTradeSchema } from '@/lib/trades/schemas';
 import type {
   TradeCreateOptions,
   TradeCreateSetupOption,
@@ -40,6 +40,7 @@ import type {
   ExitPlanDraft,
   TargetDraft,
 } from './at-entry-draft';
+import { hasStaleSelection, staleSelections } from './stale-selection';
 import { datetimeLocalToIso, parseTradeMoneyInput } from './trade-form-values';
 
 export type Direction = '' | 'long' | 'short';
@@ -94,6 +95,13 @@ export interface AfterTradeDraft {
   readonly exitPlan: ExitPlanDraft;
   /** The authoritative whole-Trade result; '' is not recorded. */
   readonly finalPnl: string;
+  /**
+   * Present only after "Use recorded exits as final result" (contract §11): the
+   * Final Net P&L was explicitly adopted from the exit subtotal. Typing Final
+   * Net P&L removes it. The Save sends it only while the adopted figure is
+   * still the Complete, fully priced subtotal, and the server checks again.
+   */
+  readonly finalPnlAdopted?: true | undefined;
   /** `null` is Unanswered. */
   readonly outcome: OutcomeValue | null;
   readonly exits: readonly AfterTradeExitDraft[];
@@ -196,7 +204,13 @@ export function meaningfulExit(exit: AfterTradeExitDraft): boolean {
   );
 }
 
+/** Whether another exit row may be added: the server's own historical limit, never a looser one. */
+export function canAddExit(draft: AfterTradeDraft): boolean {
+  return draft.exits.length < HISTORICAL_EXIT_LIMIT;
+}
+
 export function addExit(draft: AfterTradeDraft, id: string): AfterTradeDraft {
+  if (!canAddExit(draft)) return draft;
   return { ...draft, exits: [...draft.exits, blankExit(id)] };
 }
 
@@ -467,7 +481,9 @@ export type AfterTradeErrorCode =
   | 'percent_over_total'
   | 'fixed_target_requires_value'
   | 'matched_requires_risk_at_entry'
-  | 'actual_risk_equals_risk_at_entry';
+  | 'actual_risk_equals_risk_at_entry'
+  /** Server-side only: a field the server refused that no specific code describes. */
+  | 'not_accepted';
 
 export type AfterTradeErrors = Partial<Record<AfterTradeField, AfterTradeErrorCode>>;
 
@@ -771,7 +787,30 @@ export function adoptExitSubtotal(
   format: (minor: string) => string,
 ): AfterTradeDraft {
   if (!validation.canAdoptExitSubtotal || validation.exitSubtotalMinor === null) return draft;
-  return { ...draft, finalPnl: format(validation.exitSubtotalMinor) };
+  return { ...draft, finalPnl: format(validation.exitSubtotalMinor), finalPnlAdopted: true };
+}
+
+/** A typed Final Net P&L is the trader's own figure: any earlier adoption no longer describes it. */
+export function setFinalPnl(draft: AfterTradeDraft, finalPnl: string): AfterTradeDraft {
+  const { finalPnlAdopted: _adopted, ...rest } = draft;
+  return { ...rest, finalPnl };
+}
+
+/**
+ * Whether the Final Net P&L a Save sends is still the adopted exit subtotal:
+ * adopted explicitly, and still equal to a Complete, fully priced history.
+ * An exit edited after adoption makes it the trader's figure again (manual).
+ */
+export function finalPnlStillAdopted(
+  draft: AfterTradeDraft,
+  validation: AfterTradeValidation,
+): boolean {
+  return (
+    draft.finalPnlAdopted === true &&
+    draft.completeness === 'complete' &&
+    validation.exitSubtotalMinor !== null &&
+    validation.finalPnlMinor === validation.exitSubtotalMinor
+  );
 }
 
 export interface AfterTradeAnalysisSummary {
@@ -854,6 +893,8 @@ export function buildAfterTradePayload(
 ): CreateCompletedTradePayload | null {
   const validation = validateAfterTradeDraft(draft, context);
   if (afterTradeReadiness(draft, validation).status !== 'ready') return null;
+  // A chosen answer whose source went away is resolved by the trader, never dropped.
+  if (hasStaleSelection(staleSelections(draft, context.options))) return null;
   if (draft.direction === '') return null;
 
   const iso = (value: string): string | null => {
@@ -897,6 +938,7 @@ export function buildAfterTradePayload(
         }
       : {}),
     finalPnlMinor: validation.finalPnlMinor,
+    ...(finalPnlStillAdopted(draft, validation) ? { finalPnlAdoptedFromExits: true } : {}),
     ...(draft.outcome === null ? {} : { traderOutcome: draft.outcome }),
     ...(recordedExits.length === 0 || draft.completeness === 'unanswered'
       ? {}

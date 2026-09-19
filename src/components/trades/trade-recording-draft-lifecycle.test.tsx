@@ -267,3 +267,204 @@ describe('Recording Draft — Save → Persist', () => {
     expect(stored()).toBeNull();
   });
 });
+
+describe('Recording Draft — a Save key never reports a Save that did not happen', () => {
+  const replay = en.trades.create.replay;
+
+  it('keeps the draft on a replay conflict, and only an explicit press saves with a new key', async () => {
+    createTradeMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'mutation_replay_conflict', existingTradeId: 'trade-saved-elsewhere' },
+    });
+    mount();
+    fillAtEntry();
+    saveAtEntry();
+    await screen.findAllByText(replay.conflictTitle);
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(stored()?.atEntry?.symbol).toBe('xauusd');
+    const openSaved = screen.getAllByRole('link', { name: replay.openSaved })[0]!;
+    expect(openSaved.getAttribute('href')).toBe('/app/trades?trade=trade-saved-elsewhere');
+    // Nothing regenerates the key on its own: a plain retry replays the old one.
+    const firstKey = sentMutationKey(0);
+    expect(stored()?.mutationKey).toBe(firstKey);
+
+    fireEvent.click(screen.getAllByRole('button', { name: replay.saveAsNew })[0]!);
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    expect(sentMutationKey(1)).not.toBe(firstKey);
+    await vi.waitFor(() => expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=trade-1'));
+    expect(stored()).toBeNull();
+  });
+
+  it('says an honest replay was already saved instead of presenting a new Save', async () => {
+    createTradeMock.mockResolvedValueOnce({
+      ok: true,
+      data: { tradeId: 'trade-1', alreadyCreated: true },
+    });
+    mount();
+    fillAtEntry();
+    saveAtEntry();
+    expect(await screen.findByRole('heading', { name: replay.alreadyTitle })).toBeVisible();
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(stored()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: replay.openTrade }));
+    expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=trade-1');
+  });
+
+  it('shows the After Trade replay conflict and keeps both modes of the draft', async () => {
+    createCompletedTradeMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'mutation_replay_conflict', existingTradeId: 'trade-open' },
+    });
+    mount('after_trade');
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    fireEvent.click(screen.getByLabelText('Long'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save closed trade' })[0]!);
+    await screen.findAllByText(replay.conflictTitle);
+    expect(screen.queryByRole('heading', { name: 'Trade saved' })).toBeNull();
+    expect(stored()?.afterTrade?.symbol).toBe('eurusd');
+  });
+});
+
+describe('Recording Draft — another tab on the same draft', () => {
+  it('says when another tab saved or discarded the draft', async () => {
+    mount();
+    fillAtEntry();
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: null }));
+    });
+    expect(await screen.findByText(copy.removedElsewhere)).toBeVisible();
+  });
+
+  it('offers the other tab latest version instead of overwriting it silently', async () => {
+    mount();
+    fillAtEntry();
+    const current = stored()!;
+    const theirs = { ...current, atEntry: { ...current.atEntry!, symbol: 'gbpjpy' } };
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: STORAGE_KEY, newValue: JSON.stringify(theirs) }),
+      );
+    });
+    expect(await screen.findByText(copy.changedElsewhere)).toBeVisible();
+    // The other tab's write is what storage holds; loading it shows it here.
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(theirs));
+    fireEvent.click(screen.getByRole('button', { name: copy.loadLatest }));
+    expect(symbolValue()).toBe('GBPJPY');
+  });
+
+  it('ignores storage events for another user or workspace', () => {
+    mount();
+    fillAtEntry();
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'tradechemist:recording-draft:owner-b:workspace-a',
+          newValue: null,
+        }),
+      );
+    });
+    expect(screen.queryByText(copy.removedElsewhere)).toBeNull();
+  });
+});
+
+describe('Recording Draft — saving one mode never silently drops the other', () => {
+  function afterTradeWorkThenAtEntry() {
+    const after = mount('after_trade');
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    fireEvent.click(screen.getByLabelText('Long'));
+    fireEvent.change(document.getElementById('after-finalPnl')!, { target: { value: '250' } });
+    after.unmount();
+    mount('at_entry');
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+  }
+
+  it('asks before an At Entry Save removes After Trade answers, and keeping editing keeps them', async () => {
+    afterTradeWorkThenAtEntry();
+    saveAtEntry();
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent(copy.inactive.items.finalPnl);
+    fireEvent.click(screen.getByRole('button', { name: copy.inactive.keep }));
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(createTradeMock).not.toHaveBeenCalled();
+    expect(stored()?.afterTrade?.finalPnl).toBe('250');
+  });
+
+  it('saves only after confirmation, and clears the draft only after the server confirms', async () => {
+    createTradeMock.mockResolvedValueOnce({ ok: false, error: { code: 'unexpected_error' } });
+    afterTradeWorkThenAtEntry();
+    saveAtEntry();
+    fireEvent.click(await screen.findByRole('button', { name: copy.inactive.confirm }));
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    // A failed Save keeps both modes' work.
+    expect(stored()?.afterTrade?.finalPnl).toBe('250');
+
+    saveAtEntry();
+    fireEvent.click(await screen.findByRole('button', { name: copy.inactive.confirm }));
+    await vi.waitFor(() => expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=trade-1'));
+    expect(stored()).toBeNull();
+  });
+
+  it('does not ask when the other mode holds no answer of its own', async () => {
+    const after = mount('after_trade');
+    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    fireEvent.click(screen.getByLabelText('Long'));
+    after.unmount();
+    mount('at_entry');
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    saveAtEntry();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+});
+
+describe('Recording Draft — a chosen answer whose source went away', () => {
+  const entryCopy = en.trades.create.recording.contractEntry;
+
+  function recoverWith(
+    patch: (atEntry: NonNullable<ReturnType<typeof stored>>['atEntry']) => object,
+  ) {
+    const first = mount();
+    fillAtEntry();
+    first.unmount();
+    const envelope = stored()!;
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...envelope,
+        atEntry: { ...envelope.atEntry!, ...patch(envelope.atEntry) },
+      }),
+    );
+    mount();
+  }
+
+  it('keeps an archived Strategy chosen, says so, and waits for the trader before saving', async () => {
+    recoverWith((atEntry) => ({
+      classification: { ...atEntry!.classification, strategy: 'selected', strategyId: 'gone' },
+    }));
+    expect(screen.getByText(entryCopy.strategy.strategyUnavailable)).toBeInTheDocument();
+    expect(stored()?.atEntry?.classification.strategyId).toBe('gone');
+    saveAtEntry();
+    await screen.findAllByText(entryCopy.save.staleBlocked);
+    expect(createTradeMock).not.toHaveBeenCalled();
+
+    // The explicit resolution: remove the answer, then Save proceeds.
+    fireEvent.click(screen.getByRole('button', { name: entryCopy.strategy.removeStrategyAria }));
+    saveAtEntry();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('never reads an archived saved Exit Plan as Not recorded', async () => {
+    recoverWith((atEntry) => ({
+      exitPlan: { ...atEntry!.exitPlan, choice: { kind: 'saved', exitPlanId: 'archived-plan' } },
+    }));
+    expect(screen.getByText(entryCopy.exitPlan.unavailable)).toBeInTheDocument();
+    expect(document.querySelector('[data-exit-plan-state="unavailable"]')).not.toBeNull();
+    saveAtEntry();
+    await screen.findAllByText(entryCopy.save.staleBlocked);
+    expect(createTradeMock).not.toHaveBeenCalled();
+    expect(stored()?.atEntry?.exitPlan.choice).toEqual({
+      kind: 'saved',
+      exitPlanId: 'archived-plan',
+    });
+  });
+});
