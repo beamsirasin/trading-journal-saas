@@ -149,7 +149,11 @@ export const trades = pgTable(
     confidence: smallint('confidence'),
     tradingviewUrl: text('tradingview_url'),
     notes: text('notes'),
-    /** Post-trade reflection, distinct from pre-trade Entry Reason and legacy notes. */
+    /**
+     * Pre-contract review text. Legacy evidence since migration 0025: never
+     * converted into the canonical reflection prompts, and never implies Reviewed
+     * (`review_status` is the only Review lifecycle).
+     */
     reviewNotes: text('review_notes'),
     /** NULL on historical rows; non-NULL means emotion capture occurred, including a zero selection. */
     emotionsRecordedAt: timestamp('emotions_recorded_at', { withTimezone: true }),
@@ -366,6 +370,9 @@ export const trades = pgTable(
      * result, a win/loss, or `no_trade`: a system loss faithfully followed and a
      * system win ignored are both ordinary records, and neither is derivable
      * from the other.
+     *
+     * Pre-contract since migration 0025: the canonical answer is
+     * `exit_plan_adherence`, and this value is never read as it.
      */
     planAdherence: text('plan_adherence'),
 
@@ -412,6 +419,47 @@ export const trades = pgTable(
     confidenceRevisedAt: timestamp('confidence_revised_at', { withTimezone: true }),
     emotionsRevisedAt: timestamp('emotions_revised_at', { withTimezone: true }),
 
+    // -------------------------------------------------------------------
+    // Canonical Review v1 (migration 0025, Review & System Assessment
+    // contract §2–§7). Nothing here is read from or written to the legacy
+    // `review_notes`, `plan_adherence` or `system_*` columns, and no existing
+    // row was backfilled: every Trade starts `not_reviewed`, with its mistakes
+    // and Exit Plan Adherence Unanswered. Review Drafts are browser-local and
+    // have no column here (contract §3).
+    // -------------------------------------------------------------------
+    /** `not_reviewed` | `reviewed`. Only Finish Review sets `reviewed`, and a trigger refuses any return. */
+    reviewStatus: text('review_status').notNull().default('not_reviewed'),
+    reviewFirstFinishedAt: timestamp('review_first_finished_at', { withTimezone: true }),
+    reviewLastFinishedAt: timestamp('review_last_finished_at', { withTimezone: true }),
+    reviewFinishCount: integer('review_finish_count').notNull().default(0),
+    /** "What would you repeat?" — NULL when left blank; a blank Finish is still a complete Review. */
+    reviewReflectionRepeat: text('review_reflection_repeat'),
+    /** "What would you change?" — NULL when left blank. */
+    reviewReflectionChange: text('review_reflection_change'),
+    /**
+     * The explicit "No mistake identified" answer (contract §6). NULL with no
+     * `trade_mistakes` rows is Unanswered; `trade_mistakes` rows are the selected
+     * mistakes. The two can never coexist (enforced by triggers in 0025), so an
+     * empty selection can never read as "none".
+     */
+    noMistakeIdentifiedAt: timestamp('no_mistake_identified_at', { withTimezone: true }),
+    /**
+     * THE ONE canonical Exit Plan Adherence answer (contract §7.2), committed by
+     * Finish Review or Confirm / Update System Assessment. NULL = Unanswered.
+     * Distinct from legacy `plan_adherence`, which is never read as this.
+     */
+    exitPlanAdherence: text('exit_plan_adherence'),
+    /** Provisional free text (Add Trade §18: no rigid enum before UX validation). */
+    exitPlanDeviationType: text('exit_plan_deviation_type'),
+    exitPlanDeviationReason: text('exit_plan_deviation_reason'),
+    /**
+     * Optimistic-concurrency revision for the adherence answer group (answer,
+     * Deviation Type, Deviation Reason). A 0025 trigger sets it — +1 whenever
+     * the group changes, unchanged otherwise — so no writer can forget or forge
+     * it. A commit compares the draft's base revision with this value.
+     */
+    exitPlanAdherenceRevision: integer('exit_plan_adherence_revision').notNull().default(0),
+
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -437,6 +485,13 @@ export const trades = pgTable(
     uniqueIndex('trades_id_strategy_version_idx').on(table.id, table.strategyVersionId),
     // Composite-FK plumbing for `trade_setup_condition_checks`.
     uniqueIndex('trades_id_setup_version_idx').on(table.id, table.setupVersionId),
+    // Composite-FK plumbing for `trade_system_assessments`, which may only
+    // reference an Add Trade v1 row (migration 0025).
+    uniqueIndex('trades_id_workspace_contract_idx').on(
+      table.id,
+      table.workspaceId,
+      table.recordingContract,
+    ),
 
     // Tenant/parent integrity — every reference chains back to the same
     // workspace and the same Strategy, mirroring Phase 06's own composite-FK
@@ -874,6 +929,54 @@ export const trades = pgTable(
         AND (${table.exitPlanOrigin} IS NULL OR ${table.exitPlanOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
         AND (${table.confidenceOrigin} IS NULL OR ${table.confidenceOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))
         AND (${table.emotionsOrigin} IS NULL OR ${table.emotionsOrigin} IN ('recorded_at_entry', 'recorded_during_trade', 'recalled_after_trade'))`,
+    ),
+
+    // Canonical Review v1 (migration 0025). `not_reviewed` carries no Review
+    // content; `reviewed` carries its completion metadata. The one-way
+    // transition and the immutable first-finish time are trigger-enforced.
+    check('trades_review_status_check', sql`${table.reviewStatus} IN ('not_reviewed', 'reviewed')`),
+    check(
+      'trades_review_lifecycle_check',
+      sql`(
+        ${table.reviewStatus} = 'not_reviewed'
+        AND ${table.reviewFirstFinishedAt} IS NULL
+        AND ${table.reviewLastFinishedAt} IS NULL
+        AND ${table.reviewFinishCount} = 0
+        AND ${table.reviewReflectionRepeat} IS NULL
+        AND ${table.reviewReflectionChange} IS NULL
+        AND ${table.noMistakeIdentifiedAt} IS NULL
+      ) OR (
+        ${table.reviewStatus} = 'reviewed'
+        AND ${table.reviewFirstFinishedAt} IS NOT NULL
+        AND ${table.reviewLastFinishedAt} IS NOT NULL
+        AND ${table.reviewLastFinishedAt} >= ${table.reviewFirstFinishedAt}
+        AND ${table.reviewFinishCount} >= 1
+      )`,
+    ),
+    check(
+      'trades_review_reflection_check',
+      sql`(${table.reviewReflectionRepeat} IS NULL OR btrim(${table.reviewReflectionRepeat}) <> '')
+        AND (${table.reviewReflectionChange} IS NULL OR btrim(${table.reviewReflectionChange}) <> '')`,
+    ),
+    // Not Applicable is valid only for an explicit No Defined Exit Rule. That
+    // is checked when an answer is committed, not here: a later Capture
+    // correction of the Exit Plan must never be blocked by a Review answer.
+    check(
+      'trades_exit_plan_adherence_check',
+      sql`(
+        ${table.exitPlanAdherence} IS NULL OR ${table.exitPlanAdherence} IN (
+          'followed', 'partly_followed', 'not_followed', 'unknown', 'not_applicable'
+        )
+      ) AND (
+        (${table.exitPlanDeviationType} IS NULL AND ${table.exitPlanDeviationReason} IS NULL)
+        OR (
+          ${table.exitPlanAdherence} IS NOT NULL
+          AND ${table.exitPlanAdherence} IN ('partly_followed', 'not_followed')
+        )
+      )
+        AND (${table.exitPlanDeviationType} IS NULL OR btrim(${table.exitPlanDeviationType}) <> '')
+        AND (${table.exitPlanDeviationReason} IS NULL OR btrim(${table.exitPlanDeviationReason}) <> '')
+        AND ${table.exitPlanAdherenceRevision} >= 0`,
     ),
 
     // Chart-attachment terminal fields (migration 0010) — populated together

@@ -176,6 +176,13 @@
       "when": 1789818074433,
       "tag": "0024_trade_mutation_fingerprint",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789841615812,
+      "tag": "0025_review_system_assessment_canonical",
+      "breakpoints": true
     }
   ]
 }

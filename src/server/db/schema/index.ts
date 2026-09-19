@@ -30,6 +30,7 @@ export * from './trade-mistakes';
 export * from './emotion-types';
 export * from './trade-emotions';
 export * from './trade-rule-checks';
+export * from './trade-system-assessments';
 export * from './platform-admins';
 export * from './admin-audit-log';
 export * from './platform-vat-configuration';

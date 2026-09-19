@@ -31,10 +31,20 @@ import { workspaces } from './workspaces';
  * - `rule_key` — the stable identity that survives copy-on-write, for
  *   logical "was this same rule followed" analysis across Versions.
  *
- * `check_status` is a four-value enum, not a boolean `was_satisfied` — a
- * Rule may be genuinely inapplicable to a given Trade (`not_applicable`) or
- * simply never reviewed (`not_checked`), and a boolean cannot distinguish
- * either from `violated`.
+ * `check_status` is an enum, not a boolean `was_satisfied` — a Rule may be
+ * genuinely inapplicable to a given Trade (`not_applicable`) or simply never
+ * reviewed, and a boolean cannot distinguish either from `violated`.
+ *
+ * TWO ANSWER MODELS (migration 0025, Review & System Assessment contract §5).
+ * `answer_model` NULL is the historical model: four values, and `not_checked`
+ * is also the default every snapshot is seeded with, so nothing records that a
+ * trader chose it. Read canonically, a historical `not_checked` on an Add Trade
+ * v1 Trade is Unanswered (decision 42); on a legacy Trade it stays the legacy
+ * "Not checked". `answer_model = 'review_v1'` marks an answer written by
+ * canonical Review, where all six states — `unanswered`, `followed`,
+ * `violated`, `not_applicable`, `not_checked` (explicitly not checked at the
+ * time) and `unknown` — mean exactly what they say. Only `violated` is a
+ * violation in either model. No existing row was rewritten.
  *
  * `title`/`category`/`is_required`/`is_pre_trade_check`/`sort_order` are
  * snapshotted from `strategy_rules` at check-save time, the same "a later
@@ -71,6 +81,8 @@ export const tradeRuleChecks = pgTable(
       .references(() => strategyVersions.id, { onDelete: 'cascade' }),
     ruleKey: uuid('rule_key').notNull(),
     checkStatus: text('check_status').notNull().default('not_checked'),
+    /** NULL = historical answer model; `review_v1` = written by canonical Review. See the module doc. */
+    answerModel: text('answer_model'),
     /** Snapshotted from `strategy_rules` at save time — never read live. */
     title: text('title').notNull(),
     category: text('category').notNull(),
@@ -103,7 +115,17 @@ export const tradeRuleChecks = pgTable(
     }),
     check(
       'trade_rule_checks_check_status_check',
-      sql`${table.checkStatus} IN ('followed', 'violated', 'not_applicable', 'not_checked')`,
+      sql`${table.checkStatus} IN (
+        'unanswered', 'followed', 'violated', 'not_applicable', 'not_checked', 'unknown'
+      )`,
+    ),
+    // `unanswered` and `unknown` exist only in the canonical model; a
+    // historical row keeps its original four values.
+    check(
+      'trade_rule_checks_answer_model_check',
+      sql`(${table.answerModel} IS NULL AND ${table.checkStatus} IN (
+          'followed', 'violated', 'not_applicable', 'not_checked'
+        )) OR (${table.answerModel} IS NOT NULL AND ${table.answerModel} = 'review_v1')`,
     ),
     check(
       'trade_rule_checks_category_check',
