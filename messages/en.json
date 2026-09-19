@@ -2451,6 +2451,44 @@
             "matchedRequiresRisk": "Matched needs a risk at entry. Enter your risk at entry, or choose another answer.",
             "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter what you really had at risk, or choose Matched risk at entry.",
             "percentOverTotal": "Together your exits close more than the whole position. Check the percentages."
+          },
+          "steps": {
+            "progress": "Step {current} of {total}",
+            "navLabel": "Recording steps",
+            "goTo": "Step {current} of {total}: {step}",
+            "back": "Back",
+            "next": "Next",
+            "nextTo": "Next: {step}",
+            "needsAttention": "Needs attention",
+            "edit": "Edit",
+            "editAria": "Edit {step}",
+            "summaryTitle": "Your trade",
+            "summaryNotRecorded": "Not recorded",
+            "trade": {
+              "label": "Trade",
+              "title": "The trade",
+              "description": "Which trade, and when it ran. Account, symbol and direction are all Save needs."
+            },
+            "result": {
+              "label": "Result",
+              "title": "What happened",
+              "description": "The whole trade's result and how you classify it. Both are optional, and both drive your trader results."
+            },
+            "plan": {
+              "label": "Plan",
+              "title": "Risk and plan at entry",
+              "description": "As you remember them. Nothing here is filled in from today's defaults."
+            },
+            "context": {
+              "label": "Context",
+              "title": "Your read on the trade",
+              "description": "Optional. Answers given now are recorded as recalled after the trade."
+            },
+            "details": {
+              "label": "Save",
+              "title": "Details and save",
+              "description": "Optional idea, chart and price levels. Check your trade, then save."
+            }
           }
         }
       },

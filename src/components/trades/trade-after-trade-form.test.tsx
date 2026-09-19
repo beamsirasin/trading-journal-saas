@@ -101,7 +101,27 @@ function renderForm(formOptions: TradeCreateOptions = options) {
   );
 }
 
+const STEP_LABEL = {
+  trade: 'Trade',
+  result: 'Result',
+  plan: 'Plan',
+  context: 'Context',
+  save: 'Save',
+} as const;
+
+/** Open a step from the step list — the same control a trader taps. */
+function goTo(step: keyof typeof STEP_LABEL) {
+  fireEvent.click(
+    screen.getByRole('button', { name: new RegExp(`^Step \\d of 5: ${STEP_LABEL[step]}$`) }),
+  );
+}
+
+function currentStep(): string | null {
+  return document.querySelector('[data-after-trade-form]')!.getAttribute('data-after-trade-step');
+}
+
 function fillIdentity() {
+  goTo('trade');
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
   fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
 }
@@ -110,7 +130,9 @@ function type(label: string | RegExp, value: string, scope: HTMLElement = docume
   fireEvent.change(within(scope).getByLabelText(label), { target: { value } });
 }
 
+/** Save lives on the last step only. */
 function save() {
+  goTo('save');
   fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
 }
 
@@ -119,6 +141,7 @@ function payload() {
 }
 
 function openExitHistory() {
+  goTo('result');
   fireEvent.click(screen.getByRole('button', { name: /^Exit history/ }));
 }
 
@@ -132,7 +155,11 @@ function recordExit(fields: { pnl?: string; percent?: string; reason?: string } 
   return last;
 }
 
+/** The Context step, with this phase's emotion question opened. */
 function emotions(phase: 'emotions' | 'postTradeEmotions'): HTMLElement {
+  if (currentStep() !== 'context') goTo('context');
+  const toggle = document.getElementById(`after-${phase}-toggle`)!;
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
   return document.querySelector<HTMLElement>(`[data-emotions-phase="${phase}"]`)!;
 }
 
@@ -147,22 +174,82 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('After Trade — the moment and its sections', () => {
-  it('asks what happened, in reading order, with no Money/Price result basis', () => {
+describe('After Trade — the moment and its steps', () => {
+  it('asks one topic at a time, in reading order, with no Money/Price result basis', () => {
     renderForm();
-    expect(
-      screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
-    ).toEqual(['The trade', 'What happened', 'Risk and plan at entry', 'Your read on the trade']);
+    const seen: string[] = [];
+    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: Save']) {
+      seen.push(screen.getByRole('heading', { level: 2 }).textContent ?? '');
+      fireEvent.click(screen.getByRole('button', { name: next }));
+    }
+    seen.push(screen.getByRole('heading', { level: 2 }).textContent ?? '');
+    expect(seen).toEqual([
+      'The trade',
+      'What happened',
+      'Risk and plan at entry',
+      'Your read on the trade',
+      'Details and save',
+    ]);
+    expect(screen.getByText('Step 5 of 5')).toBeInTheDocument();
     expect(screen.queryByText(/price levels instead/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/amount instead/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'Price' })).not.toBeInTheDocument();
+  });
+
+  it('offers Save only on the last step, and advances past unanswered optional steps', () => {
+    renderForm();
+    expect(screen.queryByRole('button', { name: 'Save closed trade' })).not.toBeInTheDocument();
+    expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
+    for (const next of ['Next: Result', 'Next: Plan', 'Next: Context', 'Next: Save']) {
+      fireEvent.click(screen.getByRole('button', { name: next }));
+    }
+    expect(currentStep()).toBe('details');
+    expect(screen.getByRole('button', { name: 'Save closed trade' })).toBeInTheDocument();
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps every answer through Back and Next', () => {
+    renderForm();
+    fillIdentity();
+    goTo('result');
+    type('Final net P&L', '120');
+    fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Plan' }));
+    type('Risk at entry', '60');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(currentStep()).toBe('trade');
+    expect(screen.getByLabelText('Symbol')).toHaveValue('xauusd');
+    expect(screen.getByRole('radio', { name: 'Long' })).toBeChecked();
+    goTo('result');
+    expect(screen.getByLabelText('Final net P&L')).toHaveValue('120');
+    expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();
+    expect(screen.getByText('+2.00R')).toBeInTheDocument();
+    goTo('save');
+    expect(document.querySelector('[data-trade-summary]')).toHaveTextContent(
+      /XAUUSD · Long · Main USD/,
+    );
+  });
+
+  it('sends a blocked Save back to the step that needs attention, focusing its control', async () => {
+    renderForm();
+    save();
+    expect(await screen.findByText('Enter a symbol.')).toBeInTheDocument();
+    expect(currentStep()).toBe('trade');
+    await waitFor(() => expect(screen.getByLabelText('Symbol')).toHaveFocus());
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
   it('starts every answer Unanswered: no time, no outcome, no Actual Risk, no Target', () => {
     renderForm();
     expect(screen.getByLabelText('Entry time')).toHaveValue('');
     expect(screen.getByLabelText('Final exit time')).toHaveValue('');
-    for (const name of ['Win', 'BE', 'Loss', 'Matched risk at entry', 'It was different']) {
+    goTo('result');
+    for (const name of ['Win', 'BE', 'Loss']) {
+      expect(screen.getByRole('radio', { name })).not.toBeChecked();
+    }
+    goTo('plan');
+    for (const name of ['Matched risk at entry', 'It was different']) {
       expect(screen.getByRole('radio', { name })).not.toBeChecked();
     }
     expect(screen.getByRole('radio', { name: /^Fixed target/ })).not.toBeChecked();
@@ -212,6 +299,7 @@ describe('Save Closed Trade — only identity is required', () => {
 
   it('prompts for Final Net P&L and the outcome without requiring them', async () => {
     renderForm();
+    goTo('save');
     expect(screen.getByText(/not recorded yet\. You can still save/)).toBeInTheDocument();
     fillIdentity();
     save();
@@ -223,6 +311,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
   it('keeps the outcome the trader chose, with a quiet notice when it contradicts the sign', async () => {
     renderForm();
     fillIdentity();
+    goTo('result');
     type('Final net P&L', '-25');
     fireEvent.click(screen.getByRole('radio', { name: 'Win' }));
     expect(
@@ -236,6 +325,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
   it('never derives an outcome from the P&L', async () => {
     renderForm();
     fillIdentity();
+    goTo('result');
     type('Final net P&L', '120');
     expect(screen.getByRole('radio', { name: 'Win' })).not.toBeChecked();
     save();
@@ -245,6 +335,7 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
 
   it('carries no sign notice for BE beside a profit', () => {
     renderForm();
+    goTo('result');
     type('Final net P&L', '10');
     fireEvent.click(screen.getByRole('radio', { name: 'BE' }));
     expect(screen.queryByText(/does not block saving/)).not.toBeInTheDocument();
@@ -252,17 +343,22 @@ describe('Final Net P&L, the trader’s outcome and Actual R', () => {
 
   it('shows Actual R only from Final Net P&L and Risk at Entry, and says why otherwise', () => {
     renderForm();
+    goTo('result');
     expect(
       screen.getByText('Actual R needs your final net P&L and risk at entry.'),
     ).toBeInTheDocument();
     type('Final net P&L', '100');
     expect(screen.getByText('Actual R needs your risk at entry.')).toBeInTheDocument();
     expect(screen.queryByText('0.00R')).not.toBeInTheDocument();
+    goTo('plan');
     type('Risk at entry', '50');
+    goTo('result');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
     // Actual Risk is Risk Discipline evidence and never moves the denominator.
+    goTo('plan');
     fireEvent.click(screen.getByRole('radio', { name: 'It was different' }));
     type('Actual risk amount', '25');
+    goTo('result');
     expect(screen.getByText('+2.00R')).toBeInTheDocument();
   });
 });
@@ -271,6 +367,7 @@ describe('Actual Risk', () => {
   it('refuses Matched without a Risk at Entry to match', async () => {
     renderForm();
     fillIdentity();
+    goTo('plan');
     fireEvent.click(screen.getByRole('radio', { name: 'Matched risk at entry' }));
     save();
     expect(await screen.findByText(/Matched needs a risk at entry/)).toBeInTheDocument();
@@ -280,11 +377,13 @@ describe('Actual Risk', () => {
   it('refuses a Different amount equal to Risk at Entry, never rewriting it to Matched', async () => {
     renderForm();
     fillIdentity();
+    goTo('plan');
     type('Risk at entry', '50');
     fireEvent.click(screen.getByRole('radio', { name: 'It was different' }));
     type('Actual risk amount', '50');
     save();
     expect(await screen.findByText(/This is the same as your risk at entry/)).toBeInTheDocument();
+    expect(currentStep()).toBe('plan');
     expect(screen.getByRole('radio', { name: 'It was different' })).toBeChecked();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
@@ -296,6 +395,7 @@ describe('Actual Risk', () => {
   ] as const)('sends %s as its own answer', async (label, answer, amount) => {
     renderForm();
     fillIdentity();
+    goTo('plan');
     type('Risk at entry', '50');
     fireEvent.click(
       within(screen.getByRole('group', { name: 'Actual risk' })).getByRole('radio', {
@@ -313,11 +413,13 @@ describe('Target', () => {
   it('blocks an explicitly Fixed Target with neither Target Profit nor TP price', async () => {
     renderForm();
     fillIdentity();
+    goTo('plan');
     fireEvent.click(screen.getByRole('radio', { name: /^Fixed target/ }));
     save();
     expect(
       await screen.findByText('Add a target profit or a TP price, or choose No fixed target.'),
     ).toBeInTheDocument();
+    expect(currentStep()).toBe('plan');
     expect(screen.getByRole('radio', { name: /^Fixed target/ })).toBeChecked();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
@@ -325,6 +427,7 @@ describe('Target', () => {
   it('sends a TP price alone as a Fixed Target, and No Fixed Target as its own answer', async () => {
     renderForm();
     fillIdentity();
+    goTo('plan');
     fireEvent.click(screen.getByRole('radio', { name: /^Fixed target/ }));
     type('TP price', '2410.5');
     save();
@@ -341,12 +444,14 @@ describe('Exit Plan and Strategy', () => {
   it('never inherits the Strategy default, and records a chosen plan as selected', async () => {
     renderForm(withStrategy);
     fillIdentity();
+    goTo('context');
     fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: STRATEGY_ID } });
     expect(screen.queryByText(/From Strategy/)).not.toBeInTheDocument();
     expect(document.querySelector('[data-exit-plan-state]')).toHaveAttribute(
       'data-exit-plan-state',
       'not_recorded',
     );
+    goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: 'Choose exit plan' }));
     fireEvent.click(screen.getByRole('radio', { name: /Trail structure/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -362,6 +467,7 @@ describe('Exit Plan and Strategy', () => {
   it('keeps Unanswered, No Strategy and a selected Strategy distinct', async () => {
     renderForm(withStrategy);
     fillIdentity();
+    goTo('context');
     fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: '__none' } });
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
@@ -372,6 +478,7 @@ describe('Exit Plan and Strategy', () => {
   it('offers Don’t remember, sends only answered conditions, and never Not Met by omission', async () => {
     renderForm(withStrategy);
     fillIdentity();
+    goTo('context');
     fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: STRATEGY_ID } });
     fireEvent.change(screen.getByLabelText('Setup'), { target: { value: SETUP_ID } });
     fireEvent.click(
@@ -462,6 +569,7 @@ describe('exit history', () => {
   it('calls a difference a discrepancy only for a Complete, fully priced history, and never blocks', async () => {
     renderForm();
     fillIdentity();
+    goTo('result');
     type('Final net P&L', '90');
     openExitHistory();
     recordExit({ pnl: '60' });
@@ -481,6 +589,7 @@ describe('exit history', () => {
 
   it('adopts the recorded exits as Final Net P&L only when asked', () => {
     renderForm();
+    goTo('result');
     type('Final net P&L', '90');
     openExitHistory();
     recordExit({ pnl: '60' });
@@ -505,6 +614,7 @@ describe('exit history', () => {
     expect(
       await screen.findByText(/Together your exits close more than the whole position/),
     ).toBeInTheDocument();
+    expect(currentStep()).toBe('result');
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 });

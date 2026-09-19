@@ -70,14 +70,14 @@ beforeEach(() => {
 });
 
 describe('TradeRecordingForm — the production mode boundary', () => {
-  it('renders exactly one linear form per lifecycle', () => {
+  it('renders exactly one recording form per lifecycle', () => {
     const { container, unmount } = renderForm('en', 'at_entry');
     expect(container.querySelector('[data-at-entry-linear-form]')).not.toBeNull();
-    expect(container.querySelector('[data-after-trade-linear-form]')).toBeNull();
+    expect(container.querySelector('[data-after-trade-form]')).toBeNull();
     unmount();
 
     const afterTrade = renderForm('en', 'after_trade');
-    expect(afterTrade.container.querySelector('[data-after-trade-linear-form]')).not.toBeNull();
+    expect(afterTrade.container.querySelector('[data-after-trade-form]')).not.toBeNull();
     expect(afterTrade.container.querySelector('[data-at-entry-linear-form]')).toBeNull();
   });
 

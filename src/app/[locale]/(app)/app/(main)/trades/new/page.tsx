@@ -151,10 +151,11 @@ export default async function NewTradePage({
 
   /*
     BOTH RECORDING FORMS ARE CAPTURE WORKSPACES, NOT WIZARD STEPS. "Record an
-    open trade" and "Record a closed trade" are long forms with a sticky save
-    panel beside them, so they take a compact flow header and the workspace
-    width instead of the centred step frame. The way back to the recording
-    choice is the "Change" each form renders.
+    open trade" is a long form with a sticky save panel beside it; "Record a
+    closed trade" is its own five-step flow with a step rail beside it on a
+    wide screen. Both take a compact flow header and the workspace width
+    instead of the centred step frame. The way back to the recording choice is
+    the "Change" each form renders.
   */
   const copy = timing === 'at_entry' ? 'contractEntry' : 'contractAfter';
   return (

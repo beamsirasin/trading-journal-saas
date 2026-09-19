@@ -1,8 +1,16 @@
 'use client';
 
-import { BarChart3, CircleAlert, History, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleAlert, History, Plus, Trash2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 
 import { generateId } from '@/lib/identifiers';
 import { CONFIDENCE_LEVELS, confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
@@ -61,7 +69,6 @@ import {
   Chip,
   ChoiceGroup,
   Disclosure,
-  GroupHeading,
   Helper,
   InlineAction,
   Legend,
@@ -85,6 +92,38 @@ import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 const NONE = '__none';
 const RECENT_SYMBOL_LIMIT = 3;
+
+/**
+ * THE FIVE STEPS OF A CLOSED-TRADE RECORDING. One topic at a time: the trade,
+ * its result (the moment's question), the plan as remembered, the trader's
+ * read, then lower-priority details and Save. Only Step 1 holds anything Save
+ * needs; every other step can be left unanswered and still advanced.
+ */
+const STEPS = ['trade', 'result', 'plan', 'context', 'details'] as const;
+type StepKey = (typeof STEPS)[number];
+const STEP_INDEX: Readonly<Record<StepKey, number>> = {
+  trade: 0,
+  result: 1,
+  plan: 2,
+  context: 3,
+  details: 4,
+};
+const LAST_STEP = STEPS.length - 1;
+
+/** The step that shows a field — where a failed Save goes to reach it. */
+function fieldStep(field: AfterTradeField): number {
+  switch (afterTradeFieldSection(field)) {
+    case 'result':
+    case 'exits':
+      return STEP_INDEX.result;
+    case 'plan':
+      return STEP_INDEX.plan;
+    case 'context':
+      return STEP_INDEX.details;
+    default:
+      return STEP_INDEX.trade;
+  }
+}
 
 /** One Save in the document at a time — see `trade-at-entry-form.tsx`. */
 const WIDE_VIEWPORT_QUERY = '(min-width: 64rem)';
@@ -142,8 +181,9 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   contextPositionSize: 'contextPositionSize',
 };
 
-function isRendered(element: Element): boolean {
-  return element.getClientRects().length > 0;
+/** Inside the step being shown, rather than one kept mounted but hidden. */
+function isShown(element: Element): boolean {
+  return element.closest('[hidden]') === null;
 }
 
 interface SavedTrade {
@@ -239,7 +279,7 @@ export function TradeAfterTradeForm({
   const mutationKey = draftMutationKey ?? fallbackMutationKey;
   const submitting = useRef(false);
   const formId = useId();
-  const ids = { trade: useId(), result: useId(), plan: useId(), read: useId(), saved: useId() };
+  const ids = { step: useId(), saved: useId() };
   const savedHeading = useRef<HTMLHeadingElement>(null);
 
   const initialAccount =
@@ -261,8 +301,19 @@ export function TradeAfterTradeForm({
 
   const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
   const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
-  const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
+  const [emotionsOpen, setEmotionsOpen] = useState<Readonly<Record<EmotionPhase, boolean>>>({
+    emotions: false,
+    postTradeEmotions: false,
+  });
+  /*
+    THE CURRENT STEP IS VIEW STATE, NOT DRAFT STATE. Every step stays mounted
+    and only the current one is shown, so moving between steps can never drop
+    an answer or an editor's local state; the draft itself is untouched by
+    navigation and a reload recovers it exactly as before, from Step 1.
+  */
+  const [step, setStep] = useState(0);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<AfterTradeErrors>({});
   const [serverMessage, setServerMessage] = useState<string | null>(null);
@@ -399,21 +450,47 @@ export function TradeAfterTradeForm({
   ] as const;
   const promptMissing = recommended.some((item) => !item.done);
 
-  function focusFirstError(fields: readonly AfterTradeField[]) {
+  /**
+   * Show one step. With targets, the first rendered one is brought into view
+   * and focused — a failed Save uses this to land on the control that needs
+   * attention; plain navigation focuses the step's heading.
+   */
+  function showStep(index: number, targets: readonly (() => HTMLElement | null)[] = []) {
+    setStep(index);
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        for (const field of fields) {
-          const target = document.getElementById(fieldTargetId(field));
-          if (target !== null && isRendered(target)) {
-            target.focus();
-            return;
-          }
+        const form = formRef.current;
+        if (
+          form !== null &&
+          typeof form.scrollIntoView === 'function' &&
+          form.getBoundingClientRect().top < 0
+        ) {
+          form.scrollIntoView({ block: 'start' });
         }
-        const status = Array.from(
-          document.querySelectorAll<HTMLElement>('[data-save-status]'),
-        ).find(isRendered);
-        status?.focus();
+        for (const find of targets) {
+          const target = find();
+          if (target === null || !isShown(target)) continue;
+          if (typeof target.scrollIntoView === 'function') {
+            target.scrollIntoView({ block: 'center' });
+          }
+          target.focus();
+          if (document.activeElement === target) return;
+          break;
+        }
+        stepHeading.current?.focus({ preventScroll: true });
       }),
+    );
+  }
+
+  /** Open the earliest step holding a blocking error, and focus its control. */
+  function focusFirstError(fields: readonly AfterTradeField[]) {
+    if (fields.length === 0) return;
+    const index = Math.min(...fields.map(fieldStep));
+    showStep(
+      index,
+      fields
+        .filter((field) => fieldStep(field) === index)
+        .map((field) => () => document.getElementById(fieldTargetId(field))),
     );
   }
 
@@ -435,7 +512,6 @@ export function TradeAfterTradeForm({
       const sections = new Set(currentReadiness.fields.map(afterTradeFieldSection));
       if (currentReadiness.fields.includes('tradingAccountId')) setAccountPickerOpen(true);
       if (sections.has('exits')) setExitsOpen(true);
-      if (sections.has('context')) setContextOpen(true);
       focusFirstError(currentReadiness.fields);
       return;
     }
@@ -443,20 +519,14 @@ export function TradeAfterTradeForm({
     const stale = staleSelections(current, options);
     if (hasStaleSelection(stale)) {
       setServerMessage(c('save.staleBlocked'));
-      if (stale.strategy || stale.setup) setAnalysisOpen(true);
       const target = stale.strategy ? 'after-strategy' : stale.setup ? 'after-setup' : null;
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          const element =
-            target === null
-              ? document.querySelector<HTMLElement>('[data-exit-plan-unavailable]')
-              : document.getElementById(target);
-          if (typeof element?.scrollIntoView === 'function') {
-            element.scrollIntoView({ block: 'center' });
-          }
-          if (target !== null) element?.focus();
-        }),
-      );
+      if (target === null) {
+        showStep(STEP_INDEX.plan, [
+          () => document.querySelector<HTMLElement>('[data-exit-plan-unavailable]'),
+        ]);
+      } else {
+        showStep(STEP_INDEX.context, [() => document.getElementById(target)]);
+      }
       return;
     }
     const payload = buildAfterTradePayload(current, {
@@ -509,6 +579,7 @@ export function TradeAfterTradeForm({
       }
       setServerErrors(mapped);
       setServerMessage(t(`errors.${result.error.code}`));
+      focusFirstError(Object.keys(mapped) as AfterTradeField[]);
       return;
     }
     symbolFavorites.recordUse(payload.symbol);
@@ -583,12 +654,6 @@ export function TradeAfterTradeForm({
     );
   }
 
-  const contextErrorCount = Object.keys(visibleErrors).filter(
-    (field) => afterTradeFieldSection(field as AfterTradeField) === 'context',
-  ).length;
-  const exitErrorCount = Object.keys(visibleErrors).filter(
-    (field) => afterTradeFieldSection(field as AfterTradeField) === 'exits',
-  ).length;
   const contextFilled = [
     draft.context.reason,
     draft.context.tradingviewUrl,
@@ -599,6 +664,15 @@ export function TradeAfterTradeForm({
     draft.context.positionSize,
     draft.context.notes,
   ].filter((value) => value.trim() !== '').length;
+  const exitErrorCount = Object.keys(visibleErrors).filter(
+    (field) => afterTradeFieldSection(field as AfterTradeField) === 'exits',
+  ).length;
+  /** Blocking errors each step holds, so a step with one is marked wherever it is listed. */
+  const stepErrorCounts = STEPS.map(
+    (_, index) =>
+      Object.keys(visibleErrors).filter((field) => fieldStep(field as AfterTradeField) === index)
+        .length,
+  );
 
   const analysisLines: string[] = [];
   if (summary.strategy.answer === 'none') analysisLines.push(c('summary.noStrategy'));
@@ -660,6 +734,185 @@ export function TradeAfterTradeForm({
   // default exists to inherit, so nothing is ever inherited (contract §5).
   const exitPlanView = { ...createAtEntryDraft(''), exitPlan: draft.exitPlan };
 
+  /*
+    WHAT EACH STEP HOLDS, IN A LINE. Read-only restatements of answers already
+    given — never a derived answer. A step with nothing recorded says so.
+  */
+  const localTime = (local: string): string | null => {
+    if (local === '') return null;
+    const iso = datetimeLocalToIso(local, timezone);
+    return iso.ok ? (formatTradeInstant(iso.value, timezone, locale) ?? local) : local;
+  };
+  const outcomeLabel =
+    draft.outcome === 'win'
+      ? a('result.win')
+      : draft.outcome === 'break_even'
+        ? a('result.breakEven')
+        : draft.outcome === 'loss'
+          ? a('result.loss')
+          : null;
+  const joinParts = (parts: readonly (string | null | false | undefined)[]): string | null => {
+    const kept = parts.filter((part): part is string => typeof part === 'string' && part !== '');
+    return kept.length === 0 ? null : kept.join(' · ');
+  };
+  const stepSummaries: Readonly<Record<StepKey, string | null>> = {
+    trade: joinParts([
+      draft.symbol.trim().toUpperCase(),
+      draft.direction === 'long'
+        ? c('direction.long')
+        : draft.direction === 'short'
+          ? c('direction.short')
+          : null,
+      selectedAccount?.name,
+    ]),
+    result: joinParts([
+      validation.finalPnlMinor === null ? null : formatMoney(validation.finalPnlMinor),
+      outcomeLabel,
+      validation.actualR.status === 'known' ? formatR(validation.actualR.value) : null,
+      recordedExits.length === 0 ? null : a('exits.summaryCount', { count: recordedExits.length }),
+    ]),
+    plan: joinParts([
+      validation.riskMinor === null
+        ? null
+        : `${a('risk.label')} ${formatMoney(validation.riskMinor)}`,
+      draft.actualRisk.answer === 'matched'
+        ? a('actualRisk.matched')
+        : draft.actualRisk.answer === 'different'
+          ? a('actualRisk.different')
+          : draft.actualRisk.answer === 'unknown'
+            ? `${a('actualRisk.legend')}: ${a('actualRisk.unknown')}`
+            : null,
+      draft.target.state === 'fixed'
+        ? c('target.fixed')
+        : draft.target.state === 'no_fixed'
+          ? c('target.noFixed')
+          : null,
+    ]),
+    context: joinParts(analysisLines),
+    details: contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
+  };
+  const stepLabel = (key: StepKey) => a(`steps.${key}.label`);
+  const currentKey = STEPS[step] ?? 'trade';
+  const onLastStep = step === LAST_STEP;
+  const nextKey = STEPS[step + 1];
+  const progressText = a('steps.progress', { current: step + 1, total: STEPS.length });
+
+  /** The step list, tappable: a segmented rail on a phone, a labelled list beside a wide form. */
+  const stepNav = wide ? (
+    <nav aria-label={a('steps.navLabel')}>
+      <ol className="flex min-w-0 flex-col gap-1">
+        {STEPS.map((key, index) => {
+          const current = index === step;
+          const errors = stepErrorCounts[index] ?? 0;
+          const line = stepSummaries[key];
+          return (
+            <li key={key} className="min-w-0">
+              <button
+                type="button"
+                data-step-link={key}
+                aria-current={current ? 'step' : undefined}
+                onClick={() => showStep(index)}
+                className={cn(
+                  'hover:bg-accent focus-visible:ring-ring flex w-full min-w-0 items-start gap-3 rounded-md px-3 py-2.5 text-left outline-none focus-visible:ring-2',
+                  current && 'bg-accent',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums',
+                    errors > 0
+                      ? 'border-destructive text-destructive'
+                      : current
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : line === null
+                          ? 'border-control-border text-muted-foreground'
+                          : 'border-primary text-primary',
+                  )}
+                >
+                  {errors > 0 ? <CircleAlert className="size-3.5" /> : index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      'text-foreground block text-sm',
+                      current ? 'font-semibold' : 'font-medium',
+                    )}
+                  >
+                    {stepLabel(key)}
+                  </span>
+                  <span
+                    className={cn(
+                      'block truncate text-xs',
+                      errors > 0 ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                  >
+                    {errors > 0 ? a('steps.needsAttention') : (line ?? c('summary.notAnswered'))}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  ) : (
+    <nav aria-label={a('steps.navLabel')}>
+      <ol className="grid min-w-0 grid-cols-5 gap-1.5">
+        {STEPS.map((key, index) => {
+          const current = index === step;
+          const errors = stepErrorCounts[index] ?? 0;
+          return (
+            <li key={key} className="min-w-0">
+              <button
+                type="button"
+                data-step-link={key}
+                aria-current={current ? 'step' : undefined}
+                aria-label={a('steps.goTo', {
+                  current: index + 1,
+                  total: STEPS.length,
+                  step: stepLabel(key),
+                })}
+                onClick={() => showStep(index)}
+                className="focus-visible:ring-ring flex h-8 w-full items-center rounded-sm outline-none focus-visible:ring-2"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'h-1.5 w-full rounded-full transition-colors motion-reduce:transition-none',
+                    errors > 0
+                      ? 'bg-destructive'
+                      : current
+                        ? 'bg-brand'
+                        : index < step
+                          ? 'bg-brand/45'
+                          : 'bg-muted',
+                  )}
+                />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+
+  const section = (key: StepKey, className: string, children: ReactNode) => (
+    <section
+      key={key}
+      aria-labelledby={ids.step}
+      data-step={key}
+      hidden={currentKey !== key}
+      className={cn(
+        'min-w-0 flex-col px-4 pb-6 sm:px-6',
+        currentKey === key ? 'flex' : 'hidden',
+        className,
+      )}
+    >
+      {children}
+    </section>
+  );
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-6">
       <p
@@ -670,435 +923,435 @@ export function TradeAfterTradeForm({
         <TradeRecordingModeChange />
       </p>
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-8">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-8">
         <form
+          ref={formRef}
           id={formId}
-          data-after-trade-linear-form=""
+          data-after-trade-form=""
+          data-after-trade-step={currentKey}
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            // Save lives on the last step; Enter elsewhere never saves early.
+            if (onLastStep) void submit();
           }}
-          className="bg-card border-border shadow-card flex min-w-0 flex-col rounded-xl border"
+          className="bg-card border-border shadow-card flex w-full max-w-[47.5rem] min-w-0 scroll-mt-[calc(var(--shell-header-height,0px)+1rem)] flex-col rounded-xl border"
         >
-          {/* 1 — THE TRADE */}
-          <section
-            aria-labelledby={ids.trade}
-            className="flex min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading id={ids.trade} title={a('sections.trade')} />
-
-            {accountPickerOpen || selectedAccount === undefined ? (
-              <SelectField
-                id="after-account"
-                label={c('account.label')}
-                value={draft.tradingAccountId}
-                error={errorText('tradingAccountId')}
-                onChange={(tradingAccountId) =>
-                  apply((current) => ({ ...current, tradingAccountId }))
-                }
-                options={[
-                  { value: '', label: c('account.choose') },
-                  ...options.tradingAccounts.map((account) => ({
-                    value: account.tradingAccountId,
-                    label: `${account.name} · ${account.baseCurrency}`,
-                  })),
-                ]}
-              />
-            ) : (
-              <div
-                data-account-context=""
-                className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+          <header className="flex min-w-0 flex-col gap-3 px-4 pt-4 pb-5 sm:px-6 sm:pt-6">
+            {wide ? null : stepNav}
+            <div className="flex min-w-0 flex-col gap-1">
+              <p
+                data-step-progress=""
+                className="text-muted-foreground text-xs font-medium tracking-wide tabular-nums"
               >
-                <p className="min-w-0 text-sm break-words">
-                  <span className="text-muted-foreground">{c('account.label')} </span>
-                  <span className="text-foreground font-semibold">{selectedAccount.name}</span>
-                  <span className="text-muted-foreground"> · {selectedAccount.baseCurrency}</span>
-                </p>
-                <InlineAction
-                  ariaLabel={c('account.changeAria')}
-                  onClick={() => setAccountPickerOpen(true)}
-                >
-                  {c('account.change')}
-                </InlineAction>
-              </div>
-            )}
+                {progressText}
+              </p>
+              <h2
+                id={ids.step}
+                ref={stepHeading}
+                tabIndex={-1}
+                className="text-foreground text-xl font-semibold tracking-tight outline-none"
+              >
+                {a(`steps.${currentKey}.title`)}
+              </h2>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                {a(`steps.${currentKey}.description`)}
+              </p>
+            </div>
+          </header>
 
-            <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-2">
-                <TextField
-                  id="after-symbol"
-                  label={c('symbol.label')}
-                  value={draft.symbol}
-                  onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
-                  placeholder={c('symbol.placeholder')}
-                  autoCapitalize="characters"
-                  error={errorText('symbol')}
+          {/* 1 — THE TRADE */}
+          {section(
+            'trade',
+            'gap-5',
+            <>
+              {accountPickerOpen || selectedAccount === undefined ? (
+                <SelectField
+                  id="after-account"
+                  label={c('account.label')}
+                  value={draft.tradingAccountId}
+                  error={errorText('tradingAccountId')}
+                  onChange={(tradingAccountId) =>
+                    apply((current) => ({ ...current, tradingAccountId }))
+                  }
+                  options={[
+                    { value: '', label: c('account.choose') },
+                    ...options.tradingAccounts.map((account) => ({
+                      value: account.tradingAccountId,
+                      label: `${account.name} · ${account.baseCurrency}`,
+                    })),
+                  ]}
                 />
-                {recentSymbols.length === 0 ? null : (
-                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
-                    {recentSymbols.map((symbol) => (
-                      <InlineAction
-                        key={symbol}
-                        ariaLabel={c('symbol.useRecent', { symbol })}
-                        onClick={() => apply((current) => ({ ...current, symbol }))}
-                      >
-                        {symbol}
-                      </InlineAction>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <ChoiceGroup
-                idPrefix="after-direction"
-                legend={c('direction.label')}
-                value={draft.direction === '' ? null : draft.direction}
-                compact
-                error={errorText('direction')}
-                onChange={(direction) => apply((current) => ({ ...current, direction }))}
-                options={[
-                  { value: 'long', label: c('direction.long') },
-                  { value: 'short', label: c('direction.short') },
-                ]}
-              />
-            </div>
-
-            <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
-              <TimeField
-                id="after-enteredAt"
-                label={a('times.entry')}
-                value={draft.enteredAt}
-                error={errorText('enteredAt')}
-                onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
-              />
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <TimeField
-                  id="after-exitedAt"
-                  label={a('times.exit')}
-                  value={draft.exitedAt}
-                  error={errorText('exitedAt')}
-                  onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
-                />
-                {latestExitLocal === null ? null : (
-                  <div>
-                    <InlineAction
-                      onClick={() =>
-                        apply((current) => ({ ...current, exitedAt: latestExitLocal.local }))
-                      }
-                    >
-                      {a('times.useLatestExit', {
-                        time:
-                          formatTradeInstant(
-                            new Date(latestExitLocal.time).toISOString(),
-                            timezone,
-                            locale,
-                          ) ?? latestExitLocal.local,
-                      })}
-                    </InlineAction>
-                  </div>
-                )}
-              </div>
-            </div>
-            <Helper>{a('times.hint', { timezone })}</Helper>
-          </section>
-
-          {/* 2 — WHAT HAPPENED */}
-          <section
-            aria-labelledby={ids.result}
-            className="border-border flex min-w-0 flex-col gap-5 border-t px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading
-              id={ids.result}
-              title={a('sections.result')}
-              description={a('sections.resultDescription')}
-            />
-            <TextField
-              id="after-finalPnl"
-              label={a('result.finalPnl')}
-              value={draft.finalPnl}
-              onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
-              suffix={currency}
-              inputMode="decimal"
-              size="lead"
-              figure
-              hint={a('result.finalPnlHint', { currency })}
-              error={errorText('finalPnl')}
-            />
-            <div className="flex min-w-0 flex-col gap-2">
-              <ChoiceGroup
-                idPrefix="after-outcome"
-                legend={a('result.outcome')}
-                value={draft.outcome}
-                status={c('notAnswered')}
-                columns={3}
-                compact
-                aside={
-                  <InlineAction
-                    ariaLabel={a('result.removeOutcomeAria')}
-                    onClick={() => apply((current) => setOutcome(current, null))}
-                  >
-                    {c('removeAnswer')}
-                  </InlineAction>
-                }
-                onChange={(outcome: OutcomeValue) =>
-                  apply((current) => setOutcome(current, outcome))
-                }
-                options={[
-                  { value: 'win', label: a('result.win') },
-                  { value: 'break_even', label: a('result.breakEven') },
-                  { value: 'loss', label: a('result.loss') },
-                ]}
-              />
-              <Helper>{a('result.outcomeHint')}</Helper>
-              {outcomeNotice === undefined ? null : (
-                <Notice>
-                  {draft.outcome === 'win' ? a('result.winNegative') : a('result.lossPositive')}
-                </Notice>
-              )}
-            </div>
-            <div
-              data-actual-r={validation.actualR.status}
-              className="border-border flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-md border px-4 py-3"
-            >
-              <div className="min-w-0">
-                <p className="text-foreground text-sm font-medium">{a('result.actualR')}</p>
-                <p className="text-muted-foreground text-xs">{a('result.actualRBasis')}</p>
-              </div>
-              {validation.actualR.status === 'known' ? (
-                <p className="text-foreground text-lg font-semibold tabular-nums">
-                  {formatR(validation.actualR.value)}
-                </p>
               ) : (
-                <p className="text-muted-foreground min-w-0 text-sm">
-                  {a(`result.unavailable.${validation.actualR.reason}`)}
-                </p>
+                <div
+                  data-account-context=""
+                  className="bg-muted/40 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-md px-3 py-2"
+                >
+                  <p className="min-w-0 text-sm break-words">
+                    <span className="text-muted-foreground">{c('account.label')} </span>
+                    <span className="text-foreground font-semibold">{selectedAccount.name}</span>
+                    <span className="text-muted-foreground"> · {selectedAccount.baseCurrency}</span>
+                  </p>
+                  <InlineAction
+                    ariaLabel={c('account.changeAria')}
+                    onClick={() => setAccountPickerOpen(true)}
+                  >
+                    {c('account.change')}
+                  </InlineAction>
+                </div>
               )}
-            </div>
-          </section>
 
-          {/* 3 — RISK AND PLAN AT ENTRY */}
-          <section
-            aria-labelledby={ids.plan}
-            className="border-border flex min-w-0 flex-col gap-6 border-t px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading
-              id={ids.plan}
-              title={a('sections.plan')}
-              description={a('sections.planDescription')}
-            />
-            <TextField
-              id="after-risk"
-              label={a('risk.label')}
-              value={draft.risk}
-              onChange={(risk) => apply((current) => ({ ...current, risk }))}
-              suffix={currency}
-              inputMode="decimal"
-              figure
-              hint={a('risk.hint')}
-              error={errorText('risk')}
-            />
-            <div className="flex min-w-0 flex-col gap-3">
-              <ChoiceGroup
-                idPrefix="after-actual-risk"
-                legend={a('actualRisk.legend')}
-                value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
-                status={c('notAnswered')}
-                columns={3}
-                compact
-                error={draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined}
-                aside={
-                  <InlineAction
-                    ariaLabel={a('actualRisk.removeAria')}
-                    onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
-                  >
-                    {c('removeAnswer')}
-                  </InlineAction>
-                }
-                onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
-                options={[
-                  { value: 'matched', label: a('actualRisk.matched') },
-                  { value: 'different', label: a('actualRisk.different') },
-                  { value: 'unknown', label: a('actualRisk.unknown') },
-                ]}
-              />
-              {draft.actualRisk.answer === 'different' ? (
-                <div className="border-control-border border-l-2 pl-4">
+              <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
+                <div className="flex min-w-0 flex-col gap-2">
                   <TextField
-                    id="after-actual-risk-amount"
-                    label={a('actualRisk.amount')}
-                    value={draft.actualRisk.amount}
-                    onChange={(amount) => apply((current) => setActualRiskAmount(current, amount))}
-                    suffix={currency}
-                    inputMode="decimal"
-                    figure
-                    hint={a('actualRisk.amountHint')}
-                    error={errorText('actualRisk')}
+                    id="after-symbol"
+                    label={c('symbol.label')}
+                    value={draft.symbol}
+                    onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
+                    placeholder={c('symbol.placeholder')}
+                    autoCapitalize="characters"
+                    error={errorText('symbol')}
                   />
+                  {recentSymbols.length === 0 ? null : (
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
+                      {recentSymbols.map((symbol) => (
+                        <InlineAction
+                          key={symbol}
+                          ariaLabel={c('symbol.useRecent', { symbol })}
+                          onClick={() => apply((current) => ({ ...current, symbol }))}
+                        >
+                          {symbol}
+                        </InlineAction>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : null}
-            </div>
+                <ChoiceGroup
+                  idPrefix="after-direction"
+                  legend={c('direction.label')}
+                  value={draft.direction === '' ? null : draft.direction}
+                  compact
+                  fit
+                  error={errorText('direction')}
+                  onChange={(direction) => apply((current) => ({ ...current, direction }))}
+                  options={[
+                    { value: 'long', label: c('direction.long') },
+                    { value: 'short', label: c('direction.short') },
+                  ]}
+                />
+              </div>
 
-            <div className="flex min-w-0 flex-col gap-3">
-              <ChoiceGroup
-                idPrefix="after-target"
-                legend={c('target.legend')}
-                value={draft.target.state === 'unanswered' ? null : draft.target.state}
-                status={c('notAnswered')}
-                aside={
-                  <InlineAction
-                    ariaLabel={c('target.removeAria')}
-                    onClick={() => apply((current) => setTargetState(current, 'unanswered'))}
-                  >
-                    {c('removeAnswer')}
-                  </InlineAction>
-                }
-                onChange={(state) => apply((current) => setTargetState(current, state))}
-                options={[
-                  {
-                    value: 'fixed',
-                    label: c('target.fixed'),
-                    description: c('target.fixedDescription'),
-                  },
-                  {
-                    value: 'no_fixed',
-                    label: c('target.noFixed'),
-                    description: c('target.noFixedDescription'),
-                  },
-                ]}
-              />
-              {draft.target.state === 'fixed' ? (
-                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-                  <TextField
-                    id="after-targetProfit"
-                    label={c('target.profit')}
-                    value={draft.target.profit}
-                    onChange={(value) =>
-                      apply((current) => setTargetValue(current, 'profit', value))
-                    }
-                    suffix={currency}
-                    inputMode="decimal"
-                    figure
-                    error={errorText('targetProfit')}
+              <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
+                <TimeField
+                  id="after-enteredAt"
+                  label={a('times.entry')}
+                  value={draft.enteredAt}
+                  error={errorText('enteredAt')}
+                  onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
+                />
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <TimeField
+                    id="after-exitedAt"
+                    label={a('times.exit')}
+                    value={draft.exitedAt}
+                    error={errorText('exitedAt')}
+                    onChange={(exitedAt) => apply((current) => ({ ...current, exitedAt }))}
                   />
-                  <TextField
-                    id="after-targetPrice"
-                    label={c('target.price')}
-                    value={draft.target.price}
-                    onChange={(value) =>
-                      apply((current) => setTargetValue(current, 'price', value))
-                    }
-                    inputMode="decimal"
-                    figure
-                    labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
-                    error={errorText('targetPrice')}
-                  />
+                  {latestExitLocal === null ? null : (
+                    <div>
+                      <InlineAction
+                        onClick={() =>
+                          apply((current) => ({ ...current, exitedAt: latestExitLocal.local }))
+                        }
+                      >
+                        {a('times.useLatestExit', {
+                          time:
+                            formatTradeInstant(
+                              new Date(latestExitLocal.time).toISOString(),
+                              timezone,
+                              locale,
+                            ) ?? latestExitLocal.local,
+                        })}
+                      </InlineAction>
+                    </div>
+                  )}
                 </div>
-              ) : null}
-            </div>
+              </div>
+              <Helper>{a('times.hint', { timezone })}</Helper>
+            </>,
+          )}
 
-            <AtEntryExitPlan
-              draft={exitPlanView}
-              options={options}
-              onChange={(next) => apply((current) => ({ ...current, exitPlan: next.exitPlan }))}
-              onLibraryChanged={setAdoptedExitPlans}
-              copy={{
-                notRecordedHint: a('exitPlan.notRecordedHint'),
-                editorDescription: a('exitPlan.editorDescription'),
-              }}
-            />
-          </section>
+          {/* 2 — WHAT HAPPENED: the moment's question, and the strongest step */}
+          {section(
+            'result',
+            'gap-6',
+            <>
+              <div
+                data-result-panel=""
+                className="border-border bg-muted/30 flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:p-5"
+              >
+                <TextField
+                  id="after-finalPnl"
+                  label={a('result.finalPnl')}
+                  value={draft.finalPnl}
+                  onChange={(finalPnl) => apply((current) => setFinalPnl(current, finalPnl))}
+                  suffix={currency}
+                  inputMode="decimal"
+                  size="lead"
+                  figure
+                  hint={a('result.finalPnlHint', { currency })}
+                  error={errorText('finalPnl')}
+                />
+                <div
+                  data-actual-r={validation.actualR.status}
+                  className="border-border flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t pt-4"
+                >
+                  <div className="min-w-0">
+                    <p className="text-foreground text-sm font-medium">{a('result.actualR')}</p>
+                    <p className="text-muted-foreground text-xs">{a('result.actualRBasis')}</p>
+                  </div>
+                  {validation.actualR.status === 'known' ? (
+                    <p className="text-foreground text-2xl font-semibold tabular-nums">
+                      {formatR(validation.actualR.value)}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground min-w-0 text-sm">
+                      {a(`result.unavailable.${validation.actualR.reason}`)}
+                    </p>
+                  )}
+                </div>
+              </div>
 
-          {/* 4 — EXIT HISTORY (supporting evidence) */}
-          <section className="border-border min-w-0 border-t px-2 py-3 sm:px-3">
-            <Disclosure
-              id="after-exits-toggle"
-              title={a('sections.exits')}
-              summary={
-                exitErrorCount > 0 ? (
-                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                    {c('summary.hasErrors', { count: exitErrorCount })}
-                  </span>
-                ) : recordedExits.length === 0 ? (
-                  a('exits.summaryEmpty')
-                ) : (
-                  a('exits.summaryCount', { count: recordedExits.length })
-                )
-              }
-              open={exitsOpen}
-              onToggle={() => setExitsOpen((open) => !open)}
-            >
-              <ExitHistoryFields
-                draft={draft}
-                currency={currency}
-                errorText={errorText}
-                subtotal={validation.exitSubtotalMinor}
-                canAdopt={validation.canAdoptExitSubtotal}
-                discrepancy={
-                  discrepancy?.kind === 'exit_discrepancy'
-                    ? {
-                        subtotal: formatMoney(discrepancy.subtotalMinor),
-                        final: formatMoney(discrepancy.finalPnlMinor),
+              <div className="flex min-w-0 flex-col gap-2">
+                <ChoiceGroup
+                  idPrefix="after-outcome"
+                  legend={a('result.outcome')}
+                  value={draft.outcome}
+                  status={c('notAnswered')}
+                  columns={3}
+                  compact
+                  fit
+                  aside={
+                    <InlineAction
+                      ariaLabel={a('result.removeOutcomeAria')}
+                      onClick={() => apply((current) => setOutcome(current, null))}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(outcome: OutcomeValue) =>
+                    apply((current) => setOutcome(current, outcome))
+                  }
+                  options={[
+                    { value: 'win', label: a('result.win') },
+                    { value: 'break_even', label: a('result.breakEven') },
+                    { value: 'loss', label: a('result.loss') },
+                  ]}
+                />
+                <Helper>{a('result.outcomeHint')}</Helper>
+                {outcomeNotice === undefined ? null : (
+                  <Notice>
+                    {draft.outcome === 'win' ? a('result.winNegative') : a('result.lossPositive')}
+                  </Notice>
+                )}
+              </div>
+
+              {/* Exit history: optional supporting evidence, never the result */}
+              <div className="border-border min-w-0 rounded-lg border px-1 py-1">
+                <Disclosure
+                  id="after-exits-toggle"
+                  title={a('sections.exits')}
+                  summary={
+                    exitErrorCount > 0 ? (
+                      <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
+                        <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                        {c('summary.hasErrors', { count: exitErrorCount })}
+                      </span>
+                    ) : recordedExits.length === 0 ? (
+                      a('exits.summaryEmpty')
+                    ) : (
+                      a('exits.summaryCount', { count: recordedExits.length })
+                    )
+                  }
+                  open={exitsOpen}
+                  onToggle={() => setExitsOpen((open) => !open)}
+                >
+                  <ExitHistoryFields
+                    draft={draft}
+                    currency={currency}
+                    errorText={errorText}
+                    subtotal={validation.exitSubtotalMinor}
+                    canAdopt={validation.canAdoptExitSubtotal}
+                    discrepancy={
+                      discrepancy?.kind === 'exit_discrepancy'
+                        ? {
+                            subtotal: formatMoney(discrepancy.subtotalMinor),
+                            final: formatMoney(discrepancy.finalPnlMinor),
+                          }
+                        : null
+                    }
+                    adoptedMessage={adoptedMessage}
+                    formatMoney={formatMoney}
+                    onAdd={() => apply((current) => addExit(current, generateId()))}
+                    onRemove={(id) => apply((current) => removeExit(current, id))}
+                    onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
+                    onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
+                    onAdopt={() => {
+                      if (validation.exitSubtotalMinor === null) return;
+                      const amount = formatMoney(validation.exitSubtotalMinor);
+                      setDraft((current) =>
+                        adoptExitSubtotal(current, validation, (minor) =>
+                          tradeMoneyInputValue(minor, currency),
+                        ),
+                      );
+                      setServerMessage(null);
+                      setAdoptedMessage(a('exits.adopted', { amount }));
+                    }}
+                  />
+                </Disclosure>
+              </div>
+            </>,
+          )}
+
+          {/* 3 — RISK AND PLAN AT ENTRY, as remembered */}
+          {section(
+            'plan',
+            'gap-6',
+            <>
+              <TextField
+                id="after-risk"
+                label={a('risk.label')}
+                value={draft.risk}
+                onChange={(risk) => apply((current) => ({ ...current, risk }))}
+                suffix={currency}
+                inputMode="decimal"
+                figure
+                hint={a('risk.hint')}
+                error={errorText('risk')}
+              />
+              <div className="flex min-w-0 flex-col gap-3">
+                <ChoiceGroup
+                  idPrefix="after-actual-risk"
+                  legend={a('actualRisk.legend')}
+                  value={draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer}
+                  status={c('notAnswered')}
+                  columns={3}
+                  compact
+                  error={
+                    draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
+                  }
+                  aside={
+                    <InlineAction
+                      ariaLabel={a('actualRisk.removeAria')}
+                      onClick={() => apply((current) => setActualRiskAnswer(current, 'unanswered'))}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
+                  options={[
+                    { value: 'matched', label: a('actualRisk.matched') },
+                    { value: 'different', label: a('actualRisk.different') },
+                    { value: 'unknown', label: a('actualRisk.unknown') },
+                  ]}
+                />
+                {draft.actualRisk.answer === 'different' ? (
+                  <div className="border-control-border border-l-2 pl-4">
+                    <TextField
+                      id="after-actual-risk-amount"
+                      label={a('actualRisk.amount')}
+                      value={draft.actualRisk.amount}
+                      onChange={(amount) =>
+                        apply((current) => setActualRiskAmount(current, amount))
                       }
-                    : null
-                }
-                adoptedMessage={adoptedMessage}
-                formatMoney={formatMoney}
-                onAdd={() => apply((current) => addExit(current, generateId()))}
-                onRemove={(id) => apply((current) => removeExit(current, id))}
-                onChange={(id, patch) => apply((current) => updateExit(current, id, patch))}
-                onCompleteness={(value) => apply((current) => setCompleteness(current, value))}
-                onAdopt={() => {
-                  if (validation.exitSubtotalMinor === null) return;
-                  const amount = formatMoney(validation.exitSubtotalMinor);
-                  setDraft((current) =>
-                    adoptExitSubtotal(current, validation, (minor) =>
-                      tradeMoneyInputValue(minor, currency),
-                    ),
-                  );
-                  setServerMessage(null);
-                  setAdoptedMessage(a('exits.adopted', { amount }));
+                      suffix={currency}
+                      inputMode="decimal"
+                      figure
+                      hint={a('actualRisk.amountHint')}
+                      error={errorText('actualRisk')}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-3">
+                <ChoiceGroup
+                  idPrefix="after-target"
+                  legend={c('target.legend')}
+                  value={draft.target.state === 'unanswered' ? null : draft.target.state}
+                  status={c('notAnswered')}
+                  aside={
+                    <InlineAction
+                      ariaLabel={c('target.removeAria')}
+                      onClick={() => apply((current) => setTargetState(current, 'unanswered'))}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(state) => apply((current) => setTargetState(current, state))}
+                  options={[
+                    {
+                      value: 'fixed',
+                      label: c('target.fixed'),
+                      description: c('target.fixedDescription'),
+                    },
+                    {
+                      value: 'no_fixed',
+                      label: c('target.noFixed'),
+                      description: c('target.noFixedDescription'),
+                    },
+                  ]}
+                />
+                {draft.target.state === 'fixed' ? (
+                  <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+                    <TextField
+                      id="after-targetProfit"
+                      label={c('target.profit')}
+                      value={draft.target.profit}
+                      onChange={(value) =>
+                        apply((current) => setTargetValue(current, 'profit', value))
+                      }
+                      suffix={currency}
+                      inputMode="decimal"
+                      figure
+                      error={errorText('targetProfit')}
+                    />
+                    <TextField
+                      id="after-targetPrice"
+                      label={c('target.price')}
+                      value={draft.target.price}
+                      onChange={(value) =>
+                        apply((current) => setTargetValue(current, 'price', value))
+                      }
+                      inputMode="decimal"
+                      figure
+                      labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
+                      error={errorText('targetPrice')}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <AtEntryExitPlan
+                draft={exitPlanView}
+                options={options}
+                onChange={(next) => apply((current) => ({ ...current, exitPlan: next.exitPlan }))}
+                onLibraryChanged={setAdoptedExitPlans}
+                copy={{
+                  notRecordedHint: a('exitPlan.notRecordedHint'),
+                  editorDescription: a('exitPlan.editorDescription'),
                 }}
               />
-            </Disclosure>
-          </section>
+            </>,
+          )}
 
-          {/* 5 — THE TRADER'S READ (core analytical data, optional to save) */}
-          <section
-            aria-labelledby={ids.read}
-            className="border-border flex min-w-0 flex-col gap-5 border-t px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading
-              id={ids.read}
-              title={a('sections.read')}
-              description={a('sections.readDescription')}
-              aside={
-                <span className="text-muted-foreground hidden items-center gap-1.5 text-sm lg:inline-flex">
-                  <BarChart3 className="size-4" aria-hidden="true" />
-                  {c('sections.usedInAnalytics')}
-                </span>
-              }
-            />
-            <Disclosure
-              id="after-analysis-toggle"
-              title={analysisOpen ? a('summary.hide') : a('summary.open')}
-              summary={
-                <span data-analysis-summary="" className="flex min-w-0 flex-col">
-                  {(analysisLines.length === 0 ? [c('summary.notAnswered')] : analysisLines).map(
-                    (line) => (
-                      <span key={line} className="block min-w-0 break-words">
-                        {line}
-                      </span>
-                    ),
-                  )}
-                </span>
-              }
-              open={analysisOpen}
-              onToggle={() => setAnalysisOpen((open) => !open)}
-              openFromDesktop
-            >
-              <div className="flex min-w-0 flex-col gap-6 pb-2">
+          {/* 4 — THE TRADER'S READ (core analytical data, optional to save) */}
+          {section(
+            'context',
+            'gap-0',
+            <>
+              <div className="pb-5">
                 <StrategyFields
                   draft={draft}
                   options={options}
@@ -1128,91 +1381,96 @@ export function TradeAfterTradeForm({
                     apply((current) => answerCondition(current, key, status))
                   }
                 />
-                <div className="border-border border-t pt-5">
-                  <ChoiceGroup
-                    idPrefix="after-confidence"
-                    legend={a('confidence.label')}
-                    value={draft.confidence === null ? null : String(draft.confidence)}
-                    status={c('notAnswered')}
-                    columns={5}
-                    compact
-                    aside={
-                      <InlineAction
-                        ariaLabel={c('confidence.removeAria')}
-                        onClick={() => apply((current) => setConfidence(current, null))}
-                      >
-                        {c('removeAnswer')}
-                      </InlineAction>
-                    }
-                    onChange={(value) =>
-                      apply((current) => setConfidence(current, Number.parseInt(value, 10)))
-                    }
-                    options={CONFIDENCE_LEVELS.map((level) => ({
-                      value: String(level.value),
-                      label: t(`create.confidence.level.${level.key}`),
-                    }))}
-                  />
-                  <Helper>{a('confidence.hint')}</Helper>
-                </div>
-                {(['emotions', 'postTradeEmotions'] as const).map((phase) => (
-                  <div key={phase} className="border-border border-t pt-5">
-                    <EmotionFields
-                      phase={phase}
-                      answer={draft[phase]}
-                      legend={
-                        phase === 'emotions' ? a('emotions.entryLegend') : a('emotions.postLegend')
-                      }
-                      hint={phase === 'postTradeEmotions' ? a('emotions.postHint') : undefined}
-                      removeAria={
-                        phase === 'emotions'
-                          ? c('emotions.removeAria')
-                          : a('emotions.removePostAria')
-                      }
-                      catalog={options.emotionCatalog}
-                      showLastOneHint={emotionHint === phase}
-                      onToggle={(key) => {
-                        if (!canDeselectEmotion(draft[phase], key)) {
-                          setEmotionHint(phase);
-                          return;
-                        }
-                        setEmotionHint(null);
-                        apply((current) => toggleEmotion(current, phase, key));
-                      }}
-                      onNone={() => {
-                        setEmotionHint(null);
-                        apply((current) => answerNoEmotions(current, phase));
-                      }}
-                      onRemove={() => {
-                        setEmotionHint(null);
-                        apply((current) => removeEmotionsAnswer(current, phase));
-                      }}
-                    />
-                  </div>
-                ))}
               </div>
-            </Disclosure>
-          </section>
+              <div className="border-border border-t py-5">
+                <ChoiceGroup
+                  idPrefix="after-confidence"
+                  legend={a('confidence.label')}
+                  value={draft.confidence === null ? null : String(draft.confidence)}
+                  status={c('notAnswered')}
+                  columns={5}
+                  compact
+                  fit
+                  aside={
+                    <InlineAction
+                      ariaLabel={c('confidence.removeAria')}
+                      onClick={() => apply((current) => setConfidence(current, null))}
+                    >
+                      {c('removeAnswer')}
+                    </InlineAction>
+                  }
+                  onChange={(value) =>
+                    apply((current) => setConfidence(current, Number.parseInt(value, 10)))
+                  }
+                  options={CONFIDENCE_LEVELS.map((level) => ({
+                    value: String(level.value),
+                    label: t(`create.confidence.level.${level.key}`),
+                  }))}
+                />
+                <Helper>{a('confidence.hint')}</Helper>
+              </div>
+              {(['emotions', 'postTradeEmotions'] as const).map((phase) => {
+                const answer = draft[phase];
+                const legend =
+                  phase === 'emotions' ? a('emotions.entryLegend') : a('emotions.postLegend');
+                return (
+                  <div key={phase} className="border-border -mx-3 border-t px-0 pt-2 pb-1">
+                    <Disclosure
+                      id={`after-${phase}-toggle`}
+                      title={legend}
+                      summary={
+                        answer.answer === 'selected'
+                          ? answer.keys.map((key) => t(`emotions.${key}`)).join(', ')
+                          : answer.answer === 'none'
+                            ? c('emotions.none')
+                            : c('notAnswered')
+                      }
+                      open={emotionsOpen[phase]}
+                      onToggle={() =>
+                        setEmotionsOpen((current) => ({ ...current, [phase]: !current[phase] }))
+                      }
+                    >
+                      <EmotionFields
+                        phase={phase}
+                        answer={answer}
+                        legend={legend}
+                        hint={phase === 'postTradeEmotions' ? a('emotions.postHint') : undefined}
+                        removeAria={
+                          phase === 'emotions'
+                            ? c('emotions.removeAria')
+                            : a('emotions.removePostAria')
+                        }
+                        catalog={options.emotionCatalog}
+                        showLastOneHint={emotionHint === phase}
+                        onToggle={(key) => {
+                          if (!canDeselectEmotion(draft[phase], key)) {
+                            setEmotionHint(phase);
+                            return;
+                          }
+                          setEmotionHint(null);
+                          apply((current) => toggleEmotion(current, phase, key));
+                        }}
+                        onNone={() => {
+                          setEmotionHint(null);
+                          apply((current) => answerNoEmotions(current, phase));
+                        }}
+                        onRemove={() => {
+                          setEmotionHint(null);
+                          apply((current) => removeEmotionsAnswer(current, phase));
+                        }}
+                      />
+                    </Disclosure>
+                  </div>
+                );
+              })}
+            </>,
+          )}
 
-          {/* 6 — CONTEXT */}
-          <section className="border-border min-w-0 border-t px-2 py-3 sm:px-3">
-            <Disclosure
-              id="after-context-toggle"
-              title={a('sections.context')}
-              summary={
-                contextErrorCount > 0 ? (
-                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                    {c('summary.hasErrors', { count: contextErrorCount })}
-                  </span>
-                ) : contextFilled === 0 ? (
-                  c('summary.contextEmpty')
-                ) : (
-                  c('summary.contextFilled', { count: contextFilled })
-                )
-              }
-              open={contextOpen}
-              onToggle={() => setContextOpen((open) => !open)}
-            >
+          {/* 5 — DETAILS, THE SUMMARY, AND SAVE */}
+          {section(
+            'details',
+            'gap-6',
+            <>
               <ContextFields
                 draft={draft}
                 notices={validation.notices.map((notice) => notice.kind)}
@@ -1221,105 +1479,164 @@ export function TradeAfterTradeForm({
                   apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
                 }
               />
-            </Disclosure>
-          </section>
-
-          {wide ? null : replayConflictPanel}
-
-          {wide ? null : (
-            <div
-              data-global-save=""
-              data-action-bar={keyboardOpen ? 'inline' : 'docked'}
-              className={cn(
-                'border-border bg-card flex min-w-0 flex-col gap-2 rounded-b-xl border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden',
-                !keyboardOpen && 'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
-              )}
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <p
-                  data-save-status=""
-                  tabIndex={-1}
-                  aria-live="polite"
-                  className={cn('min-w-0 flex-1 text-sm leading-snug outline-none', statusTone)}
-                >
-                  {statusLine}
-                </p>
-                <Button type="submit" size="lg" className="min-h-12 shrink-0" disabled={pending}>
-                  {pending ? a('save.saving') : a('save.action')}
-                </Button>
-              </div>
-              {promptMissing ? (
-                <p data-save-prompt="" className="text-muted-foreground text-xs">
-                  {a('save.promptMissing')}
-                </p>
-              ) : null}
-            </div>
-          )}
-        </form>
-
-        {wide ? (
-          <aside
-            aria-label={a('save.panelTitle')}
-            className="hidden lg:sticky lg:top-[calc(var(--shell-header-height)+1.5rem)] lg:block"
-          >
-            <div
-              data-global-save=""
-              className="bg-card border-border shadow-card flex flex-col gap-4 rounded-xl border p-5"
-            >
-              <div>
-                <h2 className="text-foreground text-base font-semibold">{a('save.panelTitle')}</h2>
-                <p className="text-muted-foreground mt-0.5 text-sm">{a('save.panelDescription')}</p>
-              </div>
-              <ul className="flex flex-col gap-2.5">
-                {requirements.map((item) => (
-                  <RequirementRow
-                    key={item.key}
-                    label={c(`save.requirement.${item.key}`)}
-                    done={item.done && visibleErrors[item.field] === undefined}
-                    addedLabel={c('save.added')}
-                    neededLabel={c('save.needed')}
-                  />
-                ))}
-              </ul>
-              <div className="border-border flex flex-col gap-2 border-t pt-4">
-                <div>
-                  <p className="text-foreground text-sm font-medium">
-                    {a('save.recommendedTitle')}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {a('save.recommendedDescription')}
-                  </p>
-                </div>
-                <ul data-save-prompt="" className="flex flex-col gap-1.5">
-                  {recommended.map((item) => (
-                    <li key={item.key} className="flex min-w-0 items-baseline gap-2 text-sm">
-                      <span className="text-foreground">{a(`save.recommended.${item.key}`)}</span>
-                      <StateText>
-                        {item.done ? a('save.recorded') : a('save.notRecorded')}
-                      </StateText>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <Button
-                type="submit"
-                form={formId}
-                size="lg"
-                className="min-h-12 w-full"
-                disabled={pending}
+              <div
+                data-trade-summary=""
+                className="border-border bg-muted/30 flex min-w-0 flex-col gap-3 rounded-lg border p-4"
               >
-                {pending ? a('save.saving') : a('save.action')}
-              </Button>
+                <p className="text-foreground text-sm font-semibold">{a('steps.summaryTitle')}</p>
+                <dl className="divide-border flex min-w-0 flex-col divide-y">
+                  {(['trade', 'result', 'plan', 'context'] as const).map((key) => {
+                    const errors = stepErrorCounts[STEP_INDEX[key]] ?? 0;
+                    const entered = key === 'trade' ? localTime(draft.enteredAt) : null;
+                    const exited = key === 'trade' ? localTime(draft.exitedAt) : null;
+                    const times =
+                      entered !== null && exited !== null
+                        ? `${entered} → ${exited}`
+                        : entered !== null
+                          ? `${a('times.entry')} ${entered}`
+                          : exited !== null
+                            ? `${a('times.exit')} ${exited}`
+                            : null;
+                    return (
+                      <div
+                        key={key}
+                        className="flex min-w-0 items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+                      >
+                        <div className="min-w-0">
+                          <dt className="text-muted-foreground text-xs font-medium">
+                            {stepLabel(key)}
+                          </dt>
+                          <dd
+                            className={cn(
+                              'text-sm break-words',
+                              errors > 0
+                                ? 'text-destructive'
+                                : stepSummaries[key] === null
+                                  ? 'text-subtle-foreground'
+                                  : 'text-foreground',
+                            )}
+                          >
+                            {errors > 0
+                              ? a('steps.needsAttention')
+                              : (stepSummaries[key] ?? a('steps.summaryNotRecorded'))}
+                            {times === null ? null : (
+                              <span className="text-muted-foreground block text-xs tabular-nums">
+                                {times}
+                              </span>
+                            )}
+                          </dd>
+                        </div>
+                        <InlineAction
+                          ariaLabel={a('steps.editAria', { step: stepLabel(key) })}
+                          onClick={() => showStep(STEP_INDEX[key])}
+                        >
+                          {a('steps.edit')}
+                        </InlineAction>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </div>
+              {replayConflictPanel}
+            </>,
+          )}
+
+          {/* STEP NAVIGATION — Save exists only on the last step */}
+          <div
+            data-step-actions=""
+            {...(onLastStep ? { 'data-global-save': '' } : {})}
+            data-action-bar={wide || keyboardOpen ? 'inline' : 'docked'}
+            className={cn(
+              'border-border bg-card flex min-w-0 flex-col gap-2 rounded-b-xl border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6',
+              !wide &&
+                !keyboardOpen &&
+                'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
+            )}
+          >
+            {onLastStep ? (
               <p
                 data-save-status=""
                 tabIndex={-1}
                 aria-live="polite"
-                className={cn('text-sm outline-none', statusTone)}
+                className={cn('min-w-0 text-sm leading-snug outline-none', statusTone)}
               >
                 {statusLine}
               </p>
-              {replayConflictPanel}
-              <p className="text-muted-foreground text-xs">{a('save.helper')}</p>
+            ) : null}
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              {step === 0 ? (
+                <span aria-hidden="true" />
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="min-h-12 shrink-0"
+                  onClick={() => showStep(step - 1)}
+                >
+                  <ArrowLeft aria-hidden="true" />
+                  {a('steps.back')}
+                </Button>
+              )}
+              {onLastStep || nextKey === undefined ? (
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="min-h-12 min-w-0 shrink"
+                  disabled={pending}
+                >
+                  {pending ? a('save.saving') : a('save.action')}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="lg"
+                  className="min-h-12 min-w-0 shrink"
+                  onClick={() => showStep(step + 1)}
+                >
+                  <span className="truncate">
+                    {a('steps.nextTo', { step: stepLabel(nextKey) })}
+                  </span>
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              )}
+            </div>
+            {onLastStep && promptMissing ? (
+              <p data-save-prompt="" className="text-muted-foreground text-xs">
+                {a('save.promptMissing')}
+              </p>
+            ) : null}
+          </div>
+        </form>
+
+        {wide ? (
+          <aside
+            aria-label={a('steps.navLabel')}
+            className="hidden lg:sticky lg:top-[calc(var(--shell-header-height)+1.5rem)] lg:block"
+          >
+            <div className="bg-card border-border shadow-card flex flex-col gap-3 rounded-xl border p-2">
+              <p
+                aria-hidden="true"
+                className="text-muted-foreground px-3 pt-2 text-xs font-medium tabular-nums"
+              >
+                {progressText}
+              </p>
+              {stepNav}
+              <div className="border-border flex flex-col gap-2.5 border-t px-3 pt-3 pb-2">
+                <p className="text-foreground text-sm font-medium">{a('save.panelTitle')}</p>
+                <ul className="flex flex-col gap-2">
+                  {requirements.map((item) => (
+                    <RequirementRow
+                      key={item.key}
+                      label={c(`save.requirement.${item.key}`)}
+                      done={item.done && visibleErrors[item.field] === undefined}
+                      addedLabel={c('save.added')}
+                      neededLabel={c('save.needed')}
+                    />
+                  ))}
+                </ul>
+                <p className="text-muted-foreground text-xs">{a('save.panelDescription')}</p>
+              </div>
             </div>
           </aside>
         ) : null}
@@ -1761,7 +2078,8 @@ function EmotionFields({
           )
         }
       >
-        {legend}
+        {/* The disclosure above already shows the question; the legend still names the group. */}
+        <span className="sr-only">{legend}</span>
       </Legend>
       {hint === undefined ? null : <Helper>{hint}</Helper>}
       <div className="mt-2 grid min-w-0 gap-x-6 gap-y-3 min-[560px]:grid-cols-2">

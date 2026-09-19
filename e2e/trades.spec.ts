@@ -654,6 +654,18 @@ async function openRecordedEmotions(page: Page) {
  * reliably land on it, so this clicks the input's own `<label for>` and then
  * asserts the radio really became checked.
  */
+/** Open one of After Trade's five steps from its step list (rail or phone segments). */
+async function afterTradeStep(
+  page: Page,
+  step: 'trade' | 'result' | 'plan' | 'context' | 'details',
+) {
+  await page.locator(`[data-step-link="${step}"]`).click();
+  await expect(page.locator('[data-after-trade-form]')).toHaveAttribute(
+    'data-after-trade-step',
+    step,
+  );
+}
+
 async function chooseRadio(scope: Page | Locator, name: string) {
   const radio = scope.getByRole('radio', { name, exact: true });
   const id = await radio.getAttribute('id');
@@ -1387,24 +1399,28 @@ test.describe('real Trade Journal creation', () => {
         // route: history is never defaulted to now, Final Net P&L leads, Actual
         // R waits for the figures it needs, and the Exit Plan starts Not
         // recorded rather than inherited.
+        // After Trade is a five-step flow: one topic at a time, Save on the last.
         await page.goto(`/${locale}/app/trades/new?timing=after_trade`);
-        const afterForm = page.locator('[data-after-trade-linear-form]:visible');
+        const afterForm = page.locator('[data-after-trade-form]');
         await expect(afterForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
         await expect(afterForm.locator('[data-account-context]')).toBeVisible();
         await expect(afterForm.locator('#after-enteredAt')).toHaveValue('');
         await expect(afterForm.locator('#after-exitedAt')).toHaveValue('');
+        await expect(page.locator('button[type="submit"]:visible')).toHaveCount(0);
+        await afterTradeStep(page, 'result');
         await expect(afterForm.locator('#after-finalPnl')).toBeVisible();
-        await expect(afterForm.locator('#after-risk')).toBeVisible();
         await expect(afterForm.locator('[data-actual-r="unavailable"]')).toBeVisible();
+        await afterTradeStep(page, 'plan');
+        await expect(afterForm.locator('#after-risk')).toBeVisible();
         await expect(afterForm.locator('[data-exit-plan-state]')).toHaveCount(1);
         await expect(afterForm.locator('[data-journal-area]')).toHaveCount(0);
+        await afterTradeStep(page, 'context');
+        await expect(page.locator('#after-strategy')).toBeVisible();
+        await afterTradeStep(page, 'details');
         await expect(page.locator('[data-global-save]:visible button[type="submit"]')).toHaveCount(
           1,
         );
-        const afterToggle = page.locator('#after-analysis-toggle');
-        if (await afterToggle.isVisible()) await afterToggle.click();
-        await expect(page.locator('#after-strategy')).toBeVisible();
 
         const dimensions = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,
@@ -1424,16 +1440,19 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/en/app/trades/new?timing=after_trade');
-    const afterForm = page.locator('[data-after-trade-linear-form]:visible');
+    const afterForm = page.locator('[data-after-trade-form]');
     const actualR = afterForm.locator('[data-actual-r]');
 
     await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
     await chooseRadio(afterForm, 'Long');
 
     // Final Net P&L and Risk at Entry give Actual R; nothing derives the outcome.
+    await afterForm.getByRole('button', { name: 'Next: Result' }).click();
     await afterForm.locator('#after-finalPnl').fill('400');
     await expect(actualR).toHaveAttribute('data-actual-r', 'unavailable');
+    await afterTradeStep(page, 'plan');
     await afterForm.locator('#after-risk').fill('100');
+    await afterTradeStep(page, 'result');
     await expect(actualR).toHaveAttribute('data-actual-r', 'known');
     await expect(actualR).toContainText('+4.00R');
     for (const outcome of ['Win', 'BE', 'Loss']) {
@@ -1450,11 +1469,13 @@ test.describe('real Trade Journal creation', () => {
 
     // Actual Risk is Risk Discipline evidence; restating Risk at Entry as
     // "different" is the one blocking answer.
+    await afterTradeStep(page, 'plan');
     await chooseRadio(afterForm, 'It was different');
     await afterForm.locator('#after-actual-risk-amount').fill('100');
     await expect(afterForm.getByText(/This is the same as your risk at entry/)).toBeVisible();
     await afterForm.locator('#after-actual-risk-amount').fill('120');
     await expect(afterForm.getByText(/This is the same as your risk at entry/)).toHaveCount(0);
+    await afterTradeStep(page, 'result');
     await expect(actualR).toContainText('+4.00R');
 
     // Exit history is supporting evidence; a Complete, fully priced history
@@ -1477,10 +1498,13 @@ test.describe('real Trade Journal creation', () => {
     await expect(afterForm.getByText(/Your recorded exits add up to/)).toHaveCount(0);
     await expect(actualR).toContainText('+3.50R');
 
+    await afterTradeStep(page, 'context');
     await chooseRadio(afterForm, 'High');
     // An explicit No Fixed Target: an answer the record must read back as such.
+    await afterTradeStep(page, 'plan');
     await chooseRadio(afterForm, 'No fixed target You will close on a rule or judgement');
 
+    await afterTradeStep(page, 'details');
     await page.locator('[data-global-save]:visible button[type="submit"]').click();
     const saved = page.locator('[data-after-trade-saved]');
     await expect(saved.getByRole('heading', { name: 'Trade saved' })).toBeFocused({
@@ -1517,7 +1541,8 @@ test.describe('real Trade Journal creation', () => {
 
     await page.setViewportSize({ width: 320, height: 844 });
     await page.reload();
-    const narrowForm = page.locator('[data-after-trade-linear-form]:visible');
+    const narrowForm = page.locator('[data-after-trade-form]');
+    await afterTradeStep(page, 'result');
     await narrowForm.locator('#after-finalPnl').fill('123456789.12');
     await narrowForm.locator('#after-exits-toggle').click();
     await narrowForm.getByRole('button', { name: 'Record an exit' }).click();

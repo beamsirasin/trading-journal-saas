@@ -388,6 +388,7 @@ export function ChoiceGroup<T extends string>({
   aside,
   columns = 2,
   compact = false,
+  fit = false,
 }: {
   idPrefix: string;
   legend: string;
@@ -401,8 +402,15 @@ export function ChoiceGroup<T extends string>({
   aside?: ReactNode;
   columns?: 2 | 3 | 5;
   compact?: boolean;
+  /**
+   * Keep every option on one row at every width, for short labels such as
+   * Win / BE / Loss. Five across stacks each marker above its label so a phone
+   * never trades one screen of choices for five full-width rows.
+   */
+  fit?: boolean;
 }) {
   const name = useId();
+  const stacked = fit && columns === 5;
   const errorId = `${idPrefix}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
@@ -417,13 +425,19 @@ export function ChoiceGroup<T extends string>({
         <div
           className={cn(
             'grid min-w-0 gap-2',
-            columns === 5
-              ? 'grid-cols-1 min-[560px]:grid-cols-5'
-              : columns === 3
-                ? 'grid-cols-1 min-[420px]:grid-cols-3'
-                : options.some((option) => option.description !== undefined)
-                  ? 'grid-cols-1 min-[420px]:grid-cols-2'
-                  : 'grid-cols-2',
+            fit
+              ? columns === 5
+                ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
+                : columns === 3
+                  ? 'grid-cols-3'
+                  : 'grid-cols-2'
+              : columns === 5
+                ? 'grid-cols-1 min-[560px]:grid-cols-5'
+                : columns === 3
+                  ? 'grid-cols-1 min-[420px]:grid-cols-3'
+                  : options.some((option) => option.description !== undefined)
+                    ? 'grid-cols-1 min-[420px]:grid-cols-2'
+                    : 'grid-cols-2',
           )}
         >
           {options.map((option, index) => {
@@ -445,7 +459,11 @@ export function ChoiceGroup<T extends string>({
                   htmlFor={id}
                   className={cn(
                     'flex h-full min-w-0 cursor-pointer gap-2.5 rounded-md border px-3 transition-colors motion-reduce:transition-none',
-                    compact ? 'min-h-11 items-center py-2' : 'min-h-12 items-start py-2.5',
+                    stacked
+                      ? 'min-h-14 flex-col items-center justify-center gap-1.5 px-1 py-2 text-center min-[560px]:px-2'
+                      : compact
+                        ? 'min-h-11 items-center py-2'
+                        : 'min-h-12 items-start py-2.5',
                     'peer-focus-visible:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
                     checked
                       ? 'border-foreground/60 bg-accent'
@@ -455,7 +473,7 @@ export function ChoiceGroup<T extends string>({
                         ),
                   )}
                 >
-                  <RadioMark checked={checked} className={compact ? '' : 'mt-0.5'} />
+                  <RadioMark checked={checked} className={compact || stacked ? '' : 'mt-0.5'} />
                   <span className="min-w-0">
                     <span
                       className={cn(
