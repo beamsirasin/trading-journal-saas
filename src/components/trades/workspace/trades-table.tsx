@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import type { MouseEvent } from 'react';
 
+import { isLegacyActualR, tradeOutcomeEvidence } from '@/lib/trades/record-evidence';
 import { deriveTradeResult } from '@/lib/trades/result';
 import {
   deriveTradeReviewState,
@@ -11,6 +12,7 @@ import {
   type TradeReviewState,
 } from '@/lib/trades/review-state';
 import { cn } from '@/lib/utils';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { formatPlannedRr, formatR, formatTradeMoney } from '@/components/trades/trade-format';
 import {
   Table,
@@ -156,13 +158,20 @@ export function TradesTable({
                   </span>
                 </TableCell>
                 <TableCell>
-                  <TradeResultBadge result={deriveTradeResult(trade)} />
+                  <TradeResultBadge
+                    result={deriveTradeResult(trade)}
+                    legacy={tradeOutcomeEvidence(trade).status === 'legacy_derived'}
+                  />
                 </TableCell>
                 <TableCell className="numeric text-right whitespace-nowrap">
                   <MoneyCell value={netPnl} minor={trade.netPnlMinor} />
                 </TableCell>
                 <TableCell className="numeric text-right whitespace-nowrap">
-                  <RCell value={rValue} realized={isRealized} />
+                  <RCell
+                    value={rValue}
+                    realized={isRealized}
+                    legacy={isLegacyActualR({ ...trade, actualR: rValue })}
+                  />
                 </TableCell>
                 <TableCell className="numeric text-muted-foreground text-right whitespace-nowrap">
                   {plannedRr === null ? <Unavailable /> : plannedRr}
@@ -202,7 +211,16 @@ function MoneyCell({ value, minor }: { value: string | null; minor: string | nul
   );
 }
 
-function RCell({ value, realized }: { value: string | null; realized: boolean }) {
+function RCell({
+  value,
+  realized,
+  legacy,
+}: {
+  value: string | null;
+  realized: boolean;
+  /** Legacy R (contract §28): shown, and marked, never read as canonical R. */
+  legacy: boolean;
+}) {
   const t = useTranslations('trades.workspace.table');
   const formatted = formatR(value);
   if (formatted === null || value === null) return <Unavailable />;
@@ -218,6 +236,7 @@ function RCell({ value, realized }: { value: string | null; realized: boolean })
           {t('realized')}
         </span>
       ) : null}
+      {legacy ? <LegacyEvidenceBadge className="px-1.5 py-0 text-[10px]" /> : null}
     </span>
   );
 }

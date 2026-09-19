@@ -114,6 +114,7 @@ function detail(overrides: Partial<TradeDetail> = {}): TradeDetail {
 
     setupConditionState: 'not_recorded',
     setupConditionChecks: [],
+    setupConditionConfiguredCount: null,
     ruleChecks: [],
     mistakes: [],
     mistakeCatalog: [],

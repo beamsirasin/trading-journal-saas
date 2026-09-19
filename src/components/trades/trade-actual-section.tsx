@@ -27,6 +27,7 @@ export function ActualSection({
   const t = useTranslations('trades');
   const a = useTranslations('trades.create.recording.contractAfter');
   const c = useTranslations('trades.create.recording.contractEntry');
+  const w = useTranslations('trades.workspace.details');
   const contract = isContractRow(trade);
   // Save Closed Trade's record: its Final Net P&L is stated, never rebuilt from legs.
   const statedResult = hasStatedClosedResult(trade);
@@ -131,14 +132,17 @@ export function ActualSection({
           {t('detail.actualGroups.execution')}
         </h4>
         <dl className="divide-border divide-y">
-          <DetailRow
-            label={t('field.actualResultMode')}
-            value={
-              trade.actualResultMode === null
-                ? t('common.notAvailable')
-                : t(`lifecycle.execution.${trade.actualResultMode}Mode`)
-            }
-          />
+          {/* Money is a contract row's only result authority, not a mode it chose (contract §3). */}
+          {contract ? null : (
+            <DetailRow
+              label={t('field.actualResultMode')}
+              value={
+                trade.actualResultMode === null
+                  ? t('common.notAvailable')
+                  : t(`lifecycle.execution.${trade.actualResultMode}Mode`)
+              }
+            />
+          )}
           {trade.actualResultMode === 'price' ? (
             <>
               <DetailRow
@@ -181,7 +185,14 @@ export function ActualSection({
           ) : trade.actualResultMode === 'money' ? (
             <DetailRow label={t('field.initialRisk')} value={money(trade.actualInitialRiskMinor)} />
           ) : null}
-          <DetailRow label={t('field.enteredAt')} value={instant(trade.enteredAt)} />
+          <DetailRow
+            label={t('field.enteredAt')}
+            value={
+              contract && trade.enteredAt !== null && trade.enteredAtSource === 'default_now'
+                ? `${instant(trade.enteredAt)} · ${w('intent.enteredAtDefault')}`
+                : instant(trade.enteredAt)
+            }
+          />
         </dl>
       </section>
 
@@ -199,9 +210,17 @@ export function ActualSection({
             {trade.grossPnlMinor === null ? null : (
               <DetailRow label={t('field.grossPnl')} value={money(trade.grossPnlMinor)} />
             )}
-            <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
-            <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
-            <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
+            {/*
+              Add Trade never asks for costs, so a contract row's stored 0 is a
+              column default, not a recorded $0.00 (contract §24).
+            */}
+            {contract ? null : (
+              <>
+                <DetailRow label={t('field.commission')} value={money(trade.commissionMinor)} />
+                <DetailRow label={t('field.fees')} value={money(trade.feesMinor)} />
+                <DetailRow label={t('field.swap')} value={money(trade.swapMinor)} />
+              </>
+            )}
             {trade.exits.length === 0 || trade.closedBps === null ? null : (
               <DetailRow label={t('field.closedPercent')} value={`${trade.closedBps / 100}%`} />
             )}

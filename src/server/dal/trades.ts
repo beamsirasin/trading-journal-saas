@@ -769,6 +769,11 @@ export interface TradeDetail {
   readonly setupConditionState: TradeSetupConditionState;
   /** Populated only when `setupConditionState === 'recorded'`; empty otherwise. */
   readonly setupConditionChecks: readonly TradeSetupConditionCheckDetail[];
+  /**
+   * Conditions the pinned Setup Version has, answered or not; `null` with no
+   * Setup. Unanswered = this minus `setupConditionChecks.length`.
+   */
+  readonly setupConditionConfiguredCount: number | null;
 
   readonly ruleChecks: readonly TradeRuleCheckDetail[];
   readonly mistakes: readonly TradeMistakeDetail[];
@@ -904,17 +909,28 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
     .from(tradeSetupConditionChecks)
     .where(eq(tradeSetupConditionChecks.tradeId, tradeId))
     .orderBy(asc(tradeSetupConditionChecks.sortOrder));
-  const setupConditionState: TradeSetupConditionState = await (async () => {
+  /*
+    HOW MANY CONDITIONS THE PINNED SETUP VERSION HAS. A contract Trade stores a
+    row only for each condition the trader answered (contract §8), so the
+    record needs the configured total to say how many were left unanswered —
+    "2 of 2 met" on a five-condition Setup would hide three unanswered ones.
+  */
+  const setupConditionConfiguredCount: number | null =
+    trade.setupVersionId === null
+      ? null
+      : ((
+          await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(setupConditions)
+            .where(eq(setupConditions.setupVersionId, trade.setupVersionId))
+        )[0]?.count ?? 0);
+  const setupConditionState: TradeSetupConditionState = (() => {
     if (conditionCheckRows.length > 0) return 'recorded';
     // Phase 14B: no Setup pinned at all — nothing configured to count
     // against, so this is `not_recorded`, never a fabricated `not_configured`
     // (which specifically means "a real Setup Version with zero Conditions").
-    if (trade.setupVersionId === null) return 'not_recorded';
-    const [configuredCountRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(setupConditions)
-      .where(eq(setupConditions.setupVersionId, trade.setupVersionId));
-    return (configuredCountRow?.count ?? 0) === 0 ? 'not_configured' : 'not_recorded';
+    if (setupConditionConfiguredCount === null) return 'not_recorded';
+    return setupConditionConfiguredCount === 0 ? 'not_configured' : 'not_recorded';
   })();
   const realized =
     trade.actualResultMode === null
@@ -1079,6 +1095,7 @@ export async function getWorkspaceTradeDetail(tradeId: string): Promise<GetTrade
       executionGapR: gap.ok ? gap.value : null,
 
       setupConditionState,
+      setupConditionConfiguredCount,
       setupConditionChecks:
         setupConditionState === 'recorded'
           ? conditionCheckRows.map((c) => ({

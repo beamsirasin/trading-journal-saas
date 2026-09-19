@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { isContractRow } from '@/lib/trades/add-trade-contract';
 import { tradeHoldingTime } from '@/lib/trades/holding-time';
 import { tradeExecutionGapEvidence, tradeSystemResultEvidence } from '@/lib/trades/record-evidence';
 import type { TradeDetail } from '@/server/dal/trades';
@@ -38,6 +39,7 @@ export function TradeOverviewPanel({
 }) {
   const t = useTranslations('trades.workspace.details');
   const tTrades = useTranslations('trades');
+  const tActualRisk = useTranslations('trades.create.recording.contractAfter.actualRisk');
 
   const money = (value: string | null) => formatTradeMoney(value, trade.tradingAccountBaseCurrency);
   const instant = (value: string | null) => formatTradeInstant(value, timezone, locale);
@@ -50,12 +52,20 @@ export function TradeOverviewPanel({
     trade.actualExit !== null ||
     trade.actualInitialStop !== null ||
     trade.plannedTarget !== null;
-  const hasCosts =
-    trade.actualPositionSize !== null ||
-    trade.actualInitialRiskMinor !== null ||
-    trade.commissionMinor !== '0' ||
-    trade.feesMinor !== '0' ||
-    trade.swapMinor !== '0';
+  /*
+    A CONTRACT ROW NEVER RECORDED COSTS. Add Trade does not ask for commission,
+    fees or swap, so the stored 0 there is a column default, not a known
+    $0.00 (contract §24): those facts are not shown for it, and its risk fact
+    is Actual Risk by name — Risk at Entry is on the Plan tab.
+  */
+  const contract = isContractRow(trade);
+  const hasCosts = contract
+    ? trade.actualInitialRiskMinor !== null
+    : trade.actualPositionSize !== null ||
+      trade.actualInitialRiskMinor !== null ||
+      trade.commissionMinor !== '0' ||
+      trade.feesMinor !== '0' ||
+      trade.swapMinor !== '0';
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -169,18 +179,22 @@ export function TradeOverviewPanel({
               tone="neutral"
             />
             <Fact
-              label={tTrades('field.initialRisk')}
+              label={contract ? tActualRisk('legend') : tTrades('field.initialRisk')}
               value={money(trade.actualInitialRiskMinor)}
               omitWhenEmpty
               tone="neutral"
             />
-            <Fact
-              label={tTrades('field.commission')}
-              value={money(trade.commissionMinor)}
-              tone="neutral"
-            />
-            <Fact label={tTrades('field.fees')} value={money(trade.feesMinor)} tone="neutral" />
-            <Fact label={tTrades('field.swap')} value={money(trade.swapMinor)} tone="neutral" />
+            {contract ? null : (
+              <>
+                <Fact
+                  label={tTrades('field.commission')}
+                  value={money(trade.commissionMinor)}
+                  tone="neutral"
+                />
+                <Fact label={tTrades('field.fees')} value={money(trade.feesMinor)} tone="neutral" />
+                <Fact label={tTrades('field.swap')} value={money(trade.swapMinor)} tone="neutral" />
+              </>
+            )}
           </FactGrid>
         </PanelSection>
       ) : null}

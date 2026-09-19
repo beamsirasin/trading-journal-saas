@@ -140,6 +140,7 @@ function trade(overrides: Partial<TradeDetail> = {}): TradeDetail {
     executionGapR: '-0.8000',
     setupConditionState: 'not_recorded',
     setupConditionChecks: [],
+    setupConditionConfiguredCount: null,
     ruleChecks: [],
     mistakes: [],
     mistakeCatalog: [],
@@ -624,11 +625,19 @@ describe('Trade Details — an After Trade record', () => {
     expect(find('[data-exit-plan-record="saved"]')).toHaveTextContent('Trail structure');
   });
 
-  it('shows "Don’t remember" as its own answer, outside the Met ratio', () => {
+  it('shows "Don’t remember" as its own answer, never counted as Not met', () => {
     renderSheet(afterTrade, 'plan');
     expect(find('[data-condition-status="unknown"]')).toHaveTextContent("Don't remember");
     expect(find('[data-condition-status="unknown"]')).not.toHaveTextContent('Not met');
-    expect(within(panel()).getByText('1 of 1 conditions met')).toBeInTheDocument();
+    expect(find('[data-condition-coverage]')).toHaveTextContent("1 met · 1 don't remember");
+  });
+
+  it('keeps unanswered conditions in the coverage, never hiding them behind a ratio', () => {
+    renderSheet({ ...afterTrade, setupConditionConfiguredCount: 5 }, 'plan');
+    const coverage = find('[data-condition-coverage]');
+    expect(coverage).toHaveTextContent("1 met · 1 don't remember · 3 unanswered");
+    expect(coverage).toHaveAttribute('data-condition-unanswered', '3');
+    expect(coverage).not.toHaveTextContent('not met');
   });
 
   it('shows No Strategy as an answer rather than an empty classification', () => {
@@ -655,5 +664,115 @@ describe('Trade Details — an After Trade record', () => {
   it('still offers that correction on a legacy closed Trade', () => {
     renderSheet({}, 'execution');
     expect(within(panel()).getByRole('button', { name: CORRECT_EXECUTION })).toBeInTheDocument();
+  });
+});
+
+/*
+  CAPTURE READBACK (Add Trade contract §5, §13, §24). What the trader answered
+  in At Entry or After Trade is read back on the live sheet — not only in a
+  renderer the product never shows — and nothing the trader was never asked
+  appears as a known value.
+*/
+describe('Trade Details — reads back what Add Trade captured', () => {
+  const contract: Partial<TradeDetail> = {
+    recordingContract: 'add_trade_v1',
+    recordedRetrospectively: true,
+    traderOutcome: 'win',
+    traderOutcomeSelected: true,
+    actualR: '1.0000',
+    netPnlMinor: '5000',
+    plannedRiskMinor: '5000',
+    plannedEntry: null,
+    plannedStop: null,
+    plannedTarget: null,
+    plannedR: null,
+    actualResultMode: 'money',
+    actualEntry: null,
+    actualInitialStop: null,
+    actualRiskAnswer: 'matched',
+    actualInitialRiskMinor: '5000',
+    systemStatus: 'pending',
+    systemR: null,
+    systemOutcome: null,
+    executionGapR: null,
+  };
+
+  it('shows No Fixed Target as an answer, not as a blank field', () => {
+    renderSheet({ ...contract, targetState: 'no_fixed' }, 'plan');
+    expect(find('[data-target-state="no_fixed"]')).toHaveTextContent('No fixed target');
+  });
+
+  it('shows an unanswered Target as not answered', () => {
+    renderSheet({ ...contract, targetState: null }, 'plan');
+    expect(find('[data-target-state="unanswered"]')).toHaveTextContent('Not answered');
+  });
+
+  it('shows a Fixed Target recorded as a TP price only, with no invented profit', () => {
+    renderSheet(
+      { ...contract, targetState: 'fixed', targetPrice: '2412.50', plannedRewardMinor: null },
+      'plan',
+    );
+    expect(find('[data-target-state="fixed"]')).toHaveTextContent('Fixed target');
+    expect(within(panel()).getByText('2412.50')).toBeInTheDocument();
+    expect(within(panel()).getByText('TP price')).toBeInTheDocument();
+  });
+
+  it('shows the price and size context the trader gave', () => {
+    renderSheet(
+      {
+        ...contract,
+        contextEntryPrice: '2400.10',
+        contextStopPrice: '2390.00',
+        contextPositionSize: '0.5',
+      },
+      'plan',
+    );
+    expect(find('[data-price-context="recorded"]')).toHaveTextContent('2400.10');
+    expect(find('[data-price-context="recorded"]')).toHaveTextContent('2390.00');
+    expect(find('[data-price-context="recorded"]')).toHaveTextContent('0.5');
+  });
+
+  it('reads Risk at Entry and Target as the trader’s intent, never as a System Plan', () => {
+    renderSheet({ ...contract, targetState: 'fixed', plannedRewardMinor: '10000' }, 'plan');
+    expect(within(panel()).getByText('Risk and target')).toBeInTheDocument();
+    expect(within(panel()).queryByRole('heading', { name: 'System Plan' })).toBeNull();
+    expect(within(panel()).queryByText('Plan by Money')).toBeNull();
+  });
+
+  it('never shows costs Add Trade did not ask for as $0.00, and names Actual Risk', () => {
+    renderSheet(contract, 'overview');
+    const overview = panel();
+    expect(within(overview).queryByText('Commission')).toBeNull();
+    expect(within(overview).queryByText('Fees')).toBeNull();
+    expect(within(overview).queryByText('Swap')).toBeNull();
+    expect(within(overview).getByText('Actual risk')).toBeInTheDocument();
+  });
+
+  it('shows no Money mode row, and no default costs, on the Execution tab', () => {
+    renderSheet(
+      {
+        ...contract,
+        exits: [],
+        enteredAtSource: 'default_now',
+        enteredAt: '2026-08-24T02:00:00.000Z',
+      },
+      'execution',
+    );
+    const execution = panel();
+    expect(within(execution).queryByText(/Money mode/)).toBeNull();
+    expect(within(execution).queryByText('Commission')).toBeNull();
+    expect(within(execution).getByText(/Set automatically when saved/)).toBeInTheDocument();
+  });
+
+  it('marks a legacy row’s derived outcome and R as legacy in the header', () => {
+    renderSheet();
+    expect(find('[data-result-legacy]')).not.toBeNull();
+    expect(find('[data-trade-details-hero]')).toHaveTextContent('Legacy');
+  });
+
+  it('never marks a contract row’s selected outcome or canonical R as legacy', () => {
+    renderSheet(contract);
+    expect(find('[data-result-legacy]')).toBeNull();
+    expect(find('[data-trade-details-hero]')).not.toHaveTextContent('Legacy');
   });
 });

@@ -131,6 +131,7 @@ function trade(overrides: Partial<TradeDetail> = {}): TradeDetail {
     executionGapR: null,
     setupConditionState: 'not_recorded',
     setupConditionChecks: [],
+    setupConditionConfiguredCount: null,
     ruleChecks: [],
     mistakes: [],
     mistakeCatalog: [],

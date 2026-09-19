@@ -2,11 +2,16 @@
 
 import { useTranslations } from 'next-intl';
 
-import { tradeExecutionGapEvidence } from '@/lib/trades/record-evidence';
+import {
+  isLegacyActualR,
+  tradeExecutionGapEvidence,
+  tradeOutcomeEvidence,
+} from '@/lib/trades/record-evidence';
 import { deriveTradeResult } from '@/lib/trades/result';
 import { tradeSystemAssessmentEligibility } from '@/lib/trades/system-assessment-view';
 import { cn } from '@/lib/utils';
 import type { TradeDetail } from '@/server/dal/trades';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { formatR, formatTradeDay, formatTradeMoney } from '@/components/trades/trade-format';
 
 import { TradeResultBadge } from './trade-result-badge';
@@ -72,7 +77,10 @@ export function TradeDetailsHeader({
           <span className="text-muted-foreground text-sm">
             {tTrades(`status.execution.${trade.status}`)}
           </span>
-          <TradeResultBadge result={deriveTradeResult(trade)} />
+          <TradeResultBadge
+            result={deriveTradeResult(trade)}
+            legacy={tradeOutcomeEvidence(trade).status === 'legacy_derived'}
+          />
         </div>
         <p className="text-muted-foreground min-w-0 text-xs break-words">
           {trade.tradingAccountName}
@@ -94,6 +102,10 @@ export function TradeDetailsHeader({
           label={isRealized ? t('hero.realizedR') : t('hero.actualR')}
           value={actualR}
           signMinor={trade.status === 'closed' ? trade.actualR : trade.realizedRToDate}
+          legacy={isLegacyActualR({
+            ...trade,
+            actualR: trade.status === 'closed' ? trade.actualR : trade.realizedRToDate,
+          })}
         />
       </div>
 
@@ -107,12 +119,15 @@ function Hero({
   value,
   signMinor,
   showPlus = false,
+  legacy = false,
 }: {
   label: string;
   value: string | null;
   /** The raw signed source, so tone comes from the number rather than its rendering. */
   signMinor: string | null;
   showPlus?: boolean;
+  /** Legacy R (contract §28): shown with its provenance, never as canonical R. */
+  legacy?: boolean;
 }) {
   const t = useTranslations('trades.workspace.details');
   const isNegative = signMinor?.startsWith('-') ?? false;
@@ -137,6 +152,9 @@ function Hero({
           ? t('notRecordedShort')
           : `${showPlus && !isNegative && !isZero ? '+' : ''}${value}`}
       </span>
+      {legacy && value !== null ? (
+        <LegacyEvidenceBadge className="w-fit px-1.5 py-0 text-[10px]" />
+      ) : null}
     </div>
   );
 }
@@ -153,6 +171,7 @@ function Hero({
  */
 function SystemComparison({ trade }: { trade: TradeDetail }) {
   const t = useTranslations('trades.workspace.details');
+  const tEvidence = useTranslations('trades.evidence');
   const eligibility = tradeSystemAssessmentEligibility(trade);
 
   const gapEvidence = tradeExecutionGapEvidence(trade);
@@ -189,8 +208,18 @@ function SystemComparison({ trade }: { trade: TradeDetail }) {
     );
   }
 
+  // Only a legacy row reaches here: a contract row has no canonical System
+  // Result yet. Its comparison is legacy evidence and says so (contract §28).
   return (
-    <dl data-trade-comparison="available" className="flex min-w-0 flex-col gap-1.5">
+    <dl
+      data-trade-comparison="available"
+      data-trade-comparison-legacy=""
+      className="flex min-w-0 flex-col gap-1.5"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <LegacyEvidenceBadge className="px-1.5 py-0 text-[10px]" />
+        <span className="text-muted-foreground text-xs">{tEvidence('legacyHint')}</span>
+      </div>
       <ComparisonRow label={t('comparison.system')} value={formatR(trade.systemR)} />
       <ComparisonRow label={t('comparison.actual')} value={formatR(trade.actualR)} />
       <ComparisonRow

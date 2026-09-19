@@ -14,11 +14,11 @@ import type { OutcomeValue } from './constants';
  * THE RULE THIS ENFORCES. A contract row (`recording_contract =
  * 'add_trade_v1'`) carries approved Add Trade semantics: its Actual R is
  * measured against Risk at Entry, and its Trader Outcome is whatever the
- * trader selected. Nothing yet writes a trader-selected outcome, and no
- * trader-confirmed System Result exists at all, so on a contract row:
+ * trader selected (Save Closed Trade records it). No trader-confirmed System
+ * Result exists yet, so on a contract row:
  *
- * - a stored `trader_outcome` is DERIVED (from R or P&L sign under the
- *   pre-contract rules) and must never be shown as the trader's answer;
+ * - a stored `trader_outcome` without a selection was DERIVED by the
+ *   pre-contract Final Close and must never be shown as the trader's answer;
  * - a stored `system_r` came from the pre-contract System model and must
  *   never stand in for the canonical System Result;
  * - an Execution Gap between the two would compare a canonical Actual R with
@@ -42,6 +42,15 @@ export type TradeOutcomeEvidence =
       /** A contract row whose outcome the trader has not been asked for yet. */
       readonly reason: 'outcome_not_selected' | 'not_recorded';
     };
+
+/**
+ * Whether a row's Actual R is legacy R (contract §28): every row recorded
+ * before the Add Trade contract measured R against its historical risk or
+ * price geometry. Record surfaces mark it rather than show it like canonical R.
+ */
+export function isLegacyActualR(trade: EvidenceRow & { readonly actualR: string | null }): boolean {
+  return !isContractRow(trade) && trade.actualR !== null;
+}
 
 export type TradeSystemResultEvidence =
   | { readonly status: 'canonical'; readonly systemR: string }

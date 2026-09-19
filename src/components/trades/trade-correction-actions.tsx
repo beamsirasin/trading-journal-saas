@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { useState, useTransition } from 'react';
 
+import { isContractRow } from '@/lib/trades/add-trade-contract';
 import { correctTradeIdentityAction, updateTradePlanAction } from '@/server/actions/trades';
 import type { TradeDetail } from '@/server/dal/trades';
 import {
@@ -35,8 +36,11 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+  // A contract row's plan is Money only (contract §3): no Price basis is offered.
+  const contract = isContractRow(trade);
+  const c = useTranslations('trades.create.recording.contractEntry');
   const initialBasis =
-    trade.plannedEntry !== null && trade.plannedStop !== null ? 'price' : 'money';
+    !contract && trade.plannedEntry !== null && trade.plannedStop !== null ? 'price' : 'money';
   const [basis, setBasis] = useState<'price' | 'money'>(initialBasis);
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -99,16 +103,18 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
           <DialogDescription>{t('lifecycle.plan.description')}</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
-          <TradeField id="plan-basis" label={t('lifecycle.plan.basis')}>
-            <NativeSelect
-              id="plan-basis"
-              value={basis}
-              onChange={(event) => setBasis(event.target.value as 'price' | 'money')}
-            >
-              <option value="price">{t('lifecycle.plan.price')}</option>
-              <option value="money">{t('lifecycle.plan.money')}</option>
-            </NativeSelect>
-          </TradeField>
+          {contract ? null : (
+            <TradeField id="plan-basis" label={t('lifecycle.plan.basis')}>
+              <NativeSelect
+                id="plan-basis"
+                value={basis}
+                onChange={(event) => setBasis(event.target.value as 'price' | 'money')}
+              >
+                <option value="price">{t('lifecycle.plan.price')}</option>
+                <option value="money">{t('lifecycle.plan.money')}</option>
+              </NativeSelect>
+            </TradeField>
+          )}
           {basis === 'price' ? (
             <div key="price-plan" className="grid gap-4 sm:grid-cols-2">
               <TradeField id="plan-entry" label={t('field.entry')}>
@@ -150,7 +156,7 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
             <div key="money-plan" className="grid gap-4 sm:grid-cols-2">
               <TradeField
                 id="plan-risk"
-                label={t('detail.systemPlan.risk')}
+                label={contract ? c('risk.label') : t('detail.systemPlan.risk')}
                 hint={t('lifecycle.execution.moneyHint', {
                   currency: trade.tradingAccountBaseCurrency,
                 })}
@@ -162,12 +168,13 @@ export function PlanCorrectionDialog({ trade }: { trade: TradeDetail }) {
                     trade.plannedRiskMinor,
                     trade.tradingAccountBaseCurrency,
                   )}
-                  required
+                  // A closed contract Trade may have no Risk at Entry (contract §13).
+                  required={!(contract && trade.status === 'closed')}
                 />
               </TradeField>
               <TradeField
                 id="plan-reward"
-                label={t('detail.systemPlan.targetReward')}
+                label={contract ? c('target.profit') : t('detail.systemPlan.targetReward')}
                 hint={t('common.optional')}
               >
                 <FormInput

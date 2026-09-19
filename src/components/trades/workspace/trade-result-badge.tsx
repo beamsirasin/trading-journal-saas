@@ -1,6 +1,7 @@
 import { useTranslations } from 'next-intl';
 
 import type { TradeResultKind } from '@/lib/trades/result';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 
 /**
@@ -30,11 +31,29 @@ const VARIANT: Record<TradeResultKind, BadgeVariant> = {
   outcome_unanswered: 'neutral',
 };
 
-export function TradeResultBadge({ result }: { result: TradeResultKind }) {
+/**
+ * `legacy`: the Win / Loss / BE shown was derived under the pre-contract rules,
+ * not chosen by the trader (contract §12, §28). It keeps its colour and word,
+ * and carries the Legacy marker so it never reads as a trader-selected answer.
+ */
+export function TradeResultBadge({
+  result,
+  legacy = false,
+}: {
+  result: TradeResultKind;
+  legacy?: boolean;
+}) {
   const t = useTranslations('trades.workspace.result');
-  return (
+  const badge = (
     <Badge variant={VARIANT[result]} className="px-2 py-0.5 whitespace-nowrap">
       {t(result)}
     </Badge>
+  );
+  if (!legacy) return badge;
+  return (
+    <span data-result-legacy="" className="inline-flex items-center gap-1">
+      {badge}
+      <LegacyEvidenceBadge className="px-1.5 py-0 text-[10px]" />
+    </span>
   );
 }

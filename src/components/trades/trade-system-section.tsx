@@ -1,5 +1,6 @@
 import { useTranslations } from 'next-intl';
 
+import { isContractRow } from '@/lib/trades/add-trade-contract';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actions';
 import { DetailRow, SectionTitle } from '@/components/trades/trade-detail-primitives';
@@ -142,7 +143,12 @@ export function SystemSection({
     <section aria-labelledby="trade-system-heading" className="grid gap-6">
       <SectionTitle id="trade-system-heading">{t('detail.nav.system')}</SectionTitle>
 
-      <SystemPlan trade={trade} canWrite={canWrite} />
+      {/*
+        A contract row's Risk at Entry and Target are the trader's intent, read
+        back with the Plan tab's own Risk and Target — never relabelled as a
+        System Plan. System semantics for it belong to System Assessment.
+      */}
+      {isContractRow(trade) ? null : <SystemPlan trade={trade} canWrite={canWrite} />}
 
       <section
         aria-labelledby="trade-system-outcome-heading"

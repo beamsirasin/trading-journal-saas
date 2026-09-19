@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TradeDetail as TradeDetailModel } from '@/server/dal/trades';
 
 import en from '../../../messages/en.json';
-import { TradeDetail } from './trade-detail';
+import { ActualSection } from './trade-actual-section';
+import { ReviewSection } from './trade-review-section';
+import { SystemSection } from './trade-system-section';
 
 let currentSearch = '';
 
@@ -124,6 +126,7 @@ const base: TradeDetailModel = {
   planAdherence: null,
   setupConditionState: 'not_recorded',
   setupConditionChecks: [],
+  setupConditionConfiguredCount: null,
   ruleChecks: [
     {
       ruleKey: 'r',
@@ -153,22 +156,29 @@ const base: TradeDetailModel = {
   updatedAt: '2026-08-08T00:00:00.000Z',
 };
 
-function renderDetail(trade: TradeDetailModel, section = '', canWrite = false) {
+/**
+ * The record sections the live Trade Details sheet renders (its Execution,
+ * Plan and Review panels reuse them verbatim). These cases used to reach them
+ * through the retired Phase 15E `TradeDetail` container, which nothing in the
+ * product rendered any more; they now render the sections directly.
+ */
+function renderDetail(trade: TradeDetailModel, section = 'actual', canWrite = false) {
   currentSearch = section === '' ? '' : `section=${section}`;
+  const props = { trade, timezone: 'Asia/Bangkok', locale: 'en-GB', canWrite };
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
-      <TradeDetail
-        trade={trade}
-        timezone="Asia/Bangkok"
-        locale="en-GB"
-        canWrite={canWrite}
-        classificationOptions={[]}
-      />
+      {section === 'system' ? (
+        <SystemSection {...props} />
+      ) : section === 'review' ? (
+        <ReviewSection trade={trade} timezone="Asia/Bangkok" canWrite={canWrite} />
+      ) : (
+        <ActualSection {...props} />
+      )}
     </NextIntlClientProvider>,
   );
 }
 
-describe('TradeDetail', () => {
+describe('Trade record sections', () => {
   // Phase 15E — one section renders at a time; `actual` is the default
   // landing section (`DEFAULT_TRADE_DETAIL_SECTION`).
   it('shows a legacy planned Trade with friendly compatibility copy on the default Actual section, never invented numeric zero values', () => {
@@ -391,76 +401,9 @@ describe('TradeDetail', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders Confidence as "X% · Label", never "/100" or "/5", inside Entry Snapshot', () => {
-    renderDetail({ ...base, confidence: 75 }, 'entry');
-    expect(screen.getByText('75% · High')).toBeInTheDocument();
-    expect(screen.queryByText(/75\/100/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\/5\b/)).not.toBeInTheDocument();
-  });
-
-  it('labels the Entry Snapshot once when the Trade was recorded retrospectively', () => {
-    renderDetail({ ...base, recordedRetrospectively: true }, 'entry');
-    expect(screen.getByText('Recorded retrospectively')).toBeVisible();
-    expect(screen.getAllByText('Recorded retrospectively')).toHaveLength(1);
-  });
-
   it('renders a truthful not-set Confidence state, never an invented percentage', () => {
     renderDetail({ ...base, confidence: null }, 'entry');
     expect(screen.queryByText(/^\d+% ·/)).not.toBeInTheDocument();
-  });
-
-  it('distinguishes historical not-recorded Emotions from a recorded zero selection, inside Entry Snapshot', () => {
-    const first = renderDetail(base, 'entry');
-    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-    first.unmount();
-    renderDetail(
-      {
-        ...base,
-        emotionsRecordedAt: '2026-08-08T00:00:00.000Z',
-        emotions: [],
-      },
-      'entry',
-    );
-    // Appears once in the scan-summary <dl> and once in the full-detail
-    // TradeEmotionsEditor behind "Show full details" — both by design (brief §22).
-    expect(screen.getAllByText('No emotions selected').length).toBeGreaterThan(0);
-  });
-
-  it('renders localized selected Emotions in Entry Snapshot and post-trade review notes in Review', () => {
-    renderDetail(
-      {
-        ...base,
-        emotionsRecordedAt: '2026-08-08T00:00:00.000Z',
-        emotions: [
-          { key: 'calm', label: 'Calm' },
-          { key: 'focused', label: 'Focused' },
-        ],
-      },
-      'entry',
-    );
-    expect(screen.getByText('Calm')).toBeInTheDocument();
-    expect(screen.getByText('Focused')).toBeInTheDocument();
-
-    renderDetail(
-      { ...base, reviewNotes: 'I waited for the close and followed the plan.' },
-      'review',
-    );
-    expect(screen.getByText('I waited for the close and followed the plan.')).toBeInTheDocument();
-  });
-
-  it('renders a Chart attachment via the authenticated delivery route, never a stored URL, inside Entry Snapshot', () => {
-    renderDetail(
-      {
-        ...base,
-        hasChartAttachment: true,
-        chartAttachmentUploadedAt: '2026-08-08T00:00:00.000Z',
-      },
-      'entry',
-    );
-    const image = screen.getByAltText('Uploaded chart image') as HTMLImageElement;
-    expect(image.src).toBe(`http://localhost:3000/api/trades/${base.tradeId}/chart-attachment`);
-    const link = screen.getByRole('link', { name: /Open chart image/ });
-    expect(link).toHaveAttribute('href', `/api/trades/${base.tradeId}/chart-attachment`);
   });
 
   it('renders no Chart attachment section when the Trade has none', () => {
@@ -592,90 +535,9 @@ describe('TradeDetail', () => {
     expect(screen.queryByRole('button', { name: /remove|attach|edit/i })).not.toBeInTheDocument();
   });
 
-  it('shows Setup Conditions as historical not-recorded, distinct from a zero-Condition Setup, inside Entry Snapshot', () => {
-    const first = renderDetail({ ...base, setupConditionState: 'not_recorded' }, 'entry');
-    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Not configured')).not.toBeInTheDocument();
-    first.unmount();
-
-    renderDetail({ ...base, setupConditionState: 'not_configured' }, 'entry');
-    expect(screen.getAllByText('Not configured').length).toBeGreaterThan(0);
-  });
-
-  it('renders recorded Setup Conditions with an adherence count and per-item Met/Not met status', () => {
-    renderDetail(
-      {
-        ...base,
-        setupConditionState: 'recorded',
-        setupConditionChecks: [
-          {
-            conditionKey: 'c1',
-            label: 'Above the 200 EMA',
-            sortOrder: 0,
-            checkStatus: 'met',
-            origin: null,
-          },
-          {
-            conditionKey: 'c2',
-            label: 'Volume confirms breakout',
-            sortOrder: 1,
-            checkStatus: 'not_met',
-            origin: null,
-          },
-        ],
-      },
-      'entry',
-    );
-    expect(screen.getByText('1/2 met · 50%')).toBeInTheDocument();
-    expect(screen.getByText('Above the 200 EMA')).toBeInTheDocument();
-    expect(screen.getByText('Volume confirms breakout')).toBeInTheDocument();
-    expect(screen.getByText('Met')).toBeInTheDocument();
-    expect(screen.getByText('Not met')).toBeInTheDocument();
-  });
-
-  it('discloses an archived live Strategy and Setup on the Strategy & Setup section, and archived Account on Overview, without hiding the pinned historical label', () => {
-    const first = renderDetail({
-      ...base,
-      strategyIsArchived: true,
-      setupIsArchived: true,
-      tradingAccountIsArchived: true,
-    });
-    expect(screen.getByText('Main JPY')).toBeInTheDocument();
-    expect(screen.getAllByText('Archived').length).toBeGreaterThan(0);
-    first.unmount();
-
-    renderDetail(
-      {
-        ...base,
-        strategyIsArchived: true,
-        setupIsArchived: true,
-      },
-      'strategy',
-    );
-    expect(screen.getByText('Pinned Breakout')).toBeInTheDocument();
-    expect(screen.getByText('Pinned Retest')).toBeInTheDocument();
-    expect(screen.getAllByText('Archived').length).toBe(2);
-  });
-
   it('renders no Archived badge when the live Account is active', () => {
     renderDetail(base);
     expect(screen.queryByText('Archived')).not.toBeInTheDocument();
-  });
-
-  it('displays Entry Reason separately from legacy Notes, inside Entry Snapshot', () => {
-    renderDetail(
-      {
-        ...base,
-        confirmationNotes: 'Waited for the retest to confirm.',
-        notes: 'General journal note.',
-      },
-      'entry',
-    );
-    // Appears once as the compact <dl> row label and once as the full-detail
-    // SubSection heading behind "Show full details" — both by design (brief §22).
-    expect(screen.getAllByText('Entry Reason').length).toBeGreaterThan(0);
-    expect(screen.getByText('Waited for the retest to confirm.')).toBeInTheDocument();
-    expect(screen.getByText('General journal note.')).toBeInTheDocument();
   });
 
   it('renders the System resolved time alongside the final System outcome, on the System section', () => {
@@ -729,26 +591,6 @@ describe('TradeDetail', () => {
       renderDetail(base, 'review', true);
       expect(screen.getByRole('button', { name: /System assessment/ })).toBeInTheDocument();
       expect(screen.getByText('What would you repeat or change next time?')).toBeInTheDocument();
-    });
-
-    it('shows classification actions only on the Strategy & Setup section', () => {
-      renderDetail(
-        { ...base, strategyId: null, strategyName: null, setupId: null, setupName: null },
-        'strategy',
-        true,
-      );
-      expect(screen.getByRole('button', { name: 'Add Strategy' })).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Record System Outcome' }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('shows Trade-level Identity/Delete actions on Overview regardless of the active section, never as a hero CTA', () => {
-      renderDetail(base, 'system', true);
-      expect(screen.getByRole('button', { name: 'Correct identity' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Delete Trade' })).toBeInTheDocument();
-      // A legacy `planned` row exposes Cancel too — quiet overflow, not a hero.
-      expect(screen.getByRole('button', { name: 'Cancel planned Trade' })).toBeInTheDocument();
     });
 
     it('never shows Cancel for a Trade that has already been opened', () => {

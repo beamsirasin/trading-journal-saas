@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
+import { isLegacyActualR, tradeOutcomeEvidence } from '@/lib/trades/record-evidence';
 import { deriveTradeResult } from '@/lib/trades/result';
 import {
   deriveTradeReviewState,
@@ -9,6 +10,7 @@ import {
   TRADE_REVIEW_STATE_TAB,
 } from '@/lib/trades/review-state';
 import { cn } from '@/lib/utils';
+import { LegacyEvidenceBadge } from '@/components/trades/trade-evidence';
 import { formatR, formatTradeMoney } from '@/components/trades/trade-format';
 import { Link } from '@/i18n/navigation';
 
@@ -103,7 +105,10 @@ export function TradesMobileList({
                       {trade.occurredAtDisplay}
                     </p>
                   </div>
-                  <TradeResultBadge result={deriveTradeResult(trade)} />
+                  <TradeResultBadge
+                    result={deriveTradeResult(trade)}
+                    legacy={tradeOutcomeEvidence(trade).status === 'legacy_derived'}
+                  />
                 </div>
 
                 <div className="mt-3 flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1">
@@ -142,6 +147,9 @@ export function TradesMobileList({
                       <span className="text-muted-foreground ml-1 text-[10px] tracking-wide uppercase">
                         {t('realized')}
                       </span>
+                    ) : null}
+                    {isLegacyActualR({ ...trade, actualR: rValue }) ? (
+                      <LegacyEvidenceBadge className="ml-1 px-1.5 py-0 text-[10px]" />
                     ) : null}
                   </span>
                 </div>

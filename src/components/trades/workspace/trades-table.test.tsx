@@ -108,13 +108,14 @@ describe('TradesTable — the default columns', () => {
     const cells = screen.getAllByRole('cell').map((cell) => cell.textContent);
     expect(cells[0]).toBe('24 Aug 2026');
     expect(cells[1]).toContain('XAUUSD');
-    expect(cells[2]).toBe('WIN');
+    // A legacy row: its derived Win and its R carry the Legacy marker (contract §28).
+    expect(cells[2]).toBe('WINLegacy');
     // Code style, not a symbol: under an "All accounts" scope the rows can
     // legitimately be in different currencies, and "$" would be ambiguous
     // across them. The single-currency AGGREGATE above the table is the one
     // place a symbol is safe.
     expect(cells[3]).toBe('+220.00 USD');
-    expect(cells[4]).toBe('+2.20R');
+    expect(cells[4]).toBe('+2.20RLegacy');
     expect(cells[5]).toBe('1 : 3.00');
     expect(cells[6]).toBe('Elliott Wave');
     expect(cells[7]).toBe('Wave 3');

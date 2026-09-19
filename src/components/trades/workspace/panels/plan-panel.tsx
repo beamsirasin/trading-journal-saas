@@ -7,7 +7,8 @@ import { CONFIDENCE_LEVELS, confidenceLevelKey } from '@/lib/trades/constants';
 import { cn } from '@/lib/utils';
 import type { TradeCreateStrategyOption, TradeDetail } from '@/server/dal/trades';
 import { AssignClassificationDialog } from '@/components/trades/trade-classification-actions';
-import { formatPlannedRr } from '@/components/trades/trade-format';
+import { PlanCorrectionDialog } from '@/components/trades/trade-correction-actions';
+import { formatPlannedRr, formatTradeMoney } from '@/components/trades/trade-format';
 import { SystemSection } from '@/components/trades/trade-system-section';
 import { CaptureOriginTag } from '@/components/trades/workspace/capture-origin-tag';
 import {
@@ -129,20 +130,27 @@ export function TradePlanPanel({
         )}
       </PanelSection>
 
+      {trade.recordingContract === null ? null : (
+        <ContractIntentBlock trade={trade} canWrite={canWrite} />
+      )}
+
       {trade.recordingContract === null ? null : <ExitPlanBlock trade={trade} />}
 
       <ConfidenceBlock trade={trade} />
 
-      <PanelSection title={t('groups.plannedReward')}>
-        <FactGrid>
-          <Fact
-            label={tTrades('field.plannedR')}
-            value={formatPlannedRr(trade.plannedR)}
-            hint={t('hints.plannedRr')}
-            tone="neutral"
-          />
-        </FactGrid>
-      </PanelSection>
+      {/* A contract row shows Planned R beside its own Risk and Target above. */}
+      {trade.recordingContract === null ? (
+        <PanelSection title={t('groups.plannedReward')}>
+          <FactGrid>
+            <Fact
+              label={tTrades('field.plannedR')}
+              value={formatPlannedRr(trade.plannedR)}
+              hint={t('hints.plannedRr')}
+              tone="neutral"
+            />
+          </FactGrid>
+        </PanelSection>
+      ) : null}
 
       <SetupChecklist trade={trade} />
 
@@ -257,15 +265,40 @@ function SetupChecklist({ trade }: { trade: TradeDetail }) {
     );
   }
 
-  // "Don't remember" is an answer but neither Met nor Not Met (contract §8).
-  const answered = trade.setupConditionChecks.filter((check) => check.checkStatus !== 'unknown');
-  const met = answered.filter((check) => check.checkStatus === 'met').length;
-  const total = answered.length;
+  /*
+    COVERAGE, NEVER A RATIO OVER ANSWERS ONLY (contract §8, §24). A contract
+    Trade stores a row per answered condition, so "2 of 2 met" on a
+    five-condition Setup would hide three unanswered ones. Each state is
+    counted on its own: Met, Not Met, Don't remember (an answer, never a Not
+    Met) and Unanswered (never a failure).
+  */
+  const count = (status: string) =>
+    trade.setupConditionChecks.filter((check) => check.checkStatus === status).length;
+  const met = count('met');
+  const notMet = count('not_met');
+  const unknown = count('unknown');
+  const unanswered = Math.max(
+    0,
+    (trade.setupConditionConfiguredCount ?? trade.setupConditionChecks.length) -
+      trade.setupConditionChecks.length,
+  );
+  const coverage = [
+    t('conditionCoverage.met', { count: met }),
+    notMet > 0 ? t('conditionCoverage.notMet', { count: notMet }) : null,
+    unknown > 0 ? t('conditionCoverage.unknown', { count: unknown }) : null,
+    unanswered > 0 ? t('conditionCoverage.unanswered', { count: unanswered }) : null,
+  ].filter((part): part is string => part !== null);
   const origin = trade.setupConditionChecks[0]?.origin ?? null;
 
   return (
     <PanelSection title={tTrades('detail.sections.conditions')}>
-      <p className="text-sm font-medium">{t('checklistCount', { met, total })}</p>
+      <p
+        data-condition-coverage=""
+        data-condition-unanswered={unanswered}
+        className="text-sm font-medium"
+      >
+        {coverage.join(' · ')}
+      </p>
       <CaptureOriginTag origin={captureOriginLabel(trade, origin)} />
       <ul className="flex min-w-0 flex-col gap-1.5">
         {trade.setupConditionChecks.map((check) => (
@@ -298,6 +331,107 @@ function SetupChecklist({ trade }: { trade: TradeDetail }) {
           </li>
         ))}
       </ul>
+    </PanelSection>
+  );
+}
+
+/**
+ * RISK, TARGET AND PRICE CONTEXT — what the trader intended, as they answered
+ * it (contract §4, §5, §3; UX Rules §4, §12.10).
+ *
+ * Trader intent, not System evidence: Risk at Entry is the 1R baseline and the
+ * Target is an objective, so neither sits under a "System Plan" heading. Each
+ * answer keeps its own state — Target Unanswered, Fixed (with Target Profit,
+ * a TP price or both) and No Fixed Target read differently, and a blank Risk
+ * at Entry reads "Not recorded", never 0. Prices are labelled as context.
+ */
+function ContractIntentBlock({ trade, canWrite }: { trade: TradeDetail; canWrite: boolean }) {
+  const t = useTranslations('trades.workspace.details');
+  const c = useTranslations('trades.create.recording.contractEntry');
+  const tTrades = useTranslations('trades');
+  const money = (value: string | null) =>
+    value === null ? null : formatTradeMoney(value, trade.tradingAccountBaseCurrency);
+  const notRecorded = t('intent.notRecorded');
+  const target =
+    trade.targetState === null
+      ? c('notAnswered')
+      : trade.targetState === 'fixed'
+        ? c('target.fixed')
+        : c('target.noFixed');
+  const hasPrices =
+    trade.contextEntryPrice !== null ||
+    trade.contextStopPrice !== null ||
+    trade.contextPositionSize !== null;
+
+  return (
+    <PanelSection title={t('intent.title')} description={t('intent.meaning')}>
+      <FactGrid>
+        <Fact
+          label={c('risk.label')}
+          value={money(trade.plannedRiskMinor) ?? notRecorded}
+          tone="neutral"
+        />
+        <Fact
+          label={c('target.legend')}
+          value={<span data-target-state={trade.targetState ?? 'unanswered'}>{target}</span>}
+        />
+        {trade.targetState === 'fixed' ? (
+          <>
+            <Fact
+              label={c('target.profit')}
+              value={money(trade.plannedRewardMinor) ?? notRecorded}
+              tone="neutral"
+            />
+            <Fact
+              label={c('target.price')}
+              value={trade.targetPrice ?? notRecorded}
+              hint={c('target.priceContext')}
+              tone="neutral"
+            />
+          </>
+        ) : null}
+        {trade.plannedR === null ? null : (
+          <Fact
+            label={tTrades('field.plannedR')}
+            value={formatPlannedRr(trade.plannedR)}
+            tone="neutral"
+          />
+        )}
+      </FactGrid>
+      <div data-price-context={hasPrices ? 'recorded' : 'not_recorded'} className="min-w-0">
+        <p className="text-muted-foreground mb-2 text-xs font-medium">
+          {c('context.prices')} · {c('context.pricesHint')}
+        </p>
+        {hasPrices ? (
+          <FactGrid>
+            <Fact
+              label={c('context.entryPrice')}
+              value={trade.contextEntryPrice}
+              omitWhenEmpty
+              tone="neutral"
+            />
+            <Fact
+              label={c('context.stopPrice')}
+              value={trade.contextStopPrice}
+              omitWhenEmpty
+              tone="neutral"
+            />
+            <Fact
+              label={c('context.size')}
+              value={trade.contextPositionSize}
+              omitWhenEmpty
+              tone="neutral"
+            />
+          </FactGrid>
+        ) : (
+          <p className="text-muted-foreground text-sm">{notRecorded}</p>
+        )}
+      </div>
+      {canWrite ? (
+        <div>
+          <PlanCorrectionDialog trade={trade} />
+        </div>
+      ) : null}
     </PanelSection>
   );
 }
