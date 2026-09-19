@@ -1236,7 +1236,7 @@ describe('Phase 13H — Setup Adherence / Condition / Confidence / Emotion analy
     expect(new Set(sharedKeyRows.map((r) => r.setupId))).toEqual(new Set([framework.setupId]));
     // The most recent snapshot (Trade C, latest exitedAt) carries the renamed label truthfully.
     const mostRecent = [...sharedKeyRows]
-      .sort((a, b) => a.exitedAt.localeCompare(b.exitedAt))
+      .sort((a, b) => (a.exitedAt ?? '').localeCompare(b.exitedAt ?? ''))
       .at(-1);
     expect(mostRecent?.label).toBe('Above the 200 EMA (renamed)');
 

@@ -41,6 +41,8 @@ const equity = (
 function axis(sampleCount: number, total = '4.0000'): PerformanceAnalyticsModel {
   return {
     sampleCount,
+    outcomeSampleCount: sampleCount,
+    undatedCount: 0,
     outcomeCounts: { wins: sampleCount, breakEvens: 0, losses: 0 },
     totalR: available(total),
     averageR: available('1.3333'),

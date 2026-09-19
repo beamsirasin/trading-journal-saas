@@ -18,7 +18,13 @@ import { calcErr, calcOk, type CalcResult } from './types';
 /**
  * The minimal shape `isTraderEligible` needs. Trader R metrics are eligible
  * when: execution `status` is `closed`; not soft-deleted (`deletedAt`);
- * `actualR` and the Actual `exitedAt` exist.
+ * `actualR` exists.
+ *
+ * A FINAL EXIT TIME IS NOT REQUIRED. After Trade may save a closed Trade
+ * whose exit time is unknown (Add Trade contract §13); it keeps its Actual R
+ * in every figure that does not need a time. Only time-ordered figures —
+ * the equity curve, drawdown, a calendar day, a date range — need
+ * `exitedAt`, and they select it themselves (`hasExitTime`).
  *
  * A TRADER OUTCOME IS NOT REQUIRED. An unanswered outcome is a missing
  * observation, never a negative one (Add Trade contract §24): the Trade keeps
@@ -39,12 +45,24 @@ export interface TraderEligibleTradeInput {
 }
 
 export function isTraderEligible(trade: TraderEligibleTradeInput): boolean {
-  return (
-    trade.status === 'closed' &&
-    trade.deletedAt === null &&
-    trade.actualR !== null &&
-    trade.exitedAt !== null
-  );
+  return trade.status === 'closed' && trade.deletedAt === null && trade.actualR !== null;
+}
+
+/**
+ * OUTCOME METRICS HAVE THEIR OWN POPULATION (contract §25). Trader Win Rate
+ * counts the outcome the trader selected; it needs neither Risk at Entry nor
+ * Actual R, so a closed Trade with an outcome and no R still counts there.
+ * Unanswered stays out of the numerator and the denominator (`winRate`).
+ */
+export function isTraderOutcomeEligible(trade: TraderEligibleTradeInput): boolean {
+  return trade.status === 'closed' && trade.deletedAt === null;
+}
+
+/** A figure ordered in time (equity curve, drawdown, day buckets) needs the final exit time. */
+export function hasExitTime<T extends { readonly exitedAt: Date | string | null }>(
+  trade: T,
+): trade is T & { readonly exitedAt: Date | string } {
+  return trade.exitedAt !== null;
 }
 
 /** Filters to the Trader-eligible subset, preserving each record's full original shape. */

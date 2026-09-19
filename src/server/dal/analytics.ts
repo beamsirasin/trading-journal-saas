@@ -69,8 +69,10 @@ import {
 
 import {
   canonicalActualConditions,
+  canonicalDatedActualConditions,
   canonicalSystemConditions,
   canonicalSystemR,
+  canonicalTraderConditions,
   canonicalTraderOutcome,
   selectLegacyAnalyticsCoverage,
 } from './canonical-analytics-population';
@@ -411,9 +413,11 @@ export interface TraderAnalyticsRecord {
   readonly tradeId: string;
   readonly status: TradeStatus;
   readonly deletedAt: null;
-  readonly actualR: string;
+  /** `null`: a selected outcome on a Trade with no Actual R (no Risk at Entry or no Final Net P&L). */
+  readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
-  readonly exitedAt: string;
+  /** `null`: saved without a final exit time (contract §13). */
+  readonly exitedAt: string | null;
   readonly tradingAccountId: string;
   /** Authoritative Actual money result; null is legitimate for Price-mode Trades. */
   readonly netPnlMinor: string | null;
@@ -479,7 +483,7 @@ async function selectTraderAnalyticsRecords(
       and(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
-        ...canonicalActualConditions(),
+        ...canonicalTraderConditions(),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -491,7 +495,7 @@ async function selectTraderAnalyticsRecords(
     deletedAt: null,
     actualR: row.actualR as string,
     traderOutcome: row.traderOutcome,
-    exitedAt: (row.exitedAt as Date).toISOString(),
+    exitedAt: row.exitedAt?.toISOString() ?? null,
     netPnlMinor: row.netPnlMinor?.toString() ?? null,
     direction: row.direction as TradeDirection,
   }));
@@ -538,7 +542,7 @@ async function selectClosedTradeMoneyRecords(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.status, 'closed'),
-        isNotNull(trades.exitedAt),
+        // No final exit time is still a closed Trade with a Final Net P&L.
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -701,7 +705,7 @@ export interface ComparisonCandidateRecord {
 
 /** Population A's completeness contract, as SQL. */
 function actualCompleteCondition(): SQL {
-  return and(...canonicalActualConditions()) as SQL;
+  return and(...canonicalDatedActualConditions()) as SQL;
 }
 
 /** Population B's completeness contract, as SQL. */
@@ -938,7 +942,7 @@ export interface RuleAnalyticsRecord {
   readonly strategyId: string | null;
   readonly strategyVersionId: string | null;
   readonly setupId: string | null;
-  readonly exitedAt: string;
+  readonly exitedAt: string | null;
 }
 
 async function selectRuleAnalyticsRecords(
@@ -968,7 +972,7 @@ async function selectRuleAnalyticsRecords(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.status, 'closed'),
-        isNotNull(trades.exitedAt),
+        // Undated closed Trades still count; a date range excludes them.
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
@@ -978,7 +982,7 @@ async function selectRuleAnalyticsRecords(
     ...row,
     checkStatus: row.checkStatus as RuleCheckStatus,
     scope: setupVersionId === null ? 'strategy' : 'setup',
-    exitedAt: (row.exitedAt as Date).toISOString(),
+    exitedAt: row.exitedAt?.toISOString() ?? null,
   }));
 }
 
@@ -1001,7 +1005,7 @@ export interface MistakeAnalyticsRecord {
   readonly strategyId: string | null;
   readonly strategyVersionId: string | null;
   readonly setupId: string | null;
-  readonly exitedAt: string;
+  readonly exitedAt: string | null;
 }
 
 async function selectMistakeAnalyticsRecords(
@@ -1028,14 +1032,14 @@ async function selectMistakeAnalyticsRecords(
         ...frameworkConditions(context),
         isNull(trades.deletedAt),
         eq(trades.status, 'closed'),
-        isNotNull(trades.exitedAt),
+        // Undated closed Trades still count; a date range excludes them.
         eq(mistakeTypes.isSystem, true),
         ...dateConditions(trades.exitedAt, context.filters.dateBounds),
       ),
     )
     .orderBy(asc(trades.exitedAt), asc(trades.id), asc(mistakeTypes.sortOrder));
 
-  return rows.map((row) => ({ ...row, exitedAt: (row.exitedAt as Date).toISOString() }));
+  return rows.map((row) => ({ ...row, exitedAt: row.exitedAt?.toISOString() ?? null }));
 }
 
 export async function getMistakeAnalyticsRecords(
@@ -1180,7 +1184,7 @@ export interface ConditionAnalyticsRecord {
   readonly checkStatus: SetupConditionCheckStatus;
   readonly actualR: string;
   readonly traderOutcome: OutcomeValue | null;
-  readonly exitedAt: string;
+  readonly exitedAt: string | null;
 }
 
 /**
@@ -1230,7 +1234,7 @@ async function selectConditionAnalyticsRecords(
     checkStatus: row.checkStatus as SetupConditionCheckStatus,
     actualR: row.actualR as string,
     traderOutcome: row.traderOutcome,
-    exitedAt: (row.exitedAt as Date).toISOString(),
+    exitedAt: row.exitedAt?.toISOString() ?? null,
   }));
 }
 
@@ -1780,7 +1784,7 @@ export async function getCalendarMonthRecords(
         and(
           ...scope,
           isNull(trades.deletedAt),
-          ...canonicalActualConditions(),
+          ...canonicalDatedActualConditions(),
           gte(trades.exitedAt, window.start),
           lt(trades.exitedAt, window.end),
         ),
@@ -1850,7 +1854,7 @@ export async function getCalendarMonthRecords(
       and(
         ...scope,
         isNull(trades.deletedAt),
-        ...canonicalActualConditions(),
+        ...canonicalDatedActualConditions(),
         ...canonicalSystemConditions(),
         /*
           NO `system_exited_at` GATE. The formula here is `actualR - systemR`
@@ -1911,9 +1915,9 @@ export async function getDayReviewRecords(
     params.mode === 'system'
       ? canonicalSystemConditions()
       : params.mode === 'actual'
-        ? canonicalActualConditions()
+        ? canonicalDatedActualConditions()
         : [
-            ...canonicalActualConditions(),
+            ...canonicalDatedActualConditions(),
             ...canonicalSystemConditions(),
             // Same reasoning as the paired window above: R comparison needs the
             // R, not a System exit instant.

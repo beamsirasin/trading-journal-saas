@@ -299,6 +299,58 @@ describe('analytics metric composition', () => {
   });
 });
 
+describe('Trader populations per kind of evidence (Add Trade contract §13, §25)', () => {
+  const undated = { ...trader('undated', '2.0000', 'win', 3), exitedAt: null };
+  const outcomeOnly = { ...trader('outcome-only', '0.0000', 'loss', 4), actualR: null };
+  const unanswered = { ...trader('unanswered', '-1.0000', 'loss', 5), traderOutcome: null };
+
+  it('keeps a Trade with no final exit time in every R total, and off the curve and drawdown', () => {
+    const result = composeTraderAnalytics([trader('dated', '1.0000', 'win', 1), undated]);
+    expect(result.sampleCount).toBe(2);
+    expect(result.undatedCount).toBe(1);
+    expect(result.totalR).toEqual({ status: 'available', value: '3.0000' });
+    expect(result.equityCurve).toMatchObject({ status: 'available' });
+    if (result.equityCurve.status !== 'available') return;
+    expect(result.equityCurve.value.map((point) => point.tradeId)).toEqual(['dated']);
+  });
+
+  it('counts a selected outcome with no Actual R in Win Rate, never in an R figure', () => {
+    const result = composeTraderAnalytics([trader('dated', '1.0000', 'win', 1), outcomeOnly]);
+    expect(result.sampleCount).toBe(1);
+    expect(result.outcomeSampleCount).toBe(2);
+    expect(result.outcomeCounts).toEqual({ wins: 1, breakEvens: 0, losses: 1 });
+    expect(result.winRate).toEqual({ status: 'available', value: '0.5000' });
+    expect(result.totalR).toEqual({ status: 'available', value: '1.0000' });
+    expect(result.averageR).toEqual({ status: 'available', value: '1.0000' });
+  });
+
+  it('leaves Unanswered out of Win Rate while its R still counts', () => {
+    const result = composeTraderAnalytics([trader('dated', '1.0000', 'win', 1), unanswered]);
+    expect(result.winRate).toEqual({ status: 'available', value: '1.0000' });
+    expect(result.totalR).toEqual({ status: 'available', value: '0.0000' });
+  });
+
+  it('reports outcome-only Trades as available on the Trader axis, not empty', () => {
+    const result = composeTraderAnalytics([outcomeOnly]);
+    expect(result.sampleCount).toBe(0);
+    expect(result.outcomeSampleCount).toBe(1);
+    expect(result.totalR).toEqual({ status: 'unavailable', reason: 'no_trades' });
+    expect(result.winRate).toEqual({ status: 'available', value: '0.0000' });
+  });
+
+  it('breaks down Strategy and context by the evidence each figure needs', () => {
+    const breakdown = composeContextBreakdown([
+      { tradeId: 'a', value: 'EURUSD', r: '1.0000', outcome: 'win' },
+      { tradeId: 'b', value: 'EURUSD', r: null, outcome: 'loss' },
+    ]);
+    expect(breakdown.groups[0]?.trader).toEqual({
+      tradeCount: 2,
+      averageR: { status: 'available', value: '1.0000' },
+      winRate: { status: 'available', value: '0.5000' },
+    });
+  });
+});
+
 describe('comparison composition', () => {
   it.each([
     ['3.0000', '2.0000', '-1.0000'],

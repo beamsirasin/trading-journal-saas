@@ -66,7 +66,12 @@ describe('Dashboard service orchestration', () => {
         },
         trader: [],
         money: [],
-        legacyCoverage: { excludedActualCount: 0, excludedSystemCount: 0 },
+        legacyCoverage: {
+          excludedActualCount: 0,
+          excludedSystemCount: 0,
+          undatedClosedCount: 0,
+          dateRangeActive: false,
+        },
         system: [],
         comparisonCandidates: [],
         attention: {

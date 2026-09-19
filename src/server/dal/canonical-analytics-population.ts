@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { and, eq, isNotNull, not, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, not, or, sql, type SQL } from 'drizzle-orm';
 
 import type { LegacyAnalyticsCoverage } from '@/lib/analytics/canonical-population';
 import { RECORDING_CONTRACT_ADD_TRADE_V1 } from '@/lib/trades/add-trade-contract';
@@ -22,9 +22,15 @@ import { trades } from '@/server/db/schema';
  * behavioural read applies both.
  */
 
-/** A closed Trade with a complete Actual R, before canonical eligibility — shared with the coverage count. */
+/**
+ * A closed Trade with an Actual R, before canonical eligibility — shared with
+ * the coverage count. A final exit time is NOT part of it: After Trade may save
+ * a closed Trade without one (contract §13), and it still belongs in every
+ * figure that does not need a time. A date range still excludes it, because
+ * `exited_at >= start` is never true for NULL — see `selectUndatedClosedCount`.
+ */
 function actualCompleteConditions(): SQL[] {
-  return [eq(trades.status, 'closed'), isNotNull(trades.actualR), isNotNull(trades.exitedAt)];
+  return [eq(trades.status, 'closed'), isNotNull(trades.actualR)];
 }
 
 /** A resolved System result, before canonical eligibility — shared with the coverage count. */
@@ -63,6 +69,26 @@ export function canonicalActualConditions(): SQL[] {
   return [...actualCompleteConditions(), canonicalActualR()];
 }
 
+/** The canonical Actual population a day or a timeline can place: it also needs a final exit time. */
+export function canonicalDatedActualConditions(): SQL[] {
+  return [...canonicalActualConditions(), isNotNull(trades.exitedAt)];
+}
+
+/**
+ * THE CANONICAL TRADER POPULATION (contract §25). Two kinds of evidence share
+ * it: an Actual R (for R figures) and a trader-selected outcome (for Win Rate
+ * and outcome counts). A closed contract Trade with a selected outcome and no
+ * Risk at Entry has no R and still counts in the outcome figures, so either
+ * admits a row; each figure then reads only the rows that carry its evidence.
+ */
+export function canonicalTraderConditions(): SQL[] {
+  return [
+    eq(trades.status, 'closed'),
+    canonicalActualR(),
+    or(isNotNull(trades.actualR), isNotNull(trades.traderOutcomeSelectedAt)) as SQL,
+  ];
+}
+
 /** Canonical System population: admits nothing until canonical System Results exist. */
 export function canonicalSystemConditions(): SQL[] {
   return [...systemCompleteConditions(), canonicalSystemResult()];
@@ -91,6 +117,20 @@ export function canonicalSystemR(): null {
 }
 
 /**
+ * CLOSED TRADES WITH NO FINAL EXIT TIME (contract §13). Counted so a figure
+ * that could not place them — a date range, a calendar day, the equity curve —
+ * says so rather than quietly showing fewer Trades.
+ */
+export async function selectUndatedClosedCount(scope: readonly SQL[]): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(trades)
+    .where(and(...scope, eq(trades.status, 'closed'), isNull(trades.exitedAt)));
+  return row?.count ?? 0;
+}
+
+/**
  * How many Trades in scope canonical analytics left out as legacy evidence.
  *
  * `scope` is the caller's framework + not-deleted conditions; each axis adds
@@ -103,6 +143,7 @@ export async function selectLegacyAnalyticsCoverage(params: {
   readonly actualDate: readonly SQL[];
   readonly systemDate: readonly SQL[];
 }): Promise<LegacyAnalyticsCoverage> {
+  // `actualDate` is empty exactly when no date range is active.
   const db = getDb();
   const [row] = await db
     .select({
@@ -122,5 +163,7 @@ export async function selectLegacyAnalyticsCoverage(params: {
   return {
     excludedActualCount: row?.excludedActualCount ?? 0,
     excludedSystemCount: row?.excludedSystemCount ?? 0,
+    undatedClosedCount: await selectUndatedClosedCount(params.scope),
+    dateRangeActive: params.actualDate.length > 0,
   };
 }

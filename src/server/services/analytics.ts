@@ -73,7 +73,8 @@ export async function getAnalyticsSnapshot(
         checkStatus: record.checkStatus,
         r: record.actualR,
         outcome: record.traderOutcome,
-        occurredAt: record.exitedAt,
+        // An undated Trade never supplies the latest label: '' sorts before every instant.
+        occurredAt: record.exitedAt ?? '',
       })),
       conditionsSystem: raw.data.conditionsSystem.map((record) => ({
         tradeId: record.tradeId,

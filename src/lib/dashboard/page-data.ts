@@ -11,7 +11,7 @@ import {
   type SystemMetricRecord,
   type TraderMetricRecord,
 } from '@/lib/analytics/metrics';
-import { averageR, selectTraderEligible } from '@/lib/calc/aggregate';
+import { averageR, hasExitTime, selectTraderEligible } from '@/lib/calc/aggregate';
 import { executionGapR, isComparisonEligible } from '@/lib/calc/attribution';
 import { dayWinRate, type DayWinRateSummary } from '@/lib/calc/day-win-rate';
 import { netPnl, type NetPnlAvailability } from '@/lib/calc/net-pnl';
@@ -354,7 +354,9 @@ export function composeDashboardPageData(input: DashboardPageCompositionInput): 
     filters: input.filters,
     account: input.account,
     availability: {
-      trader: traderFull.sampleCount === 0 ? 'empty' : 'available',
+      // A selected outcome without R still makes the Trader axis non-empty.
+      trader:
+        traderFull.sampleCount === 0 && traderFull.outcomeSampleCount === 0 ? 'empty' : 'available',
       system: systemFull.sampleCount === 0 ? 'empty' : 'available',
       comparison: comparison.status,
     },
@@ -375,14 +377,15 @@ export function composeDashboardPageData(input: DashboardPageCompositionInput): 
       ),
       tradeWin: {
         rate: traderFull.winRate,
-        tradeCount: traderFull.sampleCount,
+        tradeCount: traderFull.outcomeSampleCount,
         outcomes: traderFull.outcomeCounts,
       },
       plannedRr: composePlannedRr(traderRecords),
       profitFactor: traderFull.profitFactor,
       dayWinRate: toAnalyticsMetric(
         dayWinRate(
-          traderRecords.map((record) => ({
+          // A day needs a time: an undated Trade counts in totals, not on a day.
+          traderRecords.filter(hasExitTime).map((record) => ({
             actualR: record.actualR as string,
             exitedAt: new Date(record.exitedAt),
           })),

@@ -33,7 +33,7 @@ import {
   type AnalyticsReadResult,
 } from './analytics';
 import {
-  canonicalActualConditions,
+  canonicalDatedActualConditions,
   canonicalSystemConditions,
   canonicalSystemR,
   canonicalTraderOutcome,
@@ -76,7 +76,7 @@ export async function getDashboardInsightRawData(
   const actualConditions = [
     ...frameworkConditions(context.data),
     isNull(trades.deletedAt),
-    ...canonicalActualConditions(),
+    ...canonicalDatedActualConditions(),
     ...dateConditions(trades.exitedAt, context.data.filters.dateBounds),
   ];
   const systemConditions = [

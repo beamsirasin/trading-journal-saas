@@ -16,6 +16,10 @@ import { cn } from '@/lib/utils';
  * many were left out and why, once per page, beside the figures it explains —
  * never as a zero, a loss or a warning, because nothing is wrong with them.
  *
+ * The same note names closed Trades with no final exit time (contract §13):
+ * inside a date range they are left out; otherwise they are in every total
+ * and only the time-ordered figures leave them out.
+ *
  * Renders nothing when nothing was left out.
  */
 export function LegacyCoverageNote({
@@ -34,6 +38,7 @@ export function LegacyCoverageNote({
       data-legacy-coverage=""
       data-legacy-actual={coverage.excludedActualCount}
       data-legacy-system={coverage.excludedSystemCount}
+      data-undated={coverage.undatedClosedCount}
       className={cn('text-muted-foreground flex min-w-0 items-start gap-2 text-sm', className)}
     >
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -44,6 +49,12 @@ export function LegacyCoverageNote({
             : null,
           coverage.excludedSystemCount > 0
             ? t('system', { count: coverage.excludedSystemCount })
+            : null,
+          // Undated Trades are in the totals unless a date range is active.
+          coverage.undatedClosedCount > 0
+            ? t(coverage.dateRangeActive ? 'undatedInRange' : 'undatedAll', {
+                count: coverage.undatedClosedCount,
+              })
             : null,
         ]
           .filter((part): part is string => part !== null)

@@ -27,6 +27,8 @@ const unavailable: AnalyticsMetric = { status: 'unavailable', reason: 'no_trades
 function axis(overrides: Partial<PerformanceAnalyticsModel> = {}): PerformanceAnalyticsModel {
   return {
     sampleCount: 3,
+    outcomeSampleCount: 3,
+    undatedCount: 0,
     outcomeCounts: { wins: 2, breakEvens: 0, losses: 1 },
     totalR: available('12.4000'),
     winRate: available('0.5800'),

@@ -28,6 +28,8 @@ const unavailable = (reason: 'no_trades' | 'no_comparable_trades'): AnalyticsMet
 export function emptyPerformanceAxis(): PerformanceAnalyticsModel {
   return {
     sampleCount: 0,
+    outcomeSampleCount: 0,
+    undatedCount: 0,
     outcomeCounts: { wins: 0, breakEvens: 0, losses: 0 },
     totalR: unavailable('no_trades'),
     winRate: unavailable('no_trades'),

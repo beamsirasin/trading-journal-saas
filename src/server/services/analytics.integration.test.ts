@@ -610,7 +610,11 @@ describe('analytics service (real PostgreSQL)', () => {
       status: 'unavailable',
       reason: 'no_comparable_trades',
     });
-    expect(result.data.legacyCoverage).toEqual({ excludedActualCount: 0, excludedSystemCount: 6 });
+    expect(result.data.legacyCoverage).toMatchObject({
+      excludedActualCount: 0,
+      excludedSystemCount: 6,
+      undatedClosedCount: 0,
+    });
     expect(result.data.rules).toEqual({
       followedCount: 8,
       violatedCount: 2,
@@ -944,9 +948,10 @@ describe('analytics service (real PostgreSQL)', () => {
     expect(result.data.system.sampleCount).toBe(0);
     // The April Secondary Trade is outside 30D on both axes; only the
     // in-range Secondary Trade's legacy System result is disclosed.
-    expect(result.data.coverage.legacy).toEqual({
+    expect(result.data.coverage.legacy).toMatchObject({
       excludedActualCount: 0,
       excludedSystemCount: 1,
+      undatedClosedCount: 0,
     });
     expect(result.data.recentTrades).toMatchObject({
       scope: 'dashboard_filters',
@@ -1884,10 +1889,11 @@ describe('analytics service (real PostgreSQL)', () => {
     );
     expect(raw.data.system).toEqual([]);
     expect(selectComparisonEligible(raw.data.comparisonCandidates)).toEqual([]);
-    expect(raw.data.legacyCoverage).toEqual({
+    expect(raw.data.legacyCoverage).toMatchObject({
       excludedActualCount: 0,
       // Every resolved System result: all but the pending and no-trade Trades.
       excludedSystemCount: 9,
+      undatedClosedCount: 0,
     });
     // Rules and Mistakes are counts, not R, and stay on every closed Trade.
     expect(affectedTradeIds(raw.data.rules)).toContain(retrospectiveResolvedId);

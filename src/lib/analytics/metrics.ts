@@ -3,6 +3,8 @@ import {
   averageR,
   averageWinR,
   expectancyR,
+  hasExitTime,
+  isTraderOutcomeEligible,
   outcomeCounts,
   payoffRatio,
   profitFactor,
@@ -114,7 +116,8 @@ export interface TraderMetricRecord {
   readonly deletedAt: Date | null;
   readonly actualR: string | null;
   readonly traderOutcome: OutcomeValue | null;
-  readonly exitedAt: string;
+  /** `null`: a historical Trade saved without its final exit time (contract §13). */
+  readonly exitedAt: string | null;
   readonly netPnlMinor: string | null;
   readonly baseCurrency: string;
 }
@@ -149,7 +152,19 @@ export interface AnalyticsEquityPoint {
 }
 
 export interface PerformanceAnalyticsModel {
+  /** Trades in the R figures: every one carries R. */
   readonly sampleCount: number;
+  /**
+   * Trades the outcome figures (Win Rate, outcome counts) are drawn from. On
+   * the Trader axis it can exceed `sampleCount`: a selected outcome needs no
+   * Risk at Entry and no Actual R (contract §25).
+   */
+  readonly outcomeSampleCount: number;
+  /**
+   * R-sample Trades with no final exit time. They are in every R figure but
+   * cannot be placed on the equity curve or in the drawdown, which need order.
+   */
+  readonly undatedCount: number;
   /**
    * `null` when the sample has Trades but none has an answered outcome — a
    * count of "0 wins, 0 losses" would claim an answer nobody gave.
@@ -175,13 +190,27 @@ interface AxisRecord {
   readonly tradeId: string;
   readonly r: string;
   readonly outcome: OutcomeValue | null;
-  readonly occurredAt: string;
+  /** `null` only on the Trader axis, for a Trade with no final exit time. */
+  readonly occurredAt: string | null;
 }
 
-function composePerformanceAxis(records: readonly AxisRecord[]): PerformanceAnalyticsModel {
+/**
+ * `records` is the R population. On the Trader axis the outcome figures read
+ * their own, wider population (`outcomes`): a selected outcome counts without
+ * R. Win-only averages and the payoff ratio still need R, so they read the R
+ * population. Time-ordered figures read only the R records with a time.
+ */
+function composePerformanceAxis(
+  records: readonly AxisRecord[],
+  outcomes: readonly (OutcomeValue | null)[] = records.map((record) => record.outcome),
+): PerformanceAnalyticsModel {
   const rValues = records.map((record) => record.r);
   const outcomeRecords = records.map((record) => ({ r: record.r, outcome: record.outcome }));
-  const datedRecords = records.map((record) => ({
+  const outcomeOnly = outcomes.map((outcome) => ({ r: '0', outcome }));
+  const dated = records.filter(
+    (record): record is AxisRecord & { readonly occurredAt: string } => record.occurredAt !== null,
+  );
+  const datedRecords = dated.map((record) => ({
     id: record.tradeId,
     occurredAt: new Date(record.occurredAt),
     r: record.r,
@@ -195,12 +224,14 @@ function composePerformanceAxis(records: readonly AxisRecord[]): PerformanceAnal
 
   return {
     sampleCount: records.length,
+    outcomeSampleCount: outcomes.length,
+    undatedCount: records.length - dated.length,
     outcomeCounts:
-      records.length > 0 && outcomeRecords.every((record) => record.outcome === null)
+      outcomes.length > 0 && outcomes.every((outcome) => outcome === null)
         ? null
-        : outcomeCounts(outcomeRecords),
+        : outcomeCounts(outcomeOnly),
     totalR: toAnalyticsMetric(totalR(rValues)),
-    winRate: toAnalyticsMetric(winRate(outcomeRecords)),
+    winRate: toAnalyticsMetric(winRate(outcomeOnly)),
     averageR: toAnalyticsMetric(averageR(rValues)),
     expectancyR: toAnalyticsMetric(expectancyR(rValues)),
     profitFactor: toAnalyticsMetric(profitFactor(rValues)),
@@ -224,6 +255,14 @@ function composePerformanceAxis(records: readonly AxisRecord[]): PerformanceAnal
   };
 }
 
+/**
+ * THREE POPULATIONS, ONE PER KIND OF EVIDENCE (contract §13, §25).
+ *
+ * - R figures: closed Trades with Actual R — an exit time is not needed.
+ * - Outcome figures: closed Trades, whatever their R — Win Rate counts the
+ *   selected outcomes among them and leaves Unanswered out entirely.
+ * - Equity curve and drawdown: R Trades that also have a final exit time.
+ */
 export function composeTraderAnalytics(
   records: readonly TraderMetricRecord[],
 ): PerformanceAnalyticsModel {
@@ -235,6 +274,7 @@ export function composeTraderAnalytics(
       outcome: record.traderOutcome,
       occurredAt: record.exitedAt,
     })),
+    records.filter(isTraderOutcomeEligible).map((record) => record.traderOutcome),
   );
 }
 
@@ -475,13 +515,22 @@ export interface DimensionAxisSummary {
   readonly winRate: AnalyticsMetric;
 }
 
+/**
+ * Each figure reads its own evidence: Average R the Trades with R, Win Rate the
+ * selected outcomes. A Trader Trade with an outcome and no R (no Risk at Entry)
+ * is in the count and the Win Rate, never an Average R input (contract §25).
+ */
 function summarizeAxis(
-  records: readonly { r: string; outcome: OutcomeValue | null }[],
+  records: readonly { r: string | null; outcome: OutcomeValue | null }[],
 ): DimensionAxisSummary {
   return {
     tradeCount: records.length,
-    averageR: toAnalyticsMetric(averageR(records.map((r) => r.r))),
-    winRate: toAnalyticsMetric(winRate(records)),
+    averageR: toAnalyticsMetric(
+      averageR(records.flatMap((record) => (record.r === null ? [] : [record.r]))),
+    ),
+    winRate: toAnalyticsMetric(
+      winRate(records.map((record) => ({ r: record.r ?? '0', outcome: record.outcome }))),
+    ),
   };
 }
 
@@ -835,7 +884,8 @@ export interface FrameworkMetricRecord {
   readonly tradeId: string;
   readonly strategyId: string | null;
   readonly setupId: string | null;
-  readonly r: string;
+  /** Trader axis: `null` for a selected outcome with no Actual R. */
+  readonly r: string | null;
   readonly outcome: OutcomeValue | null;
 }
 
@@ -865,8 +915,8 @@ export interface FrameworkPerformanceAnalyticsModel {
 function groupByKey(
   records: readonly FrameworkMetricRecord[],
   key: 'strategyId' | 'setupId',
-): Map<string, { r: string; outcome: OutcomeValue | null }[]> {
-  const groups = new Map<string, { r: string; outcome: OutcomeValue | null }[]>();
+): Map<string, { r: string | null; outcome: OutcomeValue | null }[]> {
+  const groups = new Map<string, { r: string | null; outcome: OutcomeValue | null }[]>();
   for (const record of records) {
     const id = record[key];
     if (id === null) continue;
@@ -986,7 +1036,8 @@ export interface ContextMetricRecord {
   readonly tradeId: string;
   /** `null` means the dimension was never recorded for this Trade (only possible for Session/Timeframe — Symbol/Direction are `NOT NULL` core fields). */
   readonly value: string | null;
-  readonly r: string;
+  /** `null` for a selected outcome with no Actual R. */
+  readonly r: string | null;
   readonly outcome: OutcomeValue | null;
 }
 
@@ -1005,7 +1056,7 @@ export interface ContextBreakdownModel {
 export function composeContextBreakdown(
   records: readonly ContextMetricRecord[],
 ): ContextBreakdownModel {
-  const groups = new Map<string, { r: string; outcome: OutcomeValue | null }[]>();
+  const groups = new Map<string, { r: string | null; outcome: OutcomeValue | null }[]>();
   let missingCount = 0;
   for (const record of records) {
     if (record.value === null) {
@@ -1108,7 +1159,8 @@ export interface AnalyticsSnapshot {
 }
 
 export function composeAnalyticsSnapshot(input: AnalyticsSnapshotInput): AnalyticsSnapshot {
-  const traderEligible = selectTraderEligible(input.trader);
+  // A day needs a time: an undated Trade is in the totals, not on a day.
+  const traderEligible = selectTraderEligible(input.trader).filter(hasExitTime);
   return {
     scope: input.scope,
     trader: composeTraderAnalytics(input.trader),

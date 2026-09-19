@@ -5,8 +5,10 @@ import {
   averageR,
   averageWinR,
   expectancyR,
+  hasExitTime,
   isSystemEligible,
   isTraderEligible,
+  isTraderOutcomeEligible,
   outcomeCounts,
   payoffRatio,
   profitFactor,
@@ -252,8 +254,22 @@ describe('isTraderEligible / selectTraderEligible', () => {
     expect(isTraderEligible({ ...base, traderOutcome: null })).toBe(true);
   });
 
-  it('ineligible without an Actual exit timestamp', () => {
-    expect(isTraderEligible({ ...base, exitedAt: null })).toBe(false);
+  // After Trade may save a closed Trade without its final exit time
+  // (contract §13): its R is still evidence. Only time-ordered figures need
+  // the time, and they select it with `hasExitTime`.
+  it('stays R-eligible without a final exit time, which only time-ordered figures need', () => {
+    const undated = { ...base, exitedAt: null };
+    expect(isTraderEligible(undated)).toBe(true);
+    expect(hasExitTime(undated)).toBe(false);
+    expect(hasExitTime(base)).toBe(true);
+  });
+
+  it('keeps a selected outcome with no Actual R in the outcome population only', () => {
+    const outcomeOnly = { ...base, actualR: null, traderOutcome: 'win' as const };
+    expect(isTraderEligible(outcomeOnly)).toBe(false);
+    expect(isTraderOutcomeEligible(outcomeOnly)).toBe(true);
+    expect(isTraderOutcomeEligible({ ...outcomeOnly, status: 'open' })).toBe(false);
+    expect(isTraderOutcomeEligible({ ...outcomeOnly, deletedAt: new Date() })).toBe(false);
   });
 
   it('selectTraderEligible filters an array to only the eligible subset', () => {

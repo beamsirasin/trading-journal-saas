@@ -415,7 +415,12 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
   it('Coverage: excluded rows are disclosed as counts, never as zero, negative or missing results', async () => {
     const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ);
     if (!result.ok) throw new Error(result.code);
-    expect(result.data.legacyCoverage).toEqual({ excludedActualCount: 2, excludedSystemCount: 2 });
+    expect(result.data.legacyCoverage).toEqual({
+      excludedActualCount: 2,
+      excludedSystemCount: 2,
+      undatedClosedCount: 0,
+      dateRangeActive: false,
+    });
     // Excluded rows are absent, not present as zero-R or loss samples: the
     // sample is exactly the two canonical Trades and no outcome was counted.
     expect(result.data.trader.sampleCount).toBe(2);
@@ -430,7 +435,12 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
       closedTradeCount: 4,
       // The legacy Price-mode Trade has no Final Net P&L.
       monetaryResultCount: 3,
-      legacy: { excludedActualCount: 2, excludedSystemCount: 2 },
+      legacy: {
+        excludedActualCount: 2,
+        excludedSystemCount: 2,
+        undatedClosedCount: 0,
+        dateRangeActive: false,
+      },
     });
 
     // Coverage follows each axis's own date gate: legacy Actual exits on
@@ -440,7 +450,12 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
       READ,
     );
     if (!bounded.ok) throw new Error(bounded.code);
-    expect(bounded.data.legacyCoverage).toEqual({ excludedActualCount: 1, excludedSystemCount: 0 });
+    expect(bounded.data.legacyCoverage).toEqual({
+      excludedActualCount: 1,
+      excludedSystemCount: 0,
+      undatedClosedCount: 0,
+      dateRangeActive: true,
+    });
   });
 
   it('Net P&L: money has no legacy form, so it still reads every closed Trade', async () => {
@@ -534,5 +549,75 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
     // not the numerator, and the derived outcomes on A and B stay out.
     expect(trader.outcomeCounts).toEqual({ wins: 0, breakEvens: 1, losses: 0 });
     expect(trader.winRate).toMatchObject({ status: 'available' });
+  });
+
+  // Runs after the case above, and adds two more After Trade Trades.
+  it('each figure reads its own evidence: an outcome needs no R, a total needs no exit time', async () => {
+    // A selected Win with no Risk at Entry: an outcome, never an R sample.
+    must(
+      await createCompletedTrade(workspaceId, userId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: accountId,
+        recordingTiming: 'after_trade',
+        recordingContract: 'add_trade_v1',
+        symbol: 'XAUUSD',
+        direction: 'long',
+        finalPnlMinor: 3_000n,
+        traderOutcome: 'win',
+        exitedAt: new Date('2026-08-07T10:00:00Z'),
+      }),
+      'outcome-only save',
+    );
+    // An R with no final exit time: in every total, on no timeline.
+    const undated = must(
+      await createCompletedTrade(workspaceId, userId, {
+        mutationKey: crypto.randomUUID(),
+        tradingAccountId: accountId,
+        recordingTiming: 'after_trade',
+        recordingContract: 'add_trade_v1',
+        symbol: 'XAUUSD',
+        direction: 'short',
+        plannedRiskMinor: 10_000n,
+        finalPnlMinor: 5_000n,
+      }),
+      'undated save',
+    );
+    if (!undated.ok) throw new Error('unreachable');
+
+    const all = await getAnalyticsSnapshot({ datePreset: 'all' }, READ);
+    if (!all.ok) throw new Error(all.code);
+    const { trader } = all.data;
+    // R: contract A (+1.5), B (-0.5), the BE Trade (+0.2) and the undated one (+0.5).
+    expect(trader.sampleCount).toBe(4);
+    expect(trader.totalR).toEqual({ status: 'available', value: '1.7000' });
+    expect(trader.undatedCount).toBe(1);
+    if (trader.equityCurve.status !== 'available') throw new Error('equity unavailable');
+    expect(trader.equityCurve.value.map((point) => point.tradeId)).not.toContain(undated.tradeId);
+    // Outcomes: the selected BE and the selected Win — with no R — only.
+    expect(trader.outcomeCounts).toEqual({ wins: 1, breakEvens: 1, losses: 0 });
+    expect(trader.winRate).toEqual({ status: 'available', value: '0.5000' });
+    expect(all.data.legacyCoverage).toMatchObject({
+      undatedClosedCount: 1,
+      dateRangeActive: false,
+    });
+
+    // A date range cannot place the undated Trade: it is in no figure there, and said so.
+    const ranged = await getAnalyticsSnapshot(
+      { datePreset: 'custom', fromDate: '2026-08-01', toDate: '2026-08-31' },
+      READ,
+    );
+    if (!ranged.ok) throw new Error(ranged.code);
+    expect(ranged.data.trader.sampleCount).toBe(3);
+    expect(ranged.data.trader.undatedCount).toBe(0);
+    expect(ranged.data.legacyCoverage).toMatchObject({
+      undatedClosedCount: 1,
+      dateRangeActive: true,
+    });
+
+    // The Dashboard agrees: outcome-only Trades count toward Win Rate's sample.
+    const dashboard = await getDashboardPageData(dashboardFilters(), READ);
+    if (!dashboard.ok) throw new Error(dashboard.code);
+    expect(dashboard.data.basic.tradeWin.tradeCount).toBe(trader.outcomeSampleCount);
+    expect(dashboard.data.coverage.traderTradeCount).toBe(4);
   });
 });
