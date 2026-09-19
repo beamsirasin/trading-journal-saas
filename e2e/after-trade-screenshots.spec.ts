@@ -22,7 +22,7 @@ import { provisionVerifiedUser } from './support/provision-user';
  *
  * One provisioned user with a seeded Strategy and Setup, the real
  * `/app/trades/new?timing=after_trade` route, every step in a meaningful state
- * at 1440/1120/390/320 in Light and Dark. Each capture also asserts what a
+ * at 1440/1120/440/390/320 in Light and Dark. Each capture also asserts what a
  * screenshot cannot prove on its own: no horizontal overflow, and that the
  * docked step bar on a phone never sits over the step's last control.
  *
@@ -48,14 +48,14 @@ test.describe('After Trade step-flow captures', () => {
   test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
   test.skip(!ENABLED, 'Set AFTER_TRADE_SCREENSHOTS=1 to capture the After Trade review set.');
 
-  test('captures every step at 1440/1120/390/320 in Light and Dark', async ({ page }) => {
+  test('captures every step at 1440/1120/440/390/320 in Light and Dark', async ({ page }) => {
     test.skip(test.info().project.name !== 'chromium', 'One engine is enough for a review.');
     test.setTimeout(900_000);
     page.setDefaultTimeout(15_000);
     const user = await seedUser('after-trade-shots');
     await loginAs(page, 'en', user);
 
-    for (const width of [1440, 1120, 390, 320] as const) {
+    for (const width of [1440, 1120, 440, 390, 320] as const) {
       for (const theme of ['dark', 'light'] as const) {
         await open(page, width, theme);
         await fillEverything(page);
@@ -109,7 +109,7 @@ test.describe('After Trade step-flow captures', () => {
       const next = page.getByRole('button', { name: 'Next: Result' });
       await next.focus();
       await page.keyboard.press('Enter');
-      await expect(page.getByRole('heading', { level: 2, name: 'What happened' })).toBeFocused();
+      await expect(page.getByRole('heading', { level: 2, name: 'Result' })).toBeFocused();
       await page.keyboard.press('Tab');
       await expect(page.locator('#after-finalPnl')).toBeFocused();
       await capture(page, `${width}-dark-keyboard-focus`);
@@ -168,6 +168,12 @@ async function clickChoice(page: Page, name: RegExp | string) {
   await page.locator(`label[for="${id}"]`).click();
 }
 
+/** One of Step 5's grouped detail sections. */
+async function openGroup(page: Page, group: 'notes' | 'market' | 'price') {
+  const toggle = page.locator(`#after-details-${group}`);
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
+
 async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') {
   const toggle = page.locator(`#after-${phase}-toggle`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
@@ -220,9 +226,13 @@ async function fillEverything(page: Page) {
   await page.locator('#after-postTradeEmotions-toggle').click();
 
   await goTo(page, 'save');
+  // Step 5's groups: each opens on request and stays open once it holds work.
+  await openGroup(page, 'notes');
   await page.getByLabel('Why this trade').fill('Clean retest of the London high.');
+  await openGroup(page, 'market');
   await page.getByLabel('Timeframe').fill('15m');
   await page.getByLabel('Session').fill('London');
+  await openGroup(page, 'price');
   await page.getByLabel('Entry price').fill('2398.5');
   await page.getByLabel('SL price').fill('2394.5');
 }

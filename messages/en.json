@@ -2209,7 +2209,8 @@
               }
             },
             "unavailable": "The plan you chose is no longer available",
-            "unavailableHint": "It was archived or removed from your library. Your answer is kept until you choose another plan or remove it. Saving waits for your choice."
+            "unavailableHint": "It was archived or removed from your library. Your answer is kept until you choose another plan or remove it. Saving waits for your choice.",
+            "notRecorded": "Not recorded"
           },
           "strategy": {
             "label": "Strategy",
@@ -2466,28 +2467,35 @@
             "summaryNotRecorded": "Not recorded",
             "trade": {
               "label": "Trade",
-              "title": "The trade",
-              "description": "Which trade, and when it ran. Account, symbol and direction are all Save needs."
+              "title": "Trade details",
+              "description": "Identify the trade. Only account, symbol and direction are required."
             },
             "result": {
               "label": "Result",
-              "title": "What happened",
-              "description": "The whole trade's result and how you classify it. Both are optional, and both drive your trader results."
+              "title": "Result",
+              "description": "Record what you know about how the trade ended."
             },
             "plan": {
               "label": "Plan",
-              "title": "Risk and plan at entry",
-              "description": "As you remember them. Nothing here is filled in from today's defaults."
+              "title": "Plan at entry",
+              "description": "Add what you remember from before the trade."
             },
             "context": {
               "label": "Context",
-              "title": "Your read on the trade",
-              "description": "Optional. Answers given now are recorded as recalled after the trade."
+              "title": "Context",
+              "description": "Optional details that help you spot patterns later."
             },
             "details": {
               "label": "Save",
-              "title": "Details and save",
-              "description": "Optional idea, chart and price levels. Check your trade, then save."
+              "title": "Review and save",
+              "description": "Add any last details, check your trade, then save."
+            },
+            "attention": "{count, plural, one {# item needs attention} other {# items need attention}}",
+            "modeShort": "After trade",
+            "groups": {
+              "notes": "Trade notes",
+              "market": "Market context",
+              "price": "Price levels"
             }
           }
         }

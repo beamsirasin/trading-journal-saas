@@ -25,7 +25,14 @@ import {
   type ExitPlanEditorSession,
 } from './at-entry-draft';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
-import { InlineAction, Notice, RadioMark, StateText, Tag } from './trade-at-entry-controls';
+import {
+  Disclosure,
+  InlineAction,
+  Notice,
+  RadioMark,
+  StateText,
+  Tag,
+} from './trade-at-entry-controls';
 import {
   ExitPlanLibrary,
   newExitPlanLibraryForm,
@@ -53,6 +60,7 @@ export function AtEntryExitPlan({
   onChange,
   onLibraryChanged,
   copy,
+  collapsible = false,
 }: {
   draft: AtEntryDraft;
   options: Pick<TradeCreateOptions, 'strategies' | 'exitPlans'>;
@@ -60,6 +68,12 @@ export function AtEntryExitPlan({
   onLibraryChanged: (plans: readonly TradeCreateExitPlanOption[]) => void;
   /** Wording for a historical reconstruction (After Trade); At Entry's own by default. */
   copy?: { readonly notRecordedHint: string; readonly editorDescription: string };
+  /**
+   * Show the state as one line that opens on request, for a step that is
+   * about something else (After Trade's Plan step). Every state, snapshot and
+   * validation stays exactly as it is; only the reading of it folds away.
+   */
+  collapsible?: boolean;
 }) {
   const t = useTranslations('trades.create.recording.contractEntry.exitPlan');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -73,6 +87,8 @@ export function AtEntryExitPlan({
   // editor never loses a plan the trader was part-way through writing.
   const [managing, setManaging] = useState(false);
   const [libraryForm, setLibraryForm] = useState<ExitPlanLibraryForm | null>(null);
+  /** Only `collapsible` reads this: the open state of the folded reading. */
+  const [open, setOpen] = useState(false);
 
   const { resolved, strategyDefault } = resolveExitPlan(draft, options);
   const strategyName = activeClassification(draft, options).strategy?.name ?? '';
@@ -111,9 +127,25 @@ export function AtEntryExitPlan({
   const basePlan =
     resolved.status === 'inherited' || resolved.status === 'saved' ? resolved.plan : null;
 
-  return (
-    <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-2">
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+  /** The state in one line, for a collapsed reading of it. */
+  const stateSummary =
+    resolved.status === 'not_recorded'
+      ? t('notRecorded')
+      : resolved.status === 'no_rule'
+        ? t('noRule')
+        : resolved.status === 'unavailable'
+          ? t('unavailable')
+          : resolved.status === 'customized'
+            ? t('customized')
+            : resolved.plan.name;
+  // A chosen plan that went away blocks Save, so it is never folded away.
+  const showBody = !collapsible || open || resolved.status === 'unavailable';
+
+  const headerRow = (
+    <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      {collapsible ? (
+        <span aria-hidden="true" />
+      ) : (
         <h3
           id={headingId}
           ref={headingRef}
@@ -122,130 +154,161 @@ export function AtEntryExitPlan({
         >
           {t('title')}
         </h3>
-        {resolved.status === 'not_recorded' ? (
+      )}
+      {resolved.status === 'not_recorded' ? (
+        collapsible ? null : (
           <StateText>{c('notAnswered')}</StateText>
-        ) : (
-          <InlineAction
-            ariaLabel={t('removeAria')}
-            onClick={() => onChange(removeExitPlanAnswer(draft))}
-          >
-            {c('removeAnswer')}
-          </InlineAction>
-        )}
-      </div>
+        )
+      ) : (
+        <InlineAction
+          ariaLabel={t('removeAria')}
+          onClick={() => onChange(removeExitPlanAnswer(draft))}
+        >
+          {c('removeAnswer')}
+        </InlineAction>
+      )}
+    </div>
+  );
 
-      <div
-        data-exit-plan-state={resolved.status}
-        className={cn(
-          'flex min-w-0 flex-col gap-3 rounded-md border px-4 py-3',
-          resolved.status === 'inherited' ? 'border-control-border border-dashed' : 'border-border',
-        )}
-      >
-        {resolved.status === 'not_recorded' ? (
-          <p className="text-muted-foreground text-sm">
-            {copy?.notRecordedHint ?? t('notRecordedHint')}
-          </p>
-        ) : resolved.status === 'no_rule' ? (
-          <p className="text-foreground text-sm font-semibold">{t('noRule')}</p>
-        ) : resolved.status === 'unavailable' ? (
-          <div data-exit-plan-unavailable="" className="flex min-w-0 flex-col gap-1" role="alert">
-            <p className="text-foreground text-sm font-semibold">{t('unavailable')}</p>
-            <p className="text-muted-foreground text-sm">{t('unavailableHint')}</p>
-          </div>
-        ) : (
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Route className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
-              <p className="text-foreground min-w-0 text-sm font-semibold break-words">
-                {resolved.status === 'customized' ? t('customized') : resolved.plan.name}
-              </p>
-              {resolved.status === 'inherited' ? (
-                <Tag tone="inherited" icon={<GitBranch className="size-3" aria-hidden="true" />}>
-                  {t('fromStrategy', { name: strategyName })}
-                </Tag>
-              ) : null}
-            </div>
-            {resolved.status === 'customized' && resolved.base !== null ? (
-              <p className="text-muted-foreground text-sm">
-                {t('basedOn', { name: resolved.base.name })}
-              </p>
-            ) : null}
-            <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed break-words">
-              {resolved.status === 'customized'
-                ? resolved.instructions
-                : resolved.plan.instructions}
+  const body = (
+    <div
+      data-exit-plan-state={resolved.status}
+      className={cn(
+        'flex min-w-0 flex-col gap-3 rounded-md border px-4 py-3',
+        resolved.status === 'inherited' ? 'border-control-border border-dashed' : 'border-border',
+      )}
+    >
+      {resolved.status === 'not_recorded' ? (
+        <p className="text-muted-foreground text-sm">
+          {copy?.notRecordedHint ?? t('notRecordedHint')}
+        </p>
+      ) : resolved.status === 'no_rule' ? (
+        <p className="text-foreground text-sm font-semibold">{t('noRule')}</p>
+      ) : resolved.status === 'unavailable' ? (
+        <div data-exit-plan-unavailable="" className="flex min-w-0 flex-col gap-1" role="alert">
+          <p className="text-foreground text-sm font-semibold">{t('unavailable')}</p>
+          <p className="text-muted-foreground text-sm">{t('unavailableHint')}</p>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Route className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+            <p className="text-foreground min-w-0 text-sm font-semibold break-words">
+              {resolved.status === 'customized' ? t('customized') : resolved.plan.name}
             </p>
             {resolved.status === 'inherited' ? (
-              <Notice
-                icon={
-                  <GitBranch
-                    className="text-muted-foreground mt-0.5 size-4 shrink-0"
-                    aria-hidden="true"
-                  />
-                }
-              >
-                {t('inheritedNotice', { strategy: strategyName })}
-              </Notice>
+              <Tag tone="inherited" icon={<GitBranch className="size-3" aria-hidden="true" />}>
+                {t('fromStrategy', { name: strategyName })}
+              </Tag>
             ) : null}
           </div>
-        )}
+          {resolved.status === 'customized' && resolved.base !== null ? (
+            <p className="text-muted-foreground text-sm">
+              {t('basedOn', { name: resolved.base.name })}
+            </p>
+          ) : null}
+          <p className="text-muted-foreground line-clamp-3 text-sm leading-relaxed break-words">
+            {resolved.status === 'customized' ? resolved.instructions : resolved.plan.instructions}
+          </p>
+          {resolved.status === 'inherited' ? (
+            <Notice
+              icon={
+                <GitBranch
+                  className="text-muted-foreground mt-0.5 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+              }
+            >
+              {t('inheritedNotice', { strategy: strategyName })}
+            </Notice>
+          ) : null}
+        </div>
+      )}
 
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          {resolved.status === 'not_recorded' ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={(event) => openEditor('choose', event.currentTarget)}
-              >
-                {t('choose')}
-              </Button>
-              <InlineAction onClick={() => onChange(chooseNoExitRule(draft))}>
-                {t('noRule')}
-              </InlineAction>
-            </>
-          ) : resolved.status === 'unavailable' ? (
+      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {resolved.status === 'not_recorded' ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={(event) => openEditor('choose', event.currentTarget)}
+            >
+              {t('choose')}
+            </Button>
+            <InlineAction onClick={() => onChange(chooseNoExitRule(draft))}>
+              {t('noRule')}
+            </InlineAction>
+          </>
+        ) : resolved.status === 'unavailable' ? (
+          <InlineAction onClick={(event) => openEditor('choose', event.currentTarget)}>
+            {t('chooseAnother')}
+          </InlineAction>
+        ) : resolved.status === 'inherited' ? (
+          <>
+            <InlineAction
+              onClick={(event) => openEditor('customize', event.currentTarget, basePlan)}
+            >
+              {t('customize')}
+            </InlineAction>
             <InlineAction onClick={(event) => openEditor('choose', event.currentTarget)}>
               {t('chooseAnother')}
             </InlineAction>
-          ) : resolved.status === 'inherited' ? (
-            <>
+          </>
+        ) : (
+          <>
+            <InlineAction onClick={(event) => openEditor('choose', event.currentTarget)}>
+              {t('change')}
+            </InlineAction>
+            {resolved.status === 'no_rule' ? null : (
               <InlineAction
                 onClick={(event) => openEditor('customize', event.currentTarget, basePlan)}
               >
-                {t('customize')}
+                {resolved.status === 'customized' ? t('editWording') : t('customize')}
               </InlineAction>
-              <InlineAction onClick={(event) => openEditor('choose', event.currentTarget)}>
-                {t('chooseAnother')}
-              </InlineAction>
-            </>
-          ) : (
-            <>
-              <InlineAction onClick={(event) => openEditor('choose', event.currentTarget)}>
-                {t('change')}
-              </InlineAction>
-              {resolved.status === 'no_rule' ? null : (
-                <InlineAction
-                  onClick={(event) => openEditor('customize', event.currentTarget, basePlan)}
-                >
-                  {resolved.status === 'customized' ? t('editWording') : t('customize')}
-                </InlineAction>
-              )}
-            </>
-          )}
-          {hasPreservedCustom ? (
-            <InlineAction onClick={() => onChange(chooseCustomExitPlan(draft))}>
-              {t('useCustom')}
-            </InlineAction>
-          ) : null}
-          {strategyDefault !== null && resolved.status !== 'inherited' ? (
-            <InlineAction onClick={() => onChange(restoreStrategyDefault(draft))}>
-              {t('useDefault')}
-            </InlineAction>
-          ) : null}
-        </div>
+            )}
+          </>
+        )}
+        {hasPreservedCustom ? (
+          <InlineAction onClick={() => onChange(chooseCustomExitPlan(draft))}>
+            {t('useCustom')}
+          </InlineAction>
+        ) : null}
+        {strategyDefault !== null && resolved.status !== 'inherited' ? (
+          <InlineAction onClick={() => onChange(restoreStrategyDefault(draft))}>
+            {t('useDefault')}
+          </InlineAction>
+        ) : null}
       </div>
+    </div>
+  );
+
+  return (
+    <section aria-labelledby={headingId} className="flex min-w-0 flex-col gap-2">
+      {collapsible ? (
+        <>
+          <h3 id={headingId} ref={headingRef} tabIndex={-1} className="sr-only outline-none">
+            {t('title')}
+          </h3>
+          <Disclosure
+            id="exit-plan-toggle"
+            title={t('title')}
+            summary={stateSummary}
+            open={showBody}
+            onToggle={() => setOpen((current) => !current)}
+          >
+            <div className="flex min-w-0 flex-col gap-2 pb-1">
+              {headerRow}
+              {body}
+            </div>
+          </Disclosure>
+        </>
+      ) : (
+        <>
+          {headerRow}
+          {body}
+        </>
+      )}
 
       <ExitPlanEditor
         session={session}

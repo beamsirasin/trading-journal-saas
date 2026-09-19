@@ -184,11 +184,11 @@ describe('After Trade — the moment and its steps', () => {
     }
     seen.push(screen.getByRole('heading', { level: 2 }).textContent ?? '');
     expect(seen).toEqual([
-      'The trade',
-      'What happened',
-      'Risk and plan at entry',
-      'Your read on the trade',
-      'Details and save',
+      'Trade details',
+      'Result',
+      'Plan at entry',
+      'Context',
+      'Review and save',
     ]);
     expect(screen.getByText('Step 5 of 5')).toBeInTheDocument();
     expect(screen.queryByText(/price levels instead/i)).not.toBeInTheDocument();
@@ -254,6 +254,63 @@ describe('After Trade — the moment and its steps', () => {
     }
     expect(screen.getByRole('radio', { name: /^Fixed target/ })).not.toBeChecked();
     expect(screen.getByRole('radio', { name: /^No fixed target/ })).not.toBeChecked();
+  });
+
+  it('says on the step itself how much needs attention, beside the field error', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('plan');
+    type('Risk at entry', '12..5');
+    save();
+    await waitFor(() => expect(currentStep()).toBe('plan'));
+    expect(document.querySelector('[data-step-attention]')).toHaveTextContent(
+      '1 item needs attention',
+    );
+    expect(
+      screen.getByText("Enter a valid amount with the currency's supported precision."),
+    ).toBeInTheDocument();
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+  });
+
+  it('reads the exit plan as one line and opens the chooser only when asked', () => {
+    renderForm(withStrategy);
+    goTo('plan');
+    const toggle = screen.getByRole('button', { name: /^Exit plan/ });
+    expect(toggle).toHaveTextContent('Not recorded');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(document.querySelector('[data-exit-plan-state]')).toHaveAttribute(
+      'data-exit-plan-state',
+      'not_recorded',
+    );
+    expect(screen.getByRole('button', { name: 'Choose exit plan' })).toBeInTheDocument();
+  });
+
+  it('never folds a Step 5 group over an error a blocked Save has to reach', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('save');
+    const group = screen.getByRole('button', { name: /^Price levels/ });
+    fireEvent.click(group);
+    type('Entry price', '2398.5');
+    // A group with nothing wrong in it folds away on request.
+    fireEvent.click(group);
+    expect(group).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(group);
+    type('Entry price', '12..5');
+    fireEvent.click(group);
+    // This one cannot fold: the error inside it has to stay reachable.
+    expect(group).toHaveAttribute('aria-expanded', 'true');
+    save();
+    expect(
+      await screen.findByText(
+        'Enter a price greater than zero, using digits and one decimal point.',
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 });
 

@@ -388,7 +388,7 @@ export function ChoiceGroup<T extends string>({
   aside,
   columns = 2,
   compact = false,
-  fit = false,
+  fit,
 }: {
   idPrefix: string;
   legend: string;
@@ -403,14 +403,20 @@ export function ChoiceGroup<T extends string>({
   columns?: 2 | 3 | 5;
   compact?: boolean;
   /**
-   * Keep every option on one row at every width, for short labels such as
-   * Win / BE / Loss. Five across stacks each marker above its label so a phone
-   * never trades one screen of choices for five full-width rows.
+   * A denser layout than one full-width row per option, for groups whose
+   * labels are short enough to read in a column.
+   *
+   * `row` keeps every option on one row at every width — Win / BE / Loss.
+   * `split` gives longer labels more room on the narrowest phones and closes
+   * up from `min-[420px]` (three choices) or `min-[380px]` (five), so a small
+   * screen never has to choose between cramped text and five stacked rows.
+   *
+   * Five across always stacks each marker above its label.
    */
-  fit?: boolean;
+  fit?: 'row' | 'split';
 }) {
   const name = useId();
-  const stacked = fit && columns === 5;
+  const stacked = fit !== undefined && columns === 5;
   const errorId = `${idPrefix}-error`;
   return (
     <fieldset className="min-w-0" aria-describedby={error === undefined ? undefined : errorId}>
@@ -425,19 +431,25 @@ export function ChoiceGroup<T extends string>({
         <div
           className={cn(
             'grid min-w-0 gap-2',
-            fit
+            fit === 'row'
               ? columns === 5
                 ? 'grid-cols-5 gap-1.5 min-[560px]:gap-2'
                 : columns === 3
                   ? 'grid-cols-3'
                   : 'grid-cols-2'
-              : columns === 5
-                ? 'grid-cols-1 min-[560px]:grid-cols-5'
-                : columns === 3
-                  ? 'grid-cols-1 min-[420px]:grid-cols-3'
-                  : options.some((option) => option.description !== undefined)
-                    ? 'grid-cols-1 min-[420px]:grid-cols-2'
-                    : 'grid-cols-2',
+              : fit === 'split'
+                ? columns === 5
+                  ? 'grid-cols-3 gap-1.5 min-[380px]:grid-cols-5 min-[560px]:gap-2'
+                  : columns === 3
+                    ? 'grid-cols-2 min-[420px]:grid-cols-3'
+                    : 'grid-cols-2'
+                : columns === 5
+                  ? 'grid-cols-1 min-[560px]:grid-cols-5'
+                  : columns === 3
+                    ? 'grid-cols-1 min-[420px]:grid-cols-3'
+                    : options.some((option) => option.description !== undefined)
+                      ? 'grid-cols-1 min-[420px]:grid-cols-2'
+                      : 'grid-cols-2',
           )}
         >
           {options.map((option, index) => {
@@ -505,10 +517,13 @@ export function Chip({
   selected,
   onClick,
   children,
+  size = 'default',
 }: {
   selected: boolean;
   onClick: () => void;
   children: string;
+  /** `lg` is a primary choice on a phone rather than a tag beside a field. */
+  size?: 'default' | 'lg';
 }) {
   return (
     <button
@@ -516,7 +531,8 @@ export function Chip({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        'focus-visible:ring-ring relative inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-sm outline-none focus-visible:ring-2',
+        'focus-visible:ring-ring relative inline-flex items-center gap-1.5 rounded-full border outline-none focus-visible:ring-2',
+        size === 'lg' ? 'min-h-11 px-4 text-[0.9375rem]' : 'min-h-10 px-3 text-sm',
         'after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-[""]',
         selected
           ? 'text-foreground border-foreground/60 bg-accent font-semibold'

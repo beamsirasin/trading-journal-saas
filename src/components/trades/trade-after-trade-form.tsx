@@ -841,14 +841,17 @@ export function TradeAfterTradeForm({
                   >
                     {stepLabel(key)}
                   </span>
-                  <span
-                    className={cn(
-                      'block truncate text-xs',
-                      errors > 0 ? 'text-destructive' : 'text-muted-foreground',
-                    )}
-                  >
-                    {errors > 0 ? a('steps.needsAttention') : (line ?? c('summary.notAnswered'))}
-                  </span>
+                  {/* A step with nothing in it says nothing, rather than saying so five times. */}
+                  {errors === 0 && line === null ? null : (
+                    <span
+                      className={cn(
+                        'block truncate text-xs',
+                        errors > 0 ? 'text-destructive' : 'text-muted-foreground',
+                      )}
+                    >
+                      {errors > 0 ? a('steps.needsAttention') : line}
+                    </span>
+                  )}
                 </span>
               </button>
             </li>
@@ -897,6 +900,16 @@ export function TradeAfterTradeForm({
     </nav>
   );
 
+  const stepAttention = stepErrorCounts[step] ?? 0;
+  /** The steps a Save would stop on, named so the last step can point at them. */
+  const attentionSteps = STEPS.map((key) => ({
+    key,
+    errors: stepErrorCounts[STEP_INDEX[key]] ?? 0,
+  })).filter((item) => item.errors > 0);
+  const missingRequirements = requirements.filter(
+    (item) => !item.done || visibleErrors[item.field] !== undefined,
+  );
+
   const section = (key: StepKey, className: string, children: ReactNode) => (
     <section
       key={key}
@@ -904,7 +917,7 @@ export function TradeAfterTradeForm({
       data-step={key}
       hidden={currentKey !== key}
       className={cn(
-        'min-w-0 flex-col px-4 pb-6 sm:px-6',
+        'min-w-0 flex-col px-0 pb-6 sm:px-6',
         currentKey === key ? 'flex' : 'hidden',
         className,
       )}
@@ -914,16 +927,25 @@ export function TradeAfterTradeForm({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-6">
-      <p
-        data-recording-mode="after_trade"
-        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
-      >
-        <span>{a('subtitle')}</span>
-        <TradeRecordingModeChange />
-      </p>
+    <div className="flex w-full min-w-0 flex-col gap-3 lg:gap-6">
+      {/*
+        THE MODE, SAID ONCE AND BRIEFLY. On a wide screen the sentence
+        explaining the mode sits above the flow, where it costs nothing. On a
+        phone it would be a whole row of page furniture between the trader and
+        the question, so it travels down into the step header as two words
+        beside "Step 2 of 5" — the same element, in one place, either way.
+      */}
+      {wide ? (
+        <p
+          data-recording-mode="after_trade"
+          className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
+        >
+          <span>{a('subtitle')}</span>
+          <TradeRecordingModeChange />
+        </p>
+      ) : null}
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] lg:items-start lg:gap-8">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,50rem)_17.5rem] lg:justify-center lg:gap-8">
         <form
           ref={formRef}
           id={formId}
@@ -935,22 +957,36 @@ export function TradeAfterTradeForm({
             // Save lives on the last step; Enter elsewhere never saves early.
             if (onLastStep) void submit();
           }}
-          className="bg-card border-border shadow-card flex w-full max-w-[47.5rem] min-w-0 scroll-mt-[calc(var(--shell-header-height,0px)+1rem)] flex-col rounded-xl border"
+          /*
+            FLAT ON A PHONE, A CARD ON A WIDE SCREEN. One step at a time is
+            already the container; a raised card around it only nests the
+            step's own panels one level deeper.
+          */
+          className="lg:bg-card lg:shadow-card lg:border-border flex w-full min-w-0 scroll-mt-[calc(var(--shell-header-height,0px)+1rem)] flex-col lg:rounded-xl lg:border"
         >
-          <header className="flex min-w-0 flex-col gap-3 px-4 pt-4 pb-5 sm:px-6 sm:pt-6">
+          <header className="flex min-w-0 flex-col gap-3 px-0 pt-1 pb-4 sm:px-6 sm:pt-6 sm:pb-5">
             {wide ? null : stepNav}
             <div className="flex min-w-0 flex-col gap-1">
-              <p
-                data-step-progress=""
-                className="text-muted-foreground text-xs font-medium tracking-wide tabular-nums"
-              >
-                {progressText}
-              </p>
+              <div className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-xs font-medium">
+                <span data-step-progress="" className="tracking-wide tabular-nums">
+                  {progressText}
+                </span>
+                {wide ? null : (
+                  <p
+                    data-recording-mode="after_trade"
+                    className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+                  >
+                    <span aria-hidden="true">·</span>
+                    <span>{a('steps.modeShort')}</span>
+                    <TradeRecordingModeChange />
+                  </p>
+                )}
+              </div>
               <h2
                 id={ids.step}
                 ref={stepHeading}
                 tabIndex={-1}
-                className="text-foreground text-xl font-semibold tracking-tight outline-none"
+                className="text-foreground text-xl font-semibold tracking-tight outline-none sm:text-2xl"
               >
                 {a(`steps.${currentKey}.title`)}
               </h2>
@@ -958,6 +994,21 @@ export function TradeAfterTradeForm({
                 {a(`steps.${currentKey}.description`)}
               </p>
             </div>
+            {/*
+              THE STEP SAYS WHAT IS WRONG WITH IT. A phone has no rail to read,
+              so the count lives with the step; the error itself stays beside
+              the control it belongs to.
+            */}
+            {stepAttention === 0 ? null : (
+              <p
+                data-step-attention=""
+                role="status"
+                className="text-destructive flex min-w-0 items-center gap-2 text-sm font-medium"
+              >
+                <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                {a('steps.attention', { count: stepAttention })}
+              </p>
+            )}
           </header>
 
           {/* 1 — THE TRADE */}
@@ -1032,7 +1083,7 @@ export function TradeAfterTradeForm({
                   legend={c('direction.label')}
                   value={draft.direction === '' ? null : draft.direction}
                   compact
-                  fit
+                  fit="row"
                   error={errorText('direction')}
                   onChange={(direction) => apply((current) => ({ ...current, direction }))}
                   options={[
@@ -1103,16 +1154,24 @@ export function TradeAfterTradeForm({
                   hint={a('result.finalPnlHint', { currency })}
                   error={errorText('finalPnl')}
                 />
+                {/*
+                  ACTUAL R IS DERIVED, AND READS LIKE IT. It is not another
+                  field: it is what the two figures above it come to, so it
+                  carries the panel's largest number when it has one and says
+                  plainly what is still missing when it does not.
+                */}
                 <div
                   data-actual-r={validation.actualR.status}
-                  className="border-border flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t pt-4"
+                  className="border-border flex min-w-0 flex-wrap items-end justify-between gap-x-4 gap-y-1 border-t pt-4"
                 >
                   <div className="min-w-0">
-                    <p className="text-foreground text-sm font-medium">{a('result.actualR')}</p>
-                    <p className="text-muted-foreground text-xs">{a('result.actualRBasis')}</p>
+                    <p className="text-muted-foreground text-sm font-medium">
+                      {a('result.actualR')}
+                    </p>
+                    <p className="text-subtle-foreground text-xs">{a('result.actualRBasis')}</p>
                   </div>
                   {validation.actualR.status === 'known' ? (
-                    <p className="text-foreground text-2xl font-semibold tabular-nums">
+                    <p className="text-foreground text-3xl leading-none font-semibold tabular-nums">
                       {formatR(validation.actualR.value)}
                     </p>
                   ) : (
@@ -1130,8 +1189,7 @@ export function TradeAfterTradeForm({
                   value={draft.outcome}
                   status={c('notAnswered')}
                   columns={3}
-                  compact
-                  fit
+                  fit="row"
                   aside={
                     <InlineAction
                       ariaLabel={a('result.removeOutcomeAria')}
@@ -1158,7 +1216,7 @@ export function TradeAfterTradeForm({
               </div>
 
               {/* Exit history: optional supporting evidence, never the result */}
-              <div className="border-border min-w-0 rounded-lg border px-1 py-1">
+              <div className="border-border min-w-0 rounded-lg border px-1 py-1 sm:px-1.5">
                 <Disclosure
                   id="after-exits-toggle"
                   title={a('sections.exits')}
@@ -1238,6 +1296,7 @@ export function TradeAfterTradeForm({
                   status={c('notAnswered')}
                   columns={3}
                   compact
+                  fit="split"
                   error={
                     draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
                   }
@@ -1336,6 +1395,7 @@ export function TradeAfterTradeForm({
               <AtEntryExitPlan
                 draft={exitPlanView}
                 options={options}
+                collapsible
                 onChange={(next) => apply((current) => ({ ...current, exitPlan: next.exitPlan }))}
                 onLibraryChanged={setAdoptedExitPlans}
                 copy={{
@@ -1390,7 +1450,7 @@ export function TradeAfterTradeForm({
                   status={c('notAnswered')}
                   columns={5}
                   compact
-                  fit
+                  fit="split"
                   aside={
                     <InlineAction
                       ariaLabel={c('confidence.removeAria')}
@@ -1479,64 +1539,106 @@ export function TradeAfterTradeForm({
                   apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
                 }
               />
-              <div
-                data-trade-summary=""
-                className="border-border bg-muted/30 flex min-w-0 flex-col gap-3 rounded-lg border p-4"
-              >
-                <p className="text-foreground text-sm font-semibold">{a('steps.summaryTitle')}</p>
-                <dl className="divide-border flex min-w-0 flex-col divide-y">
-                  {(['trade', 'result', 'plan', 'context'] as const).map((key) => {
-                    const errors = stepErrorCounts[STEP_INDEX[key]] ?? 0;
-                    const entered = key === 'trade' ? localTime(draft.enteredAt) : null;
-                    const exited = key === 'trade' ? localTime(draft.exitedAt) : null;
-                    const times =
-                      entered !== null && exited !== null
-                        ? `${entered} → ${exited}`
-                        : entered !== null
-                          ? `${a('times.entry')} ${entered}`
-                          : exited !== null
-                            ? `${a('times.exit')} ${exited}`
-                            : null;
-                    return (
-                      <div
-                        key={key}
-                        className="flex min-w-0 items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
-                      >
-                        <div className="min-w-0">
-                          <dt className="text-muted-foreground text-xs font-medium">
-                            {stepLabel(key)}
-                          </dt>
-                          <dd
-                            className={cn(
-                              'text-sm break-words',
-                              errors > 0
-                                ? 'text-destructive'
-                                : stepSummaries[key] === null
-                                  ? 'text-subtle-foreground'
-                                  : 'text-foreground',
-                            )}
+              {/*
+                THE FINAL READ-BACK, WHERE THERE IS NOTHING ELSE SAYING IT. On
+                a wide screen the rail already restates every step beside the
+                form, so this narrows to what would stop the Save. On a phone
+                there is no rail, so the whole read-back belongs here.
+              */}
+              {wide ? (
+                <div
+                  data-trade-summary="compact"
+                  className="border-border flex min-w-0 flex-col gap-2 rounded-lg border p-4"
+                >
+                  {attentionSteps.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">{a('save.helper')}</p>
+                  ) : (
+                    <>
+                      <p className="text-destructive flex min-w-0 items-center gap-2 text-sm font-medium">
+                        <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                        {a('steps.attention', {
+                          count: attentionSteps.reduce((total, item) => total + item.errors, 0),
+                        })}
+                      </p>
+                      <ul className="flex min-w-0 flex-col gap-1.5">
+                        {attentionSteps.map((item) => (
+                          <li
+                            key={item.key}
+                            className="flex min-w-0 items-baseline justify-between gap-3 text-sm"
                           >
-                            {errors > 0
-                              ? a('steps.needsAttention')
-                              : (stepSummaries[key] ?? a('steps.summaryNotRecorded'))}
-                            {times === null ? null : (
-                              <span className="text-muted-foreground block text-xs tabular-nums">
-                                {times}
-                              </span>
-                            )}
-                          </dd>
-                        </div>
-                        <InlineAction
-                          ariaLabel={a('steps.editAria', { step: stepLabel(key) })}
-                          onClick={() => showStep(STEP_INDEX[key])}
+                            <span className="text-foreground min-w-0">{stepLabel(item.key)}</span>
+                            <InlineAction
+                              ariaLabel={a('steps.editAria', { step: stepLabel(item.key) })}
+                              onClick={() => showStep(STEP_INDEX[item.key])}
+                            >
+                              {a('steps.edit')}
+                            </InlineAction>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div
+                  data-trade-summary="full"
+                  className="border-border bg-muted/30 flex min-w-0 flex-col gap-3 rounded-lg border p-4"
+                >
+                  <p className="text-foreground text-sm font-semibold">{a('steps.summaryTitle')}</p>
+                  <dl className="divide-border flex min-w-0 flex-col divide-y">
+                    {(['trade', 'result', 'plan', 'context'] as const).map((key) => {
+                      const errors = stepErrorCounts[STEP_INDEX[key]] ?? 0;
+                      const entered = key === 'trade' ? localTime(draft.enteredAt) : null;
+                      const exited = key === 'trade' ? localTime(draft.exitedAt) : null;
+                      const times =
+                        entered !== null && exited !== null
+                          ? `${entered} → ${exited}`
+                          : entered !== null
+                            ? `${a('times.entry')} ${entered}`
+                            : exited !== null
+                              ? `${a('times.exit')} ${exited}`
+                              : null;
+                      return (
+                        <div
+                          key={key}
+                          className="flex min-w-0 items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
                         >
-                          {a('steps.edit')}
-                        </InlineAction>
-                      </div>
-                    );
-                  })}
-                </dl>
-              </div>
+                          <div className="min-w-0">
+                            <dt className="text-muted-foreground text-xs font-medium">
+                              {stepLabel(key)}
+                            </dt>
+                            <dd
+                              className={cn(
+                                'text-sm break-words',
+                                errors > 0
+                                  ? 'text-destructive'
+                                  : stepSummaries[key] === null
+                                    ? 'text-subtle-foreground'
+                                    : 'text-foreground',
+                              )}
+                            >
+                              {errors > 0
+                                ? a('steps.needsAttention')
+                                : (stepSummaries[key] ?? a('steps.summaryNotRecorded'))}
+                              {times === null ? null : (
+                                <span className="text-muted-foreground block text-xs tabular-nums">
+                                  {times}
+                                </span>
+                              )}
+                            </dd>
+                          </div>
+                          <InlineAction
+                            ariaLabel={a('steps.editAria', { step: stepLabel(key) })}
+                            onClick={() => showStep(STEP_INDEX[key])}
+                          >
+                            {a('steps.edit')}
+                          </InlineAction>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                </div>
+              )}
               {replayConflictPanel}
             </>,
           )}
@@ -1622,20 +1724,30 @@ export function TradeAfterTradeForm({
                 {progressText}
               </p>
               {stepNav}
-              <div className="border-border flex flex-col gap-2.5 border-t px-3 pt-3 pb-2">
-                <p className="text-foreground text-sm font-medium">{a('save.panelTitle')}</p>
-                <ul className="flex flex-col gap-2">
-                  {requirements.map((item) => (
-                    <RequirementRow
-                      key={item.key}
-                      label={c(`save.requirement.${item.key}`)}
-                      done={item.done && visibleErrors[item.field] === undefined}
-                      addedLabel={c('save.added')}
-                      neededLabel={c('save.needed')}
-                    />
-                  ))}
-                </ul>
-                <p className="text-muted-foreground text-xs">{a('save.panelDescription')}</p>
+              {/*
+                WHAT SAVE IS STILL WAITING FOR — and nothing once it is waiting
+                for nothing. Three permanent ticks beside a form that can
+                already be saved are noise, not awareness.
+              */}
+              <div className="border-border flex flex-col gap-2 border-t px-3 pt-3 pb-2">
+                {missingRequirements.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">{a('save.ready')}</p>
+                ) : (
+                  <>
+                    <p className="text-foreground text-sm font-medium">{a('save.panelTitle')}</p>
+                    <ul className="flex flex-col gap-2">
+                      {missingRequirements.map((item) => (
+                        <RequirementRow
+                          key={item.key}
+                          label={c(`save.requirement.${item.key}`)}
+                          done={false}
+                          addedLabel={c('save.added')}
+                          neededLabel={c('save.needed')}
+                        />
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
             </div>
           </aside>
@@ -1718,9 +1830,8 @@ function ExitHistoryFields({
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-3">
       <Helper>{a('exits.description')}</Helper>
-      {draft.exits.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{a('exits.empty')}</p>
-      ) : (
+      {/* The disclosure's own summary already says there are none. */}
+      {draft.exits.length === 0 ? null : (
         <ol className="flex min-w-0 flex-col gap-3">
           {draft.exits.map((exit, index) => {
             const number = index + 1;
@@ -2082,16 +2193,22 @@ function EmotionFields({
         <span className="sr-only">{legend}</span>
       </Legend>
       {hint === undefined ? null : <Helper>{hint}</Helper>}
-      <div className="mt-2 grid min-w-0 gap-x-6 gap-y-3 min-[560px]:grid-cols-2">
+      {/*
+        ONE CALM LIST, NOT A TAXONOMY. The groups still carry their meaning and
+        their order, but they read as quiet captions above larger choices
+        rather than as fields of a database record.
+      */}
+      <div className="mt-3 grid min-w-0 gap-x-8 gap-y-4 min-[560px]:grid-cols-2">
         {groupEmotionCatalog(catalog).map((group) => (
-          <div key={group.key} className="flex min-w-0 flex-col gap-1.5">
-            <p className="text-muted-foreground text-sm">
+          <div key={group.key} className="flex min-w-0 flex-col gap-2">
+            <p className="text-subtle-foreground text-xs font-medium">
               {t(`create.recording.emotionGroups.${group.key}`)}
             </p>
             <div className="flex min-w-0 flex-wrap gap-2">
               {group.emotions.map((emotion) => (
                 <Chip
                   key={emotion.key}
+                  size="lg"
                   selected={answer.answer === 'selected' && answer.keys.includes(emotion.key)}
                   onClick={() => onToggle(emotion.key)}
                 >
@@ -2102,8 +2219,8 @@ function EmotionFields({
           </div>
         ))}
       </div>
-      <div className="border-border mt-3 flex min-w-0 flex-wrap items-center gap-3 border-t pt-3">
-        <Chip selected={answer.answer === 'none'} onClick={onNone}>
+      <div className="border-border mt-4 flex min-w-0 flex-wrap items-center gap-3 border-t pt-4">
+        <Chip size="lg" selected={answer.answer === 'none'} onClick={onNone}>
           {c('emotions.none')}
         </Chip>
       </div>
@@ -2126,82 +2243,179 @@ function ContextFields({
   onChange: (patch: Partial<AfterTradeDraft['context']>) => void;
 }) {
   const c = useTranslations('trades.create.recording.contractEntry.context');
-  return (
-    <div className="flex min-w-0 flex-col gap-4 pb-3">
-      <TextAreaField
-        id="after-context-reason"
-        label={c('reason')}
-        value={draft.context.reason}
-        onChange={(reason) => onChange({ reason })}
-        placeholder={c('reasonPlaceholder')}
-      />
-      <TextField
-        id="after-context-chart"
-        label={c('chart')}
-        value={draft.context.tradingviewUrl}
-        onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
-        inputMode="url"
-        placeholder="https://www.tradingview.com/x/…"
-      />
-      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-        <TextField
-          id="after-context-timeframe"
-          label={c('timeframe')}
-          value={draft.context.timeframe}
-          onChange={(timeframe) => onChange({ timeframe })}
-          placeholder="15m"
-        />
-        <TextField
-          id="after-context-session"
-          label={c('session')}
-          value={draft.context.session}
-          onChange={(session) => onChange({ session })}
-          placeholder="London"
-        />
-      </div>
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <p className="text-foreground text-sm font-medium">{c('prices')}</p>
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const summary = useTranslations('trades.create.recording.contractEntry.summary');
+  /*
+    THREE SMALL GROUPS INSTEAD OF EIGHT FIELDS IN A COLUMN. A group opens when
+    it already holds something the trader wrote or when an error is in it, so
+    nothing entered is ever folded out of sight, and a group that is closed
+    says how much is in it rather than hiding the fact.
+  */
+  const groups = [
+    {
+      key: 'notes' as const,
+      filled: [draft.context.reason, draft.context.notes],
+      errors: 0,
+      fields: (
+        <div className="flex min-w-0 flex-col gap-4 pb-2">
+          <TextAreaField
+            id="after-context-reason"
+            label={c('reason')}
+            value={draft.context.reason}
+            onChange={(reason) => onChange({ reason })}
+            placeholder={c('reasonPlaceholder')}
+          />
+          <TextAreaField
+            id="after-context-notes"
+            label={c('notes')}
+            value={draft.context.notes}
+            onChange={(notes) => onChange({ notes })}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'market' as const,
+      filled: [draft.context.timeframe, draft.context.session, draft.context.tradingviewUrl],
+      errors: 0,
+      fields: (
+        <div className="flex min-w-0 flex-col gap-4 pb-2">
+          <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
+            <TextField
+              id="after-context-timeframe"
+              label={c('timeframe')}
+              value={draft.context.timeframe}
+              onChange={(timeframe) => onChange({ timeframe })}
+              placeholder="15m"
+            />
+            <TextField
+              id="after-context-session"
+              label={c('session')}
+              value={draft.context.session}
+              onChange={(session) => onChange({ session })}
+              placeholder="London"
+            />
+          </div>
+          <TextField
+            id="after-context-chart"
+            label={c('chart')}
+            value={draft.context.tradingviewUrl}
+            onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
+            inputMode="url"
+            placeholder="https://www.tradingview.com/x/…"
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'price' as const,
+      filled: [draft.context.entryPrice, draft.context.stopPrice, draft.context.positionSize],
+      errors: (['contextEntryPrice', 'contextStopPrice', 'contextPositionSize'] as const).filter(
+        (field) => errorText(field) !== undefined,
+      ).length,
+      fields: (
+        <div className="flex min-w-0 flex-col gap-3 pb-2">
+          {/* Price is context, and the group says so where it is entered. */}
           <StateText>{c('pricesHint')}</StateText>
+          <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-3">
+            <TextField
+              id="after-contextEntryPrice"
+              label={c('entryPrice')}
+              value={draft.context.entryPrice}
+              onChange={(entryPrice) => onChange({ entryPrice })}
+              inputMode="decimal"
+              figure
+              error={errorText('contextEntryPrice')}
+            />
+            <TextField
+              id="after-contextStopPrice"
+              label={c('stopPrice')}
+              value={draft.context.stopPrice}
+              onChange={(stopPrice) => onChange({ stopPrice })}
+              inputMode="decimal"
+              figure
+              error={errorText('contextStopPrice')}
+            />
+            <TextField
+              id="after-contextPositionSize"
+              label={c('size')}
+              value={draft.context.positionSize}
+              onChange={(positionSize) => onChange({ positionSize })}
+              inputMode="decimal"
+              figure
+              error={errorText('contextPositionSize')}
+            />
+          </div>
+          {notices.includes('stop_wrong_side') ? <Notice>{c('stopWrongSide')}</Notice> : null}
+          {notices.includes('target_wrong_side') ? <Notice>{c('targetWrongSide')}</Notice> : null}
         </div>
-        <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-3">
-          <TextField
-            id="after-contextEntryPrice"
-            label={c('entryPrice')}
-            value={draft.context.entryPrice}
-            onChange={(entryPrice) => onChange({ entryPrice })}
-            inputMode="decimal"
-            figure
-            error={errorText('contextEntryPrice')}
-          />
-          <TextField
-            id="after-contextStopPrice"
-            label={c('stopPrice')}
-            value={draft.context.stopPrice}
-            onChange={(stopPrice) => onChange({ stopPrice })}
-            inputMode="decimal"
-            figure
-            error={errorText('contextStopPrice')}
-          />
-          <TextField
-            id="after-contextPositionSize"
-            label={c('size')}
-            value={draft.context.positionSize}
-            onChange={(positionSize) => onChange({ positionSize })}
-            inputMode="decimal"
-            figure
-            error={errorText('contextPositionSize')}
-          />
-        </div>
-        {notices.includes('stop_wrong_side') ? <Notice>{c('stopWrongSide')}</Notice> : null}
-        {notices.includes('target_wrong_side') ? <Notice>{c('targetWrongSide')}</Notice> : null}
-      </div>
-      <TextAreaField
-        id="after-context-notes"
-        label={c('notes')}
-        value={draft.context.notes}
-        onChange={(notes) => onChange({ notes })}
-      />
+      ),
+    },
+  ];
+
+  return (
+    <div className="border-border divide-border flex min-w-0 flex-col divide-y rounded-lg border">
+      {groups.map((group) => {
+        const count = group.filled.filter((value) => value.trim() !== '').length;
+        return (
+          <ContextGroup
+            key={group.key}
+            id={`after-details-${group.key}`}
+            title={a(`steps.groups.${group.key}`)}
+            summary={
+              group.errors > 0 ? (
+                <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
+                  <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+                  {summary('hasErrors', { count: group.errors })}
+                </span>
+              ) : count === 0 ? (
+                summary('contextEmpty')
+              ) : (
+                summary('contextFilled', { count })
+              )
+            }
+            startOpen={count > 0}
+            forceOpen={group.errors > 0}
+          >
+            {group.fields}
+          </ContextGroup>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * One Step 5 group: open from the start when it already holds something, and
+ * never closed over an error the trader has to reach.
+ */
+function ContextGroup({
+  id,
+  title,
+  summary,
+  startOpen,
+  forceOpen,
+  children,
+}: {
+  id: string;
+  title: string;
+  summary: ReactNode;
+  startOpen: boolean;
+  forceOpen: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  return (
+    <div className="min-w-0 px-1 py-1">
+      <Disclosure
+        id={id}
+        title={title}
+        summary={summary}
+        open={open || forceOpen}
+        onToggle={() => setOpen((current) => !current)}
+      >
+        {children}
+      </Disclosure>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 
 import { authorizeWorkspaceMutation } from '@/lib/entitlements/resolve';
 import { parseRecordingTiming } from '@/lib/trades/recording-timing';
+import { cn } from '@/lib/utils';
 import {
   getActiveTradingAccount,
   getActiveWorkspaceContext,
@@ -158,8 +159,21 @@ export default async function NewTradePage({
     the "Change" each form renders.
   */
   const copy = timing === 'at_entry' ? 'contractEntry' : 'contractAfter';
+  /*
+    AFTER TRADE IS A STEP FLOW, SO ITS PAGE CHROME GIVES WAY TO THE STEP. On a
+    phone the flow's own heading is the question being answered; this title and
+    its Back link stay, smaller and closer together, so the active step starts
+    near the top of the screen instead of below a block of page furniture. The
+    wider screen keeps the full header, and At Entry is untouched.
+  */
+  const stepFlow = timing === 'after_trade';
   return (
-    <div className="mx-auto w-full max-w-[70rem] min-w-0 px-4 pt-4 pb-10 sm:px-6 lg:px-8 lg:pt-8 lg:pb-16">
+    <div
+      className={cn(
+        'mx-auto w-full min-w-0 px-4 pb-10 sm:px-6 lg:px-8 lg:pb-16',
+        stepFlow ? 'max-w-[76rem] pt-3 lg:pt-8' : 'max-w-[70rem] pt-4 lg:pt-8',
+      )}
+    >
       <header className="flex min-w-0 flex-col items-start gap-1">
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-3">
           <Link href="/app/trades">
@@ -167,11 +181,16 @@ export default async function NewTradePage({
             {t(`create.recording.${copy}.back`)}
           </Link>
         </Button>
-        <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
+        <h1
+          className={cn(
+            'text-foreground font-semibold tracking-tight text-balance sm:text-[1.75rem]',
+            stepFlow ? 'text-lg sm:text-2xl' : 'text-2xl',
+          )}
+        >
           {t(`create.recording.${copy}.title`)}
         </h1>
       </header>
-      <div className="mt-2 min-w-0">
+      <div className={cn('min-w-0', stepFlow ? 'mt-1.5 sm:mt-2' : 'mt-2')}>
         <TradeCreateGate
           options={options}
           canWrite={authorization.allowed}
