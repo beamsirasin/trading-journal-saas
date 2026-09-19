@@ -295,6 +295,37 @@ describe('Recording Draft — a Save key never reports a Save that did not happe
     expect(stored()).toBeNull();
   });
 
+  it('treats a key owned by a pre-fingerprint Trade as unverifiable: the draft stays, Save as new is explicit', async () => {
+    createTradeMock.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'mutation_replay_conflict',
+        existingTradeId: 'trade-before-0024',
+        replayConflict: 'unverifiable',
+      },
+    });
+    mount();
+    fillAtEntry();
+    saveAtEntry();
+    await screen.findAllByText(replay.unverifiableTitle);
+    expect(screen.queryByText(replay.conflictTitle)).toBeNull();
+    expect(screen.queryByRole('heading', { name: replay.alreadyTitle })).toBeNull();
+    expect(pushMock).not.toHaveBeenCalled();
+    const draft = stored();
+    expect(draft?.atEntry?.symbol).toBe('xauusd');
+    expect(draft?.atEntry?.risk).toBe('100');
+    expect(screen.getAllByRole('link', { name: replay.openSaved })[0]!.getAttribute('href')).toBe(
+      '/app/trades?trade=trade-before-0024',
+    );
+
+    const firstKey = sentMutationKey(0);
+    fireEvent.click(screen.getAllByRole('button', { name: replay.saveAsNew })[0]!);
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    expect(sentMutationKey(1)).not.toBe(firstKey);
+    await vi.waitFor(() => expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=trade-1'));
+    expect(stored()).toBeNull();
+  });
+
   it('says an honest replay was already saved instead of presenting a new Save', async () => {
     createTradeMock.mockResolvedValueOnce({
       ok: true,

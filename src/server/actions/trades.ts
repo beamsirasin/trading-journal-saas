@@ -134,6 +134,8 @@ export interface TradeActionError {
    * workspace-scoped), so offering "Open saved trade" discloses nothing.
    */
   readonly existingTradeId?: string;
+  /** With `mutation_replay_conflict`: `different` content, or `unverifiable` (a pre-0024 Trade). */
+  readonly replayConflict?: 'different' | 'unverifiable';
 }
 
 interface TradeActionFailure {
@@ -178,6 +180,7 @@ interface CalcFailureResult {
   readonly code: string;
   readonly calcReason?: CalcFailureReason;
   readonly existingTradeId?: string;
+  readonly replayConflict?: 'different' | 'unverifiable';
 }
 
 /** A create refused because its Save key already belongs to a different request (contract §23). */
@@ -185,7 +188,11 @@ function createFailure(result: CalcFailureResult): TradeActionFailure {
   if (result.code === 'mutation_replay_conflict' && result.existingTradeId !== undefined) {
     return {
       ok: false,
-      error: { code: 'mutation_replay_conflict', existingTradeId: result.existingTradeId },
+      error: {
+        code: 'mutation_replay_conflict',
+        existingTradeId: result.existingTradeId,
+        replayConflict: result.replayConflict ?? 'different',
+      },
     };
   }
   return planFailure(result);

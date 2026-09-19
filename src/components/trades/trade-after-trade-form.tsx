@@ -267,7 +267,10 @@ export function TradeAfterTradeForm({
   const [serverErrors, setServerErrors] = useState<AfterTradeErrors>({});
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   /** The Trade a reused Save key already created from different answers. */
-  const [replayConflict, setReplayConflict] = useState<string | null>(null);
+  const [replayConflict, setReplayConflict] = useState<{
+    readonly tradeId: string;
+    readonly reason: 'different' | 'unverifiable';
+  } | null>(null);
   const [pending, setPending] = useState(false);
   const [emotionHint, setEmotionHint] = useState<EmotionPhase | null>(null);
   const [adoptedMessage, setAdoptedMessage] = useState<string | null>(null);
@@ -492,7 +495,10 @@ export function TradeAfterTradeForm({
         result.error.existingTradeId !== undefined
       ) {
         // Nothing was written: the draft stays exactly as it is.
-        setReplayConflict(result.error.existingTradeId);
+        setReplayConflict({
+          tradeId: result.error.existingTradeId,
+          reason: result.error.replayConflict ?? 'different',
+        });
         setServerMessage(t('errors.mutation_replay_conflict'));
         return;
       }
@@ -518,7 +524,8 @@ export function TradeAfterTradeForm({
   const replayConflictPanel =
     replayConflict === null ? null : (
       <TradeSaveReplayConflict
-        existingTradeId={replayConflict}
+        existingTradeId={replayConflict.tradeId}
+        reason={replayConflict.reason}
         pending={pending}
         onSaveAsNew={() => {
           if (saveControls === undefined) return;

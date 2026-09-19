@@ -594,7 +594,17 @@ export type CreateTradeResult =
       readonly calcReason?: CalcFailureReason;
       /** With `mutation_replay_conflict`: the Trade the key already created, in this workspace. */
       readonly existingTradeId?: string;
+      /** With `mutation_replay_conflict`: why the replay could not be honoured. */
+      readonly replayConflict?: ReplayConflictReason;
     };
+
+/**
+ * `different`: the stored fingerprint shows the key was used by a request
+ * that said something else. `unverifiable`: the Trade predates migration
+ * 0024 and has no fingerprint, so nothing proves this request is the one that
+ * created it.
+ */
+export type ReplayConflictReason = 'different' | 'unverifiable';
 
 /**
  * AN HONEST REPLAY SAID THE SAME THING (contract §23).
@@ -605,16 +615,31 @@ export type CreateTradeResult =
  * other recording mode — and answering with the existing Trade would report a
  * Save that never happened. The existing Trade is never overwritten.
  *
- * A row from before migration 0024 has no fingerprint and keeps its earlier
- * replay behaviour; the completed path still checks that such a row is closed
- * (`trade-completed.ts`).
+ * A ROW WITH NO FINGERPRINT CANNOT BE REPLAYED HONESTLY. A Trade created
+ * before migration 0024 stored only its key; the request that created it is
+ * not provable, so a matching key proves nothing about matching content, and
+ * even identical-looking answers are an unverifiable conflict. No fingerprint
+ * is ever backfilled from the new request — that would manufacture history.
  */
 function replayOf(
   existing: { readonly id: string; readonly mutationFingerprint: string | null },
   fingerprint: string,
 ): CreateTradeResult {
-  if (existing.mutationFingerprint !== null && existing.mutationFingerprint !== fingerprint) {
-    return { ok: false, code: 'mutation_replay_conflict', existingTradeId: existing.id };
+  if (existing.mutationFingerprint === null) {
+    return {
+      ok: false,
+      code: 'mutation_replay_conflict',
+      existingTradeId: existing.id,
+      replayConflict: 'unverifiable',
+    };
+  }
+  if (existing.mutationFingerprint !== fingerprint) {
+    return {
+      ok: false,
+      code: 'mutation_replay_conflict',
+      existingTradeId: existing.id,
+      replayConflict: 'different',
+    };
   }
   return { ok: true, tradeId: existing.id, alreadyCreated: true };
 }

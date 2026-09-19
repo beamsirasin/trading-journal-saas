@@ -18,13 +18,19 @@ import { Link } from '@/i18n/navigation';
  * - "Open saved trade" — navigation; the draft is kept (UX Rules §5.3).
  * - "Save this draft as a new trade" — an explicit new Save key, only on this
  *   press. The key is never regenerated silently.
+ *
+ * `unverifiable`: the saved Trade predates the check (no stored fingerprint),
+ * so whether it holds these answers cannot be known — the copy says exactly
+ * that, rather than claiming the versions differ.
  */
 export function TradeSaveReplayConflict({
   existingTradeId,
+  reason,
   pending,
   onSaveAsNew,
 }: {
   existingTradeId: string;
+  reason: 'different' | 'unverifiable';
   pending: boolean;
   onSaveAsNew: () => void;
 }) {
@@ -32,14 +38,18 @@ export function TradeSaveReplayConflict({
   return (
     <section
       role="alert"
-      data-save-replay-conflict=""
+      data-save-replay-conflict={reason}
       className="border-warning/40 bg-warning/5 flex min-w-0 flex-col gap-3 rounded-lg border px-4 py-3"
     >
       <div className="flex min-w-0 items-start gap-2">
         <CircleAlert className="text-warning mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="text-foreground text-sm font-semibold">{t('conflictTitle')}</h2>
-          <p className="text-muted-foreground text-sm">{t('conflictDescription')}</p>
+          <h2 className="text-foreground text-sm font-semibold">
+            {reason === 'unverifiable' ? t('unverifiableTitle') : t('conflictTitle')}
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            {reason === 'unverifiable' ? t('unverifiableDescription') : t('conflictDescription')}
+          </p>
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap gap-2">

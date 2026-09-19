@@ -35,6 +35,7 @@ import {
   type CreateTradeErrorCode,
   type CreateTradeExitPlanChoice,
   type CreateTradeInput,
+  type ReplayConflictReason,
 } from './trade-management';
 import { tradeMutationFingerprint } from './trade-mutation-fingerprint';
 
@@ -135,6 +136,7 @@ export type CreateCompletedTradeResult =
       readonly calcReason?: CalcFailureReason;
       /** With `mutation_replay_conflict`: the Trade the key already created. */
       readonly existingTradeId?: string;
+      readonly replayConflict?: ReplayConflictReason;
     };
 
 type CompletedFailureResult = Extract<CreateCompletedTradeResult, { readonly ok: false }>;
@@ -264,10 +266,15 @@ function successFromRow(
   trade: typeof trades.$inferSelect,
   alreadyCreated: boolean,
 ): CreateCompletedTradeResult {
-  // A pre-0024 row has no fingerprint to compare; an open Trade under this key
-  // was certainly created by another request (At Entry), never this one.
+  // Defence in depth: a replay reaching here matched a fingerprint, and an
+  // open Trade under this key was still created by another path (At Entry).
   if (trade.status !== 'closed') {
-    return { ok: false, code: 'mutation_replay_conflict', existingTradeId: trade.id };
+    return {
+      ok: false,
+      code: 'mutation_replay_conflict',
+      existingTradeId: trade.id,
+      replayConflict: 'different',
+    };
   }
   return {
     ok: true,

@@ -289,6 +289,7 @@ describe('Add Trade contract After Trade (real database)', () => {
         ok: false,
         code: 'mutation_replay_conflict',
         existingTradeId: first.tradeId,
+        replayConflict: 'different',
       });
       expect(await readTrade(first.tradeId)).toMatchObject({ netPnlMinor: 1_500n });
       const rows = await db
@@ -322,7 +323,12 @@ describe('Add Trade contract After Trade (real database)', () => {
           actorUserId,
           input(fw, { mutationKey: atEntryRequest.mutationKey }),
         ),
-      ).toEqual({ ok: false, code: 'mutation_replay_conflict', existingTradeId: open.tradeId });
+      ).toEqual({
+        ok: false,
+        code: 'mutation_replay_conflict',
+        existingTradeId: open.tradeId,
+        replayConflict: 'different',
+      });
 
       // After Trade key replayed as At Entry.
       const closed = await save(fw);
@@ -332,8 +338,96 @@ describe('Add Trade contract After Trade (real database)', () => {
           ...atEntryRequest,
           mutationKey: closedRow.mutationKey,
         }),
-      ).toEqual({ ok: false, code: 'mutation_replay_conflict', existingTradeId: closed.tradeId });
+      ).toEqual({
+        ok: false,
+        code: 'mutation_replay_conflict',
+        existingTradeId: closed.tradeId,
+        replayConflict: 'different',
+      });
       expect(await readTrade(closed.tradeId)).toMatchObject({ status: 'closed' });
+    });
+
+    /*
+      A TRADE FROM BEFORE MIGRATION 0024 stored only its key. Its creating
+      request is not provable, so no replay of that key is honest — not even one
+      with identical answers — and no fingerprint is ever backfilled from it.
+    */
+    describe('a Trade saved before migration 0024 (no fingerprint)', () => {
+      async function unfingerprinted(tradeId: string) {
+        await db.update(trades).set({ mutationFingerprint: null }).where(eq(trades.id, tradeId));
+        return readTrade(tradeId);
+      }
+
+      it('refuses an identical Save Closed Trade replay as unverifiable, and changes nothing', async () => {
+        const fw = await freshFramework();
+        const request = input(fw, { finalPnlMinor: 1_500n, traderOutcome: 'win' });
+        const first = await createCompletedTrade(workspaceId, actorUserId, request);
+        if (!first.ok) throw new Error('first save failed');
+        const before = await unfingerprinted(first.tradeId);
+
+        expect(await createCompletedTrade(workspaceId, actorUserId, request)).toEqual({
+          ok: false,
+          code: 'mutation_replay_conflict',
+          existingTradeId: first.tradeId,
+          replayConflict: 'unverifiable',
+        });
+        const after = await readTrade(first.tradeId);
+        expect(after).toEqual(before);
+        expect(after.mutationFingerprint).toBeNull();
+
+        // "Save this draft as a new trade": a fresh key creates a second Trade.
+        const asNew = await createCompletedTrade(workspaceId, actorUserId, {
+          ...request,
+          mutationKey: crypto.randomUUID(),
+        });
+        expect(asNew).toMatchObject({ ok: true, alreadyCreated: false });
+        if (!asNew.ok) return;
+        expect(asNew.tradeId).not.toBe(first.tradeId);
+        expect((await readTrade(asNew.tradeId)).mutationFingerprint).toMatch(/^[0-9a-f]{64}$/);
+      });
+
+      it('refuses an identical At Entry replay as unverifiable, and changes nothing', async () => {
+        const fw = await freshFramework();
+        const request = {
+          mutationKey: crypto.randomUUID(),
+          tradingAccountId: fw.tradingAccountId,
+          recordingTiming: 'at_entry' as const,
+          recordingContract: 'add_trade_v1' as const,
+          systemPlanBasis: 'money' as const,
+          symbol: 'XAUUSD',
+          direction: 'long',
+          plannedRiskMinor: 10_000n,
+          actualRiskAnswer: 'matched' as const,
+        };
+        const first = await createTrade(workspaceId, actorUserId, request);
+        if (!first.ok) throw new Error('first save failed');
+        const before = await unfingerprinted(first.tradeId);
+
+        expect(await createTrade(workspaceId, actorUserId, request)).toEqual({
+          ok: false,
+          code: 'mutation_replay_conflict',
+          existingTradeId: first.tradeId,
+          replayConflict: 'unverifiable',
+        });
+        expect(await readTrade(first.tradeId)).toEqual(before);
+        const rows = await db
+          .select({ id: trades.id })
+          .from(trades)
+          .where(eq(trades.mutationKey, request.mutationKey));
+        expect(rows).toHaveLength(1);
+      });
+    });
+
+    it('still honours an honest replay of a fingerprinted Trade', async () => {
+      const fw = await freshFramework();
+      const request = input(fw, { finalPnlMinor: 900n });
+      const first = await createCompletedTrade(workspaceId, actorUserId, request);
+      if (!first.ok) throw new Error('first save failed');
+      expect(await createCompletedTrade(workspaceId, actorUserId, request)).toMatchObject({
+        ok: true,
+        tradeId: first.tradeId,
+        alreadyCreated: true,
+      });
     });
 
     it('stores the request fingerprint with the Trade', async () => {

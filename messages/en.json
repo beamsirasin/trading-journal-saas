@@ -2531,7 +2531,9 @@
         "saveAsNew": "Save this draft as a new trade",
         "alreadyTitle": "This trade was already saved",
         "alreadyDescription": "An earlier Save of exactly these answers reached us, so nothing new was created.",
-        "openTrade": "Open trade"
+        "openTrade": "Open trade",
+        "unverifiableTitle": "A trade was already saved with this draft's key",
+        "unverifiableDescription": "It was saved before TradeChemist recorded what each Save contained, so we can't confirm it holds these answers. Nothing was overwritten, and your draft here is unchanged."
       }
     },
     "prerequisite": {
