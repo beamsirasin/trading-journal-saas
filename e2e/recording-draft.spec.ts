@@ -180,10 +180,14 @@ test.describe('Add Trade Recording Draft', () => {
     const firstAttempt = await tradeRows(user.id);
     expect(firstAttempt).toHaveLength(1);
 
-    // A reload still recovers the draft, and the retry is the same Save.
+    // A reload still recovers the draft, and the retry is the same Save: an
+    // honest replay, which says the Trade was already saved rather than
+    // presenting a new Save (contract §23).
     await page.reload();
     await expect(page.getByText(RECOVERED)).toBeVisible();
     await page.getByRole('button', { name: 'Save open trade' }).first().click();
+    await expect(page.getByRole('heading', { name: 'This trade was already saved' })).toBeVisible();
+    await page.getByRole('button', { name: 'Open trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 
     const rows = await tradeRows(user.id);

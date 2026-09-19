@@ -1478,6 +1478,8 @@ test.describe('real Trade Journal creation', () => {
     await expect(actualR).toContainText('+3.50R');
 
     await chooseRadio(afterForm, 'High');
+    // An explicit No Fixed Target: an answer the record must read back as such.
+    await chooseRadio(afterForm, 'No fixed target You will close on a rule or judgement');
 
     await page.locator('[data-global-save]:visible button[type="submit"]').click();
     const saved = page.locator('[data-after-trade-saved]');
@@ -1500,6 +1502,12 @@ test.describe('real Trade Journal creation', () => {
     await expect(execution.getByRole('button', { name: /as final result/ })).toHaveCount(0);
     await openTradeSection(page, 'entry');
     await expect(activePanel(page).getByText('Recalled after close').first()).toBeVisible();
+    // Risk and Target read back as the trader's intent, never as a System Plan.
+    await expect(activePanel(page).locator('[data-target-state="no_fixed"]')).toHaveText(
+      'No fixed target',
+    );
+    await expect(activePanel(page).getByText('Risk and target')).toBeVisible();
+    await expect(activePanel(page).getByRole('heading', { name: 'System Plan' })).toHaveCount(0);
 
     // Nothing written has leaked into a second Trade, and nothing about the
     // entry time was invented.
