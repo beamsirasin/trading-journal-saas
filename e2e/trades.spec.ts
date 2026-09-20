@@ -666,6 +666,36 @@ async function afterTradeStep(
   );
 }
 
+/**
+ * AFTER TRADE STEP 1 IS READ-FIRST. Each concept shows what is recorded and
+ * opens its own editor — a bottom sheet on a phone, a dialog on a desktop — so
+ * a test reaches the control the way a trader does.
+ */
+async function afterTradeEditor(page: Page, field: string) {
+  await afterTradeStep(page, 'trade');
+  await page.getByRole('button', { name: `Edit ${field}` }).click();
+  return page.getByRole('dialog');
+}
+
+async function afterTradeEditorDone(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+/** What a Step 1 row holds, without opening its editor. */
+function afterTradeConcept(page: Page, concept: string) {
+  return page.locator(`[data-concept="${concept}"]`);
+}
+
+async function afterTradeIdentity(page: Page, symbol: string, direction: 'Long' | 'Short') {
+  const symbolEditor = await afterTradeEditor(page, 'Symbol');
+  await symbolEditor.getByRole('textbox', { name: 'Symbol' }).fill(symbol);
+  await afterTradeEditorDone(page);
+  const directionEditor = await afterTradeEditor(page, 'Direction');
+  await chooseRadio(directionEditor, direction);
+  await afterTradeEditorDone(page);
+}
+
 async function chooseRadio(scope: Page | Locator, name: string) {
   const radio = scope.getByRole('radio', { name, exact: true });
   const id = await radio.getAttribute('id');
@@ -1405,7 +1435,11 @@ test.describe('real Trade Journal creation', () => {
         await expect(afterForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
         await expect(afterForm.locator('[data-account-context]')).toBeVisible();
-        await expect(afterForm.locator('#after-enteredAt')).toHaveValue('');
+        // Step 1 shows answers; no symbol box, radios or datetime input sit in it.
+        await expect(afterTradeConcept(page, 'enteredAt')).toHaveAttribute('data-value', '');
+        await expect(afterForm.locator('#after-enteredAt')).toHaveCount(0);
+        await expect(afterForm.getByRole('textbox', { name: 'Symbol' })).toHaveCount(0);
+        await expect(afterForm.getByRole('radio', { name: 'Long', exact: true })).toHaveCount(0);
         await expect(page.locator('button[type="submit"]:visible')).toHaveCount(0);
         await afterTradeStep(page, 'result');
         // The final exit time is read here: it says how the trade ended.
@@ -1445,8 +1479,9 @@ test.describe('real Trade Journal creation', () => {
     const afterForm = page.locator('[data-after-trade-form]');
     const actualR = afterForm.locator('[data-actual-r]');
 
-    await afterForm.getByRole('textbox', { name: 'Symbol' }).fill('RETRO');
-    await chooseRadio(afterForm, 'Long');
+    await afterTradeIdentity(page, 'RETRO', 'Long');
+    await expect(afterTradeConcept(page, 'symbol')).toContainText('RETRO');
+    await expect(afterTradeConcept(page, 'direction')).toContainText('Long');
 
     // Final Net P&L and Risk at Entry give Actual R; nothing derives the outcome.
     await afterForm.getByRole('button', { name: 'Next: Result' }).click();
@@ -1538,8 +1573,8 @@ test.describe('real Trade Journal creation', () => {
     // Nothing written has leaked into a second Trade, and nothing about the
     // entry time was invented.
     await page.goto('/en/app/trades/new?timing=after_trade');
-    await expect(afterForm.getByRole('textbox', { name: 'Symbol' })).toHaveValue('');
-    await expect(afterForm.locator('#after-enteredAt')).toHaveValue('');
+    await expect(afterTradeConcept(page, 'symbol')).toHaveAttribute('data-value', '');
+    await expect(afterTradeConcept(page, 'enteredAt')).toHaveAttribute('data-value', '');
 
     await page.setViewportSize({ width: 320, height: 844 });
     await page.reload();

@@ -2468,7 +2468,7 @@
             "trade": {
               "label": "Trade",
               "title": "Trade details",
-              "description": "Identify the trade. Only account, symbol and direction are required."
+              "description": "Identify the trade."
             },
             "result": {
               "label": "Result",
@@ -2503,14 +2503,21 @@
             "quickSave": "Save now",
             "quickSaveHint": "You can add the rest later.",
             "cards": {
-              "identity": "What you traded",
-              "timing": "When you entered",
               "risk": "Risk",
               "strategy": "Strategy and setup",
               "mindset": "Entry mindset",
               "afterTrade": "After the trade",
               "thesis": "Why you took it"
             }
+          },
+          "trade": {
+            "editAria": "Edit {field}",
+            "done": "Done",
+            "close": "Close",
+            "accountEditor": "Choose the trading account this trade belongs to.",
+            "symbolEditor": "Type the symbol you traded, or pick one you used recently.",
+            "symbolNoMatch": "No recent symbol matches what you typed. Keep typing to record it.",
+            "directionEditor": "Long if you bought to open, short if you sold to open."
           }
         }
       },

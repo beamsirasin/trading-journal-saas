@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -125,10 +125,41 @@ function currentStep(): string | null {
   return document.querySelector('[data-after-trade-form]')!.getAttribute('data-after-trade-step');
 }
 
+/**
+ * Step 1 shows answers: the control that records one lives in the editor its
+ * row opens, so a test reaches it the way a trader does. The returned scope is
+ * the open editor — its own title labels it, so queries stay inside it.
+ */
+function openConcept(
+  field: 'Trading Account' | 'Symbol' | 'Direction' | 'Entry time',
+): ReturnType<typeof within> {
+  // Only travel if we are elsewhere: opening a step deliberately focuses its
+  // heading, which is not what a trader already on Step 1 would trigger.
+  if (currentStep() !== 'trade') goTo('trade');
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${field}` }));
+  return within(screen.getByRole('dialog'));
+}
+
+function closeConcept() {
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' }));
+}
+
+/** The Step 1 row for a concept — what it shows, and what it holds. */
+function conceptRow(concept: string): HTMLElement {
+  return document.querySelector<HTMLElement>(`[data-concept="${concept}"]`)!;
+}
+
+function conceptValue(concept: string): string {
+  return conceptRow(concept).getAttribute('data-value') ?? '';
+}
+
 function fillIdentity() {
-  goTo('trade');
-  fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-  fireEvent.click(screen.getByRole('radio', { name: 'Long' }));
+  const symbol = openConcept('Symbol');
+  fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+  closeConcept();
+  const direction = openConcept('Direction');
+  fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
+  closeConcept();
 }
 
 function type(label: string | RegExp, value: string, scope: HTMLElement = document.body) {
@@ -224,8 +255,15 @@ describe('After Trade — the moment and its steps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(currentStep()).toBe('trade');
-    expect(screen.getByLabelText('Symbol')).toHaveValue('xauusd');
-    expect(screen.getByRole('radio', { name: 'Long' })).toBeChecked();
+    // Step 1 reads back as answers, and the editors still hold them.
+    expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
+    expect(conceptRow('direction')).toHaveTextContent('Long');
+    const symbol = openConcept('Symbol');
+    expect(symbol.getByLabelText('Symbol')).toHaveValue('xauusd');
+    closeConcept();
+    const direction = openConcept('Direction');
+    expect(direction.getByRole('radio', { name: 'Long' })).toBeChecked();
+    closeConcept();
     goTo('result');
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('120');
     expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();
@@ -241,13 +279,23 @@ describe('After Trade — the moment and its steps', () => {
     save();
     expect(await screen.findByText('Enter a symbol.')).toBeInTheDocument();
     expect(currentStep()).toBe('trade');
-    await waitFor(() => expect(screen.getByLabelText('Symbol')).toHaveFocus());
+    /*
+      The row is the control now: it names the concept, carries the error, and
+      opens the input in one press. No Save can be pressed while an editor is
+      open, so the input itself is never on screen at this moment.
+    */
+    await waitFor(() => expect(conceptRow('symbol')).toHaveFocus());
+    expect(conceptRow('symbol')).toHaveAttribute('data-invalid', 'true');
+    expect(conceptRow('symbol').getAttribute('aria-describedby')).toBe('after-row-symbol-error');
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });
 
   it('starts every answer Unanswered: no time, no outcome, no Actual Risk, no Target', () => {
     renderForm();
-    expect(screen.getByLabelText('Entry time')).toHaveValue('');
+    // Blank is "Not recorded", never a zero and never a preselected now.
+    expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
+    expect(openConcept('Entry time').getByLabelText('Entry time')).toHaveValue('');
+    closeConcept();
     goTo('result');
     expect(screen.getByLabelText('Final exit time')).toHaveValue('');
     for (const name of ['Win', 'BE', 'Loss']) {
@@ -370,6 +418,130 @@ describe('After Trade — the moment and its steps', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Step 1 — read first, edit on demand', () => {
+  it('shows four answers and no input until an editor is asked for', () => {
+    renderForm();
+    // Every concept reads as what is recorded — or a neutral word for what is not.
+    expect(conceptRow('tradingAccountId')).toHaveTextContent('Main USD · USD');
+    expect(conceptRow('symbol')).toHaveTextContent('Not answered');
+    expect(conceptRow('direction')).toHaveTextContent('Not answered');
+    expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
+    // Required and Optional are said on the row, once.
+    expect(within(conceptRow('symbol').parentElement!).getByText('Required')).toBeInTheDocument();
+    expect(
+      within(conceptRow('enteredAt').parentElement!).getByText('Optional'),
+    ).toBeInTheDocument();
+
+    // The old inline Step 1 form is gone: no symbol box, no Long/Short radios,
+    // no datetime input sitting in the step itself.
+    const trade = stepSection('trade');
+    expect(within(trade).queryByLabelText('Symbol')).toBeNull();
+    expect(within(trade).queryByRole('radio', { name: 'Long' })).toBeNull();
+    expect(within(trade).queryByLabelText('Entry time')).toBeNull();
+    expect(within(trade).queryByLabelText('Trading Account')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('records each concept in its own editor and reads it back on the row', () => {
+    renderForm();
+    const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    closeConcept();
+    expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
+
+    const direction = openConcept('Direction');
+    fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
+    closeConcept();
+    expect(conceptRow('direction')).toHaveTextContent('Short');
+    expect(conceptValue('direction')).toBe('short');
+
+    const entered = openConcept('Entry time');
+    fireEvent.change(entered.getByLabelText('Entry time'), {
+      target: { value: '2026-09-18T09:30' },
+    });
+    closeConcept();
+    expect(conceptValue('enteredAt')).toBe('2026-09-18T09:30');
+    expect(conceptRow('enteredAt')).not.toHaveTextContent('Not recorded');
+  });
+
+  it('keeps what was entered when an editor is closed without Done', () => {
+    renderForm();
+    const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    // Escape is Close-and-keep, never Discard (UX Rules §5.2, §17.4).
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    return waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(conceptValue('symbol')).toBe('eurusd');
+    });
+  });
+
+  it('returns focus to the row that opened the editor', async () => {
+    renderForm();
+    openConcept('Direction');
+    closeConcept();
+    await waitFor(() => expect(conceptRow('direction')).toHaveFocus());
+  });
+
+  it('clears an entry time from its editor without touching anything else', () => {
+    renderForm();
+    fillIdentity();
+    const entered = openConcept('Entry time');
+    fireEvent.change(entered.getByLabelText('Entry time'), {
+      target: { value: '2026-09-18T09:30' },
+    });
+    fireEvent.click(entered.getByRole('button', { name: /^Clear time/ }));
+    closeConcept();
+    expect(conceptValue('enteredAt')).toBe('');
+    expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
+    expect(conceptValue('symbol')).toBe('xauusd');
+  });
+
+  it('carries every later step’s answer through a round trip into Step 1’s editors', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('result');
+    type('Final net P&L', '400');
+    goTo('plan');
+    type('Risk at entry', '100');
+    // Open and close a Step 1 editor from Step 1 — nothing else moves.
+    const account = openConcept('Trading Account');
+    expect(account.getByLabelText('Trading Account')).toHaveValue(
+      options.tradingAccounts[0]!.tradingAccountId,
+    );
+    closeConcept();
+    goTo('result');
+    expect(screen.getByLabelText('Final net P&L')).toHaveValue('400');
+    expect(screen.getByText('+4.00R')).toBeInTheDocument();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({
+      symbol: 'XAUUSD',
+      direction: 'long',
+      finalPnlMinor: '40000',
+    });
+  });
+
+  it('offers recent symbols inside the symbol editor and filters them by what is typed', async () => {
+    renderForm();
+    fillIdentity();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+
+    cleanup();
+    renderForm();
+    const symbol = openConcept('Symbol');
+    expect(symbol.getByRole('button', { name: 'XAUUSD' })).toBeInTheDocument();
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'eur' } });
+    expect(symbol.queryByRole('button', { name: 'XAUUSD' })).toBeNull();
+    expect(symbol.getByText(/No recent symbol matches/)).toBeInTheDocument();
+    // A recent is applied only when it is pressed.
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xau' } });
+    fireEvent.click(symbol.getByRole('button', { name: 'XAUUSD' }));
+    expect(symbol.getByLabelText('Symbol')).toHaveValue('XAUUSD');
   });
 });
 

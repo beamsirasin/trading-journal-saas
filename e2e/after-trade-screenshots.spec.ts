@@ -58,7 +58,22 @@ test.describe('After Trade step-flow captures', () => {
     for (const width of [1440, 1120, 440, 390, 320] as const) {
       for (const theme of ['dark', 'light'] as const) {
         await open(page, width, theme);
+        // STEP 1, BEFORE ANYTHING IS RECORDED — the state a trader arrives at.
+        await goTo(page, 'trade');
+        await capture(page, `${width}-${theme}-trade-empty`);
         await fillEverything(page);
+        // Each Step 1 editor, open over its completed step.
+        for (const [field, name] of [
+          ['Symbol', 'symbol'],
+          ['Direction', 'direction'],
+          ['Entry time', 'entered-at'],
+          ['Trading Account', 'account'],
+        ] as const) {
+          await openConcept(page, field);
+          await page.waitForTimeout(250);
+          await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-${name}.png` });
+          await closeConcept(page);
+        }
         for (const step of ['trade', 'result', 'plan', 'context', 'save'] as const) {
           await goTo(page, step);
           if (step === 'context') {
@@ -104,7 +119,7 @@ test.describe('After Trade step-flow captures', () => {
       for (let index = 0; index < 4; index += 1) {
         await page.getByRole('button', { name: 'Back', exact: true }).click();
       }
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
+      await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       await goTo(page, 'result');
       await expect(page.locator('#after-finalPnl')).toHaveValue('400');
       await expect(page.locator('[data-actual-r]')).toContainText('+4.00R');
@@ -125,7 +140,12 @@ test.describe('After Trade step-flow captures', () => {
       await expect(
         page.getByText('We restored your unsaved trade draft from this browser.'),
       ).toBeVisible();
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
+      await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
+      // Reload recovery reaches inside the editor too, not only the row.
+      const recovered = await openConcept(page, 'Symbol');
+      await expect(recovered.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
+      await closeConcept(page);
+      await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       await expect(page.locator('#after-finalPnl')).toHaveValue('400');
       await expect(page.locator('#after-risk')).toHaveValue('100');
       await discardDraft(page);
@@ -186,6 +206,22 @@ async function foldGroup(page: Page, group: 'notes' | 'market' | 'price') {
   if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
 }
 
+/**
+ * STEP 1 IS READ-FIRST: every concept shows its answer and opens its own
+ * editor — a bottom sheet on a phone, a dialog on a desktop.
+ */
+async function openConcept(page: Page, field: string) {
+  await goTo(page, 'trade');
+  await page.getByRole('button', { name: `Edit ${field}` }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  return page.getByRole('dialog');
+}
+
+async function closeConcept(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
 async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') {
   const toggle = page.locator(`#after-${phase}-toggle`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
@@ -193,10 +229,15 @@ async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') 
 
 /** A meaningful closed trade: every step holds real answers. */
 async function fillEverything(page: Page) {
-  await goTo(page, 'trade');
-  await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
+  const symbol = await openConcept(page, 'Symbol');
+  await symbol.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
+  await closeConcept(page);
+  await openConcept(page, 'Direction');
   await clickChoice(page, 'Long');
-  await page.locator('#after-enteredAt').fill('2026-09-18T09:30');
+  await closeConcept(page);
+  const entered = await openConcept(page, 'Entry time');
+  await entered.locator('#after-enteredAt').fill('2026-09-18T09:30');
+  await closeConcept(page);
 
   // The final exit time says how the trade ended, so it asks on Result.
   await goTo(page, 'result');

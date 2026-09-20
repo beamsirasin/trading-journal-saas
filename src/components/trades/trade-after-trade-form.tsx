@@ -1,6 +1,14 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, CircleAlert, History, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronRight,
+  CircleAlert,
+  History,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   useEffect,
@@ -10,6 +18,7 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from 'react';
 
 import { generateId } from '@/lib/identifiers';
@@ -65,10 +74,12 @@ import {
 } from './after-trade-draft';
 import { createAtEntryDraft } from './at-entry-draft';
 import { hasStaleSelection, staleSelections, UNAVAILABLE_OPTION } from './stale-selection';
+import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   Chip,
   ChoiceGroup,
   Disclosure,
+  FieldError,
   Helper,
   InlineAction,
   Legend,
@@ -90,7 +101,19 @@ import { TradeSaveReplayConflict } from './trade-save-replay';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 const NONE = '__none';
-const RECENT_SYMBOL_LIMIT = 3;
+
+/**
+ * THE FOUR THINGS STEP 1 RECORDS, each its own concept and its own editor.
+ * `enteredAt` is the only optional one; the other three are everything Save
+ * needs. The key is the draft field, so a blocked Save maps straight onto the
+ * row that holds the problem.
+ */
+type TradeConcept = 'tradingAccountId' | 'symbol' | 'direction' | 'enteredAt';
+
+/** The launcher row for a Step 1 concept — what a failed Save focuses. */
+function conceptRowId(concept: TradeConcept): string {
+  return `after-row-${concept}`;
+}
 
 /**
  * THE FIVE STEPS OF A CLOSED-TRADE RECORDING. One topic at a time: the trade,
@@ -148,7 +171,16 @@ function useIsWideViewport(): boolean {
   );
 }
 
-/** Where a failed Save sends focus for each field — always a real, focusable control. */
+/**
+ * Where a failed Save sends focus for each field — always a real, focusable
+ * control that is on screen at the time.
+ *
+ * STEP 1 FOCUSES ITS ROW, NOT THE INPUT. The account, symbol, direction and
+ * entry-time controls only exist while their editor is open, and no Save can
+ * be pressed while one is (the editor is modal). So the honest target is the
+ * launcher row itself: it names the concept, carries the error, and opens the
+ * control in one press.
+ */
 function fieldTargetId(field: AfterTradeField): string {
   if (field.startsWith('exit:')) {
     const [, id, part] = field.split(':');
@@ -156,9 +188,10 @@ function fieldTargetId(field: AfterTradeField): string {
   }
   switch (field) {
     case 'tradingAccountId':
-      return 'after-account';
+    case 'symbol':
     case 'direction':
-      return 'after-direction-long';
+    case 'enteredAt':
+      return conceptRowId(field);
     case 'actualRisk':
       return 'after-actual-risk-amount';
     default:
@@ -306,7 +339,20 @@ export function TradeAfterTradeForm({
     if (saved !== null) savedHeading.current?.focus();
   }, [saved]);
 
-  const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
+  /*
+    WHICH STEP 1 EDITOR IS OPEN — view state, never draft state. Step 1 shows
+    what has been recorded; an editing control exists only while the trader has
+    one open, and every change inside it lands in the draft as it is made, so
+    closing by Done, Escape, the backdrop or the system back gesture keeps the
+    work (UX Rules §5.2, §17.4).
+  */
+  const [editor, setEditor] = useState<TradeConcept | null>(null);
+  const conceptRows: Readonly<Record<TradeConcept, RefObject<HTMLButtonElement | null>>> = {
+    tradingAccountId: useRef<HTMLButtonElement>(null),
+    symbol: useRef<HTMLButtonElement>(null),
+    direction: useRef<HTMLButtonElement>(null),
+    enteredAt: useRef<HTMLButtonElement>(null),
+  };
   const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
   const [emotionsOpen, setEmotionsOpen] = useState<Readonly<Record<EmotionPhase, boolean>>>({
     emotions: false,
@@ -517,7 +563,6 @@ export function TradeAfterTradeForm({
     if (currentReadiness.status === 'blocked') {
       setServerMessage(null);
       const sections = new Set(currentReadiness.fields.map(afterTradeFieldSection));
-      if (currentReadiness.fields.includes('tradingAccountId')) setAccountPickerOpen(true);
       if (sections.has('exits')) setExitsOpen(true);
       focusFirstError(currentReadiness.fields);
       return;
@@ -730,8 +775,28 @@ export function TradeAfterTradeForm({
     return latest;
   })();
 
-  const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
   const formatMoney = (minor: string) => formatTradeMoney(minor, currency) ?? minor;
+
+  /*
+    STEP 1's EDITORS, ALL FOUR THE SAME SHAPE. Done only closes: the answer was
+    already written to the draft as it was made, so there is no separate commit
+    and nothing to lose by leaving another way.
+  */
+  const closeEditorOn = (next: boolean) => {
+    if (!next) setEditor(null);
+  };
+  const editorDone = (
+    <div className="flex min-w-0 justify-end">
+      <Button type="button" size="lg" className="min-h-12" onClick={() => setEditor(null)}>
+        {a('trade.done')}
+      </Button>
+    </div>
+  );
+  // What this browser has seen the trader trade, narrowed by what is typed.
+  const symbolQuery = draft.symbol.trim().toUpperCase();
+  const matchingRecents = symbolFavorites.recents.filter(
+    (symbol) => symbolQuery === '' || symbol.includes(symbolQuery),
+  );
   const outcomeNotice = validation.notices.find(
     (notice) => notice.kind === 'outcome_contradicts_pnl',
   );
@@ -1085,109 +1150,84 @@ export function TradeAfterTradeForm({
             )}
           </header>
 
-          {/* 1 — THE TRADE: account, what was traded, when it was entered */}
+          {/*
+            1 — THE TRADE, READ FIRST. Four concepts, four rows: which account,
+            what was traded, which way, and when it was entered. A row SHOWS the
+            answer — the input that records it exists only inside the editor the
+            row opens (DESIGN.md §6, "a disclosure that opens an editor surface
+            looks like a launcher row"). Required or Optional is said once, on
+            the row, so no helper paragraph repeats it.
+          */}
           {section(
             'trade',
-            'gap-4',
-            <>
-              <GroupCard title={c('account.label')} aside={<RequiredTag />}>
-                {accountPickerOpen || selectedAccount === undefined ? (
-                  <SelectField
-                    id="after-account"
-                    label={c('account.label')}
-                    value={draft.tradingAccountId}
-                    error={errorText('tradingAccountId')}
-                    onChange={(tradingAccountId) =>
-                      apply((current) => ({ ...current, tradingAccountId }))
-                    }
-                    options={[
-                      { value: '', label: c('account.choose') },
-                      ...options.tradingAccounts.map((account) => ({
-                        value: account.tradingAccountId,
-                        label: `${account.name} · ${account.baseCurrency}`,
-                      })),
-                    ]}
-                  />
-                ) : (
-                  <div
-                    data-account-context=""
-                    className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
-                  >
-                    <p className="min-w-0 text-sm break-words">
-                      <span className="text-foreground font-semibold">{selectedAccount.name}</span>
-                      <span className="text-muted-foreground">
-                        {' '}
-                        · {selectedAccount.baseCurrency}
-                      </span>
-                    </p>
-                    <InlineAction
-                      ariaLabel={c('account.changeAria')}
-                      onClick={() => setAccountPickerOpen(true)}
-                    >
-                      {c('account.change')}
-                    </InlineAction>
-                  </div>
-                )}
-              </GroupCard>
-
-              <GroupCard title={a('steps.cards.identity')} aside={<RequiredTag />}>
-                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-                  <div className="flex min-w-0 flex-col gap-2">
-                    <TextField
-                      id="after-symbol"
-                      label={c('symbol.label')}
-                      value={draft.symbol}
-                      onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
-                      placeholder={c('symbol.placeholder')}
-                      autoCapitalize="characters"
-                      error={errorText('symbol')}
-                    />
-                    {recentSymbols.length === 0 ? null : (
-                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                        <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
-                        {recentSymbols.map((symbol) => (
-                          <InlineAction
-                            key={symbol}
-                            ariaLabel={c('symbol.useRecent', { symbol })}
-                            onClick={() => apply((current) => ({ ...current, symbol }))}
-                          >
-                            {symbol}
-                          </InlineAction>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <ChoiceGroup
-                    idPrefix="after-direction"
-                    legend={c('direction.label')}
-                    value={draft.direction === '' ? null : draft.direction}
-                    compact
-                    fit="row"
-                    error={errorText('direction')}
-                    onChange={(direction) => apply((current) => ({ ...current, direction }))}
-                    options={[
-                      { value: 'long', label: c('direction.long') },
-                      { value: 'short', label: c('direction.short') },
-                    ]}
-                  />
-                </div>
-              </GroupCard>
-
-              {/* The final exit time belongs to how the trade ended — Step 2. */}
-              <GroupCard
-                title={a('steps.cards.timing')}
-                aside={<StateText>{a('steps.optional')}</StateText>}
-              >
-                <TimeField
-                  id="after-enteredAt"
-                  label={a('times.entry')}
-                  value={draft.enteredAt}
-                  error={errorText('enteredAt')}
-                  onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
-                />
-                <Helper>{a('times.hint', { timezone })}</Helper>
-              </GroupCard>
-            </>,
+            'gap-3',
+            <div className="grid min-w-0 gap-3 min-[560px]:grid-cols-2">
+              <ConceptRow
+                concept="tradingAccountId"
+                rowRef={conceptRows.tradingAccountId}
+                label={c('account.label')}
+                marker={<RequiredTag />}
+                /* The chosen account, or the same "Choose an account" the editor opens on. */
+                value={
+                  selectedAccount === undefined
+                    ? null
+                    : `${selectedAccount.name} · ${selectedAccount.baseCurrency}`
+                }
+                placeholder={c('account.choose')}
+                raw={draft.tradingAccountId}
+                error={errorText('tradingAccountId')}
+                editLabel={a('trade.editAria', { field: c('account.label') })}
+                onOpen={() => setEditor('tradingAccountId')}
+                data-account-context=""
+              />
+              <ConceptRow
+                concept="symbol"
+                rowRef={conceptRows.symbol}
+                label={c('symbol.label')}
+                marker={<RequiredTag />}
+                value={draft.symbol.trim() === '' ? null : draft.symbol.trim().toUpperCase()}
+                placeholder={c('notAnswered')}
+                raw={draft.symbol}
+                error={errorText('symbol')}
+                editLabel={a('trade.editAria', { field: c('symbol.label') })}
+                onOpen={() => setEditor('symbol')}
+              />
+              <ConceptRow
+                concept="direction"
+                rowRef={conceptRows.direction}
+                label={c('direction.label')}
+                marker={<RequiredTag />}
+                value={
+                  draft.direction === 'long'
+                    ? c('direction.long')
+                    : draft.direction === 'short'
+                      ? c('direction.short')
+                      : null
+                }
+                placeholder={c('notAnswered')}
+                raw={draft.direction}
+                error={errorText('direction')}
+                editLabel={a('trade.editAria', { field: c('direction.label') })}
+                onOpen={() => setEditor('direction')}
+              />
+              {/*
+                BLANK IS NOT UNANSWERED HERE. An entry time nobody recorded is
+                "Not recorded" (UX Rules §4), and the final exit time belongs to
+                how the trade ended — Step 2.
+              */}
+              <ConceptRow
+                concept="enteredAt"
+                rowRef={conceptRows.enteredAt}
+                label={a('times.entry')}
+                marker={<StateText>{a('steps.optional')}</StateText>}
+                value={localTime(draft.enteredAt)}
+                placeholder={a('times.notRecorded')}
+                raw={draft.enteredAt}
+                error={errorText('enteredAt')}
+                editLabel={a('trade.editAria', { field: a('times.entry') })}
+                onOpen={() => setEditor('enteredAt')}
+              />
+            </div>,
           )}
 
           {/* 2 — WHAT HAPPENED: the moment's question, and the strongest step */}
@@ -1866,6 +1906,220 @@ export function TradeAfterTradeForm({
           </aside>
         ) : null}
       </div>
+
+      {/*
+        STEP 1's EDITORS. One per concept, outside the form so nothing typed in
+        one can submit the Trade (UX Rules §17.4), and each a centered dialog on
+        a desktop and a reachable bottom sheet on a phone — the geometry this
+        codebase already accepted for nested Trade editors. Every change is
+        written to the draft as it is made, so Done, Escape, the backdrop and
+        the system back gesture all keep it; focus returns to the row that
+        opened the editor.
+      */}
+      <TradeAdaptiveOverlay
+        open={editor === 'tradingAccountId'}
+        onOpenChange={closeEditorOn}
+        title={c('account.label')}
+        description={a('trade.accountEditor')}
+        closeLabel={a('trade.close')}
+        returnFocusRef={conceptRows.tradingAccountId}
+        footer={editorDone}
+      >
+        <SelectField
+          id="after-account"
+          label={c('account.label')}
+          value={draft.tradingAccountId}
+          error={errorText('tradingAccountId')}
+          onChange={(tradingAccountId) => apply((current) => ({ ...current, tradingAccountId }))}
+          options={[
+            { value: '', label: c('account.choose') },
+            ...options.tradingAccounts.map((account) => ({
+              value: account.tradingAccountId,
+              label: `${account.name} · ${account.baseCurrency}`,
+            })),
+          ]}
+        />
+      </TradeAdaptiveOverlay>
+
+      {/*
+        SYMBOL IS STILL FREE TEXT. There is no instrument catalogue in this
+        product, so "search" here searches what this browser has seen the trader
+        use — the typed value filters the recents beneath it and is itself the
+        answer. Typing something no recent matches is a perfectly good Symbol.
+      */}
+      <TradeAdaptiveOverlay
+        open={editor === 'symbol'}
+        onOpenChange={closeEditorOn}
+        title={c('symbol.label')}
+        description={a('trade.symbolEditor')}
+        closeLabel={a('trade.close')}
+        returnFocusRef={conceptRows.symbol}
+        footer={editorDone}
+      >
+        <div className="flex min-w-0 flex-col gap-4">
+          <TextField
+            id="after-symbol"
+            label={c('symbol.label')}
+            value={draft.symbol}
+            onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
+            placeholder={c('symbol.placeholder')}
+            autoCapitalize="characters"
+            error={errorText('symbol')}
+          />
+          {symbolFavorites.recents.length === 0 ? null : (
+            <div className="flex min-w-0 flex-col gap-2" data-symbol-recents="">
+              <p className="text-foreground text-sm font-medium">{c('symbol.recent')}</p>
+              {matchingRecents.length === 0 ? (
+                <Helper>{a('trade.symbolNoMatch')}</Helper>
+              ) : (
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  {matchingRecents.map((symbol) => (
+                    <Chip
+                      key={symbol}
+                      size="lg"
+                      selected={draft.symbol.trim().toUpperCase() === symbol}
+                      onClick={() => apply((current) => ({ ...current, symbol }))}
+                    >
+                      {symbol}
+                    </Chip>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </TradeAdaptiveOverlay>
+
+      <TradeAdaptiveOverlay
+        open={editor === 'direction'}
+        onOpenChange={closeEditorOn}
+        title={c('direction.label')}
+        description={a('trade.directionEditor')}
+        closeLabel={a('trade.close')}
+        returnFocusRef={conceptRows.direction}
+        footer={editorDone}
+      >
+        <ChoiceGroup
+          idPrefix="after-direction"
+          legend={c('direction.label')}
+          hideLegend
+          value={draft.direction === '' ? null : draft.direction}
+          error={errorText('direction')}
+          onChange={(direction) => apply((current) => ({ ...current, direction }))}
+          options={[
+            { value: 'long', label: c('direction.long') },
+            { value: 'short', label: c('direction.short') },
+          ]}
+        />
+      </TradeAdaptiveOverlay>
+
+      <TradeAdaptiveOverlay
+        open={editor === 'enteredAt'}
+        onOpenChange={closeEditorOn}
+        title={a('times.entry')}
+        /* One explanation, not two: the timezone rule is the only thing left to say. */
+        description={a('times.hint', { timezone })}
+        closeLabel={a('trade.close')}
+        returnFocusRef={conceptRows.enteredAt}
+        footer={editorDone}
+      >
+        <TimeField
+          id="after-enteredAt"
+          label={a('times.entry')}
+          value={draft.enteredAt}
+          error={errorText('enteredAt')}
+          onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
+        />
+      </TradeAdaptiveOverlay>
+    </div>
+  );
+}
+
+/**
+ * A LAUNCHER ROW: one concept, read first. The name, what is recorded — or a
+ * neutral word for what is not — and a chevron; the control that records it
+ * lives in the editor this row opens. `raw` exposes the stored value, so a
+ * test or a capture can read what is recorded without opening an editor.
+ */
+function ConceptRow({
+  concept,
+  rowRef,
+  label,
+  marker,
+  value,
+  placeholder,
+  raw,
+  error,
+  editLabel,
+  onOpen,
+  ...rest
+}: {
+  concept: TradeConcept;
+  rowRef: RefObject<HTMLButtonElement | null>;
+  label: string;
+  /** Required or Optional, said here rather than in a paragraph below. */
+  marker: ReactNode;
+  /** What is recorded, or null when nothing is. */
+  value: string | null;
+  /** The neutral word for nothing recorded — never a negative (UX Rules §4.3). */
+  placeholder: string;
+  raw: string;
+  error?: string | undefined;
+  editLabel: string;
+  onOpen: () => void;
+} & Record<`data-${string}`, string | undefined>) {
+  const errorId = `${conceptRowId(concept)}-error`;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5" {...rest}>
+      <button
+        type="button"
+        id={conceptRowId(concept)}
+        ref={rowRef}
+        data-concept={concept}
+        data-value={raw}
+        aria-label={editLabel}
+        aria-haspopup="dialog"
+        /* A button role carries no aria-invalid; the error is named to it instead. */
+        aria-describedby={error === undefined ? undefined : errorId}
+        data-invalid={error === undefined ? undefined : 'true'}
+        onClick={onOpen}
+        /*
+          THE DASHBOARD'S SURFACE LADDER, NOT A NEW ONE (DESIGN.md §3). A row
+          lifts one step off whatever plane is behind it, by plane first and
+          never by a hairline:
+
+            phone   workspace (`background`) → row `card` + `shadow-card`
+            lg      step card (`card`)       → row `muted/50`, no shadow
+
+          Both pairs are the relationships the Dashboard already uses — page
+          against panel, panel against inset — so Step 1 reads with the same
+          depth in Light and in Dark without inventing a colour. The border
+          stays in the box model and stays transparent until there is an error
+          to show, exactly as `data-dashboard-panel` does, so nothing shifts.
+        */
+        className={cn(
+          'shadow-card bg-card hover:bg-accent focus-visible:ring-ring flex min-h-16 w-full min-w-0 items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none',
+          'lg:bg-muted/50 lg:hover:bg-muted lg:shadow-none',
+          error === undefined ? 'border-transparent' : 'border-destructive',
+        )}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-muted-foreground text-sm font-medium">{label}</span>
+            {marker}
+          </span>
+          <span
+            className={cn(
+              'mt-0.5 block truncate text-base',
+              value === null ? 'text-subtle-foreground' : 'text-foreground font-semibold',
+            )}
+          >
+            {value ?? placeholder}
+          </span>
+        </span>
+        <ChevronRight className="text-muted-foreground size-5 shrink-0" aria-hidden="true" />
+      </button>
+      {error === undefined ? null : <FieldError id={errorId}>{error}</FieldError>}
     </div>
   );
 }

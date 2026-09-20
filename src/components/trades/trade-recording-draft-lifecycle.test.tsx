@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,8 +61,27 @@ function mount(timing: RecordingTiming = 'at_entry', scope: RecordingDraftScope 
   );
 }
 
+/**
+ * The Symbol this mode holds. At Entry asks for it inline; After Trade shows
+ * it on a Step 1 row and keeps the input inside that row’s editor, so the row
+ * reports what is recorded without one having to be opened.
+ */
 function symbolValue() {
+  const row = document.querySelector('[data-concept="symbol"]');
+  if (row !== null) return (row.getAttribute('data-value') ?? '').toUpperCase();
   return (screen.getByLabelText('Symbol') as HTMLInputElement).value.toUpperCase();
+}
+
+/** Record After Trade’s Symbol and Direction through their Step 1 editors. */
+function fillAfterTradeIdentity(symbol: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Symbol' }));
+  const symbolEditor = within(screen.getByRole('dialog'));
+  fireEvent.change(symbolEditor.getByLabelText('Symbol'), { target: { value: symbol } });
+  fireEvent.click(symbolEditor.getByRole('button', { name: 'Done' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
+  const directionEditor = within(screen.getByRole('dialog'));
+  fireEvent.click(directionEditor.getByLabelText('Long'));
+  fireEvent.click(directionEditor.getByRole('button', { name: 'Done' }));
 }
 
 function fillAtEntry() {
@@ -347,8 +366,7 @@ describe('Recording Draft — a Save key never reports a Save that did not happe
       error: { code: 'mutation_replay_conflict', existingTradeId: 'trade-open' },
     });
     mount('after_trade');
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
-    fireEvent.click(screen.getByLabelText('Long'));
+    fillAfterTradeIdentity('eurusd');
     // Save lives on the After Trade flow's last step.
     fireEvent.click(screen.getByRole('button', { name: /^Step 5 of 5: / }));
     fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
@@ -403,8 +421,7 @@ describe('Recording Draft — another tab on the same draft', () => {
 describe('Recording Draft — saving one mode never silently drops the other', () => {
   function afterTradeWorkThenAtEntry() {
     const after = mount('after_trade');
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    fireEvent.click(screen.getByLabelText('Long'));
+    fillAfterTradeIdentity('xauusd');
     fireEvent.change(document.getElementById('after-finalPnl')!, { target: { value: '250' } });
     after.unmount();
     mount('at_entry');
@@ -439,8 +456,7 @@ describe('Recording Draft — saving one mode never silently drops the other', (
 
   it('does not ask when the other mode holds no answer of its own', async () => {
     const after = mount('after_trade');
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    fireEvent.click(screen.getByLabelText('Long'));
+    fillAfterTradeIdentity('xauusd');
     after.unmount();
     mount('at_entry');
     fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
