@@ -113,6 +113,7 @@ import { TradeRecordingModeChange } from './trade-recording-mode-change';
 import { groupEmotionCatalog } from './trade-recording-primitives';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
+import { TradeSymbolPicker } from './trade-symbol-picker';
 import { TradeTimeWheel } from './trade-time-wheel';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
@@ -916,11 +917,6 @@ export function TradeAfterTradeForm({
     maxDate: todayDate,
   });
 
-  // What this browser has seen the trader trade, narrowed by what is typed.
-  const symbolQuery = draft.symbol.trim().toUpperCase();
-  const matchingRecents = symbolFavorites.recents.filter(
-    (symbol) => symbolQuery === '' || symbol.includes(symbolQuery),
-  );
   const outcomeNotice = validation.notices.find(
     (notice) => notice.kind === 'outcome_contradicts_pnl',
   );
@@ -2169,36 +2165,32 @@ export function TradeAfterTradeForm({
         returnFocusRef={conceptRows.symbol}
         footer={editorDone}
       >
-        <div className="flex min-w-0 flex-col gap-4">
-          <TextField
+        <div className="flex min-w-0 flex-col gap-3">
+          <TradeSymbolPicker
             id="after-symbol"
-            label={c('symbol.label')}
             value={draft.symbol}
             onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
-            placeholder={c('symbol.placeholder')}
-            autoCapitalize="characters"
-            error={errorText('symbol')}
+            favorites={symbolFavorites.favorites}
+            recents={symbolFavorites.recents}
+            workspaceSymbols={options.symbolHistory}
+            onToggleFavorite={symbolFavorites.toggle}
+            labels={{
+              searchLabel: c('symbol.label'),
+              searchPlaceholder: a('trade.symbolSearch'),
+              favorites: a('trade.symbolFavorites'),
+              recent: c('symbol.recent'),
+              workspace: a('trade.symbolWorkspace'),
+              addCustom: a('trade.symbolAddCustom'),
+              addTyped: (symbol) => a('trade.symbolAddTyped', { symbol }),
+              noMatches: a('trade.symbolNoMatch'),
+              empty: a('trade.symbolEmpty'),
+              favoriteOn: (symbol) => a('trade.symbolFavoriteOn', { symbol }),
+              favoriteOff: (symbol) => a('trade.symbolFavoriteOff', { symbol }),
+              selected: a('trade.symbolSelected'),
+            }}
           />
-          {symbolFavorites.recents.length === 0 ? null : (
-            <div className="flex min-w-0 flex-col gap-2" data-symbol-recents="">
-              <p className="text-foreground text-sm font-medium">{c('symbol.recent')}</p>
-              {matchingRecents.length === 0 ? (
-                <Helper>{a('trade.symbolNoMatch')}</Helper>
-              ) : (
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  {matchingRecents.map((symbol) => (
-                    <Chip
-                      key={symbol}
-                      size="lg"
-                      selected={draft.symbol.trim().toUpperCase() === symbol}
-                      onClick={() => apply((current) => ({ ...current, symbol }))}
-                    >
-                      {symbol}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-            </div>
+          {errorText('symbol') === undefined ? null : (
+            <FieldError id="after-symbol-error">{errorText('symbol')}</FieldError>
           )}
         </div>
       </TradeAdaptiveOverlay>

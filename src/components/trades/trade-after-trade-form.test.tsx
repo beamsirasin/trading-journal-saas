@@ -54,6 +54,7 @@ vi.mock('@/server/actions/trades', () => ({
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  symbolHistory: [],
   exitPlans: [],
   emotionCatalog: [
     { key: 'calm', label: 'Calm' },
@@ -69,6 +70,15 @@ const options = {
   ],
   strategies: [],
 } as const satisfies TradeCreateOptions;
+
+/** Symbols this workspace has already recorded Trades against. */
+const withSymbolHistory = {
+  ...options,
+  symbolHistory: ['XAUUSD', 'NAS100', 'US30.cash'],
+} as const satisfies TradeCreateOptions;
+
+/** Escapes a symbol for use inside an accessible-name RegExp. */
+const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A Strategy with a default Exit Plan: After Trade must never inherit it. */
 const withStrategy = {
@@ -636,7 +646,92 @@ describe('Step 1 — read first, edit on demand', () => {
     });
   });
 
-  it('offers recent symbols inside the symbol editor and filters them by what is typed', async () => {
+  it('lists what this workspace has traded, and filters it as you type', () => {
+    renderForm(withSymbolHistory);
+    const symbol = openConcept('Symbol');
+    // Every recorded symbol is a row, under the section the data supports.
+    for (const name of ['XAUUSD', 'NAS100', 'US30.cash']) {
+      expect(symbol.getByRole('option', { name: new RegExp(`^${escape(name)}`) })).toBeVisible();
+    }
+    expect(symbol.getByText('Traded in this workspace')).toBeInTheDocument();
+
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'nas' } });
+    expect(symbol.queryByRole('option', { name: /^XAUUSD/ })).toBeNull();
+    expect(symbol.getByRole('option', { name: /^NAS100/ })).toBeVisible();
+  });
+
+  it('records a listed symbol on one press, exactly as it is written', () => {
+    renderForm(withSymbolHistory);
+    const symbol = openConcept('Symbol');
+    fireEvent.click(symbol.getByRole('option', { name: /^US30\.cash/ }));
+    // Chosen, and the row says so rather than leaving it to colour.
+    expect(symbol.getByRole('option', { name: /^US30\.cash/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    closeConcept();
+    expect(conceptValue('symbol')).toBe('US30.cash');
+    expect(conceptRow('symbol')).toHaveTextContent('US30.CASH');
+  });
+
+  /*
+    A SYMBOL NOBODY HAS TRADED IS THE NORMAL PATH FOR A NEW INSTRUMENT, and
+    there is no catalogue to add it to — free text is the product's answer, so
+    the picker offers what was typed rather than refusing it.
+  */
+  it('offers what was typed when nothing matches, and saves it', async () => {
+    renderForm(withSymbolHistory);
+    const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '  ger40.cash  ' } });
+    // Whitespace is not part of the symbol.
+    const add = symbol.getByRole('button', { name: /^Add/ });
+    expect(add).toHaveTextContent('ger40.cash');
+    fireEvent.click(add);
+    expect(symbol.getByLabelText('Symbol')).toHaveValue('ger40.cash');
+    closeConcept();
+
+    const direction = openConcept('Direction');
+    fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
+    closeConcept();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    // The payload's own normalisation is unchanged.
+    expect(payload()).toMatchObject({ symbol: 'GER40.CASH' });
+  });
+
+  it('never offers to add a symbol the list already holds, and never an empty one', () => {
+    renderForm(withSymbolHistory);
+    const symbol = openConcept('Symbol');
+    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'nas100' } });
+    // An exact match is the row, not a new symbol — case is not a difference.
+    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '   ' } });
+    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
+  });
+
+  it('walks the list with arrows and takes one with Enter', () => {
+    renderForm(withSymbolHistory);
+    const symbol = openConcept('Symbol');
+    const search = symbol.getByLabelText('Symbol');
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    expect(search).toHaveAttribute('aria-activedescendant');
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(search).toHaveValue('NAS100');
+  });
+
+  it('stars a symbol from its row, and shows starred ones first', () => {
+    renderForm(withSymbolHistory);
+    const symbol = openConcept('Symbol');
+    fireEvent.click(symbol.getByRole('button', { name: 'Star NAS100' }));
+    expect(symbol.getByRole('button', { name: 'Remove NAS100 from starred' })).toBeInTheDocument();
+    expect(symbol.getByText('Starred')).toBeInTheDocument();
+    // One row per symbol: starring does not duplicate it into two sections.
+    expect(symbol.getAllByRole('option', { name: /^NAS100/ })).toHaveLength(1);
+  });
+
+  it('keeps a recent symbol once a Trade has been saved with it', async () => {
     renderForm();
     fillIdentity();
     save();
@@ -645,14 +740,8 @@ describe('Step 1 — read first, edit on demand', () => {
     cleanup();
     renderForm();
     const symbol = openConcept('Symbol');
-    expect(symbol.getByRole('button', { name: 'XAUUSD' })).toBeInTheDocument();
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'eur' } });
-    expect(symbol.queryByRole('button', { name: 'XAUUSD' })).toBeNull();
-    expect(symbol.getByText(/No recent symbol matches/)).toBeInTheDocument();
-    // A recent is applied only when it is pressed.
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xau' } });
-    fireEvent.click(symbol.getByRole('button', { name: 'XAUUSD' }));
-    expect(symbol.getByLabelText('Symbol')).toHaveValue('XAUUSD');
+    expect(symbol.getByText('Recent')).toBeInTheDocument();
+    expect(symbol.getByRole('option', { name: /^XAUUSD/ })).toBeVisible();
   });
 });
 

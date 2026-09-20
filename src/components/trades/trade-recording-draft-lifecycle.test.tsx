@@ -38,6 +38,7 @@ const copy = en.trades.create.draft;
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  symbolHistory: [],
   exitPlans: [],
   emotionCatalog: [{ key: 'calm', label: 'Calm' }],
   tradingAccounts: [

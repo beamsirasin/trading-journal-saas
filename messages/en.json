@@ -2527,13 +2527,22 @@
             "done": "Done",
             "close": "Close",
             "accountEditor": "Choose the trading account this trade belongs to.",
-            "symbolEditor": "Type the symbol you traded, or pick one you used recently.",
-            "symbolNoMatch": "No recent symbol matches what you typed. Keep typing to record it.",
+            "symbolEditor": "Search what you have traded, or type a new symbol.",
+            "symbolNoMatch": "No symbol you have used matches. Add it above.",
             "directionEditor": "Long if you bought to open, short if you sold to open.",
             "previousMonth": "Previous month",
             "nextMonth": "Next month",
             "stampEditor": "Date and time are optional. If you record one, record both.",
-            "monthNav": "Change month"
+            "monthNav": "Change month",
+            "symbolSearch": "Search symbols like XAUUSD, NAS100, BTCUSDT",
+            "symbolFavorites": "Starred",
+            "symbolWorkspace": "Traded in this workspace",
+            "symbolAddCustom": "Type a symbol to add it",
+            "symbolAddTyped": "Add “{symbol}”",
+            "symbolEmpty": "No symbols yet. Type the one you traded.",
+            "symbolFavoriteOn": "Star {symbol}",
+            "symbolFavoriteOff": "Remove {symbol} from starred",
+            "symbolSelected": "Selected"
           }
         }
       },

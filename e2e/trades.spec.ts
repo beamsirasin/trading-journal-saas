@@ -689,7 +689,8 @@ function afterTradeConcept(page: Page, concept: string) {
 
 async function afterTradeIdentity(page: Page, symbol: string, direction: 'Long' | 'Short') {
   const symbolEditor = await afterTradeEditor(page, 'Symbol');
-  await symbolEditor.getByRole('textbox', { name: 'Symbol' }).fill(symbol);
+  // The Symbol editor is a picker: its search field is the free-text input.
+  await symbolEditor.getByRole('combobox', { name: 'Symbol' }).fill(symbol);
   await afterTradeEditorDone(page);
   const directionEditor = await afterTradeEditor(page, 'Direction');
   await chooseRadio(directionEditor, direction);

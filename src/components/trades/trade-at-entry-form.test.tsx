@@ -50,6 +50,7 @@ const TRAIL = '018f0000-0000-7000-8000-000000000031';
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  symbolHistory: [],
   emotionCatalog: [
     { key: 'calm', label: 'Calm' },
     { key: 'fomo', label: 'FOMO' },

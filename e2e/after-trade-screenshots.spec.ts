@@ -154,7 +154,7 @@ test.describe('After Trade step-flow captures', () => {
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       // Reload recovery reaches inside the editor too, not only the row.
       const recovered = await openConcept(page, 'Symbol');
-      await expect(recovered.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
+      await expect(recovered.getByRole('combobox', { name: 'Symbol' })).toHaveValue('XAUUSD');
       await closeConcept(page);
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       await expect(page.locator('#after-finalPnl')).toHaveValue('400');
@@ -241,7 +241,7 @@ async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') 
 /** A meaningful closed trade: every step holds real answers. */
 async function fillEverything(page: Page) {
   const symbol = await openConcept(page, 'Symbol');
-  await symbol.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
+  await symbol.getByRole('combobox', { name: 'Symbol' }).fill('XAUUSD');
   await closeConcept(page);
   await openConcept(page, 'Direction');
   await clickChoice(page, 'Long');

@@ -2527,13 +2527,22 @@
             "done": "เสร็จ",
             "close": "ปิด",
             "accountEditor": "เลือกบัญชีเทรดที่เทรดนี้อยู่",
-            "symbolEditor": "พิมพ์สัญลักษณ์ที่คุณเทรด หรือเลือกจากรายการที่ใช้ล่าสุด",
-            "symbolNoMatch": "ไม่มีสัญลักษณ์ล่าสุดที่ตรงกับที่พิมพ์ พิมพ์ต่อเพื่อบันทึกสัญลักษณ์นี้",
+            "symbolEditor": "ค้นหาสัญลักษณ์ที่เคยเทรด หรือพิมพ์สัญลักษณ์ใหม่",
+            "symbolNoMatch": "ไม่มีสัญลักษณ์ที่เคยใช้ตรงกัน เพิ่มได้จากด้านบน",
             "directionEditor": "Long หากเปิดสถานะด้วยการซื้อ Short หากเปิดสถานะด้วยการขาย",
             "previousMonth": "เดือนก่อนหน้า",
             "nextMonth": "เดือนถัดไป",
             "stampEditor": "วันที่และเวลาไม่บังคับ แต่ถ้าบันทึกอย่างหนึ่ง ต้องบันทึกทั้งคู่",
-            "monthNav": "เปลี่ยนเดือน"
+            "monthNav": "เปลี่ยนเดือน",
+            "symbolSearch": "ค้นหา เช่น XAUUSD, NAS100, BTCUSDT",
+            "symbolFavorites": "ติดดาว",
+            "symbolWorkspace": "เคยเทรดใน Workspace นี้",
+            "symbolAddCustom": "พิมพ์สัญลักษณ์เพื่อเพิ่ม",
+            "symbolAddTyped": "เพิ่ม “{symbol}”",
+            "symbolEmpty": "ยังไม่มีสัญลักษณ์ พิมพ์สัญลักษณ์ที่คุณเทรด",
+            "symbolFavoriteOn": "ติดดาว {symbol}",
+            "symbolFavoriteOff": "เอา {symbol} ออกจากรายการติดดาว",
+            "symbolSelected": "เลือกอยู่"
           }
         }
       },
