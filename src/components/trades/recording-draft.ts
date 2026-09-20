@@ -39,6 +39,7 @@ import { z } from 'zod';
 import {
   createAfterTradeDraft,
   hasAfterTradeWork,
+  isCompleteEntryTimestamp,
   meaningfulExit,
   type AfterTradeDraft,
   type RecalledConditionStatus,
@@ -236,7 +237,13 @@ export function sharedFromAfterTrade(draft: AfterTradeDraft): SharedRecordingVal
     tradingAccountId: draft.tradingAccountId,
     symbol: draft.symbol,
     direction: draft.direction,
-    enteredAt: draft.enteredAt,
+    /*
+      HALF A TIMESTAMP IS NOT SHARED. After Trade may rest on a date whose time
+      is not recorded yet; At Entry has one datetime control and no use for
+      that, so only a complete instant crosses. The date itself stays in the
+      After Trade draft, which persists and recovers it like any other answer.
+    */
+    enteredAt: isCompleteEntryTimestamp(draft.enteredAt) ? draft.enteredAt : '',
     riskAtEntry: draft.risk,
     classification: {
       strategy: classification.strategy,

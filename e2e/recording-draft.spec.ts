@@ -124,13 +124,25 @@ test.describe('Add Trade Recording Draft', () => {
       await expect(resume).toContainText('XAUUSD · last in At Entry');
       await expectNoHorizontalOverflow(page);
 
-      // After Trade opens the same draft: explicit shared values cross.
+      /*
+        After Trade opens the same draft: explicit shared values cross. Its
+        Step 1 shows answers rather than inputs, so the rows are what a reader
+        sees and what this reads — each carries the value it holds.
+      */
       await page.goto('/en/app/trades/new?timing=after_trade');
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
-      await expect(page.getByRole('radio', { name: 'Long', exact: true })).toBeChecked();
+      await expect(page.locator('[data-concept="symbol"]')).toHaveAttribute('data-value', 'XAUUSD');
+      await expect(page.locator('[data-concept="direction"]')).toHaveAttribute(
+        'data-value',
+        'long',
+      );
       await expect(page.locator('#after-risk')).toHaveValue('100');
-      // At Entry's untouched "now" is not a remembered entry time.
-      await expect(page.locator('#after-enteredAt')).toHaveValue('');
+      // At Entry's untouched "now" is not a remembered entry date or time.
+      await expect(page.locator('[data-concept="enteredAt"]')).toHaveAttribute('data-value', '');
+      await expect(page.locator('[data-concept="enteredTime"]')).toHaveAttribute('data-value', '');
+      await expect(page.locator('[data-concept="enteredTime"]')).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
       await expect(page.getByText(RECOVERED)).toBeVisible();
 
       // Browser Back returns to At Entry with its own section intact.

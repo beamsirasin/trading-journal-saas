@@ -131,7 +131,7 @@ function currentStep(): string | null {
  * the open editor — its own title labels it, so queries stay inside it.
  */
 function openConcept(
-  field: 'Trading Account' | 'Symbol' | 'Direction' | 'Entry time',
+  field: 'Trading Account' | 'Symbol' | 'Direction' | 'Entry date' | 'Entry time',
 ): ReturnType<typeof within> {
   // Only travel if we are elsewhere: opening a step deliberately focuses its
   // heading, which is not what a trader already on Step 1 would trigger.
@@ -151,6 +151,22 @@ function conceptRow(concept: string): HTMLElement {
 
 function conceptValue(concept: string): string {
   return conceptRow(concept).getAttribute('data-value') ?? '';
+}
+
+/**
+ * Pick a day in the entry-date calendar. The grid is the Dashboard's own, so
+ * its cells are addressed the way that picker's tests address them.
+ */
+function pickEntryDate(date: string) {
+  openConcept('Entry date');
+  fireEvent.click(screen.getByRole('dialog').querySelector(`[data-range-date="${date}"]`)!);
+  closeConcept();
+}
+
+function setEntryTime(time: string) {
+  const editor = openConcept('Entry time');
+  fireEvent.change(editor.getByLabelText('Entry time'), { target: { value: time } });
+  closeConcept();
 }
 
 function fillIdentity() {
@@ -295,8 +311,10 @@ describe('After Trade — the moment and its steps', () => {
     renderForm();
     // Blank is "Not recorded", never a zero and never a preselected now.
     expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
-    expect(openConcept('Entry time').getByLabelText('Entry time')).toHaveValue('');
-    closeConcept();
+    expect(conceptValue('enteredAt')).toBe('');
+    // The time cannot be answered before the date it would belong to.
+    expect(conceptRow('enteredTime')).toHaveTextContent('Choose an entry date first');
+    expect(conceptRow('enteredTime')).toHaveAttribute('aria-disabled', 'true');
     goTo('result');
     expect(screen.getByLabelText('Final exit time')).toHaveValue('');
     for (const name of ['Win', 'BE', 'Loss']) {
@@ -442,6 +460,8 @@ describe('Step 1 — read first, edit on demand', () => {
     expect(within(trade).queryByLabelText('Symbol')).toBeNull();
     expect(within(trade).queryByRole('radio', { name: 'Long' })).toBeNull();
     expect(within(trade).queryByLabelText('Entry time')).toBeNull();
+    expect(within(trade).queryByTestId('entry-date-picker')).toBeNull();
+    expect(trade.querySelector('[data-entry-date-picker]')).toBeNull();
     expect(within(trade).queryByLabelText('Trading Account')).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -459,13 +479,15 @@ describe('Step 1 — read first, edit on demand', () => {
     expect(conceptRow('direction')).toHaveTextContent('Short');
     expect(conceptValue('direction')).toBe('short');
 
-    const entered = openConcept('Entry time');
-    fireEvent.change(entered.getByLabelText('Entry time'), {
-      target: { value: '2026-09-18T09:30' },
-    });
-    closeConcept();
-    expect(conceptValue('enteredAt')).toBe('2026-09-18T09:30');
+    // The timestamp is asked as two rows, so each row holds its own half.
+    pickEntryDate('2026-09-18');
+    expect(conceptValue('enteredAt')).toBe('2026-09-18');
     expect(conceptRow('enteredAt')).not.toHaveTextContent('Not recorded');
+    expect(conceptRow('enteredTime')).not.toHaveAttribute('aria-disabled');
+
+    setEntryTime('09:30');
+    expect(conceptValue('enteredTime')).toBe('09:30');
+    expect(conceptRow('enteredTime')).toHaveTextContent('09:30');
   });
 
   it('keeps what was entered when an editor is closed without Done', () => {
@@ -487,17 +509,27 @@ describe('Step 1 — read first, edit on demand', () => {
     await waitFor(() => expect(conceptRow('direction')).toHaveFocus());
   });
 
-  it('clears an entry time from its editor without touching anything else', () => {
+  it('clears the entry time on its own, and the date takes the whole timestamp with it', () => {
     renderForm();
     fillIdentity();
-    const entered = openConcept('Entry time');
-    fireEvent.change(entered.getByLabelText('Entry time'), {
-      target: { value: '2026-09-18T09:30' },
-    });
-    fireEvent.click(entered.getByRole('button', { name: /^Clear time/ }));
+    pickEntryDate('2026-09-18');
+    setEntryTime('09:30');
+
+    // Clearing the time leaves the day the trader recorded standing.
+    const time = openConcept('Entry time');
+    fireEvent.click(time.getByRole('button', { name: /^Clear time/ }));
+    closeConcept();
+    expect(conceptValue('enteredAt')).toBe('2026-09-18');
+    expect(conceptValue('enteredTime')).toBe('');
+    expect(conceptRow('enteredTime')).toHaveTextContent('Not recorded');
+
+    // Clearing the date removes the timestamp: a time with no day is no answer.
+    const date = openConcept('Entry date');
+    fireEvent.click(date.getByRole('button', { name: /^Clear date/ }));
     closeConcept();
     expect(conceptValue('enteredAt')).toBe('');
     expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
+    expect(conceptRow('enteredTime')).toHaveAttribute('aria-disabled', 'true');
     expect(conceptValue('symbol')).toBe('xauusd');
   });
 
@@ -543,6 +575,122 @@ describe('Step 1 — read first, edit on demand', () => {
     fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xau' } });
     fireEvent.click(symbol.getByRole('button', { name: 'XAUUSD' }));
     expect(symbol.getByLabelText('Symbol')).toHaveValue('XAUUSD');
+  });
+});
+
+describe('Step 1 — entry date and entry time', () => {
+  it('sends one instant, composed from the two answers', async () => {
+    renderForm();
+    fillIdentity();
+    pickEntryDate('2026-09-18');
+    setEntryTime('09:30');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    // Asia/Bangkok is UTC+7: the wall clock the trader chose, stored as UTC.
+    expect(payload()).toMatchObject({ enteredAt: '2026-09-18T02:30:00.000Z' });
+  });
+
+  it('still saves with neither half recorded — both stay optional', async () => {
+    renderForm();
+    fillIdentity();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ enteredAt: null });
+  });
+
+  /*
+    A DATE WITH NO TIME IS NEITHER SAVED NOR DISCARDED. A Trade carries one
+    `entered_at` instant, so there is nowhere to put a bare date — and
+    fabricating midnight or dropping the day the trader chose are both worse
+    than asking. Save stops on the TIME row, which is the half that is missing.
+  */
+  it('stops Save on the time when a date was chosen without one, keeping the date', async () => {
+    renderForm();
+    fillIdentity();
+    pickEntryDate('2026-09-18');
+    save();
+    expect(
+      await screen.findByText('Add the time you entered, or clear the entry date.'),
+    ).toBeInTheDocument();
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+    expect(currentStep()).toBe('trade');
+    await waitFor(() => expect(conceptRow('enteredTime')).toHaveFocus());
+    // The date is still the trader's answer, and is not marked as the problem.
+    expect(conceptValue('enteredAt')).toBe('2026-09-18');
+    expect(conceptRow('enteredAt')).not.toHaveAttribute('data-invalid');
+
+    // Either way out works, and both leave a saveable trade.
+    setEntryTime('09:30');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+  });
+
+  it('clearing the date is the other way out of that block', async () => {
+    renderForm();
+    fillIdentity();
+    pickEntryDate('2026-09-18');
+    save();
+    expect(
+      await screen.findByText('Add the time you entered, or clear the entry date.'),
+    ).toBeInTheDocument();
+
+    const date = openConcept('Entry date');
+    fireEvent.click(date.getByRole('button', { name: /^Clear date/ }));
+    closeConcept();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ enteredAt: null });
+  });
+
+  it('reads back as the date plus what is missing on the review step', () => {
+    renderForm();
+    fillIdentity();
+    pickEntryDate('2026-09-18');
+    goTo('save');
+    const review = document.querySelector('[data-trade-summary]')!;
+    expect(review).toHaveTextContent('Time not recorded');
+    goTo('trade');
+    setEntryTime('09:30');
+    goTo('save');
+    expect(document.querySelector('[data-trade-summary]')).not.toHaveTextContent(
+      'Time not recorded',
+    );
+  });
+
+  it('keeps both halves through Back, Next and a reload', () => {
+    renderForm();
+    fillIdentity();
+    pickEntryDate('2026-09-18');
+    setEntryTime('09:30');
+    goTo('plan');
+    goTo('trade');
+    expect(conceptValue('enteredAt')).toBe('2026-09-18');
+    expect(conceptValue('enteredTime')).toBe('09:30');
+
+    // A reload recovers the Recording Draft from this browser.
+    cleanup();
+    renderForm();
+    expect(conceptValue('enteredAt')).toBe('2026-09-18');
+    expect(conceptValue('enteredTime')).toBe('09:30');
+  });
+
+  it('recovers a half-finished timestamp too, and still refuses to guess a time', () => {
+    renderForm();
+    fillIdentity();
+    pickEntryDate('2026-09-18');
+    cleanup();
+    renderForm();
+    expect(conceptValue('enteredAt')).toBe('2026-09-18');
+    expect(conceptValue('enteredTime')).toBe('');
+    expect(conceptRow('enteredTime')).toHaveTextContent('Not recorded');
+  });
+
+  it('cannot open the time editor before a date exists', () => {
+    renderForm();
+    const row = conceptRow('enteredTime');
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(row);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 

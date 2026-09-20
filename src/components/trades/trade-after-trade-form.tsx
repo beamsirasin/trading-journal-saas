@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
   History,
@@ -21,12 +22,20 @@ import {
   type RefObject,
 } from 'react';
 
+import { shiftCalendarMonth } from '@/lib/dashboard/calendar-grid';
+import { buildDateRangePickerMonth } from '@/lib/dashboard/date-range-calendar';
+import {
+  formatCalendarDateLabel,
+  formatCalendarMonthLabel,
+} from '@/lib/dashboard/date-range-presentation';
 import { generateId } from '@/lib/identifiers';
+import { calendarDateIn } from '@/lib/time';
 import { CONFIDENCE_LEVELS, confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
 import { HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
+import { DateRangeMonthGrid } from '@/components/dashboard/toolbar/date-range-month-grid';
 import { Button } from '@/components/ui/button';
 import { useRouter } from '@/i18n/navigation';
 
@@ -45,6 +54,7 @@ import {
   canAddExit,
   canDeselectEmotion,
   createAfterTradeDraft,
+  entryTimestampParts,
   exitField,
   meaningfulExit,
   removeEmotionsAnswer,
@@ -57,6 +67,8 @@ import {
   setActualRiskAnswer,
   setCompleteness,
   setConfidence,
+  setEntryDate,
+  setEntryTime,
   setFinalPnl,
   setOutcome,
   setTargetState,
@@ -109,7 +121,29 @@ const NONE = '__none';
  * needs. The key is the draft field, so a blocked Save maps straight onto the
  * row that holds the problem.
  */
-type TradeConcept = 'tradingAccountId' | 'symbol' | 'direction' | 'enteredAt';
+type TradeConcept = 'tradingAccountId' | 'symbol' | 'direction' | 'enteredAt' | 'enteredTime';
+
+/** The trader's calendar date, in THEIR zone — never the browser's (CLAUDE.md §7). */
+function todayIn(now: Date, timezone: string): string | null {
+  const resolved = calendarDateIn(now, timezone);
+  return resolved.ok ? resolved.value : null;
+}
+
+/**
+ * The month the entry-date calendar opens on: the recorded date's, else the
+ * trader's current month, else the epoch — never the browser's month, which
+ * may be a different day from the trader's own (CLAUDE.md §7).
+ */
+function monthOf(
+  date: string,
+  todayDate: string | null,
+): { readonly year: number; readonly month: number } {
+  const anchor = date !== '' ? date : (todayDate ?? '1970-01-01');
+  return {
+    year: Number.parseInt(anchor.slice(0, 4), 10),
+    month: Number.parseInt(anchor.slice(5, 7), 10),
+  };
+}
 
 /** The launcher row for a Step 1 concept — what a failed Save focuses. */
 function conceptRowId(concept: TradeConcept): string {
@@ -182,7 +216,7 @@ function useIsWideViewport(): boolean {
  * launcher row itself: it names the concept, carries the error, and opens the
  * control in one press.
  */
-function fieldTargetId(field: AfterTradeField): string {
+function fieldTargetId(field: AfterTradeField, code?: AfterTradeErrorCode): string {
   if (field.startsWith('exit:')) {
     const [, id, part] = field.split(':');
     return `after-exit-${id}-${part}`;
@@ -191,8 +225,16 @@ function fieldTargetId(field: AfterTradeField): string {
     case 'tradingAccountId':
     case 'symbol':
     case 'direction':
-    case 'enteredAt':
       return conceptRowId(field);
+    case 'enteredAt':
+      /*
+        The entry timestamp is asked as two rows, so a failed Save has to land
+        on the half that is wrong: a date with no time is the TIME row's
+        problem, and the date beside it is a perfectly good answer.
+      */
+      return code === 'entry_time_required'
+        ? conceptRowId('enteredTime')
+        : conceptRowId('enteredAt');
     case 'actualRisk':
       return 'after-actual-risk-amount';
     default:
@@ -348,11 +390,21 @@ export function TradeAfterTradeForm({
     work (UX Rules §5.2, §17.4).
   */
   const [editor, setEditor] = useState<TradeConcept | null>(null);
+  /*
+    WHICH MONTH THE ENTRY-DATE CALENDAR SHOWS — view state, like the open
+    editor. It opens on the recorded date's month, or on the trader's own
+    current month, and every reopen re-anchors it, so paging never drifts away
+    from the answer it is meant to be adjusting.
+  */
+  const [pickerMonth, setPickerMonth] = useState(() =>
+    monthOf(entryTimestampParts(draft.enteredAt).date, todayIn(new Date(), timezone)),
+  );
   const conceptRows: Readonly<Record<TradeConcept, RefObject<HTMLButtonElement | null>>> = {
     tradingAccountId: useRef<HTMLButtonElement>(null),
     symbol: useRef<HTMLButtonElement>(null),
     direction: useRef<HTMLButtonElement>(null),
     enteredAt: useRef<HTMLButtonElement>(null),
+    enteredTime: useRef<HTMLButtonElement>(null),
   };
   const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
   const [emotionsOpen, setEmotionsOpen] = useState<Readonly<Record<EmotionPhase, boolean>>>({
@@ -455,6 +507,8 @@ export function TradeAfterTradeForm({
         return c('errors.mustBePositive');
       case 'invalid_datetime':
         return a('errors.invalidDatetime');
+      case 'entry_time_required':
+        return a('errors.entryTimeRequired');
       case 'future_time':
         return a('errors.futureTime');
       case 'exit_before_entry':
@@ -537,14 +591,14 @@ export function TradeAfterTradeForm({
   }
 
   /** Open the earliest step holding a blocking error, and focus its control. */
-  function focusFirstError(fields: readonly AfterTradeField[]) {
+  function focusFirstError(fields: readonly AfterTradeField[], errors: AfterTradeErrors) {
     if (fields.length === 0) return;
     const index = Math.min(...fields.map(fieldStep));
     showStep(
       index,
       fields
         .filter((field) => fieldStep(field) === index)
-        .map((field) => () => document.getElementById(fieldTargetId(field))),
+        .map((field) => () => document.getElementById(fieldTargetId(field, errors[field]))),
     );
   }
 
@@ -565,7 +619,7 @@ export function TradeAfterTradeForm({
       setServerMessage(null);
       const sections = new Set(currentReadiness.fields.map(afterTradeFieldSection));
       if (sections.has('exits')) setExitsOpen(true);
-      focusFirstError(currentReadiness.fields);
+      focusFirstError(currentReadiness.fields, currentValidation.errors);
       return;
     }
     // A chosen answer whose source went away waits for the trader's choice.
@@ -632,7 +686,7 @@ export function TradeAfterTradeForm({
       }
       setServerErrors(mapped);
       setServerMessage(t(`errors.${result.error.code}`));
-      focusFirstError(Object.keys(mapped) as AfterTradeField[]);
+      focusFirstError(Object.keys(mapped) as AfterTradeField[], mapped);
       return;
     }
     symbolFavorites.recordUse(payload.symbol);
@@ -793,6 +847,39 @@ export function TradeAfterTradeForm({
       </Button>
     </div>
   );
+  /*
+    THE ENTRY TIMESTAMP, READ AS ITS TWO HALVES. One stored value still; these
+    only say how it is shown and which row an error belongs beside. A date with
+    no time is the time's problem, not the date's — the date is a perfectly
+    good answer and the row must not mark it wrong.
+  */
+  const entryParts = entryTimestampParts(draft.enteredAt);
+  const entryDateLabel =
+    entryParts.date === ''
+      ? null
+      : (formatCalendarDateLabel(entryParts.date, locale) ?? entryParts.date);
+  const entryError = errorText('enteredAt');
+  const missingEntryTime = validation.errors.enteredAt === 'entry_time_required';
+  const dateError = missingEntryTime ? undefined : entryError;
+  const timeError = missingEntryTime ? entryError : undefined;
+
+  /*
+    THE MONTH THE CALENDAR OPENS ON. The recorded date's month, or the trader's
+    current month when nothing is recorded — resolved in THEIR timezone, never
+    the browser's or the server's (CLAUDE.md §7). Paging is view state and is
+    reset every time the editor opens, so it never drifts away from the answer.
+  */
+  const todayDate = todayIn(now, timezone);
+  const pickerGrid = buildDateRangePickerMonth({
+    year: pickerMonth.year,
+    month: pickerMonth.month,
+    // The range collapsed to one day: the builder reports it as `single`.
+    draft: { datePreset: 'custom', from: entryParts.date, to: entryParts.date },
+    todayDate,
+    // An entry cannot be in the future, which validation already refuses.
+    maxDate: todayDate,
+  });
+
   // What this browser has seen the trader trade, narrowed by what is typed.
   const symbolQuery = draft.symbol.trim().toUpperCase();
   const matchingRecents = symbolFavorites.recents.filter(
@@ -1253,21 +1340,48 @@ export function TradeAfterTradeForm({
                 onOpen={() => setEditor('direction')}
               />
               {/*
-                BLANK IS NOT UNANSWERED HERE. An entry time nobody recorded is
-                "Not recorded" (UX Rules §4), and the final exit time belongs to
-                how the trade ended — Step 2.
+                WHEN, ASKED AS THE TWO THINGS IT IS. A trader recalling a closed
+                trade almost always knows the day and often has to think about
+                the minute, so the day gets the calendar and the minute gets its
+                own small editor. Blank is "Not recorded", never unanswered and
+                never a zero (UX Rules §4); the final exit time belongs to how
+                the trade ended, and stays on Step 2.
               */}
               <ConceptRow
                 concept="enteredAt"
                 rowRef={conceptRows.enteredAt}
-                label={a('times.entry')}
+                label={a('times.entryDate')}
                 marker={<OptionalTag />}
-                value={localTime(draft.enteredAt)}
+                value={entryDateLabel}
                 placeholder={a('times.notRecorded')}
-                raw={draft.enteredAt}
-                error={errorText('enteredAt')}
-                editLabel={a('trade.editAria', { field: a('times.entry') })}
-                onOpen={() => setEditor('enteredAt')}
+                raw={entryParts.date}
+                error={errorText('enteredAt') === undefined ? undefined : dateError}
+                editLabel={a('trade.editAria', { field: a('times.entryDate') })}
+                onOpen={() => {
+                  setPickerMonth(monthOf(entryParts.date, todayDate));
+                  setEditor('enteredAt');
+                }}
+              />
+              {/*
+                A TIME WITH NO DATE IS NOT AN ANSWER, so until a date is chosen
+                this row says what it needs instead of opening on nothing. It
+                stays focusable and keeps saying why — a dead control that
+                explains nothing is worse than one that does.
+              */}
+              <ConceptRow
+                concept="enteredTime"
+                rowRef={conceptRows.enteredTime}
+                label={a('times.entryTime')}
+                marker={<OptionalTag />}
+                value={entryParts.time === '' ? null : entryParts.time}
+                placeholder={
+                  entryParts.date === '' ? a('times.entryTimeNeedsDate') : a('times.notRecorded')
+                }
+                raw={entryParts.time}
+                unavailable={entryParts.date === ''}
+                error={timeError}
+                editLabel={a('trade.editAria', { field: a('times.entryTime') })}
+                onOpen={() => setEditor('enteredTime')}
               />
             </div>,
           )}
@@ -1752,7 +1866,20 @@ export function TradeAfterTradeForm({
                   <dl className="divide-border flex min-w-0 flex-col divide-y">
                     {(['trade', 'result', 'plan', 'context'] as const).map((key) => {
                       const errors = stepErrorCounts[STEP_INDEX[key]] ?? 0;
-                      const entered = key === 'trade' ? localTime(draft.enteredAt) : null;
+                      /*
+                        THE ENTRY TIMESTAMP SAYS HOW MUCH OF IT IS RECORDED.
+                        A date whose time is not recorded reads as the date
+                        plus that fact, never as a date pretending to be an
+                        instant and never as nothing at all.
+                      */
+                      const entered =
+                        key === 'trade'
+                          ? entryParts.date === ''
+                            ? null
+                            : entryParts.time === ''
+                              ? `${entryDateLabel ?? entryParts.date} · ${a('times.entryTimeNotRecorded')}`
+                              : localTime(draft.enteredAt)
+                          : null;
                       const exited = key === 'trade' ? localTime(draft.exitedAt) : null;
                       const times =
                         entered !== null && exited !== null
@@ -2082,26 +2209,130 @@ export function TradeAfterTradeForm({
         />
       </TradeAdaptiveOverlay>
 
+      {/*
+        THE DASHBOARD'S CALENDAR, NOT A SECOND ONE. `DateRangeMonthGrid` and
+        `buildDateRangePickerMonth` are the Dashboard and Trade Log date
+        picker's own grid and month builder, used here with the range collapsed
+        to a single day — `from` and `to` the same date, which that builder
+        already reports as `single`. Two seven-column calendars in one product
+        that disagreed about which column is Sunday, what today looks like or
+        how a selected day reads would be a defect, so there is one.
+      */}
       <TradeAdaptiveOverlay
         open={editor === 'enteredAt'}
         onOpenChange={closeEditorOn}
-        title={a('times.entry')}
-        /* One explanation, not two: the timezone rule is the only thing left to say. */
-        description={a('times.hint', { timezone })}
+        title={a('times.entryDate')}
+        description={a('trade.dateEditor')}
         closeLabel={a('trade.close')}
         size="focused"
         returnFocusRef={conceptRows.enteredAt}
+        footer={
+          <div className="flex min-w-0 flex-wrap-reverse items-center justify-between gap-3">
+            {entryParts.date === '' ? (
+              <span aria-hidden="true" />
+            ) : (
+              <InlineAction
+                ariaLabel={a('times.clearDate')}
+                onClick={() => apply((current) => setEntryDate(current, ''))}
+              >
+                {a('times.clearDate')}
+              </InlineAction>
+            )}
+            <Button type="button" size="lg" className="min-h-12" onClick={() => setEditor(null)}>
+              {a('trade.done')}
+            </Button>
+          </div>
+        }
+      >
+        <div data-entry-date-picker="" className="flex min-w-0 flex-col gap-2">
+          <nav
+            aria-label={a('trade.previousMonth')}
+            className="flex min-w-0 items-center justify-between gap-2"
+          >
+            <MonthStepButton
+              direction="previous"
+              label={a('trade.previousMonth')}
+              onClick={() =>
+                setPickerMonth((current) => shiftCalendarMonth(current.year, current.month, -1))
+              }
+            />
+            <MonthStepButton
+              direction="next"
+              label={a('trade.nextMonth')}
+              onClick={() =>
+                setPickerMonth((current) => shiftCalendarMonth(current.year, current.month, 1))
+              }
+            />
+          </nav>
+          <DateRangeMonthGrid
+            month={pickerGrid}
+            monthLabel={formatCalendarMonthLabel(pickerMonth.year, pickerMonth.month, locale)}
+            onSelect={(date) => apply((current) => setEntryDate(current, date))}
+            dateLocale={locale}
+          />
+        </div>
+      </TradeAdaptiveOverlay>
+
+      <TradeAdaptiveOverlay
+        open={editor === 'enteredTime'}
+        onOpenChange={closeEditorOn}
+        title={a('times.entryTime')}
+        description={a('trade.timeEditor', { timezone })}
+        closeLabel={a('trade.close')}
+        size="focused"
+        returnFocusRef={conceptRows.enteredTime}
         footer={editorDone}
       >
-        <TimeField
-          id="after-enteredAt"
-          label={a('times.entry')}
-          value={draft.enteredAt}
-          error={errorText('enteredAt')}
-          onChange={(enteredAt) => apply((current) => ({ ...current, enteredAt }))}
-        />
+        <div className="flex min-w-0 flex-col gap-3">
+          <TextField
+            id="after-enteredTime"
+            type="time"
+            label={a('times.entryTime')}
+            value={entryParts.time}
+            figure
+            error={timeError}
+            onChange={(time) => apply((current) => setEntryTime(current, time))}
+            labelAside={
+              entryParts.time === '' ? <StateText>{a('times.notRecorded')}</StateText> : null
+            }
+          />
+          {entryParts.time === '' ? null : (
+            <div>
+              <InlineAction
+                ariaLabel={a('times.clearOnlyTime')}
+                onClick={() => apply((current) => setEntryTime(current, ''))}
+              >
+                {a('times.clearOnlyTime')}
+              </InlineAction>
+            </div>
+          )}
+        </div>
       </TradeAdaptiveOverlay>
     </div>
+  );
+}
+
+/** Paging for the entry-date calendar: an icon with a name, never an icon alone. */
+function MonthStepButton({
+  direction,
+  label,
+  onClick,
+}: {
+  direction: 'previous' | 'next';
+  label: string;
+  onClick: () => void;
+}) {
+  const Icon = direction === 'previous' ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      data-month-step={direction}
+      onClick={onClick}
+      className="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring flex size-11 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-2"
+    >
+      <Icon className="size-4" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -2121,6 +2352,7 @@ function ConceptRow({
   placeholder,
   raw,
   error,
+  unavailable = false,
   editLabel,
   onOpen,
   ...rest
@@ -2138,6 +2370,12 @@ function ConceptRow({
   placeholder: string;
   raw: string;
   error?: string | undefined;
+  /**
+   * The concept cannot be answered yet because another one has not been.
+   * `aria-disabled` rather than `disabled`: the row stays focusable and keeps
+   * saying what it is waiting for, which a dead control cannot.
+   */
+  unavailable?: boolean;
   editLabel: string;
   onOpen: () => void;
 } & Record<`data-${string}`, string | undefined>) {
@@ -2152,10 +2390,11 @@ function ConceptRow({
         data-value={raw}
         aria-label={editLabel}
         aria-haspopup="dialog"
+        {...(unavailable ? { 'aria-disabled': true } : {})}
         /* A button role carries no aria-invalid; the error is named to it instead. */
         aria-describedby={error === undefined ? undefined : errorId}
         data-invalid={error === undefined ? undefined : 'true'}
-        onClick={onOpen}
+        onClick={unavailable ? undefined : onOpen}
         /*
           THE DASHBOARD'S SURFACE LADDER, NOT A NEW ONE (DESIGN.md §3). A row
           lifts one step off whatever plane is behind it, by plane first and
@@ -2172,6 +2411,7 @@ function ConceptRow({
         */
         className={cn(
           'shadow-card bg-card hover:bg-accent focus-visible:ring-ring flex w-full min-w-0 items-center gap-3 rounded-lg border text-left transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none',
+          unavailable && 'hover:bg-card cursor-default',
           // 76px on a phone, 84px once the card has room: substantial enough to
           // read as a Trade concept, tight enough that four of them fit above
           // the fold with the step's heading.
@@ -2211,7 +2451,13 @@ function ConceptRow({
             {value ?? placeholder}
           </span>
         </span>
-        <ChevronRight className="text-subtle-foreground size-5 shrink-0" aria-hidden="true" />
+        <ChevronRight
+          className={cn(
+            'size-5 shrink-0',
+            unavailable ? 'text-subtle-foreground/40' : 'text-subtle-foreground',
+          )}
+          aria-hidden="true"
+        />
       </button>
       {error === undefined ? null : <FieldError id={errorId}>{error}</FieldError>}
     </div>

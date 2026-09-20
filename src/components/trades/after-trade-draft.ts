@@ -422,6 +422,68 @@ export function removeEmotionsAnswer(draft: AfterTradeDraft, phase: EmotionPhase
 }
 
 // ---------------------------------------------------------------------------
+// Entry timestamp — one stored value, asked as two questions
+// ---------------------------------------------------------------------------
+
+/**
+ * ENTRY DATE AND ENTRY TIME ARE ONE FIELD, ASKED TWICE.
+ *
+ * `enteredAt` still holds exactly what it held before — a `datetime-local`
+ * string, or empty — and that is what validation parses and what the payload
+ * sends. The only addition is a third shape it may rest in while the trader is
+ * part-way through: a bare `YYYY-MM-DD`, which means "this date, time not
+ * recorded yet". It persists and recovers like any other draft text, it is
+ * never shared with At Entry (which has no use for half a timestamp), and it
+ * never reaches the server: Save asks for the time first.
+ */
+const ENTRY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ENTRY_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+
+export interface EntryTimestampParts {
+  /** `YYYY-MM-DD`, or empty when no date is recorded. */
+  readonly date: string;
+  /** `HH:mm`, or empty when no time is recorded. */
+  readonly time: string;
+}
+
+/** Reads a stored entry timestamp as the two answers it is made of. */
+export function entryTimestampParts(value: string): EntryTimestampParts {
+  if (ENTRY_DATETIME_PATTERN.test(value)) {
+    return { date: value.slice(0, 10), time: value.slice(11, 16) };
+  }
+  if (ENTRY_DATE_PATTERN.test(value)) return { date: value, time: '' };
+  // Anything else is a value no picker can produce; validation names it.
+  return { date: '', time: '' };
+}
+
+/** True once the stored value is a complete instant a Trade could carry. */
+export function isCompleteEntryTimestamp(value: string): boolean {
+  return ENTRY_DATETIME_PATTERN.test(value);
+}
+
+/** True while a date is recorded and its time is not. */
+export function isEntryDateWithoutTime(value: string): boolean {
+  return ENTRY_DATE_PATTERN.test(value);
+}
+
+/**
+ * Records the entry date, keeping any time already given. Clearing the date
+ * clears the whole timestamp — a time with no date is not an answer.
+ */
+export function setEntryDate(draft: AfterTradeDraft, date: string): AfterTradeDraft {
+  if (date === '') return { ...draft, enteredAt: '' };
+  const { time } = entryTimestampParts(draft.enteredAt);
+  return { ...draft, enteredAt: time === '' ? date : `${date}T${time}` };
+}
+
+/** Records the entry time. Without a date there is nothing to attach it to. */
+export function setEntryTime(draft: AfterTradeDraft, time: string): AfterTradeDraft {
+  const { date } = entryTimestampParts(draft.enteredAt);
+  if (date === '') return draft;
+  return { ...draft, enteredAt: time === '' ? date : `${date}T${time}` };
+}
+
+// ---------------------------------------------------------------------------
 // Validation, notices and derived figures
 // ---------------------------------------------------------------------------
 
@@ -472,6 +534,14 @@ export type AfterTradeErrorCode =
   | 'invalid_money'
   | 'must_be_positive'
   | 'invalid_datetime'
+  /**
+   * A DATE WITH NO TIME. Entry time is optional as a whole, but a Trade holds
+   * ONE `entered_at` instant — there is no date-only column — so a date the
+   * trader chose can be neither saved on its own nor quietly dropped. Rather
+   * than invent midnight or lose the answer, Save asks for the time that
+   * completes it, or for the date to be cleared.
+   */
+  | 'entry_time_required'
   | 'future_time'
   | 'exit_before_entry'
   | 'exit_outside_trade'
@@ -556,6 +626,15 @@ export function validateAfterTradeDraft(
   // Times: optional, but a typed time must be a real one, in the past, in order.
   const instant = (value: string, field: 'enteredAt' | 'exitedAt'): number | null => {
     if (value === '') return null;
+    /*
+      A date on its own is a real answer the trader gave, so it is never
+      discarded — but it cannot be saved either, because a Trade holds one
+      instant. Save stops and asks for the time, or for the date to go.
+    */
+    if (field === 'enteredAt' && isEntryDateWithoutTime(value)) {
+      errors[field] = 'entry_time_required';
+      return null;
+    }
     const parsed = datetimeLocalToIso(value, context.timezone);
     if (!parsed.ok) {
       errors[field] = 'invalid_datetime';
