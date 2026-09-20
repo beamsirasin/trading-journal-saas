@@ -112,6 +112,7 @@ import { TradeRecordingModeChange } from './trade-recording-mode-change';
 import { groupEmotionCatalog } from './trade-recording-primitives';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
+import { TradeTimeWheel } from './trade-time-wheel';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 const NONE = '__none';
@@ -2318,14 +2319,11 @@ export function TradeAfterTradeForm({
             onToggle={() => setEntryPane((current) => (current === 'time' ? null : 'time'))}
           >
             <div className="flex min-w-0 flex-col gap-3 pt-1">
-              <TextField
+              <TradeTimeWheel
                 id="after-enteredTime"
-                type="time"
-                label={a('times.entryTime')}
                 value={entryParts.time}
-                figure
-                error={timeError}
                 onChange={(time) => apply((current) => setEntryTime(current, time))}
+                labels={{ hour: a('times.hour'), minute: a('times.minute') }}
               />
               {entryParts.time === '' ? null : (
                 <div>
@@ -2382,6 +2380,17 @@ function EntryStampRow({
 }) {
   const panelId = `${id}-panel`;
   const errorId = `${id}-error`;
+  /*
+    A SECTION NOBODY OPENED COSTS NOTHING. The collapse animation needs the
+    content to stay mounted once it has been shown — that is what gives the
+    height something to travel to — but a wheel is eighty-four cells and a
+    month is forty-two, and building both every time this sheet opens is work
+    for a question the trader may never ask. So it mounts on first open and
+    stays: the cost is paid by whoever actually opens the section.
+  */
+  const [opened, setOpened] = useState(open);
+  // React’s sanctioned adjust-state-during-render: it re-renders before painting.
+  if (open && !opened) setOpened(true);
   return (
     <div
       data-entry-stamp={id}
@@ -2420,7 +2429,7 @@ function EntryStampRow({
         <ChevronDown
           aria-hidden="true"
           className={cn(
-            'size-4 shrink-0 transition-transform motion-reduce:transition-none',
+            'size-4 shrink-0 transition-transform duration-[var(--motion-surface-enter-duration)] ease-(--motion-ease-standard) motion-reduce:transition-none',
             unavailable ? 'text-subtle-foreground/40' : 'text-subtle-foreground',
             open && 'rotate-180',
           )}
@@ -2431,8 +2440,37 @@ function EntryStampRow({
           <FieldError id={errorId}>{error}</FieldError>
         </div>
       )}
-      <div id={panelId} hidden={!open} className={open ? 'pb-2' : undefined}>
-        {open ? children : null}
+      {/*
+        HEIGHT, OPACITY AND A SHORT TRAVEL — on the surface-enter clock the
+        sheets and dialogs already use, so a section opening inside a sheet
+        moves at the same speed as the sheet that carries it.
+
+        `grid-template-rows` is what animates the height: there is no CSS
+        length to transition to "as tall as the content is", and measuring it
+        in JS to set a pixel height would make the row re-measure on every
+        locale, font and month change. `invisible` when closed is not
+        decoration either — it takes the collapsed control out of the tab
+        order and out of the accessibility tree, which `height: 0` alone does
+        not. Reduced motion is handled centrally: `globals.css` rebinds these
+        duration tokens rather than switching the transition off, so the
+        section still changes state visibly, just without the travel.
+      */}
+      <div
+        id={panelId}
+        data-open={open ? '' : undefined}
+        className={cn(
+          'grid transition-[grid-template-rows,opacity,visibility] duration-[var(--motion-surface-enter-duration)] ease-(--motion-ease-standard) motion-reduce:transition-none',
+          open ? 'grid-rows-[1fr] opacity-100' : 'invisible grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div
+          className={cn(
+            'min-h-0 overflow-hidden transition-transform duration-[var(--motion-surface-enter-duration)] ease-(--motion-ease-standard) motion-reduce:transition-none',
+            open ? 'translate-y-0' : '-translate-y-1',
+          )}
+        >
+          <div className="pb-2">{opened ? children : null}</div>
+        </div>
       </div>
     </div>
   );

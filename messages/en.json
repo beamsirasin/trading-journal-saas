@@ -2336,7 +2336,9 @@
             "clearDate": "Clear date",
             "clearOnlyTime": "Clear time",
             "entryDateTime": "Entry date & time",
-            "clearStamp": "Clear entry date & time"
+            "clearStamp": "Clear entry date & time",
+            "hour": "Hour",
+            "minute": "Minute"
           },
           "result": {
             "finalPnl": "Final net P&L",

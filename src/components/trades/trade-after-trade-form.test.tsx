@@ -9,6 +9,20 @@ import type { TradeCreateOptions } from '@/server/dal/trades';
 import en from '../../../messages/en.json';
 import { TradeRecordingForm } from './trade-recording-form';
 
+/*
+  A LONGER BUDGET, BECAUSE THIS SUITE DOES MORE THAN IT USED TO.
+
+  Step 1's controls live in overlays now, so a test that fills the identity
+  mounts and unmounts two Radix sheets before it starts, and one that touches
+  the entry timestamp mounts a month grid and an eighty-four-cell wheel too.
+  That is fast in a browser — the e2e flow does all of it in seconds — and slow
+  in jsdom, which has no layout to skip and rebuilds every node. Under a full
+  suite run the longest tests here were landing within a few tens of
+  milliseconds of the 5s default and timing out at random, which reports as a
+  flake and hides real ones. The work is real, so the budget says so.
+*/
+vi.setConfig({ testTimeout: 15_000 });
+
 const TEST_DRAFT_SCOPE = { ownerKey: 'test-owner', workspaceKey: 'test-workspace' };
 const DRAFT_KEY = 'tradechemist:recording-draft:test-owner:test-workspace';
 const TRADE_ID = '018f0000-0000-7000-8000-000000000099';
@@ -169,6 +183,8 @@ function stampValue(half: 'date' | 'time'): string {
 
 /** Open a half's control, the way a trader taps its row. */
 function openStampHalf(half: 'date' | 'time') {
+  // The sheet owns both halves, so reaching one means having it open.
+  if (screen.queryByRole('dialog') === null) openEntryStamp();
   const toggle = document.getElementById(`after-entry-${half}`)!;
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
   return toggle;
@@ -185,11 +201,25 @@ function pickEntryDate(date: string) {
   closeConcept();
 }
 
+/**
+ * Set the time on the wheel by tapping the two numbers, which is one of the
+ * four ways it moves and the only one jsdom can carry out faithfully — it has
+ * no layout, so a scroll there would prove nothing about a real wheel.
+ */
 function setEntryTime(time: string) {
-  const editor = openEntryStamp();
+  openEntryStamp();
   openStampHalf('time');
-  fireEvent.change(editor.getByLabelText('Entry time'), { target: { value: time } });
+  pickWheel('hour', time.slice(0, 2));
+  pickWheel('minute', time.slice(3, 5));
   closeConcept();
+}
+
+function wheelColumn(half: 'hour' | 'minute'): HTMLElement {
+  return document.getElementById(`after-enteredTime-${half}`)!;
+}
+
+function pickWheel(half: 'hour' | 'minute', value: string) {
+  fireEvent.click(within(wheelColumn(half)).getByText(value));
 }
 
 function fillIdentity() {
@@ -546,6 +576,12 @@ describe('Step 1 — read first, edit on demand', () => {
     const sheet = openEntryStamp();
     openStampHalf('time');
     fireEvent.click(sheet.getByRole('button', { name: /^Clear time/ }));
+    // Cleared means the wheel stops asserting an answer, not that it shows 00:00.
+    expect(wheelColumn('hour')).not.toHaveAttribute('aria-activedescendant');
+    expect(document.querySelector('[data-time-wheel-state]')).toHaveAttribute(
+      'data-time-wheel-state',
+      'unset',
+    );
     expect(stampValue('date')).toBe('2026-09-18');
     expect(stampValue('time')).toBe('');
     expect(stampRow('time')).toHaveTextContent('Not recorded');
@@ -729,9 +765,80 @@ describe('Step 1 — entry date and entry time', () => {
     expect(time).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(time);
     expect(time).toHaveAttribute('aria-expanded', 'false');
-    expect(sheet.queryByLabelText('Entry time')).toBeNull();
+    // Collapsed is not merely short: the wheel is out of the tab order too.
+    expect(document.getElementById('after-entry-time-panel')).not.toHaveAttribute('data-open');
+    expect(sheet.getByRole('button', { name: 'Done' })).toBeInTheDocument();
     // The date half is what the sheet opens on when nothing is recorded.
     expect(document.getElementById('after-entry-date')).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById('after-entry-date-panel')).toHaveAttribute('data-open');
+  });
+
+  it('records nothing until the wheel is touched, then both columns at once', () => {
+    renderForm();
+    pickEntryDate('2026-09-18');
+    openStampHalf('time');
+    // Resting, not answering: no option is selected and the row still says so.
+    expect(document.querySelector('[data-time-wheel-state]')).toHaveAttribute(
+      'data-time-wheel-state',
+      'unset',
+    );
+    expect(wheelColumn('hour')).not.toHaveAttribute('aria-activedescendant');
+    expect(stampValue('time')).toBe('');
+
+    // One press answers where the wheel is resting — what is under the band.
+    fireEvent.keyDown(wheelColumn('hour'), { key: 'ArrowDown' });
+    expect(stampValue('time')).toBe('00:00');
+    expect(document.querySelector('[data-time-wheel-state]')).toHaveAttribute(
+      'data-time-wheel-state',
+      'set',
+    );
+  });
+
+  it('moves by keyboard, clamping at both ends of each column', () => {
+    renderForm();
+    pickEntryDate('2026-09-18');
+    openStampHalf('time');
+    const hour = wheelColumn('hour');
+    const minute = wheelColumn('minute');
+
+    fireEvent.keyDown(hour, { key: 'End' });
+    expect(stampValue('time')).toBe('23:00');
+    fireEvent.keyDown(hour, { key: 'ArrowDown' });
+    expect(stampValue('time')).toBe('23:00');
+
+    fireEvent.keyDown(minute, { key: 'End' });
+    expect(stampValue('time')).toBe('23:59');
+    fireEvent.keyDown(minute, { key: 'PageUp' });
+    expect(stampValue('time')).toBe('23:49');
+    fireEvent.keyDown(minute, { key: 'Home' });
+    expect(stampValue('time')).toBe('23:00');
+
+    fireEvent.keyDown(hour, { key: 'PageDown' });
+    expect(stampValue('time')).toBe('23:00');
+    fireEvent.keyDown(hour, { key: 'PageUp' });
+    expect(stampValue('time')).toBe('17:00');
+  });
+
+  it('is two listboxes a screen reader can read, in 24-hour format', () => {
+    renderForm();
+    pickEntryDate('2026-09-18');
+    openStampHalf('time');
+    const hour = wheelColumn('hour');
+    const minute = wheelColumn('minute');
+    expect(hour).toHaveAttribute('role', 'listbox');
+    expect(hour).toHaveAttribute('aria-label', 'Hour');
+    expect(minute).toHaveAttribute('aria-label', 'Minute');
+    // 24 hours and 60 minutes, zero-padded: no AM/PM anywhere.
+    expect(within(hour).getAllByRole('option')).toHaveLength(24);
+    expect(within(minute).getAllByRole('option')).toHaveLength(60);
+    expect(within(hour).getByText('23')).toBeInTheDocument();
+    expect(within(hour).queryByText('24')).toBeNull();
+
+    pickWheel('hour', '09');
+    pickWheel('minute', '30');
+    expect(hour).toHaveAttribute('aria-activedescendant', 'after-enteredTime-hour-09');
+    expect(within(hour).getByText('09')).toHaveAttribute('aria-selected', 'true');
+    expect(stampValue('time')).toBe('09:30');
   });
 
   it('opens on the half still missing, and only one control at a time', () => {

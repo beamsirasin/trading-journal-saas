@@ -250,7 +250,9 @@ async function fillEverything(page: Page) {
   // minute. Picking the day moves the sheet on to the minute.
   const stamp = await openConcept(page, 'Entry date & time');
   await stamp.locator('[data-range-date="2026-09-18"]').click();
-  await stamp.locator('#after-enteredTime').fill('09:30');
+  // The time is a wheel: tap the hour and the minute under the band.
+  await stamp.locator('#after-enteredTime-hour [data-wheel-value="09"]').click();
+  await stamp.locator('#after-enteredTime-minute [data-wheel-value="30"]').click();
   await closeConcept(page);
 
   // The final exit time says how the trade ended, so it asks on Result.
