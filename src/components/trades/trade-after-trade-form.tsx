@@ -89,6 +89,7 @@ import {
   Tag,
   TextAreaField,
   TextField,
+  type ChoiceTone,
 } from './trade-at-entry-controls';
 import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
@@ -879,6 +880,8 @@ export function TradeAfterTradeForm({
   const stepLabel = (key: StepKey) => a(`steps.${key}.label`);
   const currentKey = STEPS[step] ?? 'trade';
   const onLastStep = step === LAST_STEP;
+  /** Step 1 has no earlier step, so its bar holds one action rather than a pair. */
+  const noBack = step === 0;
   const nextKey = STEPS[step + 1];
   const progressText = a('steps.progress', { current: step + 1, total: STEPS.length });
 
@@ -1056,7 +1059,7 @@ export function TradeAfterTradeForm({
       data-step={key}
       hidden={currentKey !== key}
       className={cn(
-        'min-w-0 flex-col px-0 pb-6 sm:px-6',
+        'min-w-0 flex-col px-0 pb-6 sm:px-6 lg:px-8',
         currentKey === key ? 'flex' : 'hidden',
         className,
       )}
@@ -1084,7 +1087,15 @@ export function TradeAfterTradeForm({
         </p>
       ) : null}
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,50rem)_17.5rem] lg:justify-center lg:gap-8">
+      {/*
+        THE WORKFLOW IS THE PAGE'S SUBJECT, NOT A WIDGET ON IT. 50rem of step
+        beside 17.5rem of rail, centred, with room between them — the step card
+        carries the reading measure and the rail stays a companion. The scale
+        inside the card does the rest: a card this wide holding phone-sized
+        type is what made the flow read as a small dialog adrift in a large
+        workspace.
+      */}
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,50rem)_17.5rem] lg:justify-center lg:gap-8 xl:gap-10">
         <form
           ref={formRef}
           id={formId}
@@ -1103,33 +1114,48 @@ export function TradeAfterTradeForm({
           */
           className="lg:bg-card lg:shadow-card lg:border-border flex w-full min-w-0 scroll-mt-[calc(var(--shell-header-height,0px)+1rem)] flex-col lg:rounded-xl lg:border"
         >
-          <header className="flex min-w-0 flex-col gap-3 px-0 pt-1 pb-4 sm:px-6 sm:pt-6 sm:pb-5">
-            {wide ? null : stepNav}
-            <div className="flex min-w-0 flex-col gap-1">
-              <div className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-xs font-medium">
-                <span data-step-progress="" className="tracking-wide tabular-nums">
+          {/*
+            ONE LAYER OF CONTEXT, THEN THE STEP. A phone reads down: where this
+            is in the flow (mode, a way to change it, how far along), the
+            progress itself, then the step's own question. Saying "Step 1 of 5"
+            in its own row above the segments that already draw it, and the
+            mode again under a page title that already names it, put three
+            lines of furniture between the trader and the first answer.
+          */}
+          <header className="flex min-w-0 flex-col gap-2.5 px-0 pt-0.5 pb-4 sm:px-6 lg:pt-7 lg:pb-5 lg:pl-8">
+            {wide ? null : (
+              <div className="text-muted-foreground flex min-w-0 items-baseline justify-between gap-3 text-xs font-medium">
+                <p
+                  data-recording-mode="after_trade"
+                  className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+                >
+                  <span>{a('steps.modeShort')}</span>
+                  <TradeRecordingModeChange />
+                </p>
+                <span data-step-progress="" className="shrink-0 tracking-wide tabular-nums">
                   {progressText}
                 </span>
-                {wide ? null : (
-                  <p
-                    data-recording-mode="after_trade"
-                    className="flex min-w-0 flex-wrap items-baseline gap-x-2"
-                  >
-                    <span aria-hidden="true">·</span>
-                    <span>{a('steps.modeShort')}</span>
-                    <TradeRecordingModeChange />
-                  </p>
-                )}
               </div>
+            )}
+            {wide ? null : stepNav}
+            <div className="flex min-w-0 flex-col gap-1 pt-0.5 lg:gap-1.5">
+              {wide ? (
+                <span
+                  data-step-progress=""
+                  className="text-muted-foreground text-xs font-medium tracking-wide tabular-nums"
+                >
+                  {progressText}
+                </span>
+              ) : null}
               <h2
                 id={ids.step}
                 ref={stepHeading}
                 tabIndex={-1}
-                className="text-foreground text-xl font-semibold tracking-tight outline-none sm:text-2xl"
+                className="text-foreground text-[1.375rem] leading-tight font-semibold tracking-tight outline-none sm:text-2xl lg:text-[1.75rem]"
               >
                 {a(`steps.${currentKey}.title`)}
               </h2>
-              <p className="text-muted-foreground text-sm leading-relaxed">
+              <p className="text-muted-foreground text-sm leading-relaxed lg:text-base">
                 {a(`steps.${currentKey}.description`)}
               </p>
             </div>
@@ -1161,7 +1187,7 @@ export function TradeAfterTradeForm({
           {section(
             'trade',
             'gap-3',
-            <div className="grid min-w-0 gap-3 min-[560px]:grid-cols-2">
+            <div className="grid min-w-0 gap-2.5 min-[560px]:grid-cols-2 lg:gap-3">
               <ConceptRow
                 concept="tradingAccountId"
                 rowRef={conceptRows.tradingAccountId}
@@ -1204,6 +1230,19 @@ export function TradeAfterTradeForm({
                       ? c('direction.short')
                       : null
                 }
+                /*
+                  A SCANNING AID, NOT A VERDICT. The word is always there and
+                  always first; the hue only helps the eye find which way this
+                  trade went in a column of rows. Nothing on this step shows a
+                  result, so green here cannot be misread as a win.
+                */
+                valueTone={
+                  draft.direction === 'long'
+                    ? 'positive'
+                    : draft.direction === 'short'
+                      ? 'negative'
+                      : undefined
+                }
                 placeholder={c('notAnswered')}
                 raw={draft.direction}
                 error={errorText('direction')}
@@ -1219,7 +1258,7 @@ export function TradeAfterTradeForm({
                 concept="enteredAt"
                 rowRef={conceptRows.enteredAt}
                 label={a('times.entry')}
-                marker={<StateText>{a('steps.optional')}</StateText>}
+                marker={<OptionalTag />}
                 value={localTime(draft.enteredAt)}
                 placeholder={a('times.notRecorded')}
                 raw={draft.enteredAt}
@@ -1784,7 +1823,7 @@ export function TradeAfterTradeForm({
             {...(onLastStep ? { 'data-global-save': '' } : {})}
             data-action-bar={wide || keyboardOpen ? 'inline' : 'docked'}
             className={cn(
-              'border-border bg-card flex min-w-0 flex-col gap-2 rounded-b-xl border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6',
+              'border-border bg-card flex min-w-0 flex-col gap-2 rounded-b-xl border-t px-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 lg:gap-2.5 lg:px-8 lg:pt-5 lg:pb-5',
               !wide &&
                 !keyboardOpen &&
                 'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
@@ -1808,7 +1847,7 @@ export function TradeAfterTradeForm({
               every answer already given on steps further on.
             */}
             {onLastStep || !canQuickSave ? null : (
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <InlineAction
                   id="after-quick-save"
                   ariaLabel={a('save.action')}
@@ -1816,13 +1855,25 @@ export function TradeAfterTradeForm({
                 >
                   {a('steps.quickSave')}
                 </InlineAction>
-                <span className="text-muted-foreground text-xs">{a('steps.quickSaveHint')}</span>
+                <span className="text-subtle-foreground text-xs">{a('steps.quickSaveHint')}</span>
               </div>
             )}
-            <div className="flex min-w-0 items-center justify-between gap-3">
-              {step === 0 ? (
-                <span aria-hidden="true" />
-              ) : (
+            {/*
+              THE FIRST STEP HAS NOWHERE TO GO BACK TO, so it does not reserve
+              half the bar for an action that is not there. On a phone the one
+              forward action takes the width; from Step 2 on, Back and Next
+              share the row as a pair. A wide card keeps the forward action at
+              its natural size on the right — full width across 50rem would be
+              a banner, not a button.
+            */}
+            <div
+              data-step-actions-layout={noBack ? 'single' : 'paired'}
+              className={cn(
+                'flex min-w-0 items-center gap-3',
+                noBack ? 'justify-end' : 'justify-between',
+              )}
+            >
+              {noBack ? null : (
                 <Button
                   type="button"
                   variant="outline"
@@ -1838,7 +1889,7 @@ export function TradeAfterTradeForm({
                 <Button
                   type="submit"
                   size="lg"
-                  className="min-h-12 min-w-0 shrink"
+                  className={cn('min-h-12 min-w-0 shrink', noBack && 'w-full lg:w-auto')}
                   disabled={pending}
                 >
                   {pending ? a('save.saving') : a('save.action')}
@@ -1847,7 +1898,7 @@ export function TradeAfterTradeForm({
                 <Button
                   type="button"
                   size="lg"
-                  className="min-h-12 min-w-0 shrink"
+                  className={cn('min-h-12 min-w-0 shrink', noBack && 'w-full lg:w-auto')}
                   onClick={() => showStep(step + 1)}
                 >
                   <span className="truncate">
@@ -1922,6 +1973,7 @@ export function TradeAfterTradeForm({
         title={c('account.label')}
         description={a('trade.accountEditor')}
         closeLabel={a('trade.close')}
+        size="focused"
         returnFocusRef={conceptRows.tradingAccountId}
         footer={editorDone}
       >
@@ -1953,6 +2005,7 @@ export function TradeAfterTradeForm({
         title={c('symbol.label')}
         description={a('trade.symbolEditor')}
         closeLabel={a('trade.close')}
+        size="focused"
         returnFocusRef={conceptRows.symbol}
         footer={editorDone}
       >
@@ -1996,6 +2049,7 @@ export function TradeAfterTradeForm({
         title={c('direction.label')}
         description={a('trade.directionEditor')}
         closeLabel={a('trade.close')}
+        size="focused"
         returnFocusRef={conceptRows.direction}
         footer={editorDone}
       >
@@ -2007,8 +2061,8 @@ export function TradeAfterTradeForm({
           error={errorText('direction')}
           onChange={(direction) => apply((current) => ({ ...current, direction }))}
           options={[
-            { value: 'long', label: c('direction.long') },
-            { value: 'short', label: c('direction.short') },
+            { value: 'long', label: c('direction.long'), tone: 'positive' },
+            { value: 'short', label: c('direction.short'), tone: 'negative' },
           ]}
         />
       </TradeAdaptiveOverlay>
@@ -2020,6 +2074,7 @@ export function TradeAfterTradeForm({
         /* One explanation, not two: the timezone rule is the only thing left to say. */
         description={a('times.hint', { timezone })}
         closeLabel={a('trade.close')}
+        size="focused"
         returnFocusRef={conceptRows.enteredAt}
         footer={editorDone}
       >
@@ -2047,6 +2102,7 @@ function ConceptRow({
   label,
   marker,
   value,
+  valueTone,
   placeholder,
   raw,
   error,
@@ -2061,6 +2117,8 @@ function ConceptRow({
   marker: ReactNode;
   /** What is recorded, or null when nothing is. */
   value: string | null;
+  /** A direction the value itself carries, never the only way it is said. */
+  valueTone?: ChoiceTone | undefined;
   /** The neutral word for nothing recorded — never a negative (UX Rules §4.3). */
   placeholder: string;
   raw: string;
@@ -2098,26 +2156,47 @@ function ConceptRow({
           to show, exactly as `data-dashboard-panel` does, so nothing shifts.
         */
         className={cn(
-          'shadow-card bg-card hover:bg-accent focus-visible:ring-ring flex min-h-16 w-full min-w-0 items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none',
+          'shadow-card bg-card hover:bg-accent focus-visible:ring-ring flex w-full min-w-0 items-center gap-3 rounded-lg border text-left transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none',
+          // 76px on a phone, 84px once the card has room: substantial enough to
+          // read as a Trade concept, tight enough that four of them fit above
+          // the fold with the step's heading.
+          'min-h-[4.75rem] px-4 py-3 lg:min-h-[5.25rem] lg:px-5',
           'lg:bg-muted/50 lg:hover:bg-muted lg:shadow-none',
           error === undefined ? 'border-transparent' : 'border-destructive',
         )}
       >
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-muted-foreground text-sm font-medium">{label}</span>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-muted-foreground text-[0.8125rem] leading-5 font-medium">
+              {label}
+            </span>
             {marker}
           </span>
+          {/*
+            THE VALUE IS WHAT THE ROW IS FOR. It is the largest, heaviest thing
+            in the row so a trader scans four answers before reading a single
+            label; an unrecorded one drops to subtle weight and colour rather
+            than shouting its absence.
+          */}
           <span
             className={cn(
-              'mt-0.5 block truncate text-base',
-              value === null ? 'text-subtle-foreground' : 'text-foreground font-semibold',
+              'mt-0.5 block truncate text-[1.0625rem] leading-6 lg:text-lg',
+              value === null
+                ? 'text-subtle-foreground'
+                : cn(
+                    'font-semibold',
+                    valueTone === 'positive'
+                      ? 'text-positive'
+                      : valueTone === 'negative'
+                        ? 'text-negative'
+                        : 'text-foreground',
+                  ),
             )}
           >
             {value ?? placeholder}
           </span>
         </span>
-        <ChevronRight className="text-muted-foreground size-5 shrink-0" aria-hidden="true" />
+        <ChevronRight className="text-subtle-foreground size-5 shrink-0" aria-hidden="true" />
       </button>
       {error === undefined ? null : <FieldError id={errorId}>{error}</FieldError>}
     </div>
@@ -2192,10 +2271,22 @@ function FoldedGroup({
   );
 }
 
-/** Said where the field is, not only in a panel somewhere else. */
+/**
+ * REQUIRED AND OPTIONAL, SAID QUIETLY. Both are words beside the concept, at
+ * caption size and below the value in weight — a trader scans the values, and
+ * a necessity marker that outshouts them is working against that. Required is
+ * a shade stronger than Optional and neither is a filled pill or destructive
+ * colour: nothing here is wrong yet (DESIGN.md §6, "Optional" in muted text
+ * after the label).
+ */
 function RequiredTag() {
   const a = useTranslations('trades.create.recording.contractAfter');
-  return <Tag tone="context">{a('steps.required')}</Tag>;
+  return <span className="text-muted-foreground text-xs font-medium">{a('steps.required')}</span>;
+}
+
+function OptionalTag() {
+  const a = useTranslations('trades.create.recording.contractAfter');
+  return <span className="text-subtle-foreground text-xs">{a('steps.optional')}</span>;
 }
 
 /** An optional historical time: blank is not recorded, and clearing it is always one action away. */

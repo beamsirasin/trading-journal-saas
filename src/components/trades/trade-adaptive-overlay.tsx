@@ -32,7 +32,20 @@ function useKeyboardObscuresViewport() {
   return obscured;
 }
 
-/** The accepted editor geometry: centered dialog on desktop, reachable bottom sheet on phones. */
+/**
+ * TWO DESKTOP PROPORTIONS, ONE PHONE ONE.
+ *
+ * `wide` is the original geometry: a 38rem dialog for an editor that holds a
+ * list, a library or a branching set of questions (Exit Plan, System
+ * Assessment). `focused` is for an editor that holds ONE answer — a symbol, a
+ * direction, a time — where 38rem leaves the control adrift in the middle of a
+ * dimmed screen. It is narrower and padded more generously, so the title,
+ * helper, control and Done read as one composition rather than a small form
+ * pinned to a large sheet.
+ *
+ * The phone is unaffected either way: a bottom sheet is already the width of
+ * the screen, and desktop dialog dimensions must never be forced onto it.
+ */
 export function TradeAdaptiveOverlay({
   open,
   onOpenChange,
@@ -42,6 +55,7 @@ export function TradeAdaptiveOverlay({
   children,
   returnFocusRef,
   closeLabel,
+  size = 'wide',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -51,8 +65,11 @@ export function TradeAdaptiveOverlay({
   children: ReactNode;
   returnFocusRef?: RefObject<HTMLElement | null>;
   closeLabel: string;
+  /** Desktop proportion only. Defaults to the original `wide` dialog. */
+  size?: 'wide' | 'focused';
 }) {
   const desktop = useIsDesktopViewport();
+  const focused = size === 'focused';
   const keyboardOpen = useKeyboardObscuresViewport();
   const wasOpen = useRef(false);
 
@@ -68,16 +85,35 @@ export function TradeAdaptiveOverlay({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           closeLabel={closeLabel}
-          className="flex max-h-[85dvh] w-[calc(100%-2rem)] max-w-[38rem] flex-col gap-0 overflow-hidden p-0"
+          className={cn(
+            'flex max-h-[85dvh] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0',
+            focused ? 'max-w-[35rem]' : 'max-w-[38rem]',
+          )}
         >
-          <DialogHeader className="shrink-0 px-6 pt-6 pr-14 pb-3 text-left">
-            <DialogTitle>{title}</DialogTitle>
+          <DialogHeader
+            className={cn(
+              'shrink-0 pr-14 text-left',
+              focused ? 'px-7 pt-7 pb-2' : 'px-6 pt-6 pb-3',
+            )}
+          >
+            <DialogTitle className={focused ? 'text-xl' : undefined}>{title}</DialogTitle>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
-            <DialogDescription className="mb-4">{description}</DialogDescription>
+          <div
+            className={cn('min-h-0 flex-1 overflow-y-auto', focused ? 'px-7 pb-5' : 'px-6 pb-4')}
+          >
+            <DialogDescription className={focused ? 'mb-5 text-sm' : 'mb-4'}>
+              {description}
+            </DialogDescription>
             {children}
           </div>
-          <div className="border-border bg-card shrink-0 border-t px-6 py-4">{footer}</div>
+          <div
+            className={cn(
+              'border-border bg-card shrink-0 border-t',
+              focused ? 'px-7 py-5' : 'px-6 py-4',
+            )}
+          >
+            {footer}
+          </div>
         </DialogContent>
       </Dialog>
     );

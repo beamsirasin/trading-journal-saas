@@ -167,6 +167,7 @@ export default async function NewTradePage({
     wider screen keeps the full header, and At Entry is untouched.
   */
   const stepFlow = timing === 'after_trade';
+  const backLabel = t(`create.recording.${copy}.back`);
   return (
     <div
       className={cn(
@@ -174,23 +175,43 @@ export default async function NewTradePage({
         stepFlow ? 'max-w-[76rem] pt-3 lg:pt-8' : 'max-w-[70rem] pt-4 lg:pt-8',
       )}
     >
-      <header className="flex min-w-0 flex-col items-start gap-1">
-        <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-3">
+      {/*
+        THE WAY OUT AND THE TASK'S NAME, ON ONE LINE IN THE STEP FLOW. Stacked,
+        they cost a phone two rows before the step's own context even begins,
+        and "Record a closed trade" above "After trade · Step 1 of 5" above
+        "Trade details" is three headings for one screen. Side by side the
+        exit keeps its 44px target and its label, and the first answer moves up
+        the viewport. At Entry keeps the stacked header it was designed with.
+      */}
+      <header
+        className={cn(
+          'flex min-w-0 gap-1',
+          stepFlow ? 'items-center gap-x-1 sm:flex-col sm:items-start' : 'flex-col items-start',
+        )}
+      >
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground -ml-3 shrink-0">
           <Link href="/app/trades">
             <ArrowLeft aria-hidden="true" />
-            {t(`create.recording.${copy}.back`)}
+            {/*
+              The label is what makes the exit unambiguous on a wide screen. On
+              a phone in the step flow it shares its row with the task name, so
+              the arrow carries it alone and the accessible name stays on the
+              link — the same trade `WizardShell` already makes for this flow's
+              first step.
+            */}
+            <span className={stepFlow ? 'sr-only sm:not-sr-only' : undefined}>{backLabel}</span>
           </Link>
         </Button>
         <h1
           className={cn(
-            'text-foreground font-semibold tracking-tight text-balance sm:text-[1.75rem]',
-            stepFlow ? 'text-lg sm:text-2xl' : 'text-2xl',
+            'text-foreground min-w-0 font-semibold tracking-tight text-balance sm:text-[1.75rem]',
+            stepFlow ? 'text-base sm:text-2xl' : 'text-2xl',
           )}
         >
           {t(`create.recording.${copy}.title`)}
         </h1>
       </header>
-      <div className={cn('min-w-0', stepFlow ? 'mt-1.5 sm:mt-2' : 'mt-2')}>
+      <div className={cn('min-w-0', stepFlow ? 'mt-2 sm:mt-2' : 'mt-2')}>
         <TradeCreateGate
           options={options}
           canWrite={authorization.allowed}

@@ -356,17 +356,46 @@ export function SelectField({
   );
 }
 
-export function RadioMark({ checked, className }: { checked: boolean; className?: string }) {
+/**
+ * A SEMANTIC TONE AN OPTION MAY CARRY. Opt-in and rare: only where the two
+ * answers have a direction the eye can use, such as Long and Short. An
+ * untoned group is unchanged, and a toned option is neutral until it is
+ * chosen — the hue marks the SELECTION, never the existence of the choice.
+ */
+export type ChoiceTone = 'positive' | 'negative';
+
+export function RadioMark({
+  checked,
+  className,
+  tone,
+}: {
+  checked: boolean;
+  className?: string;
+  tone?: ChoiceTone | undefined;
+}) {
   return (
     <span
       aria-hidden="true"
       className={cn(
         'flex size-4 shrink-0 items-center justify-center rounded-full border',
-        checked ? 'border-primary bg-primary' : 'border-control-border',
+        checked
+          ? tone === 'positive'
+            ? 'border-positive bg-positive'
+            : tone === 'negative'
+              ? 'border-negative bg-negative'
+              : 'border-primary bg-primary'
+          : 'border-control-border',
         className,
       )}
     >
-      {checked ? <span className="bg-primary-foreground size-1.5 rounded-full" /> : null}
+      {checked ? (
+        <span
+          className={cn(
+            'size-1.5 rounded-full',
+            tone === undefined ? 'bg-primary-foreground' : 'bg-card',
+          )}
+        />
+      ) : null}
     </span>
   );
 }
@@ -394,7 +423,7 @@ export function ChoiceGroup<T extends string>({
   idPrefix: string;
   legend: string;
   value: T | null;
-  options: readonly { value: T; label: string; description?: string }[];
+  options: readonly { value: T; label: string; description?: string; tone?: ChoiceTone }[];
   onChange: (value: T) => void;
   error?: string | undefined;
   /** Shown beside the legend while unanswered, e.g. "Not answered". */
@@ -483,20 +512,41 @@ export function ChoiceGroup<T extends string>({
                         ? 'min-h-11 items-center py-2'
                         : 'min-h-12 items-start py-2.5',
                     'peer-focus-visible:ring-ring peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+                    /*
+                      SELECTED, WITH A DIRECTION WHERE THERE IS ONE. The tint is
+                      the Dashboard Calendar's restrained pair — a wash, a
+                      border and emphasised text, never a saturated fill — so a
+                      chosen Long reads as "selected Long", not as a success
+                      banner. The label is always the word, so the state
+                      survives greyscale and colour blindness (DESIGN.md §9.4).
+                    */
                     checked
-                      ? 'border-foreground/60 bg-accent'
+                      ? option.tone === 'positive'
+                        ? 'border-positive/45 bg-positive/8'
+                        : option.tone === 'negative'
+                          ? 'border-negative/45 bg-negative/8'
+                          : 'border-foreground/60 bg-accent'
                       : cn(
                           'bg-background hover:bg-accent',
                           error === undefined ? 'border-control-border' : 'border-destructive',
                         ),
                   )}
                 >
-                  <RadioMark checked={checked} className={compact || stacked ? '' : 'mt-0.5'} />
+                  <RadioMark
+                    checked={checked}
+                    tone={option.tone}
+                    className={compact || stacked ? '' : 'mt-0.5'}
+                  />
                   <span className="min-w-0">
                     <span
                       className={cn(
-                        'text-foreground block text-sm break-words',
+                        'block text-sm break-words',
                         checked ? 'font-semibold' : 'font-medium',
+                        checked && option.tone === 'positive'
+                          ? 'text-positive'
+                          : checked && option.tone === 'negative'
+                            ? 'text-negative'
+                            : 'text-foreground',
                       )}
                     >
                       {option.label}

@@ -65,7 +65,6 @@ test.describe('After Trade step-flow captures', () => {
         // Each Step 1 editor, open over its completed step.
         for (const [field, name] of [
           ['Symbol', 'symbol'],
-          ['Direction', 'direction'],
           ['Entry time', 'entered-at'],
           ['Trading Account', 'account'],
         ] as const) {
@@ -74,6 +73,18 @@ test.describe('After Trade step-flow captures', () => {
           await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-${name}.png` });
           await closeConcept(page);
         }
+        // Direction carries a tone, so both answers are reviewed.
+        await openConcept(page, 'Direction');
+        for (const direction of ['Long', 'Short'] as const) {
+          await clickChoice(page, direction);
+          await page.waitForTimeout(250);
+          await page.screenshot({
+            path: `${OUT}/${width}-${theme}-editor-direction-${direction.toLowerCase()}.png`,
+          });
+        }
+        await clickChoice(page, 'Long');
+        await closeConcept(page);
+        await assertStepOneProportion(page, `${width}-${theme}`);
         for (const step of ['trade', 'result', 'plan', 'context', 'save'] as const) {
           await goTo(page, step);
           if (step === 'context') {
@@ -290,6 +301,62 @@ async function fillEverything(page: Page) {
   await page.getByLabel('SL price').fill('2394.5');
   await foldGroup(page, 'market');
   await foldGroup(page, 'price');
+}
+
+/**
+ * WHAT THE PROPORTION PASS HAS TO KEEP TRUE, measured rather than eyeballed.
+ * A screenshot can show a row looking right; only the box can say whether it
+ * is still a comfortable target, whether the rhythm between rows held, and
+ * whether the one forward action on Step 1 actually uses the width.
+ */
+async function assertStepOneProportion(page: Page, name: string) {
+  await goTo(page, 'trade');
+  const box = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('[data-concept]')).map((row) =>
+      row.getBoundingClientRect(),
+    );
+    const bar = document
+      .querySelector('[data-step-actions] [data-step-actions-layout]')
+      ?.getBoundingClientRect();
+    const next = Array.from(document.querySelectorAll('[data-step-actions] button'))
+      .find((button) => (button.textContent ?? '').includes('Next'))
+      ?.getBoundingClientRect();
+    /*
+      Only rows that actually stack. From 560px the four rows are a 2x2 grid,
+      where the NEXT row in DOM order sits beside this one — measuring that as
+      a vertical gap reports a large negative number and says nothing.
+    */
+    const gaps: number[] = [];
+    for (let index = 1; index < rows.length; index += 1) {
+      const previous = rows[index - 1]!;
+      const current = rows[index]!;
+      if (Math.abs(current.left - previous.left) > 1) continue;
+      gaps.push(current.top - previous.bottom);
+    }
+    return {
+      heights: rows.map((row) => row.height),
+      gaps,
+      barWidth: bar?.width ?? 0,
+      nextWidth: next?.width ?? 0,
+    };
+  });
+
+  for (const height of box.heights) {
+    expect(height, `${name}: launcher row height ${height}px`).toBeGreaterThanOrEqual(74);
+    expect(height, `${name}: launcher row height ${height}px`).toBeLessThanOrEqual(90);
+  }
+  for (const gap of box.gaps) {
+    expect(gap, `${name}: launcher row gap ${gap}px`).toBeGreaterThanOrEqual(8);
+    expect(gap, `${name}: launcher row gap ${gap}px`).toBeLessThanOrEqual(14);
+  }
+  // Step 1 has no Back, so on a phone the forward action takes the bar.
+  const wide = Number(name.split('-')[0]) >= 1024;
+  if (!wide) {
+    expect(
+      box.nextWidth / box.barWidth,
+      `${name}: Next fills ${Math.round((box.nextWidth / box.barWidth) * 100)}% of the bar`,
+    ).toBeGreaterThan(0.95);
+  }
 }
 
 async function capture(page: Page, name: string) {

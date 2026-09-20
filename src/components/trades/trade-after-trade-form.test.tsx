@@ -545,6 +545,132 @@ describe('Step 1 — read first, edit on demand', () => {
   });
 });
 
+describe('Step 1 — Long and Short carry a direction, never only a colour', () => {
+  /** The class list a colour-blind or greyscale reader never sees. */
+  const classesOf = (element: Element) => element.getAttribute('class') ?? '';
+
+  it('tints a chosen Long green and a chosen Short red, leaving the other neutral', () => {
+    renderForm();
+    const editor = openConcept('Direction');
+    const long = editor.getByRole('radio', { name: 'Long' });
+    const short = editor.getByRole('radio', { name: 'Short' });
+    const labelFor = (radio: HTMLElement) =>
+      document.querySelector(`label[for="${radio.getAttribute('id')}"]`)!;
+
+    // NOTHING IS TINTED BEFORE AN ANSWER: the hue marks the selection, never
+    // the mere existence of two directions.
+    expect(classesOf(labelFor(long))).not.toContain('positive');
+    expect(classesOf(labelFor(short))).not.toContain('negative');
+
+    fireEvent.click(long);
+    expect(classesOf(labelFor(long))).toContain('bg-positive/8');
+    expect(classesOf(labelFor(long))).toContain('border-positive/45');
+    expect(classesOf(labelFor(short))).not.toContain('negative');
+
+    fireEvent.click(short);
+    expect(classesOf(labelFor(short))).toContain('bg-negative/8');
+    expect(classesOf(labelFor(short))).toContain('border-negative/45');
+    // The previous answer gives its tint back with its selection.
+    expect(classesOf(labelFor(long))).not.toContain('positive');
+  });
+
+  it('never lets colour be the only thing that says which way the trade went', () => {
+    renderForm();
+    const editor = openConcept('Direction');
+    fireEvent.click(editor.getByRole('radio', { name: 'Short' }));
+    // In the editor: the word, the radio role, and the checked state.
+    expect(editor.getByRole('radio', { name: 'Short' })).toBeChecked();
+    expect(editor.getByRole('radio', { name: 'Long' })).not.toBeChecked();
+    closeConcept();
+    // On the row: the word again, and the stored value behind it.
+    expect(conceptRow('direction')).toHaveTextContent('Short');
+    expect(conceptValue('direction')).toBe('short');
+  });
+
+  it('carries the direction onto the launcher row, and drops it when unanswered', () => {
+    renderForm();
+    const value = () => conceptRow('direction').querySelector('span.block:not(.flex)')!;
+    // Unanswered reads neutral — never a negative, never a tint.
+    expect(classesOf(value())).not.toContain('positive');
+    expect(classesOf(value())).not.toContain('negative');
+
+    const editor = openConcept('Direction');
+    fireEvent.click(editor.getByRole('radio', { name: 'Long' }));
+    closeConcept();
+    expect(classesOf(value())).toContain('text-positive');
+
+    const again = openConcept('Direction');
+    fireEvent.click(again.getByRole('radio', { name: 'Short' }));
+    closeConcept();
+    expect(classesOf(value())).toContain('text-negative');
+    expect(classesOf(value())).not.toContain('text-positive');
+  });
+
+  it('sends the direction the trader chose, unchanged by any of this', async () => {
+    renderForm();
+    const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    closeConcept();
+    const direction = openConcept('Direction');
+    fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
+    closeConcept();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ symbol: 'XAUUSD', direction: 'short' });
+  });
+});
+
+describe('Step 1 — proportion and the step action bar', () => {
+  it('gives the first step one forward action instead of half a paired row', () => {
+    renderForm();
+    const bar = document.querySelector('[data-step-actions]')!;
+    expect(bar.querySelector('[data-step-actions-layout]')).toHaveAttribute(
+      'data-step-actions-layout',
+      'single',
+    );
+    expect(within(bar as HTMLElement).queryByRole('button', { name: 'Back' })).toBeNull();
+    const next = within(bar as HTMLElement).getByRole('button', { name: /^Next: Result/ });
+    // Full width on a phone, its natural size once the card has room.
+    expect(next.getAttribute('class')).toContain('w-full');
+    expect(next.getAttribute('class')).toContain('lg:w-auto');
+  });
+
+  it('pairs Back and Next again from the second step on', () => {
+    renderForm();
+    fireEvent.click(screen.getByRole('button', { name: /^Next: Result/ }));
+    const bar = document.querySelector('[data-step-actions]')!;
+    expect(bar.querySelector('[data-step-actions-layout]')).toHaveAttribute(
+      'data-step-actions-layout',
+      'paired',
+    );
+    expect(within(bar as HTMLElement).getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    const next = within(bar as HTMLElement).getByRole('button', { name: /^Next: Plan/ });
+    expect(next.getAttribute('class')).not.toContain('w-full');
+  });
+
+  it('keeps Quick Save a quiet line above the forward action, never a second button', () => {
+    renderForm();
+    fillIdentity();
+    const bar = document.querySelector('[data-step-actions]') as HTMLElement;
+    const quickSave = within(bar).getByRole('button', { name: 'Save closed trade' });
+    expect(quickSave).toHaveAttribute('id', 'after-quick-save');
+    // Still the inline text action, not a filled button competing with Next.
+    expect(quickSave.getAttribute('class')).toContain('text-primary');
+    expect(within(bar).getByText('You can add the rest later.')).toBeInTheDocument();
+    expect(bar.getAttribute('data-step-actions')).toBe('');
+  });
+
+  it('says the mode, the way to change it and the position once each', () => {
+    renderForm();
+    // One mode statement, one progress statement, one step heading.
+    expect(document.querySelectorAll('[data-recording-mode="after_trade"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-step-progress]')).toHaveLength(1);
+    expect(screen.getByText('Step 1 of 5')).toBeInTheDocument();
+    expect(document.querySelectorAll('[data-recording-mode-change]')).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Trade details');
+  });
+});
+
 describe('Quick Save — the short way out once identity is answered', () => {
   const quickSave = () => screen.queryByRole('button', { name: 'Save closed trade' });
 
