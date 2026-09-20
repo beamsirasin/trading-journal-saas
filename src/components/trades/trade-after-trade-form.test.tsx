@@ -255,15 +255,16 @@ describe('After Trade — the moment and its steps', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(currentStep()).toBe('trade');
-    // Step 1 reads back as answers, and the editors still hold them.
+    /*
+      Step 1 reads back as answers. What the EDITORS still hold after a round
+      trip is its own test in "read first, edit on demand" — reopening two
+      modals here to assert it a second time only adds four overlay mounts to
+      a test about navigation.
+    */
     expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
+    expect(conceptValue('symbol')).toBe('xauusd');
     expect(conceptRow('direction')).toHaveTextContent('Long');
-    const symbol = openConcept('Symbol');
-    expect(symbol.getByLabelText('Symbol')).toHaveValue('xauusd');
-    closeConcept();
-    const direction = openConcept('Direction');
-    expect(direction.getByRole('radio', { name: 'Long' })).toBeChecked();
-    closeConcept();
+    expect(conceptValue('direction')).toBe('long');
     goTo('result');
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('120');
     expect(screen.getByRole('radio', { name: 'Win' })).toBeChecked();

@@ -349,7 +349,9 @@ export function TradeRecordingForm({
 
   if (timing === 'after_trade') {
     return (
-      <div className="flex w-full min-w-0 flex-col gap-3">
+      // `flex-1` so the step flow's docked action bar reaches the bottom of a
+      // phone screen rather than stopping under short content.
+      <div className="flex w-full min-w-0 flex-1 flex-col gap-3">
         {status}
         <TradeAfterTradeForm
           key={key}

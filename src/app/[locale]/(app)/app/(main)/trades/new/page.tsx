@@ -171,8 +171,30 @@ export default async function NewTradePage({
   return (
     <div
       className={cn(
-        'mx-auto w-full min-w-0 px-4 pb-10 sm:px-6 lg:px-8 lg:pb-16',
-        stepFlow ? 'max-w-[76rem] pt-3 lg:pt-8' : 'max-w-[70rem] pt-4 lg:pt-8',
+        'mx-auto flex w-full min-w-0 flex-col px-4 sm:px-6 lg:px-8 lg:pb-16',
+        stepFlow ? 'max-w-[76rem] pt-3 lg:pt-8' : 'max-w-[70rem] pt-4 pb-10 lg:pt-8',
+        /*
+          THE STEP FLOW OWNS THE REST OF THE SCREEN ON A PHONE. Its action bar
+          is docked to the bottom of the step, so unless the step is as tall as
+          what is left of the viewport the bar stops wherever the content
+          happens to end and leaves a band of empty page under it — a bar that
+          is neither in the flow nor at the bottom of the screen. Claiming the
+          remaining height puts it where a phone expects a primary action, and
+          costs nothing on a step long enough to scroll. The page's own bottom
+          padding goes with it: the bar carries the safe-area inset itself.
+
+          THE EXPRESSION IS THE SHELL'S, DELIBERATELY. `ShellFrame`'s workspace
+          column sizes itself with `--shell-header-height` at every width, even
+          though the header is `--shell-header-height-mobile` on a phone, so on
+          a phone that column runs about 4px past the viewport. Deriving this
+          height from the TRUE mobile header instead left the bar ending 4px
+          above the screen's bottom — correct arithmetic, visibly wrong result,
+          because the column it sits in is the thing the reader scrolls to the
+          end of. Matching the shell keeps the two edges together; whether the
+          shell should use the mobile var is a shell question, and moving it
+          would shift the minimum height of every page in the app.
+        */
+        stepFlow ? 'min-h-[calc(100dvh-var(--shell-header-height))] lg:min-h-0 lg:pb-16' : null,
       )}
     >
       {/*
@@ -211,7 +233,7 @@ export default async function NewTradePage({
           {t(`create.recording.${copy}.title`)}
         </h1>
       </header>
-      <div className={cn('min-w-0', stepFlow ? 'mt-2 sm:mt-2' : 'mt-2')}>
+      <div className={cn('mt-2 min-w-0', stepFlow && 'flex flex-1 flex-col')}>
         <TradeCreateGate
           options={options}
           canWrite={authorization.allowed}

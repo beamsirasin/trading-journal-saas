@@ -54,6 +54,19 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  /*
+   * DEV TOOLS OUT OF THE ACTION BAR'S CORNER.
+   *
+   * Next.js injects its dev-tools indicator — the small pill that reads
+   * "N Issues" — at bottom-left of the viewport under `next dev`, and only
+   * there: a production build never renders it, which is why it appears in no
+   * review capture. It is not part of this product and cannot be restyled
+   * from here, but bottom-left is exactly where a phone's docked action bar
+   * lives, so during local review it sits on top of the primary action. Moving
+   * it to the opposite corner costs nothing and stops it being mistaken for
+   * product chrome.
+   */
+  devIndicators: { position: 'top-right' },
   experimental: {
     serverActions: {
       /**

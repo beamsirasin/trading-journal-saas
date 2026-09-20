@@ -1059,8 +1059,11 @@ export function TradeAfterTradeForm({
       data-step={key}
       hidden={currentKey !== key}
       className={cn(
-        'min-w-0 flex-col px-0 pb-6 sm:px-6 lg:px-8',
-        currentKey === key ? 'flex' : 'hidden',
+        // The shown step takes the space between the header and the action
+        // bar, so the bar sits at the foot of the step rather than wherever
+        // the step's content happened to stop.
+        'min-w-0 flex-col px-0 pb-5 sm:px-6 lg:px-8',
+        currentKey === key ? 'flex flex-1' : 'hidden',
         className,
       )}
     >
@@ -1069,7 +1072,7 @@ export function TradeAfterTradeForm({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-3 lg:gap-6">
+    <div className="flex w-full min-w-0 flex-1 flex-col gap-3 lg:gap-6">
       {/*
         THE MODE, SAID ONCE AND BRIEFLY. On a wide screen the sentence
         explaining the mode sits above the flow, where it costs nothing. On a
@@ -1095,7 +1098,7 @@ export function TradeAfterTradeForm({
         type is what made the flow read as a small dialog adrift in a large
         workspace.
       */}
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,50rem)_17.5rem] lg:justify-center lg:gap-8 xl:gap-10">
+      <div className="grid min-w-0 flex-1 gap-6 lg:grid-cols-[minmax(0,50rem)_17.5rem] lg:justify-center lg:gap-8 xl:gap-10">
         <form
           ref={formRef}
           id={formId}
@@ -1822,11 +1825,23 @@ export function TradeAfterTradeForm({
             data-step-actions=""
             {...(onLastStep ? { 'data-global-save': '' } : {})}
             data-action-bar={wide || keyboardOpen ? 'inline' : 'docked'}
+            /*
+              A SCREEN BAR ON A PHONE, A CARD FOOTER ON A WIDE ONE.
+
+              Docked, it spans the viewport rather than the content column — a
+              card-coloured strip inset inside the page's gutters reads as an
+              empty card someone left a button in, which is exactly what it
+              was. Full-bleed it reads as the bottom of the screen, while its
+              CONTENT stays on the same left edge as the rows above, so the
+              action still lines up with the stack it belongs to. The
+              safe-area inset is the bar's own, which is why the page below it
+              carries no bottom padding on a phone.
+            */
             className={cn(
-              'border-border bg-card flex min-w-0 flex-col gap-2 rounded-b-xl border-t px-0 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 lg:gap-2.5 lg:px-8 lg:pt-5 lg:pb-5',
-              !wide &&
-                !keyboardOpen &&
-                'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
+              'border-border bg-card flex min-w-0 flex-col gap-2 border-t pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 lg:gap-2.5 lg:rounded-b-xl lg:px-8 lg:pt-5 lg:pb-5',
+              wide || keyboardOpen
+                ? 'px-0'
+                : 'sticky bottom-0 z-20 -mx-4 px-4 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)] sm:-mx-6 sm:px-6',
             )}
           >
             {onLastStep || pending || serverMessage !== null ? (

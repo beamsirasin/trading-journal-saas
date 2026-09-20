@@ -385,6 +385,32 @@ async function capture(page: Page, name: string) {
         `${name}: the docked step bar covers the last control`,
       ).toBeLessThanOrEqual(barBox.y + 1);
     }
+    /*
+      A DOCKED BAR HAS TO REACH THE BOTTOM OF THE SCREEN, EDGE TO EDGE.
+      `position: sticky` only pins an element once there is something to
+      scroll; on a step short enough to fit, it simply stops wherever the
+      content stopped, leaving a card-coloured strip with a band of empty page
+      under it. That is what this pass fixed, and it is invisible in a
+      screenshot of the strip itself — only the box against the viewport shows
+      it. Full-bleed is the other half: inset inside the page's gutters, the
+      bar reads as a card someone left a button in rather than as the bottom
+      of the screen.
+    */
+    const viewport = page.viewportSize();
+    if (barBox !== null && viewport !== null) {
+      expect(
+        Math.round(barBox.y + barBox.height),
+        `${name}: the docked bar stops ${Math.round(viewport.height - barBox.y - barBox.height)}px short of the screen`,
+      ).toBeGreaterThanOrEqual(viewport.height - 1);
+      expect(
+        Math.round(barBox.x),
+        `${name}: the docked bar is inset from the left`,
+      ).toBeLessThanOrEqual(0);
+      expect(
+        Math.round(barBox.x + barBox.width),
+        `${name}: the docked bar is inset from the right`,
+      ).toBeGreaterThanOrEqual(viewport.width);
+    }
     await page.screenshot({ path: `${OUT}/${name}-bottom.png` });
     await page.evaluate(() => window.scrollTo(0, 0));
   }
