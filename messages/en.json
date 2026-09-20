@@ -2334,7 +2334,9 @@
             "entryTimeNeedsDate": "Choose an entry date first",
             "entryTimeNotRecorded": "Time not recorded",
             "clearDate": "Clear date",
-            "clearOnlyTime": "Clear time"
+            "clearOnlyTime": "Clear time",
+            "entryDateTime": "Entry date & time",
+            "clearStamp": "Clear entry date & time"
           },
           "result": {
             "finalPnl": "Final net P&L",
@@ -2525,10 +2527,10 @@
             "symbolEditor": "Type the symbol you traded, or pick one you used recently.",
             "symbolNoMatch": "No recent symbol matches what you typed. Keep typing to record it.",
             "directionEditor": "Long if you bought to open, short if you sold to open.",
-            "dateEditor": "Pick the day you entered the trade. Future days are unavailable.",
-            "timeEditor": "The time of day you entered, in {timezone}.",
             "previousMonth": "Previous month",
-            "nextMonth": "Next month"
+            "nextMonth": "Next month",
+            "stampEditor": "The day and time you entered, in {timezone}. Both are optional.",
+            "monthNav": "Change month"
           }
         }
       },

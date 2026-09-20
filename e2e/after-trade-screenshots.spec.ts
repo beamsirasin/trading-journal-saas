@@ -65,8 +65,7 @@ test.describe('After Trade step-flow captures', () => {
         // Each Step 1 editor, open over its completed step.
         for (const [field, name] of [
           ['Symbol', 'symbol'],
-          ['Entry date', 'entered-date'],
-          ['Entry time', 'entered-time'],
+          ['Entry date & time', 'entered-at'],
           ['Trading Account', 'account'],
         ] as const) {
           await openConcept(page, field);
@@ -247,12 +246,11 @@ async function fillEverything(page: Page) {
   await openConcept(page, 'Direction');
   await clickChoice(page, 'Long');
   await closeConcept(page);
-  // The entry timestamp is two answers: the day, then the minute.
-  const date = await openConcept(page, 'Entry date');
-  await date.locator('[data-range-date="2026-09-18"]').click();
-  await closeConcept(page);
-  const entered = await openConcept(page, 'Entry time');
-  await entered.locator('#after-enteredTime').fill('09:30');
+  // The entry timestamp is one sheet holding two answers: the day, then the
+  // minute. Picking the day moves the sheet on to the minute.
+  const stamp = await openConcept(page, 'Entry date & time');
+  await stamp.locator('[data-range-date="2026-09-18"]').click();
+  await stamp.locator('#after-enteredTime').fill('09:30');
   await closeConcept(page);
 
   // The final exit time says how the trade ended, so it asks on Result.

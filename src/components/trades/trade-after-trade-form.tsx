@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -121,7 +122,7 @@ const NONE = '__none';
  * needs. The key is the draft field, so a blocked Save maps straight onto the
  * row that holds the problem.
  */
-type TradeConcept = 'tradingAccountId' | 'symbol' | 'direction' | 'enteredAt' | 'enteredTime';
+type TradeConcept = 'tradingAccountId' | 'symbol' | 'direction' | 'enteredAt';
 
 /** The trader's calendar date, in THEIR zone — never the browser's (CLAUDE.md §7). */
 function todayIn(now: Date, timezone: string): string | null {
@@ -216,7 +217,7 @@ function useIsWideViewport(): boolean {
  * launcher row itself: it names the concept, carries the error, and opens the
  * control in one press.
  */
-function fieldTargetId(field: AfterTradeField, code?: AfterTradeErrorCode): string {
+function fieldTargetId(field: AfterTradeField): string {
   if (field.startsWith('exit:')) {
     const [, id, part] = field.split(':');
     return `after-exit-${id}-${part}`;
@@ -225,16 +226,8 @@ function fieldTargetId(field: AfterTradeField, code?: AfterTradeErrorCode): stri
     case 'tradingAccountId':
     case 'symbol':
     case 'direction':
-      return conceptRowId(field);
     case 'enteredAt':
-      /*
-        The entry timestamp is asked as two rows, so a failed Save has to land
-        on the half that is wrong: a date with no time is the TIME row's
-        problem, and the date beside it is a perfectly good answer.
-      */
-      return code === 'entry_time_required'
-        ? conceptRowId('enteredTime')
-        : conceptRowId('enteredAt');
+      return conceptRowId(field);
     case 'actualRisk':
       return 'after-actual-risk-amount';
     default:
@@ -396,6 +389,11 @@ export function TradeAfterTradeForm({
     current month, and every reopen re-anchors it, so paging never drifts away
     from the answer it is meant to be adjusting.
   */
+  /**
+   * Which half of the entry timestamp has its control open, if either. View
+   * state inside one sheet, so the two answers never need a second overlay.
+   */
+  const [entryPane, setEntryPane] = useState<'date' | 'time' | null>('date');
   const [pickerMonth, setPickerMonth] = useState(() =>
     monthOf(entryTimestampParts(draft.enteredAt).date, todayIn(new Date(), timezone)),
   );
@@ -404,7 +402,6 @@ export function TradeAfterTradeForm({
     symbol: useRef<HTMLButtonElement>(null),
     direction: useRef<HTMLButtonElement>(null),
     enteredAt: useRef<HTMLButtonElement>(null),
-    enteredTime: useRef<HTMLButtonElement>(null),
   };
   const [exitsOpen, setExitsOpen] = useState(draft.exits.some(meaningfulExit));
   const [emotionsOpen, setEmotionsOpen] = useState<Readonly<Record<EmotionPhase, boolean>>>({
@@ -591,14 +588,14 @@ export function TradeAfterTradeForm({
   }
 
   /** Open the earliest step holding a blocking error, and focus its control. */
-  function focusFirstError(fields: readonly AfterTradeField[], errors: AfterTradeErrors) {
+  function focusFirstError(fields: readonly AfterTradeField[]) {
     if (fields.length === 0) return;
     const index = Math.min(...fields.map(fieldStep));
     showStep(
       index,
       fields
         .filter((field) => fieldStep(field) === index)
-        .map((field) => () => document.getElementById(fieldTargetId(field, errors[field]))),
+        .map((field) => () => document.getElementById(fieldTargetId(field))),
     );
   }
 
@@ -619,7 +616,7 @@ export function TradeAfterTradeForm({
       setServerMessage(null);
       const sections = new Set(currentReadiness.fields.map(afterTradeFieldSection));
       if (sections.has('exits')) setExitsOpen(true);
-      focusFirstError(currentReadiness.fields, currentValidation.errors);
+      focusFirstError(currentReadiness.fields);
       return;
     }
     // A chosen answer whose source went away waits for the trader's choice.
@@ -686,7 +683,7 @@ export function TradeAfterTradeForm({
       }
       setServerErrors(mapped);
       setServerMessage(t(`errors.${result.error.code}`));
-      focusFirstError(Object.keys(mapped) as AfterTradeField[], mapped);
+      focusFirstError(Object.keys(mapped) as AfterTradeField[]);
       return;
     }
     symbolFavorites.recordUse(payload.symbol);
@@ -860,8 +857,18 @@ export function TradeAfterTradeForm({
       : (formatCalendarDateLabel(entryParts.date, locale) ?? entryParts.date);
   const entryError = errorText('enteredAt');
   const missingEntryTime = validation.errors.enteredAt === 'entry_time_required';
-  const dateError = missingEntryTime ? undefined : entryError;
   const timeError = missingEntryTime ? entryError : undefined;
+  /*
+    HOW MUCH OF "WHEN" IS RECORDED, IN ONE LINE. A date whose time is unknown
+    reads as the date plus that fact — never as a date pretending to be an
+    instant, and never as nothing at all.
+  */
+  const entryStampLabel =
+    entryParts.date === ''
+      ? null
+      : entryParts.time === ''
+        ? `${entryDateLabel ?? entryParts.date} · ${a('times.entryTimeNotRecorded')}`
+        : `${entryDateLabel ?? entryParts.date} · ${entryParts.time}`;
 
   /*
     THE MONTH THE CALENDAR OPENS ON. The recorded date's month, or the trader's
@@ -1340,48 +1347,33 @@ export function TradeAfterTradeForm({
                 onOpen={() => setEditor('direction')}
               />
               {/*
-                WHEN, ASKED AS THE TWO THINGS IT IS. A trader recalling a closed
-                trade almost always knows the day and often has to think about
-                the minute, so the day gets the calendar and the minute gets its
-                own small editor. Blank is "Not recorded", never unanswered and
-                never a zero (UX Rules §4); the final exit time belongs to how
-                the trade ended, and stays on Step 2.
+                WHEN, AS ONE CONCEPT ON THE STEP AND TWO ANSWERS INSIDE IT.
+                "When did you enter?" is one question a trader either can or
+                cannot answer, so it takes one row here and says how much of it
+                is recorded; the day and the minute are separate answers only
+                once the editor is open, because they are separately knowable.
+                Blank is "Not recorded", never unanswered and never a zero (UX
+                Rules §4); the final exit time belongs to how the trade ended,
+                and stays on Step 2.
               */}
               <ConceptRow
                 concept="enteredAt"
                 rowRef={conceptRows.enteredAt}
-                label={a('times.entryDate')}
+                label={a('times.entryDateTime')}
                 marker={<OptionalTag />}
-                value={entryDateLabel}
+                value={entryStampLabel}
                 placeholder={a('times.notRecorded')}
-                raw={entryParts.date}
-                error={errorText('enteredAt') === undefined ? undefined : dateError}
-                editLabel={a('trade.editAria', { field: a('times.entryDate') })}
+                raw={draft.enteredAt}
+                error={errorText('enteredAt')}
+                editLabel={a('trade.editAria', { field: a('times.entryDateTime') })}
                 onOpen={() => {
                   setPickerMonth(monthOf(entryParts.date, todayDate));
+                  // Open on the half that is missing, not on a fixed one.
+                  setEntryPane(
+                    entryParts.date === '' ? 'date' : entryParts.time === '' ? 'time' : null,
+                  );
                   setEditor('enteredAt');
                 }}
-              />
-              {/*
-                A TIME WITH NO DATE IS NOT AN ANSWER, so until a date is chosen
-                this row says what it needs instead of opening on nothing. It
-                stays focusable and keeps saying why — a dead control that
-                explains nothing is worse than one that does.
-              */}
-              <ConceptRow
-                concept="enteredTime"
-                rowRef={conceptRows.enteredTime}
-                label={a('times.entryTime')}
-                marker={<OptionalTag />}
-                value={entryParts.time === '' ? null : entryParts.time}
-                placeholder={
-                  entryParts.date === '' ? a('times.entryTimeNeedsDate') : a('times.notRecorded')
-                }
-                raw={entryParts.time}
-                unavailable={entryParts.date === ''}
-                error={timeError}
-                editLabel={a('trade.editAria', { field: a('times.entryTime') })}
-                onOpen={() => setEditor('enteredTime')}
               />
             </div>,
           )}
@@ -1872,14 +1864,7 @@ export function TradeAfterTradeForm({
                         plus that fact, never as a date pretending to be an
                         instant and never as nothing at all.
                       */
-                      const entered =
-                        key === 'trade'
-                          ? entryParts.date === ''
-                            ? null
-                            : entryParts.time === ''
-                              ? `${entryDateLabel ?? entryParts.date} · ${a('times.entryTimeNotRecorded')}`
-                              : localTime(draft.enteredAt)
-                          : null;
+                      const entered = key === 'trade' ? entryStampLabel : null;
                       const exited = key === 'trade' ? localTime(draft.exitedAt) : null;
                       const times =
                         entered !== null && exited !== null
@@ -2221,21 +2206,24 @@ export function TradeAfterTradeForm({
       <TradeAdaptiveOverlay
         open={editor === 'enteredAt'}
         onOpenChange={closeEditorOn}
-        title={a('times.entryDate')}
-        description={a('trade.dateEditor')}
+        title={a('times.entryDateTime')}
+        description={a('trade.stampEditor', { timezone })}
         closeLabel={a('trade.close')}
         size="focused"
         returnFocusRef={conceptRows.enteredAt}
         footer={
           <div className="flex min-w-0 flex-wrap-reverse items-center justify-between gap-3">
-            {entryParts.date === '' ? (
+            {draft.enteredAt === '' ? (
               <span aria-hidden="true" />
             ) : (
               <InlineAction
-                ariaLabel={a('times.clearDate')}
-                onClick={() => apply((current) => setEntryDate(current, ''))}
+                ariaLabel={a('times.clearStamp')}
+                onClick={() => {
+                  apply((current) => setEntryDate(current, ''));
+                  setEntryPane('date');
+                }}
               >
-                {a('times.clearDate')}
+                {a('times.clearStamp')}
               </InlineAction>
             )}
             <Button type="button" size="lg" className="min-h-12" onClick={() => setEditor(null)}>
@@ -2244,70 +2232,208 @@ export function TradeAfterTradeForm({
           </div>
         }
       >
-        <div data-entry-date-picker="" className="flex min-w-0 flex-col gap-2">
-          <nav
-            aria-label={a('trade.previousMonth')}
-            className="flex min-w-0 items-center justify-between gap-2"
+        {/*
+          TWO ANSWERS, ONE SURFACE. The day and the minute are separately
+          knowable, so each gets its own row and its own control — but they are
+          one question, so they share one sheet. Only one control is open at a
+          time and it opens under the row it belongs to: a second modal over
+          this one would be two overlays deep, which this system does not do
+          (DESIGN.md §3, L4).
+        */}
+        <div data-entry-stamp-editor="" className="flex min-w-0 flex-col gap-2">
+          <EntryStampRow
+            id="after-entry-date"
+            label={a('times.entryDate')}
+            value={entryDateLabel}
+            placeholder={a('times.notRecorded')}
+            raw={entryParts.date}
+            open={entryPane === 'date'}
+            onToggle={() => {
+              setPickerMonth(monthOf(entryParts.date, todayDate));
+              setEntryPane((current) => (current === 'date' ? null : 'date'));
+            }}
           >
-            <MonthStepButton
-              direction="previous"
-              label={a('trade.previousMonth')}
-              onClick={() =>
-                setPickerMonth((current) => shiftCalendarMonth(current.year, current.month, -1))
-              }
-            />
-            <MonthStepButton
-              direction="next"
-              label={a('trade.nextMonth')}
-              onClick={() =>
-                setPickerMonth((current) => shiftCalendarMonth(current.year, current.month, 1))
-              }
-            />
-          </nav>
-          <DateRangeMonthGrid
-            month={pickerGrid}
-            monthLabel={formatCalendarMonthLabel(pickerMonth.year, pickerMonth.month, locale)}
-            onSelect={(date) => apply((current) => setEntryDate(current, date))}
-            dateLocale={locale}
-          />
-        </div>
-      </TradeAdaptiveOverlay>
-
-      <TradeAdaptiveOverlay
-        open={editor === 'enteredTime'}
-        onOpenChange={closeEditorOn}
-        title={a('times.entryTime')}
-        description={a('trade.timeEditor', { timezone })}
-        closeLabel={a('trade.close')}
-        size="focused"
-        returnFocusRef={conceptRows.enteredTime}
-        footer={editorDone}
-      >
-        <div className="flex min-w-0 flex-col gap-3">
-          <TextField
-            id="after-enteredTime"
-            type="time"
-            label={a('times.entryTime')}
-            value={entryParts.time}
-            figure
-            error={timeError}
-            onChange={(time) => apply((current) => setEntryTime(current, time))}
-            labelAside={
-              entryParts.time === '' ? <StateText>{a('times.notRecorded')}</StateText> : null
-            }
-          />
-          {entryParts.time === '' ? null : (
-            <div>
-              <InlineAction
-                ariaLabel={a('times.clearOnlyTime')}
-                onClick={() => apply((current) => setEntryTime(current, ''))}
+            <div data-entry-date-picker="" className="flex min-w-0 flex-col gap-2 pt-1">
+              <nav
+                aria-label={a('trade.monthNav')}
+                className="flex min-w-0 items-center justify-between gap-2"
               >
-                {a('times.clearOnlyTime')}
-              </InlineAction>
+                <MonthStepButton
+                  direction="previous"
+                  label={a('trade.previousMonth')}
+                  onClick={() =>
+                    setPickerMonth((current) => shiftCalendarMonth(current.year, current.month, -1))
+                  }
+                />
+                <MonthStepButton
+                  direction="next"
+                  label={a('trade.nextMonth')}
+                  onClick={() =>
+                    setPickerMonth((current) => shiftCalendarMonth(current.year, current.month, 1))
+                  }
+                />
+              </nav>
+              <DateRangeMonthGrid
+                month={pickerGrid}
+                monthLabel={formatCalendarMonthLabel(pickerMonth.year, pickerMonth.month, locale)}
+                onSelect={(date) => {
+                  apply((current) => setEntryDate(current, date));
+                  // The day answered, the minute is what is left to answer.
+                  setEntryPane('time');
+                }}
+                dateLocale={locale}
+              />
+              {entryParts.date === '' ? null : (
+                <div>
+                  <InlineAction
+                    ariaLabel={a('times.clearDate')}
+                    onClick={() => {
+                      apply((current) => setEntryDate(current, ''));
+                      setEntryPane('date');
+                    }}
+                  >
+                    {a('times.clearDate')}
+                  </InlineAction>
+                </div>
+              )}
             </div>
-          )}
+          </EntryStampRow>
+
+          {/*
+            A TIME WITH NO DATE IS NOT AN ANSWER. The row stays reachable and
+            focusable and says what it is waiting for, rather than going dead
+            and explaining nothing.
+          */}
+          <EntryStampRow
+            id="after-entry-time"
+            label={a('times.entryTime')}
+            value={entryParts.time === '' ? null : entryParts.time}
+            placeholder={
+              entryParts.date === '' ? a('times.entryTimeNeedsDate') : a('times.notRecorded')
+            }
+            raw={entryParts.time}
+            unavailable={entryParts.date === ''}
+            error={timeError}
+            open={entryPane === 'time'}
+            onToggle={() => setEntryPane((current) => (current === 'time' ? null : 'time'))}
+          >
+            <div className="flex min-w-0 flex-col gap-3 pt-1">
+              <TextField
+                id="after-enteredTime"
+                type="time"
+                label={a('times.entryTime')}
+                value={entryParts.time}
+                figure
+                error={timeError}
+                onChange={(time) => apply((current) => setEntryTime(current, time))}
+              />
+              {entryParts.time === '' ? null : (
+                <div>
+                  <InlineAction
+                    ariaLabel={a('times.clearOnlyTime')}
+                    onClick={() => apply((current) => setEntryTime(current, ''))}
+                  >
+                    {a('times.clearOnlyTime')}
+                  </InlineAction>
+                </div>
+              )}
+            </div>
+          </EntryStampRow>
         </div>
       </TradeAdaptiveOverlay>
+    </div>
+  );
+}
+
+/**
+ * ONE OF THE TWO ANSWERS INSIDE THE ENTRY-TIMESTAMP SHEET.
+ *
+ * A launcher row again — name, what is recorded, a chevron — but a disclosure
+ * rather than a door: its control opens underneath it, inside the same sheet.
+ * That is what keeps the day and the minute separately answerable without
+ * stacking a second modal over the first (DESIGN.md §3, L4), and it is why the
+ * chevron turns rather than pointing on.
+ *
+ * It sits one plane above the sheet it is on, by plane and not by a hairline,
+ * which is the same step the Step 1 rows take against the step card.
+ */
+function EntryStampRow({
+  id,
+  label,
+  value,
+  placeholder,
+  raw,
+  unavailable = false,
+  error,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  label: string;
+  value: string | null;
+  placeholder: string;
+  raw: string;
+  unavailable?: boolean;
+  error?: string | undefined;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const panelId = `${id}-panel`;
+  const errorId = `${id}-error`;
+  return (
+    <div
+      data-entry-stamp={id}
+      data-value={raw}
+      className={cn(
+        'bg-muted/50 min-w-0 rounded-lg border px-3 py-1',
+        error === undefined ? 'border-transparent' : 'border-destructive',
+      )}
+    >
+      <button
+        type="button"
+        id={id}
+        aria-expanded={open}
+        aria-controls={panelId}
+        {...(unavailable ? { 'aria-disabled': true } : {})}
+        aria-describedby={error === undefined ? undefined : errorId}
+        onClick={unavailable ? undefined : onToggle}
+        className={cn(
+          'focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2',
+          unavailable && 'cursor-default',
+        )}
+      >
+        <span className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] font-medium">
+          {label}
+        </span>
+        <span
+          className={cn(
+            'min-w-0 truncate text-base',
+            value === null
+              ? 'text-subtle-foreground'
+              : 'text-foreground font-semibold tabular-nums',
+          )}
+        >
+          {value ?? placeholder}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn(
+            'size-4 shrink-0 transition-transform motion-reduce:transition-none',
+            unavailable ? 'text-subtle-foreground/40' : 'text-subtle-foreground',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+      {error === undefined ? null : (
+        <div className="pb-2">
+          <FieldError id={errorId}>{error}</FieldError>
+        </div>
+      )}
+      <div id={panelId} hidden={!open} className={open ? 'pb-2' : undefined}>
+        {open ? children : null}
+      </div>
     </div>
   );
 }

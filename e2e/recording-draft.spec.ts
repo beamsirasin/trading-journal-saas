@@ -138,11 +138,7 @@ test.describe('Add Trade Recording Draft', () => {
       await expect(page.locator('#after-risk')).toHaveValue('100');
       // At Entry's untouched "now" is not a remembered entry date or time.
       await expect(page.locator('[data-concept="enteredAt"]')).toHaveAttribute('data-value', '');
-      await expect(page.locator('[data-concept="enteredTime"]')).toHaveAttribute('data-value', '');
-      await expect(page.locator('[data-concept="enteredTime"]')).toHaveAttribute(
-        'aria-disabled',
-        'true',
-      );
+      await expect(page.locator('[data-concept="enteredAt"]')).toContainText('Not recorded');
       await expect(page.getByText(RECOVERED)).toBeVisible();
 
       // Browser Back returns to At Entry with its own section intact.
