@@ -249,7 +249,10 @@ async function fillEverything(page: Page) {
   // The entry timestamp is one sheet holding two answers: the day, then the
   // minute. Picking the day moves the sheet on to the minute.
   const stamp = await openConcept(page, 'Entry date & time');
+  // Both halves open collapsed, and either may be answered first.
+  await stamp.locator('#after-entry-date').click();
   await stamp.locator('[data-range-date="2026-09-18"]').click();
+  await stamp.locator('#after-entry-time').click();
   // The time is a wheel: tap the hour and the minute under the band.
   await stamp.locator('#after-enteredTime-hour [data-wheel-value="09"]').click();
   await stamp.locator('#after-enteredTime-minute [data-wheel-value="30"]').click();

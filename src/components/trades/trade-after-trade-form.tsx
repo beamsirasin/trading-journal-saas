@@ -54,6 +54,7 @@ import {
   buildAfterTradePayload,
   canAddExit,
   canDeselectEmotion,
+  clearEntryTimestamp,
   createAfterTradeDraft,
   entryTimestampParts,
   exitField,
@@ -394,7 +395,13 @@ export function TradeAfterTradeForm({
    * Which half of the entry timestamp has its control open, if either. View
    * state inside one sheet, so the two answers never need a second overlay.
    */
-  const [entryPane, setEntryPane] = useState<'date' | 'time' | null>('date');
+  const [entryPane, setEntryPane] = useState<'date' | 'time' | null>(null);
+  /**
+   * The sheet has been closed at least once with only half an answer in it.
+   * That is when the missing half starts saying so — not while the trader is
+   * still part-way through giving it.
+   */
+  const [entryStampReviewed, setEntryStampReviewed] = useState(false);
   const [pickerMonth, setPickerMonth] = useState(() =>
     monthOf(entryTimestampParts(draft.enteredAt).date, todayIn(new Date(), timezone)),
   );
@@ -507,6 +514,8 @@ export function TradeAfterTradeForm({
         return a('errors.invalidDatetime');
       case 'entry_time_required':
         return a('errors.entryTimeRequired');
+      case 'entry_date_required':
+        return a('errors.entryDateRequired');
       case 'future_time':
         return a('errors.futureTime');
       case 'exit_before_entry':
@@ -856,20 +865,39 @@ export function TradeAfterTradeForm({
     entryParts.date === ''
       ? null
       : (formatCalendarDateLabel(entryParts.date, locale) ?? entryParts.date);
-  const entryError = errorText('enteredAt');
-  const missingEntryTime = validation.errors.enteredAt === 'entry_time_required';
-  const timeError = missingEntryTime ? entryError : undefined;
+  /*
+    HALF AN ANSWER IS NOT AN ERROR WHILE IT IS BEING GIVEN. A trader who picks
+    a day has not done anything wrong yet — they are mid-answer, and the other
+    row is right there. The completion message appears once they have closed
+    the sheet on it, or once a Save has stopped on it; until then the rows just
+    say what is recorded.
+  */
+  const entryErrorCode = validation.errors.enteredAt;
+  const entryIncomplete =
+    entryErrorCode === 'entry_time_required' || entryErrorCode === 'entry_date_required';
+  const showEntryIncomplete = entryIncomplete && (attempted || entryStampReviewed);
+  const entryError = entryIncomplete
+    ? showEntryIncomplete
+      ? errorText('enteredAt')
+      : undefined
+    : errorText('enteredAt');
+  const timeError = entryErrorCode === 'entry_time_required' ? entryError : undefined;
+  const dateError = entryErrorCode === 'entry_date_required' ? entryError : undefined;
   /*
     HOW MUCH OF "WHEN" IS RECORDED, IN ONE LINE. A date whose time is unknown
     reads as the date plus that fact — never as a date pretending to be an
     instant, and never as nothing at all.
   */
-  const entryStampLabel =
-    entryParts.date === ''
-      ? null
-      : entryParts.time === ''
-        ? `${entryDateLabel ?? entryParts.date} · ${a('times.entryTimeNotRecorded')}`
-        : `${entryDateLabel ?? entryParts.date} · ${entryParts.time}`;
+  const entryStampLabel = (() => {
+    const day = entryDateLabel ?? entryParts.date;
+    if (entryParts.date !== '' && entryParts.time !== '') return `${day} · ${entryParts.time}`;
+    // Half an answer reads as the half that is there, and what is not.
+    if (entryParts.date !== '') return `${day} · ${a('times.entryTimeNotRecorded')}`;
+    if (entryParts.time !== '') {
+      return `${entryParts.time} · ${a('times.entryDateNotRecorded')}`;
+    }
+    return null;
+  })();
 
   /*
     THE MONTH THE CALENDAR OPENS ON. The recorded date's month, or the trader's
@@ -1365,14 +1393,18 @@ export function TradeAfterTradeForm({
                 value={entryStampLabel}
                 placeholder={a('times.notRecorded')}
                 raw={draft.enteredAt}
-                error={errorText('enteredAt')}
+                error={entryError}
                 editLabel={a('trade.editAria', { field: a('times.entryDateTime') })}
                 onOpen={() => {
                   setPickerMonth(monthOf(entryParts.date, todayDate));
-                  // Open on the half that is missing, not on a fixed one.
-                  setEntryPane(
-                    entryParts.date === '' ? 'date' : entryParts.time === '' ? 'time' : null,
-                  );
+                  /*
+                    THE SHEET OPENS SHOWING BOTH QUESTIONS AND ANSWERING
+                    NEITHER. Opening one of them for the trader guesses which
+                    half they came to give, and a calendar or a wheel unfolding
+                    on arrival is a control they have to dismiss before they can
+                    even read what the other row says.
+                  */
+                  setEntryPane(null);
                   setEditor('enteredAt');
                 }}
               />
@@ -2220,14 +2252,24 @@ export function TradeAfterTradeForm({
               <InlineAction
                 ariaLabel={a('times.clearStamp')}
                 onClick={() => {
-                  apply((current) => setEntryDate(current, ''));
-                  setEntryPane('date');
+                  apply(clearEntryTimestamp);
+                  setEntryStampReviewed(false);
+                  setEntryPane(null);
                 }}
               >
                 {a('times.clearStamp')}
               </InlineAction>
             )}
-            <Button type="button" size="lg" className="min-h-12" onClick={() => setEditor(null)}>
+            <Button
+              type="button"
+              size="lg"
+              className="min-h-12"
+              onClick={() => {
+                // Closing on half an answer is when the other half speaks up.
+                if (entryIncomplete) setEntryStampReviewed(true);
+                setEditor(null);
+              }}
+            >
               {a('trade.done')}
             </Button>
           </div>
@@ -2248,6 +2290,7 @@ export function TradeAfterTradeForm({
             value={entryDateLabel}
             placeholder={a('times.notRecorded')}
             raw={entryParts.date}
+            error={dateError}
             open={entryPane === 'date'}
             onToggle={() => {
               setPickerMonth(monthOf(entryParts.date, todayDate));
@@ -2277,21 +2320,14 @@ export function TradeAfterTradeForm({
               <DateRangeMonthGrid
                 month={pickerGrid}
                 monthLabel={formatCalendarMonthLabel(pickerMonth.year, pickerMonth.month, locale)}
-                onSelect={(date) => {
-                  apply((current) => setEntryDate(current, date));
-                  // The day answered, the minute is what is left to answer.
-                  setEntryPane('time');
-                }}
+                onSelect={(date) => apply((current) => setEntryDate(current, date))}
                 dateLocale={locale}
               />
               {entryParts.date === '' ? null : (
                 <div>
                   <InlineAction
                     ariaLabel={a('times.clearDate')}
-                    onClick={() => {
-                      apply((current) => setEntryDate(current, ''));
-                      setEntryPane('date');
-                    }}
+                    onClick={() => apply((current) => setEntryDate(current, ''))}
                   >
                     {a('times.clearDate')}
                   </InlineAction>
@@ -2301,19 +2337,17 @@ export function TradeAfterTradeForm({
           </EntryStampRow>
 
           {/*
-            A TIME WITH NO DATE IS NOT AN ANSWER. The row stays reachable and
-            focusable and says what it is waiting for, rather than going dead
-            and explaining nothing.
+            EITHER HALF CAN COME FIRST. A trader recalling a closed trade may
+            remember the minute and have to work out the day, so the time is
+            not gated behind the date: both rows open on their own, and it is
+            Save that insists on the pair, not the order of opening.
           */}
           <EntryStampRow
             id="after-entry-time"
             label={a('times.entryTime')}
             value={entryParts.time === '' ? null : entryParts.time}
-            placeholder={
-              entryParts.date === '' ? a('times.entryTimeNeedsDate') : a('times.notRecorded')
-            }
+            placeholder={a('times.notRecorded')}
             raw={entryParts.time}
-            unavailable={entryParts.date === ''}
             error={timeError}
             open={entryPane === 'time'}
             onToggle={() => setEntryPane((current) => (current === 'time' ? null : 'time'))}
@@ -2361,7 +2395,6 @@ function EntryStampRow({
   value,
   placeholder,
   raw,
-  unavailable = false,
   error,
   open,
   onToggle,
@@ -2372,7 +2405,6 @@ function EntryStampRow({
   value: string | null;
   placeholder: string;
   raw: string;
-  unavailable?: boolean;
   error?: string | undefined;
   open: boolean;
   onToggle: () => void;
@@ -2405,13 +2437,9 @@ function EntryStampRow({
         id={id}
         aria-expanded={open}
         aria-controls={panelId}
-        {...(unavailable ? { 'aria-disabled': true } : {})}
         aria-describedby={error === undefined ? undefined : errorId}
-        onClick={unavailable ? undefined : onToggle}
-        className={cn(
-          'focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2',
-          unavailable && 'cursor-default',
-        )}
+        onClick={onToggle}
+        className="focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-md text-left outline-none focus-visible:ring-2"
       >
         <span className="text-muted-foreground min-w-0 flex-1 text-[0.8125rem] font-medium">
           {label}
@@ -2429,8 +2457,7 @@ function EntryStampRow({
         <ChevronDown
           aria-hidden="true"
           className={cn(
-            'size-4 shrink-0 transition-transform duration-[var(--motion-surface-enter-duration)] ease-(--motion-ease-standard) motion-reduce:transition-none',
-            unavailable ? 'text-subtle-foreground/40' : 'text-subtle-foreground',
+            'text-subtle-foreground size-4 shrink-0 transition-transform duration-[var(--motion-surface-enter-duration)] ease-(--motion-ease-standard) motion-reduce:transition-none',
             open && 'rotate-180',
           )}
         />
@@ -2516,7 +2543,6 @@ function ConceptRow({
   placeholder,
   raw,
   error,
-  unavailable = false,
   editLabel,
   onOpen,
   ...rest
@@ -2534,12 +2560,6 @@ function ConceptRow({
   placeholder: string;
   raw: string;
   error?: string | undefined;
-  /**
-   * The concept cannot be answered yet because another one has not been.
-   * `aria-disabled` rather than `disabled`: the row stays focusable and keeps
-   * saying what it is waiting for, which a dead control cannot.
-   */
-  unavailable?: boolean;
   editLabel: string;
   onOpen: () => void;
 } & Record<`data-${string}`, string | undefined>) {
@@ -2554,11 +2574,10 @@ function ConceptRow({
         data-value={raw}
         aria-label={editLabel}
         aria-haspopup="dialog"
-        {...(unavailable ? { 'aria-disabled': true } : {})}
         /* A button role carries no aria-invalid; the error is named to it instead. */
         aria-describedby={error === undefined ? undefined : errorId}
         data-invalid={error === undefined ? undefined : 'true'}
-        onClick={unavailable ? undefined : onOpen}
+        onClick={onOpen}
         /*
           THE DASHBOARD'S SURFACE LADDER, NOT A NEW ONE (DESIGN.md §3). A row
           lifts one step off whatever plane is behind it, by plane first and
@@ -2575,7 +2594,6 @@ function ConceptRow({
         */
         className={cn(
           'shadow-card bg-card hover:bg-accent focus-visible:ring-ring flex w-full min-w-0 items-center gap-3 rounded-lg border text-left transition-colors outline-none focus-visible:ring-2 motion-reduce:transition-none',
-          unavailable && 'hover:bg-card cursor-default',
           // 76px on a phone, 84px once the card has room: substantial enough to
           // read as a Trade concept, tight enough that four of them fit above
           // the fold with the step's heading.
@@ -2615,13 +2633,7 @@ function ConceptRow({
             {value ?? placeholder}
           </span>
         </span>
-        <ChevronRight
-          className={cn(
-            'size-5 shrink-0',
-            unavailable ? 'text-subtle-foreground/40' : 'text-subtle-foreground',
-          )}
-          aria-hidden="true"
-        />
+        <ChevronRight className="text-subtle-foreground size-5 shrink-0" aria-hidden="true" />
       </button>
       {error === undefined ? null : <FieldError id={errorId}>{error}</FieldError>}
     </div>

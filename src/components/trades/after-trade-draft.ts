@@ -426,17 +426,32 @@ export function removeEmotionsAnswer(draft: AfterTradeDraft, phase: EmotionPhase
 // ---------------------------------------------------------------------------
 
 /**
- * ENTRY DATE AND ENTRY TIME ARE ONE FIELD, ASKED TWICE.
+ * ENTRY DATE AND ENTRY TIME ARE ONE FIELD, ASKED TWICE, IN EITHER ORDER.
  *
- * `enteredAt` still holds exactly what it held before — a `datetime-local`
- * string, or empty — and that is what validation parses and what the payload
- * sends. The only addition is a third shape it may rest in while the trader is
- * part-way through: a bare `YYYY-MM-DD`, which means "this date, time not
- * recorded yet". It persists and recovers like any other draft text, it is
- * never shared with At Entry (which has no use for half a timestamp), and it
- * never reaches the server: Save asks for the time first.
+ * `enteredAt` is still the one stored field, and what it sends is still what
+ * it always sent: a complete `datetime-local` instant, or nothing. What it may
+ * also REST in, while the trader is part-way through, is either half on its
+ * own — and either half can be the first one given, because a trader recalling
+ * a closed trade may remember the day, or the minute, and it is not this
+ * form's business which.
+ *
+ * FOUR SHAPES, ONE ENCODING: the two halves joined by `T`, with an empty side
+ * where an answer is missing.
+ *
+ *   ``                       nothing recorded
+ *   `2026-09-18`             a day, time not recorded
+ *   `T09:30`                 a minute, day not recorded
+ *   `2026-09-18T09:30`       both — the only shape that leaves this browser
+ *
+ * A partial persists and recovers like any other draft text, is never shared
+ * with At Entry (which has one datetime control and no use for half of one),
+ * and never reaches the server: Save asks for the missing half first. That is
+ * what keeps a partial from being either fabricated into a whole or quietly
+ * dropped — the two things a single `entered_at` column would otherwise force.
+ * Nothing about the database changes to hold this; it is a draft state.
  */
 const ENTRY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ENTRY_TIME_PATTERN = /^T\d{2}:\d{2}$/;
 const ENTRY_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 export interface EntryTimestampParts {
@@ -452,8 +467,16 @@ export function entryTimestampParts(value: string): EntryTimestampParts {
     return { date: value.slice(0, 10), time: value.slice(11, 16) };
   }
   if (ENTRY_DATE_PATTERN.test(value)) return { date: value, time: '' };
+  if (ENTRY_TIME_PATTERN.test(value)) return { date: '', time: value.slice(1, 6) };
   // Anything else is a value no picker can produce; validation names it.
   return { date: '', time: '' };
+}
+
+/** Joins the two halves back into the one stored value. */
+function composeEntryTimestamp(date: string, time: string): string {
+  if (date === '' && time === '') return '';
+  if (time === '') return date;
+  return `${date}T${time}`;
 }
 
 /** True once the stored value is a complete instant a Trade could carry. */
@@ -466,21 +489,30 @@ export function isEntryDateWithoutTime(value: string): boolean {
   return ENTRY_DATE_PATTERN.test(value);
 }
 
-/**
- * Records the entry date, keeping any time already given. Clearing the date
- * clears the whole timestamp — a time with no date is not an answer.
- */
-export function setEntryDate(draft: AfterTradeDraft, date: string): AfterTradeDraft {
-  if (date === '') return { ...draft, enteredAt: '' };
-  const { time } = entryTimestampParts(draft.enteredAt);
-  return { ...draft, enteredAt: time === '' ? date : `${date}T${time}` };
+/** True while a time is recorded and the day it belongs to is not. */
+export function isEntryTimeWithoutDate(value: string): boolean {
+  return ENTRY_TIME_PATTERN.test(value);
 }
 
-/** Records the entry time. Without a date there is nothing to attach it to. */
+/**
+ * Records the entry date, keeping any time already given. Clearing it leaves
+ * the time standing: each half is the trader's own answer, and clearing one is
+ * not an instruction to discard the other.
+ */
+export function setEntryDate(draft: AfterTradeDraft, date: string): AfterTradeDraft {
+  const { time } = entryTimestampParts(draft.enteredAt);
+  return { ...draft, enteredAt: composeEntryTimestamp(date, time) };
+}
+
+/** Records the entry time, keeping any date already given. */
 export function setEntryTime(draft: AfterTradeDraft, time: string): AfterTradeDraft {
   const { date } = entryTimestampParts(draft.enteredAt);
-  if (date === '') return draft;
-  return { ...draft, enteredAt: time === '' ? date : `${date}T${time}` };
+  return { ...draft, enteredAt: composeEntryTimestamp(date, time) };
+}
+
+/** Removes both halves — the one action that discards the whole answer. */
+export function clearEntryTimestamp(draft: AfterTradeDraft): AfterTradeDraft {
+  return { ...draft, enteredAt: '' };
 }
 
 // ---------------------------------------------------------------------------
@@ -542,6 +574,8 @@ export type AfterTradeErrorCode =
    * completes it, or for the date to be cleared.
    */
   | 'entry_time_required'
+  /** The mirror of the above: a minute recorded without the day it falls on. */
+  | 'entry_date_required'
   | 'future_time'
   | 'exit_before_entry'
   | 'exit_outside_trade'
@@ -627,12 +661,18 @@ export function validateAfterTradeDraft(
   const instant = (value: string, field: 'enteredAt' | 'exitedAt'): number | null => {
     if (value === '') return null;
     /*
-      A date on its own is a real answer the trader gave, so it is never
-      discarded — but it cannot be saved either, because a Trade holds one
-      instant. Save stops and asks for the time, or for the date to go.
+      HALF AN ANSWER IS STILL AN ANSWER THE TRADER GAVE, so it is never
+      discarded — and it cannot be saved either, because a Trade holds one
+      instant and there is no column for half of one. Save stops and asks for
+      the other half, or for this one to be cleared. Either half can be the
+      one that is missing; neither is more legitimate than the other.
     */
     if (field === 'enteredAt' && isEntryDateWithoutTime(value)) {
       errors[field] = 'entry_time_required';
+      return null;
+    }
+    if (field === 'enteredAt' && isEntryTimeWithoutDate(value)) {
+      errors[field] = 'entry_date_required';
       return null;
     }
     const parsed = datetimeLocalToIso(value, context.timezone);

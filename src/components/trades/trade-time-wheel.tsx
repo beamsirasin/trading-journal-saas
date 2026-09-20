@@ -95,16 +95,15 @@ export function TradeTimeWheel({
       style={{ height: `${TRACK_HEIGHT}px` }}
     >
       {/*
-          THE SELECTION BAND, DRAWN ONCE BEHIND BOTH COLUMNS so the two numbers
-          read as one time rather than two independent dials. It is a filled
-          step only once there is an answer in it; empty, it is an outline.
-        */}
+        THE SELECTION BAND, DRAWN ONCE BEHIND BOTH COLUMNS so the two numbers
+        read as one time rather than two independent dials. A quiet fill, not
+        an outline: it marks where the answer lands at every moment, and
+        whether there IS an answer yet is said by the rows and by the row
+        above, not by taking the band away.
+      */}
       <div
         aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-lg border transition-colors motion-reduce:transition-none',
-          unset ? 'border-control-border border-dashed' : 'bg-muted/70 border-transparent',
-        )}
+        className="bg-muted/60 pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-lg"
         style={{ height: `${ITEM_HEIGHT}px` }}
       />
       <WheelColumn
@@ -164,8 +163,9 @@ function WheelColumn({
   const settle = useRef<number | null>(null);
   /** A scroll this component started, which must not be read back as an answer. */
   const programmatic = useRef(false);
-  /** A mouse button is down on this column; it is a drag only once it moves. */
-  const pressed = useRef(false);
+  /** Where a mouse press started, and where it was last seen. Null between drags. */
+  const origin = useRef<number | null>(null);
+  const lastY = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
 
   /*
@@ -182,7 +182,14 @@ function WheelColumn({
 
   useEffect(() => {
     const element = track.current;
-    if (element === null || dragging) return;
+    /*
+      AN UNANSWERED COLUMN HAS NO VALUE TO BE KEPT UNDER. `value` is a resting
+      position then, not an answer, and treating it as one made releasing a
+      drag yank the column straight back to 00 and cancel the commit that was
+      about to land — a mouse drag moved the wheel and recorded nothing. While
+      nothing is recorded the position belongs to whoever is scrolling it.
+    */
+    if (element === null || dragging || unset) return;
     const target = value * ITEM_HEIGHT;
     if (Math.abs(element.scrollTop - target) < 1) return;
     /*
@@ -205,7 +212,7 @@ function WheelColumn({
       programmatic.current = false;
     }, SETTLE_MS + 40);
     return () => window.clearTimeout(clear);
-  }, [value, dragging]);
+  }, [value, dragging, unset]);
 
   /** The number resting under the band once scrolling stops. */
   function onScroll() {
@@ -247,35 +254,48 @@ function WheelColumn({
   /*
     MOUSE DRAG — AND ONLY ONCE IT IS ONE.
 
-    Touch already drags the scroller with momentum and a trackpad or wheel
-    already scrolls it, so this exists for a plain mouse, which has neither.
+    Touch drags the scroller natively, with momentum this cannot reproduce, and
+    a trackpad or wheel scrolls it natively too. So Pointer Events carry the
+    one gesture that has no native behaviour here: press and drag with a mouse.
 
-    IT MUST NOT START ON `pointerdown`. Capturing the pointer there sends
-    every later pointer event to the column, which makes the column the click
-    target instead of the number under the cursor — so tapping a visible
-    number silently did nothing while the wheel still looked fine. Drag now
-    begins on the first real movement past a threshold, and a press that never
-    moves stays an ordinary click on a cell.
+    TWO THINGS THIS HAS TO GET RIGHT, and the first draft got both wrong.
+
+    It must not capture on `pointerdown`: capturing there routes every later
+    pointer event to the column, which makes the COLUMN the click target
+    instead of the number under the cursor, so tapping a visible number did
+    nothing at all while dragging still looked fine.
+
+    And the threshold must measure the distance travelled since the press, not
+    `movementY`, which is the delta since the previous move event. A slow drag
+    arrives as a stream of one- and two-pixel deltas that never individually
+    reach the threshold, so the drag never started — the exact gesture a
+    careful person makes on a desktop was the one that did not work. Deltas are
+    taken from `clientY` for the same reason: `movementY` is also subject to
+    pointer acceleration and display scaling.
   */
   function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (disabled || event.pointerType !== 'mouse') return;
-    pressed.current = true;
+    origin.current = event.clientY;
+    lastY.current = event.clientY;
   }
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (!pressed.current) return;
+    if (origin.current === null) return;
     const element = track.current;
     if (element === null) return;
+    const delta = event.clientY - (lastY.current ?? event.clientY);
+    lastY.current = event.clientY;
     if (!dragging) {
-      if (Math.abs(event.movementY) < DRAG_THRESHOLD) return;
+      if (Math.abs(event.clientY - origin.current) < DRAG_THRESHOLD) return;
       setDragging(true);
       event.currentTarget.setPointerCapture(event.pointerId);
     }
-    element.scrollTop -= event.movementY;
+    element.scrollTop -= delta;
   }
 
   function endDrag(event: React.PointerEvent<HTMLDivElement>) {
-    pressed.current = false;
+    origin.current = null;
+    lastY.current = null;
     if (!dragging) return;
     setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -301,7 +321,18 @@ function WheelColumn({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       className={cn(
-        'focus-visible:ring-ring relative w-16 min-w-0 snap-y snap-mandatory overflow-y-auto rounded-lg outline-none focus-visible:ring-2',
+        'focus-visible:ring-ring relative w-16 min-w-0 overflow-y-auto rounded-lg outline-none focus-visible:ring-2',
+        /*
+          SNAP IS OFF WHILE A MOUSE IS DRAGGING IT. Mandatory snapping pulls the
+          scroller back to the nearest snap point after every programmatic
+          write, so a drag delivered as a stream of two-pixel nudges lands back
+          where it started each time and the column never moves — the wheel and
+          trackpad paths were unaffected because the browser scrolls those
+          itself. Releasing restores snapping, which settles the column on the
+          nearest number, and the commit below agrees with it by rounding the
+          same way.
+        */
+        dragging ? 'snap-none' : 'snap-y snap-mandatory',
         // The scrollbar is noise on a control whose whole job is the band.
         '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         dragging ? 'cursor-grabbing' : 'cursor-grab',
@@ -312,6 +343,7 @@ function WheelColumn({
       <div aria-hidden="true" style={{ height: `${EDGE_PADDING}px` }} />
       {Array.from({ length: count }, (_, index) => {
         const selected = !unset && index === value;
+        const distance = Math.min(Math.abs(index - value), 2);
         return (
           <div
             key={index}
@@ -320,13 +352,20 @@ function WheelColumn({
             aria-selected={selected}
             data-wheel-value={pad(index)}
             onClick={() => (disabled ? undefined : onSelect(index))}
+            /*
+              THE BAND IS THE FOCUS, AND DISTANCE IS THE CUE. The centred row
+              is the strongest thing in the column and each step away is
+              quieter, so the eye lands on the answer rather than on a list.
+              While nothing is recorded the whole column is one step down and
+              no row is marked selected: the wheel is resting, not answering.
+            */
             className={cn(
-              'flex snap-center items-center justify-center text-lg tabular-nums transition-colors motion-reduce:transition-none',
-              selected
-                ? 'text-foreground font-semibold'
-                : unset
-                  ? 'text-subtle-foreground'
-                  : 'text-muted-foreground',
+              'flex snap-center items-center justify-center tabular-nums transition-colors motion-reduce:transition-none',
+              distance === 0
+                ? cn('text-xl', unset ? 'text-muted-foreground' : 'text-foreground font-semibold')
+                : distance === 1
+                  ? 'text-subtle-foreground text-lg'
+                  : 'text-subtle-foreground/55 text-base',
             )}
             style={{ height: `${ITEM_HEIGHT}px` }}
           >

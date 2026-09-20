@@ -167,9 +167,10 @@ function conceptValue(concept: string): string {
   return conceptRow(concept).getAttribute('data-value') ?? '';
 }
 
-/** One entry-timestamp sheet, and the two rows inside it. */
+/** One entry-timestamp sheet, and the two rows inside it. Idempotent. */
 function openEntryStamp(): ReturnType<typeof within> {
-  return openConcept('Entry date & time');
+  const open = screen.queryByRole('dialog');
+  return open === null ? openConcept('Entry date & time') : within(open);
 }
 
 /** A row inside that sheet, whether its control is open or not. */
@@ -365,10 +366,17 @@ describe('After Trade — the moment and its steps', () => {
     // Blank is "Not recorded", never a zero and never a preselected now.
     expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
     expect(conceptValue('enteredAt')).toBe('');
-    // The time cannot be answered before the date it would belong to.
+    // Both halves read as unrecorded, and both are open to answer.
     openEntryStamp();
-    expect(stampRow('time')).toHaveTextContent('Choose an entry date first');
-    expect(document.getElementById('after-entry-time')).toHaveAttribute('aria-disabled', 'true');
+    expect(stampRow('date')).toHaveTextContent('Not recorded');
+    expect(stampRow('time')).toHaveTextContent('Not recorded');
+    for (const half of ['date', 'time'] as const) {
+      expect(document.getElementById(`after-entry-${half}`)).not.toHaveAttribute('aria-disabled');
+      expect(document.getElementById(`after-entry-${half}`)).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+    }
     closeConcept();
     goTo('result');
     expect(screen.getByLabelText('Final exit time')).toHaveValue('');
@@ -586,11 +594,17 @@ describe('Step 1 — read first, edit on demand', () => {
     expect(stampValue('time')).toBe('');
     expect(stampRow('time')).toHaveTextContent('Not recorded');
 
-    // Clearing the date removes the timestamp: a time with no day is no answer.
+    // Clearing the date takes the date only: the two halves are independent.
+    setEntryTime('09:30');
+    const again = openEntryStamp();
     openStampHalf('date');
-    fireEvent.click(sheet.getByRole('button', { name: /^Clear date/ }));
+    fireEvent.click(again.getByRole('button', { name: /^Clear date/ }));
     expect(stampValue('date')).toBe('');
-    expect(document.getElementById('after-entry-time')).toHaveAttribute('aria-disabled', 'true');
+    expect(stampValue('time')).toBe('09:30');
+    // Only the footer's own action discards the whole answer.
+    fireEvent.click(again.getByRole('button', { name: /^Clear entry date & time/ }));
+    expect(stampValue('date')).toBe('');
+    expect(stampValue('time')).toBe('');
     closeConcept();
     expect(conceptValue('enteredAt')).toBe('');
     expect(conceptRow('enteredAt')).toHaveTextContent('Not recorded');
@@ -674,7 +688,7 @@ describe('Step 1 — entry date and entry time', () => {
     pickEntryDate('2026-09-18');
     save();
     expect(
-      await screen.findByText('Add the time you entered, or clear the entry date.'),
+      await screen.findByText('Add the time to finish this entry, or clear the date.'),
     ).toBeInTheDocument();
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
     expect(currentStep()).toBe('trade');
@@ -683,8 +697,7 @@ describe('Step 1 — entry date and entry time', () => {
     expect(conceptValue('enteredAt')).toBe('2026-09-18');
     openEntryStamp();
     expect(stampValue('date')).toBe('2026-09-18');
-    expect(stampRow('date')).not.toHaveAttribute('data-invalid');
-    expect(stampRow('time')).toHaveTextContent('Add the time you entered');
+    expect(stampRow('time')).toHaveTextContent('Add the time to finish this entry');
     closeConcept();
 
     // Either way out works, and both leave a saveable trade.
@@ -699,7 +712,7 @@ describe('Step 1 — entry date and entry time', () => {
     pickEntryDate('2026-09-18');
     save();
     expect(
-      await screen.findByText('Add the time you entered, or clear the entry date.'),
+      await screen.findByText('Add the time to finish this entry, or clear the date.'),
     ).toBeInTheDocument();
 
     const sheet = openEntryStamp();
@@ -757,20 +770,77 @@ describe('Step 1 — entry date and entry time', () => {
     expect(stampRow('time')).toHaveTextContent('Not recorded');
   });
 
-  it('cannot open the time control before a date exists, and says why', () => {
+  it('opens with both halves collapsed and answers neither', () => {
     renderForm();
     const sheet = openEntryStamp();
-    const time = document.getElementById('after-entry-time')!;
-    expect(time).toHaveAttribute('aria-disabled', 'true');
-    expect(time).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(time);
-    expect(time).toHaveAttribute('aria-expanded', 'false');
-    // Collapsed is not merely short: the wheel is out of the tab order too.
-    expect(document.getElementById('after-entry-time-panel')).not.toHaveAttribute('data-open');
-    expect(sheet.getByRole('button', { name: 'Done' })).toBeInTheDocument();
-    // The date half is what the sheet opens on when nothing is recorded.
-    expect(document.getElementById('after-entry-date')).toHaveAttribute('aria-expanded', 'true');
-    expect(document.getElementById('after-entry-date-panel')).toHaveAttribute('data-open');
+    for (const half of ['date', 'time'] as const) {
+      expect(document.getElementById(`after-entry-${half}`)).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      // Collapsed is not merely short: the control is out of the tab order.
+      expect(document.getElementById(`after-entry-${half}-panel`)).not.toHaveAttribute('data-open');
+    }
+    expect(sheet.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('dialog').querySelector('[data-range-date]')).toBeNull();
+    expect(conceptValue('enteredAt')).toBe('');
+
+    // And it still opens on neither once a full answer is recorded.
+    closeConcept();
+    pickEntryDate('2026-09-18');
+    setEntryTime('09:30');
+    openEntryStamp();
+    expect(document.getElementById('after-entry-date')).toHaveAttribute('aria-expanded', 'false');
+    expect(document.getElementById('after-entry-time')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  /*
+    A TIME REMEMBERED BEFORE ITS DAY. The mirror of the date-only case, and the
+    reason neither half is gated behind the other: the answer is kept, it is
+    never completed by guesswork, and Save names the half that is missing.
+  */
+  it('records a time with no date, keeps it through a reload, and blocks Save on the date', async () => {
+    renderForm();
+    fillIdentity();
+    setEntryTime('09:30');
+    expect(conceptValue('enteredAt')).toBe('T09:30');
+    expect(conceptRow('enteredAt')).toHaveTextContent('09:30');
+
+    cleanup();
+    renderForm();
+    expect(conceptValue('enteredAt')).toBe('T09:30');
+    openEntryStamp();
+    expect(stampValue('time')).toBe('09:30');
+    expect(stampValue('date')).toBe('');
+    closeConcept();
+
+    save();
+    expect(
+      await screen.findByText('Add the date to finish this entry, or clear the time.'),
+    ).toBeInTheDocument();
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+
+    pickEntryDate('2026-09-18');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ enteredAt: '2026-09-18T02:30:00.000Z' });
+  });
+
+  it('holds its tongue until the sheet is closed on half an answer', () => {
+    renderForm();
+    fillIdentity();
+    openEntryStamp();
+    openStampHalf('date');
+    fireEvent.click(screen.getByRole('dialog').querySelector('[data-range-date="2026-09-18"]')!);
+    // Mid-answer, with the other row right there, nothing is wrong yet.
+    expect(stampRow('time')).not.toHaveTextContent('Add the time');
+    closeConcept();
+    // Closing on half an answer is when the missing half speaks up.
+    expect(
+      screen.getByText('Add the time to finish this entry, or clear the date.'),
+    ).toBeInTheDocument();
+    openEntryStamp();
+    expect(stampRow('time')).toHaveTextContent('Add the time to finish this entry');
   });
 
   it('records nothing until the wheel is touched, then both columns at once', () => {
@@ -841,17 +911,20 @@ describe('Step 1 — entry date and entry time', () => {
     expect(stampValue('time')).toBe('09:30');
   });
 
-  it('opens on the half still missing, and only one control at a time', () => {
+  it('opens either half on its own, and only one at a time', () => {
     renderForm();
-    pickEntryDate('2026-09-18');
-    // A date without a time reopens on the time.
     openEntryStamp();
+    // The time first, with no date anywhere.
+    openStampHalf('time');
     expect(document.getElementById('after-entry-time')).toHaveAttribute('aria-expanded', 'true');
-    expect(document.getElementById('after-entry-date')).toHaveAttribute('aria-expanded', 'false');
-    // Opening one closes the other: never two controls in one sheet.
+    expect(screen.getByRole('dialog').querySelector('[data-time-wheel]')).not.toBeNull();
+    // Opening the other closes this one: never two controls in one sheet.
     openStampHalf('date');
     expect(document.getElementById('after-entry-time')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('dialog').querySelector('[data-entry-date-picker]')).not.toBeNull();
+    expect(document.getElementById('after-entry-date')).toHaveAttribute('aria-expanded', 'true');
+    // And a row toggles itself shut again.
+    fireEvent.click(document.getElementById('after-entry-date')!);
+    expect(document.getElementById('after-entry-date')).toHaveAttribute('aria-expanded', 'false');
   });
 });
 
