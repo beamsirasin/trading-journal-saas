@@ -21,6 +21,12 @@ import {
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
+import {
+  recordOpenClassify,
+  recordOpenMinimum,
+  recordOpenSave,
+  recordOpenStep,
+} from './support/record-open';
 
 async function provisionJournalUser(prefix: string) {
   const { testUrl } = validateTestDatabaseEnvironment();
@@ -738,17 +744,19 @@ async function answerCondition(page: Page, label: string, answer: 'Met' | 'Not m
   await chooseChoice(page.getByRole('group', { name: new RegExp(label) }), answer);
 }
 
-/** Chooses a Strategy and Setup on the page itself — no overlay, no gate. */
+/** Chooses a Strategy and Setup on Setup & Checklist, each in its own editor. */
 async function classifyAtEntry(page: Page, strategy: string, setup?: string) {
-  // Below `lg` the analytical questions sit behind one disclosure.
-  const strategyField = page.getByLabel('Strategy', { exact: true });
-  const analysisToggle = page.getByRole('button', { name: /Answer these now/ });
-  await expect(strategyField.or(analysisToggle).first()).toBeVisible();
-  if (!(await strategyField.isVisible())) await analysisToggle.click();
-  await strategyField.selectOption({ label: strategy });
-  if (setup !== undefined) {
-    await page.getByLabel('Setup', { exact: true }).selectOption({ label: setup });
-  }
+  await recordOpenClassify(page, strategy, setup);
+}
+
+/** Entry emotions, chosen in their editor on Entry Context; Done keeps them. */
+async function chooseEntryEmotions(page: Page, emotions: readonly string[]) {
+  await recordOpenStep(page, 'context');
+  await page.locator('#entry-entry-emotions').click();
+  const editor = page.getByRole('dialog');
+  for (const emotion of emotions) await editor.getByRole('button', { name: emotion }).click();
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
 /**
@@ -786,10 +794,8 @@ async function createOpenTrade(page: Page, userId: string) {
  */
 async function createMoneyOnlyOpenTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
-  await page.getByRole('textbox', { name: 'Symbol' }).fill('EURUSD');
-  await chooseChoice(page, 'Short');
-  await page.getByLabel('Risk at entry').fill('100.00');
-  await chooseChoice(page, /Fixed target/);
+  await recordOpenMinimum(page, { symbol: 'EURUSD', direction: 'Short', risk: '100.00' });
+  await chooseChoice(page, /^Fixed target/);
   await page.getByLabel('Target profit').fill('300.00');
   await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
   for (const condition of [
@@ -801,7 +807,7 @@ async function createMoneyOnlyOpenTrade(page: Page) {
   ]) {
     await answerCondition(page, condition, 'Met');
   }
-  await page.getByRole('button', { name: 'Save open trade' }).click();
+  await recordOpenSave(page);
   await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 }
 
@@ -1200,21 +1206,18 @@ test.describe('real Trade Journal creation', () => {
     await seedFramework(user.id);
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await chooseChoice(page, 'Long');
-    await page.getByLabel('Risk at entry').fill('100.00');
+    await recordOpenMinimum(page, { symbol: 'GBPUSD', direction: 'Long', risk: '100.00' });
     await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
     // Three answered, one answered Not Met, one deliberately left unanswered.
     await answerCondition(page, 'Breakout candle closed', 'Met');
     await answerCondition(page, 'Retest held', 'Met');
     await answerCondition(page, 'Volume expanded', 'Met');
     await answerCondition(page, 'Invalidation is clear', 'Not met');
+    await recordOpenStep(page, 'context');
     await chooseChoice(page, 'High');
-    await page.getByRole('button', { name: 'Fearful' }).click();
-    await page.getByRole('button', { name: 'Hesitant' }).click();
-    await page.getByRole('button', { name: /Trade idea, chart and price levels/ }).click();
+    await chooseEntryEmotions(page, ['Fearful', 'Hesitant']);
     await page.getByLabel('Why this trade').fill('Breakout confirmed on the retest.');
-    await page.getByRole('button', { name: 'Save open trade' }).click();
+    await recordOpenSave(page);
     // Nothing asks the trader to confirm "unmet" Conditions: the one they
     // skipped is unanswered, which was never a Not Met to confirm.
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
@@ -1284,14 +1287,12 @@ test.describe('real Trade Journal creation', () => {
     await seedFramework(user.id, false);
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('USDJPY');
-    await chooseChoice(page, 'Long');
-    await page.getByLabel('Risk at entry').fill('100.00');
+    await recordOpenMinimum(page, { symbol: 'USDJPY', direction: 'Long', risk: '100.00' });
     await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
-    // No Conditions exist, so no checklist is offered and no count is invented.
-    await expect(page.getByText('Setup conditions')).toHaveCount(0);
-    await expect(page.getByText(/0\/0/)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Save open trade' }).click();
+    // No Conditions exist: the checklist says so plainly, and no count is invented.
+    await expect(page.getByText('This setup has no conditions to answer.')).toBeVisible();
+    await expect(page.getByText(/0 of 0/)).toHaveCount(0);
+    await recordOpenSave(page);
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
     await openTradeSection(page, 'entry');
@@ -1376,7 +1377,8 @@ test.describe('real Trade Journal creation', () => {
     await commit.click();
 
     await expect(page).toHaveURL(/\/en\/app\/trades\/new\?timing=at_entry/);
-    await expect(page.getByRole('textbox', { name: 'Symbol' })).toBeVisible();
+    await expect(page.locator('[data-record-open-form]')).toBeVisible();
+    await expect(page.locator('#entry-row-symbol')).toBeVisible();
   });
 
   test('production New Trade modes stay exclusive and overflow-free at 1440/1120/390/320 in EN/TH', async ({
@@ -1393,27 +1395,27 @@ test.describe('real Trade Journal creation', () => {
         await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
         await page.goto(`/${locale}/app/trades/new?timing=at_entry`);
 
-        // At Entry is one capture workspace on the real route: no tabs, Risk
-        // at Entry as the lead figure, Target as an explicit answer, the
-        // analytical questions in the page's own order, and an entry time
-        // already defaulted to now.
-        const entryForm = page.locator('[data-at-entry-linear-form]:visible');
+        /*
+          Record Open is the four canonical stages on the real route: Trade
+          Details with its entry time already defaulted to now, Plan & Risk
+          with Risk at Entry, Target and the Exit Plan, Setup & Checklist,
+          then Entry Context — and Save Open Trade on the last one.
+        */
+        const entryForm = page.locator('[data-record-open-form]');
         await expect(entryForm).toBeVisible();
         await expect(page.getByTestId('new-trade-view-nav')).toHaveCount(0);
-        await expect(entryForm.locator('#entry-time')).not.toHaveValue('');
+        await expect(page.locator('#entry-row-enteredAt')).not.toHaveAttribute('data-value', '');
+        await recordOpenStep(page, 'plan');
         await expect(entryForm.locator('#entry-risk')).toBeVisible();
         await expect(entryForm.locator('#entry-target-fixed')).toHaveCount(1);
         await expect(entryForm.locator('#entry-target-no_fixed')).toHaveCount(1);
-        await expect(entryForm.locator('#entry-strategy')).toHaveCount(1);
-        // The journal overlays are gone: the analytical questions are on the
-        // page itself, and the Exit Plan is a first-class answer beside Target.
-        await expect(entryForm.locator('[data-journal-area]')).toHaveCount(0);
         await expect(entryForm.locator('[data-exit-plan-state]')).toHaveCount(1);
-        /*
-          One Save per width, and it submits the form wherever it is drawn:
-          a docked action bar inside the form on a phone, a sticky panel
-          beside it (`form=` attribute) on a desktop.
-        */
+        await expect(entryForm.locator('[data-journal-area]')).toHaveCount(0);
+        await recordOpenStep(page, 'setup');
+        await expect(page.locator('#entry-strategy')).toBeVisible();
+        await recordOpenStep(page, 'context');
+        await expect(page.locator('[id^="entry-confidence-"]')).toHaveCount(5);
+        // One Save per width, on the last step.
         await expect(page.locator('[data-global-save]:visible button[type="submit"]')).toHaveCount(
           1,
         );
@@ -1425,14 +1427,6 @@ test.describe('real Trade Journal creation', () => {
           client: document.documentElement.clientWidth,
         }));
         expect(entryDimensions.scroll).toBeLessThanOrEqual(entryDimensions.client + 1);
-
-        // Every analytical question is reachable at this width without an
-        // overlay: on a phone the disclosure holds them, on a desktop they are
-        // already open.
-        const analysisToggle = page.locator('#entry-analysis-toggle');
-        if (await analysisToggle.isVisible()) await analysisToggle.click();
-        await expect(page.locator('[id^="entry-confidence-"]')).toHaveCount(5);
-        await expect(page.locator('#entry-strategy')).toBeVisible();
 
         // After Trade is the contract capture workspace on this same real
         // route: history is never defaulted to now, Final Net P&L leads, Actual
@@ -1797,12 +1791,11 @@ test.describe('real Trade Journal creation', () => {
     await loginAs(page, 'en', user);
 
     await page.goto('/en/app/trades/new?timing=at_entry');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDCAD');
-    await chooseChoice(page, 'Long');
     // The contract minimum: Account, Symbol, Direction and Risk at Entry.
     // No Target, no Exit Plan, no Strategy, no Setup.
-    await page.getByLabel('Risk at entry').fill('100.00');
-    await page.getByRole('button', { name: 'Save open trade' }).click();
+    await recordOpenMinimum(page, { symbol: 'NZDCAD', direction: 'Long', risk: '100.00' });
+    // Save now, straight from Plan & Risk: Steps 3 and 4 are never required.
+    await page.locator('#entry-quick-save').click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
 
     await openTradeSection(page, 'strategy');
@@ -1873,23 +1866,21 @@ test.describe('real Trade Journal creation', () => {
     // Reason -> [Open Trade]. One atomic action — no separate "Open" step.
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.locator('[data-account-context]:visible')).toBeVisible();
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('NZDUSD');
-    await chooseChoice(page, 'Long');
-    await page.getByLabel('Risk at entry').fill('100.00');
-    await chooseChoice(page, /Fixed target/);
+    await recordOpenMinimum(page, { symbol: 'NZDUSD', direction: 'Long', risk: '100.00' });
+    await chooseChoice(page, /^Fixed target/);
     await page.getByLabel('Target profit').fill('300.00');
     await classifyAtEntry(page, 'Golden Breakout', 'Clean Retest');
-    await expect(page.getByLabel('Setup', { exact: true })).toHaveValue(/.+/);
+    await expect(page.locator('#entry-setup')).toContainText('Clean Retest');
     await answerCondition(page, 'Breakout candle closed', 'Met');
     await answerCondition(page, 'Retest held', 'Met');
     await answerCondition(page, 'Volume expanded', 'Met');
+    await recordOpenStep(page, 'context');
     await chooseChoice(page, 'High');
-    await page.getByRole('button', { name: 'Focused' }).click();
-    await page.getByRole('button', { name: /Trade idea, chart and price levels/ }).click();
+    await chooseEntryEmotions(page, ['Focused']);
     await page
       .getByLabel('Why this trade')
       .fill('Clean breakout confirmed on the retest with expanding volume.');
-    await page.getByRole('button', { name: 'Save open trade' }).click();
+    await recordOpenSave(page);
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/, { timeout: 60_000 });
 
     // Arrives directly on Detail already Open — Partial Close/Close Trade are
@@ -2138,17 +2129,13 @@ test.describe('real Trade Journal creation', () => {
     // action; Open never silently reintroduces a Plan requirement.
     await page.goto('/en/app/trades/new?timing=at_entry');
     await expect(page.locator('[data-account-context]:visible')).toBeVisible();
-    await expect(page.getByLabel('Strategy')).toHaveValue('');
-    // Read the plan field the fresh form actually opened with, and read it
-    // WITHOUT touching the basis toggle: clicking one clears the very fields
-    // this assertion is about, which would turn it into a tautology that
-    // passes over a leaked draft. The anchors keep 'Initial Risk', 'Actual
-    // Entry' and 'Entered At' out of the match.
-    await expect(page.getByLabel('Risk at entry', { exact: true })).toHaveValue('');
-    await page.getByRole('textbox', { name: 'Symbol' }).fill('GBPUSD');
-    await chooseChoice(page, 'Long');
-    await page.getByLabel('Risk at entry').fill('125.00');
-    await page.getByRole('button', { name: 'Save open trade' }).click();
+    // A fresh form holds no leaked answer: Strategy unanswered, Risk blank.
+    await recordOpenStep(page, 'setup');
+    await expect(page.locator('#entry-strategy')).toHaveAttribute('data-answer', 'unanswered');
+    await recordOpenStep(page, 'plan');
+    await expect(page.locator('#entry-risk')).toHaveValue('');
+    await recordOpenMinimum(page, { symbol: 'GBPUSD', direction: 'Long', risk: '125.00' });
+    await recordOpenSave(page);
     // Nothing is confirmed on the way out: an unanswered question is not a
     // negative answer, so the Trade opens directly.
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);

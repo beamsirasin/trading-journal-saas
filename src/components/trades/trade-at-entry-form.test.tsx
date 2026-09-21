@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TradeCreateOptions } from '@/server/dal/trades';
 
 import en from '../../../messages/en.json';
+import * as atEntry from './at-entry-draft';
+import type { AtEntryDraft } from './at-entry-draft';
 import { TradeAtEntryForm } from './trade-at-entry-form';
+
+vi.setConfig({ testTimeout: 15_000 });
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -36,6 +40,27 @@ vi.mock('@/i18n/navigation', () => ({
   ),
 }));
 
+/*
+  The Saved Symbol library is server-backed. These tests are not about it, so
+  its actions answer the way the server would for a single browser: saving
+  puts a symbol first, once, and the list comes back.
+*/
+vi.mock('@/server/actions/saved-symbols', () => {
+  let symbols: string[] = [];
+  const same = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
+  return {
+    saveSymbolAction: async ({ symbol }: { symbol: string }) => {
+      if (!symbols.some((item) => same(item, symbol))) symbols = [symbol.trim(), ...symbols];
+      return { ok: true, symbols: [...symbols] };
+    },
+    removeSymbolAction: async ({ symbol }: { symbol: string }) => {
+      symbols = symbols.filter((item) => !same(item, symbol));
+      return { ok: true, symbols: [...symbols] };
+    },
+    importSavedSymbolsAction: async () => ({ ok: true, symbols: [...symbols] }),
+  };
+});
+
 vi.mock('@/server/actions/trades', () => ({
   createTradeAction: (input: unknown) => createTradeMock(input),
 }));
@@ -46,6 +71,7 @@ const REVERSAL = '018f0000-0000-7000-8000-000000000011';
 const RETEST = '018f0000-0000-7000-8000-000000000020';
 const SCALE_OUT = '018f0000-0000-7000-8000-000000000030';
 const TRAIL = '018f0000-0000-7000-8000-000000000031';
+const FADE = '018f0000-0000-7000-8000-000000000032';
 
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
@@ -63,6 +89,12 @@ const options = {
       strategyId: BREAKOUT,
     },
     { exitPlanId: TRAIL, name: 'Trail', instructions: 'Trail behind structure.', strategyId: null },
+    {
+      exitPlanId: FADE,
+      name: 'Fade to mean',
+      instructions: 'Close at the range midpoint.',
+      strategyId: REVERSAL,
+    },
   ],
   tradingAccounts: [
     {
@@ -94,27 +126,84 @@ const options = {
   ],
 } as const satisfies TradeCreateOptions;
 
-function renderForm() {
+function renderForm(
+  props: {
+    initialDraft?: AtEntryDraft;
+    onDraftChange?: (draft: AtEntryDraft) => void;
+  } = {},
+) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <TradeAtEntryForm
         options={options}
         activeTradingAccountId={ACCOUNT}
         timezone="Asia/Bangkok"
+        {...props}
       />
     </NextIntlClientProvider>,
   );
 }
 
-/** The one Save: desktop panel and mobile bar render the same action in jsdom. */
+const STEP = { trade: 'Trade', plan: 'Plan & risk', setup: 'Setup', context: 'Context' } as const;
+type Step = keyof typeof STEP;
+const STEP_NUMBER: Readonly<Record<Step, number>> = { trade: 1, plan: 2, setup: 3, context: 4 };
+
+/**
+ * Open a step from the step list — the same control a trader taps: the phone's
+ * progress rail ("Step 2 of 4: Plan & risk"), or the list beside a wide form.
+ */
+function goTo(step: Step) {
+  const rail = screen.queryByRole('button', {
+    name: `Step ${STEP_NUMBER[step]} of 4: ${STEP[step]}`,
+  });
+  fireEvent.click(rail ?? document.querySelector<HTMLElement>(`[data-step-link="${step}"]`)!);
+}
+
+function currentStep(): string | null {
+  return document.querySelector('[data-record-open-form]')!.getAttribute('data-record-open-step');
+}
+
+/** One step's own section, mounted whether or not it is the step being shown. */
+function stepSection(step: Step): HTMLElement {
+  return document.querySelector<HTMLElement>(`section[data-step="${step}"]`)!;
+}
+
+/**
+ * Save Open Trade: Save now from Plan & Risk on, or the last step's button.
+ * From Step 1 there is neither, so the trader goes on to Plan & Risk.
+ */
 function save() {
+  if (screen.queryAllByRole('button', { name: 'Save open trade' }).length === 0) goTo('plan');
   fireEvent.click(screen.getAllByRole('button', { name: 'Save open trade' })[0]!);
 }
 
+/** Step 1's Symbol: typed, added to the saved library, and chosen — which closes the sheet. */
+function chooseSymbol(symbol: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Symbol' }));
+  const editor = within(screen.getByRole('dialog'));
+  fireEvent.change(editor.getByLabelText('Symbol'), { target: { value: symbol } });
+  fireEvent.click(editor.getByRole('button', { name: /^Add/ }));
+  fireEvent.click(editor.getByRole('option', { name: new RegExp('^' + symbol, 'i') }));
+}
+
+function chooseDirection(direction: 'Long' | 'Short') {
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: direction }));
+}
+
+/** Save Open Trade's minimum: identity on Step 1, Risk at Entry on Plan & Risk. */
 function fillMinimum() {
-  fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-  fireEvent.click(screen.getByLabelText('Long'));
+  chooseSymbol('xauusd');
+  chooseDirection('Long');
+  goTo('plan');
   fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+}
+
+/** Strategy and Setup are Setup & Checklist's launcher rows; the choice is the answer. */
+function chooseClassification(field: 'Strategy' | 'Setup', choice: string) {
+  if (currentStep() !== 'setup') goTo('setup');
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${field}` }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: choice }));
 }
 
 function exitPlanState() {
@@ -123,6 +212,17 @@ function exitPlanState() {
 
 function statusText() {
   return document.querySelector('[data-save-status]')?.textContent ?? '';
+}
+
+function payload(call = 0): Record<string, unknown> {
+  return createTradeMock.mock.calls[call]![0] as Record<string, unknown>;
+}
+
+/** Entry Emotion opens in its own editor from Entry Context. */
+function openEntryEmotions() {
+  if (currentStep() !== 'context') goTo('context');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit How you feel as you enter' }));
+  return within(screen.getByRole('dialog'));
 }
 
 beforeEach(() => {
@@ -142,13 +242,78 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('At Entry — the contract write', () => {
+describe('Record Open — the canonical stages', () => {
+  it('asks the four canonical stages in order, one at a time', () => {
+    renderForm();
+    expect(currentStep()).toBe('trade');
+    expect(screen.getByRole('heading', { level: 2, name: 'Trade details' })).toBeVisible();
+    expect(screen.getByText('Step 1 of 4')).toBeVisible();
+    // Step 1 is the protected launcher-row step: four rows, no inline inputs.
+    expect(within(stepSection('trade')).getAllByRole('button', { name: /^Edit / })).toHaveLength(4);
+    expect(within(stepSection('trade')).queryByRole('textbox')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Plan & risk' }));
+    expect(currentStep()).toBe('plan');
+    expect(document.querySelector('[data-plan-risk-step="at_entry"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Setup' }));
+    expect(currentStep()).toBe('setup');
+    expect(document.querySelector('[data-setup-checklist-step="at_entry"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next: Context' }));
+    expect(currentStep()).toBe('context');
+    expect(document.querySelector('[data-entry-context-step="at_entry"]')).not.toBeNull();
+    // No Exit & Result, no After-Trade Context, no Review in Record Open.
+    expect(screen.queryByLabelText('Final net P&L')).toBeNull();
+    expect(screen.queryByText(/How you feel about the trade now/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Review/ })).toBeNull();
+  });
+
+  it('never loses an answer to Back or Next', () => {
+    renderForm();
+    fillMinimum();
+    goTo('context');
+    fireEvent.change(screen.getByLabelText('Why this trade'), { target: { value: 'Retest.' } });
+    for (let index = 0; index < 3; index += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    }
+    expect(currentStep()).toBe('trade');
+    expect(document.querySelector('[data-concept="symbol"]')).toHaveAttribute(
+      'data-value',
+      'xauusd',
+    );
+    goTo('plan');
+    expect(screen.getByLabelText('Risk at entry')).toHaveValue('100');
+    goTo('context');
+    expect(screen.getByLabelText('Why this trade')).toHaveValue('Retest.');
+  });
+
+  it('keeps the current step out of the draft: a reload recovers answers from Step 1', () => {
+    const drafts: AtEntryDraft[] = [];
+    const first = renderForm({ onDraftChange: (draft) => drafts.push(draft) });
+    fillMinimum();
+    goTo('setup');
+    const last = drafts.at(-1)!;
+    expect(Object.keys(last)).not.toContain('step');
+    expect(JSON.stringify(last)).not.toContain('"setup"');
+    first.unmount();
+
+    renderForm({ initialDraft: last });
+    expect(currentStep()).toBe('trade');
+    expect(document.querySelector('[data-concept="symbol"]')).toHaveAttribute(
+      'data-value',
+      'xauusd',
+    );
+    goTo('plan');
+    expect(screen.getByLabelText('Risk at entry')).toHaveValue('100');
+  });
+});
+
+describe('Record Open — Save and Save now', () => {
   it('saves Account, Symbol, Direction and Risk at Entry alone, with Risk as the 1R baseline', async () => {
     renderForm();
     fillMinimum();
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+    expect(payload()).toMatchObject({
       recordingContract: 'add_trade_v1',
       recordingTiming: 'at_entry',
       systemPlanBasis: 'money',
@@ -158,23 +323,146 @@ describe('At Entry — the contract write', () => {
       actualRiskAnswer: 'matched',
       enteredAtSource: 'default_now',
     });
-    const payload = createTradeMock.mock.calls[0]![0] as Record<string, unknown>;
-    expect(payload).not.toHaveProperty('targetState');
-    expect(payload).not.toHaveProperty('exitPlan');
-    expect(payload).not.toHaveProperty('plannedEntry');
+    expect(payload()).not.toHaveProperty('targetState');
+    expect(payload()).not.toHaveProperty('exitPlan');
+    expect(payload()).not.toHaveProperty('plannedEntry');
+    // Save Open Trade offers no Review: it opens the Trade.
+    await vi.waitFor(() => expect(pushMock).toHaveBeenCalledWith('/app/trades?trade=trade-1'));
   });
 
-  it('offers no Money/Price switch and keeps price fields as context', () => {
+  it('offers Save now from Plan & Risk on — never on Step 1 — and Save open trade last', () => {
     renderForm();
-    expect(screen.queryByRole('button', { name: /Use price levels instead/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Trade idea, chart and price levels/ }));
-    expect(screen.getByText('Context only, never used to calculate results')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Save open trade' })).toBeNull();
+    for (const step of ['plan', 'setup'] as const) {
+      goTo(step);
+      const quick = document.getElementById('entry-quick-save')!;
+      expect(quick).toHaveTextContent('Save now');
+      expect(quick).toHaveAccessibleName('Save open trade');
+    }
+    goTo('context');
+    expect(document.getElementById('entry-quick-save')).toBeNull();
+    const primary = screen.getByRole('button', { name: 'Save open trade' });
+    expect(primary).toHaveAttribute('type', 'submit');
+  });
+
+  it('never requires Setup & Checklist or Entry Context to save', async () => {
+    renderForm();
+    fillMinimum();
+    // From Plan & Risk, straight away: Steps 3 and 4 were never opened.
+    fireEvent.click(document.getElementById('entry-quick-save')!);
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).not.toHaveProperty('strategyId');
+    expect(payload()).not.toHaveProperty('noStrategy');
+    expect(payload()).not.toHaveProperty('confidence');
+    expect(payload()).not.toHaveProperty('emotionKeys');
+  });
+
+  it('takes a blocked Save to Step 1 and focuses the row a missing answer belongs to', async () => {
+    renderForm();
+    goTo('plan');
+    fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
+    fireEvent.click(document.getElementById('entry-quick-save')!);
+    await waitFor(() => expect(currentStep()).toBe('trade'));
+    await waitFor(() => expect(document.getElementById('entry-row-symbol')).toHaveFocus());
+    expect(document.getElementById('entry-row-symbol')).toHaveAttribute('data-invalid', 'true');
+    expect(createTradeMock).not.toHaveBeenCalled();
+  });
+
+  it('takes a blocked Save to Plan & Risk when Risk at Entry is what is missing', async () => {
+    renderForm();
+    chooseSymbol('xauusd');
+    chooseDirection('Short');
+    goTo('context');
+    fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
+    await waitFor(() => expect(currentStep()).toBe('plan'));
+    await waitFor(() => expect(screen.getByLabelText('Risk at entry')).toHaveFocus());
+    expect(screen.getByText('Enter your risk at entry.')).toBeVisible();
+    expect(createTradeMock).not.toHaveBeenCalled();
+  });
+
+  it('never saves early from Enter on an earlier step', () => {
+    renderForm();
+    fillMinimum();
+    fireEvent.submit(document.querySelector('[data-record-open-form]')!);
+    expect(createTradeMock).not.toHaveBeenCalled();
   });
 });
 
-describe('At Entry — Actual Risk', () => {
+describe('Record Open — Step 1 keeps At Entry’s "now"', () => {
+  function entryRow() {
+    return document.getElementById('entry-row-enteredAt')!;
+  }
+
+  function openEntryTime() {
+    if (currentStep() !== 'trade') goTo('trade');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Entry date & time' }));
+    return within(screen.getByRole('dialog'));
+  }
+
+  it('starts as a visible "now" default that follows the clock', () => {
+    renderForm();
+    expect(within(entryRow()).getByText('Set automatically to now')).toBeVisible();
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'default_now');
+    // A complete stamp, never half of one.
+    expect(entryRow().getAttribute('data-value')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  });
+
+  it('keeps an untouched default distinct from a confirmed time, and can clear it', async () => {
+    renderForm();
+    fillMinimum();
+    const sheet = openEntryTime();
+    // At Entry keeps one complete stamp: no half-only clears, with both halves open.
+    fireEvent.click(document.getElementById('entry-entry-date')!);
+    expect(document.querySelector('[data-entry-date-picker]')).not.toBeNull();
+    fireEvent.click(document.getElementById('entry-entry-time')!);
+    expect(document.querySelector('[data-time-wheel-state]')).not.toBeNull();
+    expect(sheet.queryByRole('button', { name: 'Clear date', hidden: true })).toBeNull();
+    expect(sheet.queryByRole('button', { name: 'Clear time', hidden: true })).toBeNull();
+    fireEvent.click(sheet.getByRole('button', { name: 'This time is right' }));
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'trader');
+    expect(within(entryRow()).queryByText('Set automatically to now')).toBeNull();
+    fireEvent.click(sheet.getByRole('button', { name: 'Done' }));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ enteredAtSource: 'trader' });
+
+    const again = openEntryTime();
+    fireEvent.click(again.getByRole('button', { name: 'Clear entry date & time' }));
+    expect(entryRow()).toHaveTextContent('Not set');
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'cleared');
+    fireEvent.click(again.getByRole('button', { name: 'Done' }));
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
+    expect(payload(1)).not.toHaveProperty('enteredAt');
+    expect(payload(1)).not.toHaveProperty('enteredAtSource');
+  });
+
+  it('puts a cleared time back on the clock only by Use now', () => {
+    renderForm();
+    const sheet = openEntryTime();
+    fireEvent.click(sheet.getByRole('button', { name: 'Clear entry date & time' }));
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'cleared');
+    // Done on a cleared time keeps it cleared: nothing is filled in for the trader.
+    fireEvent.click(sheet.getByRole('button', { name: 'Done' }));
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'cleared');
+    const again = openEntryTime();
+    fireEvent.click(again.getByRole('button', { name: 'Use now' }));
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'default_now');
+    expect(within(entryRow()).getByText('Set automatically to now')).toBeVisible();
+  });
+
+  it('does not confirm the default when the sheet is merely opened and closed', () => {
+    renderForm();
+    const sheet = openEntryTime();
+    fireEvent.click(sheet.getByRole('button', { name: 'Done' }));
+    expect(entryRow().parentElement).toHaveAttribute('data-entry-source', 'default_now');
+  });
+});
+
+describe('Record Open — Plan & Risk: Actual Risk', () => {
   it('shows the matched assumption only beside a real Risk at Entry, and makes it reversible', () => {
     renderForm();
+    goTo('plan');
     expect(screen.queryByText('Your actual risk matched this amount.')).toBeNull();
     fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
     expect(screen.getByText('Your actual risk matched this amount.')).toBeVisible();
@@ -199,19 +487,29 @@ describe('At Entry — Actual Risk', () => {
     expect(screen.getByText('Different, amount not known')).toBeVisible();
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    const payload = createTradeMock.mock.calls[0]![0] as Record<string, unknown>;
-    expect(payload.actualRiskAnswer).toBe('different');
-    expect(payload).not.toHaveProperty('actualInitialRiskMinor');
+    expect(payload().actualRiskAnswer).toBe('different');
+    expect(payload()).not.toHaveProperty('actualInitialRiskMinor');
+  });
+
+  it('says Risk at Entry is required here, and shows no Money/Price switch', () => {
+    renderForm();
+    goTo('plan');
+    expect(
+      within(stepSection('plan')).getByRole('heading', { name: 'Risk', level: 3 }).parentElement,
+    ).toHaveTextContent('Required');
+    expect(screen.queryByRole('button', { name: /Use price levels instead/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Price levels/ }));
+    expect(screen.getByText('Context only, never used to calculate results')).toBeVisible();
   });
 });
 
-describe('At Entry — Target', () => {
-  it('attaches an incomplete Fixed Target to Target profit, never to No fixed target', () => {
+describe('Record Open — Plan & Risk: Target', () => {
+  it('attaches an incomplete Fixed Target to Target profit, never to No fixed target', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByLabelText(/Fixed target/));
+    fireEvent.click(screen.getByLabelText(/^Fixed target/));
     save();
-    const message = screen.getByText(
+    const message = await screen.findByText(
       'Add a target profit or a TP price, or choose No fixed target.',
     );
     expect(message).toBeVisible();
@@ -219,79 +517,124 @@ describe('At Entry — Target', () => {
       'aria-describedby',
       expect.stringContaining(message.id),
     );
-    expect(screen.getByLabelText(/No fixed target/)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/^No fixed target/)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(createTradeMock).not.toHaveBeenCalled();
   });
 
   it('returns Target to Unanswered by an explicit, labelled action', () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByLabelText(/No fixed target/));
-    expect(screen.getByLabelText(/No fixed target/)).toBeChecked();
+    fireEvent.click(screen.getByLabelText(/^No fixed target/));
+    expect(screen.getByLabelText(/^No fixed target/)).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Remove target answer' }));
-    expect(screen.getByLabelText(/No fixed target/)).not.toBeChecked();
-    expect(screen.getByLabelText(/Fixed target/)).not.toBeChecked();
+    expect(screen.getByLabelText(/^No fixed target/)).not.toBeChecked();
+    expect(screen.getByLabelText(/^Fixed target/)).not.toBeChecked();
+  });
+
+  it('keeps a money-based target R as context beside the Target', () => {
+    renderForm();
+    fillMinimum();
+    fireEvent.click(screen.getByLabelText(/^Fixed target/));
+    fireEvent.change(screen.getByLabelText('Target profit'), { target: { value: '300' } });
+    expect(screen.getByText('Reaching your target would be +3.00R.')).toBeVisible();
   });
 });
 
-describe('At Entry — readiness and hidden errors', () => {
-  it('never reports Ready while a blocking error sits in a collapsed disclosure', () => {
+describe('Record Open — readiness and errors', () => {
+  it('never reports Ready while a blocking price error sits on another step', () => {
     renderForm();
     fillMinimum();
+    goTo('context');
     expect(statusText()).toContain('Ready to save');
 
-    fireEvent.click(screen.getByRole('button', { name: /Trade idea, chart and price levels/ }));
+    goTo('plan');
+    fireEvent.click(screen.getByRole('button', { name: /^Price levels/ }));
     fireEvent.change(screen.getByLabelText('SL price'), { target: { value: '12..5' } });
-    fireEvent.click(screen.getByRole('button', { name: /Trade idea, chart and price levels/ }));
+    // An error keeps its group open and says so.
+    expect(screen.getByRole('button', { name: /^Price levels/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    goTo('context');
     expect(statusText()).not.toContain('Ready to save');
     expect(statusText()).toContain('attention');
-    // The collapsed summary says an error is inside rather than hiding it.
-    expect(screen.getByText('1 thing to fix')).toBeVisible();
   });
 
-  it('opens the section holding a hidden error when Save is attempted', () => {
+  it('takes a blocked Save back to the price level that holds the error', async () => {
     renderForm();
     fillMinimum();
-    const trigger = screen.getByRole('button', { name: /Trade idea, chart and price levels/ });
-    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: /^Price levels/ }));
     fireEvent.change(screen.getByLabelText('Entry price'), { target: { value: 'abc' } });
-    fireEvent.click(trigger);
-    expect(trigger).toHaveAttribute('aria-expanded', 'false');
-
-    save();
+    goTo('context');
+    fireEvent.click(screen.getByRole('button', { name: 'Save open trade' }));
     expect(createTradeMock).not.toHaveBeenCalled();
-    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(currentStep()).toBe('plan'));
+    await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
     expect(
       screen.getByText('Enter a price greater than zero, using digits and one decimal point.'),
     ).toBeVisible();
   });
 });
 
-describe('At Entry — Exit Plan', () => {
-  function selectBreakout() {
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
-  }
-
-  it('inherits the Strategy default with local, discoverable feedback and no redundant confirm', () => {
+describe('Record Open — Exit Plan inheritance across stages', () => {
+  it('inherits the Strategy default visibly, and announces it where the Strategy is chosen', () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
-    expect(exitPlanState()).toBe('inherited');
-    expect(screen.getByText('From Strategy: Breakout')).toBeVisible();
+    chooseClassification('Strategy', 'Breakout');
+    // Announced on Setup & Checklist, where the choice caused it.
     expect(
-      screen.getByText('Breakout currently supplies this exit plan unless you change it.'),
-    ).toBeVisible();
-    expect(
-      screen.getByText(
+      within(stepSection('setup')).getByText(
         'Breakout currently supplies the exit plan “Scale out” unless you change it.',
       ),
     ).toBeVisible();
+    goTo('plan');
+    // At Entry reads the Exit Plan in full on Plan & Risk.
+    expect(exitPlanState()).toBe('inherited');
+    expect(screen.getByText('From Strategy: Breakout')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Use this plan' })).toBeNull();
+  });
+
+  it('follows a Strategy change while still inherited', () => {
+    renderForm();
+    fillMinimum();
+    chooseClassification('Strategy', 'Breakout');
+    chooseClassification('Strategy', 'Reversal');
+    expect(
+      within(stepSection('setup')).getByText(
+        'Reversal currently supplies the exit plan “Fade to mean” unless you change it.',
+      ),
+    ).toBeVisible();
+    goTo('plan');
+    expect(exitPlanState()).toBe('inherited');
+    expect(screen.getByText('From Strategy: Reversal')).toBeInTheDocument();
+  });
+
+  it('stops following the Strategy once the Exit Plan is explicitly overridden', async () => {
+    renderForm();
+    fillMinimum();
+    chooseClassification('Strategy', 'Breakout');
+    goTo('plan');
+    // An explicit override: another choice, made in the Exit Plan editor.
+    fireEvent.click(screen.getByRole('button', { name: 'Choose another' }));
+    fireEvent.click(screen.getByRole('radio', { name: /^No defined exit rule/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(exitPlanState()).toBe('no_rule');
+    chooseClassification('Strategy', 'Reversal');
+    // No announcement, and the override stands.
+    expect(within(stepSection('setup')).queryByText(/currently supplies the exit plan/)).toBeNull();
+    goTo('plan');
+    expect(exitPlanState()).toBe('no_rule');
+    // Only the explicit restore brings the default back.
+    fireEvent.click(screen.getByRole('button', { name: 'Use strategy default' }));
+    expect(exitPlanState()).toBe('inherited');
+    expect(screen.getByText('From Strategy: Reversal')).toBeVisible();
   });
 
   it('opening the chooser and closing without a change never manufactures an override', () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
+    goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: 'Choose another' }));
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(exitPlanState()).toBe('inherited');
@@ -304,7 +647,8 @@ describe('At Entry — Exit Plan', () => {
   it('opening Customize claims nothing until the wording really changes', () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
+    goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     expect(screen.getByLabelText('Your plan for this trade')).toHaveValue(
       'Half at 1R, trail the rest.',
@@ -324,7 +668,8 @@ describe('At Entry — Exit Plan', () => {
   it('discards an edit only when Discard changes is chosen', () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
+    goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
       target: { value: 'Something else entirely.' },
@@ -336,7 +681,8 @@ describe('At Entry — Exit Plan', () => {
   it('keeps custom wording through another choice and restores it', async () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
+    goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     fireEvent.change(screen.getByLabelText('Your plan for this trade'), {
       target: { value: 'Close before the news.' },
@@ -352,11 +698,8 @@ describe('At Entry — Exit Plan', () => {
 
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
-      exitPlan: {
-        state: 'customized',
-        instructions: 'Close before the news.',
-      },
+    expect(payload()).toMatchObject({
+      exitPlan: { state: 'customized', instructions: 'Close before the news.' },
       exitPlanInheritanceDeclined: true,
     });
   });
@@ -364,22 +707,19 @@ describe('At Entry — Exit Plan', () => {
   it('sends an inherited plan with its Strategy-default provenance', async () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+    expect(payload()).toMatchObject({
       strategyId: BREAKOUT,
       exitPlan: { state: 'saved', exitPlanId: SCALE_OUT, provenance: 'strategy_default' },
     });
   });
 });
 
-describe('At Entry — managing saved exit plans', () => {
-  function selectBreakout() {
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
-  }
-
+describe('Record Open — managing saved exit plans', () => {
   function openManage() {
+    if (currentStep() !== 'plan') goTo('plan');
     fireEvent.click(screen.getByRole('button', { name: /^(Choose another|Choose exit plan)$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Manage saved plans' }));
   }
@@ -391,7 +731,7 @@ describe('At Entry — managing saved exit plans', () => {
   }
 
   it('creates a saved plan as a library decision, never as this trade’s answer', async () => {
-    const NEWS = '018f0000-0000-7000-8000-000000000032';
+    const NEWS = '018f0000-0000-7000-8000-000000000033';
     libraryActions.create.mockResolvedValue({
       ok: true,
       data: { exitPlanId: NEWS },
@@ -407,7 +747,7 @@ describe('At Entry — managing saved exit plans', () => {
     });
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
     openManage();
     fireEvent.click(screen.getByRole('button', { name: 'New saved plan' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'News exit' } });
@@ -416,8 +756,8 @@ describe('At Entry — managing saved exit plans', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save plan' }));
     await vi.waitFor(() => expect(libraryActions.create).toHaveBeenCalledTimes(1));
-    // The plan form lives in a portal inside the At Entry form's React tree: its
-    // submit must never bubble up and save the Trade.
+    // The plan form lives in a portal inside the form's React tree: its submit
+    // must never bubble up and save the Trade.
     expect(createTradeMock).not.toHaveBeenCalled();
     expect(libraryActions.create.mock.calls[0]![0]).toMatchObject({
       name: 'News exit',
@@ -427,12 +767,6 @@ describe('At Entry — managing saved exit plans', () => {
     expect(
       await screen.findByText('News exit saved. Go back to choose it for this trade.'),
     ).toBeVisible();
-
-    /*
-      THE NEW PLAN IS OFFERED FROM THE ACTION'S OWN RESULT, with no router
-      refresh at all. Waiting for the page's props to catch up raced the
-      action's revalidation and could leave the saved plan missing.
-    */
     expect(refreshMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Back to exit plan choices' }));
     expect(screen.getByRole('radio', { name: /News exit/ })).not.toBeChecked();
@@ -476,7 +810,7 @@ describe('At Entry — managing saved exit plans', () => {
     ).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
     openManage();
     fireEvent.click(
       within(libraryItem('Trail')).getByRole('button', {
@@ -502,7 +836,7 @@ describe('At Entry — managing saved exit plans', () => {
   it('confirms an archive and says when this trade’s own answer depends on the plan', async () => {
     renderForm();
     fillMinimum();
-    selectBreakout();
+    chooseClassification('Strategy', 'Breakout');
     openManage();
     const scaleOut = libraryItem('Scale out');
     fireEvent.click(within(scaleOut).getByRole('button', { name: 'Archive Scale out' }));
@@ -537,7 +871,7 @@ describe('At Entry — managing saved exit plans', () => {
     expect(await screen.findByText('Trail archived.')).toBeVisible();
     expect(document.querySelector('[data-exit-plan-library-item="Trail"]')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Back to exit plan choices' }));
-    expect(screen.queryByRole('radio', { name: /Trail/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^Trail/ })).toBeNull();
     expect(screen.getByRole('radio', { name: /Scale out/ })).toBeInTheDocument();
   });
 
@@ -560,28 +894,34 @@ describe('At Entry — managing saved exit plans', () => {
   });
 });
 
-describe('At Entry — the analytical questions', () => {
+describe('Record Open — Setup & Checklist', () => {
+  function setupRow() {
+    return document.querySelector<HTMLElement>('[data-classification="setup"]')!;
+  }
+
   it('restores Setup and condition answers when a Strategy is returned to', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
-    fireEvent.change(screen.getByLabelText('Setup'), { target: { value: RETEST } });
+    chooseClassification('Strategy', 'Breakout');
+    chooseClassification('Setup', 'Retest');
     const candle = screen.getByRole('group', { name: /Candle closed/ });
     fireEvent.click(within(candle).getByLabelText('Met'));
 
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: REVERSAL } });
-    expect(screen.getByLabelText('Setup')).toHaveValue('');
+    chooseClassification('Strategy', 'Reversal');
+    expect(setupRow()).toHaveAttribute('data-answer', 'unanswered');
 
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
-    expect(screen.getByLabelText('Setup')).toHaveValue(RETEST);
+    chooseClassification('Strategy', 'Breakout');
+    expect(setupRow()).toHaveTextContent('Retest');
     expect(
       within(screen.getByRole('group', { name: /Candle closed/ })).getByLabelText('Met'),
     ).toBeChecked();
+    // Multi-state, never a checkbox.
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
 
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
     // Only the answered condition travels; the unanswered one is never a Not Met.
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({
+    expect(payload()).toMatchObject({
       setupId: RETEST,
       conditionAnswers: [{ conditionKey: 'candle', status: 'met' }],
     });
@@ -590,33 +930,53 @@ describe('At Entry — the analytical questions', () => {
   it('holds No strategy, a selection and Unanswered apart', async () => {
     renderForm();
     fillMinimum();
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: '__none' } });
+    chooseClassification('Strategy', 'No strategy');
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({ noStrategy: true });
+    expect(payload()).toMatchObject({ noStrategy: true });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove strategy answer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Strategy' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove strategy answer' }),
+    );
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
-    const second = createTradeMock.mock.calls[1]![0] as Record<string, unknown>;
-    expect(second).not.toHaveProperty('noStrategy');
-    expect(second).not.toHaveProperty('strategyId');
+    expect(payload(1)).not.toHaveProperty('noStrategy');
+    expect(payload(1)).not.toHaveProperty('strategyId');
   });
 
+  it('records No setup as a complete answer with its own sentence', async () => {
+    renderForm();
+    fillMinimum();
+    chooseClassification('Strategy', 'Breakout');
+    chooseClassification('Setup', 'No setup');
+    expect(
+      within(stepSection('setup')).getByText(
+        'No setup for this trade, so there is no checklist to answer.',
+      ),
+    ).toBeVisible();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ strategyId: BREAKOUT, noSetup: true });
+  });
+});
+
+describe('Record Open — Entry Context & Evidence', () => {
   it('refuses to turn the last selected emotion into silence', () => {
     renderForm();
     fillMinimum();
-    fireEvent.click(screen.getByRole('button', { name: 'Calm' }));
-    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
+    const editor = openEntryEmotions();
+    fireEvent.click(editor.getByRole('button', { name: 'Calm' }));
+    expect(editor.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Calm' }));
-    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(editor.getByRole('button', { name: 'Calm' }));
+    expect(editor.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'true');
     expect(
-      screen.getByText('To clear this answer, choose None of these or Remove answer.'),
+      editor.getByText('To clear this answer, choose None of these or Remove answer.'),
     ).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove emotions answer' }));
-    expect(screen.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(editor.getByRole('button', { name: 'Remove emotions answer' }));
+    expect(editor.getByRole('button', { name: 'Calm' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('keeps Not answered, None of these and a selection as three different answers', async () => {
@@ -624,72 +984,116 @@ describe('At Entry — the analytical questions', () => {
     fillMinimum();
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).not.toHaveProperty('emotionKeys');
+    expect(payload()).not.toHaveProperty('emotionKeys');
 
-    fireEvent.click(screen.getByRole('button', { name: 'None of these' }));
+    const editor = openEntryEmotions();
+    fireEvent.click(editor.getByRole('button', { name: 'None of these' }));
+    fireEvent.click(editor.getByRole('button', { name: 'Done' }));
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
-    expect(createTradeMock.mock.calls[1]![0]).toMatchObject({ emotionKeys: [] });
+    expect(payload(1)).toMatchObject({ emotionKeys: [] });
 
-    fireEvent.click(screen.getByRole('button', { name: 'FOMO' }));
+    const again = openEntryEmotions();
+    fireEvent.click(again.getByRole('button', { name: 'FOMO' }));
+    fireEvent.click(again.getByRole('button', { name: 'Done' }));
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(3));
-    expect(createTradeMock.mock.calls[2]![0]).toMatchObject({ emotionKeys: ['fomo'] });
+    expect(payload(2)).toMatchObject({ emotionKeys: ['fomo'] });
   });
 
   it('has no Confidence default and removes it explicitly', async () => {
     renderForm();
     fillMinimum();
+    goTo('context');
     for (const level of ['Very Low', 'Low', 'Neutral', 'High', 'Very High']) {
       expect(screen.getByLabelText(level)).not.toBeChecked();
     }
     fireEvent.click(screen.getByLabelText('High'));
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({ confidence: 75 });
+    expect(payload()).toMatchObject({ confidence: 75 });
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove confidence answer' }));
     save();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
-    expect(createTradeMock.mock.calls[1]![0]).not.toHaveProperty('confidence');
+    expect(payload(1)).not.toHaveProperty('confidence');
   });
 
-  it('summarizes answered analytical coverage honestly', () => {
+  it('saves the entry-time context and the chart link, and offers no upload', async () => {
     renderForm();
     fillMinimum();
-    const summary = () => document.querySelector('[data-analysis-summary]')?.textContent ?? '';
-    expect(summary()).toContain('Not answered yet');
-
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: BREAKOUT } });
-    fireEvent.change(screen.getByLabelText('Setup'), { target: { value: RETEST } });
-    fireEvent.click(
-      within(screen.getByRole('group', { name: /Candle closed/ })).getByLabelText('Met'),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'None of these' }));
-    expect(summary()).toContain('Breakout · Retest');
-    expect(summary()).toContain('1 of 2 conditions answered');
-    expect(summary()).toContain('No emotions');
+    goTo('context');
+    fireEvent.change(screen.getByLabelText('Why this trade'), { target: { value: 'Retest.' } });
+    fireEvent.change(screen.getByLabelText('Timeframe'), { target: { value: '15m' } });
+    fireEvent.change(screen.getByLabelText('Session'), { target: { value: 'London' } });
+    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Tight spread.' } });
+    fireEvent.change(screen.getByLabelText('Chart link'), {
+      target: { value: 'https://www.tradingview.com/x/abc123/' },
+    });
+    expect(document.querySelector('input[type="file"]')).toBeNull();
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({
+      timeframe: '15m',
+      session: 'London',
+      notes: 'Tight spread.',
+      tradingviewUrl: 'https://www.tradingview.com/x/abc123/',
+    });
   });
 });
 
-describe('At Entry — entry time', () => {
-  it('keeps an untouched default distinct from a confirmed time, and can clear it', async () => {
-    renderForm();
-    fillMinimum();
-    expect(screen.getByText('Set automatically to now')).toBeVisible();
+describe('Record Open — the step list beside a wide form', () => {
+  it('summarizes each step honestly, and says what Save still needs', () => {
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === '(min-width: 64rem)',
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      renderForm();
+      const rail = () => document.querySelector('aside')!;
+      const link = (key: string) => rail().querySelector<HTMLElement>(`[data-step-link="${key}"]`)!;
+      // Save still needs Symbol and Direction on Step 1, Risk on Step 2.
+      expect(link('trade')).toHaveTextContent('2 required fields missing');
+      expect(link('plan')).toHaveTextContent('1 required field missing');
+      expect(link('setup')).toHaveTextContent('Optional');
+      expect(document.querySelector('[data-required-status]')).toHaveAttribute(
+        'data-required-status',
+        'missing',
+      );
 
-    fireEvent.click(screen.getByRole('button', { name: 'This time is right' }));
-    expect(screen.queryByText('Set automatically to now')).toBeNull();
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
-    expect(createTradeMock.mock.calls[0]![0]).toMatchObject({ enteredAtSource: 'trader' });
+      /*
+        The same answers, recovered from a draft: this test is about the list
+        beside the form, not the editors that give the answers (a wide screen's
+        editors are dialogs, covered by the tests above at phone width).
+      */
+      cleanup();
+      let filled = atEntry.createAtEntryDraft(ACCOUNT);
+      filled = { ...filled, symbol: 'xauusd', direction: 'long', risk: '100' };
+      filled = atEntry.selectStrategy(filled, BREAKOUT);
+      filled = atEntry.selectSetup(filled, RETEST);
+      filled = atEntry.answerCondition(filled, 'candle', 'met');
+      filled = atEntry.answerNoEmotions(filled);
+      renderForm({ initialDraft: filled });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear time' }));
-    expect(screen.getByText('Not set')).toBeVisible();
-    save();
-    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(2));
-    const cleared = createTradeMock.mock.calls[1]![0] as Record<string, unknown>;
-    expect(cleared).not.toHaveProperty('enteredAt');
-    expect(cleared).not.toHaveProperty('enteredAtSource');
+      expect(link('trade')).toHaveTextContent('XAUUSD · Long · Main USD');
+      expect(link('plan')).toHaveTextContent('Risk at entry 100.00 USD');
+      expect(link('setup')).toHaveTextContent('Breakout · Retest · 1 of 2 conditions answered');
+      expect(link('context')).toHaveTextContent('No emotions');
+      expect(document.querySelector('[data-required-status]')).toHaveAttribute(
+        'data-required-status',
+        'ready',
+      );
+    } finally {
+      matchMedia.mockRestore();
+    }
   });
 });

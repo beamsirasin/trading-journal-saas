@@ -8,6 +8,7 @@ import { strategies, strategyVersions, trades, workspaces } from '../src/server/
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
+import { recordOpenClassify, recordOpenMinimum, recordOpenStep } from './support/record-open';
 
 /**
  * SAVED EXIT PLANS, REACHED THE WAY A TRADER REACHES THEM.
@@ -70,15 +71,10 @@ async function latestTrade(userId: string) {
   });
 }
 
+/** Record Open to its Save minimum, ending on Plan & Risk — where the Exit Plan is asked. */
 async function startTrade(page: Page) {
   await page.goto('/en/app/trades/new?timing=at_entry');
-  await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-  // The radio is visually hidden; its label is what a trader clicks.
-  const long = page.getByRole('radio', { name: 'Long', exact: true });
-  const id = await long.getAttribute('id');
-  await page.locator(`label[for="${id}"]`).click();
-  await expect(long).toBeChecked();
-  await page.getByLabel('Risk at entry').fill('100');
+  await recordOpenMinimum(page, { symbol: 'XAUUSD', direction: 'Long', risk: '100' });
 }
 
 function editor(page: Page) {
@@ -157,7 +153,9 @@ test.describe('Saved Exit Plan library', () => {
 
     // 9. Make it the default for the Strategy this trade uses.
     await editor(page).getByRole('button', { name: 'Close' }).click();
-    await page.getByLabel('Strategy', { exact: true }).selectOption({ label: 'Golden Breakout' });
+    // The Strategy is Setup & Checklist’s answer; the Exit Plan is back on Plan & Risk.
+    await recordOpenClassify(page, 'Golden Breakout');
+    await recordOpenStep(page, 'plan');
     await page.getByRole('button', { name: 'Choose exit plan' }).click();
     await editor(page).getByRole('button', { name: 'Manage saved plans' }).click();
     await editor(page).getByRole('button', { name: 'Make default for Golden Breakout' }).click();

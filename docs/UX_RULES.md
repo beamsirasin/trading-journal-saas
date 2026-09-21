@@ -1116,8 +1116,10 @@ Implementation evidence only, recorded so redesign and migration work can find t
   whole-Trade "Recorded retrospectively" disclosure (contract §28, Phase 15G.5C) stays on the Trade
   Details Plan tab.
 - **Recording lifecycle (§20), 2026-09-22:**
-  - Record Open Trade (At Entry) is still one linear page, not the stepped 1 → 2 → 3 → 4 flow, and
-    its Save does not yet follow §20.4's stage rule.
+  - Record Open Trade (At Entry) follows §20.4: the four canonical stages in the shared step flow,
+    Save now from Plan & Risk on, and Save Open Trade on the last step. Step 1 is the shared Trade
+    Details step with At Entry's "now" entry time — confirmed, cleared or put back on the clock
+    only by named actions — and Actual Risk is asked beside Risk at Entry on Plan & Risk.
   - Record Closed Trade (After Trade) still presents five steps — Trade, Result, Plan, Context and
     Save — rather than §20.6's six. Its Plan step renders the shared Plan & Risk stage (commit
     `cc4e380`), with price levels folded there and Actual Risk asked beside Risk at Entry, where

@@ -16,6 +16,12 @@ import {
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
+import {
+  recordOpenClassify,
+  recordOpenMinimum,
+  recordOpenPriceLevels,
+  recordOpenStep,
+} from './support/record-open';
 
 /**
  * AT ENTRY REVIEW CAPTURES — development tooling for a visual review, not a
@@ -25,7 +31,8 @@ import { provisionVerifiedUser } from './support/provision-user';
  * could open. The production route is authenticated, so the capture lives here
  * instead: one provisioned user, one seeded Strategy with a default Exit Plan,
  * and the real `/app/trades/new?timing=at_entry` page at every reviewed width
- * and theme.
+ * and theme. Record Open is four canonical stages (UX Rules §20.4); each
+ * state below ends on the stage that shows it.
  *
  * It is skipped unless `AT_ENTRY_SCREENSHOTS=1`, so ordinary e2e runs never pay
  * for it. Each state is captured twice where it matters: a viewport shot, which
@@ -83,29 +90,36 @@ interface CaptureState {
 }
 
 const STATES: readonly CaptureState[] = [
+  // Step 1, untouched: the protected launcher rows and the "now" entry time.
   { name: 'blank', thai: true },
+  {
+    name: 'entry-time-sheet',
+    prepare: async (page) => {
+      await page.locator('#entry-row-enteredAt').click();
+    },
+    widths: [1440, 390],
+  },
   {
     name: 'partial',
     prepare: async (page) => {
-      await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-      await clickChoice(page, 'Long');
-      await page.getByLabel('Risk at entry').fill('250');
+      await fillMinimum(page);
     },
   },
   {
     name: 'validation',
     prepare: async (page) => {
-      await clickChoice(page, /Fixed target/);
-      await page.getByRole('button', { name: /Trade idea, chart and price levels/ }).click();
-      await page.getByLabel('SL price').fill('12..5');
-      await page.getByRole('button', { name: 'Save open trade' }).click();
+      await recordOpenStep(page, 'plan');
+      await clickChoice(page, /^Fixed target/);
+      await recordOpenPriceLevels(page);
+      await page.locator('#entry-context-stop-price').fill('12..5');
+      await page.locator('#entry-quick-save').click();
     },
   },
   {
     name: 'no-fixed-target',
     prepare: async (page) => {
       await fillMinimum(page);
-      await clickChoice(page, /No fixed target/);
+      await clickChoice(page, /^No fixed target/);
     },
     widths: [1440, 390],
   },
@@ -128,19 +142,27 @@ const STATES: readonly CaptureState[] = [
     widths: [1440, 320],
   },
   {
+    // Setup & Checklist announces the plan a chosen Strategy supplies.
+    name: 'strategy-announces-exit-plan',
+    prepare: async (page) => {
+      await fillMinimum(page);
+      await recordOpenClassify(page, STRATEGY);
+    },
+  },
+  {
     name: 'exit-plan-inherited',
     prepare: async (page) => {
       await fillMinimum(page);
-      await openAnalysis(page);
-      await page.getByLabel('Strategy', { exact: true }).selectOption({ label: STRATEGY });
+      await recordOpenClassify(page, STRATEGY);
+      await recordOpenStep(page, 'plan');
     },
   },
   {
     name: 'exit-plan-customized',
     prepare: async (page) => {
       await fillMinimum(page);
-      await openAnalysis(page);
-      await page.getByLabel('Strategy', { exact: true }).selectOption({ label: STRATEGY });
+      await recordOpenClassify(page, STRATEGY);
+      await recordOpenStep(page, 'plan');
       await page.getByRole('button', { name: 'Customize' }).click();
       await page
         .getByLabel('Your plan for this trade')
@@ -153,8 +175,8 @@ const STATES: readonly CaptureState[] = [
     name: 'exit-plan-editor',
     prepare: async (page) => {
       await fillMinimum(page);
-      await openAnalysis(page);
-      await page.getByLabel('Strategy', { exact: true }).selectOption({ label: STRATEGY });
+      await recordOpenClassify(page, STRATEGY);
+      await recordOpenStep(page, 'plan');
       await page.getByRole('button', { name: 'Choose another' }).click();
     },
     widths: [1440, 390],
@@ -168,29 +190,31 @@ const STATES: readonly CaptureState[] = [
     widths: [1440, 320],
   },
   {
-    name: 'analytical-answered',
+    name: 'checklist-answered',
     prepare: async (page) => {
       await fillMinimum(page);
-      await openAnalysis(page);
-      await page.getByLabel('Strategy', { exact: true }).selectOption({ label: STRATEGY });
-      await page.getByLabel('Setup', { exact: true }).selectOption({ label: SETUP });
+      await recordOpenClassify(page, STRATEGY, SETUP);
       await answerCondition(page, 'Breakout candle closed', 'Met');
       await answerCondition(page, 'Retest held', 'Not met');
+    },
+  },
+  {
+    name: 'entry-context-answered',
+    prepare: async (page) => {
+      await fillMinimum(page);
+      await recordOpenStep(page, 'context');
       await clickChoice(page, 'High');
-      await page.getByRole('button', { name: 'Focused' }).click();
+      await page.locator('#entry-entry-emotions').click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Focused' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+      await page.getByLabel('Why this trade').fill('Clean retest of the breakout level.');
     },
   },
 ];
 
+/** Record Open's Save minimum; it ends on Plan & Risk. */
 async function fillMinimum(page: Page) {
-  await page.getByRole('textbox', { name: 'Symbol' }).fill('XAUUSD');
-  await clickChoice(page, 'Long');
-  await page.getByLabel('Risk at entry').fill('250');
-}
-
-async function openAnalysis(page: Page) {
-  const toggle = page.locator('#entry-analysis-toggle');
-  if (await toggle.isVisible()) await toggle.click();
+  await recordOpenMinimum(page, { symbol: 'XAUUSD', direction: 'Long', risk: '250' });
 }
 
 async function clickChoice(page: Page, name: RegExp | string) {
@@ -227,7 +251,7 @@ async function capture(
     }
   }, theme);
   await page.goto(ROUTE(locale));
-  await expect(page.locator('[data-at-entry-linear-form]')).toBeVisible();
+  await expect(page.locator('[data-record-open-form]')).toBeVisible();
   if (state.prepare !== undefined) await state.prepare(page);
   await page.waitForTimeout(300);
 

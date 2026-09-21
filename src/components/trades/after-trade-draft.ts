@@ -473,7 +473,7 @@ export function entryTimestampParts(value: string): EntryTimestampParts {
 }
 
 /** Joins the two halves back into the one stored value. */
-function composeEntryTimestamp(date: string, time: string): string {
+export function composeEntryTimestamp(date: string, time: string): string {
   if (date === '' && time === '') return '';
   if (time === '') return date;
   return `${date}T${time}`;

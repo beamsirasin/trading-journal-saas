@@ -295,15 +295,15 @@ export function TradeRecordingForm({
 
   const status = (
     <RecordingDraftStatus
-      // After Trade's step flow starts high on a phone; its routine draft states are one row.
-      compact={timing === 'after_trade'}
+      // Both step flows start high on a phone; their routine draft states are one row.
+      compact
       /*
-        WHERE AFTER TRADE'S DISCARD LIVES. With work in the draft but nothing
-        restored to announce, Discard moves into the form's own mode line, after
+        WHERE DISCARD LIVES. With work in the draft but nothing restored to
+        announce, Discard moves into the step flow's own mode line, after
         Change, rather than taking a row of its own above the step; the restored
         state and every warning keep this status row.
       */
-      discardElsewhere={timing === 'after_trade'}
+      discardElsewhere
       notice={state.notice}
       hasWork={state.hasWork}
       onDismissNotice={() => setState((current) => current && { ...current, notice: null })}
@@ -379,7 +379,8 @@ export function TradeRecordingForm({
     );
   }
   return (
-    <div className="flex w-full min-w-0 flex-col gap-3">
+    // `flex-1`, as for After Trade: the docked action bar reaches the bottom of a phone.
+    <div className="flex w-full min-w-0 flex-1 flex-col gap-3">
       {status}
       <TradeAtEntryForm
         key={key}
@@ -391,6 +392,7 @@ export function TradeRecordingForm({
         onDraftChange={onAtEntryChange}
         onSaved={onSaved}
         saveControls={saveControls}
+        onDiscardDraft={state.notice === null && state.hasWork ? discard : null}
       />
       {confirmDialog}
     </div>

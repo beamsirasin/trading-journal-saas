@@ -1,19 +1,17 @@
 'use client';
 
-import { BarChart3, CircleAlert, Clock, GitBranch } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { composePlannedR } from '@/lib/calc/trade';
 import { generateId } from '@/lib/identifiers';
-import { CONFIDENCE_LEVELS, confidenceLevelKey } from '@/lib/trades/constants';
-import { cn } from '@/lib/utils';
+import { confidenceLevelKey } from '@/lib/trades/constants';
 import { createTradeAction } from '@/server/actions/trades';
 import type { TradeCreateExitPlanOption, TradeCreateOptions } from '@/server/dal/trades';
-import { Button } from '@/components/ui/button';
 import { useIsHydrated } from '@/hooks/use-is-hydrated';
 import { useRouter } from '@/i18n/navigation';
 
+import { composeEntryTimestamp, entryTimestampParts } from './after-trade-draft';
 import {
   activeClassification,
   analysisSummary,
@@ -21,7 +19,6 @@ import {
   answerNoEmotions,
   answerNoSetup,
   answerNoStrategy,
-  AT_ENTRY_FIELD_SECTION,
   atEntryReadiness,
   buildAtEntryPayload,
   canDeselectEmotion,
@@ -35,7 +32,6 @@ import {
   removeStrategyAnswer,
   resetEntryTimeToNow,
   resolveExitPlan,
-  sectionErrorCount,
   selectSetup,
   selectStrategy,
   setActualRiskAmount,
@@ -50,69 +46,51 @@ import {
   type AtEntryErrors,
   type AtEntryField,
 } from './at-entry-draft';
-import { hasStaleSelection, staleSelections, UNAVAILABLE_OPTION } from './stale-selection';
-import {
-  Chip,
-  ChoiceGroup,
-  Disclosure,
-  GroupHeading,
-  Helper,
-  InlineAction,
-  Legend,
-  Notice,
-  RequirementRow,
-  SelectField,
-  StateText,
-  Tag,
-  TextAreaField,
-  TextField,
-} from './trade-at-entry-controls';
-import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
+import { hasStaleSelection, staleSelections } from './stale-selection';
+import { InlineAction, TextField } from './trade-at-entry-controls';
+import { tradeDetailsRowId, TradeDetailsStep, type EntryErrorCode } from './trade-details-step';
+import { TradeEntryContextStep } from './trade-entry-context-step';
 import { instantToDatetimeLocal, parseTradeMoneyInput } from './trade-form-values';
-import { formatR } from './trade-format';
+import { formatR, formatTradeMoney } from './trade-format';
+import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import type { RecordingSaveControls } from './trade-recording-form';
-import { TradeRecordingModeChange } from './trade-recording-mode-change';
-import { groupEmotionCatalog } from './trade-recording-primitives';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeAlreadySaved, TradeSaveReplayConflict } from './trade-save-replay';
+import { TradeSetupChecklistStep } from './trade-setup-checklist-step';
+import { TradeStepFlow, TradeStepSection } from './trade-step-flow';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
-const NONE = '__none';
-const RECENT_SYMBOL_LIMIT = 3;
-
 /**
- * ONE SAVE, NEVER TWO IN THE DOCUMENT. The sticky desktop panel and the docked
- * phone bar are two compositions of the same action, so only the one matching
- * the viewport is rendered. CSS alone would leave both in the document, which
- * is two identical buttons to anything reading the page rather than looking at
- * it. Both keep their responsive classes, so the frame between a server render
- * and hydration never shows the wrong one.
+ * RECORD OPEN TRADE — canonical lifecycle stages 1 → 2 → 3 → 4, then Save Open
+ * Trade (Add Trade contract §1 Recording lifecycle, §6; UX Rules §11, §20.4).
  */
-const WIDE_VIEWPORT_QUERY = '(min-width: 64rem)';
+const STEPS = ['trade', 'plan', 'setup', 'context'] as const;
+type StepKey = (typeof STEPS)[number];
+const STEP_INDEX: Readonly<Record<StepKey, number>> = { trade: 0, plan: 1, setup: 2, context: 3 };
+const LAST_STEP = STEPS.length - 1;
 
-function subscribeWideViewport(onChange: () => void): () => void {
-  const media = window.matchMedia(WIDE_VIEWPORT_QUERY);
-  media.addEventListener('change', onChange);
-  return () => media.removeEventListener('change', onChange);
+/** The step that asks a field — where a blocked Save goes to reach it. */
+function fieldStep(field: AtEntryField): number {
+  switch (field) {
+    case 'tradingAccountId':
+    case 'symbol':
+    case 'direction':
+    case 'enteredAt':
+      return STEP_INDEX.trade;
+    default:
+      return STEP_INDEX.plan;
+  }
 }
 
-/** Desktop-first on the server, matching the analytics posture in CLAUDE.md §8. */
-function useIsWideViewport(): boolean {
-  return useSyncExternalStore(
-    subscribeWideViewport,
-    () => window.matchMedia(WIDE_VIEWPORT_QUERY).matches,
-    () => true,
-  );
-}
-
-/** Where a failed Save sends focus for each field — always a real, focusable control. */
+/** Where a blocked Save sends focus for each field — always a real, focusable control. */
 const FIELD_TARGET_ID: Readonly<Record<AtEntryField, string>> = {
-  tradingAccountId: 'entry-account',
-  symbol: 'entry-symbol',
-  direction: 'entry-direction-long',
+  // Step 1's controls live in editors; its launcher row names the concept and opens it.
+  tradingAccountId: tradeDetailsRowId('entry', 'tradingAccountId'),
+  symbol: tradeDetailsRowId('entry', 'symbol'),
+  direction: tradeDetailsRowId('entry', 'direction'),
+  enteredAt: tradeDetailsRowId('entry', 'enteredAt'),
   risk: 'entry-risk',
   actualRiskAmount: 'entry-actual-risk',
-  enteredAt: 'entry-time',
   targetProfit: 'entry-target-profit',
   targetPrice: 'entry-target-price',
   contextEntryPrice: 'entry-context-entry-price',
@@ -120,7 +98,28 @@ const FIELD_TARGET_ID: Readonly<Record<AtEntryField, string>> = {
   contextPositionSize: 'entry-context-size',
 };
 
-/** Server field names mapped onto the fields a trader can see and correct. */
+/** The Plan & Risk step's ids for Record Open. */
+const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
+  risk: FIELD_TARGET_ID.risk,
+  targetState: 'entry-target',
+  targetProfit: FIELD_TARGET_ID.targetProfit,
+  targetPrice: FIELD_TARGET_ID.targetPrice,
+  entryPrice: FIELD_TARGET_ID.contextEntryPrice,
+  stopPrice: FIELD_TARGET_ID.contextStopPrice,
+  positionSize: FIELD_TARGET_ID.contextPositionSize,
+  priceContextToggle: 'entry-plan-price',
+};
+
+/** The Plan & Risk step's fields, as this draft names them. */
+const PLAN_STEP_FIELD: Readonly<Record<PlanRiskField, AtEntryField>> = {
+  risk: 'risk',
+  targetProfit: 'targetProfit',
+  targetPrice: 'targetPrice',
+  entryPrice: 'contextEntryPrice',
+  stopPrice: 'contextStopPrice',
+  positionSize: 'contextPositionSize',
+};
+
 /**
  * What a field-level refusal from the server says. Only a price field can be
  * "not a valid price" and only a money field "not a valid amount"; anything
@@ -144,6 +143,7 @@ function serverFieldErrorCode(field: AtEntryField): AtEntryErrorCode {
   }
 }
 
+/** Server field names mapped onto the fields a trader can see and correct. */
 const SERVER_FIELD: Readonly<Record<string, AtEntryField>> = {
   tradingAccountId: 'tradingAccountId',
   symbol: 'symbol',
@@ -159,27 +159,49 @@ const SERVER_FIELD: Readonly<Record<string, AtEntryField>> = {
   contextPositionSize: 'contextPositionSize',
 };
 
-/** A control is a valid focus target only while it is actually rendered. */
-function isRendered(element: Element): boolean {
-  return element.getClientRects().length > 0;
+/** Inside the step being shown, rather than one kept mounted but hidden. */
+function isShown(element: Element): boolean {
+  return element.closest('[hidden]') === null;
+}
+
+const WIDE_VIEWPORT_QUERY = '(min-width: 64rem)';
+
+function subscribeWideViewport(onChange: () => void): () => void {
+  const media = window.matchMedia(WIDE_VIEWPORT_QUERY);
+  media.addEventListener('change', onChange);
+  return () => media.removeEventListener('change', onChange);
+}
+
+/** Desktop-first on the server, matching the analytics posture in CLAUDE.md §8. */
+function useIsWideViewport(): boolean {
+  return useSyncExternalStore(
+    subscribeWideViewport,
+    () => window.matchMedia(WIDE_VIEWPORT_QUERY).matches,
+    () => true,
+  );
 }
 
 /**
- * AT ENTRY — "Record an open trade", Add Trade contract v1.
+ * RECORD OPEN TRADE — "Record an open trade", Add Trade contract v1 (§6).
  *
- * READING ORDER ANSWERS THE MOMENT'S QUESTION. The trade, then risk and plan,
- * then the trader's read on it, then optional context. Risk at Entry is the one
- * lead figure and the 1R baseline; Actual Risk is shown as a visible, reversible
- * assumption; Target and Exit Plan are independent answers; price is context.
+ * THE MOMENT'S QUESTION IS "WHAT AM I DOING AND WHY?" (UX Rules §11). Four
+ * canonical stages, one at a time, in the shared recording frame: Trade
+ * Details, Plan & Risk, Setup & Checklist, Entry Context & Evidence. Each is
+ * the canonical component in its At Entry mode; this form owns only the
+ * draft, the current step, validation and Save.
  *
- * ALL SEMANTICS LIVE IN `at-entry-draft`. This component renders a draft and
- * applies that module's transitions: preserved inactive work, explicit Remove
- * answer, the last-emotion guard, the state-neutral Exit Plan editor, and a
- * readiness derived from the same error set Save uses.
+ * FAST SAVE, NOT A TOLL ROAD. Save Open Trade needs Account, Symbol,
+ * Direction and Risk at Entry, which the first two stages ask. From Plan &
+ * Risk on, Save now is always there — secondary to going on, and the very
+ * same Save as the last step's button; if something is missing it says what
+ * and takes the trader to it (UX Rules §6.5, §11.2, §20.4).
  *
- * ONE SAVE. On desktop it sits in a sticky panel beside the form with what is
- * still needed; on phones it docks to the bottom and yields to the keyboard.
- * Only one of the two is ever rendered at a time.
+ * ALL SEMANTICS LIVE IN `at-entry-draft`: the "now" entry time that follows
+ * the clock until touched, the visible Actual Risk assumption, Target and
+ * Exit Plan states with visible Strategy-default inheritance, Strategy /
+ * Setup / condition answers, psychology, context — and readiness derived
+ * from the same error set Save uses. The current step is view state: it is
+ * never stored in the draft, and a reload recovers every answer from Step 1.
  */
 export function TradeAtEntryForm({
   options: serverOptions,
@@ -190,6 +212,7 @@ export function TradeAtEntryForm({
   onDraftChange,
   onSaved,
   saveControls,
+  onDiscardDraft = null,
 }: {
   options: TradeCreateOptions;
   activeTradingAccountId?: string | null;
@@ -204,19 +227,18 @@ export function TradeAtEntryForm({
   onSaved?: () => void;
   /** The Recording Draft's Save safeguards: inactive-mode confirmation and "Save as new". */
   saveControls?: RecordingSaveControls;
+  /** Set while there is work in the draft but nothing restored to announce: Discard lives in the mode line. */
+  onDiscardDraft?: (() => void) | null;
 }) {
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
+  const a = useTranslations('trades.create.recording.contractAfter');
+  const s = useTranslations('trades.create.recording.contractEntry.steps');
   const router = useRouter();
   /*
-    THE LIBRARY A TRADER JUST CHANGED WINS OVER THE PAGE'S COPY OF IT.
-
-    A saved-plan action returns the active library it produced. Waiting for
-    the page's server props to catch up instead was a race: the action's own
-    revalidation and a client refresh could land in either order, and the
-    editor would keep showing the list from before the change — a plan just
-    saved absent, a plan just archived still offered. The adopted list lasts
-    for this form's life, which ends when the Trade is saved.
+    THE LIBRARY A TRADER JUST CHANGED WINS OVER THE PAGE'S COPY OF IT. A
+    saved-plan action returns the active library it produced; the adopted list
+    lasts for this form's life, which ends when the Trade is saved.
   */
   const [adoptedExitPlans, setAdoptedExitPlans] = useState<
     readonly TradeCreateExitPlanOption[] | null
@@ -234,7 +256,9 @@ export function TradeAtEntryForm({
   const mutationKey = draftMutationKey ?? fallbackMutationKey;
   const submitting = useRef(false);
   const formId = useId();
-  const ids = { trade: useId(), plan: useId(), read: useId() };
+  const headingId = useId();
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   /*
     The active Account first, then the sole Account, then nothing. The active id
@@ -257,9 +281,13 @@ export function TradeAtEntryForm({
   useEffect(() => {
     onDraftChange?.(storedDraft);
   }, [storedDraft, onDraftChange]);
-  const [accountPickerOpen, setAccountPickerOpen] = useState(initialAccount === '');
-  const [analysisOpen, setAnalysisOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
+
+  /*
+    THE CURRENT STEP IS VIEW STATE, NOT DRAFT STATE. Every step stays mounted
+    and only the current one is shown, so moving between steps can never drop
+    an answer; a reload recovers the draft and starts again from Step 1.
+  */
+  const [step, setStep] = useState(0);
   const [attempted, setAttempted] = useState(false);
   const [serverErrors, setServerErrors] = useState<AtEntryErrors>({});
   const [serverMessage, setServerMessage] = useState<string | null>(null);
@@ -275,7 +303,6 @@ export function TradeAtEntryForm({
     if (alreadySaved !== null) alreadySavedHeading.current?.focus();
   }, [alreadySaved]);
   const [pending, setPending] = useState(false);
-  const [emotionHint, setEmotionHint] = useState(false);
 
   /*
     ENTRY TIME FOLLOWS THE CLOCK UNTIL THE TRADER TOUCHES IT — resolved after
@@ -298,6 +325,7 @@ export function TradeAtEntryForm({
   const readiness = atEntryReadiness(validation);
   const active = activeClassification(draft, options);
   const exitPlan = resolveExitPlan(draft, options);
+  const stale = staleSelections(draft, options);
   const summary = analysisSummary(draft, options);
 
   /*
@@ -324,6 +352,20 @@ export function TradeAtEntryForm({
     if (attempted || (typed[field] ?? '').trim() !== '') visibleErrors[field] = code;
   }
 
+  /*
+    HALF AN ENTRY STAMP SAYS WHICH HALF IS MISSING. At Entry records one
+    complete instant, and a draft only rests on half of one after a cleared
+    time is partly given again. Validation calls that not a valid date and
+    time; the trader is told the half that would complete it.
+  */
+  const entryParts = entryTimestampParts(draft.entryTime.value);
+  const entryHalf: EntryErrorCode =
+    entryParts.date !== '' && entryParts.time === ''
+      ? 'entry_time_required'
+      : entryParts.time !== '' && entryParts.date === ''
+        ? 'entry_date_required'
+        : null;
+
   function errorText(field: AtEntryField): string | undefined {
     const code = visibleErrors[field];
     if (code === undefined) return undefined;
@@ -343,7 +385,11 @@ export function TradeAtEntryForm({
       case 'must_be_positive':
         return c('errors.mustBePositive');
       case 'invalid_datetime':
-        return c('errors.invalidDatetime');
+        return field === 'enteredAt' && entryHalf === 'entry_time_required'
+          ? a('errors.entryTimeRequired')
+          : field === 'enteredAt' && entryHalf === 'entry_date_required'
+            ? a('errors.entryDateRequired')
+            : c('errors.invalidDatetime');
       case 'invalid_price':
         return c('errors.invalidPrice');
       case 'fixed_target_requires_value':
@@ -356,11 +402,14 @@ export function TradeAtEntryForm({
   }
 
   const requirements = [
-    { key: 'account', field: 'tradingAccountId', done: draft.tradingAccountId !== '' },
-    { key: 'symbol', field: 'symbol', done: draft.symbol.trim() !== '' },
-    { key: 'direction', field: 'direction', done: draft.direction !== '' },
-    { key: 'risk', field: 'risk', done: validation.riskMinor !== null },
+    { key: 'account', field: 'tradingAccountId', step: 0, done: draft.tradingAccountId !== '' },
+    { key: 'symbol', field: 'symbol', step: 0, done: draft.symbol.trim() !== '' },
+    { key: 'direction', field: 'direction', step: 0, done: draft.direction !== '' },
+    { key: 'risk', field: 'risk', step: 1, done: validation.riskMinor !== null },
   ] as const;
+  const missingRequirements = requirements.filter(
+    (item) => !item.done || visibleErrors[item.field] !== undefined,
+  );
   const remaining = requirements.filter((item) => !item.done).length;
   const blockedCount = readiness.status === 'blocked' ? readiness.count : 0;
   const statusBlocked = readiness.status === 'blocked' && (attempted || remaining === 0);
@@ -377,22 +426,47 @@ export function TradeAtEntryForm({
       ? 'text-destructive'
       : 'text-muted-foreground';
 
-  function focusFirstError(fields: readonly AtEntryField[]) {
-    // Two frames: the first lets a section just opened commit, the second measures it.
+  /**
+   * Show one step. With targets, the first rendered one is brought into view
+   * and focused — a blocked Save uses this to land on the control that needs
+   * attention; plain navigation focuses the step's heading.
+   */
+  function showStep(index: number, targets: readonly (() => HTMLElement | null)[] = []) {
+    setStep(index);
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        for (const field of fields) {
-          const target = document.getElementById(FIELD_TARGET_ID[field]);
-          if (target !== null && isRendered(target)) {
-            target.focus();
-            return;
-          }
+        const form = formRef.current;
+        if (
+          form !== null &&
+          typeof form.scrollIntoView === 'function' &&
+          form.getBoundingClientRect().top < 0
+        ) {
+          form.scrollIntoView({ block: 'start' });
         }
-        const status = Array.from(
-          document.querySelectorAll<HTMLElement>('[data-save-status]'),
-        ).find(isRendered);
-        status?.focus();
+        for (const find of targets) {
+          const target = find();
+          if (target === null || !isShown(target)) continue;
+          if (typeof target.scrollIntoView === 'function') {
+            target.scrollIntoView({ block: 'center' });
+          }
+          target.focus();
+          if (document.activeElement === target) return;
+          break;
+        }
+        stepHeading.current?.focus({ preventScroll: true });
       }),
+    );
+  }
+
+  /** Open the earliest step holding a blocking error, and focus its control. */
+  function focusFirstError(fields: readonly AtEntryField[]) {
+    if (fields.length === 0) return;
+    const index = Math.min(...fields.map(fieldStep));
+    showStep(
+      index,
+      fields
+        .filter((field) => fieldStep(field) === index)
+        .map((field) => () => document.getElementById(FIELD_TARGET_ID[field])),
     );
   }
 
@@ -406,31 +480,21 @@ export function TradeAtEntryForm({
     const currentReadiness = atEntryReadiness(currentValidation);
     if (currentReadiness.status === 'blocked') {
       setServerMessage(null);
-      if (currentReadiness.fields.includes('tradingAccountId')) setAccountPickerOpen(true);
-      if (currentReadiness.fields.some((field) => AT_ENTRY_FIELD_SECTION[field] === 'context')) {
-        setContextOpen(true);
-      }
       focusFirstError(currentReadiness.fields);
       return;
     }
     // A chosen answer whose source went away waits for the trader's choice.
-    const stale = staleSelections(current, options);
-    if (hasStaleSelection(stale)) {
+    const staleNow = staleSelections(current, options);
+    if (hasStaleSelection(staleNow)) {
       setServerMessage(c('save.staleBlocked'));
-      if (stale.strategy || stale.setup) setAnalysisOpen(true);
-      const target = stale.strategy ? 'entry-strategy' : stale.setup ? 'entry-setup' : null;
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          const element =
-            target === null
-              ? document.querySelector<HTMLElement>('[data-exit-plan-unavailable]')
-              : document.getElementById(target);
-          if (typeof element?.scrollIntoView === 'function') {
-            element.scrollIntoView({ block: 'center' });
-          }
-          if (target !== null) element?.focus();
-        }),
-      );
+      if (staleNow.strategy || staleNow.setup) {
+        const target = staleNow.strategy ? 'entry-strategy' : 'entry-setup';
+        showStep(STEP_INDEX.setup, [() => document.getElementById(target)]);
+      } else {
+        showStep(STEP_INDEX.plan, [
+          () => document.querySelector<HTMLElement>('[data-exit-plan-unavailable]'),
+        ]);
+      }
       return;
     }
     const payload = buildAtEntryPayload(current, {
@@ -485,6 +549,7 @@ export function TradeAtEntryForm({
       }
       setServerErrors(mapped);
       setServerMessage(t(`errors.${result.error.code}`));
+      focusFirstError(Object.keys(mapped) as AtEntryField[]);
       return;
     }
     symbolFavorites.recordUse(payload.symbol);
@@ -495,7 +560,17 @@ export function TradeAtEntryForm({
       setAlreadySaved(result.data.tradeId);
       return;
     }
+    // Save Open Trade offers no Review (contract §20): it opens the Trade.
     router.push(`/app/trades?trade=${result.data.tradeId}`);
+  }
+
+  if (alreadySaved !== null) {
+    return (
+      <TradeAlreadySaved
+        headingRef={alreadySavedHeading}
+        onOpen={() => router.push(`/app/trades?trade=${alreadySaved}`)}
+      />
+    );
   }
 
   const replayConflictPanel =
@@ -514,27 +589,7 @@ export function TradeAtEntryForm({
       />
     );
 
-  if (alreadySaved !== null) {
-    return (
-      <TradeAlreadySaved
-        headingRef={alreadySavedHeading}
-        onOpen={() => router.push(`/app/trades?trade=${alreadySaved}`)}
-      />
-    );
-  }
-
-  const contextErrorCount = sectionErrorCount(visibleErrors, 'context');
-  const contextFilled = [
-    draft.context.reason,
-    draft.context.tradingviewUrl,
-    draft.context.timeframe,
-    draft.context.session,
-    draft.context.entryPrice,
-    draft.context.stopPrice,
-    draft.context.positionSize,
-    draft.context.notes,
-  ].filter((value) => value.trim() !== '').length;
-
+  // At Entry's money-based R for a Target Profit: context for the plan, never a result.
   const targetR = (() => {
     if (draft.direction === '' || validation.riskMinor === null) return null;
     if (draft.target.state !== 'fixed' || draft.target.profit.trim() === '') return null;
@@ -551,542 +606,339 @@ export function TradeAtEntryForm({
     return composed.ok ? formatR(composed.value.plannedR) : null;
   })();
 
-  const analysisLines: string[] = [];
-  if (summary.strategy.answer === 'none') analysisLines.push(c('summary.noStrategy'));
-  if (summary.strategy.answer === 'selected' && summary.strategy.name !== null) {
+  /*
+    WHAT EACH STEP HOLDS, IN A LINE. Read-only restatements of answers already
+    given — never a derived answer. A step with nothing recorded says so.
+  */
+  const joinParts = (parts: readonly (string | null | false | undefined)[]): string | null => {
+    const kept = parts.filter((part): part is string => typeof part === 'string' && part !== '');
+    return kept.length === 0 ? null : kept.join(' · ');
+  };
+  const formatMoney = (minor: string) => formatTradeMoney(minor, currency) ?? minor;
+  const priceLevelsRecorded = [
+    draft.context.entryPrice,
+    draft.context.stopPrice,
+    draft.context.positionSize,
+  ].some((value) => value.trim() !== '');
+  const setupLine = (() => {
+    if (summary.strategy.answer === 'none') return c('summary.noStrategy');
+    if (summary.strategy.answer !== 'selected' || summary.strategy.name === null) return null;
     const setupPart =
       summary.setup.answer === 'none'
         ? c('summary.noSetup')
         : summary.setup.answer === 'selected'
           ? summary.setup.name
           : null;
-    analysisLines.push([summary.strategy.name, setupPart].filter(Boolean).join(' · '));
-    if (summary.conditions !== null) {
-      analysisLines.push(
-        c('summary.conditions', {
-          answered: summary.conditions.answered,
-          total: summary.conditions.total,
-        }),
-      );
-    }
-  }
-  if (summary.confidence !== null) {
-    analysisLines.push(
-      c('summary.confidence', {
-        level: t(`create.confidence.level.${confidenceLevelKey(summary.confidence)}`),
-      }),
-    );
-  }
-  if (summary.emotions.answer === 'none') analysisLines.push(c('summary.emotionsNone'));
-  if (summary.emotions.answer === 'selected') {
-    analysisLines.push(c('summary.emotionsCount', { count: summary.emotions.count }));
-  }
-
-  const recentSymbols = symbolFavorites.recents.slice(0, RECENT_SYMBOL_LIMIT);
+    return joinParts([
+      summary.strategy.name,
+      setupPart,
+      summary.conditions === null
+        ? null
+        : c('summary.conditions', {
+            answered: summary.conditions.answered,
+            total: summary.conditions.total,
+          }),
+    ]);
+  })();
+  const contextFilled = [
+    draft.context.reason,
+    draft.context.timeframe,
+    draft.context.session,
+    draft.context.notes,
+    draft.context.tradingviewUrl,
+  ].filter((value) => value.trim() !== '').length;
+  const stepSummaries: Readonly<Record<StepKey, string | null>> = {
+    trade: joinParts([
+      draft.symbol.trim().toUpperCase(),
+      draft.direction === 'long'
+        ? c('direction.long')
+        : draft.direction === 'short'
+          ? c('direction.short')
+          : null,
+      selectedAccount?.name,
+    ]),
+    plan: joinParts([
+      validation.riskMinor === null
+        ? null
+        : `${c('risk.label')} ${formatMoney(validation.riskMinor)}`,
+      draft.target.state === 'fixed'
+        ? c('target.fixed')
+        : draft.target.state === 'no_fixed'
+          ? c('target.noFixed')
+          : null,
+      priceLevelsRecorded ? a('steps.groups.price') : null,
+    ]),
+    setup: setupLine,
+    context: joinParts([
+      summary.confidence === null
+        ? null
+        : c('summary.confidence', {
+            level: t(`create.confidence.level.${confidenceLevelKey(summary.confidence)}`),
+          }),
+      summary.emotions.answer === 'none'
+        ? c('summary.emotionsNone')
+        : summary.emotions.answer === 'selected'
+          ? c('summary.emotionsCount', { count: summary.emotions.count })
+          : null,
+      contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
+    ]),
+  };
+  /** Blocking errors each step holds, so a step with one is marked wherever it is listed. */
+  const stepErrorCounts = STEPS.map(
+    (_, index) =>
+      Object.keys(visibleErrors).filter((field) => fieldStep(field as AtEntryField) === index)
+        .length,
+  );
+  const currentKey = STEPS[step] ?? 'trade';
+  const onLastStep = step === LAST_STEP;
+  const stepAttention = stepErrorCounts[step] ?? 0;
+  const stepLabel = (key: StepKey) => s(`${key}.label`);
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-6">
-      <p
-        data-recording-mode="at_entry"
-        className="text-muted-foreground flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm"
+    <TradeStepFlow
+      recordingMode="at_entry"
+      formRef={formRef}
+      formId={formId}
+      formData={{ 'data-record-open-form': '', 'data-record-open-step': currentKey }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        // Save Open Trade lives on the last step; Enter elsewhere never saves early.
+        if (onLastStep) void submit();
+      }}
+      wide={wide}
+      keyboardOpen={keyboardOpen}
+      modeSentence={c('subtitle')}
+      modeShort={s('modeShort')}
+      onDiscardDraft={onDiscardDraft}
+      steps={STEPS.map((key, index) => {
+        const missing = missingRequirements.filter((item) => item.step === index).length;
+        return {
+          key,
+          label: stepLabel(key),
+          summary: stepSummaries[key],
+          errors: stepErrorCounts[index] ?? 0,
+          // Only the first two steps hold anything Save needs.
+          pending: missing === 0 ? null : a('steps.requiredMissing', { count: missing }),
+        };
+      })}
+      step={step}
+      onShowStep={(index) => showStep(index)}
+      headingId={headingId}
+      headingRef={stepHeading}
+      title={s(`${currentKey}.title`)}
+      description={s(`${currentKey}.description`)}
+      attention={stepAttention === 0 ? null : a('steps.attention', { count: stepAttention })}
+      copy={{
+        navLabel: a('steps.navLabel'),
+        progress: a('steps.progress', { current: step + 1, total: STEPS.length }),
+        goTo: (index, label) =>
+          a('steps.goTo', { current: index + 1, total: STEPS.length, step: label }),
+        needsAttention: a('steps.needsAttention'),
+        optional: a('steps.optional'),
+        back: a('steps.back'),
+        nextTo: (label) => a('steps.nextTo', { step: label }),
+      }}
+      status={{
+        show: onLastStep || pending || serverMessage !== null,
+        text: statusLine,
+        tone: statusTone,
+      }}
+      /*
+        SAVE NOW, FROM PLAN & RISK ON. Step 1 cannot hold the whole Save
+        minimum — Risk at Entry is Step 2's — so the short way out starts
+        there, and stays offered after: pressing it with something missing is
+        how a trader finds out what (UX Rules §6.5, §20.4).
+      */
+      quickSave={
+        step >= STEP_INDEX.plan && !pending
+          ? {
+              id: 'entry-quick-save',
+              label: a('steps.quickSave'),
+              ariaLabel: c('save.action'),
+              hint: a('steps.quickSaveHint'),
+              onClick: () => void submit(),
+            }
+          : null
+      }
+      save={{ label: c('save.action'), pendingLabel: c('save.saving'), pending }}
+      footerNote={null}
+      replayPanel={replayConflictPanel}
+      requirements={{
+        ready: missingRequirements.length === 0,
+        readyText: c('save.ready'),
+        missing: a('steps.requiredMissing', { count: missingRequirements.length }),
+        list: missingRequirements.map((item) => c(`save.requirement.${item.key}`)).join(' · '),
+      }}
+    >
+      {/* 1 — TRADE DETAILS: the protected Step 1, with At Entry's "now" entry time. */}
+      <TradeStepSection
+        stepKey="trade"
+        current={currentKey === 'trade'}
+        headingId={headingId}
+        className="gap-3"
       >
-        <span>{c('subtitle')}</span>
-        <TradeRecordingModeChange />
-      </p>
-
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start lg:gap-8">
-        <form
-          id={formId}
-          data-at-entry-linear-form=""
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
+        <TradeDetailsStep
+          mode="at_entry"
+          idPrefix="entry"
+          options={options}
+          timezone={timezone}
+          now={new Date()}
+          tradingAccountId={draft.tradingAccountId}
+          symbol={draft.symbol}
+          direction={draft.direction}
+          enteredAt={draft.entryTime.value}
+          entrySource={draft.entryTime.source}
+          errors={{
+            tradingAccountId: errorText('tradingAccountId'),
+            symbol: errorText('symbol'),
+            direction: errorText('direction'),
           }}
-          className="bg-card border-border shadow-card flex min-w-0 flex-col rounded-xl border"
-        >
-          {/* 1 — THE TRADE */}
-          <section
-            aria-labelledby={ids.trade}
-            className="flex min-w-0 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading id={ids.trade} title={c('sections.trade')} />
+          entryError={{
+            code: visibleErrors.enteredAt === undefined ? null : (entryHalf ?? 'other'),
+            text: errorText('enteredAt'),
+          }}
+          attempted={attempted}
+          onTradingAccount={(tradingAccountId) =>
+            apply((current) => ({ ...current, tradingAccountId }))
+          }
+          onSymbol={(symbol) => apply((current) => ({ ...current, symbol }))}
+          onDirection={(direction) => apply((current) => ({ ...current, direction }))}
+          // Either half, changed, keeps the other: the answer is now the trader's.
+          onEntryDate={(date) =>
+            apply((current) =>
+              editEntryTime(
+                current,
+                composeEntryTimestamp(date, entryTimestampParts(current.entryTime.value).time),
+              ),
+            )
+          }
+          onEntryTime={(time) =>
+            apply((current) =>
+              editEntryTime(
+                current,
+                composeEntryTimestamp(entryTimestampParts(current.entryTime.value).date, time),
+              ),
+            )
+          }
+          onClearEntry={() => apply(clearEntryTime)}
+          onConfirmEntry={() => apply(confirmEntryTime)}
+          onUseNowEntry={() => apply((current) => resetEntryTimeToNow(current, nowLocal()))}
+        />
+      </TradeStepSection>
 
-            {accountPickerOpen || selectedAccount === undefined ? (
-              <SelectField
-                id="entry-account"
-                label={c('account.label')}
-                value={draft.tradingAccountId}
-                error={errorText('tradingAccountId')}
-                onChange={(tradingAccountId) =>
-                  apply((current) => ({ ...current, tradingAccountId }))
-                }
-                options={[
-                  { value: '', label: c('account.choose') },
-                  ...options.tradingAccounts.map((account) => ({
-                    value: account.tradingAccountId,
-                    label: `${account.name} · ${account.baseCurrency}`,
-                  })),
-                ]}
-              />
-            ) : (
-              <div
-                data-account-context=""
-                className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
-              >
-                <p className="min-w-0 text-sm break-words">
-                  <span className="text-muted-foreground">{c('account.label')} </span>
-                  <span className="text-foreground font-semibold">{selectedAccount.name}</span>
-                  <span className="text-muted-foreground"> · {selectedAccount.baseCurrency}</span>
-                </p>
-                <InlineAction
-                  ariaLabel={c('account.changeAria')}
-                  onClick={() => setAccountPickerOpen(true)}
-                >
-                  {c('account.change')}
-                </InlineAction>
-              </div>
-            )}
-
-            <div className="grid min-w-0 gap-5 min-[560px]:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-2">
-                <TextField
-                  id="entry-symbol"
-                  label={c('symbol.label')}
-                  value={draft.symbol}
-                  onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
-                  placeholder={c('symbol.placeholder')}
-                  autoCapitalize="characters"
-                  error={errorText('symbol')}
-                />
-                {recentSymbols.length === 0 ? null : (
-                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="text-muted-foreground text-sm">{c('symbol.recent')}</span>
-                    {recentSymbols.map((symbol) => (
-                      <InlineAction
-                        key={symbol}
-                        ariaLabel={c('symbol.useRecent', { symbol })}
-                        onClick={() => apply((current) => ({ ...current, symbol }))}
-                      >
-                        {symbol}
-                      </InlineAction>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <ChoiceGroup
-                idPrefix="entry-direction"
-                legend={c('direction.label')}
-                value={draft.direction === '' ? null : draft.direction}
-                compact
-                error={errorText('direction')}
-                onChange={(direction) => apply((current) => ({ ...current, direction }))}
-                options={[
-                  { value: 'long', label: c('direction.long') },
-                  { value: 'short', label: c('direction.short') },
-                ]}
-              />
-            </div>
-
-            <EntryTimeField
+      {/* 2 — PLAN & RISK: Risk at Entry required, Actual Risk as At Entry asks it. */}
+      <TradeStepSection
+        stepKey="plan"
+        current={currentKey === 'plan'}
+        headingId={headingId}
+        className="gap-4"
+      >
+        <TradePlanRiskStep
+          mode="at_entry"
+          ids={PLAN_STEP_IDS}
+          currency={currency}
+          risk={draft.risk}
+          target={draft.target}
+          exitPlan={draft.exitPlan}
+          classification={draft.classification}
+          priceContext={draft.context}
+          options={options}
+          errorText={(field) => errorText(PLAN_STEP_FIELD[field])}
+          notices={{
+            stopWrongSide: validation.notices.includes('stop_wrong_side'),
+            targetWrongSide: validation.notices.includes('target_wrong_side'),
+          }}
+          riskFollowUp={
+            <ActualRiskField
               draft={draft}
-              timezone={timezone}
-              error={errorText('enteredAt')}
-              onEdit={(value) => apply((current) => editEntryTime(current, value))}
-              onConfirm={() => apply(confirmEntryTime)}
-              onClear={() => apply(clearEntryTime)}
-              onUseNow={() => apply((current) => resetEntryTimeToNow(current, nowLocal()))}
+              currency={currency}
+              riskIsValid={validation.riskMinor !== null}
+              error={errorText('actualRiskAmount')}
+              onMode={(mode) => apply((current) => setActualRiskMode(current, mode))}
+              onAmount={(amount) => apply((current) => setActualRiskAmount(current, amount))}
             />
-          </section>
+          }
+          targetR={targetR}
+          onRiskChange={(risk) => apply((current) => ({ ...current, risk }))}
+          onTargetStateChange={(state) => apply((current) => setTargetState(current, state))}
+          onTargetValueChange={(field, value) =>
+            apply((current) => setTargetValue(current, field, value))
+          }
+          onExitPlanChange={(next) => apply((current) => ({ ...current, exitPlan: next }))}
+          onPriceContextChange={(patch) =>
+            apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+          }
+          onLibraryChanged={setAdoptedExitPlans}
+        />
+      </TradeStepSection>
 
-          {/* 2 — RISK AND PLAN */}
-          <section
-            aria-labelledby={ids.plan}
-            className="border-border flex min-w-0 flex-col gap-6 border-t px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading id={ids.plan} title={c('sections.plan')} />
+      {/* 3 — SETUP & CHECKLIST: an inherited Exit Plan is announced where the Strategy is chosen. */}
+      <TradeStepSection
+        stepKey="setup"
+        current={currentKey === 'setup'}
+        headingId={headingId}
+        className="gap-4"
+      >
+        <TradeSetupChecklistStep
+          mode="at_entry"
+          idPrefix="entry"
+          strategies={options.strategies}
+          classification={{
+            strategyAnswer: draft.classification.strategy,
+            strategy: active.strategy,
+            setupAnswer: active.setupAnswer,
+            setup: active.setup,
+            stale,
+          }}
+          conditionAnswers={active.conditionAnswers}
+          inheritedExitPlanName={
+            exitPlan.resolved.status === 'inherited' ? exitPlan.resolved.plan.name : null
+          }
+          onSelectStrategy={(id) => apply((current) => selectStrategy(current, id))}
+          onNoStrategy={() => apply(answerNoStrategy)}
+          onRemoveStrategy={() => apply(removeStrategyAnswer)}
+          onSelectSetup={(id) => apply((current) => selectSetup(current, id))}
+          onNoSetup={() => apply(answerNoSetup)}
+          onRemoveSetup={() => apply(removeSetupAnswer)}
+          onCondition={(key, status) => apply((current) => answerCondition(current, key, status))}
+        />
+      </TradeStepSection>
 
-            <div className="flex min-w-0 flex-col gap-3">
-              <TextField
-                id="entry-risk"
-                label={c('risk.label')}
-                value={draft.risk}
-                onChange={(risk) => apply((current) => ({ ...current, risk }))}
-                suffix={currency}
-                inputMode="decimal"
-                size="lead"
-                figure
-                hint={c('risk.hint')}
-                error={errorText('risk')}
-              />
-              <ActualRiskField
-                draft={draft}
-                currency={currency}
-                riskIsValid={validation.riskMinor !== null}
-                error={errorText('actualRiskAmount')}
-                onMode={(mode) => apply((current) => setActualRiskMode(current, mode))}
-                onAmount={(amount) => apply((current) => setActualRiskAmount(current, amount))}
-              />
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-3">
-              <ChoiceGroup
-                idPrefix="entry-target"
-                legend={c('target.legend')}
-                value={draft.target.state === 'unanswered' ? null : draft.target.state}
-                status={c('notAnswered')}
-                aside={
-                  <InlineAction
-                    ariaLabel={c('target.removeAria')}
-                    onClick={() => apply((current) => setTargetState(current, 'unanswered'))}
-                  >
-                    {c('removeAnswer')}
-                  </InlineAction>
-                }
-                onChange={(state) => apply((current) => setTargetState(current, state))}
-                options={[
-                  {
-                    value: 'fixed',
-                    label: c('target.fixed'),
-                    description: c('target.fixedDescription'),
-                  },
-                  {
-                    value: 'no_fixed',
-                    label: c('target.noFixed'),
-                    description: c('target.noFixedDescription'),
-                  },
-                ]}
-              />
-              {draft.target.state === 'fixed' ? (
-                <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-                  <TextField
-                    id="entry-target-profit"
-                    label={c('target.profit')}
-                    value={draft.target.profit}
-                    onChange={(value) =>
-                      apply((current) => setTargetValue(current, 'profit', value))
-                    }
-                    suffix={currency}
-                    inputMode="decimal"
-                    figure
-                    error={errorText('targetProfit')}
-                  />
-                  <TextField
-                    id="entry-target-price"
-                    label={c('target.price')}
-                    value={draft.target.price}
-                    onChange={(value) =>
-                      apply((current) => setTargetValue(current, 'price', value))
-                    }
-                    inputMode="decimal"
-                    figure
-                    labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
-                    error={errorText('targetPrice')}
-                  />
-                </div>
-              ) : null}
-              {targetR === null ? null : (
-                <p className="text-muted-foreground text-sm">
-                  {c('target.reachR', { r: targetR })}
-                </p>
-              )}
-            </div>
-
-            <AtEntryExitPlan
-              draft={draft}
-              options={options}
-              onChange={(next) => apply(() => next)}
-              onLibraryChanged={setAdoptedExitPlans}
-            />
-          </section>
-
-          {/* 3 — THE TRADER'S READ (core analytical data, optional to save) */}
-          <section
-            aria-labelledby={ids.read}
-            className="border-border flex min-w-0 flex-col gap-5 border-t px-4 py-5 sm:px-6 sm:py-6"
-          >
-            <GroupHeading
-              id={ids.read}
-              title={c('sections.read')}
-              description={c('sections.readDescription')}
-              aside={
-                <span className="text-muted-foreground hidden items-center gap-1.5 text-sm lg:inline-flex">
-                  <BarChart3 className="size-4" aria-hidden="true" />
-                  {c('sections.usedInAnalytics')}
-                </span>
-              }
-            />
-            <Disclosure
-              id="entry-analysis-toggle"
-              title={analysisOpen ? c('summary.hide') : c('summary.open')}
-              summary={
-                <span data-analysis-summary="" className="flex min-w-0 flex-col">
-                  {(analysisLines.length === 0 ? [c('summary.notAnswered')] : analysisLines).map(
-                    (line) => (
-                      <span key={line} className="block min-w-0 break-words">
-                        {line}
-                      </span>
-                    ),
-                  )}
-                </span>
-              }
-              open={analysisOpen}
-              onToggle={() => setAnalysisOpen((open) => !open)}
-              openFromDesktop
-            >
-              <div className="flex min-w-0 flex-col gap-6 pb-2">
-                <StrategyFields
-                  draft={draft}
-                  options={options}
-                  inheritedPlanName={
-                    exitPlan.resolved.status === 'inherited' ? exitPlan.resolved.plan.name : null
-                  }
-                  onSelectStrategy={(value) =>
-                    apply((current) =>
-                      value === UNAVAILABLE_OPTION
-                        ? current
-                        : value === ''
-                          ? removeStrategyAnswer(current)
-                          : value === NONE
-                            ? answerNoStrategy(current)
-                            : selectStrategy(current, value),
-                    )
-                  }
-                  onSelectSetup={(value) =>
-                    apply((current) =>
-                      value === UNAVAILABLE_OPTION
-                        ? current
-                        : value === ''
-                          ? removeSetupAnswer(current)
-                          : value === NONE
-                            ? answerNoSetup(current)
-                            : selectSetup(current, value),
-                    )
-                  }
-                  onCondition={(key, status) =>
-                    apply((current) => answerCondition(current, key, status))
-                  }
-                />
-                {active.strategy === null ? null : null}
-                <div className="border-border border-t pt-5">
-                  <ChoiceGroup
-                    idPrefix="entry-confidence"
-                    legend={c('confidence.label')}
-                    value={draft.confidence === null ? null : String(draft.confidence)}
-                    status={c('notAnswered')}
-                    columns={5}
-                    compact
-                    aside={
-                      <InlineAction
-                        ariaLabel={c('confidence.removeAria')}
-                        onClick={() => apply((current) => setConfidence(current, null))}
-                      >
-                        {c('removeAnswer')}
-                      </InlineAction>
-                    }
-                    onChange={(value) =>
-                      apply((current) => setConfidence(current, Number.parseInt(value, 10)))
-                    }
-                    options={CONFIDENCE_LEVELS.map((level) => ({
-                      value: String(level.value),
-                      label: t(`create.confidence.level.${level.key}`),
-                    }))}
-                  />
-                  <Helper>{c('confidence.hint')}</Helper>
-                </div>
-                <div className="border-border border-t pt-5">
-                  <EmotionFields
-                    draft={draft}
-                    catalog={options.emotionCatalog}
-                    showLastOneHint={emotionHint}
-                    onToggle={(key) => {
-                      if (!canDeselectEmotion(draft, key)) {
-                        setEmotionHint(true);
-                        return;
-                      }
-                      setEmotionHint(false);
-                      apply((current) => toggleEmotion(current, key));
-                    }}
-                    onNone={() => {
-                      setEmotionHint(false);
-                      apply(answerNoEmotions);
-                    }}
-                    onRemove={() => {
-                      setEmotionHint(false);
-                      apply(removeEmotionsAnswer);
-                    }}
-                  />
-                </div>
-              </div>
-            </Disclosure>
-          </section>
-
-          {/* 4 — CONTEXT */}
-          <section className="border-border min-w-0 border-t px-2 py-3 sm:px-3">
-            <Disclosure
-              id="entry-context-toggle"
-              title={c('sections.context')}
-              summary={
-                contextErrorCount > 0 ? (
-                  <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                    <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                    {c('summary.hasErrors', { count: contextErrorCount })}
-                  </span>
-                ) : contextFilled === 0 ? (
-                  c('summary.contextEmpty')
-                ) : (
-                  c('summary.contextFilled', { count: contextFilled })
-                )
-              }
-              open={contextOpen}
-              onToggle={() => setContextOpen((open) => !open)}
-            >
-              <ContextFields
-                draft={draft}
-                notices={validation.notices}
-                errorText={errorText}
-                onChange={(patch) =>
-                  apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
-                }
-              />
-            </Disclosure>
-          </section>
-
-          {wide ? null : replayConflictPanel}
-
-          {/* Phones and tablets: one docked action bar that yields to the keyboard. */}
-          {wide ? null : (
-            <div
-              data-global-save=""
-              data-action-bar={keyboardOpen ? 'inline' : 'docked'}
-              className={cn(
-                'border-border bg-card flex min-w-0 items-center gap-3 rounded-b-xl border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden',
-                !keyboardOpen && 'sticky bottom-0 z-20 shadow-[0_-8px_24px_-16px_rgb(0_0_0/0.45)]',
-              )}
-            >
-              <p
-                data-save-status=""
-                tabIndex={-1}
-                aria-live="polite"
-                className={cn('min-w-0 flex-1 text-sm leading-snug outline-none', statusTone)}
-              >
-                {statusLine}
-              </p>
-              <Button type="submit" size="lg" className="min-h-12 shrink-0" disabled={pending}>
-                {pending ? c('save.saving') : c('save.action')}
-              </Button>
-            </div>
-          )}
-        </form>
-
-        {/* Desktop: the save panel stays in view beside a long form. */}
-        {wide ? (
-          <aside
-            aria-label={c('save.panelTitle')}
-            className="hidden lg:sticky lg:top-[calc(var(--shell-header-height)+1.5rem)] lg:block"
-          >
-            <div
-              data-global-save=""
-              className="bg-card border-border shadow-card flex flex-col gap-4 rounded-xl border p-5"
-            >
-              <div>
-                <h2 className="text-foreground text-base font-semibold">{c('save.panelTitle')}</h2>
-                <p className="text-muted-foreground mt-0.5 text-sm">{c('save.panelDescription')}</p>
-              </div>
-              <ul className="flex flex-col gap-2.5">
-                {requirements.map((item) => (
-                  <RequirementRow
-                    key={item.key}
-                    label={c(`save.requirement.${item.key}`)}
-                    done={item.done && visibleErrors[item.field] === undefined}
-                    addedLabel={c('save.added')}
-                    neededLabel={c('save.needed')}
-                  />
-                ))}
-              </ul>
-              <Button
-                type="submit"
-                form={formId}
-                size="lg"
-                className="min-h-12 w-full"
-                disabled={pending}
-              >
-                {pending ? c('save.saving') : c('save.action')}
-              </Button>
-              <p
-                data-save-status=""
-                tabIndex={-1}
-                aria-live="polite"
-                className={cn('text-sm outline-none', statusTone)}
-              >
-                {statusLine}
-              </p>
-              {replayConflictPanel}
-              <p className="text-muted-foreground text-xs">{c('save.helper')}</p>
-            </div>
-          </aside>
-        ) : null}
-      </div>
-    </div>
+      {/* 4 — ENTRY CONTEXT & EVIDENCE: what the trader knows, thinks and feels as they enter. */}
+      <TradeStepSection
+        stepKey="context"
+        current={currentKey === 'context'}
+        headingId={headingId}
+        className="gap-4"
+      >
+        <TradeEntryContextStep
+          mode="at_entry"
+          idPrefix="entry"
+          confidence={draft.confidence}
+          emotions={draft.emotions}
+          catalog={options.emotionCatalog}
+          values={draft.context}
+          canDeselectEmotion={(key) => canDeselectEmotion(draft, key)}
+          onConfidence={(value) => apply((current) => setConfidence(current, value))}
+          onToggleEmotion={(key) => apply((current) => toggleEmotion(current, key))}
+          onNoEmotions={() => apply(answerNoEmotions)}
+          onRemoveEmotions={() => apply(removeEmotionsAnswer)}
+          onChange={(patch) =>
+            apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+          }
+        />
+      </TradeStepSection>
+    </TradeStepFlow>
   );
 }
 
-function EntryTimeField({
-  draft,
-  timezone,
-  error,
-  onEdit,
-  onConfirm,
-  onClear,
-  onUseNow,
-}: {
-  draft: AtEntryDraft;
-  timezone: string;
-  error?: string | undefined;
-  onEdit: (value: string) => void;
-  onConfirm: () => void;
-  onClear: () => void;
-  onUseNow: () => void;
-}) {
-  const c = useTranslations('trades.create.recording.contractEntry');
-  const { source, value } = draft.entryTime;
-  const isDefault = source === 'default_now' && value !== '';
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <TextField
-        id="entry-time"
-        type="datetime-local"
-        label={c('entryTime.label')}
-        value={value}
-        onChange={onEdit}
-        figure
-        dashed={isDefault}
-        hint={c('entryTime.hint', { timezone })}
-        error={error}
-        labelAside={
-          isDefault ? (
-            <Tag tone="default" icon={<Clock className="size-3" aria-hidden="true" />}>
-              {c('entryTime.defaulted')}
-            </Tag>
-          ) : source === 'cleared' ? (
-            <StateText>{c('entryTime.notSet')}</StateText>
-          ) : null
-        }
-      />
-      <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1">
-        {isDefault ? (
-          <InlineAction onClick={onConfirm}>{c('entryTime.confirm')}</InlineAction>
-        ) : null}
-        {source === 'cleared' ? (
-          <InlineAction onClick={onUseNow}>{c('entryTime.useNow')}</InlineAction>
-        ) : value === '' ? null : (
-          <InlineAction onClick={onClear}>{c('entryTime.clear')}</InlineAction>
-        )}
-      </div>
-    </div>
-  );
-}
-
+/**
+ * ACTUAL RISK, AS AT ENTRY ASKS IT (contract §4; UX Rules §3.4). Unopened, it
+ * says plainly that actual risk matches Risk at Entry — a visible assumption,
+ * never a silent server inference. Opening "Actual risk differed" records
+ * Different, with an amount or with the amount unknown, and never reverts to
+ * Matched except through its own named action.
+ */
 function ActualRiskField({
   draft,
   currency,
@@ -1152,329 +1004,6 @@ function ActualRiskField({
         <InlineAction onClick={() => onMode('different_unknown')}>{c('unknown')}</InlineAction>
         <InlineAction onClick={() => onMode('matched')}>{c('matchedAfterAll')}</InlineAction>
       </div>
-    </div>
-  );
-}
-
-function StrategyFields({
-  draft,
-  options,
-  inheritedPlanName,
-  onSelectStrategy,
-  onSelectSetup,
-  onCondition,
-}: {
-  draft: AtEntryDraft;
-  options: TradeCreateOptions;
-  inheritedPlanName: string | null;
-  onSelectStrategy: (value: string) => void;
-  onSelectSetup: (value: string) => void;
-  onCondition: (conditionKey: string, status: 'met' | 'not_met' | null) => void;
-}) {
-  const c = useTranslations('trades.create.recording.contractEntry');
-  const active = activeClassification(draft, options);
-  // A chosen Strategy or Setup that is no longer offered stays chosen, shown as unavailable.
-  const stale = staleSelections(draft, options);
-  const strategyValue =
-    draft.classification.strategy === 'none'
-      ? NONE
-      : stale.strategy
-        ? UNAVAILABLE_OPTION
-        : active.strategy === null
-          ? ''
-          : active.strategy.strategyId;
-  const setupValue =
-    active.setupAnswer === 'none'
-      ? NONE
-      : stale.setup
-        ? UNAVAILABLE_OPTION
-        : active.setup === null
-          ? ''
-          : active.setup.setupId;
-
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-2">
-          <SelectField
-            id="entry-strategy"
-            label={c('strategy.label')}
-            value={strategyValue}
-            onChange={onSelectStrategy}
-            aside={
-              strategyValue === '' ? null : (
-                <InlineAction
-                  ariaLabel={c('strategy.removeStrategyAria')}
-                  onClick={() => onSelectStrategy('')}
-                >
-                  {c('removeAnswer')}
-                </InlineAction>
-              )
-            }
-            options={[
-              { value: '', label: c('strategy.notAnswered') },
-              { value: NONE, label: c('strategy.none') },
-              ...(stale.strategy
-                ? [{ value: UNAVAILABLE_OPTION, label: c('strategy.unavailableOption') }]
-                : []),
-              ...options.strategies.map((strategy) => ({
-                value: strategy.strategyId,
-                label: strategy.name,
-              })),
-            ]}
-          />
-          {active.strategy !== null && inheritedPlanName !== null ? (
-            <Notice
-              icon={
-                <GitBranch
-                  className="text-muted-foreground mt-0.5 size-4 shrink-0"
-                  aria-hidden="true"
-                />
-              }
-            >
-              {c('strategy.suppliesExitPlan', {
-                strategy: active.strategy.name,
-                plan: inheritedPlanName,
-              })}
-            </Notice>
-          ) : null}
-        </div>
-        <SelectField
-          id="entry-setup"
-          label={c('strategy.setup')}
-          value={setupValue}
-          disabled={active.strategy === null}
-          onChange={onSelectSetup}
-          aside={
-            active.strategy === null || setupValue === '' ? null : (
-              <InlineAction
-                ariaLabel={c('strategy.removeSetupAria')}
-                onClick={() => onSelectSetup('')}
-              >
-                {c('removeAnswer')}
-              </InlineAction>
-            )
-          }
-          options={[
-            {
-              value: '',
-              label:
-                active.strategy === null
-                  ? c('strategy.setupNeedsStrategy')
-                  : c('strategy.notAnswered'),
-            },
-            { value: NONE, label: c('strategy.noSetup') },
-            ...(stale.setup
-              ? [{ value: UNAVAILABLE_OPTION, label: c('strategy.unavailableOption') }]
-              : []),
-            ...(active.strategy?.setups ?? []).map((setup) => ({
-              value: setup.setupId,
-              label: setup.name,
-            })),
-          ]}
-        />
-      </div>
-
-      {stale.strategy || stale.setup ? (
-        <p role="alert" data-classification-unavailable="" className="text-warning text-sm">
-          {stale.strategy ? c('strategy.strategyUnavailable') : c('strategy.setupUnavailable')}
-        </p>
-      ) : null}
-
-      {active.setup === null || active.setup.conditions.length === 0 ? null : (
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-foreground text-sm font-medium">{c('strategy.conditions')}</p>
-          <Helper>{c('strategy.conditionsHint')}</Helper>
-          <ul className="divide-border mt-2 flex min-w-0 flex-col divide-y">
-            {active.setup.conditions.map((condition) => {
-              const value = active.conditionAnswers[condition.conditionKey] ?? null;
-              return (
-                <li key={condition.conditionKey} className="min-w-0 py-3">
-                  <ChoiceGroup
-                    idPrefix={`entry-condition-${condition.conditionKey}`}
-                    legend={condition.label}
-                    value={value}
-                    compact
-                    status={c('notAnswered')}
-                    aside={
-                      <InlineAction
-                        ariaLabel={c('strategy.removeConditionAria', {
-                          condition: condition.label,
-                        })}
-                        onClick={() => onCondition(condition.conditionKey, null)}
-                      >
-                        {c('removeAnswer')}
-                      </InlineAction>
-                    }
-                    onChange={(status) => onCondition(condition.conditionKey, status)}
-                    options={[
-                      { value: 'met', label: c('strategy.met') },
-                      { value: 'not_met', label: c('strategy.notMet') },
-                    ]}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EmotionFields({
-  draft,
-  catalog,
-  showLastOneHint,
-  onToggle,
-  onNone,
-  onRemove,
-}: {
-  draft: AtEntryDraft;
-  catalog: TradeCreateOptions['emotionCatalog'];
-  showLastOneHint: boolean;
-  onToggle: (key: string) => void;
-  onNone: () => void;
-  onRemove: () => void;
-}) {
-  const t = useTranslations('trades');
-  const c = useTranslations('trades.create.recording.contractEntry');
-  const { answer, keys } = draft.emotions;
-  return (
-    <fieldset className="min-w-0" data-emotions-answer={answer}>
-      <Legend
-        aside={
-          answer === 'unanswered' ? (
-            <StateText>{c('notAnswered')}</StateText>
-          ) : (
-            <InlineAction ariaLabel={c('emotions.removeAria')} onClick={onRemove}>
-              {c('removeAnswer')}
-            </InlineAction>
-          )
-        }
-      >
-        {c('emotions.legend')}
-      </Legend>
-      <div className="grid min-w-0 gap-x-6 gap-y-3 min-[560px]:grid-cols-2">
-        {groupEmotionCatalog(catalog).map((group) => (
-          <div key={group.key} className="flex min-w-0 flex-col gap-1.5">
-            <p className="text-muted-foreground text-sm">
-              {t(`create.recording.emotionGroups.${group.key}`)}
-            </p>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              {group.emotions.map((emotion) => (
-                <Chip
-                  key={emotion.key}
-                  selected={answer === 'selected' && keys.includes(emotion.key)}
-                  onClick={() => onToggle(emotion.key)}
-                >
-                  {t(`emotions.${emotion.key}`)}
-                </Chip>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="border-border mt-3 flex min-w-0 flex-wrap items-center gap-3 border-t pt-3">
-        <Chip selected={answer === 'none'} onClick={onNone}>
-          {c('emotions.none')}
-        </Chip>
-      </div>
-      <p aria-live="polite" className="text-muted-foreground mt-2 text-sm empty:hidden">
-        {showLastOneHint ? c('emotions.lastOne') : ''}
-      </p>
-    </fieldset>
-  );
-}
-
-function ContextFields({
-  draft,
-  notices,
-  errorText,
-  onChange,
-}: {
-  draft: AtEntryDraft;
-  notices: readonly ('stop_wrong_side' | 'target_wrong_side')[];
-  errorText: (field: AtEntryField) => string | undefined;
-  onChange: (patch: Partial<AtEntryDraft['context']>) => void;
-}) {
-  const c = useTranslations('trades.create.recording.contractEntry.context');
-  return (
-    <div className="flex min-w-0 flex-col gap-4 pb-3">
-      <TextAreaField
-        id="entry-context-reason"
-        label={c('reason')}
-        value={draft.context.reason}
-        onChange={(reason) => onChange({ reason })}
-        placeholder={c('reasonPlaceholder')}
-      />
-      <TextField
-        id="entry-context-chart"
-        label={c('chart')}
-        value={draft.context.tradingviewUrl}
-        onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
-        inputMode="url"
-        placeholder="https://www.tradingview.com/x/…"
-      />
-      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-        <TextField
-          id="entry-context-timeframe"
-          label={c('timeframe')}
-          value={draft.context.timeframe}
-          onChange={(timeframe) => onChange({ timeframe })}
-          placeholder="15m"
-        />
-        <TextField
-          id="entry-context-session"
-          label={c('session')}
-          value={draft.context.session}
-          onChange={(session) => onChange({ session })}
-          placeholder="London"
-        />
-      </div>
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <p className="text-foreground text-sm font-medium">{c('prices')}</p>
-          <StateText>{c('pricesHint')}</StateText>
-        </div>
-        <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-3">
-          <TextField
-            id="entry-context-entry-price"
-            label={c('entryPrice')}
-            value={draft.context.entryPrice}
-            onChange={(entryPrice) => onChange({ entryPrice })}
-            inputMode="decimal"
-            figure
-            error={errorText('contextEntryPrice')}
-          />
-          <TextField
-            id="entry-context-stop-price"
-            label={c('stopPrice')}
-            value={draft.context.stopPrice}
-            onChange={(stopPrice) => onChange({ stopPrice })}
-            inputMode="decimal"
-            figure
-            error={errorText('contextStopPrice')}
-          />
-          <TextField
-            id="entry-context-size"
-            label={c('size')}
-            value={draft.context.positionSize}
-            onChange={(positionSize) => onChange({ positionSize })}
-            inputMode="decimal"
-            figure
-            error={errorText('contextPositionSize')}
-          />
-        </div>
-        {notices.includes('stop_wrong_side') ? <Notice>{c('stopWrongSide')}</Notice> : null}
-        {notices.includes('target_wrong_side') ? <Notice>{c('targetWrongSide')}</Notice> : null}
-      </div>
-      <TextAreaField
-        id="entry-context-notes"
-        label={c('notes')}
-        value={draft.context.notes}
-        onChange={(notes) => onChange({ notes })}
-      />
     </div>
   );
 }

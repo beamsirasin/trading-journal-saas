@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -93,19 +93,21 @@ beforeEach(() => {
 describe('TradeRecordingForm — the production mode boundary', () => {
   it('renders exactly one recording form per lifecycle', () => {
     const { container, unmount } = renderForm('en', 'at_entry');
-    expect(container.querySelector('[data-at-entry-linear-form]')).not.toBeNull();
+    expect(container.querySelector('[data-record-open-form]')).not.toBeNull();
     expect(container.querySelector('[data-after-trade-form]')).toBeNull();
     unmount();
 
     const afterTrade = renderForm('en', 'after_trade');
     expect(afterTrade.container.querySelector('[data-after-trade-form]')).not.toBeNull();
-    expect(afterTrade.container.querySelector('[data-at-entry-linear-form]')).toBeNull();
+    expect(afterTrade.container.querySelector('[data-record-open-form]')).toBeNull();
   });
 
   it('states the recording mode instead of offering to switch it mid-form', () => {
     const { container, unmount } = renderForm();
-    expect(container.querySelector('[data-recording-mode="at_entry"]')).not.toBeNull();
-    expect(screen.getByText(/At entry: the position is still open/)).toBeVisible();
+    const mode = container.querySelector<HTMLElement>('[data-recording-mode="at_entry"]');
+    expect(mode).not.toBeNull();
+    // Narrow viewports name the mode in the step header, as After Trade does.
+    expect(within(mode!).getByText('At entry')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'After Trade' })).not.toBeInTheDocument();
 
     unmount();
@@ -127,7 +129,9 @@ describe('TradeRecordingForm — the production mode boundary', () => {
     // Contract §23: changing recording mode is routine navigation. The draft
     // survives, so there is nothing to warn about and nothing to confirm.
     renderForm();
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    // Work in the draft: Step 1's Direction, answered in its own editor.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Long' }));
     const change = screen.getByRole('link', { name: 'Change' });
     expect(change).toHaveAttribute('href', '/app/trades/new');
     fireEvent.click(change);
@@ -136,7 +140,8 @@ describe('TradeRecordingForm — the production mode boundary', () => {
 
   it('translates the mode statement', () => {
     renderForm('th');
-    expect(screen.getByText(/ตอนเข้า: สถานะยังเปิดอยู่/)).toBeVisible();
+    const mode = document.querySelector<HTMLElement>('[data-recording-mode="at_entry"]')!;
+    expect(within(mode).getByText('ตอนเข้า')).toBeVisible();
     expect(screen.getByRole('link', { name: 'เปลี่ยน' })).toBeVisible();
   });
 });

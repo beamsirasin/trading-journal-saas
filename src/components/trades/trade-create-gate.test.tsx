@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -134,8 +134,10 @@ describe('TradeCreateGate', () => {
       });
       // A single Account is context on the task surface, not a decision.
       expect(document.querySelector('[data-account-context]')).toHaveTextContent('Main · USD');
-      // Strategy is optional and sits with the analytical questions, behind no gate.
-      expect(screen.getByLabelText('Strategy')).toBeVisible();
+      // Strategy is optional: Setup & Checklist asks it, behind no gate.
+      expect(document.getElementById('entry-strategy')).not.toBeNull();
+      // Save Open Trade is reachable from Plan & Risk on, whatever the Strategy.
+      fireEvent.click(screen.getByRole('button', { name: 'Next: Plan & risk' }));
       expect(screen.getByRole('button', { name: 'Save open trade' })).toBeEnabled();
     },
   );

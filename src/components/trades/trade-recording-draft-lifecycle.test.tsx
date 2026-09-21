@@ -83,18 +83,17 @@ function mount(timing: RecordingTiming = 'at_entry', scope: RecordingDraftScope 
 }
 
 /**
- * The Symbol this mode holds. At Entry asks for it inline; After Trade shows
- * it on a Step 1 row and keeps the input inside that row’s editor, so the row
- * reports what is recorded without one having to be opened.
+ * The Symbol this mode holds. Both modes show it on a Step 1 row and keep the
+ * input inside that row’s editor, so the row reports what is recorded without
+ * one having to be opened.
  */
 function symbolValue() {
   const row = document.querySelector('[data-concept="symbol"]');
-  if (row !== null) return (row.getAttribute('data-value') ?? '').toUpperCase();
-  return (screen.getByLabelText('Symbol') as HTMLInputElement).value.toUpperCase();
+  return (row?.getAttribute('data-value') ?? '').toUpperCase();
 }
 
-/** Record After Trade’s Symbol and Direction through their Step 1 editors. */
-function fillAfterTradeIdentity(symbol: string) {
+/** Record Symbol and Direction through their Step 1 editors — the same in both modes. */
+function fillIdentity(symbol: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Edit Symbol' }));
   const symbolEditor = within(screen.getByRole('dialog'));
   fireEvent.change(symbolEditor.getByLabelText('Symbol'), { target: { value: symbol } });
@@ -110,13 +109,21 @@ function fillAfterTradeIdentity(symbol: string) {
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Long' }));
 }
 
+/** Record Open's Save minimum: identity on Step 1, Risk at Entry on Plan & Risk. */
 function fillAtEntry() {
-  fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-  fireEvent.click(screen.getByLabelText('Long'));
+  fillIdentity('xauusd');
+  fireEvent.click(screen.getByRole('button', { name: /^Step 2 of 4: / }));
   fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
 }
 
+/**
+ * Save Open Trade: the last step's button, or Save now from Plan & Risk on.
+ * From Step 1 there is neither, so a trader goes on to Plan & Risk first.
+ */
 function saveAtEntry() {
+  if (screen.queryAllByRole('button', { name: 'Save open trade' }).length === 0) {
+    fireEvent.click(screen.getByRole('button', { name: /^Step 2 of 4: / }));
+  }
   fireEvent.click(screen.getAllByRole('button', { name: 'Save open trade' })[0]!);
 }
 
@@ -150,7 +157,8 @@ describe('Recording Draft — Type → Draft and reload recovery', () => {
     mount();
     expect(symbolValue()).toBe('XAUUSD');
     expect((screen.getByLabelText('Risk at entry') as HTMLInputElement).value).toBe('100');
-    expect(screen.getByRole('status')).toHaveTextContent(copy.recovered);
+    // Both step flows say it as one compact row.
+    expect(screen.getByRole('status')).toHaveTextContent(copy.recoveredCompact);
   });
 
   it('keeps nothing and claims nothing for an untouched form', () => {
@@ -182,7 +190,8 @@ describe('Recording Draft — Type → Draft and reload recovery', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
     });
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Long' }));
     expect(screen.getByRole('status')).toHaveTextContent(copy.notDurable);
   });
 });
@@ -215,7 +224,7 @@ describe('Recording Draft — mode switching through the page', () => {
 
     const afterTrade = mount('after_trade');
     expect(symbolValue()).toBe('XAUUSD');
-    // After Trade says it as one compact row rather than At Entry's sentence.
+    // After Trade says it as one compact row.
     expect(screen.getByRole('status')).toHaveTextContent(copy.recoveredCompact);
     expect(stored()?.activeMode).toBe('after_trade');
     afterTrade.unmount();
@@ -230,7 +239,7 @@ describe('Recording Draft — mode switching through the page', () => {
 describe('Recording Draft — Discard → Destroy', () => {
   it('removes only this scope draft, only after confirmation, and resets the form', () => {
     const other = mount('at_entry', OTHER_WORKSPACE);
-    fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    fillIdentity('eurusd');
     other.unmount();
 
     mount();
@@ -260,7 +269,7 @@ describe('Recording Draft — Discard → Destroy', () => {
   */
   it('puts After Trade’s Discard in the mode row, not a row of its own', () => {
     mount('after_trade');
-    fillAfterTradeIdentity('XAUUSD');
+    fillIdentity('XAUUSD');
     expect(stored()).not.toBeNull();
     expect(document.querySelector('[data-recording-draft-status]')).toBeNull();
     const discard = screen.getByRole('button', { name: copy.discard });
@@ -420,7 +429,7 @@ describe('Recording Draft — a Save key never reports a Save that did not happe
       error: { code: 'mutation_replay_conflict', existingTradeId: 'trade-open' },
     });
     mount('after_trade');
-    fillAfterTradeIdentity('eurusd');
+    fillIdentity('eurusd');
     // Save lives on the After Trade flow's last step.
     fireEvent.click(screen.getByRole('button', { name: /^Step 5 of 5: / }));
     fireEvent.click(screen.getByRole('button', { name: 'Save closed trade' }));
@@ -475,7 +484,7 @@ describe('Recording Draft — another tab on the same draft', () => {
 describe('Recording Draft — saving one mode never silently drops the other', () => {
   function afterTradeWorkThenAtEntry() {
     const after = mount('after_trade');
-    fillAfterTradeIdentity('xauusd');
+    fillIdentity('xauusd');
     fireEvent.change(document.getElementById('after-finalPnl')!, { target: { value: '250' } });
     after.unmount();
     mount('at_entry');
@@ -510,7 +519,7 @@ describe('Recording Draft — saving one mode never silently drops the other', (
 
   it('does not ask when the other mode holds no answer of its own', async () => {
     const after = mount('after_trade');
-    fillAfterTradeIdentity('xauusd');
+    fillIdentity('xauusd');
     after.unmount();
     mount('at_entry');
     fireEvent.change(screen.getByLabelText('Risk at entry'), { target: { value: '100' } });
@@ -550,8 +559,13 @@ describe('Recording Draft — a chosen answer whose source went away', () => {
     await screen.findAllByText(entryCopy.save.staleBlocked);
     expect(createTradeMock).not.toHaveBeenCalled();
 
-    // The explicit resolution: remove the answer, then Save proceeds.
-    fireEvent.click(screen.getByRole('button', { name: entryCopy.strategy.removeStrategyAria }));
+    // The explicit resolution: remove the answer in its editor, then Save proceeds.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Strategy' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: entryCopy.strategy.removeStrategyAria,
+      }),
+    );
     saveAtEntry();
     await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
   });

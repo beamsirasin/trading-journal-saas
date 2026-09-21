@@ -8,6 +8,7 @@ import { trades, workspaces } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
+import { recordOpenMinimum, recordOpenSave } from './support/record-open';
 
 /**
  * THE ADD TRADE RECORDING DRAFT, ON THE REAL ROUTE (contract §23, UX Rules §5).
@@ -18,7 +19,6 @@ import { provisionVerifiedUser } from './support/provision-user';
  * only to judge how many Trades exist.
  */
 
-const RECOVERED = 'We restored your unsaved trade draft from this browser.';
 const DRAFT_KEY_PREFIX = 'tradechemist:recording-draft:';
 
 async function withDb<T>(work: (db: ReturnType<typeof drizzle>) => Promise<T>): Promise<T> {
@@ -63,20 +63,22 @@ async function storedDrafts(page: Page): Promise<number> {
   );
 }
 
-async function chooseLong(page: Page) {
-  // The radio is visually hidden; its label is what a trader clicks.
-  const long = page.getByRole('radio', { name: 'Long', exact: true });
-  const id = await long.getAttribute('id');
-  await page.locator(`label[for="${id}"]`).click();
-  await expect(long).toBeChecked();
-}
-
+/** Record Open: identity on Step 1, Risk at Entry on Plan & Risk. */
 async function fillAtEntry(page: Page, symbol = 'XAUUSD') {
   await page.goto('/en/app/trades/new?timing=at_entry');
-  await page.getByRole('textbox', { name: 'Symbol' }).fill(symbol);
-  await chooseLong(page);
-  await page.getByLabel('Risk at entry').fill('100');
+  await recordOpenMinimum(page, { symbol, direction: 'Long', risk: '100' });
   await expect.poll(() => storedDrafts(page)).toBe(1);
+}
+
+/** What Record Open holds: Step 1 rows carry their values; Risk is Plan & Risk’s field. */
+async function expectAtEntry(page: Page, symbol: string, risk: string) {
+  await expect(page.locator('#entry-row-symbol')).toHaveAttribute('data-value', symbol);
+  await expect(page.locator('#entry-risk')).toHaveValue(risk);
+}
+
+/** Both step flows say a recovered draft as one compact row. */
+function recoveredNotice(page: Page) {
+  return page.locator('[data-recording-draft-status="recovered"]');
 }
 
 async function discardFromForm(page: Page) {
@@ -112,9 +114,8 @@ test.describe('Add Trade Recording Draft', () => {
       // Type → Draft, then a reload recovers it and says so.
       await fillAtEntry(page);
       await page.reload();
-      await expect(page.getByText(RECOVERED)).toBeVisible();
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
-      await expect(page.getByLabel('Risk at entry')).toHaveValue('100');
+      await expect(recoveredNotice(page)).toContainText('Draft restored');
+      await expectAtEntry(page, 'XAUUSD', '100');
       await expectNoHorizontalOverflow(page);
 
       // Changing mode is navigation: the choice names the kept draft.
@@ -148,16 +149,15 @@ test.describe('Add Trade Recording Draft', () => {
       await page.goto('/en/app/trades/new?timing=at_entry');
       await page.goto('/en/app/trades');
       await page.goBack();
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('XAUUSD');
-      await expect(page.getByLabel('Risk at entry')).toHaveValue('100');
+      await expectAtEntry(page, 'XAUUSD', '100');
 
       // The one destructive action, confirmed.
       await discardFromForm(page);
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('');
+      await expect(page.locator('#entry-row-symbol')).toHaveAttribute('data-value', '');
       expect(await storedDrafts(page)).toBe(0);
       await page.reload();
-      await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('');
-      await expect(page.getByText(RECOVERED)).toHaveCount(0);
+      await expect(page.locator('#entry-row-symbol')).toHaveAttribute('data-value', '');
+      await expect(recoveredNotice(page)).toHaveCount(0);
       expect(await tradeRows(user.id)).toHaveLength(0);
     });
   }
@@ -195,8 +195,9 @@ test.describe('Add Trade Recording Draft', () => {
     // honest replay, which says the Trade was already saved rather than
     // presenting a new Save (contract §23).
     await page.reload();
-    await expect(page.getByText(RECOVERED)).toBeVisible();
-    await page.getByRole('button', { name: 'Save open trade' }).first().click();
+    await expect(recoveredNotice(page)).toContainText('Draft restored');
+    // A reload starts again from Step 1; the answers, and the Save key, are recovered.
+    await recordOpenSave(page);
     await expect(page.getByRole('heading', { name: 'This trade was already saved' })).toBeVisible();
     await page.getByRole('button', { name: 'Open trade' }).click();
     await expect(page).toHaveURL(/\/en\/app\/trades\?trade=[0-9a-f-]+/);
@@ -237,8 +238,8 @@ test.describe('Add Trade Recording Draft', () => {
 
     await loginAs(page, 'en', user);
     await page.goto('/en/app/trades/new?timing=at_entry');
-    await expect(page.getByRole('textbox', { name: 'Symbol' })).toHaveValue('');
-    await expect(page.getByText(RECOVERED)).toHaveCount(0);
+    await expect(page.locator('#entry-row-symbol')).toHaveAttribute('data-value', '');
+    await expect(recoveredNotice(page)).toHaveCount(0);
     expect(await tradeRows(user.id)).toHaveLength(0);
   });
 });

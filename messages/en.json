@@ -2305,6 +2305,29 @@
             "fixedTargetRequiresValue": "Add a target profit or a TP price, or choose No fixed target.",
             "actualRiskEqualsRiskAtEntry": "This is the same as your risk at entry. Enter the amount you really had at risk, or choose It matched after all.",
             "notAccepted": "This value wasn't accepted. Check it and try again."
+          },
+          "steps": {
+            "modeShort": "At entry",
+            "trade": {
+              "label": "Trade",
+              "title": "Trade details",
+              "description": "Identify the trade you are entering."
+            },
+            "plan": {
+              "label": "Plan & risk",
+              "title": "Plan and risk",
+              "description": "Your 1R, your target and how you plan to exit."
+            },
+            "setup": {
+              "label": "Setup",
+              "title": "Setup and checklist",
+              "description": "The strategy and setup behind this trade, and its checklist."
+            },
+            "context": {
+              "label": "Context",
+              "title": "Entry context",
+              "description": "Your read on the trade as you enter."
+            }
           }
         },
         "contractAfter": {
