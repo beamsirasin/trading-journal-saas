@@ -1081,7 +1081,14 @@ export function TradeAfterTradeForm({
       </ol>
     </nav>
   ) : (
-    <nav aria-label={a('steps.navLabel')}>
+    /*
+      THE RAIL SITS CLOSE UNDER ITS LABEL. Each segment keeps its 32px hit
+      area, but the bar rides near the top of it rather than in the middle, so
+      the "Step 1 of 5" line and the segments that draw it read as one unit;
+      and the rail gives back the header's gap beneath it, so the step heading
+      starts right where the hit areas end — touching, never overlapping.
+    */
+    <nav aria-label={a('steps.navLabel')} className="-mb-2.5">
       <ol className="grid min-w-0 grid-cols-5 gap-1.5">
         {STEPS.map((key, index) => {
           const current = index === step;
@@ -1098,7 +1105,7 @@ export function TradeAfterTradeForm({
                   step: stepLabel(key),
                 })}
                 onClick={() => showStep(index)}
-                className="focus-visible:ring-ring flex h-8 w-full items-center rounded-sm outline-none focus-visible:ring-2"
+                className="focus-visible:ring-ring flex h-8 w-full items-start rounded-sm pt-1.5 outline-none focus-visible:ring-2"
               >
                 <span
                   aria-hidden="true"
@@ -1252,7 +1259,14 @@ export function TradeAfterTradeForm({
           */}
           <header className="flex min-w-0 flex-col gap-2.5 px-0 pt-0.5 pb-4 sm:px-6 lg:pt-7 lg:pb-5 lg:pl-8">
             {wide ? null : (
-              <div className="text-muted-foreground flex min-w-0 items-baseline justify-between gap-3 text-xs font-medium">
+              /*
+                A 12px LINE IN A 44px BOX. `Change` keeps its full tap target,
+                which leaves 14px of air above and below the words; the row
+                gives most of it back — up into the space under the page title
+                (still clear of the Back link) and down into the header's gap
+                (meeting the rail's hit areas, not overlapping them).
+              */
+              <div className="text-muted-foreground -mt-3 -mb-2.5 flex min-w-0 items-baseline justify-between gap-3 text-xs font-medium">
                 <p
                   data-recording-mode="after_trade"
                   className="flex min-w-0 flex-wrap items-baseline gap-x-2"
