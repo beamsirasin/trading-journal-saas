@@ -270,6 +270,9 @@ async function createTrade(workspaceId: string, input: TradeInput): Promise<stri
           exitedAt,
           actualR: input.actualR ?? '1.0000',
           traderOutcome: input.traderOutcome ?? 'win',
+          // A canonical contract close states its Final Net P&L; without this
+          // marker the row reads as a legacy live close (legacy coverage).
+          ...(contract ? { finalPnlSource: 'manual_total' as const } : {}),
         }
       : status === 'open'
         ? {

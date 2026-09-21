@@ -1450,3 +1450,71 @@ export type AssignTradeClassificationActionInput = z.input<typeof AssignTradeCla
 export type AssignTradeClassificationActionData = z.output<typeof AssignTradeClassificationSchema>;
 
 export const TradeIdSchema = uuidField();
+
+// ---------------------------------------------------------------------------
+// 18. Record Exit / Final Close — the Add Trade contract live exit (§10–§12)
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE EXIT LEG ON A LIVE TRADE (contract §10). Every field is optional: P&L
+ * for this exit, % of the original position, exit time, exit price (context
+ * only) and a reason. No Money/Price basis exists here — Money is the result
+ * authority and a price is never turned into one (§3).
+ */
+const contractExitLegFields = {
+  realizedPnlMinor: nullableSignedMinorField(),
+  closedBps: nullableClosedBpsField(),
+  exitPrice: nullablePositiveDecimalField(),
+  exitedAt: nullableInstantField(),
+  exitReason: optionalTextField(EXIT_REASON_MAX_LENGTH),
+};
+
+/**
+ * PART — one exit leg while the position stays open (contract §10–§11).
+ * `.strict()` is the boundary that makes a Part unable to carry a whole-Trade
+ * result: Final Net P&L, Trader Outcome, completeness or a final exit time are
+ * unrecognized keys here, not ignored ones.
+ */
+const RecordPartExitSchema = z
+  .object({
+    tradeId: uuidField(),
+    mutationKey: uuidField(),
+    scope: z.literal('part'),
+    ...contractExitLegFields,
+  })
+  .strict();
+
+/**
+ * ALL REMAINING — the Final Close (contract §11). Choosing this scope IS the
+ * explicit confirmation that the remaining position is closed. Final Net P&L
+ * and Trader Outcome are strongly prompted and optional; Final Net P&L is the
+ * authoritative whole-Trade result, and the exit subtotal is adopted only by
+ * the explicit `finalPnlAdoptedFromExits` claim, which the service re-checks.
+ * Post-Trade Emotion (After-Trade Context, §9) may be recorded with it.
+ */
+const FinalCloseSchema = z
+  .object({
+    tradeId: uuidField(),
+    mutationKey: uuidField(),
+    scope: z.literal('all_remaining'),
+    ...contractExitLegFields,
+    /** The authoritative whole-Trade result. Absent/null = not recorded. */
+    finalPnlMinor: nullableSignedMinorField(),
+    finalPnlAdoptedFromExits: z.literal(true).optional(),
+    /** The trader's own classification. Absent = Unanswered. */
+    traderOutcome: z.enum(OUTCOME_VALUES).optional(),
+    /** Absent = Unanswered. */
+    exitHistoryCompleteness: z.enum(EXIT_HISTORY_COMPLETENESS_VALUES).optional(),
+    /** The Trade's final exit time. Never adopted from an exit leg on its own. */
+    finalExitedAt: nullableInstantField(),
+    /** Post-Trade Emotion: omitted = Unanswered, `[]` = None of these. */
+    postTradeEmotionKeys: emotionKeysField().optional(),
+  })
+  .strict();
+
+export const RecordContractExitSchema = z.discriminatedUnion('scope', [
+  RecordPartExitSchema,
+  FinalCloseSchema,
+]);
+export type RecordContractExitActionInput = z.input<typeof RecordContractExitSchema>;
+export type RecordContractExitActionData = z.output<typeof RecordContractExitSchema>;

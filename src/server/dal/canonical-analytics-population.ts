@@ -43,7 +43,13 @@ function systemCompleteConditions(): SQL[] {
 }
 
 /**
- * Actual R measured against Risk at Entry: a contract row, Money result.
+ * Actual R measured against Risk at Entry: a contract row, Money result, whose
+ * Final Net P&L the trader stated (`final_pnl_source`, written by Save Closed
+ * Trade and by the contract Final Close). A contract row closed by the legacy
+ * live close has an R from a net P&L derived from its exit legs and no
+ * `final_pnl_source`; that R is legacy evidence and counts in coverage only
+ * (contract §11, §28). A row with no Actual R passes, so its selected outcome
+ * still reaches the outcome figures.
  *
  * NULL-SAFE ON PURPOSE. A legacy row's `recording_contract` is NULL, so a plain
  * `=` evaluates to NULL rather than false, and `NOT (NULL)` is NULL too — which
@@ -51,7 +57,8 @@ function systemCompleteConditions(): SQL[] {
  */
 function canonicalActualR(): SQL {
   return sql`(${trades.recordingContract} IS NOT DISTINCT FROM ${RECORDING_CONTRACT_ADD_TRADE_V1}
-    AND ${trades.actualResultMode} IS NOT DISTINCT FROM 'money')`;
+    AND ${trades.actualResultMode} IS NOT DISTINCT FROM 'money'
+    AND (${trades.finalPnlSource} IS NOT NULL OR ${trades.actualR} IS NULL))`;
 }
 
 /**

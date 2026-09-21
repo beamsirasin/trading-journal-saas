@@ -231,7 +231,13 @@ async function populate(params: {
           plannedRiskMinor: 10_000n,
           ...(params.recording === 'legacy'
             ? {}
-            : { recordingContract: 'add_trade_v1', actualRiskAnswer: 'matched' }),
+            : {
+                recordingContract: 'add_trade_v1',
+                actualRiskAnswer: 'matched',
+                // A canonical contract close states its Final Net P&L; without this
+                // marker the row reads as a legacy live close (legacy coverage).
+                finalPnlSource: 'manual_total',
+              }),
           systemStatus: 'resolved',
           systemResolutionKind: 'money_custom',
           systemGrossRInput: '1.0000',
@@ -331,10 +337,12 @@ async function populateUnclassified(params: { workspaceId: string; accountId: st
           actualR: '-0.5000',
           traderOutcome: 'loss',
           status: 'closed',
-          // Add Trade contract v1: Risk at Entry, so this Actual R is canonical.
+          // Add Trade contract v1: Risk at Entry and a stated Final Net P&L,
+          // so this Actual R is canonical.
           recordingContract: 'add_trade_v1',
           plannedRiskMinor: 10_000n,
           actualRiskAnswer: 'matched',
+          finalPnlSource: 'manual_total',
         })
         .returning({ id: trades.id });
       if (trade === undefined) throw new Error('unclassified trade insert failed');

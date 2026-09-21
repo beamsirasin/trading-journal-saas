@@ -31,6 +31,14 @@ export const tradeExits = pgTable(
       .notNull()
       .references(() => trades.id, { onDelete: 'cascade' }),
     mutationKey: uuid('mutation_key').notNull().$defaultFn(generateId),
+    /**
+     * SHA-256 of the canonical exit request (migration 0027), so a replayed
+     * Save key is checked against what was said, not only which key was used —
+     * the same rule `trades.mutation_fingerprint` applies to creates. NULL on
+     * every exit recorded before it (legacy, live and historical): a replay of
+     * one of those keys is unverifiable, never assumed identical.
+     */
+    mutationFingerprint: text('mutation_fingerprint'),
     sequence: smallint('sequence').notNull(),
     /** Nullable for incomplete historical execution evidence; live/open remains strict. */
     closedBps: integer('closed_bps'),

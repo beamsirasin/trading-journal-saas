@@ -57,6 +57,8 @@ export const TRADE_DOMAIN_ERROR_CODES = [
   'invalid_closed_bps',
   'invalid_exit_shape',
   'invalid_exit_time',
+  'exit_limit_reached',
+  'legacy_trade_not_supported',
   'no_actual_execution',
   'invalid_system_status_transition',
   'invalid_system_exit_reason',
@@ -127,6 +129,8 @@ export const TRADE_PUBLIC_ERROR_CODES = [
   'invalid_closed_bps',
   'invalid_exit_shape',
   'invalid_exit_time',
+  'exit_limit_reached',
+  'legacy_trade_not_supported',
   'no_actual_execution',
   'invalid_system_status_transition',
   'invalid_system_exit_reason',
@@ -192,6 +196,8 @@ export function mapServiceErrorToPublicCode(
     case 'invalid_closed_bps':
     case 'invalid_exit_shape':
     case 'invalid_exit_time':
+    case 'exit_limit_reached':
+    case 'legacy_trade_not_supported':
     case 'no_actual_execution':
     case 'invalid_system_status_transition':
     case 'invalid_system_exit_reason':

@@ -2771,6 +2771,8 @@
       "invalid_closed_bps": "The closed percentage is invalid or exceeds the remaining position.",
       "invalid_exit_shape": "This Exit needs the result value required by the Trade's Actual result mode.",
       "invalid_exit_time": "The exit time cannot be before the entry time.",
+      "exit_limit_reached": "This Trade already has the most exits it can record.",
+      "legacy_trade_not_supported": "This Trade was recorded before the current Add Trade flow. Close it from its Trade page.",
       "no_actual_execution": "This Trade has no actual execution to correct yet.",
       "invalid_system_status_transition": "The System result cannot make that change from its current status.",
       "invalid_system_exit_reason": "Choose a valid System exit reason.",

@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -16,6 +17,7 @@ import { closeTestDb, getTestDb } from '@/test/integration-db';
 import { closeDb } from '../db/client';
 import { createCompletedTrade } from './trade-completed';
 import { addTradeExit } from './trade-execution';
+import { recordContractExit } from './trade-exit-contract';
 import { closeTrade, createTrade, openTrade, resolveSystemTrade } from './trade-management';
 
 /**
@@ -31,8 +33,9 @@ import { closeTrade, createTrade, openTrade, resolveSystemTrade } from './trade-
  *               plus a legacy System result (+3R)
  *   legacy L2   Price mode: R from price geometry
  *
- * Every Trade — the contract ones included — carries an outcome DERIVED from R
- * on close, because Final Close does not yet record the trader's choice.
+ * Contract A and B close through the contract Final Close with Final Net P&L
+ * stated and the Trader Outcome left Unanswered; both legacy rows carry an
+ * outcome DERIVED from R on close.
  *
  * What must hold: canonical R reads contract A and B only; no outcome metric
  * reads a derived outcome; no System, paired or Gap figure exists; every
@@ -107,10 +110,12 @@ async function contractTrade(params: {
   );
   if (!created.ok) throw new Error('unreachable');
   must(
-    await closeTrade(workspaceId, userId, created.tradeId, {
-      actualExit: '2410',
-      netPnlMinor: params.netPnlMinor,
-      exitedAt: params.exitedAt,
+    await recordContractExit(workspaceId, userId, created.tradeId, {
+      mutationKey: crypto.randomUUID(),
+      scope: 'all_remaining',
+      exitPrice: '2410',
+      finalPnlMinor: params.netPnlMinor,
+      finalExitedAt: params.exitedAt,
     }),
     'contract close',
   );
@@ -294,14 +299,16 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
     expect(byId.get(ids.contractA)).toMatchObject({
       recordingContract: 'add_trade_v1',
       actualR: '1.5000',
-      traderOutcome: 'win',
+      finalPnlSource: 'manual_total',
+      traderOutcome: null,
       systemStatus: 'resolved',
       systemR: '2.0000',
     });
     expect(byId.get(ids.contractB)).toMatchObject({
       recordingContract: 'add_trade_v1',
       actualR: '-0.5000',
-      traderOutcome: 'loss',
+      finalPnlSource: 'manual_total',
+      traderOutcome: null,
     });
     expect(byId.get(ids.legacyMoney)).toMatchObject({
       recordingContract: null,
@@ -337,8 +344,8 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
     const result = await getAnalyticsSnapshot({ datePreset: 'all' }, READ);
     if (!result.ok) throw new Error(result.code);
     const { trader } = result.data;
-    // Every stored outcome here — including the contract rows' — was derived
-    // from R. None may reach Win Rate: not as 50%, not as 0%, not as losses.
+    // The legacy rows' outcomes were derived from R and the contract rows'
+    // are Unanswered. None may reach Win Rate: not as 50%, not as 0%, not as losses.
     expect(trader.winRate).toEqual({ status: 'unavailable', reason: 'no_outcomes_answered' });
     expect(trader.averageWinR).toEqual({ status: 'unavailable', reason: 'no_outcomes_answered' });
     expect(trader.averageLossR).toEqual({ status: 'unavailable', reason: 'no_outcomes_answered' });
@@ -619,5 +626,73 @@ describe('canonical analytics population — mixed legacy and Add Trade v1 histo
     if (!dashboard.ok) throw new Error(dashboard.code);
     expect(dashboard.data.basic.tradeWin.tradeCount).toBe(trader.outcomeSampleCount);
     expect(dashboard.data.coverage.traderTradeCount).toBe(4);
+  });
+
+  // Runs last, and adds two more contract Trades; asserts deltas only.
+  it('a contract Trade closed by the legacy live close is legacy evidence; a contract Final Close is canonical', async () => {
+    const before = await getAnalyticsSnapshot({ datePreset: 'all' }, READ);
+    if (!before.ok) throw new Error(before.code);
+
+    const open = async (): Promise<string> => {
+      const created = must(
+        await createTrade(workspaceId, userId, {
+          mutationKey: crypto.randomUUID(),
+          tradingAccountId: accountId,
+          symbol: 'XAUUSD',
+          direction: 'long',
+          recordingTiming: 'at_entry',
+          recordingContract: 'add_trade_v1',
+          systemPlanBasis: 'money',
+          plannedRiskMinor: 10_000n,
+          actualRiskAnswer: 'matched',
+          enteredAt: new Date('2026-08-10T09:00:00Z'),
+          enteredAtSource: 'trader',
+        }),
+        'contract create',
+      );
+      if (!created.ok) throw new Error('unreachable');
+      return created.tradeId;
+    };
+    // Legacy live close: net P&L and outcome written without the contract's
+    // stated Final Net P&L, so its +3R must not become canonical R.
+    must(
+      await closeTrade(workspaceId, userId, await open(), {
+        actualExit: '2410',
+        netPnlMinor: 30_000n,
+        exitedAt: new Date('2026-08-10T10:00:00Z'),
+      }),
+      'legacy close of a contract Trade',
+    );
+    // Contract Final Close: a stated -1R with a selected Loss.
+    must(
+      await recordContractExit(workspaceId, userId, await open(), {
+        mutationKey: crypto.randomUUID(),
+        scope: 'all_remaining',
+        finalPnlMinor: -10_000n,
+        traderOutcome: 'loss',
+        finalExitedAt: new Date('2026-08-10T11:00:00Z'),
+      }),
+      'contract Final Close',
+    );
+
+    const after = await getAnalyticsSnapshot({ datePreset: 'all' }, READ);
+    if (!after.ok) throw new Error(after.code);
+    expect(after.data.trader.sampleCount).toBe(before.data.trader.sampleCount + 1);
+    expect(after.data.legacyCoverage.excludedActualCount).toBe(
+      before.data.legacyCoverage.excludedActualCount + 1,
+    );
+    const counts = (snapshot: typeof after) =>
+      snapshot.ok ? snapshot.data.trader.outcomeCounts : null;
+    expect(counts(after)).toEqual({
+      wins: counts(before)?.wins ?? 0,
+      breakEvens: counts(before)?.breakEvens ?? 0,
+      losses: (counts(before)?.losses ?? 0) + 1,
+    });
+    // Total R moved by the Final Close's -1R only, never by the legacy +3R.
+    if (before.data.trader.totalR.status !== 'available') throw new Error('no total');
+    expect(after.data.trader.totalR).toEqual({
+      status: 'available',
+      value: new Decimal(before.data.trader.totalR.value).minus(1).toFixed(4),
+    });
   });
 });

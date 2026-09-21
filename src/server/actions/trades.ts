@@ -30,6 +30,7 @@ import {
   MarkSystemCannotDetermineSchema,
   MarkSystemNoTradeSchema,
   OpenTradeSchema,
+  RecordContractExitSchema,
   RemoveTradeMistakeSchema,
   ReplaceTradeEmotionsSchema,
   ResolveSystemTradeSchema,
@@ -59,6 +60,10 @@ import {
   closeRemainingTrade,
   correctTradeExit,
 } from '@/server/services/trade-execution';
+import {
+  recordContractExit,
+  type RecordContractExitInput,
+} from '@/server/services/trade-exit-contract';
 import {
   adoptHistoricalExitSubtotal,
   applyHistoricalExitHistoryCorrection,
@@ -699,6 +704,77 @@ export async function correctTradeExitAction(input: unknown): Promise<TradeExitA
     if (!result.ok) return serviceFailure(result.code);
     revalidateTradeRoutes();
     return { ok: true, data: { tradeId, ...result } };
+  } catch {
+    return { ok: false, error: { code: 'unexpected_error' } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5a. recordContractExitAction — Record Exit / Final Close (Add Trade contract)
+// ---------------------------------------------------------------------------
+
+export interface RecordContractExitData {
+  readonly tradeId: string;
+  readonly exitId: string;
+  readonly scope: 'part' | 'all_remaining';
+  /** `true`: this exact request (same Save key, same content) was already recorded; nothing new was written. */
+  readonly alreadyRecorded: boolean;
+  /** `open` after a Part; `closed` after All Remaining. */
+  readonly status: 'open' | 'closed';
+  /** Final Net P&L / Risk at Entry, or `null` when either is unknown — never a fabricated 0R. */
+  readonly actualR: string | null;
+  /** The trader's own answer, or `null` when Unanswered — never derived. */
+  readonly traderOutcome: OutcomeValue | null;
+}
+
+export type RecordContractExitActionResult = TradeActionResult<RecordContractExitData>;
+
+/**
+ * The contract live exit for an Open Trade recorded under Add Trade v1: a Part
+ * exit leg, or All Remaining — the explicit Final Close. The legacy
+ * `addTradeExitAction`/`closeRemainingTradeAction` above stay for legacy
+ * Trades; they derive the result from exit legs and are not contract paths.
+ */
+export async function recordContractExitAction(
+  input: unknown,
+): Promise<RecordContractExitActionResult> {
+  const parsed = RecordContractExitSchema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error);
+  const ctx = await resolveTrustedContext();
+  if (!ctx.ok) return ctx;
+  try {
+    const { tradeId, ...exit } = parsed.data;
+    const result = await recordContractExit(
+      ctx.workspaceId,
+      ctx.userId,
+      tradeId,
+      asServiceInput<RecordContractExitInput>(exit),
+    );
+    if (!result.ok) {
+      if (result.code === 'mutation_replay_conflict') {
+        return {
+          ok: false,
+          error: {
+            code: 'mutation_replay_conflict',
+            replayConflict: result.replayConflict ?? 'different',
+          },
+        };
+      }
+      return serviceFailure(result.code);
+    }
+    revalidateTradeRoutes();
+    return {
+      ok: true,
+      data: {
+        tradeId: result.tradeId,
+        exitId: result.exitId,
+        scope: result.scope,
+        alreadyRecorded: result.alreadyRecorded,
+        status: result.status,
+        actualR: result.actualR,
+        traderOutcome: result.traderOutcome,
+      },
+    };
   } catch {
     return { ok: false, error: { code: 'unexpected_error' } };
   }
