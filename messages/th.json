@@ -2542,6 +2542,19 @@
             "symbolAlreadySaved": "“{symbol}” บันทึกไว้แล้ว",
             "symbolRemove": "เอา {symbol} ออกจากสัญลักษณ์ที่บันทึกไว้"
           }
+        },
+        "setupStep": {
+          "description": "ไม่จำเป็นสำหรับการบันทึก กลยุทธ์ Setup และเช็กลิสต์ของคุณใช้สร้างข้อมูลเชิงลึกของกลยุทธ์และ Setup",
+          "strategyEditor": "เลือกกลยุทธ์ที่ใช้เทรด หรือระบุว่าเทรดนี้ไม่มีกลยุทธ์",
+          "setupEditor": "เลือก Setup ของ {strategy} ที่ใช้เทรด หรือระบุว่าเทรดนี้ไม่มี Setup",
+          "noStrategiesYet": "ยังไม่มีกลยุทธ์ เพิ่มได้ที่หน้ากลยุทธ์",
+          "noSetupsYet": "{strategy} ยังไม่มี Setup",
+          "setupNotApplicable": "ไม่ต้องตอบเมื่อไม่มีกลยุทธ์",
+          "checklistNeedsStrategy": "เลือกกลยุทธ์และ Setup ก่อน จึงจะตอบเช็กลิสต์ได้",
+          "checklistNoStrategy": "เทรดนี้ไม่มีกลยุทธ์ จึงไม่มีเช็กลิสต์ให้ตอบ",
+          "checklistNeedsSetup": "เลือก Setup เพื่อตอบเงื่อนไขของ Setup นั้น",
+          "checklistNoSetup": "เทรดนี้ไม่มี Setup จึงไม่มีเช็กลิสต์ให้ตอบ",
+          "checklistEmpty": "Setup นี้ไม่มีเงื่อนไขให้ตอบ"
         }
       },
       "backToTrades": "กลับไปหน้าออเดอร์",

@@ -91,9 +91,8 @@ import {
   type AfterTradeExitDraft,
   type AfterTradeField,
   type EmotionPhase,
-  type RecalledConditionStatus,
 } from './after-trade-draft';
-import { hasStaleSelection, staleSelections, UNAVAILABLE_OPTION } from './stale-selection';
+import { hasStaleSelection, staleSelections } from './stale-selection';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
   Chip,
@@ -104,7 +103,6 @@ import {
   InlineAction,
   Legend,
   Notice,
-  SelectField,
   StateText,
   Tag,
   TextAreaField,
@@ -122,12 +120,11 @@ import { groupEmotionCatalog } from './trade-recording-primitives';
 import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
+import { TradeSetupChecklistStep } from './trade-setup-checklist-step';
 import { TradeSymbolPicker } from './trade-symbol-picker';
 import { TradeTimeWheel } from './trade-time-wheel';
 import { useSavedSymbols } from './use-saved-symbols';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
-
-const NONE = '__none';
 
 /**
  * THE FOUR THINGS STEP 1 RECORDS, each its own concept and its own editor.
@@ -510,6 +507,9 @@ export function TradeAfterTradeForm({
   const validation = validateAfterTradeDraft(draft, { currency, timezone, now });
   const readiness = afterTradeReadiness(draft, validation);
   const summary = afterTradeAnalysisSummary(draft, options);
+  // Strategy, Setup and conditions as resolved against what is still offered.
+  const activeRead = activeAfterTradeClassification(draft, options);
+  const staleRead = staleSelections(draft, options);
   const recordedExits = draft.exits.filter(meaningfulExit);
 
   /*
@@ -1779,40 +1779,33 @@ export function TradeAfterTradeForm({
             'context',
             'gap-4',
             <>
-              <GroupCard
-                title={a('steps.cards.strategy')}
-                aside={<StateText>{a('steps.optional')}</StateText>}
-              >
-                <StrategyFields
-                  draft={draft}
-                  options={options}
-                  onSelectStrategy={(value) =>
-                    apply((current) =>
-                      value === UNAVAILABLE_OPTION
-                        ? current
-                        : value === ''
-                          ? removeStrategyAnswer(current)
-                          : value === NONE
-                            ? answerNoStrategy(current)
-                            : selectStrategy(current, value),
-                    )
-                  }
-                  onSelectSetup={(value) =>
-                    apply((current) =>
-                      value === UNAVAILABLE_OPTION
-                        ? current
-                        : value === ''
-                          ? removeSetupAnswer(current)
-                          : value === NONE
-                            ? answerNoSetup(current)
-                            : selectSetup(current, value),
-                    )
-                  }
-                  onCondition={(key, status) =>
-                    apply((current) => answerCondition(current, key, status))
-                  }
-                />
-              </GroupCard>
+              {/*
+                CANONICAL SETUP & CHECKLIST, shown at the head of this task's
+                fourth step. Record Closed mode: conditions may be Don't
+                remember, and no Strategy default ever reaches the Exit Plan.
+              */}
+              <TradeSetupChecklistStep
+                mode="after_trade"
+                idPrefix="after"
+                strategies={options.strategies}
+                classification={{
+                  strategyAnswer: activeRead.strategyAnswer,
+                  strategy: activeRead.strategy,
+                  setupAnswer: activeRead.setupAnswer,
+                  setup: activeRead.setup,
+                  stale: staleRead,
+                }}
+                conditionAnswers={activeRead.conditionAnswers}
+                onSelectStrategy={(id) => apply((current) => selectStrategy(current, id))}
+                onNoStrategy={() => apply(answerNoStrategy)}
+                onRemoveStrategy={() => apply(removeStrategyAnswer)}
+                onSelectSetup={(id) => apply((current) => selectSetup(current, id))}
+                onNoSetup={() => apply(answerNoSetup)}
+                onRemoveSetup={() => apply(removeSetupAnswer)}
+                onCondition={(key, status) =>
+                  apply((current) => answerCondition(current, key, status))
+                }
+              />
 
               {/* Entry mindset: how sure the trader was, and how they felt. */}
               <GroupCard
@@ -2999,153 +2992,6 @@ function ExitHistoryFields({
         >
           {a('exits.discrepancy', discrepancy)}
         </Notice>
-      )}
-    </div>
-  );
-}
-
-function StrategyFields({
-  draft,
-  options,
-  onSelectStrategy,
-  onSelectSetup,
-  onCondition,
-}: {
-  draft: AfterTradeDraft;
-  options: TradeCreateOptions;
-  onSelectStrategy: (value: string) => void;
-  onSelectSetup: (value: string) => void;
-  onCondition: (conditionKey: string, status: RecalledConditionStatus | null) => void;
-}) {
-  const c = useTranslations('trades.create.recording.contractEntry');
-  const a = useTranslations('trades.create.recording.contractAfter');
-  const active = activeAfterTradeClassification(draft, options);
-  // A chosen Strategy or Setup that is no longer offered stays chosen, shown as unavailable.
-  const stale = staleSelections(draft, options);
-  const strategyValue =
-    active.strategyAnswer === 'none'
-      ? NONE
-      : stale.strategy
-        ? UNAVAILABLE_OPTION
-        : active.strategy === null
-          ? ''
-          : active.strategy.strategyId;
-  const setupValue =
-    active.setupAnswer === 'none'
-      ? NONE
-      : stale.setup
-        ? UNAVAILABLE_OPTION
-        : active.setup === null
-          ? ''
-          : active.setup.setupId;
-
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-        <SelectField
-          id="after-strategy"
-          label={c('strategy.label')}
-          value={strategyValue}
-          onChange={onSelectStrategy}
-          aside={
-            strategyValue === '' ? null : (
-              <InlineAction
-                ariaLabel={c('strategy.removeStrategyAria')}
-                onClick={() => onSelectStrategy('')}
-              >
-                {c('removeAnswer')}
-              </InlineAction>
-            )
-          }
-          options={[
-            { value: '', label: c('strategy.notAnswered') },
-            { value: NONE, label: c('strategy.none') },
-            ...(stale.strategy
-              ? [{ value: UNAVAILABLE_OPTION, label: c('strategy.unavailableOption') }]
-              : []),
-            ...options.strategies.map((strategy) => ({
-              value: strategy.strategyId,
-              label: strategy.name,
-            })),
-          ]}
-        />
-        <SelectField
-          id="after-setup"
-          label={c('strategy.setup')}
-          value={setupValue}
-          disabled={active.strategy === null}
-          onChange={onSelectSetup}
-          aside={
-            active.strategy === null || setupValue === '' ? null : (
-              <InlineAction
-                ariaLabel={c('strategy.removeSetupAria')}
-                onClick={() => onSelectSetup('')}
-              >
-                {c('removeAnswer')}
-              </InlineAction>
-            )
-          }
-          options={[
-            {
-              value: '',
-              label:
-                active.strategy === null
-                  ? c('strategy.setupNeedsStrategy')
-                  : c('strategy.notAnswered'),
-            },
-            { value: NONE, label: c('strategy.noSetup') },
-            ...(stale.setup
-              ? [{ value: UNAVAILABLE_OPTION, label: c('strategy.unavailableOption') }]
-              : []),
-            ...(active.strategy?.setups ?? []).map((setup) => ({
-              value: setup.setupId,
-              label: setup.name,
-            })),
-          ]}
-        />
-      </div>
-
-      {stale.strategy || stale.setup ? (
-        <p role="alert" data-classification-unavailable="" className="text-warning text-sm">
-          {stale.strategy ? c('strategy.strategyUnavailable') : c('strategy.setupUnavailable')}
-        </p>
-      ) : null}
-
-      {active.setup === null || active.setup.conditions.length === 0 ? null : (
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-foreground text-sm font-medium">{c('strategy.conditions')}</p>
-          <Helper>{a('conditions.hint')}</Helper>
-          <ul className="divide-border mt-2 flex min-w-0 flex-col divide-y">
-            {active.setup.conditions.map((condition) => (
-              <li key={condition.conditionKey} className="min-w-0 py-3">
-                <ChoiceGroup
-                  idPrefix={`after-condition-${condition.conditionKey}`}
-                  legend={condition.label}
-                  value={active.conditionAnswers[condition.conditionKey] ?? null}
-                  compact
-                  columns={3}
-                  status={c('notAnswered')}
-                  aside={
-                    <InlineAction
-                      ariaLabel={c('strategy.removeConditionAria', {
-                        condition: condition.label,
-                      })}
-                      onClick={() => onCondition(condition.conditionKey, null)}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(status) => onCondition(condition.conditionKey, status)}
-                  options={[
-                    { value: 'met', label: c('strategy.met') },
-                    { value: 'not_met', label: c('strategy.notMet') },
-                    { value: 'unknown', label: a('conditions.dontRemember') },
-                  ]}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
     </div>
   );

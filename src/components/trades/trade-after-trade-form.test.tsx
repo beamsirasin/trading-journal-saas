@@ -2090,12 +2090,21 @@ describe('Target', () => {
   });
 });
 
+/**
+ * Step 3's Strategy and Setup are launcher rows: the row opens one editor,
+ * and choosing in it is the answer. Reached the way a trader reaches it.
+ */
+function chooseClassification(field: 'Strategy' | 'Setup', choice: string) {
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${field}` }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: choice }));
+}
+
 describe('Exit Plan and Strategy', () => {
   it('never inherits the Strategy default, and records a chosen plan as selected', async () => {
     renderForm(withStrategy);
     fillIdentity();
     goTo('context');
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: STRATEGY_ID } });
+    chooseClassification('Strategy', 'Golden Breakout');
     expect(screen.queryByText(/From Strategy/)).not.toBeInTheDocument();
     expect(document.querySelector('[data-exit-plan-state]')).toHaveAttribute(
       'data-exit-plan-state',
@@ -2118,7 +2127,7 @@ describe('Exit Plan and Strategy', () => {
     renderForm(withStrategy);
     fillIdentity();
     goTo('context');
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: '__none' } });
+    chooseClassification('Strategy', 'No strategy');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({ noStrategy: true });
@@ -2129,8 +2138,8 @@ describe('Exit Plan and Strategy', () => {
     renderForm(withStrategy);
     fillIdentity();
     goTo('context');
-    fireEvent.change(screen.getByLabelText('Strategy'), { target: { value: STRATEGY_ID } });
-    fireEvent.change(screen.getByLabelText('Setup'), { target: { value: SETUP_ID } });
+    chooseClassification('Strategy', 'Golden Breakout');
+    chooseClassification('Setup', 'Clean Retest');
     fireEvent.click(
       within(screen.getByRole('group', { name: 'Retest held' })).getByRole('radio', {
         name: "Don't remember",

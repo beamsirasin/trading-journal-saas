@@ -1121,7 +1121,9 @@ Implementation evidence only, recorded so redesign and migration work can find t
     (Strategy, Setup, conditions, Confidence, Entry and Post-Trade Emotion, trade idea) and Save
     (market context, notes) — rather than §20.6's six. Its Plan step renders the shared Plan & Risk
     stage (commit `cc4e380`), with price levels folded there, and still asks Actual Risk beside
-    Risk at Entry on that step rather than in After-Trade Context (decision 51).
+    Risk at Entry on that step rather than in After-Trade Context (decision 51). Its Context step
+    opens with the shared Setup & Checklist stage: Strategy and Setup as launcher rows with
+    focused editors, and every condition answered in place.
   - At Entry still asks Actual Risk ("Actual risk differed" with its visible "matches" statement)
     beside Risk at Entry, as contract §4 approves; its lifecycle placement is open (Appendix A).
   - Close Existing Open Trade does not exist as a contract flow: closing still uses the legacy exit

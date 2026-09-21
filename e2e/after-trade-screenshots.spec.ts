@@ -313,8 +313,11 @@ async function fillEverything(page: Page) {
   await prices.click();
 
   await goTo(page, 'context');
-  await page.getByLabel('Strategy', { exact: true }).selectOption({ label: STRATEGY });
-  await page.getByLabel('Setup', { exact: true }).selectOption({ label: SETUP });
+  // Setup & Checklist: each row opens one editor, and the choice is the answer.
+  await page.locator('#after-strategy').click();
+  await page.getByRole('dialog').getByRole('button', { name: STRATEGY, exact: true }).click();
+  await page.locator('#after-setup').click();
+  await page.getByRole('dialog').getByRole('button', { name: SETUP, exact: true }).click();
   const group = page.getByRole('group', { name: /Retest held/ });
   const met = group.getByRole('radio', { name: 'Met', exact: true });
   await group.locator(`label[for="${await met.getAttribute('id')}"]`).click();

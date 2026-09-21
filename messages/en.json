@@ -2542,6 +2542,19 @@
             "symbolAlreadySaved": "“{symbol}” is already saved.",
             "symbolRemove": "Remove {symbol} from saved symbols"
           }
+        },
+        "setupStep": {
+          "description": "Not needed to save. Your strategy, setup and checklist build your Strategy and Setup insights.",
+          "strategyEditor": "Choose the strategy you traded, or say this trade had none.",
+          "setupEditor": "Choose the {strategy} setup you traded, or say this trade had none.",
+          "noStrategiesYet": "You have no strategies yet. Add them on the Strategies page.",
+          "noSetupsYet": "{strategy} has no setups yet.",
+          "setupNotApplicable": "Not needed without a strategy",
+          "checklistNeedsStrategy": "Choose a strategy, then a setup, to answer its checklist.",
+          "checklistNoStrategy": "No strategy for this trade, so there is no checklist to answer.",
+          "checklistNeedsSetup": "Choose a setup to answer its conditions.",
+          "checklistNoSetup": "No setup for this trade, so there is no checklist to answer.",
+          "checklistEmpty": "This setup has no conditions to answer."
         }
       },
       "backToTrades": "Back to Trades",
