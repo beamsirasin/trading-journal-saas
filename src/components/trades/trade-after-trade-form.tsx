@@ -2651,20 +2651,29 @@ function ConceptRow({
           // read as a Trade concept, tight enough that four of them fit above
           // the fold with the step's heading.
           'min-h-[4.75rem] px-4 py-3 lg:min-h-[5.25rem] lg:px-5',
+          /*
+            THE DESKTOP GRID IS TWO ROWS ABREAST, so the value's width is what
+            runs short: at 1280px and up "Main Trading Account · USD" needed
+            243px and had 235px beside a 40px icon and 12px gaps. A 36px icon
+            and 8px gaps give it 247px. The chevron does not move — the row's
+            padding pins it — only the text box reaches 4px closer to it.
+          */
+          'lg:gap-2',
           'lg:bg-muted/50 lg:hover:bg-muted lg:shadow-none',
           error === undefined ? 'border-transparent' : 'border-destructive',
         )}
       >
         {/*
-          40px, one plane step off the row — `muted` on the phone's card row,
-          `card` on the desktop's muted row — so it reads as an inset, not a
-          badge. Answered tints stay at a tenth: a hint, never a coloured disc.
+          40px on a phone and 36px on the desktop's two-abreast grid, one plane
+          step off the row — `muted` on the phone's card row, `card` on the
+          desktop's muted row — so it reads as an inset, not a badge. Answered
+          tints stay at a tenth: a hint, never a coloured disc.
         */}
         <span
           aria-hidden="true"
           data-concept-icon={iconTone ?? 'neutral'}
           className={cn(
-            'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors motion-reduce:transition-none',
+            'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors motion-reduce:transition-none lg:size-9',
             iconTone === 'accent'
               ? 'bg-primary/10 text-primary'
               : iconTone === 'positive'
