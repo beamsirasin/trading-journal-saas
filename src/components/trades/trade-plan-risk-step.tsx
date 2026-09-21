@@ -46,9 +46,11 @@ const NO_CLASSIFICATION: ClassificationDraft = createAtEntryDraft('').classifica
  *
  * WHAT IT HOLDS, AND WHAT IT DOES NOT. Risk at Entry (the 1R baseline), the
  * Target, the Exit Plan, and price levels folded away as context. Actual Risk
- * is not this step's question and Strategy is not this step's answer: a host
- * that asks Actual Risk beside Risk at Entry passes its own control in
- * `riskFollowUp`, and the Strategy lives in Step 3.
+ * belongs to this stage too — the risk execution actually carried at entry
+ * (contract decision 51) — but its question differs by recording mode (At
+ * Entry's visible "matches" statement, After Trade's Matched / Different /
+ * Don't know), so the host renders its own mode's control in `riskFollowUp`,
+ * beside Risk at Entry. Strategy is not this step's answer; it lives in Step 3.
  *
  * IT OWNS NO SEMANTICS. Every change goes back through the host's own draft
  * transitions (`at-entry-draft` or `after-trade-draft`), so the two draft

@@ -44,20 +44,23 @@ forms. The lifecycle groups the semantics this contract already defines into six
 stages; it adds no new state, value, result or requirement, and it changes none:
 
 1. **Trade Details** — Account, Symbol, Direction, Entry time (§6, §13).
-2. **Plan & Risk** — Risk at Entry, the intended 1R before entry (§4); Target and Exit Plan (§5);
-   and price levels as context only (§3).
+2. **Plan & Risk** — Risk at Entry, the intended 1R, and Actual Risk, the risk execution actually
+   carried at entry compared with it (§4); Target and Exit Plan (§5); and price levels as context
+   only (§3).
 3. **Setup & Checklist** — Strategy, Setup and setup conditions (§7–§8).
 4. **Entry Context & Evidence** — Confidence and Entry Emotion (§9), and optional entry context:
    trade idea / reason, timeframe, session, chart and the Trade's notes (§6).
 5. **Exit & Result** — exit events and exit-history completeness (§10–§11), final exit time, Final
    Net P&L and Trader Outcome (§11–§12). A Part exit stays within this stage and asks no
    whole-Trade Final Net P&L or Trader Outcome.
-6. **After-Trade Context** — capture of what actually happened after execution: Actual Risk
-   (Matched / Different / Don't know, §4) and Post-Trade Emotion (§9). It is reached only when the
-   Trade becomes Closed.
+6. **After-Trade Context** — capture-only context about the close, such as Post-Trade Emotion
+   (§9). It is reached only when the Trade becomes Closed.
 
-Risk at Entry and Actual Risk are **different moments** — intended risk before entry, and the
-risk execution actually carried — and are never asked together in one stage (decision 51).
+Actual Risk is an **entry-time fact** — the risk the executed position actually carried, compared
+with the intended Risk at Entry — so it belongs to Plan & Risk in every flow: Record Open Trade
+answers it at entry with the §4 At Entry semantics, and Record Closed Trade reconstructs the same
+fact there with the §4 After Trade semantics. After-Trade Context may show it read-only as context
+but never asks it again, and no second risk-adherence question exists (decision 51).
 
 Three task flows use the lifecycle. They are the recording routes of §1 plus the close of §11:
 
@@ -1543,13 +1546,15 @@ Recording-lifecycle decision, 2026-09-22 (item 50):
 
 Lifecycle placement corrections, 2026-09-22 (item 51):
 
-51. **Lifecycle placements** — Risk at Entry (intended risk before entry) belongs to Plan & Risk;
-    Actual Risk (Matched / Different / Don't know — what execution actually carried) belongs to
-    After-Trade Context, and the two moments are never combined in one stage. A Part exit stays
-    within Exit & Result and asks no whole-Trade Final Net P&L or Trader Outcome; After-Trade
-    Context is reached only when All Remaining makes the Trade Closed. The Trade's existing notes
-    belong to Entry Context & Evidence and are not reused for After-Trade Context; a distinct
-    after-trade note would be its own later schema change. **Open:** how the At Entry Actual Risk
-    answer of §4 (the visible "matches" affirmation and "Actual risk differed") is carried by
-    Record Open Trade, which does not reach After-Trade Context, is not yet decided; §4 stays in
-    force meanwhile. Refines item 50. (§1, §4)
+51. **Lifecycle placements** — Risk at Entry (the intended 1R) and Actual Risk (the risk
+    execution actually carried at entry, compared with Risk at Entry) both belong to Plan & Risk.
+    Actual Risk is an entry-time fact, not a post-trade question: Record Open Trade answers it at
+    entry (§4 At Entry — the visible "matches" statement and "Actual risk differed"), and Record
+    Closed Trade reconstructs the same fact in Plan & Risk (§4 After Trade — Matched / Different /
+    Don't know). After-Trade Context may display it read-only but never asks it again, and no
+    second risk-adherence capture question is introduced. A Part exit stays within Exit & Result
+    and asks no whole-Trade Final Net P&L or Trader Outcome; After-Trade Context is reached only
+    when All Remaining makes the Trade Closed. The Trade's existing notes belong to Entry Context &
+    Evidence and are not reused for After-Trade Context; a distinct after-trade note would be its
+    own later schema change. _Revised the same day: an earlier wording placed Actual Risk in
+    After-Trade Context; that placement is withdrawn._ Refines item 50. (§1, §4)
