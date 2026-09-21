@@ -57,6 +57,37 @@ describe('RecordingDraftStatus, compact', () => {
     );
   });
 
+  it('steps aside for a lone Discard the page has placed elsewhere, but never for a restore', () => {
+    const { unmount } = render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <RecordingDraftStatus
+          compact
+          discardElsewhere
+          notice={null}
+          hasWork
+          onDismissNotice={vi.fn()}
+          onDiscard={vi.fn()}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(document.querySelector('[data-recording-draft-status]')).toBeNull();
+    unmount();
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <RecordingDraftStatus
+          compact
+          discardElsewhere
+          notice="recovered"
+          hasWork
+          onDismissNotice={vi.fn()}
+          onDiscard={vi.fn()}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Draft restored');
+    expect(screen.getByRole('button', { name: 'Discard draft' })).toBeInTheDocument();
+  });
+
   it('renders nothing with no draft at all', () => {
     renderStatus(null, false);
     expect(document.querySelector('[data-recording-draft-status]')).toBeNull();

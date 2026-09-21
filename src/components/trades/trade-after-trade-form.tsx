@@ -116,6 +116,7 @@ import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { TradeChoiceList } from './trade-choice-list';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
+import { DiscardDraftAction } from './trade-recording-draft-status';
 import type { RecordingSaveControls } from './trade-recording-form';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
 import { groupEmotionCatalog } from './trade-recording-primitives';
@@ -330,6 +331,7 @@ export function TradeAfterTradeForm({
   onDraftChange,
   onSaved,
   saveControls,
+  onDiscardDraft = null,
 }: {
   options: TradeCreateOptions;
   activeTradingAccountId?: string | null;
@@ -344,6 +346,13 @@ export function TradeAfterTradeForm({
   onSaved?: () => void;
   /** The Recording Draft's Save safeguards: inactive-mode confirmation and "Save as new". */
   saveControls?: RecordingSaveControls;
+  /**
+   * Set while there is work in the draft but nothing restored to announce:
+   * this form's own header carries Discard then — after Change, in the phone's
+   * mode row or the wide screen's mode sentence — and the page leaves out its
+   * standalone Discard row, so Discard never costs a row of its own.
+   */
+  onDiscardDraft?: (() => void) | null;
 }) {
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
@@ -1219,6 +1228,10 @@ export function TradeAfterTradeForm({
         >
           <span>{a('subtitle')}</span>
           <TradeRecordingModeChange />
+          {/* The same place on every width: after Change, never a row of its own. */}
+          {onDiscardDraft === null ? null : (
+            <DiscardDraftAction onDiscard={onDiscardDraft} className="ml-2" />
+          )}
         </p>
       ) : null}
 
@@ -1267,13 +1280,23 @@ export function TradeAfterTradeForm({
                 (meeting the rail's hit areas, not overlapping them).
               */
               <div className="text-muted-foreground -mt-3 -mb-2.5 flex min-w-0 items-baseline justify-between gap-3 text-xs font-medium">
-                <p
-                  data-recording-mode="after_trade"
-                  className="flex min-w-0 flex-wrap items-baseline gap-x-2"
-                >
-                  <span>{a('steps.modeShort')}</span>
-                  <TradeRecordingModeChange />
-                </p>
+                {/*
+                  THE ROW'S ACTIONS ON THE LEFT, ITS STATUS ON THE RIGHT.
+                  Discard sits after Change — both act on this draft — quiet
+                  and destructive, so it needs no row of its own.
+                */}
+                <div className="flex min-w-0 items-baseline gap-x-3">
+                  <p
+                    data-recording-mode="after_trade"
+                    className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+                  >
+                    <span>{a('steps.modeShort')}</span>
+                    <TradeRecordingModeChange />
+                  </p>
+                  {onDiscardDraft === null ? null : (
+                    <DiscardDraftAction onDiscard={onDiscardDraft} short className="text-sm" />
+                  )}
+                </div>
                 <span data-step-progress="" className="shrink-0 tracking-wide tabular-nums">
                   {progressText}
                 </span>

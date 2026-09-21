@@ -252,6 +252,33 @@ describe('Recording Draft — Discard → Destroy', () => {
     expect(stored(OTHER_WORKSPACE)).not.toBeNull();
     expect(createTradeMock).not.toHaveBeenCalled();
   });
+
+  /*
+    AFTER TRADE NEVER GIVES DISCARD A ROW OF ITS OWN. With work but nothing
+    restored, it sits in the step's mode row after Change; the page's status row
+    is not rendered at all. It is the same confirmed action.
+  */
+  it('puts After Trade’s Discard in the mode row, not a row of its own', () => {
+    mount('after_trade');
+    fillAfterTradeIdentity('XAUUSD');
+    expect(stored()).not.toBeNull();
+    expect(document.querySelector('[data-recording-draft-status]')).toBeNull();
+    const discard = screen.getByRole('button', { name: copy.discard });
+    expect(discard).toHaveTextContent(copy.discardShort);
+    // Beside Change, in the row that says which mode this is.
+    const modeRow = document.querySelector('[data-recording-mode="after_trade"]')!.parentElement!;
+    expect(modeRow).toContainElement(discard);
+
+    fireEvent.click(discard);
+    fireEvent.click(screen.getByRole('button', { name: copy.keep }));
+    expect(stored()).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: copy.discard }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: copy.discardConfirm }),
+    );
+    expect(stored()).toBeNull();
+    expect(screen.queryByRole('button', { name: copy.discard })).toBeNull();
+  });
 });
 
 describe('Recording Draft — Save → Persist', () => {

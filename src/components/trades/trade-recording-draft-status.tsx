@@ -4,6 +4,7 @@ import { History, Info } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +62,7 @@ export function RecordingDraftStatus({
   onDiscard,
   onLoadLatest,
   compact = false,
+  discardElsewhere = false,
 }: {
   notice: RecordingDraftNotice;
   hasWork: boolean;
@@ -68,11 +70,19 @@ export function RecordingDraftStatus({
   onDiscard: () => void;
   onLoadLatest?: () => void;
   compact?: boolean;
+  /**
+   * With nothing to say but "you can discard this", the page has placed
+   * Discard in its own header instead (`DiscardDraftAction`), so this row
+   * would be a whole section for one word. Only the plain working state steps
+   * aside: a restored draft or a warning still speaks here.
+   */
+  discardElsewhere?: boolean;
 }) {
   const t = useTranslations('trades.create.draft');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (notice === null && !hasWork) return null;
+  if (notice === null && discardElsewhere) return null;
 
   const confirm = (
     <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -125,18 +135,12 @@ export function RecordingDraftStatus({
           <span />
         )}
         {hasWork ? (
-          <button
-            type="button"
-            data-recording-draft-discard=""
-            /* The visible word is part of the name, so voice control still finds it. */
-            aria-label={t('discard')}
-            onClick={() => setConfirmOpen(true)}
-            className="text-destructive/85 hover:text-destructive focus-visible:ring-ring -mr-2 min-h-11 shrink-0 rounded-sm px-2 font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
-          >
-            {notice === 'recovered' ? t('discardShort') : t('discard')}
-          </button>
+          <DiscardDraftAction
+            onDiscard={onDiscard}
+            short={notice === 'recovered'}
+            className="-mr-2 px-2"
+          />
         ) : null}
-        {confirm}
       </div>
     );
   }
@@ -200,6 +204,62 @@ export function RecordingDraftStatus({
       ) : null}
       {confirm}
     </div>
+  );
+}
+
+/**
+ * THE ONE DESTRUCTIVE WAY OUT, WHEREVER IT SITS. A quiet destructive text
+ * action behind the same confirmation as every other Discard — so moving it
+ * into a header row changes where it is, never what it does. Its accessible
+ * name is always "Discard draft"; a short visible "Discard" is part of that
+ * name, so voice control still finds it. Keeps a 44px tap height.
+ */
+export function DiscardDraftAction({
+  onDiscard,
+  short = false,
+  className,
+}: {
+  onDiscard: () => void;
+  short?: boolean;
+  className?: string;
+}) {
+  const t = useTranslations('trades.create.draft');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        data-recording-draft-discard=""
+        aria-label={t('discard')}
+        onClick={() => setConfirmOpen(true)}
+        className={cn(
+          'text-destructive/85 hover:text-destructive focus-visible:ring-ring inline-flex min-h-11 shrink-0 items-center rounded-sm font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2',
+          className,
+        )}
+      >
+        {short ? t('discardShort') : t('discard')}
+      </button>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('discardTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('discardDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('keep')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setConfirmOpen(false);
+                onDiscard();
+              }}
+            >
+              {t('discardConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

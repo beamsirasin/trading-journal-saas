@@ -297,6 +297,13 @@ export function TradeRecordingForm({
     <RecordingDraftStatus
       // After Trade's step flow starts high on a phone; its routine draft states are one row.
       compact={timing === 'after_trade'}
+      /*
+        WHERE AFTER TRADE'S DISCARD LIVES. With work in the draft but nothing
+        restored to announce, Discard moves into the form's own mode line, after
+        Change, rather than taking a row of its own above the step; the restored
+        state and every warning keep this status row.
+      */
+      discardElsewhere={timing === 'after_trade'}
       notice={state.notice}
       hasWork={state.hasWork}
       onDismissNotice={() => setState((current) => current && { ...current, notice: null })}
@@ -365,6 +372,7 @@ export function TradeRecordingForm({
           onDraftChange={onAfterTradeChange}
           onSaved={onSaved}
           saveControls={saveControls}
+          onDiscardDraft={state.notice === null && state.hasWork ? discard : null}
         />
         {confirmDialog}
       </div>
