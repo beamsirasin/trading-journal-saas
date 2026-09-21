@@ -77,6 +77,8 @@ function fieldStep(field: AtEntryField): number {
     case 'direction':
     case 'enteredAt':
       return STEP_INDEX.trade;
+    case 'tradingviewUrl':
+      return STEP_INDEX.context;
     default:
       return STEP_INDEX.plan;
   }
@@ -96,6 +98,7 @@ const FIELD_TARGET_ID: Readonly<Record<AtEntryField, string>> = {
   contextEntryPrice: 'entry-context-entry-price',
   contextStopPrice: 'entry-context-stop-price',
   contextPositionSize: 'entry-context-size',
+  tradingviewUrl: 'entry-context-chart',
 };
 
 /** The Plan & Risk step's ids for Record Open. */
@@ -138,6 +141,8 @@ function serverFieldErrorCode(field: AtEntryField): AtEntryErrorCode {
       return 'invalid_money';
     case 'enteredAt':
       return 'invalid_datetime';
+    case 'tradingviewUrl':
+      return 'invalid_tradingview_url';
     default:
       return 'not_accepted';
   }
@@ -157,6 +162,7 @@ const SERVER_FIELD: Readonly<Record<string, AtEntryField>> = {
   contextEntryPrice: 'contextEntryPrice',
   contextStopPrice: 'contextStopPrice',
   contextPositionSize: 'contextPositionSize',
+  tradingviewUrl: 'tradingviewUrl',
 };
 
 /** Inside the step being shown, rather than one kept mounted but hidden. */
@@ -343,6 +349,7 @@ export function TradeAtEntryForm({
     contextEntryPrice: draft.context.entryPrice,
     contextStopPrice: draft.context.stopPrice,
     contextPositionSize: draft.context.positionSize,
+    tradingviewUrl: draft.context.tradingviewUrl,
   };
   const visibleErrors: AtEntryErrors = { ...serverErrors };
   for (const [field, code] of Object.entries(validation.errors) as [
@@ -396,6 +403,8 @@ export function TradeAtEntryForm({
         return c('errors.fixedTargetRequiresValue');
       case 'actual_risk_equals_risk_at_entry':
         return c('errors.actualRiskEqualsRiskAtEntry');
+      case 'invalid_tradingview_url':
+        return t('validation.invalidTradingViewUrl');
       case 'not_accepted':
         return c('errors.notAccepted');
     }
@@ -918,6 +927,7 @@ export function TradeAtEntryForm({
           emotions={draft.emotions}
           catalog={options.emotionCatalog}
           values={draft.context}
+          errors={{ tradingviewUrl: errorText('tradingviewUrl') }}
           canDeselectEmotion={(key) => canDeselectEmotion(draft, key)}
           onConfidence={(value) => apply((current) => setConfidence(current, value))}
           onToggleEmotion={(key) => apply((current) => toggleEmotion(current, key))}

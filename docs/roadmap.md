@@ -404,9 +404,9 @@ Not product debt: these are the things that make shipping the current work unsaf
 
 ## Known product debt
 
-**Nineteen `e2e/trades.spec.ts` tests still assert a UI that is not there.** Eighteen of them are one defect — the retired Trade Journal and Trade Detail — and the twentieth is a different one, described after the list. The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. Those nineteen fail for that reason alone. They are listed below together with the twentieth, under the Playwright project each one runs in:
+**Sixteen `e2e/trades.spec.ts` tests still assert a UI that is not there, or fail beside it.** Fifteen of them are one defect — the retired Trade Journal and Trade Detail — and the sixteenth is a different one, described after the list. The Trades page was rebuilt as a table plus a Details sheet (`85b861c`, with `201195d` replacing the Calendar/Trade Log switcher with All/Open/Closed), so `getByRole('navigation', { name: 'Trade sections' })`, `getByRole('list', { name: 'Trade journal' })`, `getByRole('listitem')` and `getByRole('article', { name: '<symbol>' })` no longer exist anywhere in `src/components/trades/workspace/` — Trade Detail is now a dialog with a `Trade Details sections` tablist, and actions such as Partial Close live inside it. Those fifteen fail for that reason alone. They are listed below together with the sixteenth, under the Playwright project each one runs in:
 
-**`chromium` (16)**
+**`chromium` (14)**
 
 - `Phase 15G.5C discloses retrospective recording once at Entry Snapshot level`
 - `desktop creates, completes, corrects discipline, resolves, and deletes a Trade`
@@ -415,8 +415,6 @@ Not product debt: these are the things that make shipping the current work unsaf
 - `Money Partial Close sums already-net leg P&L without weighting it twice`
 - `Money-only System Target resolves independently while Actual remains partially open`
 - `Money-only System Stop can be corrected to Custom gross R`
-- `records only the Conditions the trader answered, with no unmet confirmation`
-- `a Setup with no Conditions saves with no checklist and no warning`
 - `Phase 15G.5D After Trade creates one completed Price Trade and opens Detail directly`
 - `walks one Trade through create (already Open), partial close, independent System resolve, final close, review, and confirms Detail, List, and Analytics all agree`
 - `Phase 14C/14E — minimal New Trade with no Plan/Strategy/Setup opens atomically, Actual closes while System stays Pending, then classifies the Trade later`
@@ -425,13 +423,12 @@ Not product debt: these are the things that make shipping the current work unsaf
 - `Phase 15G.3 pending Analytics action stays filtered through pagination and deep action`
 - `Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH`
 
-**`mobile-chrome` (3)**
+**`mobile-chrome` (2)**
 
 - `mobile creation remains usable without horizontal overflow`
-- `Phase 14C mobile — minimal New Trade (no Plan/Strategy/Setup), late classification dialog, and Needs Attention stay usable at 390px`
 - `Phase 15G.1 mobile — Trading Calendar and Trade Log remain separate at 390px`
 
-**The twentieth is not the same defect, and it is CI-only.** `Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH` fails on a **strict-mode violation** — `locator('form')` resolves to two elements, so the page renders two forms where the test expects one. It is not a retired locator, and it is not a timeout. It **passes locally** on this branch (`trades.spec.ts --workers=4`) and fails in CI, which is why it went unrecorded for so long.
+**The sixteenth is not the same defect, and it is CI-only.** `Phase 15G.3 New Trade views stay exclusive and usable at 1440/390/320 in EN/TH` fails on a **strict-mode violation** — `locator('form')` resolves to two elements, so the page renders two forms where the test expects one. It is not a retired locator, and it is not a timeout. It **passes locally** on this branch (`trades.spec.ts --workers=4`) and fails in CI, which is why it went unrecorded for so long.
 
 It was not caused by turning retries off for that block, and there is direct evidence: the identical failure — same locator, same "resolved to 2 elements" — is already annotated in the 60-minute measurement run of 2026-09-02, while `retries: 2` was still in force. Removing the retries only stopped it being absorbed. No complete CI run existed between the Trades rebuild and 2026-09-03, so nothing had ever adjudicated it either way.
 
@@ -443,7 +440,9 @@ Repairing them is not a locator swap: the assertions have to be rewritten agains
 - `confirms unmet Conditions…` and `zero-Condition Setup…` were renamed, because what they assert changed: an unanswered Setup Condition is now stored as nothing rather than a Not Met, and nothing asks a trader to confirm one.
 - The three remaining At Entry creation tests still fail on **exactly** the retired `getByRole('navigation', { name: 'Trade sections' })` above, and now fail LATER than they did: they create the contract Trade, land on Detail, and only then hit the retired locator. That is this debt, not a new one — the creation half of each was rewritten against the contract form and works.
 
-**Compare by name _and project_, never by count, and never from a single project's run.** Do it with `pnpm e2e:known-red <run.log>` (`scripts/compare-known-red-e2e.mjs`), which diffs this list against a run and separates a name that went red from a name that went green — comparing by eye is how the omission below happened. A full `trades.spec.ts` run is expected to report exactly these twenty name/project pairs and no other — 20 failures in CI. A local run reports 19 of them: the strict-mode failure above does not reproduce outside CI. Line numbers are deliberately omitted: they moved twice during the repair that produced this list. A pair on this list going green is progress; a pair _not_ on it going red is a regression.
+**What the Record Open migration changed here (2026-09-22).** Three entries went green and left the list; none changed its reason for failing. `records only the Conditions the trader answered, with no unmet confirmation` and `a Setup with no Conditions saves with no checklist and no warning` (`chromium`), and `Phase 14C mobile — minimal New Trade (no Plan/Strategy/Setup), late classification dialog, and Needs Attention stay usable at 390px` (`mobile-chrome`), each passed with an explicit per-test verdict (`--reporter=list`, targeted `-g` run of `trades.spec.ts` on both projects) after their creation half was rewritten against the stepped Record Open flow. The same run kept `walks one Trade through create…` and `Phase 14C/14E — minimal New Trade…` red, and both still fail on the retired Trade Detail after a successful Record Open save — this debt, unchanged. A filtered run is not a full one: confirm with a full `trades.spec.ts` run and `pnpm e2e:known-red` before trusting the totals below.
+
+**Compare by name _and project_, never by count, and never from a single project's run.** Do it with `pnpm e2e:known-red <run.log>` (`scripts/compare-known-red-e2e.mjs`), which diffs this list against a run and separates a name that went red from a name that went green — comparing by eye is how the omission below happened. A full `trades.spec.ts` run is expected to report exactly these sixteen name/project pairs and no other — 16 failures in CI. A local run reports 15 of them: the strict-mode failure above does not reproduce outside CI. Line numbers are deliberately omitted: they moved twice during the repair that produced this list. A pair on this list going green is progress; a pair _not_ on it going red is a regression.
 
 The three `mobile-chrome` entries were added on 2026-09-02, after a full `pnpm exec playwright test e2e/trades.spec.ts --workers=4` reported **19 failed / 10 passed / 32 skipped** rather than the sixteen this list then claimed. They are not new and not a regression: they fail identically at `--workers=1`, so not from parallel load, and they fail identically again with that day's `trade-confidence-control.tsx` change stashed and the app rebuilt — same locators, same `getByRole('navigation', { name: 'Trade sections' })` and `getByTestId('trading-calendar')` not-found signature as their `chromium` counterparts. **The original list was compiled from a `chromium`-only run and silently omitted the same debt's `mobile-chrome` members.** That is why the comparison rule above now names the project: a list gathered from one project cannot be checked against a run of all of them. When something unexpected does go red, settle it the way this was settled — stash the change, rebuild, re-run — rather than by arguing it looks unrelated.
 

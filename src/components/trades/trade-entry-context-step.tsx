@@ -64,6 +64,7 @@ export function TradeEntryContextStep({
   emotions,
   catalog,
   values,
+  errors = {},
   canDeselectEmotion,
   onConfidence,
   onToggleEmotion,
@@ -79,6 +80,8 @@ export function TradeEntryContextStep({
   emotions: EmotionsDraft;
   catalog: TradeCreateOptions['emotionCatalog'];
   values: EntryContextValues;
+  /** The host validation’s error for an answer on this step, already worded. */
+  errors?: { readonly tradingviewUrl?: string | undefined };
   /** The host's own rule: the last chosen emotion is never silently taken away. */
   canDeselectEmotion: (key: string) => boolean;
   onConfidence: (confidence: number | null) => void;
@@ -205,6 +208,7 @@ export function TradeEntryContextStep({
           onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
           inputMode="url"
           placeholder="https://www.tradingview.com/x/…"
+          error={errors.tradingviewUrl}
         />
       </GroupCard>
 

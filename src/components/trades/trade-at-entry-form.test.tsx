@@ -1042,6 +1042,32 @@ describe('Record Open — Entry Context & Evidence', () => {
   });
 });
 
+describe('Record Open — a malformed chart link', () => {
+  it('blocks Save on Entry Context, at the link, with the server’s own rule', async () => {
+    renderForm();
+    fillMinimum();
+    goTo('context');
+    fireEvent.change(screen.getByLabelText('Chart link'), {
+      target: { value: 'https://example.com/not-tradingview' },
+    });
+    goTo('plan');
+    fireEvent.click(document.getElementById('entry-quick-save')!);
+    await waitFor(() => expect(currentStep()).toBe('context'));
+    await waitFor(() => expect(screen.getByLabelText('Chart link')).toHaveFocus());
+    expect(screen.getByLabelText('Chart link')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter an HTTPS TradingView URL.')).toBeVisible();
+    expect(createTradeMock).not.toHaveBeenCalled();
+
+    // A TradingView link, and the Save goes through.
+    fireEvent.change(screen.getByLabelText('Chart link'), {
+      target: { value: 'https://www.tradingview.com/x/abc12345/' },
+    });
+    save();
+    await vi.waitFor(() => expect(createTradeMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ tradingviewUrl: 'https://www.tradingview.com/x/abc12345/' });
+  });
+});
+
 describe('Record Open — the step list beside a wide form', () => {
   it('summarizes each step honestly, and says what Save still needs', () => {
     const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation(

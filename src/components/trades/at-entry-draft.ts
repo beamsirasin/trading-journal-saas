@@ -27,6 +27,7 @@ import type { z } from 'zod';
 
 import { isCanonicalEmotionKey } from '@/config/emotions';
 import type { CreateTradeSchema } from '@/lib/trades/schemas';
+import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
   TradeCreateExitPlanOption,
   TradeCreateOptions,
@@ -598,6 +599,7 @@ export const AT_ENTRY_FIELD_ORDER = [
   'contextEntryPrice',
   'contextStopPrice',
   'contextPositionSize',
+  'tradingviewUrl',
 ] as const;
 export type AtEntryField = (typeof AT_ENTRY_FIELD_ORDER)[number];
 
@@ -615,6 +617,7 @@ export const AT_ENTRY_FIELD_SECTION: Readonly<Record<AtEntryField, AtEntrySectio
   contextEntryPrice: 'context',
   contextStopPrice: 'context',
   contextPositionSize: 'context',
+  tradingviewUrl: 'context',
 };
 
 export type AtEntryErrorCode =
@@ -625,6 +628,8 @@ export type AtEntryErrorCode =
   | 'invalid_price'
   | 'fixed_target_requires_value'
   | 'actual_risk_equals_risk_at_entry'
+  /** The server's own chart-link rule, checked before Save rather than after it. */
+  | 'invalid_tradingview_url'
   /** Server-side only: a field the server refused that no specific code describes. */
   | 'not_accepted';
 
@@ -714,6 +719,14 @@ export function validateAtEntryDraft(
   if (entry === 'invalid') errors.contextEntryPrice = 'invalid_price';
   if (stop === 'invalid') errors.contextStopPrice = 'invalid_price';
   if (size === 'invalid') errors.contextPositionSize = 'invalid_price';
+  // The same rule the Save schema applies (HTTPS, tradingview.com): malformed input
+  // is an error as entered, caught here so it is named at the link (UX Rules §6.1).
+  if (
+    draft.context.tradingviewUrl.trim() !== '' &&
+    !isValidTradingViewUrl(draft.context.tradingviewUrl)
+  ) {
+    errors.tradingviewUrl = 'invalid_tradingview_url';
+  }
 
   const notices: AtEntryNotice[] = [];
   const targetPrice =
