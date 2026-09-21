@@ -1107,10 +1107,10 @@ export function TradeAfterTradeForm({
                     errors > 0
                       ? 'bg-destructive'
                       : current
-                        ? 'bg-brand'
+                        ? 'bg-progress-active'
                         : index < step
-                          ? 'bg-brand/45'
-                          : 'bg-muted',
+                          ? 'bg-progress-complete'
+                          : 'bg-progress-rail',
                   )}
                 />
               </button>

@@ -91,6 +91,9 @@
   --color-sidebar: var(--sidebar);
   --color-sidebar-border: var(--sidebar-border);
   --color-brand: var(--brand);
+  --color-progress-active: var(--progress-active);
+  --color-progress-complete: var(--progress-complete);
+  --color-progress-rail: var(--progress-rail);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-break-even: var(--break-even);
@@ -467,6 +470,15 @@ html[lang='th'] .text-label {
   --sidebar: #181818;
   --sidebar-border: rgb(255 255 255 / 0.08);
   --brand: #3498b8;
+  /*
+    STEP PROGRESS — the phone step rail. Its own three tokens so each theme can
+    tune it without moving `--brand` or `--muted` for everything else. Dark
+    keeps exactly what it always drew: the brand, the brand at 45% for a step
+    already passed, and the muted surface for the rail.
+  */
+  --progress-active: var(--brand);
+  --progress-complete: color-mix(in oklab, var(--brand) 45%, transparent);
+  --progress-rail: var(--muted);
   --positive: #2fa97a;
   --negative: #ef6362;
   --break-even: #5b7ef7;
@@ -564,6 +576,19 @@ html[lang='th'] .text-label {
   --sidebar: #eef2f9;
   --sidebar-border: #e2e8f3;
   --brand: #0e7490;
+  /*
+    STEP PROGRESS, LIGHT. `--brand` here is a deep cyan chosen to read as TEXT,
+    and as a 6px bar on a near-white page it sat heavy, with a cool blue-grey
+    rail beneath it that belonged to the dark palette's weight. The active
+    segment takes the product's own teal (`#3498b8`, the dark theme's brand) —
+    softer, and still 3.2:1 on the page and 3.3:1 on the card, clear of the
+    3:1 a graphic needs. A passed step is that teal at 45%; the rail is a
+    light, nearly neutral grey, so the three states read as active, done and
+    not yet, without the rail competing with either.
+  */
+  --progress-active: #3498b8;
+  --progress-complete: color-mix(in oklab, #3498b8 45%, transparent);
+  --progress-rail: #e8eaef;
   --positive: #047857;
   --negative: #be123c;
   --break-even: #1d4ed8;
@@ -656,6 +681,15 @@ html[lang='th'] .text-label {
   --sidebar: #181818;
   --sidebar-border: rgb(255 255 255 / 0.08);
   --brand: #3498b8;
+  /*
+    STEP PROGRESS — the phone step rail. Its own three tokens so each theme can
+    tune it without moving `--brand` or `--muted` for everything else. Dark
+    keeps exactly what it always drew: the brand, the brand at 45% for a step
+    already passed, and the muted surface for the rail.
+  */
+  --progress-active: var(--brand);
+  --progress-complete: color-mix(in oklab, var(--brand) 45%, transparent);
+  --progress-rail: var(--muted);
   --positive: #2fa97a;
   --negative: #ef6362;
   --break-even: #5b7ef7;

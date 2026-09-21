@@ -129,6 +129,19 @@ foreground. Raising `primary` to clear AA as text made it too light to carry
 reads as dark-on-cyan, at 5.86:1. Light mode is unaffected — `#ffffff` on
 `#1d4ed8` is 6.70:1.
 
+### Step progress
+
+The phone step rail (After Trade) has its own three tokens —
+`--progress-active`, `--progress-complete` and `--progress-rail`, used as
+`bg-progress-*` — so each theme can tune it without moving `--brand` or
+`--muted` for everything else. Dark maps them to exactly what the rail always
+drew: `--brand`, `--brand` at 45%, `--muted`. Light does not use its own
+`--brand` (`#0e7490`, a deep cyan chosen to read as text), which sat heavy as a
+6px bar on the near-white page over a cool blue-grey rail: the active segment
+is the product's teal `#3498b8` (3.2:1 on the page, 3.3:1 on the card — clear
+of the 3:1 a graphic needs), a passed step is that teal at 45%, and the rail is
+the light, nearly neutral `#e8eaef`. An error segment stays `bg-destructive`.
+
 ### Zone accents
 
 The three Analytics zones (Results / Edge / Behavior) take their accent from
