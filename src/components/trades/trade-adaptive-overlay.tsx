@@ -43,8 +43,14 @@ function useKeyboardObscuresViewport() {
  * helper, control and Done read as one composition rather than a small form
  * pinned to a large sheet.
  *
- * The phone is unaffected either way: a bottom sheet is already the width of
- * the screen, and desktop dialog dimensions must never be forced onto it.
+ * On a phone both are a bottom sheet the width of the screen — desktop dialog
+ * dimensions are never forced onto it — and `focused` adds one thing there:
+ * a floor. A one-answer editor holds very little, and a sheet sized to that
+ * reads as a strip stuck to the bottom edge rather than a place to decide, so
+ * it rises to just under half the screen however little it holds. It is still
+ * bottom-anchored, its content still starts at its top, and an editor with
+ * more in it (the Entry calendar) grows past the floor to the same ceiling as
+ * any sheet and then scrolls inside itself.
  */
 export function TradeAdaptiveOverlay({
   open,
@@ -131,12 +137,21 @@ export function TradeAdaptiveOverlay({
       <SheetContent
         side="bottom"
         closeLabel={closeLabel}
-        className="max-h-[92dvh] gap-0 rounded-t-2xl"
+        className={cn('max-h-[92dvh] gap-0 rounded-t-2xl', focused && 'min-h-[45dvh]')}
       >
         <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pr-14 pb-3">
           <SheetTitle>{title}</SheetTitle>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div
+          data-sheet-body=""
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto px-4 pt-4',
+            // With no footer strip, the body is what meets the home indicator.
+            footer === undefined || keyboardOpen
+              ? 'pb-[max(1rem,env(safe-area-inset-bottom))]'
+              : 'pb-4',
+          )}
+        >
           <SheetDescription className="mb-4">{description}</SheetDescription>
           {children}
           {keyboardOpen && footer !== undefined ? (
