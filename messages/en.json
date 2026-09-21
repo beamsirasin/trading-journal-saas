@@ -2500,7 +2500,7 @@
             "details": {
               "label": "Save",
               "title": "Review and save",
-              "description": "Add any last details, check your trade, then save."
+              "description": "Check your trade, then save."
             },
             "attention": "{count, plural, one {# item needs attention} other {# items need attention}}",
             "modeShort": "After trade",
@@ -2555,6 +2555,16 @@
           "checklistNeedsSetup": "Choose a setup to answer its conditions.",
           "checklistNoSetup": "No setup for this trade, so there is no checklist to answer.",
           "checklistEmpty": "This setup has no conditions to answer."
+        },
+        "entryContextStep": {
+          "descriptionAtEntry": "What you know, think and feel as you enter. Not needed to save; it builds your Strategy and Psychology insights.",
+          "descriptionAfterTrade": "What you knew, thought and felt at entry, as you remember it. Not needed to save.",
+          "emotionEditorAtEntry": "Choose every emotion you feel as you enter, or None of these.",
+          "emotionEditorAfterTrade": "Choose every emotion you felt as you entered, as you remember it, or None of these.",
+          "notesTitle": "Entry notes",
+          "notesHint": "Anything else you noticed around entry.",
+          "evidenceTitle": "Before-entry evidence",
+          "evidenceHint": "A chart from before or at entry. It is context and never changes the result."
         }
       },
       "backToTrades": "Back to Trades",

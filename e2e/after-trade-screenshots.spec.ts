@@ -91,10 +91,13 @@ test.describe('After Trade step-flow captures', () => {
         await assertStepOneProportion(page, `${width}-${theme}`);
         for (const step of ['trade', 'result', 'plan', 'context', 'save'] as const) {
           await goTo(page, step);
-          if (step === 'context') {
-            await openEmotion(page, 'emotions');
-          }
           await capture(page, `${width}-${theme}-${step}`);
+          if (step === 'context') {
+            // Entry Emotion opens in its own focused editor from Entry Context.
+            await page.locator('#after-entry-emotions').click();
+            await capture(page, `${width}-${theme}-editor-entry-emotions`);
+            await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
+          }
         }
         // Quick Save: offered from an earlier step once identity is answered.
         await goTo(page, 'result');
@@ -213,18 +216,6 @@ async function clickChoice(page: Page, name: RegExp | string) {
   await page.locator(`label[for="${id}"]`).click();
 }
 
-/** One of Step 5's grouped detail sections. */
-async function openGroup(page: Page, group: 'notes' | 'market') {
-  const toggle = page.locator(`#after-details-${group}`);
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-}
-
-/** Fold it back, so the capture shows the state a trader arrives at. */
-async function foldGroup(page: Page, group: 'notes' | 'market') {
-  const toggle = page.locator(`#after-details-${group}`);
-  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
-}
-
 /**
  * STEP 1 IS READ-FIRST: every concept shows its answer and opens its own
  * editor — a bottom sheet on a phone, a dialog on a desktop.
@@ -322,11 +313,10 @@ async function fillEverything(page: Page) {
   const met = group.getByRole('radio', { name: 'Met', exact: true });
   await group.locator(`label[for="${await met.getAttribute('id')}"]`).click();
   await clickChoice(page, 'High');
-  await openEmotion(page, 'emotions');
-  await page
-    .locator('[data-emotions-phase="emotions"]')
-    .getByRole('button', { name: 'Focused' })
-    .click();
+  // Entry Emotion: its launcher row opens one editor; Done keeps the answer.
+  await page.locator('#after-entry-emotions').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Focused' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
   await openEmotion(page, 'postTradeEmotions');
   await page
     .locator('[data-emotions-phase="postTradeEmotions"]')
@@ -336,13 +326,9 @@ async function fillEverything(page: Page) {
   await openEmotion(page, 'postTradeEmotions');
   // The thesis reads with the rest of the trader's read on the trade.
   await page.getByLabel('Why this trade').fill('Clean retest of the London high.');
-
-  await goTo(page, 'save');
-  // Step 5's groups open on request and fold back to a summary of their values.
-  await openGroup(page, 'market');
+  // Market context is entry-time context, asked directly in Entry Context.
   await page.getByLabel('Timeframe').fill('15m');
   await page.getByLabel('Session').fill('London');
-  await foldGroup(page, 'market');
 }
 
 /**

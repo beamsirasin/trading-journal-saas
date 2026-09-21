@@ -391,6 +391,17 @@ function recordExit(fields: { pnl?: string; percent?: string; reason?: string } 
 
 /** The Context step, with this phase's emotion question opened. */
 function emotions(phase: 'emotions' | 'postTradeEmotions'): HTMLElement {
+  const open = screen.queryByRole('dialog');
+  if (phase === 'emotions') {
+    // Entry Emotion is Entry Context's launcher row, answered in a focused editor.
+    if (currentStep() !== 'context') goTo('context');
+    if (open === null) {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit How you felt as you entered' }));
+    }
+    return document.querySelector<HTMLElement>('[data-emotions-phase="emotions"]')!;
+  }
+  // Leave the Entry Emotion editor by its Done: routine dismissal keeps the answer.
+  if (open !== null) fireEvent.click(within(open).getByRole('button', { name: 'Done' }));
   if (currentStep() !== 'context') goTo('context');
   const toggle = document.getElementById(`after-${phase}-toggle`)!;
   if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
@@ -547,22 +558,18 @@ describe('After Trade — the moment and its steps', () => {
     });
   });
 
-  it('keeps Step 5 groups folded, holding what was typed in them', async () => {
+  it('asks timeframe and session with the entry context, not on the Save step', async () => {
     renderForm();
     fillIdentity();
-    goTo('save');
-    const market = screen.getByRole('button', { name: /^Market context/ });
-    expect(market).toHaveAttribute('aria-expanded', 'false');
-    expect(market).toHaveTextContent('Nothing added');
-    fireEvent.click(market);
+    goTo('context');
     type('Timeframe', '15m');
     type('Session', 'London');
-    fireEvent.click(market);
-    // Folded, it says what it holds, and it still holds it.
-    expect(market).toHaveAttribute('aria-expanded', 'false');
-    expect(market).toHaveTextContent('15m · London');
-    fireEvent.click(market);
-    expect(screen.getByLabelText('Timeframe')).toHaveValue('15m');
+    // Entry-time context lives in Entry Context; Save holds no context fields.
+    const context = stepSection('context');
+    expect(within(context).getByLabelText('Timeframe')).toHaveValue('15m');
+    expect(within(stepSection('details')).queryByLabelText('Timeframe')).toBeNull();
+    expect(within(stepSection('details')).queryByLabelText('Notes')).toBeNull();
+    expect(within(stepSection('details')).queryByLabelText('Chart link')).toBeNull();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({ timeframe: '15m', session: 'London' });

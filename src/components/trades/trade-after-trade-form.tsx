@@ -38,7 +38,7 @@ import {
 } from '@/lib/dashboard/date-range-presentation';
 import { generateId } from '@/lib/identifiers';
 import { calendarDateIn } from '@/lib/time';
-import { CONFIDENCE_LEVELS, confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
+import { confidenceLevelKey, type OutcomeValue } from '@/lib/trades/constants';
 import { HISTORICAL_EXIT_LIMIT } from '@/lib/trades/schemas';
 import { cn } from '@/lib/utils';
 import { createCompletedTradeAction } from '@/server/actions/trades';
@@ -95,28 +95,26 @@ import {
 import { hasStaleSelection, staleSelections } from './stale-selection';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
-  Chip,
   ChoiceGroup,
   Disclosure,
   FieldError,
   Helper,
   InlineAction,
-  Legend,
   Notice,
   StateText,
   Tag,
-  TextAreaField,
   TextField,
   type ChoiceTone,
 } from './trade-at-entry-controls';
 import { TradeChoiceList } from './trade-choice-list';
+import { TradeEmotionFields } from './trade-emotion-fields';
+import { TradeEntryContextStep } from './trade-entry-context-step';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import { DiscardDraftAction } from './trade-recording-draft-status';
 import type { RecordingSaveControls } from './trade-recording-form';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
-import { groupEmotionCatalog } from './trade-recording-primitives';
 import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
@@ -207,7 +205,7 @@ function fieldStep(field: AfterTradeField): number {
     case 'plan':
       return STEP_INDEX.plan;
     case 'context':
-      return STEP_INDEX.details;
+      return STEP_INDEX.context;
     default:
       return STEP_INDEX.trade;
   }
@@ -392,7 +390,6 @@ export function TradeAfterTradeForm({
   const t = useTranslations('trades');
   const c = useTranslations('trades.create.recording.contractEntry');
   const a = useTranslations('trades.create.recording.contractAfter');
-  const cx = useTranslations('trades.create.recording.contractEntry.context');
   const r = useTranslations('trades.create.replay');
   const locale = useLocale();
   const router = useRouter();
@@ -1032,8 +1029,12 @@ export function TradeAfterTradeForm({
           : null,
       priceLevelsRecorded ? a('steps.groups.price') : null,
     ]),
-    context: joinParts(analysisLines),
-    details: contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
+    context: joinParts([
+      ...analysisLines,
+      contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
+    ]),
+    // The Save step holds no answers of its own any more: it is the read-back.
+    details: null,
   };
   const missingRequirements = requirements.filter(
     (item) => !item.done || visibleErrors[item.field] !== undefined,
@@ -1192,7 +1193,7 @@ export function TradeAfterTradeForm({
         open={emotionsOpen[phase]}
         onToggle={() => setEmotionsOpen((current) => ({ ...current, [phase]: !current[phase] }))}
       >
-        <EmotionFields
+        <TradeEmotionFields
           phase={phase}
           answer={answer}
           legend={legend}
@@ -1807,63 +1808,42 @@ export function TradeAfterTradeForm({
                 }
               />
 
-              {/* Entry mindset: how sure the trader was, and how they felt. */}
-              <GroupCard
-                title={a('steps.cards.mindset')}
-                aside={<StateText>{a('steps.optional')}</StateText>}
-              >
-                <ChoiceGroup
-                  idPrefix="after-confidence"
-                  legend={a('confidence.label')}
-                  value={draft.confidence === null ? null : String(draft.confidence)}
-                  status={c('notAnswered')}
-                  columns={5}
-                  compact
-                  fit="split"
-                  aside={
-                    <InlineAction
-                      ariaLabel={c('confidence.removeAria')}
-                      onClick={() => apply((current) => setConfidence(current, null))}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  }
-                  onChange={(value) =>
-                    apply((current) => setConfidence(current, Number.parseInt(value, 10)))
-                  }
-                  options={CONFIDENCE_LEVELS.map((level) => ({
-                    value: String(level.value),
-                    label: t(`create.confidence.level.${level.key}`),
-                  }))}
-                />
-                <Helper>{a('confidence.hint')}</Helper>
-                <div className="border-border border-t pt-1">{emotionQuestion('emotions')}</div>
-              </GroupCard>
+              {/*
+                CANONICAL ENTRY CONTEXT & EVIDENCE, next in this task's fourth
+                step: what the trader knew, thought and felt at entry, as
+                remembered. Timeframe, session, notes and the chart link moved
+                here from the Save step — they are entry-time context.
+              */}
+              <TradeEntryContextStep
+                mode="after_trade"
+                idPrefix="after"
+                confidence={draft.confidence}
+                emotions={draft.emotions}
+                catalog={options.emotionCatalog}
+                values={draft.context}
+                canDeselectEmotion={(key) => canDeselectEmotion(draft.emotions, key)}
+                onConfidence={(value) => apply((current) => setConfidence(current, value))}
+                onToggleEmotion={(key) =>
+                  apply((current) => toggleEmotion(current, 'emotions', key))
+                }
+                onNoEmotions={() => apply((current) => answerNoEmotions(current, 'emotions'))}
+                onRemoveEmotions={() =>
+                  apply((current) => removeEmotionsAnswer(current, 'emotions'))
+                }
+                onChange={(patch) =>
+                  apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+                }
+              />
 
+              {/*
+                AFTER THE TRADE: Post-Trade Emotion, separate from Entry Emotion.
+                It stays on this task step until After-Trade Context is built.
+              */}
               <GroupCard
                 title={a('steps.cards.afterTrade')}
                 aside={<StateText>{a('steps.optional')}</StateText>}
               >
                 {emotionQuestion('postTradeEmotions')}
-              </GroupCard>
-
-              {/* The thesis belongs with the read on the trade, not with details. */}
-              <GroupCard
-                title={a('steps.cards.thesis')}
-                aside={<StateText>{a('steps.optional')}</StateText>}
-              >
-                <TextAreaField
-                  id="after-context-reason"
-                  label={cx('reason')}
-                  value={draft.context.reason}
-                  onChange={(reason) =>
-                    apply((current) => ({
-                      ...current,
-                      context: { ...current.context, reason },
-                    }))
-                  }
-                  placeholder={cx('reasonPlaceholder')}
-                />
               </GroupCard>
             </>,
           )}
@@ -1873,12 +1853,6 @@ export function TradeAfterTradeForm({
             'details',
             'gap-6',
             <>
-              <ContextFields
-                draft={draft}
-                onChange={(patch) =>
-                  apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
-                }
-              />
               {/*
                 THE FINAL READ-BACK, WHERE THERE IS NOTHING ELSE SAYING IT. On
                 a wide screen the rail already restates every step beside the
@@ -2993,226 +2967,6 @@ function ExitHistoryFields({
           {a('exits.discrepancy', discrepancy)}
         </Notice>
       )}
-    </div>
-  );
-}
-
-function EmotionFields({
-  phase,
-  answer,
-  legend,
-  hint,
-  removeAria,
-  catalog,
-  showLastOneHint,
-  onToggle,
-  onNone,
-  onRemove,
-}: {
-  phase: EmotionPhase;
-  answer: AfterTradeDraft['emotions'];
-  legend: string;
-  hint?: string | undefined;
-  removeAria: string;
-  catalog: TradeCreateOptions['emotionCatalog'];
-  showLastOneHint: boolean;
-  onToggle: (key: string) => void;
-  onNone: () => void;
-  onRemove: () => void;
-}) {
-  const t = useTranslations('trades');
-  const c = useTranslations('trades.create.recording.contractEntry');
-  return (
-    <fieldset className="min-w-0" data-emotions-phase={phase} data-emotions-answer={answer.answer}>
-      <Legend
-        aside={
-          answer.answer === 'unanswered' ? (
-            <StateText>{c('notAnswered')}</StateText>
-          ) : (
-            <InlineAction ariaLabel={removeAria} onClick={onRemove}>
-              {c('removeAnswer')}
-            </InlineAction>
-          )
-        }
-      >
-        {/* The disclosure above already shows the question; the legend still names the group. */}
-        <span className="sr-only">{legend}</span>
-      </Legend>
-      {hint === undefined ? null : <Helper>{hint}</Helper>}
-      {/*
-        ONE CALM LIST, NOT A TAXONOMY. The groups still carry their meaning and
-        their order, but they read as quiet captions above larger choices
-        rather than as fields of a database record.
-      */}
-      <div className="mt-3 grid min-w-0 gap-x-8 gap-y-4 min-[560px]:grid-cols-2">
-        {groupEmotionCatalog(catalog).map((group) => (
-          <div key={group.key} className="flex min-w-0 flex-col gap-2">
-            <p className="text-subtle-foreground text-xs font-medium">
-              {t(`create.recording.emotionGroups.${group.key}`)}
-            </p>
-            <div className="flex min-w-0 flex-wrap gap-2">
-              {group.emotions.map((emotion) => (
-                <Chip
-                  key={emotion.key}
-                  size="lg"
-                  selected={answer.answer === 'selected' && answer.keys.includes(emotion.key)}
-                  onClick={() => onToggle(emotion.key)}
-                >
-                  {t(`emotions.${emotion.key}`)}
-                </Chip>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="border-border mt-4 flex min-w-0 flex-wrap items-center gap-3 border-t pt-4">
-        <Chip size="lg" selected={answer.answer === 'none'} onClick={onNone}>
-          {c('emotions.none')}
-        </Chip>
-      </div>
-      <p aria-live="polite" className="text-muted-foreground mt-2 text-sm empty:hidden">
-        {showLastOneHint ? c('emotions.lastOne') : ''}
-      </p>
-    </fieldset>
-  );
-}
-
-function ContextFields({
-  draft,
-  onChange,
-}: {
-  draft: AfterTradeDraft;
-  onChange: (patch: Partial<AfterTradeDraft['context']>) => void;
-}) {
-  const c = useTranslations('trades.create.recording.contractEntry.context');
-  const a = useTranslations('trades.create.recording.contractAfter');
-  const summary = useTranslations('trades.create.recording.contractEntry.summary');
-  /*
-    FOLDED GROUPS, EACH SAYING WHAT IS IN IT. The last step is where a trader
-    finishes, not another form to work through, so every group starts closed
-    behind a summary of its own values. A group holding an error opens itself:
-    nothing that stops a Save is ever folded away. Price levels are not here:
-    they belong to Plan & Risk, and are asked on the Plan step.
-  */
-  const preview = (value: string) =>
-    value.trim().length > 60 ? `${value.trim().slice(0, 60)}…` : value.trim();
-  const groups = [
-    {
-      key: 'market' as const,
-      filled: [draft.context.timeframe, draft.context.session, draft.context.tradingviewUrl],
-      summary: [
-        draft.context.timeframe.trim(),
-        draft.context.session.trim(),
-        draft.context.tradingviewUrl.trim() === '' ? '' : c('chart'),
-      ],
-      errors: 0,
-      fields: (
-        <div className="flex min-w-0 flex-col gap-4 pb-2">
-          <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-            <TextField
-              id="after-context-timeframe"
-              label={c('timeframe')}
-              value={draft.context.timeframe}
-              onChange={(timeframe) => onChange({ timeframe })}
-              placeholder="15m"
-            />
-            <TextField
-              id="after-context-session"
-              label={c('session')}
-              value={draft.context.session}
-              onChange={(session) => onChange({ session })}
-              placeholder="London"
-            />
-          </div>
-          <TextField
-            id="after-context-chart"
-            label={c('chart')}
-            value={draft.context.tradingviewUrl}
-            onChange={(tradingviewUrl) => onChange({ tradingviewUrl })}
-            inputMode="url"
-            placeholder="https://www.tradingview.com/x/…"
-          />
-        </div>
-      ),
-    },
-    {
-      key: 'notes' as const,
-      filled: [draft.context.notes],
-      summary: [preview(draft.context.notes)],
-      errors: 0,
-      fields: (
-        <div className="flex min-w-0 flex-col gap-4 pb-2">
-          <TextAreaField
-            id="after-context-notes"
-            label={c('notes')}
-            value={draft.context.notes}
-            onChange={(notes) => onChange({ notes })}
-          />
-        </div>
-      ),
-    },
-  ];
-
-  return (
-    <div className="border-border divide-border flex min-w-0 flex-col divide-y rounded-lg border">
-      {groups.map((group) => {
-        const count = group.filled.filter((value) => value.trim() !== '').length;
-        return (
-          <ContextGroup
-            key={group.key}
-            id={`after-details-${group.key}`}
-            title={a(`steps.groups.${group.key}`)}
-            summary={
-              group.errors > 0 ? (
-                <span className="text-destructive inline-flex min-w-0 items-center gap-1.5">
-                  <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-                  {summary('hasErrors', { count: group.errors })}
-                </span>
-              ) : count === 0 ? (
-                summary('contextEmpty')
-              ) : (
-                group.summary.filter((part) => part !== '').join(' · ')
-              )
-            }
-            forceOpen={group.errors > 0}
-          >
-            {group.fields}
-          </ContextGroup>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
- * One Step 5 group: folded behind its own summary, and never closed over an
- * error the trader has to reach.
- */
-function ContextGroup({
-  id,
-  title,
-  summary,
-  forceOpen,
-  children,
-}: {
-  id: string;
-  title: string;
-  summary: ReactNode;
-  forceOpen: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="min-w-0 px-1 py-1">
-      <Disclosure
-        id={id}
-        title={title}
-        summary={summary}
-        open={open || forceOpen}
-        onToggle={() => setOpen((current) => !current)}
-      >
-        {children}
-      </Disclosure>
     </div>
   );
 }
