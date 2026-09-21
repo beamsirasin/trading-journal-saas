@@ -27,6 +27,7 @@ import { actualR } from '@/lib/calc/trade';
 import { reconcileExitHistory, traderOutcomeContradictsPnl } from '@/lib/trades/add-trade-contract';
 import type { ExitHistoryCompleteness, OutcomeValue } from '@/lib/trades/constants';
 import { HISTORICAL_EXIT_LIMIT, type CreateCompletedTradeSchema } from '@/lib/trades/schemas';
+import { isValidTradingViewUrl } from '@/lib/trades/validation';
 import type {
   TradeCreateOptions,
   TradeCreateSetupOption,
@@ -534,6 +535,7 @@ export const AFTER_TRADE_STATIC_FIELDS = [
   'contextEntryPrice',
   'contextStopPrice',
   'contextPositionSize',
+  'tradingviewUrl',
 ] as const;
 export type AfterTradeStaticField = (typeof AFTER_TRADE_STATIC_FIELDS)[number];
 export type AfterTradeExitField = 'pnl' | 'closedPercent' | 'exitedAt' | 'price';
@@ -555,6 +557,7 @@ export function afterTradeFieldSection(field: AfterTradeField): AfterTradeSectio
     case 'contextEntryPrice':
     case 'contextStopPrice':
     case 'contextPositionSize':
+    case 'tradingviewUrl':
       return 'context';
     default:
       return 'trade';
@@ -586,6 +589,8 @@ export type AfterTradeErrorCode =
   | 'fixed_target_requires_value'
   | 'matched_requires_risk_at_entry'
   | 'actual_risk_equals_risk_at_entry'
+  /** The server's own chart-link rule, checked before Save rather than after it. */
+  | 'invalid_tradingview_url'
   /** Server-side only: a field the server refused that no specific code describes. */
   | 'not_accepted';
 
@@ -776,6 +781,14 @@ export function validateAfterTradeDraft(
   if (entry === 'invalid') errors.contextEntryPrice = 'invalid_price';
   if (stop === 'invalid') errors.contextStopPrice = 'invalid_price';
   if (size === 'invalid') errors.contextPositionSize = 'invalid_price';
+  // The same rule the Save schema applies (HTTPS, tradingview.com): malformed input
+  // is an error as entered, caught here so it is named at the link (UX Rules §6.1).
+  if (
+    draft.context.tradingviewUrl.trim() !== '' &&
+    !isValidTradingViewUrl(draft.context.tradingviewUrl)
+  ) {
+    errors.tradingviewUrl = 'invalid_tradingview_url';
+  }
 
   const reconciliation = reconcileExitHistory({
     completeness: draft.completeness === 'unanswered' ? null : draft.completeness,
@@ -873,6 +886,7 @@ export function orderedAfterTradeErrorFields(
     'contextEntryPrice',
     'contextStopPrice',
     'contextPositionSize',
+    'tradingviewUrl',
   ];
   return order.filter((field) => errors[field] !== undefined);
 }

@@ -2285,6 +2285,46 @@ describe('exit history', () => {
   });
 });
 
+describe('a malformed chart link', () => {
+  it('blocks Save on Context, at the link, with the server’s own rule — as Record Open does', async () => {
+    renderForm();
+    fillIdentity();
+    goTo('context');
+    type('Chart link', 'https://example.com/not-tradingview');
+    save();
+    await waitFor(() => expect(currentStep()).toBe('context'));
+    await waitFor(() => expect(screen.getByLabelText('Chart link')).toHaveFocus());
+    expect(screen.getByLabelText('Chart link')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter an HTTPS TradingView URL.')).toBeVisible();
+    expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
+
+    // A TradingView link, and the Save goes through unchanged.
+    type('Chart link', 'https://www.tradingview.com/x/abc12345/');
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalledTimes(1));
+    expect(payload()).toMatchObject({ tradingviewUrl: 'https://www.tradingview.com/x/abc12345/' });
+  });
+
+  it('names the link when the server refuses it, as a backstop', async () => {
+    createCompletedTradeActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: 'validation_error',
+        fieldErrors: { tradingviewUrl: ['invalid_tradingview_url'] },
+      },
+    });
+    renderForm();
+    fillIdentity();
+    goTo('context');
+    // Valid to the client; the server has the last word.
+    type('Chart link', 'https://www.tradingview.com/x/abc12345/');
+    save();
+    await waitFor(() => expect(currentStep()).toBe('context'));
+    expect(screen.getByLabelText('Chart link')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter an HTTPS TradingView URL.')).toBeVisible();
+  });
+});
+
 describe('after Save', () => {
   it('offers Review Trade or Done, never navigating on its own, and clears the draft', async () => {
     renderForm();

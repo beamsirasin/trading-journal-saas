@@ -182,6 +182,8 @@ function fieldTargetId(field: AfterTradeField): string {
       return tradeDetailsRowId('after', field);
     case 'actualRisk':
       return 'after-actual-risk-amount';
+    case 'tradingviewUrl':
+      return 'after-context-chart';
     default:
       return `after-${field}`;
   }
@@ -231,6 +233,7 @@ const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
   contextEntryPrice: 'contextEntryPrice',
   contextStopPrice: 'contextStopPrice',
   contextPositionSize: 'contextPositionSize',
+  tradingviewUrl: 'tradingviewUrl',
 };
 
 /** Inside the step being shown, rather than one kept mounted but hidden. */
@@ -257,6 +260,8 @@ function serverFieldErrorCode(field: AfterTradeField): AfterTradeErrorCode {
     case 'contextStopPrice':
     case 'contextPositionSize':
       return 'invalid_price';
+    case 'tradingviewUrl':
+      return 'invalid_tradingview_url';
     case 'risk':
     case 'actualRisk':
     case 'targetProfit':
@@ -436,6 +441,8 @@ export function TradeAfterTradeForm({
         return draft.context.stopPrice;
       case 'contextPositionSize':
         return draft.context.positionSize;
+      case 'tradingviewUrl':
+        return draft.context.tradingviewUrl;
       default:
         return '';
     }
@@ -486,6 +493,8 @@ export function TradeAfterTradeForm({
         return a('errors.matchedRequiresRisk');
       case 'actual_risk_equals_risk_at_entry':
         return a('errors.actualRiskEqualsRiskAtEntry');
+      case 'invalid_tradingview_url':
+        return t('validation.invalidTradingViewUrl');
       case 'not_accepted':
         return c('errors.notAccepted');
     }
@@ -1374,6 +1383,7 @@ export function TradeAfterTradeForm({
             emotions={draft.emotions}
             catalog={options.emotionCatalog}
             values={draft.context}
+            errors={{ tradingviewUrl: errorText('tradingviewUrl') }}
             canDeselectEmotion={(key) => canDeselectEmotion(draft.emotions, key)}
             onConfidence={(value) => apply((current) => setConfidence(current, value))}
             onToggleEmotion={(key) => apply((current) => toggleEmotion(current, 'emotions', key))}
