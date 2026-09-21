@@ -1,6 +1,10 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 
 import { validateTestDatabaseEnvironment } from '../scripts/test-database-safety.mjs';
+import { savedSymbols, workspaces } from '../src/server/db/schema';
 import { loginAs } from './support/authenticate';
 import { E2E_SKIP_REASON, hasE2eDatabase } from './support/env';
 import { provisionVerifiedUser } from './support/provision-user';
@@ -107,13 +111,156 @@ test.describe('After Trade Step 1 sheets', () => {
   });
 });
 
-async function signIn(page: Page, prefix: string) {
+/*
+  THE SYMBOL PICKER WITH A PHONE KEYBOARD UP.
+
+  iOS Safari, and Chrome on Android by default, lay the keyboard OVER the page:
+  the layout viewport keeps its height, only the visual viewport shrinks, and a
+  sheet fixed to the bottom of the layout viewport sits behind the keyboard.
+  Measured before the fix, a 390x844 phone with one saved symbol had its search
+  field at 571-619px under a keyboard whose top edge was at 508px, and with a
+  twelve-symbol library the last rows could never be scrolled above it.
+
+  No desktop engine raises a real keyboard, so this models the one the page
+  sees: `window.visualViewport` is replaced by a stand-in whose height the test
+  shrinks by a real keyboard's height (336px on a 390x844 iPhone, 260px on a
+  375x667 one, suggestion bar included), in a mobile-emulated Chromium. It
+  judges the sheet the way a trader would: is the field being typed into above
+  the keyboard, can every row be scrolled above it, and does the sheet go back
+  where it was when the keyboard leaves.
+*/
+const PHONES = [
+  { name: '390x844', width: 390, height: 844, keyboard: 336 },
+  { name: '375x667', width: 375, height: 667, keyboard: 260 },
+] as const;
+const LIBRARY = [
+  'XAUUSD',
+  'NAS100',
+  'US30.cash',
+  'GER40',
+  'EURUSD',
+  'GBPUSD',
+  'USDJPY',
+  'BTCUSD',
+  'ETHUSD',
+  'SPX500',
+  'XAGUSD',
+  'AUDUSD',
+];
+
+test.describe('After Trade Symbol sheet with a phone keyboard up', () => {
+  test.skip(!hasE2eDatabase, E2E_SKIP_REASON);
+  test.use({ isMobile: true, hasTouch: true });
+
+  for (const phone of PHONES) {
+    for (const size of [1, LIBRARY.length]) {
+      test(`keeps search and every row above the keyboard at ${phone.name}, ${size} saved`, async ({
+        page,
+      }) => {
+        test.skip(test.info().project.name !== 'chromium', 'One engine is enough for geometry.');
+        test.setTimeout(120_000);
+        page.setDefaultTimeout(15_000);
+        await modelKeyboard(page);
+        await page.setViewportSize({ width: phone.width, height: phone.height });
+        await signIn(page, 'after-trade-keyboard', LIBRARY.slice(0, size));
+        await page.goto(ROUTE);
+        await expect(page.locator('[data-after-trade-form]')).toBeVisible();
+
+        const sheet = await openConcept(page, 'Symbol');
+        const resting = await settledBox(sheet);
+        const search = sheet.getByRole('combobox', { name: 'Symbol' });
+        await search.focus();
+        await page.evaluate((height) => window.__keyboard(height), phone.keyboard);
+        const line = phone.height - phone.keyboard;
+        const lifted = await settledBox(sheet);
+        await shot(page, `keyboard-${phone.width}-${size}`);
+
+        // The sheet sits on the keyboard, whole, inside what is visible.
+        expect(Math.abs(lifted.y + lifted.height - line), 'on the keyboard').toBeLessThanOrEqual(1);
+        expect(lifted.y, 'never above the top of the screen').toBeGreaterThanOrEqual(0);
+        // The field being typed into is above the keyboard, and still focused.
+        const field = (await search.boundingBox())!;
+        expect(field.y + field.height, 'search above the keyboard').toBeLessThanOrEqual(line);
+        expect(field.y).toBeGreaterThanOrEqual(0);
+        await expect(search).toBeFocused();
+        // Every row can be scrolled above the keyboard, inside the sheet.
+        const body = sheet.locator('[data-sheet-body]');
+        await body.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+        const last = (await sheet.locator('[data-symbol-option]').last().boundingBox())!;
+        expect(last.y + last.height, 'last row reachable').toBeLessThanOrEqual(line);
+        // The page behind never scrolls to make room.
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+        // A typed symbol with no match offers Add above the keyboard too.
+        await search.fill('ZZTEST');
+        const add = (await sheet.getByRole('button', { name: /^Add/ }).boundingBox())!;
+        expect(add.y + add.height, 'Add above the keyboard').toBeLessThanOrEqual(line);
+        await search.fill('');
+
+        // Keyboard dismissed: the sheet goes back exactly where it was.
+        await page.evaluate(() => window.__keyboard(0));
+        const back = await settledBox(sheet);
+        expectAnchored(back, phone.height);
+        expect(Math.round(back.height)).toBe(Math.round(resting.height));
+      });
+    }
+  }
+});
+
+declare global {
+  interface Window {
+    __keyboard: (height: number) => void;
+  }
+}
+
+/** Replace `visualViewport` with one the test can shrink, as a keyboard does. */
+async function modelKeyboard(page: Page) {
+  await page.addInitScript(() => {
+    const viewport = new EventTarget();
+    let keyboard = 0;
+    Object.defineProperties(viewport, {
+      height: { get: () => window.innerHeight - keyboard },
+      width: { get: () => window.innerWidth },
+      offsetTop: { get: () => 0 },
+      offsetLeft: { get: () => 0 },
+      pageTop: { get: () => window.scrollY },
+      pageLeft: { get: () => window.scrollX },
+      scale: { get: () => 1 },
+    });
+    Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => viewport });
+    window.__keyboard = (height: number) => {
+      keyboard = height;
+      viewport.dispatchEvent(new Event('resize'));
+    };
+  });
+}
+
+async function signIn(page: Page, prefix: string, library: readonly string[] = []) {
   const { testUrl } = validateTestDatabaseEnvironment();
   const user = await provisionVerifiedUser(testUrl, {
-    email: `${prefix}-${Date.now()}@example.test`,
+    email: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.test`,
     password: 'Correct-Horse9!',
     name: 'After Trade Sheets',
   });
+  if (library.length > 0) {
+    const client = postgres(testUrl, { max: 1 });
+    try {
+      const db = drizzle(client, { schema: { savedSymbols, workspaces } });
+      const [workspace] = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.personalOwnerUserId, user.id));
+      const now = Date.now();
+      await db.insert(savedSymbols).values(
+        library.map((symbol, index) => ({
+          workspaceId: workspace!.id,
+          symbol,
+          createdAt: new Date(now - index * 1000),
+        })),
+      );
+    } finally {
+      await client.end();
+    }
+  }
   await loginAs(page, 'en', user);
 }
 

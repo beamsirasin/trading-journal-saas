@@ -19,17 +19,63 @@ import {
 } from '@/components/ui/sheet';
 import { useIsDesktopViewport } from '@/hooks/use-is-desktop-viewport';
 
-function useKeyboardObscuresViewport() {
-  const [obscured, setObscured] = useState(false);
+/**
+ * WHAT A PHONE KEYBOARD LEAVES VISIBLE, while one is up.
+ *
+ * iOS Safari, and Chrome on Android by default, lay the keyboard OVER the
+ * page: the layout viewport keeps its height and only the visual viewport
+ * shrinks. A sheet fixed to the bottom of the layout viewport then sits behind
+ * the keyboard — measured on a 390x844 phone, the Symbol search at 571-619px
+ * under a keyboard whose top was at 508px, and the last rows of a longer
+ * library never scrollable above it. So while a keyboard is up the sheet is
+ * lifted to the bottom of what is visible and capped to its height.
+ *
+ * `bottom` is how far the visible region's bottom sits above the layout
+ * viewport's — the keyboard's height, less any distance the browser has
+ * panned the page (`offsetTop`) to show the focused field — so it stays right
+ * whether or not the browser pans. A browser that shrinks the layout viewport
+ * with the keyboard instead reports no difference, and nothing moves.
+ *
+ * `null` while no keyboard is up: 140px, so a collapsing URL bar during a
+ * scroll never counts as one.
+ */
+interface KeyboardViewport {
+  /** Distance from the layout viewport bottom to the visible bottom. */
+  readonly bottom: number;
+  /** Height left visible above the keyboard. */
+  readonly height: number;
+  /** The layout viewport height, which the sheet floor is a fraction of. */
+  readonly layout: number;
+}
+
+function useKeyboardViewport(): KeyboardViewport | null {
+  const [visible, setVisible] = useState<KeyboardViewport | null>(null);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (viewport == null) return;
-    const read = () => setObscured(window.innerHeight - viewport.height > 140);
+    const read = () => {
+      if (window.innerHeight - viewport.height <= 140) {
+        setVisible(null);
+        return;
+      }
+      const bottom = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setVisible((current) =>
+        current?.bottom === bottom &&
+        current.height === viewport.height &&
+        current.layout === window.innerHeight
+          ? current
+          : { bottom, height: viewport.height, layout: window.innerHeight },
+      );
+    };
     read();
     viewport.addEventListener('resize', read);
-    return () => viewport.removeEventListener('resize', read);
+    viewport.addEventListener('scroll', read);
+    return () => {
+      viewport.removeEventListener('resize', read);
+      viewport.removeEventListener('scroll', read);
+    };
   }, []);
-  return obscured;
+  return visible;
 }
 
 /**
@@ -81,7 +127,8 @@ export function TradeAdaptiveOverlay({
 }) {
   const desktop = useIsDesktopViewport();
   const focused = size === 'focused';
-  const keyboardOpen = useKeyboardObscuresViewport();
+  const keyboard = useKeyboardViewport();
+  const keyboardOpen = keyboard !== null;
   const wasOpen = useRef(false);
 
   useEffect(() => {
@@ -138,6 +185,21 @@ export function TradeAdaptiveOverlay({
         side="bottom"
         closeLabel={closeLabel}
         className={cn('max-h-[92dvh] gap-0 rounded-t-2xl', focused && 'min-h-[45dvh]')}
+        /*
+          Sitting on the keyboard rather than behind it: the same ceiling and
+          floor, measured against what the keyboard leaves visible.
+        */
+        style={
+          keyboard === null
+            ? undefined
+            : {
+                bottom: keyboard.bottom,
+                maxHeight: keyboard.height * 0.92,
+                ...(focused
+                  ? { minHeight: Math.min(keyboard.layout * 0.45, keyboard.height * 0.92) }
+                  : {}),
+              }
+        }
       >
         <SheetHeader className="border-border shrink-0 border-b px-4 pt-4 pr-14 pb-3">
           <SheetTitle>{title}</SheetTitle>
@@ -147,7 +209,7 @@ export function TradeAdaptiveOverlay({
           className={cn(
             'min-h-0 flex-1 overflow-y-auto px-4 pt-4',
             // With no footer strip, the body is what meets the home indicator.
-            footer === undefined || keyboardOpen
+            footer === undefined && !keyboardOpen
               ? 'pb-[max(1rem,env(safe-area-inset-bottom))]'
               : 'pb-4',
           )}
