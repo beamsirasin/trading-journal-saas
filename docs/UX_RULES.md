@@ -970,14 +970,18 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
 
 1. **Six canonical stages.** Each stage owns its questions, wherever a flow presents it:
 
-   | Stage                            | Questions                                                                                                                                                                               |
-   | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | **1 — Trade Details**            | Account, Symbol, Direction, Entry time                                                                                                                                                  |
-   | **2 — Plan & Risk**              | Risk at Entry, with the recording mode's Actual Risk follow-up beside it (§3.4, §12.4); Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — folded as context |
-   | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                                                                       |
-   | **4 — Entry Context & Evidence** | Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, notes                                                                                                        |
-   | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                                                          |
-   | **6 — After-Trade Context**      | Capture-only context about the close, such as Post-Trade Emotion                                                                                                                        |
+   | Stage                            | Questions                                                                                                                                     |
+   | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+   | **1 — Trade Details**            | Account, Symbol, Direction, Entry time                                                                                                        |
+   | **2 — Plan & Risk**              | Risk at Entry — the intended 1R before entry; Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — folded as context |
+   | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                             |
+   | **4 — Entry Context & Evidence** | Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, the Trade's notes                                                  |
+   | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                |
+   | **6 — After-Trade Context**      | Actual Risk — Matched / Different / Don't know (§12.4); Post-Trade Emotion                                                                    |
+
+   Risk at Entry and Actual Risk are different moments — what was intended before entry, and what
+   execution actually carried — and are never asked together in one stage _(contract decision 51)_. The Trade's notes belong to Entry Context & Evidence and are not reused as an after-trade
+   note (Appendix A).
 
 2. **A stage decides meaning; a flow decides order.** Canonical order and task presentation order
    may differ. Moving a stage in a flow never changes what its answers mean, which defaults apply,
@@ -996,10 +1000,12 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    - Stages 1–4 are the Trade's existing, preserved context. They are shown as read-only context,
      never as a form to fill again. Changing one is an ordinary edit of the saved Trade that keeps
      its capture origin and adds revision metadata (§4.7, §11.11).
-   - Exit & Result follows §13: a live exit's scope is required, a Part exit records a Partial
-     Close with no whole-Trade result, and the Trade reaches Closed only through the explicit All
-     Remaining / Close Remaining confirmation.
-   - After-Trade Context and the whole-Trade result belong to the close that reaches Closed.
+   - Exit & Result follows §13: a live exit's scope is required, and the Trade reaches Closed only
+     through the explicit All Remaining / Close Remaining confirmation.
+   - A Part exit stays within Exit & Result: it records a Partial Close and asks no whole-Trade
+     Final Net P&L or Trader Outcome, and the flow ends there with the Trade Partially Closed.
+   - After-Trade Context is reached only when All Remaining makes the Trade Closed; it and the
+     whole-Trade result belong to that close.
    - A close that reaches Closed shows Trade Saved → Review Trade / Done (§5.9). Work survives
      routine dismissal; durable reload recovery is not claimed (§5.4).
 6. **Record Closed Trade — Trade → Result → Plan → Setup → Entry Context → After-Trade Context**,
@@ -1011,12 +1017,12 @@ new state or requirement, and every rule in §1–§19 still applies inside ever
    Closed Trades only, entered by the trader's choice (§10, §14).
 8. **Exit Plan inheritance across stages** follows §11.6 and §12.6 unchanged:
    - **Record Open Trade:** while the Exit Plan is still in its inherited state, the selected
-     Strategy's default is inherited automatically and visibly, and changing the Strategy updates
-     the inherited plan. Because the Strategy is chosen in Setup & Checklist and the Exit Plan is
-     shown in Plan & Risk, the update is stated where the Strategy is chosen — for example "Exit
-     Plan: From Strategy: <name>" — and Plan & Risk shows the plan as inherited. Once the trader
-     explicitly overrides the Exit Plan, Strategy defaults are no longer followed until an explicit
-     restore such as "Use strategy default".
+     Strategy's default is inherited automatically and visibly, and changing the Strategy may
+     update the inherited plan. Because the Strategy is chosen in Setup & Checklist and the Exit
+     Plan is shown in Plan & Risk, the update MUST be announced visibly on Setup & Checklist, where
+     the Strategy is chosen — for example "Exit Plan: From Strategy: <name>" — and Plan & Risk shows
+     the plan as inherited. Once the trader explicitly overrides the Exit Plan, a Strategy change
+     no longer changes it, until an explicit restore such as "Use strategy default".
    - **Record Closed Trade:** no Strategy or Exit Plan default is ever applied or offered
      retrospectively.
 9. **The Step 1 baseline is protected.** Trade Details keeps its current interaction baseline —
@@ -1042,19 +1048,21 @@ The UX/product boundary questions raised in v1 of this document are resolved by 
 decisions 24–40 and applied above. What remains is **deliberately deferred**. None of these items
 blocks visual design or interaction design; each has a safe rule to follow meanwhile.
 
-| Item                                                          | Deferred to                 | Meanwhile                                                                                                                                                                                                      |
-| ------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Final Thai copy for new concepts                              | UX/copy prototyping         | Follow the glossary; treat proposed Thai terms as unvalidated (§9.8).                                                                                                                                          |
-| Deviation Type / Reason taxonomy                              | UX prototyping              | Keep the provisional options changeable, with "Other"; never freeze them into a rigid definition (§8.12) _(contract §18)_.                                                                                     |
-| Cancel Trade creation / transition UX                         | After Add Trade redesign v1 | Canceled stays a lifecycle state; no Cancel flow is designed (§13.12) _(contract §20)_.                                                                                                                        |
-| Durable reload recovery for Record Exit, Final Close, editing | Later than v1               | Preserve work across routine dismissal during the interaction; claim no reload recovery (§5.4) _(contract §23)_.                                                                                               |
-| Automatic draft-retention time (TTL)                          | Implementation policy       | Drafts stay user/workspace-scoped and are cleared by explicit sign-out after a warning (§5.11) _(contract §23)_. Current policy: an Add Trade Recording Draft untouched for 30 days is removed when next read. |
-| Price-derived context displays (distance, pips)               | Later exploration           | None required; if explored, labelled context only, never calculation authority (§8.2) _(contract §3)_.                                                                                                         |
-| Cross-device draft sync                                       | Not a requirement           | Never imply a draft is synced (§5.4) _(contract §23)_.                                                                                                                                                         |
-| After-Trade Context contents beyond Post-Trade Emotion        | Before stage 6 is built     | Hold only capture-only close context the contract already defines; never Reflection, adherence, rule checks, mistakes or System Assessment (§20.7).                                                            |
-| Attached evidence (chart images) in a Recording Draft         | Before stage 4 attachments  | Keep the TradingView link as the chart context; an upload a draft holds must not be orphaned by Discard, sign-out or retention cleanup (§5.6, §5.11).                                                          |
-| Final EN / TH copy for lifecycle stage names                  | UX/copy prototyping         | The §20.1 names fix meaning, not final copy (§9.7–§9.8).                                                                                                                                                       |
-| Astra interaction/data-integrity findings                     | Not available               | None exist in the repository and none are reconstructed; the contract and these rules are the current authorities.                                                                                             |
+| Item                                                                   | Deferred to                 | Meanwhile                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Final Thai copy for new concepts                                       | UX/copy prototyping         | Follow the glossary; treat proposed Thai terms as unvalidated (§9.8).                                                                                                                                                                                                                                                              |
+| Deviation Type / Reason taxonomy                                       | UX prototyping              | Keep the provisional options changeable, with "Other"; never freeze them into a rigid definition (§8.12) _(contract §18)_.                                                                                                                                                                                                         |
+| Cancel Trade creation / transition UX                                  | After Add Trade redesign v1 | Canceled stays a lifecycle state; no Cancel flow is designed (§13.12) _(contract §20)_.                                                                                                                                                                                                                                            |
+| Durable reload recovery for Record Exit, Final Close, editing          | Later than v1               | Preserve work across routine dismissal during the interaction; claim no reload recovery (§5.4) _(contract §23)_.                                                                                                                                                                                                                   |
+| Automatic draft-retention time (TTL)                                   | Implementation policy       | Drafts stay user/workspace-scoped and are cleared by explicit sign-out after a warning (§5.11) _(contract §23)_. Current policy: an Add Trade Recording Draft untouched for 30 days is removed when next read.                                                                                                                     |
+| Price-derived context displays (distance, pips)                        | Later exploration           | None required; if explored, labelled context only, never calculation authority (§8.2) _(contract §3)_.                                                                                                                                                                                                                             |
+| Cross-device draft sync                                                | Not a requirement           | Never imply a draft is synced (§5.4) _(contract §23)_.                                                                                                                                                                                                                                                                             |
+| After-Trade Context contents beyond Actual Risk and Post-Trade Emotion | Before stage 6 is built     | Hold only capture-only close context the contract already defines; never Reflection, adherence, rule checks, mistakes or System Assessment (§20.7).                                                                                                                                                                                |
+| A distinct after-trade note                                            | Its own later schema slice  | The Trade's notes stay in Entry Context & Evidence and are never reused for After-Trade Context (§20.1) _(contract decision 51)_.                                                                                                                                                                                                  |
+| At Entry Actual Risk under the lifecycle                               | Before stepped Record Open  | Record Open Trade (stages 1–4) never reaches After-Trade Context, yet contract §4 approves an At Entry Actual Risk answer — the visible "matches" statement and "Actual risk differed" (§3.4, §11.4). Until decided, §4, §3.4 and §11.4 stay in force, and no flow may drop that answer or store a match the trader was not shown. |
+| Attached evidence (chart images) in a Recording Draft                  | Before stage 4 attachments  | Keep the TradingView link as the chart context; an upload a draft holds must not be orphaned by Discard, sign-out or retention cleanup (§5.6, §5.11).                                                                                                                                                                              |
+| Final EN / TH copy for lifecycle stage names                           | UX/copy prototyping         | The §20.1 names fix meaning, not final copy (§9.7–§9.8).                                                                                                                                                                                                                                                                           |
+| Astra interaction/data-integrity findings                              | Not available               | None exist in the repository and none are reconstructed; the contract and these rules are the current authorities.                                                                                                                                                                                                                 |
 
 If new questions arise, record them here and stop rather than deciding them in UI (§18.6).
 
@@ -1112,7 +1120,10 @@ Implementation evidence only, recorded so redesign and migration work can find t
   - Record Closed Trade (After Trade) still presents five steps — Trade, Result, Plan, Context
     (Strategy, Setup, conditions, Confidence, Entry and Post-Trade Emotion, trade idea) and Save
     (market context, notes) — rather than §20.6's six. Its Plan step renders the shared Plan & Risk
-    stage (commit `cc4e380`), with price levels folded there.
+    stage (commit `cc4e380`), with price levels folded there, and still asks Actual Risk beside
+    Risk at Entry on that step rather than in After-Trade Context (decision 51).
+  - At Entry still asks Actual Risk ("Actual risk differed" with its visible "matches" statement)
+    beside Risk at Entry, as contract §4 approves; its lifecycle placement is open (Appendix A).
   - Close Existing Open Trade does not exist as a contract flow: closing still uses the legacy exit
     and close paths described above (§8.1, §8.10). Contract-compliant Record Exit / Final Close is a
     separate prerequisite.
