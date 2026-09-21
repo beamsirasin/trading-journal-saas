@@ -610,10 +610,27 @@ describe('After Trade — the moment and its steps', () => {
     expect(screen.getByRole('button', { name: 'Choose exit plan' })).toBeInTheDocument();
   });
 
-  it('never folds a Step 5 group over an error a blocked Save has to reach', async () => {
+  it('asks price levels once, folded on the Plan step, never again on Save', () => {
+    renderForm();
+    // Plan & Risk holds them; the last step's details no longer do. Every
+    // step stays mounted, so the hidden one is searched as hidden.
+    goTo('plan');
+    expect(within(stepSection('plan')).getByRole('button', { name: /^Price levels/ })).toBe(
+      document.getElementById('after-plan-price'),
+    );
+    expect(
+      within(stepSection('details')).queryByRole('button', {
+        name: /^Price levels/,
+        hidden: true,
+      }),
+    ).toBeNull();
+    expect(document.querySelectorAll('#after-contextEntryPrice')).toHaveLength(1);
+  });
+
+  it('never folds the price levels over an error a blocked Save has to reach', async () => {
     renderForm();
     fillIdentity();
-    goTo('save');
+    goTo('plan');
     const group = screen.getByRole('button', { name: /^Price levels/ });
     fireEvent.click(group);
     type('Entry price', '2398.5');
@@ -626,12 +643,15 @@ describe('After Trade — the moment and its steps', () => {
     fireEvent.click(group);
     // This one cannot fold: the error inside it has to stay reachable.
     expect(group).toHaveAttribute('aria-expanded', 'true');
+    // Save from elsewhere: the blocked Save brings the trader back to Plan.
+    goTo('save');
     save();
     expect(
       await screen.findByText(
         'Enter a price greater than zero, using digits and one decimal point.',
       ),
     ).toBeInTheDocument();
+    await waitFor(() => expect(currentStep()).toBe('plan'));
     await waitFor(() => expect(screen.getByLabelText('Entry price')).toHaveFocus());
     expect(createCompletedTradeActionMock).not.toHaveBeenCalled();
   });

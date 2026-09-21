@@ -93,7 +93,6 @@ import {
   type EmotionPhase,
   type RecalledConditionStatus,
 } from './after-trade-draft';
-import { createAtEntryDraft } from './at-entry-draft';
 import { hasStaleSelection, staleSelections, UNAVAILABLE_OPTION } from './stale-selection';
 import { TradeAdaptiveOverlay } from './trade-adaptive-overlay';
 import {
@@ -112,14 +111,15 @@ import {
   TextField,
   type ChoiceTone,
 } from './trade-at-entry-controls';
-import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
 import { TradeChoiceList } from './trade-choice-list';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
+import { TradePlanRiskStep, type PlanRiskField, type PlanStepId } from './trade-plan-risk-step';
 import { DiscardDraftAction } from './trade-recording-draft-status';
 import type { RecordingSaveControls } from './trade-recording-form';
 import { TradeRecordingModeChange } from './trade-recording-mode-change';
 import { groupEmotionCatalog } from './trade-recording-primitives';
+import { FoldedGroup, GroupCard } from './trade-recording-step-parts';
 import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
 import { TradeSymbolPicker } from './trade-symbol-picker';
@@ -190,6 +190,19 @@ function fieldStep(field: AfterTradeField): number {
     own disclosure handling, and is not this step map.
   */
   if (field === 'exitedAt') return STEP_INDEX.result;
+  /*
+    Price levels are part of canonical Plan & Risk, so they are asked on the
+    Plan step beside the TP price their notices compare against. The draft
+    module's own grouping still files them under context — that grouping is
+    not this step map either.
+  */
+  if (
+    field === 'contextEntryPrice' ||
+    field === 'contextStopPrice' ||
+    field === 'contextPositionSize'
+  ) {
+    return STEP_INDEX.plan;
+  }
   switch (afterTradeFieldSection(field)) {
     case 'result':
     case 'exits':
@@ -247,6 +260,31 @@ function fieldTargetId(field: AfterTradeField): string {
       return `after-${field}`;
   }
 }
+
+/**
+ * The Plan & Risk step's ids, kept as they were before the step was shared, so
+ * a blocked Save focuses exactly the control it always did (`fieldTargetId`).
+ */
+const PLAN_STEP_IDS: Readonly<Record<PlanStepId, string>> = {
+  risk: 'after-risk',
+  targetState: 'after-target',
+  targetProfit: 'after-targetProfit',
+  targetPrice: 'after-targetPrice',
+  entryPrice: 'after-contextEntryPrice',
+  stopPrice: 'after-contextStopPrice',
+  positionSize: 'after-contextPositionSize',
+  priceContextToggle: 'after-plan-price',
+};
+
+/** The Plan & Risk step's fields, as this draft names them. */
+const PLAN_STEP_FIELD: Readonly<Record<PlanRiskField, AfterTradeField>> = {
+  risk: 'risk',
+  targetProfit: 'targetProfit',
+  targetPrice: 'targetPrice',
+  entryPrice: 'contextEntryPrice',
+  stopPrice: 'contextStopPrice',
+  positionSize: 'contextPositionSize',
+};
 
 /** Server field names mapped onto the fields a trader can see and correct. */
 const SERVER_FIELD: Readonly<Record<string, AfterTradeField>> = {
@@ -794,11 +832,13 @@ export function TradeAfterTradeForm({
     draft.context.tradingviewUrl,
     draft.context.timeframe,
     draft.context.session,
+    draft.context.notes,
+  ].filter((value) => value.trim() !== '').length;
+  const priceLevelsRecorded = [
     draft.context.entryPrice,
     draft.context.stopPrice,
     draft.context.positionSize,
-    draft.context.notes,
-  ].filter((value) => value.trim() !== '').length;
+  ].some((value) => value.trim() !== '');
   const exitErrorCount = Object.keys(visibleErrors).filter(
     (field) => afterTradeFieldSection(field as AfterTradeField) === 'exits',
   ).length;
@@ -937,10 +977,6 @@ export function TradeAfterTradeForm({
   );
   const discrepancy = validation.notices.find((notice) => notice.kind === 'exit_discrepancy');
 
-  // At Entry's Exit Plan editor, shown a draft with no Strategy selected: no
-  // default exists to inherit, so nothing is ever inherited (contract §5).
-  const exitPlanView = { ...createAtEntryDraft(''), exitPlan: draft.exitPlan };
-
   /*
     WHAT EACH STEP HOLDS, IN A LINE. Read-only restatements of answers already
     given — never a derived answer. A step with nothing recorded says so.
@@ -994,6 +1030,7 @@ export function TradeAfterTradeForm({
         : draft.target.state === 'no_fixed'
           ? c('target.noFixed')
           : null,
+      priceLevelsRecorded ? a('steps.groups.price') : null,
     ]),
     context: joinParts(analysisLines),
     details: contextFilled === 0 ? null : c('summary.contextFilled', { count: contextFilled }),
@@ -1646,149 +1683,93 @@ export function TradeAfterTradeForm({
             'plan',
             'gap-4',
             <>
-              {/* Intended risk and what was really at risk read as one idea. */}
-              <GroupCard
-                title={a('steps.cards.risk')}
-                aside={<StateText>{a('steps.optional')}</StateText>}
-              >
-                <TextField
-                  id="after-risk"
-                  label={a('risk.label')}
-                  value={draft.risk}
-                  onChange={(risk) => apply((current) => ({ ...current, risk }))}
-                  suffix={currency}
-                  inputMode="decimal"
-                  figure
-                  hint={a('risk.hint')}
-                  error={errorText('risk')}
-                />
-                <div className="flex min-w-0 flex-col gap-3">
-                  <ChoiceGroup
-                    idPrefix="after-actual-risk"
-                    legend={a('actualRisk.legend')}
-                    value={
-                      draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer
-                    }
-                    status={c('notAnswered')}
-                    columns={3}
-                    compact
-                    fit="split"
-                    error={
-                      draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
-                    }
-                    aside={
-                      <InlineAction
-                        ariaLabel={a('actualRisk.removeAria')}
-                        onClick={() =>
-                          apply((current) => setActualRiskAnswer(current, 'unanswered'))
-                        }
-                      >
-                        {c('removeAnswer')}
-                      </InlineAction>
-                    }
-                    onChange={(answer) => apply((current) => setActualRiskAnswer(current, answer))}
-                    options={[
-                      { value: 'matched', label: a('actualRisk.matched') },
-                      { value: 'different', label: a('actualRisk.different') },
-                      { value: 'unknown', label: a('actualRisk.unknown') },
-                    ]}
-                  />
-                  {draft.actualRisk.answer === 'different' ? (
-                    <div className="border-control-border border-l-2 pl-4">
-                      <TextField
-                        id="after-actual-risk-amount"
-                        label={a('actualRisk.amount')}
-                        value={draft.actualRisk.amount}
-                        onChange={(amount) =>
-                          apply((current) => setActualRiskAmount(current, amount))
-                        }
-                        suffix={currency}
-                        inputMode="decimal"
-                        figure
-                        hint={a('actualRisk.amountHint')}
-                        error={errorText('actualRisk')}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </GroupCard>
-
-              <GroupCard
-                title={c('target.legend')}
-                aside={
-                  draft.target.state === 'unanswered' ? (
-                    <StateText>{c('notAnswered')}</StateText>
-                  ) : (
-                    <InlineAction
-                      ariaLabel={c('target.removeAria')}
-                      onClick={() => apply((current) => setTargetState(current, 'unanswered'))}
-                    >
-                      {c('removeAnswer')}
-                    </InlineAction>
-                  )
-                }
-              >
-                <div className="flex min-w-0 flex-col gap-3">
-                  <ChoiceGroup
-                    idPrefix="after-target"
-                    legend={c('target.legend')}
-                    hideLegend
-                    value={draft.target.state === 'unanswered' ? null : draft.target.state}
-                    onChange={(state) => apply((current) => setTargetState(current, state))}
-                    options={[
-                      {
-                        value: 'fixed',
-                        label: c('target.fixed'),
-                        description: c('target.fixedDescription'),
-                      },
-                      {
-                        value: 'no_fixed',
-                        label: c('target.noFixed'),
-                        description: c('target.noFixedDescription'),
-                      },
-                    ]}
-                  />
-                  {draft.target.state === 'fixed' ? (
-                    <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-2">
-                      <TextField
-                        id="after-targetProfit"
-                        label={c('target.profit')}
-                        value={draft.target.profit}
-                        onChange={(value) =>
-                          apply((current) => setTargetValue(current, 'profit', value))
-                        }
-                        suffix={currency}
-                        inputMode="decimal"
-                        figure
-                        error={errorText('targetProfit')}
-                      />
-                      <TextField
-                        id="after-targetPrice"
-                        label={c('target.price')}
-                        value={draft.target.price}
-                        onChange={(value) =>
-                          apply((current) => setTargetValue(current, 'price', value))
-                        }
-                        inputMode="decimal"
-                        figure
-                        labelAside={<Tag tone="context">{c('target.priceContext')}</Tag>}
-                        error={errorText('targetPrice')}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </GroupCard>
-
-              <AtEntryExitPlan
-                draft={exitPlanView}
+              {/*
+                CANONICAL PLAN & RISK, shown as this task's third step. Actual
+                Risk is After Trade's own question, not the canonical step's:
+                it stays beside Risk at Entry — intended risk and what was
+                really at risk read as one idea — passed in as the follow-up.
+              */}
+              <TradePlanRiskStep
+                mode="after_trade"
+                ids={PLAN_STEP_IDS}
+                currency={currency}
+                risk={draft.risk}
+                target={draft.target}
+                exitPlan={draft.exitPlan}
+                priceContext={draft.context}
                 options={options}
-                collapsible
-                onChange={(next) => apply((current) => ({ ...current, exitPlan: next.exitPlan }))}
-                onLibraryChanged={setAdoptedExitPlans}
-                copy={{
-                  notRecordedHint: a('exitPlan.notRecordedHint'),
-                  editorDescription: a('exitPlan.editorDescription'),
+                errorText={(field) => errorText(PLAN_STEP_FIELD[field])}
+                notices={{
+                  stopWrongSide: validation.notices.some(
+                    (notice) => notice.kind === 'stop_wrong_side',
+                  ),
+                  targetWrongSide: validation.notices.some(
+                    (notice) => notice.kind === 'target_wrong_side',
+                  ),
                 }}
+                onRiskChange={(risk) => apply((current) => ({ ...current, risk }))}
+                onTargetStateChange={(state) => apply((current) => setTargetState(current, state))}
+                onTargetValueChange={(field, value) =>
+                  apply((current) => setTargetValue(current, field, value))
+                }
+                onExitPlanChange={(exitPlan) => apply((current) => ({ ...current, exitPlan }))}
+                onPriceContextChange={(patch) =>
+                  apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
+                }
+                onLibraryChanged={setAdoptedExitPlans}
+                riskFollowUp={
+                  <div className="flex min-w-0 flex-col gap-3">
+                    <ChoiceGroup
+                      idPrefix="after-actual-risk"
+                      legend={a('actualRisk.legend')}
+                      value={
+                        draft.actualRisk.answer === 'unanswered' ? null : draft.actualRisk.answer
+                      }
+                      status={c('notAnswered')}
+                      columns={3}
+                      compact
+                      fit="split"
+                      error={
+                        draft.actualRisk.answer === 'matched' ? errorText('actualRisk') : undefined
+                      }
+                      aside={
+                        <InlineAction
+                          ariaLabel={a('actualRisk.removeAria')}
+                          onClick={() =>
+                            apply((current) => setActualRiskAnswer(current, 'unanswered'))
+                          }
+                        >
+                          {c('removeAnswer')}
+                        </InlineAction>
+                      }
+                      onChange={(answer) =>
+                        apply((current) => setActualRiskAnswer(current, answer))
+                      }
+                      options={[
+                        { value: 'matched', label: a('actualRisk.matched') },
+                        { value: 'different', label: a('actualRisk.different') },
+                        { value: 'unknown', label: a('actualRisk.unknown') },
+                      ]}
+                    />
+                    {draft.actualRisk.answer === 'different' ? (
+                      <div className="border-control-border border-l-2 pl-4">
+                        <TextField
+                          id="after-actual-risk-amount"
+                          label={a('actualRisk.amount')}
+                          value={draft.actualRisk.amount}
+                          onChange={(amount) =>
+                            apply((current) => setActualRiskAmount(current, amount))
+                          }
+                          suffix={currency}
+                          inputMode="decimal"
+                          figure
+                          hint={a('actualRisk.amountHint')}
+                          error={errorText('actualRisk')}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                }
               />
             </>,
           )}
@@ -1901,8 +1882,6 @@ export function TradeAfterTradeForm({
             <>
               <ContextFields
                 draft={draft}
-                notices={validation.notices.map((notice) => notice.kind)}
-                errorText={errorText}
                 onChange={(patch) =>
                   apply((current) => ({ ...current, context: { ...current.context, ...patch } }))
                 }
@@ -2761,74 +2740,6 @@ function ConceptRow({
 }
 
 /**
- * A CONCEPT, NOT A FIELD. One surface per idea the trader thinks in — the
- * account, what was traded, risk, the outcome — so a step reads as two or
- * three things instead of eight rows. Controls inside never add a second
- * border, and `filled` marks the one group a step is really about.
- */
-function GroupCard({
-  title,
-  aside,
-  filled = false,
-  children,
-  ...rest
-}: {
-  /** Left out where the step's own heading already names the group. */
-  title?: string;
-  aside?: ReactNode;
-  /** The step's own subject, given a tint rather than a heavier border. */
-  filled?: boolean;
-  children: ReactNode;
-} & Record<`data-${string}`, string | undefined>) {
-  return (
-    <section
-      {...rest}
-      className={cn(
-        'border-border flex min-w-0 flex-col gap-4 rounded-lg border p-4 sm:p-5',
-        filled && 'bg-muted/30',
-      )}
-    >
-      {title === undefined && aside === undefined ? null : (
-        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          {title === undefined ? (
-            <span aria-hidden="true" />
-          ) : (
-            <h3 className="text-foreground text-sm font-semibold">{title}</h3>
-          )}
-          {aside}
-        </div>
-      )}
-      {children}
-    </section>
-  );
-}
-
-/** A group whose contents stay folded behind their own summary. */
-function FoldedGroup({
-  id,
-  title,
-  summary,
-  open,
-  onToggle,
-  children,
-}: {
-  id: string;
-  title: string;
-  summary: ReactNode;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="border-border min-w-0 rounded-lg border px-1 py-1 sm:px-1.5">
-      <Disclosure id={id} title={title} summary={summary} open={open} onToggle={onToggle}>
-        {children}
-      </Disclosure>
-    </div>
-  );
-}
-
-/**
  * REQUIRED AND OPTIONAL, SAID QUIETLY. Both are words beside the concept, at
  * caption size and below the value in weight — a trader scans the values, and
  * a necessity marker that outshouts them is working against that. Required is
@@ -3322,23 +3233,20 @@ function EmotionFields({
 
 function ContextFields({
   draft,
-  notices,
-  errorText,
   onChange,
 }: {
   draft: AfterTradeDraft;
-  notices: readonly string[];
-  errorText: (field: AfterTradeField) => string | undefined;
   onChange: (patch: Partial<AfterTradeDraft['context']>) => void;
 }) {
   const c = useTranslations('trades.create.recording.contractEntry.context');
   const a = useTranslations('trades.create.recording.contractAfter');
   const summary = useTranslations('trades.create.recording.contractEntry.summary');
   /*
-    THREE FOLDED GROUPS, EACH SAYING WHAT IS IN IT. The last step is where a
-    trader finishes, not another form to work through, so every group starts
-    closed behind a summary of its own values. A group holding an error opens
-    itself: nothing that stops a Save is ever folded away.
+    FOLDED GROUPS, EACH SAYING WHAT IS IN IT. The last step is where a trader
+    finishes, not another form to work through, so every group starts closed
+    behind a summary of its own values. A group holding an error opens itself:
+    nothing that stops a Save is ever folded away. Price levels are not here:
+    they belong to Plan & Risk, and are asked on the Plan step.
   */
   const preview = (value: string) =>
     value.trim().length > 60 ? `${value.trim().slice(0, 60)}…` : value.trim();
@@ -3394,61 +3302,6 @@ function ContextFields({
             value={draft.context.notes}
             onChange={(notes) => onChange({ notes })}
           />
-        </div>
-      ),
-    },
-    {
-      key: 'price' as const,
-      filled: [draft.context.entryPrice, draft.context.stopPrice, draft.context.positionSize],
-      summary: [
-        draft.context.entryPrice.trim() === ''
-          ? ''
-          : `${c('entryPrice')} ${draft.context.entryPrice.trim()}`,
-        draft.context.stopPrice.trim() === ''
-          ? ''
-          : `${c('stopPrice')} ${draft.context.stopPrice.trim()}`,
-        draft.context.positionSize.trim() === ''
-          ? ''
-          : `${c('size')} ${draft.context.positionSize.trim()}`,
-      ],
-      errors: (['contextEntryPrice', 'contextStopPrice', 'contextPositionSize'] as const).filter(
-        (field) => errorText(field) !== undefined,
-      ).length,
-      fields: (
-        <div className="flex min-w-0 flex-col gap-3 pb-2">
-          {/* Price is context, and the group says so where it is entered. */}
-          <StateText>{c('pricesHint')}</StateText>
-          <div className="grid min-w-0 gap-4 min-[560px]:grid-cols-3">
-            <TextField
-              id="after-contextEntryPrice"
-              label={c('entryPrice')}
-              value={draft.context.entryPrice}
-              onChange={(entryPrice) => onChange({ entryPrice })}
-              inputMode="decimal"
-              figure
-              error={errorText('contextEntryPrice')}
-            />
-            <TextField
-              id="after-contextStopPrice"
-              label={c('stopPrice')}
-              value={draft.context.stopPrice}
-              onChange={(stopPrice) => onChange({ stopPrice })}
-              inputMode="decimal"
-              figure
-              error={errorText('contextStopPrice')}
-            />
-            <TextField
-              id="after-contextPositionSize"
-              label={c('size')}
-              value={draft.context.positionSize}
-              onChange={(positionSize) => onChange({ positionSize })}
-              inputMode="decimal"
-              figure
-              error={errorText('contextPositionSize')}
-            />
-          </div>
-          {notices.includes('stop_wrong_side') ? <Notice>{c('stopWrongSide')}</Notice> : null}
-          {notices.includes('target_wrong_side') ? <Notice>{c('targetWrongSide')}</Notice> : null}
         </div>
       ),
     },

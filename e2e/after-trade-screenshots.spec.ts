@@ -214,13 +214,13 @@ async function clickChoice(page: Page, name: RegExp | string) {
 }
 
 /** One of Step 5's grouped detail sections. */
-async function openGroup(page: Page, group: 'notes' | 'market' | 'price') {
+async function openGroup(page: Page, group: 'notes' | 'market') {
   const toggle = page.locator(`#after-details-${group}`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
 }
 
 /** Fold it back, so the capture shows the state a trader arrives at. */
-async function foldGroup(page: Page, group: 'notes' | 'market' | 'price') {
+async function foldGroup(page: Page, group: 'notes' | 'market') {
   const toggle = page.locator(`#after-details-${group}`);
   if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click();
 }
@@ -305,6 +305,12 @@ async function fillEverything(page: Page) {
   await page.locator('#after-actual-risk-amount').fill('120');
   await clickChoice(page, /^Fixed target/);
   await page.locator('#after-targetProfit').fill('300');
+  // Price levels are Plan & Risk context, folded on the Plan step.
+  const prices = page.locator('#after-plan-price');
+  await prices.click();
+  await page.getByLabel('Entry price').fill('2398.5');
+  await page.getByLabel('SL price').fill('2394.5');
+  await prices.click();
 
   await goTo(page, 'context');
   await page.getByLabel('Strategy', { exact: true }).selectOption({ label: STRATEGY });
@@ -333,11 +339,7 @@ async function fillEverything(page: Page) {
   await openGroup(page, 'market');
   await page.getByLabel('Timeframe').fill('15m');
   await page.getByLabel('Session').fill('London');
-  await openGroup(page, 'price');
-  await page.getByLabel('Entry price').fill('2398.5');
-  await page.getByLabel('SL price').fill('2394.5');
   await foldGroup(page, 'market');
-  await foldGroup(page, 'price');
 }
 
 /**
