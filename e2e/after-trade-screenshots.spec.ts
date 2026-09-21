@@ -152,9 +152,9 @@ test.describe('After Trade step-flow captures', () => {
 
       // Reload recovery: the Shared Recording Draft brings every answer back.
       await page.reload();
-      await expect(
-        page.getByText('We restored your unsaved trade draft from this browser.'),
-      ).toBeVisible();
+      await expect(page.locator('[data-recording-draft-status="recovered"]')).toContainText(
+        'Draft restored',
+      );
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       /*
         Opening the picker over a recovered Symbol neither shows it in the

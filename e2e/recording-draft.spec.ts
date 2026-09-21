@@ -139,7 +139,10 @@ test.describe('Add Trade Recording Draft', () => {
       // At Entry's untouched "now" is not a remembered entry date or time.
       await expect(page.locator('[data-concept="enteredAt"]')).toHaveAttribute('data-value', '');
       await expect(page.locator('[data-concept="enteredAt"]')).toContainText('Not recorded');
-      await expect(page.getByText(RECOVERED)).toBeVisible();
+      // After Trade says it as one compact row.
+      await expect(page.locator('[data-recording-draft-status="recovered"]')).toContainText(
+        'Draft restored',
+      );
 
       // Browser Back returns to At Entry with its own section intact.
       await page.goto('/en/app/trades/new?timing=at_entry');

@@ -2580,6 +2580,9 @@
       },
       "draft": {
         "recovered": "We restored your unsaved trade draft from this browser.",
+        "recoveredCompact": "Draft restored from this browser",
+        "recoveredShort": "Draft restored",
+        "discardShort": "Discard",
         "unrecoverable": "A trade draft kept on this browser couldn't be restored, so nothing was filled in from it. Anything you enter now replaces it.",
         "notDurable": "This browser isn't keeping drafts right now, so reloading would lose what you've entered.",
         "dismiss": "Dismiss",

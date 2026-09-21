@@ -295,6 +295,8 @@ export function TradeRecordingForm({
 
   const status = (
     <RecordingDraftStatus
+      // After Trade's step flow starts high on a phone; its routine draft states are one row.
+      compact={timing === 'after_trade'}
       notice={state.notice}
       hasWork={state.hasWork}
       onDismissNotice={() => setState((current) => current && { ...current, notice: null })}

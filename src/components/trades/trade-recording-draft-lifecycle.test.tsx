@@ -215,7 +215,8 @@ describe('Recording Draft — mode switching through the page', () => {
 
     const afterTrade = mount('after_trade');
     expect(symbolValue()).toBe('XAUUSD');
-    expect(screen.getByText(copy.recovered)).toBeVisible();
+    // After Trade says it as one compact row rather than At Entry's sentence.
+    expect(screen.getByRole('status')).toHaveTextContent(copy.recoveredCompact);
     expect(stored()?.activeMode).toBe('after_trade');
     afterTrade.unmount();
 

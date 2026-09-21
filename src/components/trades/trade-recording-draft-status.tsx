@@ -46,6 +46,13 @@ export type RecordingDraftNotice =
  *   to load the other tab's latest version instead of overwriting it.
  * - "Discard draft" is always behind a confirmation that says what is removed
  *   and what is not. Nothing else on the page destroys the draft.
+ *
+ * `compact` (After Trade) says the two routine states — restored, and simply
+ * working — as ONE quiet row instead of a sentence and a second line: the
+ * restore icon and a short muted phrase, with a quiet destructive Discard at
+ * the far end. The warnings (not restored, not durable, changed or removed in
+ * another tab) keep their full sentences in every mode: they ask the trader to
+ * do something, and a phrase too short to say what would hide that.
  */
 export function RecordingDraftStatus({
   notice,
@@ -53,17 +60,86 @@ export function RecordingDraftStatus({
   onDismissNotice,
   onDiscard,
   onLoadLatest,
+  compact = false,
 }: {
   notice: RecordingDraftNotice;
   hasWork: boolean;
   onDismissNotice: () => void;
   onDiscard: () => void;
   onLoadLatest?: () => void;
+  compact?: boolean;
 }) {
   const t = useTranslations('trades.create.draft');
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (notice === null && !hasWork) return null;
+
+  const confirm = (
+    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('discardTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('discardDescription')}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('keep')}</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              setConfirmOpen(false);
+              onDiscard();
+            }}
+          >
+            {t('discardConfirm')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (compact && (notice === 'recovered' || notice === null)) {
+    return (
+      <div
+        data-recording-draft-status={notice ?? 'working'}
+        /*
+          ONE ROW, AND NO TALLER THAN ITS TAP TARGET NEEDS. Discard keeps a
+          44px hit area, but the row gives back 8px above and below so the
+          step below moves up instead of starting under a 44px band of air.
+        */
+        className="-my-2 flex min-h-11 min-w-0 items-center justify-between gap-3 text-sm"
+      >
+        {notice === 'recovered' ? (
+          <p role="status" className="text-muted-foreground flex min-w-0 items-center gap-1.5">
+            <History className="size-4 shrink-0" aria-hidden="true" />
+            {/*
+              The long phrase where the row has room, the short one where it
+              does not — never a wrapped block. Only one is ever displayed, so
+              only one is ever read.
+            */}
+            <span className="min-w-0 truncate min-[360px]:hidden">{t('recoveredShort')}</span>
+            <span className="hidden min-w-0 truncate min-[360px]:inline">
+              {t('recoveredCompact')}
+            </span>
+          </p>
+        ) : (
+          <span />
+        )}
+        {hasWork ? (
+          <button
+            type="button"
+            data-recording-draft-discard=""
+            /* The visible word is part of the name, so voice control still finds it. */
+            aria-label={t('discard')}
+            onClick={() => setConfirmOpen(true)}
+            className="text-destructive/85 hover:text-destructive focus-visible:ring-ring -mr-2 min-h-11 shrink-0 rounded-sm px-2 font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-2"
+          >
+            {notice === 'recovered' ? t('discardShort') : t('discard')}
+          </button>
+        ) : null}
+        {confirm}
+      </div>
+    );
+  }
 
   const message =
     notice === 'recovered'
@@ -122,26 +198,7 @@ export function RecordingDraftStatus({
           {t('discard')}
         </button>
       ) : null}
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('discardTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('discardDescription')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('keep')}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                setConfirmOpen(false);
-                onDiscard();
-              }}
-            >
-              {t('discardConfirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirm}
     </div>
   );
 }
