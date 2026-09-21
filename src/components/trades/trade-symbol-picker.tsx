@@ -1,159 +1,118 @@
 'use client';
 
-import { Check, Plus, Search, Star } from 'lucide-react';
+import { Check, Plus, Search, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
 /**
- * THE SYMBOL PICKER — a list of the trader's own instruments, not a catalogue.
+ * THE SYMBOL PICKER — a library the trader curates, and one pick from it.
  *
- * WHY THERE ARE NO CATEGORY TABS. This product has no instrument catalogue and
- * deliberately does not want one: `trades.symbol` is free text because
- * `US30.cash`, `XAUUSD.m` and `BTCUSDT` are the names a particular broker and a
- * particular trader use, and no list shipped in this repository would stay
- * right for long. Grouping by Forex / Metals / Indices / Crypto would therefore
- * mean either inventing that catalogue or guessing a category from the string —
- * and the guess breaks on exactly the symbols that need it most. The sections
- * below are the ones the data can actually stand behind: what this trader
- * marked, what this browser has seen them use, and what this workspace has
- * already recorded trades against.
+ * TWO MEANINGS, KEPT APART. Saved Symbols are the instruments this trader has
+ * decided to keep; the Selected Symbol is the one this Trade is recorded
+ * against. Adding to the library and choosing for the Trade are separate acts
+ * with separate presses, because they answer different questions — "do I trade
+ * this?" and "did I trade this?" — and running them together is what made the
+ * earlier versions of this confusing.
  *
- * SEARCHING IS NOT ANSWERING. The search box is local state and nothing else:
- * filtering, browsing, half-typing a symbol and thinking better of it all
- * leave the recorded Symbol exactly as it was. `onSelect` fires on three
- * deliberate acts and no others — pressing a row, pressing Enter on a
- * highlighted row, and pressing the offer to add what was typed — so a query
- * abandoned by Done, Escape, the close button or the backdrop is just a query
- * that was abandoned.
+ * WHY NOT A CATALOGUE. This product has none and deliberately does not want
+ * one: `trades.symbol` is free text because `US30.cash`, `XAUUSD.m` and
+ * `GER40` are the names a particular broker and a particular trader use, and
+ * no list shipped here would stay right. The library is the answer to that,
+ * and it is the trader's to build.
  *
- * That the field used to BE the value is why this matters: a trader who opened
- * the picker, typed three letters to look something up and closed it had
- * silently replaced their Symbol with those three letters.
- *
- * TYPING IS STILL HOW A NEW SYMBOL IS RECORDED. There is no catalogue to add
- * one to, so a query with no exact match offers itself as a symbol — one
- * press, and free text is recorded exactly as it was written.
+ * SEARCHING IS NEITHER OF THOSE ACTS. The field is local state: it filters the
+ * library while it is being typed and is thrown away when the sheet closes.
+ * Nothing typed ever becomes the recorded Symbol on its own — an earlier
+ * version wrote every keystroke into the draft, so looking something up and
+ * thinking better of it silently rewrote the Trade.
  */
 export interface TradeSymbolPickerLabels {
   readonly searchLabel: string;
   readonly searchPlaceholder: string;
-  readonly favorites: string;
-  readonly recent: string;
-  readonly workspace: string;
-  readonly addCustom: string;
-  /*
-    THESE THREE NAME A SYMBOL, so they are formatters rather than strings with
-    a placeholder left in them. The message catalogue fills its own
-    placeholders; asking it for a message with an unfilled one back hands the
-    caller the raw key, which is what this rendered before it took functions.
-  */
-  readonly addTyped: (symbol: string) => string;
-  readonly noMatches: string;
+  readonly savedHeading: string;
   readonly empty: string;
-  readonly favoriteOn: (symbol: string) => string;
-  readonly favoriteOff: (symbol: string) => string;
+  readonly noMatches: string;
+  /** Takes the exact text typed. */
+  readonly addTyped: (symbol: string) => string;
+  readonly alreadySaved: (symbol: string) => string;
+  readonly remove: (symbol: string) => string;
   readonly selected: string;
 }
 
-interface SymbolRow {
-  readonly symbol: string;
-  readonly section: 'favorites' | 'recent' | 'workspace';
-}
-
-/** Case-insensitive match on the symbol as written; no normalisation is assumed. */
-function matches(symbol: string, query: string): boolean {
-  return query === '' || symbol.toUpperCase().includes(query.toUpperCase());
-}
+/** Whitespace is not part of a symbol; nothing else about it is touched. */
+const clean = (value: string) => value.trim();
+const same = (a: string, b: string) => clean(a).toUpperCase() === clean(b).toUpperCase();
 
 export function TradeSymbolPicker({
   id,
   value,
+  saved,
   onSelect,
-  favorites,
-  recents,
-  workspaceSymbols,
-  onToggleFavorite,
+  onSave,
+  onRemove,
   labels,
 }: {
   id: string;
-  /** The recorded symbol, exactly as the trader wrote it. Never edited by typing. */
+  /** The Symbol recorded for this Trade. Never edited by typing. */
   value: string;
-  /** Called only on a deliberate choice — never while searching. */
+  /** The trader's saved library, most recently added first. */
+  saved: readonly string[];
+  /** Chooses the Symbol for this Trade. The caller closes the sheet. */
   onSelect: (symbol: string) => void;
-  favorites: readonly string[];
-  recents: readonly string[];
-  /** Symbols this workspace has already recorded Trades against. */
-  workspaceSymbols: readonly string[];
-  onToggleFavorite: (symbol: string) => void;
+  /** Adds to the library. Does not choose it. */
+  onSave: (symbol: string) => void;
+  onRemove: (symbol: string) => void;
   labels: TradeSymbolPickerLabels;
 }) {
-  /*
-    THE SEARCH STARTS EMPTY, SHOWING EVERYTHING, with the recorded Symbol
-    marked in the list. Seeding it with the current Symbol would filter the
-    list down to the one row a trader already has and make them clear the field
-    before they could look at anything else — and the reason they opened this
-    is usually to change it. The picker unmounts with its sheet, so reopening
-    is a fresh search rather than wherever the last one was left.
-  */
   const [query, setQuery] = useState('');
-  const trimmed = query.trim();
-  const listId = useId();
+  /** The symbol just added, so its row can announce itself once. */
+  const [added, setAdded] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
+  const listId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
 
-  const seen = new Set<string>();
-  const rows: SymbolRow[] = [];
-  const push = (symbol: string, section: SymbolRow['section']) => {
-    const key = symbol.trim().toUpperCase();
-    if (key === '' || seen.has(key) || !matches(symbol, trimmed)) return;
-    seen.add(key);
-    rows.push({ symbol, section });
-  };
-  for (const symbol of favorites) push(symbol, 'favorites');
-  for (const symbol of recents) push(symbol, 'recent');
-  for (const symbol of workspaceSymbols) push(symbol, 'workspace');
+  const trimmed = clean(query);
+  const rows = saved.filter(
+    (symbol) => trimmed === '' || clean(symbol).toUpperCase().includes(trimmed.toUpperCase()),
+  );
+  const alreadySaved = trimmed !== '' && saved.some((symbol) => same(symbol, trimmed));
+  const offerAdd = trimmed !== '' && !alreadySaved;
 
   /*
-    OFFER WHAT WAS TYPED when no row already IS it. An exact match means the
-    list already holds it and the row is the thing to press; anything else —
-    including a query that matched rows as a substring — is a symbol in its own
-    right that the trader may well mean.
+    ADDING PUTS IT IN THE LIBRARY AND STOPS THERE. The trader then taps it like
+    any other saved symbol — the same one gesture every row takes — rather than
+    Add quietly meaning "and record this Trade against it too", which is two
+    outcomes behind one press and no way to want only the first.
   */
-  const exact = rows.some((row) => row.symbol.trim().toUpperCase() === trimmed.toUpperCase());
-  const offerTyped = trimmed !== '' && !exact;
-
-  /** The one path to a recorded Symbol. */
-  const select = (symbol: string) => {
-    onSelect(symbol);
-    // The field then shows what was chosen rather than what was searched for.
-    setQuery(symbol);
+  function add() {
+    if (trimmed === '') return;
+    onSave(trimmed);
+    setAdded(trimmed);
+    setQuery('');
     setActive(-1);
-  };
+    searchRef.current?.focus();
+  }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') {
+      // Never the form's Enter: this sheet has its own two outcomes.
+      event.preventDefault();
+      if (active >= 0) {
+        const row = rows[active];
+        if (row !== undefined) onSelect(row);
+        return;
+      }
+      if (offerAdd) add();
+      return;
+    }
     if (rows.length === 0) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      const next = active + step;
+      const next = active + (event.key === 'ArrowDown' ? 1 : -1);
       setActive(next < 0 ? rows.length - 1 : next >= rows.length ? 0 : next);
-      return;
-    }
-    if (event.key === 'Enter' && active >= 0) {
-      // Enter with a row highlighted takes that row; with none, the text the
-      // trader typed is already the answer and Enter must not submit the form.
-      event.preventDefault();
-      const row = rows[active];
-      if (row !== undefined) select(row.symbol);
     }
   }
-
-  const sections = [
-    { key: 'favorites' as const, label: labels.favorites },
-    { key: 'recent' as const, label: labels.recent },
-    { key: 'workspace' as const, label: labels.workspace },
-  ];
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-symbol-picker="">
@@ -184,15 +143,16 @@ export function TradeSymbolPicker({
       </div>
 
       {/*
-        THE WAY ON WHEN THE LIST CANNOT HELP. Typing a symbol nobody has traded
-        is the normal path for a new instrument, not an edge case, so it is a
-        full-width action at the top of the list rather than a note under it.
+        ONE WAY TO ADD, AND THIS IS IT. It appears only for a symbol the library
+        does not already hold; case is not a difference, so typing `btcusd` over
+        a saved `BTCUSD` offers nothing and says why instead of silently doing
+        nothing or quietly making a second row for the same instrument.
       */}
-      {offerTyped ? (
+      {offerAdd ? (
         <button
           type="button"
-          data-symbol-add-typed=""
-          onClick={() => select(trimmed)}
+          data-symbol-add=""
+          onClick={add}
           className="border-control-border bg-background hover:bg-accent focus-visible:ring-ring flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg border border-dashed px-4 text-left outline-none focus-visible:ring-2"
         >
           <Plus className="text-primary size-4 shrink-0" aria-hidden="true" />
@@ -201,101 +161,86 @@ export function TradeSymbolPicker({
           </span>
         </button>
       ) : null}
+      {alreadySaved ? (
+        <p data-symbol-already-saved="" className="text-muted-foreground px-1 text-sm">
+          {labels.alreadySaved(trimmed)}
+        </p>
+      ) : null}
 
-      {/*
-        The list takes its name from the combobox that controls it, rather than
-        repeating the field label — two elements called "Symbol" is one name
-        too many for anyone navigating by label.
-      */}
-      <div id={listId} role="listbox" className="flex min-w-0 flex-col gap-1">
-        {rows.length === 0 ? (
-          <p className="text-muted-foreground px-1 py-3 text-sm">
-            {trimmed === '' ? labels.empty : labels.noMatches}
-          </p>
-        ) : (
-          sections.map((section) => {
-            const inSection = rows
-              .map((row, index) => ({ row, index }))
-              .filter((entry) => entry.row.section === section.key);
-            if (inSection.length === 0) return null;
-            return (
-              <div key={section.key} className="flex min-w-0 flex-col gap-1" role="presentation">
-                <p className="text-subtle-foreground px-1 pt-2 text-xs font-medium">
-                  {section.label}
-                </p>
-                {inSection.map(({ row, index }) => {
-                  const chosen = row.symbol.trim().toUpperCase() === value.trim().toUpperCase();
-                  const starred = favorites.includes(row.symbol);
-                  return (
-                    <div
-                      key={`${section.key}-${row.symbol}`}
-                      className="flex min-w-0 items-center gap-1"
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-subtle-foreground px-1 text-xs font-medium">{labels.savedHeading}</p>
+        <div id={listId} role="listbox" className="flex min-w-0 flex-col gap-1">
+          {rows.length === 0 ? (
+            <p className="text-muted-foreground px-1 py-3 text-sm">
+              {saved.length === 0 ? labels.empty : labels.noMatches}
+            </p>
+          ) : (
+            rows.map((symbol, index) => {
+              const chosen = same(symbol, value);
+              const isNew = added !== null && same(symbol, added);
+              return (
+                <div key={symbol} className="flex min-w-0 items-center gap-1">
+                  {/*
+                    A ROW IS THE CHOICE. One tap records the Symbol and the
+                    sheet closes; there is no Done afterwards because there is
+                    nothing left to decide.
+
+                    `animate-rise` is this system's standard entrance and runs
+                    here only on the row just added — the list moving under a
+                    trader who added something is the one moment where a short
+                    travel says which row is theirs. Reduced motion collapses
+                    it globally in `globals.css`, so there is nothing to guard
+                    here.
+                  */}
+                  <div
+                    id={`${listId}-${index}`}
+                    role="option"
+                    aria-selected={chosen}
+                    data-symbol-option={symbol}
+                    {...(isNew ? { 'data-symbol-added': '' } : {})}
+                    onClick={() => onSelect(symbol)}
+                    className={cn(
+                      'hover:bg-accent flex min-h-14 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 transition-colors motion-reduce:transition-none',
+                      index === active && 'bg-accent',
+                      chosen && 'bg-muted/60',
+                      isNew && 'animate-rise',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'min-w-0 flex-1 truncate text-base',
+                        chosen ? 'text-foreground font-semibold' : 'text-foreground',
+                      )}
                     >
-                      <div
-                        id={`${listId}-${index}`}
-                        role="option"
-                        aria-selected={chosen}
-                        data-symbol-option={row.symbol}
-                        onClick={() => select(row.symbol)}
-                        className={cn(
-                          'hover:bg-accent flex min-h-14 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg px-3 transition-colors motion-reduce:transition-none',
-                          index === active && 'bg-accent',
-                          chosen && 'bg-muted/60',
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            'min-w-0 flex-1 truncate text-base',
-                            chosen ? 'text-foreground font-semibold' : 'text-foreground',
-                          )}
-                        >
-                          {row.symbol}
-                        </span>
-                        {chosen ? (
-                          <>
-                            <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
-                            <span className="sr-only">{labels.selected}</span>
-                          </>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        aria-pressed={starred}
-                        aria-label={
-                          starred ? labels.favoriteOff(row.symbol) : labels.favoriteOn(row.symbol)
-                        }
-                        onClick={() => onToggleFavorite(row.symbol)}
-                        className="hover:bg-accent focus-visible:ring-ring flex size-11 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-2"
-                      >
-                        <Star
-                          aria-hidden="true"
-                          className={cn(
-                            'size-4',
-                            starred ? 'fill-primary text-primary' : 'text-subtle-foreground',
-                          )}
-                        />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })
-        )}
+                      {symbol}
+                    </span>
+                    {chosen ? (
+                      <>
+                        <Check className="text-primary size-4 shrink-0" aria-hidden="true" />
+                        <span className="sr-only">{labels.selected}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  {/*
+                    The way back out of the library, for a typo or an instrument
+                    no longer traded. A sibling of the row rather than part of
+                    it, so choosing and removing are never the same 44px.
+                  */}
+                  <button
+                    type="button"
+                    aria-label={labels.remove(symbol)}
+                    data-symbol-remove={symbol}
+                    onClick={() => onRemove(symbol)}
+                    className="text-subtle-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring flex size-11 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-2"
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
-
-      {/* With nothing typed there is nothing to offer yet, so this says where to start. */}
-      {offerTyped || trimmed !== '' ? null : (
-        <button
-          type="button"
-          data-symbol-add-custom=""
-          onClick={() => searchRef.current?.focus()}
-          className="text-primary focus-visible:ring-ring flex min-h-11 min-w-0 items-center gap-2 rounded-md px-1 text-left text-sm font-medium outline-none focus-visible:ring-2"
-        >
-          <Plus className="size-4 shrink-0" aria-hidden="true" />
-          {labels.addCustom}
-        </button>
-      )}
     </div>
   );
 }

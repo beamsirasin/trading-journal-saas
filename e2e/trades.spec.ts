@@ -696,12 +696,10 @@ async function afterTradeIdentity(page: Page, symbol: string, direction: 'Long' 
   const symbolEditor = await afterTradeEditor(page, 'Symbol');
   await symbolEditor.getByRole('combobox', { name: 'Symbol' }).fill(symbol);
   const add = symbolEditor.getByRole('button', { name: /^Add/ });
-  if ((await add.count()) > 0) {
-    await add.click();
-  } else {
-    await symbolEditor.getByRole('option', { name: new RegExp(`^${symbol}`, 'i') }).click();
-  }
-  await afterTradeEditorDone(page);
+  if ((await add.count()) > 0) await add.click();
+  // Tapping the saved row is what records it, and it closes the sheet itself.
+  await symbolEditor.getByRole('option', { name: new RegExp(`^${symbol}`, 'i') }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   const directionEditor = await afterTradeEditor(page, 'Direction');
   await chooseRadio(directionEditor, direction);
   await afterTradeEditorDone(page);

@@ -54,7 +54,6 @@ vi.mock('@/server/actions/trades', () => ({
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
-  symbolHistory: [],
   exitPlans: [],
   emotionCatalog: [
     { key: 'calm', label: 'Calm' },
@@ -71,11 +70,19 @@ const options = {
   strategies: [],
 } as const satisfies TradeCreateOptions;
 
-/** Symbols this workspace has already recorded Trades against. */
-const withSymbolHistory = {
-  ...options,
-  symbolHistory: ['XAUUSD', 'NAS100', 'US30.cash'],
-} as const satisfies TradeCreateOptions;
+/**
+ * Saved Symbols are the trader's own library, kept in this browser — so a test
+ * that needs one seeds the same storage the picker reads, rather than inventing
+ * a second way in.
+ */
+const SAVED_SYMBOLS = ['XAUUSD', 'NAS100', 'US30.cash'];
+
+function seedSavedSymbols(symbols: readonly string[] = SAVED_SYMBOLS) {
+  window.localStorage.setItem(
+    `tradingos.trade-plan.symbol.v1.${options.workspaceId}`,
+    JSON.stringify({ favorites: symbols, recents: [] }),
+  );
+}
 
 /** Escapes a symbol for use inside an accessible-name RegExp. */
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -164,6 +171,11 @@ function openConcept(
   return within(screen.getByRole('dialog'));
 }
 
+/** Leave a sheet that commits on the choice itself: cancel, never confirm. */
+function cancelConcept() {
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }));
+}
+
 function closeConcept() {
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' }));
 }
@@ -239,20 +251,17 @@ function pickWheel(half: 'hour' | 'minute', value: string) {
  * trader takes for an instrument the list has never seen.
  */
 function chooseSymbol(symbol: string) {
+  /*
+    The two presses a trader makes: add it to the library if it is not there
+    yet, then tap its row — which records it and closes the sheet on its own,
+    so there is nothing to close afterwards. Typing alone is a search and
+    records nothing either way.
+  */
   const editor = openConcept('Symbol');
   fireEvent.change(editor.getByLabelText('Symbol'), { target: { value: symbol } });
-  /*
-    Whichever deliberate act the list offers: a symbol this workspace has
-    already traded is a row, and one it has not is the offer to add it. Typing
-    alone is a search either way and records nothing.
-  */
   const add = editor.queryByRole('button', { name: /^Add/ });
-  if (add === null) {
-    fireEvent.click(editor.getByRole('option', { name: new RegExp(`^${escape(symbol)}`, 'i') }));
-  } else {
-    fireEvent.click(add);
-  }
-  closeConcept();
+  if (add !== null) fireEvent.click(add);
+  fireEvent.click(editor.getByRole('option', { name: new RegExp(`^${escape(symbol)}`, 'i') }));
 }
 
 function fillIdentity() {
@@ -664,117 +673,142 @@ describe('Step 1 — read first, edit on demand', () => {
     });
   });
 
-  it('lists what this workspace has traded, and filters it as you type', () => {
-    renderForm(withSymbolHistory);
+  /*
+    TWO MEANINGS, TWO PRESSES. Adding to the saved library and choosing the
+    Symbol for this Trade are separate acts, and the tests below are one per
+    way the old picker ran them together or let a search leak into the draft.
+  */
+  it('lists the saved library and filters it as you type', () => {
+    seedSavedSymbols();
+    renderForm();
     const symbol = openConcept('Symbol');
-    // Every recorded symbol is a row, under the section the data supports.
-    for (const name of ['XAUUSD', 'NAS100', 'US30.cash']) {
+    expect(symbol.getByText('Saved symbols')).toBeInTheDocument();
+    for (const name of SAVED_SYMBOLS) {
       expect(symbol.getByRole('option', { name: new RegExp(`^${escape(name)}`) })).toBeVisible();
     }
-    expect(symbol.getByText('Traded in this workspace')).toBeInTheDocument();
-
     fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'nas' } });
     expect(symbol.queryByRole('option', { name: /^XAUUSD/ })).toBeNull();
     expect(symbol.getByRole('option', { name: /^NAS100/ })).toBeVisible();
   });
 
-  it('records a listed symbol on one press, exactly as it is written', () => {
-    renderForm(withSymbolHistory);
+  it('adds a typed symbol to the library without choosing it for the Trade', () => {
+    seedSavedSymbols();
+    renderForm();
     const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '  BTCUSD  ' } });
+    fireEvent.click(symbol.getByRole('button', { name: /^Add/ }));
+
+    // Saved, trimmed, at the top, and marked as the row that just arrived.
+    const options = symbol.getAllByRole('option');
+    expect(options[0]).toHaveAttribute('data-symbol-option', 'BTCUSD');
+    expect(options[0]).toHaveAttribute('data-symbol-added');
+    // The search is back to the plain library, and the Trade is untouched.
+    expect(symbol.getByLabelText('Symbol')).toHaveValue('');
+    expect(symbol.getByRole('option', { name: /^XAUUSD/ })).toBeVisible();
+    expect(conceptValue('symbol')).toBe('');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // And then one tap records it and the sheet closes on its own.
+    fireEvent.click(symbol.getByRole('option', { name: /^BTCUSD/ }));
+    expect(conceptValue('symbol')).toBe('BTCUSD');
+    return waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('refuses a duplicate whatever its case, and says so', () => {
+    seedSavedSymbols();
+    renderForm();
+    const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
+    expect(symbol.getByText(/already saved/)).toBeInTheDocument();
+    // The spelling already saved is the one kept.
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '' } });
+    expect(symbol.getAllByRole('option')).toHaveLength(SAVED_SYMBOLS.length);
+    expect(symbol.getByRole('option', { name: /^XAUUSD/ })).toBeVisible();
+  });
+
+  it('keeps a broker’s own spelling exactly, dots and all', () => {
+    renderForm();
+    const symbol = openConcept('Symbol');
+    for (const name of ['US30.cash', 'XAUUSD.m', 'GER40']) {
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: name } });
+      fireEvent.click(symbol.getByRole('button', { name: /^Add/ }));
+    }
+    for (const name of ['US30.cash', 'XAUUSD.m', 'GER40']) {
+      expect(symbol.getByRole('option', { name: new RegExp(`^${escape(name)}`) })).toBeVisible();
+    }
+  });
+
+  it('records the Symbol and closes on one tap of a saved row', async () => {
+    seedSavedSymbols();
+    renderForm();
+    const symbol = openConcept('Symbol');
+    // There is nothing to confirm, so there is no Done to confirm it with.
+    expect(symbol.queryByRole('button', { name: 'Done' })).toBeNull();
     fireEvent.click(symbol.getByRole('option', { name: /^US30\.cash/ }));
-    // Chosen, and the row says so rather than leaving it to colour.
-    expect(symbol.getByRole('option', { name: /^US30\.cash/ })).toHaveAttribute(
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('symbol')).toBe('US30.cash');
+    expect(conceptRow('symbol')).toHaveTextContent('US30.CASH');
+
+    // Reopening marks it, and does not filter the list down to it.
+    const again = openConcept('Symbol');
+    expect(again.getByLabelText('Symbol')).toHaveValue('');
+    expect(again.getByRole('option', { name: /^US30\.cash/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    closeConcept();
-    expect(conceptValue('symbol')).toBe('US30.cash');
-    expect(conceptRow('symbol')).toHaveTextContent('US30.CASH');
+    expect(again.getByRole('option', { name: /^NAS100/ })).toBeVisible();
   });
 
-  /*
-    A SYMBOL NOBODY HAS TRADED IS THE NORMAL PATH FOR A NEW INSTRUMENT, and
-    there is no catalogue to add it to — free text is the product's answer, so
-    the picker offers what was typed rather than refusing it.
-  */
-  it('offers what was typed when nothing matches, and saves it', async () => {
-    renderForm(withSymbolHistory);
-    const symbol = openConcept('Symbol');
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '  ger40.cash  ' } });
-    // Whitespace is not part of the symbol.
-    const add = symbol.getByRole('button', { name: /^Add/ });
-    expect(add).toHaveTextContent('ger40.cash');
-    fireEvent.click(add);
-    expect(symbol.getByLabelText('Symbol')).toHaveValue('ger40.cash');
-    closeConcept();
-
-    const direction = openConcept('Direction');
-    fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
-    closeConcept();
-    save();
-    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
-    // The payload's own normalisation is unchanged.
-    expect(payload()).toMatchObject({ symbol: 'GER40.CASH' });
-  });
-
-  it('never offers to add a symbol the list already holds, and never an empty one', () => {
-    renderForm(withSymbolHistory);
-    const symbol = openConcept('Symbol');
-    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'nas100' } });
-    // An exact match is the row, not a new symbol — case is not a difference.
-    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '   ' } });
-    expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
-  });
-
-  it('walks the list with arrows and takes one with Enter', () => {
-    renderForm(withSymbolHistory);
+  it('walks the library with arrows and takes one with Enter', async () => {
+    seedSavedSymbols();
+    renderForm();
     const symbol = openConcept('Symbol');
     const search = symbol.getByLabelText('Symbol');
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     fireEvent.keyDown(search, { key: 'ArrowDown' });
-    expect(search).toHaveAttribute('aria-activedescendant');
     fireEvent.keyDown(search, { key: 'Enter' });
-    expect(search).toHaveValue('NAS100');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('symbol')).toBe('NAS100');
   });
 
-  it('stars a symbol from its row, and shows starred ones first', () => {
-    renderForm(withSymbolHistory);
+  it('removes a symbol from the library without touching the Trade', () => {
+    seedSavedSymbols();
+    renderForm();
+    chooseSymbol('XAUUSD');
     const symbol = openConcept('Symbol');
-    fireEvent.click(symbol.getByRole('button', { name: 'Star NAS100' }));
-    expect(symbol.getByRole('button', { name: 'Remove NAS100 from starred' })).toBeInTheDocument();
-    expect(symbol.getByText('Starred')).toBeInTheDocument();
-    // One row per symbol: starring does not duplicate it into two sections.
-    expect(symbol.getAllByRole('option', { name: /^NAS100/ })).toHaveLength(1);
+    fireEvent.click(symbol.getByRole('button', { name: 'Remove NAS100 from saved symbols' }));
+    expect(symbol.queryByRole('option', { name: /^NAS100/ })).toBeNull();
+    expect(conceptValue('symbol')).toBe('XAUUSD');
   });
 
-  /*
-    SEARCHING IS NOT ANSWERING. The field used to BE the recorded Symbol, so a
-    trader who opened the picker, typed a few letters to look something up and
-    closed it had silently replaced their Symbol with those letters. Every way
-    out of the sheet is covered here because each one is a way that used to
-    write.
-  */
+  it('keeps the library across a reopen and a reload', () => {
+    renderForm();
+    const symbol = openConcept('Symbol');
+    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'BTCUSD' } });
+    fireEvent.click(symbol.getByRole('button', { name: /^Add/ }));
+    cancelConcept();
+    // Reopening the sheet.
+    expect(openConcept('Symbol').getByRole('option', { name: /^BTCUSD/ })).toBeVisible();
+    cancelConcept();
+    // And a reload: the library is this browser's, not the draft's.
+    cleanup();
+    renderForm();
+    expect(openConcept('Symbol').getByRole('option', { name: /^BTCUSD/ })).toBeVisible();
+  });
+
   describe('the search never becomes the answer', () => {
     it('leaves the recorded Symbol alone while the list is filtered', () => {
-      renderForm(withSymbolHistory);
+      seedSavedSymbols();
+      renderForm();
       chooseSymbol('XAUUSD');
       const symbol = openConcept('Symbol');
       fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'nas' } });
-      // The list narrows; the answer does not move.
       expect(symbol.queryByRole('option', { name: /^XAUUSD/ })).toBeNull();
-      expect(conceptValue('symbol')).toBe('XAUUSD');
-      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '' } });
       expect(conceptValue('symbol')).toBe('XAUUSD');
     });
 
     for (const [name, close] of [
-      [
-        'Done',
-        () =>
-          fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' })),
-      ],
       ['Escape', () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })],
       [
         'the close button',
@@ -784,84 +818,70 @@ describe('Step 1 — read first, edit on demand', () => {
           ),
       ],
     ] as const) {
-      it(`keeps the previous Symbol when closed by ${name} mid-search`, async () => {
-        renderForm(withSymbolHistory);
+      it(`keeps the previous Symbol when cancelled by ${name} mid-search`, async () => {
+        seedSavedSymbols();
+        renderForm();
         chooseSymbol('XAUUSD');
         const symbol = openConcept('Symbol');
         fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'eur' } });
         close();
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
         expect(conceptValue('symbol')).toBe('XAUUSD');
-        expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
       });
     }
 
     it('never lets an unfinished search reach the payload', async () => {
-      renderForm(withSymbolHistory);
+      seedSavedSymbols();
+      renderForm();
       chooseSymbol('XAUUSD');
       const direction = openConcept('Direction');
       fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
       closeConcept();
 
-      // Half a symbol, typed and abandoned.
       const symbol = openConcept('Symbol');
       fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'us3' } });
-      closeConcept();
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       save();
       await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
       expect(payload()).toMatchObject({ symbol: 'XAUUSD' });
     });
 
-    it('opens on an empty search with the recorded Symbol marked, not filtered to it', () => {
-      renderForm(withSymbolHistory);
-      chooseSymbol('XAUUSD');
-      const symbol = openConcept('Symbol');
-      expect(symbol.getByLabelText('Symbol')).toHaveValue('');
-      // Everything is browsable, and the answer says which one it is.
-      expect(symbol.getByRole('option', { name: /^NAS100/ })).toBeVisible();
-      expect(symbol.getByRole('option', { name: /^XAUUSD/ })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
-    });
-
     it('starts a fresh search each time the picker is opened', () => {
-      renderForm(withSymbolHistory);
+      seedSavedSymbols();
+      renderForm();
       const first = openConcept('Symbol');
       fireEvent.change(first.getByLabelText('Symbol'), { target: { value: 'nas' } });
-      closeConcept();
+      cancelConcept();
       const second = openConcept('Symbol');
       expect(second.getByLabelText('Symbol')).toHaveValue('');
       expect(second.getByRole('option', { name: /^XAUUSD/ })).toBeVisible();
     });
-
-    it('records only on a deliberate press, by row or by add', () => {
-      renderForm(withSymbolHistory);
-      // A row.
-      const byRow = openConcept('Symbol');
-      fireEvent.click(byRow.getByRole('option', { name: /^NAS100/ }));
-      expect(conceptValue('symbol')).toBe('NAS100');
-      closeConcept();
-      // The offer to add what was typed.
-      const byAdd = openConcept('Symbol');
-      fireEvent.change(byAdd.getByLabelText('Symbol'), { target: { value: 'ger40.cash' } });
-      expect(conceptValue('symbol')).toBe('NAS100');
-      fireEvent.click(byAdd.getByRole('button', { name: /^Add/ }));
-      expect(conceptValue('symbol')).toBe('ger40.cash');
-    });
   });
 
-  it('keeps a recent symbol once a Trade has been saved with it', async () => {
+  /*
+    THE PICKER SHOWS ONE LIST. A symbol used once is not a symbol the trader
+    chose to keep, so saving a Trade no longer puts anything in this sheet —
+    the library is built by an explicit Add and nothing else. (The recents
+    store itself still exists and still feeds At Entry's quick chips; only this
+    picker stopped reading it.)
+  */
+  it('shows the saved library and nothing else, even after a Trade is saved', async () => {
+    seedSavedSymbols(['NAS100']);
     renderForm();
-    fillIdentity();
+    chooseSymbol('XAUUSD');
+    const direction = openConcept('Direction');
+    fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
+    closeConcept();
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
 
     cleanup();
     renderForm();
     const symbol = openConcept('Symbol');
-    expect(symbol.getByText('Recent')).toBeInTheDocument();
-    expect(symbol.getByRole('option', { name: /^XAUUSD/ })).toBeVisible();
+    expect(symbol.queryByText('Recent')).toBeNull();
+    // XAUUSD is there because it was ADDED, not because it was traded.
+    expect(symbol.getAllByRole('option')).toHaveLength(2);
   });
 });
 

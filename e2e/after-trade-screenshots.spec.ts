@@ -64,7 +64,6 @@ test.describe('After Trade step-flow captures', () => {
         await fillEverything(page);
         // Each Step 1 editor, open over its completed step.
         for (const [field, name] of [
-          ['Symbol', 'symbol'],
           ['Entry date & time', 'entered-at'],
           ['Trading Account', 'account'],
         ] as const) {
@@ -73,6 +72,11 @@ test.describe('After Trade step-flow captures', () => {
           await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-${name}.png` });
           await closeConcept(page);
         }
+        // The Symbol picker commits on the row it is given, so it cancels out.
+        await openConcept(page, 'Symbol');
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-symbol.png` });
+        await cancelConcept(page);
         // Direction carries a tone, so both answers are reviewed.
         await openConcept(page, 'Direction');
         for (const direction of ['Long', 'Short'] as const) {
@@ -159,7 +163,7 @@ test.describe('After Trade step-flow captures', () => {
       */
       const recovered = await openConcept(page, 'Symbol');
       await expect(recovered.getByRole('combobox', { name: 'Symbol' })).toHaveValue('');
-      await closeConcept(page);
+      await cancelConcept(page);
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       await expect(page.locator('#after-finalPnl')).toHaveValue('400');
       await expect(page.locator('#after-risk')).toHaveValue('100');
@@ -232,6 +236,12 @@ async function openConcept(page: Page, field: string) {
   return page.getByRole('dialog');
 }
 
+/** Leave a sheet that commits on the choice itself: cancel, never confirm. */
+async function cancelConcept(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
 async function closeConcept(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -247,8 +257,15 @@ async function fillEverything(page: Page) {
   const symbol = await openConcept(page, 'Symbol');
   // Typing searches; adding what was typed is what records it.
   await symbol.getByRole('combobox', { name: 'Symbol' }).fill('XAUUSD');
-  await symbol.getByRole('button', { name: /^Add/ }).click();
-  await closeConcept(page);
+  /*
+    Add puts it in the saved library and tapping its row records it. The offer
+    only appears the first time: this runs once per viewport in one browser, so
+    by the second pass the library already holds it.
+  */
+  const add = symbol.getByRole('button', { name: /^Add/ });
+  if ((await add.count()) > 0) await add.click();
+  await symbol.getByRole('option', { name: /^XAUUSD/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await openConcept(page, 'Direction');
   await clickChoice(page, 'Long');
   await closeConcept(page);

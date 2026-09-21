@@ -2163,29 +2163,31 @@ export function TradeAfterTradeForm({
         closeLabel={a('trade.close')}
         size="focused"
         returnFocusRef={conceptRows.symbol}
-        footer={editorDone}
       >
         <div className="flex min-w-0 flex-col gap-3">
+          {/*
+            CHOOSING IS THE WHOLE INTERACTION, so the sheet closes on it. There
+            is nothing to confirm afterwards and no second answer to give.
+          */}
           <TradeSymbolPicker
             id="after-symbol"
             value={draft.symbol}
-            onSelect={(symbol) => apply((current) => ({ ...current, symbol }))}
-            favorites={symbolFavorites.favorites}
-            recents={symbolFavorites.recents}
-            workspaceSymbols={options.symbolHistory}
-            onToggleFavorite={symbolFavorites.toggle}
+            saved={symbolFavorites.favorites}
+            onSelect={(symbol) => {
+              apply((current) => ({ ...current, symbol }));
+              setEditor(null);
+            }}
+            onSave={symbolFavorites.save}
+            onRemove={symbolFavorites.toggle}
             labels={{
               searchLabel: c('symbol.label'),
               searchPlaceholder: a('trade.symbolSearch'),
-              favorites: a('trade.symbolFavorites'),
-              recent: c('symbol.recent'),
-              workspace: a('trade.symbolWorkspace'),
-              addCustom: a('trade.symbolAddCustom'),
-              addTyped: (symbol) => a('trade.symbolAddTyped', { symbol }),
-              noMatches: a('trade.symbolNoMatch'),
+              savedHeading: a('trade.symbolSaved'),
               empty: a('trade.symbolEmpty'),
-              favoriteOn: (symbol) => a('trade.symbolFavoriteOn', { symbol }),
-              favoriteOff: (symbol) => a('trade.symbolFavoriteOff', { symbol }),
+              noMatches: a('trade.symbolNoMatch'),
+              addTyped: (symbol) => a('trade.symbolAddTyped', { symbol }),
+              alreadySaved: (symbol) => a('trade.symbolAlreadySaved', { symbol }),
+              remove: (symbol) => a('trade.symbolRemove', { symbol }),
               selected: a('trade.symbolSelected'),
             }}
           />

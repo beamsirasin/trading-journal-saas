@@ -1265,18 +1265,6 @@ export interface TradeCreateOptions {
    * `src/lib/storage/chart-attachment-storage.ts`.
    */
   readonly chartUploadConfigured: boolean;
-  /**
-   * EVERY SYMBOL THIS WORKSPACE HAS ACTUALLY TRADED, most recent first.
-   *
-   * There is no instrument catalogue in this product and deliberately so —
-   * `trades.symbol` is free text, because a broker's `US30.cash`, `XAUUSD.m`
-   * and `BTCUSDT` are all the trader's own names for things and no list this
-   * repository could ship would stay right. This is the one symbol source that
-   * IS real: what this workspace has written down before. It makes the Symbol
-   * picker a list of your own instruments rather than a text box, and it never
-   * constrains what may be typed.
-   */
-  readonly symbolHistory: readonly string[];
 }
 
 export interface TradeEmotionOption {
@@ -1302,9 +1290,6 @@ export interface TradeEmotionOption {
  * (no N+1): accounts, Strategies, current Versions, Setups, current Setup
  * snapshots, then all Conditions for those snapshots.
  */
-/** Enough to be a picker, few enough to stay one screen of scrolling. */
-const SYMBOL_HISTORY_LIMIT = 60;
-
 export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
   const { workspaceId } = await getActiveWorkspaceContext();
   const db = getDb();
@@ -1318,20 +1303,6 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     .from(emotionTypes)
     .where(and(eq(emotionTypes.isSystem, true), eq(emotionTypes.isArchived, false)))
     .orderBy(asc(emotionTypes.sortOrder), asc(emotionTypes.key));
-
-  /*
-    Distinct symbols, ordered by the last time this workspace used each one.
-    Soft-deleted Trades are excluded: a Trade the trader removed from their own
-    numbers should not keep suggesting its instrument. Capped, because this
-    feeds a picker rather than a report.
-  */
-  const symbolHistory = await db
-    .select({ symbol: trades.symbol })
-    .from(trades)
-    .where(and(eq(trades.workspaceId, workspaceId), isNull(trades.deletedAt)))
-    .groupBy(trades.symbol)
-    .orderBy(desc(sql`max(${trades.createdAt})`))
-    .limit(SYMBOL_HISTORY_LIMIT);
 
   const strategyRows = await db
     .select()
@@ -1448,7 +1419,6 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     emotionCatalog,
     workspaceId,
     chartUploadConfigured: isChartAttachmentStorageConfigured(),
-    symbolHistory: symbolHistory.map((row) => row.symbol),
   };
 }
 

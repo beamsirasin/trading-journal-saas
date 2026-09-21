@@ -38,7 +38,6 @@ const copy = en.trades.create.draft;
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
-  symbolHistory: [],
   exitPlans: [],
   emotionCatalog: [{ key: 'calm', label: 'Calm' }],
   tradingAccounts: [
@@ -78,9 +77,13 @@ function fillAfterTradeIdentity(symbol: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Edit Symbol' }));
   const symbolEditor = within(screen.getByRole('dialog'));
   fireEvent.change(symbolEditor.getByLabelText('Symbol'), { target: { value: symbol } });
-  // Typing only searches; adding what was typed is what records it.
+  /*
+    Typing only searches. Adding puts it in the saved library, and tapping its
+    row is what records it for the Trade — which closes the sheet on its own,
+    so there is no Done to press.
+  */
   fireEvent.click(symbolEditor.getByRole('button', { name: /^Add/ }));
-  fireEvent.click(symbolEditor.getByRole('button', { name: 'Done' }));
+  fireEvent.click(symbolEditor.getByRole('option', { name: new RegExp('^' + symbol, 'i') }));
   fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
   const directionEditor = within(screen.getByRole('dialog'));
   fireEvent.click(directionEditor.getByLabelText('Long'));

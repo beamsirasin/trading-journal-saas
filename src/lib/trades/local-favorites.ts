@@ -62,6 +62,32 @@ export function serializeFavoritesState(state: FavoritesState): string {
   return JSON.stringify(state);
 }
 
+/**
+ * SAVED SYMBOLS ARE A LIBRARY THE TRADER CURATES, so saving one is its own
+ * operation rather than a toggle: it puts the symbol at the FRONT, where the
+ * thing just added is where it was expected to be, and it refuses a duplicate
+ * without caring about case — `btcusd` and `BTCUSD` are one instrument, and
+ * the spelling already saved is the one kept, because that is the one the
+ * trader chose.
+ *
+ * Whitespace is not part of a symbol. Everything else is: `US30.cash`,
+ * `XAUUSD.m` and `GER40` are all a broker's own names and none of them
+ * survives being "tidied up".
+ */
+export function saveFavorite(state: FavoritesState, value: string): FavoritesState {
+  const normalized = value.trim();
+  if (normalized === '') return state;
+  if (hasFavorite(state, normalized)) return state;
+  return { ...state, favorites: [normalized, ...state.favorites].slice(0, MAX_FAVORITES) };
+}
+
+/** Whether this symbol is already saved, ignoring case only. */
+export function hasFavorite(state: FavoritesState, value: string): boolean {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === '') return false;
+  return state.favorites.some((item) => item.trim().toUpperCase() === normalized);
+}
+
 export function toggleFavorite(state: FavoritesState, value: string): FavoritesState {
   const normalized = value.trim();
   if (normalized === '') return state;
