@@ -5,10 +5,8 @@ import { useReducer } from 'react';
 import {
   EMPTY_FAVORITES_STATE,
   favoritesStorageKey,
-  hasFavorite,
   parseFavoritesState,
   recordRecent,
-  saveFavorite,
   serializeFavoritesState,
   toggleFavorite,
   type FavoritesState,
@@ -61,21 +59,9 @@ export function useTradePlanFavorites(field: TradePlanFavoriteField, workspaceId
     persist(toggleFavorite(state, value));
   }
 
-  /** Add to the saved library, at the front, once. */
-  function save(value: string) {
-    persist(saveFavorite(state, value));
-  }
-
   function recordUse(value: string) {
     persist(recordRecent(state, value));
   }
 
-  return {
-    favorites: state.favorites,
-    recents: state.recents,
-    toggle,
-    save,
-    isSaved: (value: string) => hasFavorite(state, value),
-    recordUse,
-  };
+  return { favorites: state.favorites, recents: state.recents, toggle, recordUse };
 }

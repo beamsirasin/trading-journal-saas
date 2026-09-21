@@ -115,6 +115,7 @@ import { useKeyboardObscuringViewport } from './trade-recording-surface';
 import { TradeSaveReplayConflict } from './trade-save-replay';
 import { TradeSymbolPicker } from './trade-symbol-picker';
 import { TradeTimeWheel } from './trade-time-wheel';
+import { useSavedSymbols } from './use-saved-symbols';
 import { useTradePlanFavorites } from './use-trade-plan-favorites';
 
 const NONE = '__none';
@@ -353,7 +354,9 @@ export function TradeAfterTradeForm({
   );
   const keyboardOpen = useKeyboardObscuringViewport();
   const wide = useIsWideViewport();
+  // Recents still feed At Entry's chips; the Saved Symbol library lives on the server.
   const symbolFavorites = useTradePlanFavorites('symbol', options.workspaceId);
+  const savedSymbols = useSavedSymbols(options.savedSymbols, options.workspaceId);
   const [fallbackMutationKey] = useState(generateId);
   const mutationKey = draftMutationKey ?? fallbackMutationKey;
   const submitting = useRef(false);
@@ -2172,13 +2175,13 @@ export function TradeAfterTradeForm({
           <TradeSymbolPicker
             id="after-symbol"
             value={draft.symbol}
-            saved={symbolFavorites.favorites}
+            saved={savedSymbols.symbols}
             onSelect={(symbol) => {
               apply((current) => ({ ...current, symbol }));
               setEditor(null);
             }}
-            onSave={symbolFavorites.save}
-            onRemove={symbolFavorites.toggle}
+            onSave={(symbol) => void savedSymbols.save(symbol)}
+            onRemove={(symbol) => void savedSymbols.remove(symbol)}
             labels={{
               searchLabel: c('symbol.label'),
               searchPlaceholder: a('trade.symbolSearch'),

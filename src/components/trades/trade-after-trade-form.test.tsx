@@ -46,6 +46,50 @@ vi.mock('@/i18n/navigation', () => ({
 }));
 
 vi.mock('@/server/actions/exit-plans', () => ({}));
+/*
+  THE SERVER'S SAVED SYMBOL LIBRARY, IN MEMORY. The actions below write it the
+  way the real service does — newest first, one row per symbol whatever its
+  case, the first spelling kept — and `renderForm` reads it the way the page
+  does, through `getTradeCreateOptions`. So a "reload" in these tests really is
+  a fresh page asking the server, and nothing can pass by surviving in React
+  state or in this browser's storage instead.
+*/
+const serverLibrary = vi.hoisted(() => ({ symbols: [] as string[], failNextImport: false }));
+const sameSymbol = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
+const importSavedSymbolsMock = vi.fn();
+
+vi.mock('@/server/actions/saved-symbols', () => ({
+  saveSymbolAction: async ({ symbol }: { symbol: string }) => {
+    const value = symbol.trim();
+    if (!serverLibrary.symbols.some((item) => sameSymbol(item, value))) {
+      serverLibrary.symbols = [value, ...serverLibrary.symbols];
+    }
+    return { ok: true, symbols: [...serverLibrary.symbols] };
+  },
+  removeSymbolAction: async ({ symbol }: { symbol: string }) => {
+    serverLibrary.symbols = serverLibrary.symbols.filter((item) => !sameSymbol(item, symbol));
+    return { ok: true, symbols: [...serverLibrary.symbols] };
+  },
+  importSavedSymbolsAction: async (input: { symbols: string[] }) => {
+    importSavedSymbolsMock(input);
+    if (serverLibrary.failNextImport) {
+      serverLibrary.failNextImport = false;
+      return { ok: false, error: { code: 'unexpected_error' } };
+    }
+    // Behind what the server holds, in the browser's own order, no duplicates.
+    const incoming = input.symbols
+      .map((item) => item.trim())
+      .filter(
+        (item) => item !== '' && !serverLibrary.symbols.some((held) => sameSymbol(held, item)),
+      );
+    const unique = incoming.filter(
+      (item, index) => incoming.findIndex((other) => sameSymbol(other, item)) === index,
+    );
+    serverLibrary.symbols = [...serverLibrary.symbols, ...unique];
+    return { ok: true, symbols: [...serverLibrary.symbols] };
+  },
+}));
+
 vi.mock('@/server/actions/trades', () => ({
   createTradeAction: (...args: unknown[]) => createTradeActionMock(...args),
   createCompletedTradeAction: (...args: unknown[]) => createCompletedTradeActionMock(...args),
@@ -54,6 +98,7 @@ vi.mock('@/server/actions/trades', () => ({
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  savedSymbols: [],
   exitPlans: [],
   emotionCatalog: [
     { key: 'calm', label: 'Calm' },
@@ -77,11 +122,21 @@ const options = {
  */
 const SAVED_SYMBOLS = ['XAUUSD', 'NAS100', 'US30.cash'];
 
+/** Put these in the server library, as if saved on another device. */
 function seedSavedSymbols(symbols: readonly string[] = SAVED_SYMBOLS) {
-  window.localStorage.setItem(
-    `tradingos.trade-plan.symbol.v1.${options.workspaceId}`,
-    JSON.stringify({ favorites: symbols, recents: [] }),
-  );
+  serverLibrary.symbols = [...symbols];
+}
+
+/** The browser store Saved Symbols used to live in, before the server held them. */
+const LEGACY_SYMBOL_KEY = `tradingos.trade-plan.symbol.v1.${options.workspaceId}`;
+
+function seedLegacyBrowserSymbols(favorites: readonly string[], recents: readonly string[] = []) {
+  window.localStorage.setItem(LEGACY_SYMBOL_KEY, JSON.stringify({ favorites, recents }));
+}
+
+function legacyBrowserStore(): { favorites: string[]; recents: string[] } | null {
+  const raw = window.localStorage.getItem(LEGACY_SYMBOL_KEY);
+  return raw === null ? null : (JSON.parse(raw) as { favorites: string[]; recents: string[] });
 }
 
 /** Escapes a symbol for use inside an accessible-name RegExp. */
@@ -123,7 +178,7 @@ function renderForm(formOptions: TradeCreateOptions = options) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <TradeRecordingForm
-        options={formOptions}
+        options={{ ...formOptions, savedSymbols: [...serverLibrary.symbols] }}
         timing="after_trade"
         timezone="Asia/Bangkok"
         draftScope={TEST_DRAFT_SCOPE}
@@ -309,6 +364,9 @@ function emotions(phase: 'emotions' | 'postTradeEmotions'): HTMLElement {
 }
 
 beforeEach(() => {
+  serverLibrary.symbols = [];
+  serverLibrary.failNextImport = false;
+  importSavedSymbolsMock.mockReset();
   createCompletedTradeActionMock.mockReset();
   createCompletedTradeActionMock.mockResolvedValue({
     ok: true,
@@ -795,6 +853,132 @@ describe('Step 1 — read first, edit on demand', () => {
     cleanup();
     renderForm();
     expect(openConcept('Symbol').getByRole('option', { name: /^BTCUSD/ })).toBeVisible();
+  });
+
+  /*
+    THE LIBRARY IS THE SERVER'S. A curated list that vanished with a browser
+    or a device would be worse than no list, so these assert where it lives:
+    every change reaches the server, a fresh page reads it back from there, and
+    this browser's storage no longer holds it.
+  */
+  describe('Saved Symbols persist on the server', () => {
+    it('saves an added symbol to the server, where a fresh page finds it', async () => {
+      renderForm();
+      const symbol = openConcept('Symbol');
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: ' US30.cash ' } });
+      fireEvent.click(symbol.getByRole('button', { name: /^Add/ }));
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['US30.cash']));
+      // Not in this browser: the server is the only place it lives.
+      expect(legacyBrowserStore()?.favorites ?? []).toEqual([]);
+
+      cleanup();
+      renderForm();
+      expect(openConcept('Symbol').getByRole('option', { name: /^US30\.cash/ })).toBeVisible();
+    });
+
+    it('shows a library saved on another device, newest first', () => {
+      seedSavedSymbols(['GER40', 'XAUUSD.m', 'BTCUSD']);
+      renderForm();
+      const symbol = openConcept('Symbol');
+      expect(
+        symbol
+          .getAllByRole('option')
+          .map((option: HTMLElement) => option.getAttribute('data-symbol-option')),
+      ).toEqual(['GER40', 'XAUUSD.m', 'BTCUSD']);
+    });
+
+    it('puts a new symbol first, and keeps the spelling the server already has', async () => {
+      seedSavedSymbols(['BTCUSD']);
+      renderForm();
+      const symbol = openConcept('Symbol');
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'XAUUSD.m' } });
+      fireEvent.click(symbol.getByRole('button', { name: /^Add/ }));
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['XAUUSD.m', 'BTCUSD']));
+      // A second spelling of a saved symbol is not a second symbol.
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'btcusd' } });
+      expect(symbol.queryByRole('button', { name: /^Add/ })).toBeNull();
+      expect(serverLibrary.symbols).toEqual(['XAUUSD.m', 'BTCUSD']);
+    });
+
+    it('removes a symbol from the server, and a fresh page agrees', async () => {
+      seedSavedSymbols();
+      renderForm();
+      const symbol = openConcept('Symbol');
+      fireEvent.click(symbol.getByRole('button', { name: 'Remove NAS100 from saved symbols' }));
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['XAUUSD', 'US30.cash']));
+      cleanup();
+      renderForm();
+      expect(openConcept('Symbol').queryByRole('option', { name: /^NAS100/ })).toBeNull();
+    });
+
+    it('adds without choosing, and a tap still chooses and closes', async () => {
+      renderForm();
+      const symbol = openConcept('Symbol');
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'GER40' } });
+      fireEvent.click(symbol.getByRole('button', { name: /^Add/ }));
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['GER40']));
+      expect(conceptValue('symbol')).toBe('');
+      fireEvent.click(symbol.getByRole('option', { name: /^GER40/ }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(conceptValue('symbol')).toBe('GER40');
+    });
+  });
+
+  /*
+    THE ONE-TIME MOVE. Saved Symbols used to live in this browser only. A
+    trader who built a list before this change must not lose it, must not get
+    it twice, and must not have it silently shadow the server's afterwards.
+  */
+  describe('moving a browser-held library to the server', () => {
+    it('merges the browser list in once, without duplicates, then clears it', async () => {
+      seedSavedSymbols(['BTCUSD']);
+      // Newest first, as the browser stored it, with one the server already has.
+      seedLegacyBrowserSymbols(['US30.cash', 'btcusd', 'XAUUSD.m'], ['EURUSD']);
+      renderForm();
+
+      await waitFor(() => expect(importSavedSymbolsMock).toHaveBeenCalledTimes(1));
+      // Behind what the server held, in the browser's order, BTCUSD once.
+      await waitFor(() =>
+        expect(serverLibrary.symbols).toEqual(['BTCUSD', 'US30.cash', 'XAUUSD.m']),
+      );
+      // The browser no longer holds the library — but keeps At Entry's recents.
+      await waitFor(() => expect(legacyBrowserStore()?.favorites).toEqual([]));
+      expect(legacyBrowserStore()?.recents).toEqual(['EURUSD']);
+
+      const symbol = openConcept('Symbol');
+      expect(symbol.getAllByRole('option')).toHaveLength(3);
+    });
+
+    it('does not move anything twice', async () => {
+      seedLegacyBrowserSymbols(['GER40']);
+      renderForm();
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['GER40']));
+      cleanup();
+      renderForm();
+      // Nothing left in the browser, so nothing is sent again.
+      expect(importSavedSymbolsMock).toHaveBeenCalledTimes(1);
+      expect(serverLibrary.symbols).toEqual(['GER40']);
+    });
+
+    it('asks the server for nothing when the browser holds no library', () => {
+      seedLegacyBrowserSymbols([], ['EURUSD']);
+      renderForm();
+      expect(importSavedSymbolsMock).not.toHaveBeenCalled();
+    });
+
+    it('keeps the browser’s copy when the move fails, so it tries again next time', async () => {
+      serverLibrary.failNextImport = true;
+      seedLegacyBrowserSymbols(['GER40']);
+      renderForm();
+      await waitFor(() => expect(importSavedSymbolsMock).toHaveBeenCalledTimes(1));
+      expect(legacyBrowserStore()?.favorites).toEqual(['GER40']);
+      expect(serverLibrary.symbols).toEqual([]);
+
+      cleanup();
+      renderForm();
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['GER40']));
+      await waitFor(() => expect(legacyBrowserStore()?.favorites).toEqual([]));
+    });
   });
 
   describe('the search never becomes the answer', () => {

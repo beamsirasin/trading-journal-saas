@@ -15,6 +15,26 @@ vi.mock('@/i18n/navigation', () => ({
   ),
 }));
 vi.mock('@/server/actions/exit-plans', () => ({}));
+/*
+  The Saved Symbol library is server-backed. These tests are not about it, so
+  its actions answer the way the server would for a single browser: saving
+  puts a symbol first, once, and the list comes back.
+*/
+vi.mock('@/server/actions/saved-symbols', () => {
+  let symbols: string[] = [];
+  const same = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
+  return {
+    saveSymbolAction: async ({ symbol }: { symbol: string }) => {
+      if (!symbols.some((item) => same(item, symbol))) symbols = [symbol.trim(), ...symbols];
+      return { ok: true, symbols: [...symbols] };
+    },
+    removeSymbolAction: async ({ symbol }: { symbol: string }) => {
+      symbols = symbols.filter((item) => !same(item, symbol));
+      return { ok: true, symbols: [...symbols] };
+    },
+    importSavedSymbolsAction: async () => ({ ok: true, symbols: [...symbols] }),
+  };
+});
 vi.mock('@/server/actions/trades', () => ({ createTradeAction: vi.fn() }));
 vi.mock('@/server/actions/chart-attachment', () => ({ uploadChartAttachmentAction: vi.fn() }));
 
@@ -54,6 +74,7 @@ describe('TradeCreateGate', () => {
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        savedSymbols: [],
         exitPlans: [],
         emotionCatalog,
       },
@@ -77,6 +98,7 @@ describe('TradeCreateGate', () => {
         strategies: [strategy],
         workspaceId: 'ws-1',
         chartUploadConfigured: false,
+        savedSymbols: [],
         exitPlans: [],
         emotionCatalog,
       },
@@ -101,6 +123,7 @@ describe('TradeCreateGate', () => {
           strategies,
           workspaceId: 'ws-1',
           chartUploadConfigured: false,
+          savedSymbols: [],
           exitPlans: [],
           emotionCatalog,
         },

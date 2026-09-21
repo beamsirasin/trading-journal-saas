@@ -60,6 +60,7 @@ import {
   tradeSetupConditionChecks,
   tradingAccounts,
 } from '@/server/db/schema';
+import { listSavedSymbols } from '@/server/services/saved-symbol-library';
 
 /**
  * Authenticated Trade reads — Phase 08C. Every export derives workspace
@@ -1265,6 +1266,12 @@ export interface TradeCreateOptions {
    * `src/lib/storage/chart-attachment-storage.ts`.
    */
   readonly chartUploadConfigured: boolean;
+  /**
+   * The workspace's Saved Symbols, newest first — the library a trader built
+   * by pressing Add, and nothing inferred from Trades. Server-backed so it
+   * survives a change of browser or device, which a curated list must.
+   */
+  readonly savedSymbols: readonly string[];
 }
 
 export interface TradeEmotionOption {
@@ -1419,6 +1426,7 @@ export async function getTradeCreateOptions(): Promise<TradeCreateOptions> {
     emotionCatalog,
     workspaceId,
     chartUploadConfigured: isChartAttachmentStorageConfigured(),
+    savedSymbols: await listSavedSymbols(workspaceId),
   };
 }
 

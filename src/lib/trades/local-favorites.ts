@@ -1,12 +1,17 @@
 /**
  * Pure, storage-agnostic Symbol/Timeframe/Session favorites and recents for
- * the Trade creation wizard. No persisted server column exists for this data
- * (`user_preferences` has no favorites/JSON column — see CLAUDE.md §11
- * assumption tracking and the Founder-UAT slice report for why this is
- * deliberately browser-local, not workspace-synced, until a schema decision
- * is made). Every function here takes/returns plain data; the React hook
- * that wires this to `window.localStorage` lives in
- * `src/components/trades/use-trade-plan-favorites.ts`.
+ * the Trade creation wizard, kept in this browser only. Every function here
+ * takes/returns plain data; the React hook that wires this to
+ * `window.localStorage` lives in `src/components/trades/use-trade-plan-favorites.ts`.
+ *
+ * SAVED SYMBOLS ARE NO LONGER HERE. The After Trade Symbol picker's library is
+ * server-backed (`saved_symbols`, `src/server/services/saved-symbol-library.ts`)
+ * because a list a trader curates must survive a change of browser or device.
+ * This store's symbol `favorites` are now only a legacy source: the picker
+ * moves any it finds to the server once and then empties them
+ * (`src/components/trades/use-saved-symbols.ts`). Symbol `recents` still live
+ * here and still feed At Entry's quick chips, and timeframe/session remain
+ * browser-local as before.
  */
 
 export type TradePlanFavoriteField = 'symbol' | 'timeframe' | 'session';
@@ -60,32 +65,6 @@ export function parseFavoritesState(raw: string | null): FavoritesState {
 
 export function serializeFavoritesState(state: FavoritesState): string {
   return JSON.stringify(state);
-}
-
-/**
- * SAVED SYMBOLS ARE A LIBRARY THE TRADER CURATES, so saving one is its own
- * operation rather than a toggle: it puts the symbol at the FRONT, where the
- * thing just added is where it was expected to be, and it refuses a duplicate
- * without caring about case — `btcusd` and `BTCUSD` are one instrument, and
- * the spelling already saved is the one kept, because that is the one the
- * trader chose.
- *
- * Whitespace is not part of a symbol. Everything else is: `US30.cash`,
- * `XAUUSD.m` and `GER40` are all a broker's own names and none of them
- * survives being "tidied up".
- */
-export function saveFavorite(state: FavoritesState, value: string): FavoritesState {
-  const normalized = value.trim();
-  if (normalized === '') return state;
-  if (hasFavorite(state, normalized)) return state;
-  return { ...state, favorites: [normalized, ...state.favorites].slice(0, MAX_FAVORITES) };
-}
-
-/** Whether this symbol is already saved, ignoring case only. */
-export function hasFavorite(state: FavoritesState, value: string): boolean {
-  const normalized = value.trim().toUpperCase();
-  if (normalized === '') return false;
-  return state.favorites.some((item) => item.trim().toUpperCase() === normalized);
 }
 
 export function toggleFavorite(state: FavoritesState, value: string): FavoritesState {

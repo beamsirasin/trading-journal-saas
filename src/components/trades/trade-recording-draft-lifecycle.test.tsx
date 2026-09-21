@@ -23,6 +23,26 @@ vi.mock('@/i18n/navigation', () => ({
   ),
 }));
 vi.mock('@/server/actions/exit-plans', () => ({}));
+/*
+  The Saved Symbol library is server-backed. These tests are not about it, so
+  its actions answer the way the server would for a single browser: saving
+  puts a symbol first, once, and the list comes back.
+*/
+vi.mock('@/server/actions/saved-symbols', () => {
+  let symbols: string[] = [];
+  const same = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
+  return {
+    saveSymbolAction: async ({ symbol }: { symbol: string }) => {
+      if (!symbols.some((item) => same(item, symbol))) symbols = [symbol.trim(), ...symbols];
+      return { ok: true, symbols: [...symbols] };
+    },
+    removeSymbolAction: async ({ symbol }: { symbol: string }) => {
+      symbols = symbols.filter((item) => !same(item, symbol));
+      return { ok: true, symbols: [...symbols] };
+    },
+    importSavedSymbolsAction: async () => ({ ok: true, symbols: [...symbols] }),
+  };
+});
 vi.mock('@/server/actions/trades', () => ({
   createTradeAction: (input: unknown) => createTradeMock(input),
   createCompletedTradeAction: (input: unknown) => createCompletedTradeMock(input),
@@ -38,6 +58,7 @@ const copy = en.trades.create.draft;
 const options = {
   workspaceId: '018f0000-0000-7000-8000-0000000000ff',
   chartUploadConfigured: false,
+  savedSymbols: [],
   exitPlans: [],
   emotionCatalog: [{ key: 'calm', label: 'Calm' }],
   tradingAccounts: [
