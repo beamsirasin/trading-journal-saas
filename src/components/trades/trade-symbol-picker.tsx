@@ -116,30 +116,53 @@ export function TradeSymbolPicker({
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-symbol-picker="">
-      <div className="bg-background border-control-border focus-within:border-ring focus-within:ring-ring/40 flex min-w-0 items-center gap-2 rounded-lg border px-3 focus-within:ring-[3px]">
-        <Search className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
-        <input
-          id={id}
-          ref={searchRef}
-          type="text"
-          role="combobox"
-          aria-expanded={rows.length > 0}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-label={labels.searchLabel}
-          aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setActive(-1);
-          }}
-          onKeyDown={onKeyDown}
-          placeholder={labels.searchPlaceholder}
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          className="text-foreground placeholder:text-subtle-foreground min-h-12 w-full min-w-0 flex-1 bg-transparent text-base outline-none"
-        />
+      {/*
+        SEARCH STAYS WITHIN REACH. In a long library the rows scroll and the
+        field does not: it pins to the top of the sheet's scrolling body, right
+        under the header, so the thing being typed into never scrolls away
+        from the keyboard feeding it. The strip is the sheet's own card
+        surface — no shadow — and its padding is cancelled by an equal negative
+        margin, so at rest the layout is exactly as before while the focus ring
+        keeps room and rows pass cleanly beneath.
+
+        THE PHONE SHEET'S BODY HAS 16px OF TOP PADDING, and a sticky box pins
+        inside a scroller's padding — which left a 16px slit under the header
+        that rows visibly slid up through. So on the phone the strip pins 16px
+        higher, to the scroller's very top edge, and carries that 16px itself
+        as its own top padding (reaching up into the description's equal
+        margin at rest, never over the description). The desktop dialog's body
+        has no top padding and keeps the plain offsets; `md` is the same 48rem
+        at which the overlay becomes a dialog.
+      */}
+      <div
+        data-symbol-search=""
+        className="bg-card sticky -top-4 z-10 -mt-4 -mb-1.5 pt-4 pb-1.5 md:top-0 md:-mt-1.5 md:pt-1.5"
+      >
+        <div className="bg-background border-control-border focus-within:border-ring focus-within:ring-ring/40 flex min-w-0 items-center gap-2 rounded-lg border px-3 focus-within:ring-[3px]">
+          <Search className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+          <input
+            id={id}
+            ref={searchRef}
+            type="text"
+            role="combobox"
+            aria-expanded={rows.length > 0}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-label={labels.searchLabel}
+            aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActive(-1);
+            }}
+            onKeyDown={onKeyDown}
+            placeholder={labels.searchPlaceholder}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            className="text-foreground placeholder:text-subtle-foreground min-h-12 w-full min-w-0 flex-1 bg-transparent text-base outline-none"
+          />
+        </div>
       </div>
 
       {/*

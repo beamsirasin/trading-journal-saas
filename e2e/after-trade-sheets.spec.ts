@@ -188,6 +188,54 @@ test.describe('After Trade Symbol sheet with a phone keyboard up', () => {
         await body.evaluate((element) => element.scrollTo(0, element.scrollHeight));
         const last = (await sheet.locator('[data-symbol-option]').last().boundingBox())!;
         expect(last.y + last.height, 'last row reachable').toBeLessThanOrEqual(line);
+        /*
+          SEARCH STAYS PUT while the rows scroll: still directly under the
+          header, still above the keyboard, and on top — the point at its middle
+          is the field itself, not a row sliding beneath it.
+        */
+        const scrolled = await body.evaluate((element) => element.scrollTop > 0);
+        await shot(page, `keyboard-${phone.width}-${size}-scrolled`);
+        /*
+          NO ROW SHOWS BETWEEN THE HEADER AND THE SEARCH. Walked through every
+          scroll position: the strip under the header must be the search strip,
+          never a row sliding up through a gap above it.
+        */
+        const peeking = await body.evaluate((element) => {
+          const header = element.previousElementSibling!.getBoundingClientRect();
+          const found: number[] = [];
+          for (let top = 0; top <= element.scrollHeight; top += 4) {
+            element.scrollTop = top;
+            for (let y = header.bottom + 1; y < header.bottom + 20; y += 2) {
+              const hit = document.elementFromPoint(header.left + 40, y);
+              if (hit?.closest('[data-symbol-option]')) found.push(element.scrollTop);
+            }
+          }
+          element.scrollTop = element.scrollHeight;
+          return found;
+        });
+        expect(peeking, 'no row between header and search').toEqual([]);
+        expect(scrolled, 'a long library scrolls; a short one does not').toBe(size > 1);
+        const header = (await sheet.locator('[data-slot="sheet-header"]').boundingBox())!;
+        const pinned = (await search.boundingBox())!;
+        expect(pinned.y, 'search right under the header').toBeGreaterThanOrEqual(
+          header.y + header.height - 1,
+        );
+        // Only a scrolled list moves the field up; at rest it sits below the description.
+        if (scrolled) {
+          expect(pinned.y, 'search right under the header').toBeLessThanOrEqual(
+            header.y + header.height + 24,
+          );
+        }
+        expect(pinned.y + pinned.height, 'search above the keyboard').toBeLessThanOrEqual(line);
+        expect(
+          await search.evaluate((input) => {
+            const box = input.getBoundingClientRect();
+            const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+            return hit !== null && input.parentElement!.contains(hit);
+          }),
+          'search is on top of the rows',
+        ).toBe(true);
+        await expect(search).toBeFocused();
         // The page behind never scrolls to make room.
         expect(await page.evaluate(() => window.scrollY)).toBe(0);
         // A typed symbol with no match offers Add above the keyboard too.
