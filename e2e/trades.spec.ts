@@ -688,9 +688,19 @@ function afterTradeConcept(page: Page, concept: string) {
 }
 
 async function afterTradeIdentity(page: Page, symbol: string, direction: 'Long' | 'Short') {
+  /*
+    The Symbol editor is a picker: the field searches, and recording is a
+    deliberate press — the row when this workspace has traded it before, the
+    offer to add it when it has not.
+  */
   const symbolEditor = await afterTradeEditor(page, 'Symbol');
-  // The Symbol editor is a picker: its search field is the free-text input.
   await symbolEditor.getByRole('combobox', { name: 'Symbol' }).fill(symbol);
+  const add = symbolEditor.getByRole('button', { name: /^Add/ });
+  if ((await add.count()) > 0) {
+    await add.click();
+  } else {
+    await symbolEditor.getByRole('option', { name: new RegExp(`^${symbol}`, 'i') }).click();
+  }
   await afterTradeEditorDone(page);
   const directionEditor = await afterTradeEditor(page, 'Direction');
   await chooseRadio(directionEditor, direction);

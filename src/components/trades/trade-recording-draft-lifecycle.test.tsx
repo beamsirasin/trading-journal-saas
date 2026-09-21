@@ -78,6 +78,8 @@ function fillAfterTradeIdentity(symbol: string) {
   fireEvent.click(screen.getByRole('button', { name: 'Edit Symbol' }));
   const symbolEditor = within(screen.getByRole('dialog'));
   fireEvent.change(symbolEditor.getByLabelText('Symbol'), { target: { value: symbol } });
+  // Typing only searches; adding what was typed is what records it.
+  fireEvent.click(symbolEditor.getByRole('button', { name: /^Add/ }));
   fireEvent.click(symbolEditor.getByRole('button', { name: 'Done' }));
   fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
   const directionEditor = within(screen.getByRole('dialog'));

@@ -233,10 +233,30 @@ function pickWheel(half: 'hour' | 'minute', value: string) {
   fireEvent.click(within(wheelColumn(half)).getByText(value));
 }
 
-function fillIdentity() {
-  const symbol = openConcept('Symbol');
-  fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
+/**
+ * Record a symbol through the picker. Typing only searches, so the deliberate
+ * act is pressing the offer to add what was typed — the same two steps a
+ * trader takes for an instrument the list has never seen.
+ */
+function chooseSymbol(symbol: string) {
+  const editor = openConcept('Symbol');
+  fireEvent.change(editor.getByLabelText('Symbol'), { target: { value: symbol } });
+  /*
+    Whichever deliberate act the list offers: a symbol this workspace has
+    already traded is a row, and one it has not is the offer to add it. Typing
+    alone is a search either way and records nothing.
+  */
+  const add = editor.queryByRole('button', { name: /^Add/ });
+  if (add === null) {
+    fireEvent.click(editor.getByRole('option', { name: new RegExp(`^${escape(symbol)}`, 'i') }));
+  } else {
+    fireEvent.click(add);
+  }
   closeConcept();
+}
+
+function fillIdentity() {
+  chooseSymbol('xauusd');
   const direction = openConcept('Direction');
   fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
   closeConcept();
@@ -543,9 +563,7 @@ describe('Step 1 — read first, edit on demand', () => {
 
   it('records each concept in its own editor and reads it back on the row', () => {
     renderForm();
-    const symbol = openConcept('Symbol');
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    closeConcept();
+    chooseSymbol('xauusd');
     expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
 
     const direction = openConcept('Direction');
@@ -565,15 +583,15 @@ describe('Step 1 — read first, edit on demand', () => {
     expect(conceptRow('enteredAt')).not.toHaveTextContent('Time not recorded');
   });
 
-  it('keeps what was entered when an editor is closed without Done', () => {
+  it('keeps an answer already given when an editor is closed without Done', () => {
     renderForm();
-    const symbol = openConcept('Symbol');
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'eurusd' } });
+    const direction = openConcept('Direction');
+    fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
     // Escape is Close-and-keep, never Discard (UX Rules §5.2, §17.4).
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     return waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
-      expect(conceptValue('symbol')).toBe('eurusd');
+      expect(conceptValue('direction')).toBe('short');
     });
   });
 
@@ -729,6 +747,108 @@ describe('Step 1 — read first, edit on demand', () => {
     expect(symbol.getByText('Starred')).toBeInTheDocument();
     // One row per symbol: starring does not duplicate it into two sections.
     expect(symbol.getAllByRole('option', { name: /^NAS100/ })).toHaveLength(1);
+  });
+
+  /*
+    SEARCHING IS NOT ANSWERING. The field used to BE the recorded Symbol, so a
+    trader who opened the picker, typed a few letters to look something up and
+    closed it had silently replaced their Symbol with those letters. Every way
+    out of the sheet is covered here because each one is a way that used to
+    write.
+  */
+  describe('the search never becomes the answer', () => {
+    it('leaves the recorded Symbol alone while the list is filtered', () => {
+      renderForm(withSymbolHistory);
+      chooseSymbol('XAUUSD');
+      const symbol = openConcept('Symbol');
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'nas' } });
+      // The list narrows; the answer does not move.
+      expect(symbol.queryByRole('option', { name: /^XAUUSD/ })).toBeNull();
+      expect(conceptValue('symbol')).toBe('XAUUSD');
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: '' } });
+      expect(conceptValue('symbol')).toBe('XAUUSD');
+    });
+
+    for (const [name, close] of [
+      [
+        'Done',
+        () =>
+          fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' })),
+      ],
+      ['Escape', () => fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })],
+      [
+        'the close button',
+        () =>
+          fireEvent.click(
+            within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }),
+          ),
+      ],
+    ] as const) {
+      it(`keeps the previous Symbol when closed by ${name} mid-search`, async () => {
+        renderForm(withSymbolHistory);
+        chooseSymbol('XAUUSD');
+        const symbol = openConcept('Symbol');
+        fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'eur' } });
+        close();
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(conceptValue('symbol')).toBe('XAUUSD');
+        expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
+      });
+    }
+
+    it('never lets an unfinished search reach the payload', async () => {
+      renderForm(withSymbolHistory);
+      chooseSymbol('XAUUSD');
+      const direction = openConcept('Direction');
+      fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
+      closeConcept();
+
+      // Half a symbol, typed and abandoned.
+      const symbol = openConcept('Symbol');
+      fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'us3' } });
+      closeConcept();
+      save();
+      await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+      expect(payload()).toMatchObject({ symbol: 'XAUUSD' });
+    });
+
+    it('opens on an empty search with the recorded Symbol marked, not filtered to it', () => {
+      renderForm(withSymbolHistory);
+      chooseSymbol('XAUUSD');
+      const symbol = openConcept('Symbol');
+      expect(symbol.getByLabelText('Symbol')).toHaveValue('');
+      // Everything is browsable, and the answer says which one it is.
+      expect(symbol.getByRole('option', { name: /^NAS100/ })).toBeVisible();
+      expect(symbol.getByRole('option', { name: /^XAUUSD/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('starts a fresh search each time the picker is opened', () => {
+      renderForm(withSymbolHistory);
+      const first = openConcept('Symbol');
+      fireEvent.change(first.getByLabelText('Symbol'), { target: { value: 'nas' } });
+      closeConcept();
+      const second = openConcept('Symbol');
+      expect(second.getByLabelText('Symbol')).toHaveValue('');
+      expect(second.getByRole('option', { name: /^XAUUSD/ })).toBeVisible();
+    });
+
+    it('records only on a deliberate press, by row or by add', () => {
+      renderForm(withSymbolHistory);
+      // A row.
+      const byRow = openConcept('Symbol');
+      fireEvent.click(byRow.getByRole('option', { name: /^NAS100/ }));
+      expect(conceptValue('symbol')).toBe('NAS100');
+      closeConcept();
+      // The offer to add what was typed.
+      const byAdd = openConcept('Symbol');
+      fireEvent.change(byAdd.getByLabelText('Symbol'), { target: { value: 'ger40.cash' } });
+      expect(conceptValue('symbol')).toBe('NAS100');
+      fireEvent.click(byAdd.getByRole('button', { name: /^Add/ }));
+      expect(conceptValue('symbol')).toBe('ger40.cash');
+    });
   });
 
   it('keeps a recent symbol once a Trade has been saved with it', async () => {
@@ -1080,9 +1200,7 @@ describe('Step 1 — Long and Short carry a direction, never only a colour', () 
 
   it('sends the direction the trader chose, unchanged by any of this', async () => {
     renderForm();
-    const symbol = openConcept('Symbol');
-    fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'xauusd' } });
-    closeConcept();
+    chooseSymbol('xauusd');
     const direction = openConcept('Direction');
     fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
     closeConcept();

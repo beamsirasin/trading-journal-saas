@@ -2169,7 +2169,7 @@ export function TradeAfterTradeForm({
           <TradeSymbolPicker
             id="after-symbol"
             value={draft.symbol}
-            onChange={(symbol) => apply((current) => ({ ...current, symbol }))}
+            onSelect={(symbol) => apply((current) => ({ ...current, symbol }))}
             favorites={symbolFavorites.favorites}
             recents={symbolFavorites.recents}
             workspaceSymbols={options.symbolHistory}

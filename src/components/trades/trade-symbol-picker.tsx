@@ -19,11 +19,21 @@ import { cn } from '@/lib/utils';
  * marked, what this browser has seen them use, and what this workspace has
  * already recorded trades against.
  *
- * TYPING IS STILL THE ANSWER. The search box is the same free-text field it
- * always was — it filters the list as you go, and whatever is in it can be
- * recorded whether or not anything matched. A search with no exact match
- * offers itself as a new symbol, which is how a first trade on a new
- * instrument gets recorded without ever leaving the list.
+ * SEARCHING IS NOT ANSWERING. The search box is local state and nothing else:
+ * filtering, browsing, half-typing a symbol and thinking better of it all
+ * leave the recorded Symbol exactly as it was. `onSelect` fires on three
+ * deliberate acts and no others — pressing a row, pressing Enter on a
+ * highlighted row, and pressing the offer to add what was typed — so a query
+ * abandoned by Done, Escape, the close button or the backdrop is just a query
+ * that was abandoned.
+ *
+ * That the field used to BE the value is why this matters: a trader who opened
+ * the picker, typed three letters to look something up and closed it had
+ * silently replaced their Symbol with those three letters.
+ *
+ * TYPING IS STILL HOW A NEW SYMBOL IS RECORDED. There is no catalogue to add
+ * one to, so a query with no exact match offers itself as a symbol — one
+ * press, and free text is recorded exactly as it was written.
  */
 export interface TradeSymbolPickerLabels {
   readonly searchLabel: string;
@@ -59,7 +69,7 @@ function matches(symbol: string, query: string): boolean {
 export function TradeSymbolPicker({
   id,
   value,
-  onChange,
+  onSelect,
   favorites,
   recents,
   workspaceSymbols,
@@ -67,9 +77,10 @@ export function TradeSymbolPicker({
   labels,
 }: {
   id: string;
-  /** The recorded symbol, exactly as the trader wrote it. */
+  /** The recorded symbol, exactly as the trader wrote it. Never edited by typing. */
   value: string;
-  onChange: (symbol: string) => void;
+  /** Called only on a deliberate choice — never while searching. */
+  onSelect: (symbol: string) => void;
   favorites: readonly string[];
   recents: readonly string[];
   /** Symbols this workspace has already recorded Trades against. */
@@ -78,12 +89,14 @@ export function TradeSymbolPicker({
   labels: TradeSymbolPickerLabels;
 }) {
   /*
-    THE QUERY IS THE VALUE, until a row is picked. Typing edits the draft
-    directly — the same free-text field this always was — so a symbol nobody
-    has traded before is recorded by typing it and nothing else, and the draft
-    survives a reload mid-search exactly as it did before.
+    THE SEARCH STARTS EMPTY, SHOWING EVERYTHING, with the recorded Symbol
+    marked in the list. Seeding it with the current Symbol would filter the
+    list down to the one row a trader already has and make them clear the field
+    before they could look at anything else — and the reason they opened this
+    is usually to change it. The picker unmounts with its sheet, so reopening
+    is a fresh search rather than wherever the last one was left.
   */
-  const query = value;
+  const [query, setQuery] = useState('');
   const trimmed = query.trim();
   const listId = useId();
   const [active, setActive] = useState(-1);
@@ -110,8 +123,11 @@ export function TradeSymbolPicker({
   const exact = rows.some((row) => row.symbol.trim().toUpperCase() === trimmed.toUpperCase());
   const offerTyped = trimmed !== '' && !exact;
 
+  /** The one path to a recorded Symbol. */
   const select = (symbol: string) => {
-    onChange(symbol);
+    onSelect(symbol);
+    // The field then shows what was chosen rather than what was searched for.
+    setQuery(symbol);
     setActive(-1);
   };
 
@@ -155,7 +171,7 @@ export function TradeSymbolPicker({
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
           value={query}
           onChange={(event) => {
-            onChange(event.target.value);
+            setQuery(event.target.value);
             setActive(-1);
           }}
           onKeyDown={onKeyDown}
@@ -208,7 +224,7 @@ export function TradeSymbolPicker({
                   {section.label}
                 </p>
                 {inSection.map(({ row, index }) => {
-                  const chosen = row.symbol.trim().toUpperCase() === trimmed.toUpperCase();
+                  const chosen = row.symbol.trim().toUpperCase() === value.trim().toUpperCase();
                   const starred = favorites.includes(row.symbol);
                   return (
                     <div

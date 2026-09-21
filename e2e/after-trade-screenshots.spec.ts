@@ -152,9 +152,13 @@ test.describe('After Trade step-flow captures', () => {
         page.getByText('We restored your unsaved trade draft from this browser.'),
       ).toBeVisible();
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
-      // Reload recovery reaches inside the editor too, not only the row.
+      /*
+        Opening the picker over a recovered Symbol neither shows it in the
+        search box nor disturbs it. The box is a search and starts empty; the
+        Symbol is what the row below still says after closing.
+      */
       const recovered = await openConcept(page, 'Symbol');
-      await expect(recovered.getByRole('combobox', { name: 'Symbol' })).toHaveValue('XAUUSD');
+      await expect(recovered.getByRole('combobox', { name: 'Symbol' })).toHaveValue('');
       await closeConcept(page);
       await expect(page.locator('[data-concept="symbol"]')).toContainText('XAUUSD');
       await expect(page.locator('#after-finalPnl')).toHaveValue('400');
@@ -241,7 +245,9 @@ async function openEmotion(page: Page, phase: 'emotions' | 'postTradeEmotions') 
 /** A meaningful closed trade: every step holds real answers. */
 async function fillEverything(page: Page) {
   const symbol = await openConcept(page, 'Symbol');
+  // Typing searches; adding what was typed is what records it.
   await symbol.getByRole('combobox', { name: 'Symbol' }).fill('XAUUSD');
+  await symbol.getByRole('button', { name: /^Add/ }).click();
   await closeConcept(page);
   await openConcept(page, 'Direction');
   await clickChoice(page, 'Long');
