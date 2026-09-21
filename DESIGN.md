@@ -736,6 +736,9 @@ Character, not layout. None of this prescribes a final page design.
   compact title, sticky primary action, calm optional analytical groups.
 - Numbers are inputs, not trophies: no KPI styling, no coloured results before save.
 - Answer states are visually unambiguous (§6); defaults are visibly defaults.
+- Stepped capture follows the recording lifecycle
+  ([UX Rules §20](docs/UX_RULES.md#20-recording-lifecycle-and-task-flows)). The current Trade
+  Details step is the protected visual baseline for every flow that shows it.
 
 **Review**
 

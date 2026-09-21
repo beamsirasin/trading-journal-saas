@@ -4,8 +4,8 @@
 > TradeChemist Add Trade domain: At Entry, After Trade, Partial / Final Close, Review, System
 > Assessment, and the related Strategy, Psychology and Discipline semantics. Review decisions 1–11,
 > final decisions 12–18, closing decisions 19–21, analytics decisions 22–23 and UX boundary
-> decisions 24–37, pre-design decisions 38–40 and Review / System Assessment decisions 41–49 are
-> recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
+> decisions 24–37, pre-design decisions 38–40, Review / System Assessment decisions 41–49 and the
+> recording-lifecycle decision 50 (2026-09-22) are recorded in the [Decision log](#decision-log). How Review and System Assessment apply this
 > contract is defined in [Review & System Assessment](review-system-assessment.md) (approved v1,
 > 2026-09-20), which elaborates §14–§22, §25 and §28; decisions 41–49 amend §8, §18, §21 and §25 in
 > place.
@@ -36,6 +36,43 @@ TradeChemist มีเส้นทางบันทึก Trade หลักส
 ทั้งสองเส้นทางสร้าง Trade model เดียวกัน ต่างกันที่ timing, completeness และ provenance ของข้อมูล
 
 ไม่มี Plan mode หรือ Price-result mode แยกต่างหาก
+
+## Recording lifecycle
+
+**Added 2026-09-22 (decision 50).** Recording a Trade follows **one lifecycle**, not two unrelated
+forms. The lifecycle groups the semantics this contract already defines into six canonical
+stages; it adds no new state, value, result or requirement, and it changes none:
+
+1. **Trade Details** — Account, Symbol, Direction, Entry time (§6, §13).
+2. **Plan & Risk** — Risk at Entry and its Actual Risk follow-up (§4), Target and Exit Plan (§5),
+   and price levels as context only (§3).
+3. **Setup & Checklist** — Strategy, Setup and setup conditions (§7–§8).
+4. **Entry Context & Evidence** — Confidence and Entry Emotion (§9), and optional entry context:
+   trade idea / reason, timeframe, session, chart, notes (§6).
+5. **Exit & Result** — exit events and exit-history completeness (§10–§11), final exit time, Final
+   Net P&L and Trader Outcome (§11–§12).
+6. **After-Trade Context** — capture-only context about the close, such as Post-Trade Emotion (§9).
+
+Three task flows use the lifecycle. They are the recording routes of §1 plus the close of §11:
+
+- **Record Open Trade** (At Entry): stages 1 → 2 → 3 → 4, then Save Open Trade (§6).
+- **Close Existing Open Trade** (Record Exit / Final Close of an existing Trade): stages 5 → 6,
+  reaching Closed only through the explicit confirmation of §11. Stages 1–4 are the Trade's
+  existing, preserved context and are not re-entered.
+- **Record Closed Trade** (After Trade): every stage, presented in the task's own order (§13).
+
+The canonical stage decides **what a question means and where it belongs**; a task flow may
+**present** stages in a different order. Semantics, requirements, defaults and provenance stay
+those of this contract and of the recording mode, whatever the order: Save Open Trade and Save
+Closed Trade keep their §6 and §13 minimums; At Entry keeps its visible Strategy-default Exit Plan
+inheritance and After Trade never inherits (§5); Money stays the result authority and Price stays
+context (§3); setup conditions stay multi-state (§8).
+
+**Review and System Assessment are not a stage.** They stay post-save, for Closed Trades only, and
+entered only by the trader's choice (§14, §20–§21).
+
+Interaction rules for the lifecycle and the task flows are in
+[UX Rules §20](../UX_RULES.md#20-recording-lifecycle-and-task-flows).
 
 ---
 
@@ -1484,3 +1521,15 @@ Review & System Assessment decisions, 2026-09-20 (items 41–49). Defined in ful
     never called verified, and Q5 kept as a trader claim beside Capture origin; legacy notes never
     imply Reviewed, legacy closed Trades get no new Review attention, and no new legacy System
     resolutions are made once canonical System Assessment ships. Elaborates §7, §15, §28.
+
+Recording-lifecycle decision, 2026-09-22 (item 50):
+
+50. **One recording lifecycle** — Trade recording follows six canonical stages: Trade Details,
+    Plan & Risk, Setup & Checklist, Entry Context & Evidence, Exit & Result, After-Trade Context.
+    Record Open Trade uses stages 1–4 then Save Open Trade; Close Existing Open Trade uses stages
+    5–6 and reaches Closed only through the §11 confirmation, with stages 1–4 kept as preserved
+    context rather than re-entered; Record Closed Trade uses every stage in its own presentation
+    order. Canonical stage order and task presentation order may differ. The lifecycle adds and
+    changes no semantics: minimums, defaults (including At Entry Exit Plan inheritance and no
+    After Trade inheritance), provenance, Money authority and multi-state conditions are unchanged.
+    Review and System Assessment are not a stage and stay post-save for Closed Trades. (§1)

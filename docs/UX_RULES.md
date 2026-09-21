@@ -2,7 +2,7 @@
 
 > **Status:** v1 (2026-09-15), active. The UX behaviour and interaction authority for TradeChemist.
 > UX boundary decisions 24–37 and pre-design decisions 38–40 in the [Add Trade contract](product-contracts/add-trade.md#decision-log)
-> are applied.
+> are applied. The recording-lifecycle decision 50 (2026-09-22) is applied in §20.
 >
 > **Position in the documentation chain.** Each level controls its own domain, and a lower level
 > never overrides a higher level's semantic or behavioural decision
@@ -76,6 +76,8 @@ The non-negotiables. Each points to the full rule; the full rule governs.
     distinctions may not be dropped or merged (§16.1, §18.4).
 11. **When a design cannot represent the contract clearly, stop and report the conflict** rather
     than simplifying the semantics (§18).
+12. **One recording lifecycle, three task flows.** A stage fixes what a question means; a flow may
+    present stages in its own order. Review is never a stage (§20).
 
 ---
 
@@ -529,7 +531,8 @@ a state showing that it is still only a default until the trader confirms or cha
 4. **At Entry shows no result or Review surfaces:** no Final P&L, Trader Outcome, System Result,
    System Assessment or Review _(contract §6)_.
 5. **After Trade captures what happened** but does not present Reflection or System Assessment as a
-   step before Save _(contract §13)_.
+   step before Save _(contract §13)_. The lifecycle's After-Trade Context stage (§20) is Capture:
+   it never holds Reflection, rule checks, mistakes, Exit Plan Adherence or System Assessment.
 6. **Post-Trade Emotion** may be captured at Final Close, in After Trade, or in Review. It is always
    separate from, and never overwrites, Entry Emotion _(contract §9)_.
 7. **Formal Review exists only for Closed Trades** and is entered only by the trader's choice —
@@ -542,7 +545,9 @@ a state showing that it is still only a default until the trader confirms or cha
 1. **Question:** _What am I doing and why?_ Every element either answers it or is optional context.
 2. **Fast save.** Save Open Trade needs only Account, Symbol, Direction and Risk at Entry greater
    than zero _(contract §4, §6)_. Everything else is optional, and Save is reachable without
-   scrolling through optional sections.
+   scrolling through optional sections. In the stepped Record Open Trade flow, Save is available
+   from the Plan & Risk stage onward once those minimum fields are valid; it never waits for
+   Setup & Checklist or Entry Context & Evidence (§20.4).
 3. **Entry time** defaults to now, and stays visibly editable and clearable.
 4. **Risk at Entry** is prominent as the 1R baseline. "Actual risk differed" follows §3.4: unopened
    states the match visibly; opened records Different, with an amount or with the amount unknown.
@@ -761,7 +766,8 @@ a state showing that it is still only a default until the trader confirms or cha
    - A multi-state question never becomes a binary toggle on a phone.
    - A distinction visible on desktop is available on mobile.
 2. **Mobile At Entry is quick entry.** The Save minimum and Save come first; optional sections are
-   progressive _(CLAUDE.md §8; design-system §6)_.
+   progressive _(CLAUDE.md §8; design-system §6)_. In the stepped flow the Save minimum lives in
+   the first two stages, and Save is offered from the second (§20.4).
 3. **No horizontal page overflow** from 320px upward. Exit history and other wide content scroll
    inside their own container or switch to a card presentation _(design-system §6)_.
 4. **Nested editors on small screens** may present full-height, keeping §5.2 semantics. The system
@@ -941,6 +947,93 @@ Use this for every design, prototype, pull request or AI-generated redesign touc
       live announcements follow §17.
 - [ ] Any semantic conflict found was reported rather than simplified away (§18).
 
+**Recording lifecycle**
+
+- [ ] Every question sits in its canonical stage, and no flow asks the same question on two steps
+      (§20.1–§20.2).
+- [ ] Record Open Trade offers Save from Plan & Risk once its minimum is valid, and never waits on
+      later stages (§20.4).
+- [ ] Close Existing Open Trade shows stages 1–4 as preserved context, never as a re-entry form,
+      and reaches Closed only through the explicit close confirmation (§20.5).
+- [ ] Review and System Assessment are not a step of any flow (§20.7).
+- [ ] At Entry Exit Plan inheritance stays visible when the Strategy is chosen on a later step, and
+      Record Closed Trade never inherits (§20.8).
+- [ ] The protected Step 1 baseline is unchanged unless a real regression is being fixed (§20.9).
+
+---
+
+## 20. Recording lifecycle and task flows
+
+_(contract §1 Recording lifecycle, decision 50)_ Recording a Trade is one lifecycle presented
+through task flows. The lifecycle organizes the questions this document already governs; it adds no
+new state or requirement, and every rule in §1–§19 still applies inside every stage.
+
+1. **Six canonical stages.** Each stage owns its questions, wherever a flow presents it:
+
+   | Stage                            | Questions                                                                                                                                                                               |
+   | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | **1 — Trade Details**            | Account, Symbol, Direction, Entry time                                                                                                                                                  |
+   | **2 — Plan & Risk**              | Risk at Entry, with the recording mode's Actual Risk follow-up beside it (§3.4, §12.4); Target (Target Profit, TP price); Exit Plan; price levels — Entry, SL, size — folded as context |
+   | **3 — Setup & Checklist**        | Strategy, Setup, setup conditions                                                                                                                                                       |
+   | **4 — Entry Context & Evidence** | Confidence, Entry Emotion, trade idea / reason, timeframe, session, chart, notes                                                                                                        |
+   | **5 — Exit & Result**            | Exit events and exit-history completeness, final exit time, Final Net P&L, Trader Outcome, and Actual R when it can be derived                                                          |
+   | **6 — After-Trade Context**      | Capture-only context about the close, such as Post-Trade Emotion                                                                                                                        |
+
+2. **A stage decides meaning; a flow decides order.** Canonical order and task presentation order
+   may differ. Moving a stage in a flow never changes what its answers mean, which defaults apply,
+   what Save requires or what provenance is written. A flow never asks one question on two of its
+   steps.
+3. **Moving between steps is view state, never draft state.** Every step's answers stay in the
+   Draft whichever step is shown, and routine navigation follows §5. No step locks another; only
+   §6.1 requirements block Save, and a blocked Save opens the step holding the first error.
+4. **Record Open Trade — stages 1 → 2 → 3 → 4, then Save Open Trade.**
+   - Save Open Trade is available from Plan & Risk onward once Account, Symbol, Direction and Risk
+     at Entry greater than zero are valid, with no other §6.1 error. Setup & Checklist and Entry
+     Context & Evidence are optional to save and never presented as unimportant (§2.4).
+   - The flow shows no Exit & Result or After-Trade Context stage, and no result, outcome, System
+     Assessment or Review (§10.4). Confirmation offers no Review (§5.9).
+5. **Close Existing Open Trade — stages 5 → 6, then Closed.**
+   - Stages 1–4 are the Trade's existing, preserved context. They are shown as read-only context,
+     never as a form to fill again. Changing one is an ordinary edit of the saved Trade that keeps
+     its capture origin and adds revision metadata (§4.7, §11.11).
+   - Exit & Result follows §13: a live exit's scope is required, a Part exit records a Partial
+     Close with no whole-Trade result, and the Trade reaches Closed only through the explicit All
+     Remaining / Close Remaining confirmation.
+   - After-Trade Context and the whole-Trade result belong to the close that reaches Closed.
+   - A close that reaches Closed shows Trade Saved → Review Trade / Done (§5.9). Work survives
+     routine dismissal; durable reload recovery is not claimed (§5.4).
+6. **Record Closed Trade — Trade → Result → Plan → Setup → Entry Context → After-Trade Context**,
+   that is stages 1, 5, 2, 3, 4, 6. Result comes early because it answers the moment's question
+   (§2.3, §12.1). Save Closed Trade needs only the minimum Trade identity and stays available from
+   every step once it is valid (§6.1, §12.2).
+7. **Review and System Assessment are not a stage.** No flow contains Reflection, rule checks,
+   mistakes, Exit Plan Adherence or System Assessment as a step. Formal Review stays post-save, for
+   Closed Trades only, entered by the trader's choice (§10, §14).
+8. **Exit Plan inheritance across stages** follows §11.6 and §12.6 unchanged:
+   - **Record Open Trade:** while the Exit Plan is still in its inherited state, the selected
+     Strategy's default is inherited automatically and visibly, and changing the Strategy updates
+     the inherited plan. Because the Strategy is chosen in Setup & Checklist and the Exit Plan is
+     shown in Plan & Risk, the update is stated where the Strategy is chosen — for example "Exit
+     Plan: From Strategy: <name>" — and Plan & Risk shows the plan as inherited. Once the trader
+     explicitly overrides the Exit Plan, Strategy defaults are no longer followed until an explicit
+     restore such as "Use strategy default".
+   - **Record Closed Trade:** no Strategy or Exit Plan default is ever applied or offered
+     retrospectively.
+9. **The Step 1 baseline is protected.** Trade Details keeps its current interaction baseline —
+   read-first launcher rows, one editor overlay per concept, the Saved Symbols picker, the entry
+   date and time controls, motion, on-screen keyboard handling, and the progress, header and footer
+   behaviour — in every flow that shows it. It changes only to fix a real regression.
+   Mode-specific semantics, such as At Entry's editable and clearable "now" Entry time (§11.3),
+   are added inside the existing Entry date and time interaction, not by redesigning the step.
+   Visual expression stays governed by [`DESIGN.md`](../DESIGN.md).
+10. **Setup & Checklist is multi-state.** "Checklist" names the stage, not a control: each
+    condition is Met / Not Met / Unanswered, plus Don't remember in Record Closed Trade, never a
+    binary checkbox (§8.4, §11.7, §12.7).
+11. **Money is the result; Price is context** in every stage (§8.1–§8.2). The TP price stays with
+    the Target it describes, and Entry, SL and size stay folded, labelled context in Plan & Risk.
+12. **"Evidence" in a stage name means context the trader attaches**, such as a chart. It is never
+    presented as verified, and it is not the Capture evidence Review reads (§9.4).
+
 ---
 
 ## Appendix A — Deferred items
@@ -958,6 +1051,9 @@ blocks visual design or interaction design; each has a safe rule to follow meanw
 | Automatic draft-retention time (TTL)                          | Implementation policy       | Drafts stay user/workspace-scoped and are cleared by explicit sign-out after a warning (§5.11) _(contract §23)_. Current policy: an Add Trade Recording Draft untouched for 30 days is removed when next read. |
 | Price-derived context displays (distance, pips)               | Later exploration           | None required; if explored, labelled context only, never calculation authority (§8.2) _(contract §3)_.                                                                                                         |
 | Cross-device draft sync                                       | Not a requirement           | Never imply a draft is synced (§5.4) _(contract §23)_.                                                                                                                                                         |
+| After-Trade Context contents beyond Post-Trade Emotion        | Before stage 6 is built     | Hold only capture-only close context the contract already defines; never Reflection, adherence, rule checks, mistakes or System Assessment (§20.7).                                                            |
+| Attached evidence (chart images) in a Recording Draft         | Before stage 4 attachments  | Keep the TradingView link as the chart context; an upload a draft holds must not be orphaned by Discard, sign-out or retention cleanup (§5.6, §5.11).                                                          |
+| Final EN / TH copy for lifecycle stage names                  | UX/copy prototyping         | The §20.1 names fix meaning, not final copy (§9.7–§9.8).                                                                                                                                                       |
 | Astra interaction/data-integrity findings                     | Not available               | None exist in the repository and none are reconstructed; the contract and these rules are the current authorities.                                                                                             |
 
 If new questions arise, record them here and stop rather than deciding them in UI (§18.6).
@@ -1010,5 +1106,15 @@ Implementation evidence only, recorded so redesign and migration work can find t
   legacy row falls back to "Captured at entry" / "Added after entry" from the assignment time. The
   whole-Trade "Recorded retrospectively" disclosure (contract §28, Phase 15G.5C) stays on the Trade
   Details Plan tab.
+- **Recording lifecycle (§20), 2026-09-22:**
+  - Record Open Trade (At Entry) is still one linear page, not the stepped 1 → 2 → 3 → 4 flow, and
+    its Save does not yet follow §20.4's stage rule.
+  - Record Closed Trade (After Trade) still presents five steps — Trade, Result, Plan, Context
+    (Strategy, Setup, conditions, Confidence, Entry and Post-Trade Emotion, trade idea) and Save
+    (market context, notes) — rather than §20.6's six. Its Plan step renders the shared Plan & Risk
+    stage (commit `cc4e380`), with price levels folded there.
+  - Close Existing Open Trade does not exist as a contract flow: closing still uses the legacy exit
+    and close paths described above (§8.1, §8.10). Contract-compliant Record Exit / Final Close is a
+    separate prerequisite.
 - Timestamp fields use native date-time inputs (§8.5 — acceptable only if they meet the timezone,
   clearing and accessibility rules).
