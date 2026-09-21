@@ -3,6 +3,9 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpDown,
+  CalendarClock,
+  ChartCandlestick,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -10,6 +13,10 @@ import {
   History,
   Plus,
   Trash2,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  type LucideIcon,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -1324,6 +1331,8 @@ export function TradeAfterTradeForm({
                 raw={draft.tradingAccountId}
                 error={errorText('tradingAccountId')}
                 editLabel={a('trade.editAria', { field: c('account.label') })}
+                icon={Wallet}
+                iconTone={selectedAccount === undefined ? undefined : 'accent'}
                 onOpen={() => setEditor('tradingAccountId')}
                 data-account-context=""
               />
@@ -1337,6 +1346,8 @@ export function TradeAfterTradeForm({
                 raw={draft.symbol}
                 error={errorText('symbol')}
                 editLabel={a('trade.editAria', { field: c('symbol.label') })}
+                icon={ChartCandlestick}
+                iconTone={draft.symbol.trim() === '' ? undefined : 'accent'}
                 onOpen={() => setEditor('symbol')}
               />
               <ConceptRow
@@ -1368,6 +1379,25 @@ export function TradeAfterTradeForm({
                 raw={draft.direction}
                 error={errorText('direction')}
                 editLabel={a('trade.editAria', { field: c('direction.label') })}
+                /*
+                  THE SHAPE SAYS IT BEFORE THE HUE DOES: both ways while
+                  unanswered, then the trend the trade took — so the icon
+                  carries the direction in greyscale too, beside the word.
+                */
+                icon={
+                  draft.direction === 'long'
+                    ? TrendingUp
+                    : draft.direction === 'short'
+                      ? TrendingDown
+                      : ArrowUpDown
+                }
+                iconTone={
+                  draft.direction === 'long'
+                    ? 'positive'
+                    : draft.direction === 'short'
+                      ? 'negative'
+                      : undefined
+                }
                 onOpen={() => setEditor('direction')}
               />
               {/*
@@ -1390,6 +1420,9 @@ export function TradeAfterTradeForm({
                 raw={draft.enteredAt}
                 error={entryError}
                 editLabel={a('trade.editAria', { field: a('times.entryDateTime') })}
+                icon={CalendarClock}
+                // Half a timestamp is not an answer yet: a date needs its time.
+                iconTone={entryParts.date !== '' && entryParts.time !== '' ? 'accent' : undefined}
                 onOpen={() => {
                   setPickerMonth(monthOf(entryParts.date, todayDate));
                   /*
@@ -2540,6 +2573,13 @@ function MonthStepButton({
  * neutral word for what is not — and a chevron; the control that records it
  * lives in the editor this row opens. `raw` exposes the stored value, so a
  * test or a capture can read what is recorded without opening an editor.
+ *
+ * THE ICON IS AN ANCHOR, NOT A STATUS. A small glyph in a quiet inset gives
+ * the eye four fixed places to land; it is neutral until the concept is
+ * answered, then takes the accent — or, for Direction, the restrained
+ * positive/negative the value already carries. It never says anything on its
+ * own: the value text says it first, and Direction's glyph changes shape as
+ * well as hue. Decorative, so hidden from assistive technology.
  */
 function ConceptRow({
   concept,
@@ -2552,6 +2592,8 @@ function ConceptRow({
   raw,
   error,
   editLabel,
+  icon: Icon,
+  iconTone,
   onOpen,
   ...rest
 }: {
@@ -2569,6 +2611,9 @@ function ConceptRow({
   raw: string;
   error?: string | undefined;
   editLabel: string;
+  icon: LucideIcon;
+  /** Unset while unanswered: the anchor stays neutral. */
+  iconTone?: 'accent' | ChoiceTone | undefined;
   onOpen: () => void;
 } & Record<`data-${string}`, string | undefined>) {
   const errorId = `${conceptRowId(concept)}-error`;
@@ -2610,6 +2655,27 @@ function ConceptRow({
           error === undefined ? 'border-transparent' : 'border-destructive',
         )}
       >
+        {/*
+          40px, one plane step off the row — `muted` on the phone's card row,
+          `card` on the desktop's muted row — so it reads as an inset, not a
+          badge. Answered tints stay at a tenth: a hint, never a coloured disc.
+        */}
+        <span
+          aria-hidden="true"
+          data-concept-icon={iconTone ?? 'neutral'}
+          className={cn(
+            'flex size-10 shrink-0 items-center justify-center rounded-md transition-colors motion-reduce:transition-none',
+            iconTone === 'accent'
+              ? 'bg-primary/10 text-primary'
+              : iconTone === 'positive'
+                ? 'bg-positive/10 text-positive'
+                : iconTone === 'negative'
+                  ? 'bg-negative/10 text-negative'
+                  : 'bg-muted text-muted-foreground lg:bg-card',
+          )}
+        >
+          <Icon className="size-5" />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className="text-muted-foreground text-[0.8125rem] leading-5 font-medium">

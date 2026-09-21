@@ -1607,6 +1607,66 @@ describe('Step 1 — Long and Short carry a direction, never only a colour', () 
   and closes; only the multi-part Entry date & time keeps a Done. Dismissing
   any of them — X, Escape — changes nothing.
 */
+/*
+  EACH LAUNCHER ROW HAS AN ANCHOR. Neutral until answered; then the accent, or
+  for Direction the tone the value already carries — and a glyph that changes
+  shape, so the icon never relies on colour. Decorative to assistive tech.
+*/
+describe('Step 1 — launcher row icons', () => {
+  const icon = (concept: string) =>
+    conceptRow(concept).querySelector<HTMLElement>('[data-concept-icon]')!;
+  const glyph = (concept: string) => icon(concept).querySelector('svg')!.getAttribute('class');
+
+  it('gives every row a hidden icon, neutral before anything is answered', () => {
+    renderForm({ ...options, tradingAccounts: [...options.tradingAccounts, secondAccountFor()] });
+    for (const concept of ['tradingAccountId', 'symbol', 'direction', 'enteredAt']) {
+      expect(icon(concept)).toHaveAttribute('aria-hidden', 'true');
+      expect(icon(concept)).toHaveAttribute('data-concept-icon', 'neutral');
+    }
+    expect(glyph('tradingAccountId')).toContain('lucide-wallet');
+    expect(glyph('symbol')).toContain('lucide-chart-candlestick');
+    expect(glyph('direction')).toContain('lucide-arrow-up-down');
+    expect(glyph('enteredAt')).toContain('lucide-calendar-clock');
+    // The row's accessible name is unchanged by it.
+    expect(screen.getByRole('button', { name: 'Edit Symbol' })).toBe(conceptRow('symbol'));
+  });
+
+  it('takes the accent once Account and Symbol are answered', () => {
+    renderForm();
+    // One account is already the answer.
+    expect(icon('tradingAccountId')).toHaveAttribute('data-concept-icon', 'accent');
+    chooseSymbol('xauusd');
+    expect(icon('symbol')).toHaveAttribute('data-concept-icon', 'accent');
+  });
+
+  it('turns the Direction glyph with the answer, not only its colour', () => {
+    renderForm();
+    chooseDirection('Long');
+    expect(icon('direction')).toHaveAttribute('data-concept-icon', 'positive');
+    expect(glyph('direction')).toContain('lucide-trending-up');
+    chooseDirection('Short');
+    expect(icon('direction')).toHaveAttribute('data-concept-icon', 'negative');
+    expect(glyph('direction')).toContain('lucide-trending-down');
+  });
+
+  it('keeps the Entry anchor neutral until both the date and the time are there', () => {
+    renderForm();
+    pickEntryDate('2026-09-18');
+    expect(icon('enteredAt')).toHaveAttribute('data-concept-icon', 'neutral');
+    setEntryTime('09:30');
+    expect(icon('enteredAt')).toHaveAttribute('data-concept-icon', 'accent');
+  });
+});
+
+function secondAccountFor() {
+  return {
+    tradingAccountId: '018f0000-0000-7000-8000-000000000003',
+    name: 'Second',
+    accountMode: 'live',
+    baseCurrency: 'EUR',
+  } as const;
+}
+
 describe('Step 1 — a single choice commits and closes', () => {
   const secondAccount = {
     tradingAccountId: '018f0000-0000-7000-8000-000000000002',
