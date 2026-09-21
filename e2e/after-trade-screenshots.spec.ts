@@ -62,32 +62,32 @@ test.describe('After Trade step-flow captures', () => {
         await goTo(page, 'trade');
         await capture(page, `${width}-${theme}-trade-empty`);
         await fillEverything(page);
-        // Each Step 1 editor, open over its completed step.
+        // Each Step 1 editor, open over its completed step. Only the
+        // multi-part Entry date & time has a Done.
+        await openConcept(page, 'Entry date & time');
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-entered-at.png` });
+        await closeConcept(page);
+        // The single-choice editors commit on a tap, so a look at one cancels out.
         for (const [field, name] of [
-          ['Entry date & time', 'entered-at'],
           ['Trading Account', 'account'],
+          ['Symbol', 'symbol'],
         ] as const) {
           await openConcept(page, field);
           await page.waitForTimeout(250);
           await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-${name}.png` });
-          await closeConcept(page);
+          await cancelConcept(page);
         }
-        // The Symbol picker commits on the row it is given, so it cancels out.
-        await openConcept(page, 'Symbol');
-        await page.waitForTimeout(250);
-        await page.screenshot({ path: `${OUT}/${width}-${theme}-editor-symbol.png` });
-        await cancelConcept(page);
-        // Direction carries a tone, so both answers are reviewed.
-        await openConcept(page, 'Direction');
-        for (const direction of ['Long', 'Short'] as const) {
-          await clickChoice(page, direction);
+        // Direction carries a tone, so both answers are reviewed as selected.
+        for (const direction of ['Short', 'Long'] as const) {
+          await chooseDirection(page, direction);
+          await openConcept(page, 'Direction');
           await page.waitForTimeout(250);
           await page.screenshot({
             path: `${OUT}/${width}-${theme}-editor-direction-${direction.toLowerCase()}.png`,
           });
+          await cancelConcept(page);
         }
-        await clickChoice(page, 'Long');
-        await closeConcept(page);
         await assertStepOneProportion(page, `${width}-${theme}`);
         for (const step of ['trade', 'result', 'plan', 'context', 'save'] as const) {
           await goTo(page, step);
@@ -242,6 +242,14 @@ async function cancelConcept(page: Page) {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/** A single-choice editor: the tap records the answer and closes the sheet. */
+async function chooseDirection(page: Page, direction: 'Long' | 'Short') {
+  const editor = await openConcept(page, 'Direction');
+  await editor.getByRole('button', { name: direction, exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
+/** Only the multi-part Entry date & time editor still has a Done. */
 async function closeConcept(page: Page) {
   await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -266,9 +274,7 @@ async function fillEverything(page: Page) {
   if ((await add.count()) > 0) await add.click();
   await symbol.getByRole('option', { name: /^XAUUSD/ }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await openConcept(page, 'Direction');
-  await clickChoice(page, 'Long');
-  await closeConcept(page);
+  await chooseDirection(page, 'Long');
   // The entry timestamp is one sheet holding two answers: the day, then the
   // minute. Picking the day moves the sheet on to the minute.
   const stamp = await openConcept(page, 'Entry date & time');

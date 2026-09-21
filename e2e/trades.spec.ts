@@ -677,11 +677,6 @@ async function afterTradeEditor(page: Page, field: string) {
   return page.getByRole('dialog');
 }
 
-async function afterTradeEditorDone(page: Page) {
-  await page.getByRole('dialog').getByRole('button', { name: 'Done' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-}
-
 /** What a Step 1 row holds, without opening its editor. */
 function afterTradeConcept(page: Page, concept: string) {
   return page.locator(`[data-concept="${concept}"]`);
@@ -700,9 +695,14 @@ async function afterTradeIdentity(page: Page, symbol: string, direction: 'Long' 
   // Tapping the saved row is what records it, and it closes the sheet itself.
   await symbolEditor.getByRole('option', { name: new RegExp(`^${symbol}`, 'i') }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Direction is a single choice too: the tap records it and closes the sheet.
   const directionEditor = await afterTradeEditor(page, 'Direction');
-  await chooseRadio(directionEditor, direction);
-  await afterTradeEditorDone(page);
+  await directionEditor.getByRole('button', { name: direction, exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(afterTradeConcept(page, 'direction')).toHaveAttribute(
+    'data-value',
+    direction.toLowerCase(),
+  );
 }
 
 async function chooseRadio(scope: Page | Locator, name: string) {

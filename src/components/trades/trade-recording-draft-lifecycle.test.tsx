@@ -105,10 +105,9 @@ function fillAfterTradeIdentity(symbol: string) {
   */
   fireEvent.click(symbolEditor.getByRole('button', { name: /^Add/ }));
   fireEvent.click(symbolEditor.getByRole('option', { name: new RegExp('^' + symbol, 'i') }));
+  // Direction is one tap too: the choice records it and closes the sheet.
   fireEvent.click(screen.getByRole('button', { name: 'Edit Direction' }));
-  const directionEditor = within(screen.getByRole('dialog'));
-  fireEvent.click(directionEditor.getByLabelText('Long'));
-  fireEvent.click(directionEditor.getByRole('button', { name: 'Done' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Long' }));
 }
 
 function fillAtEntry() {

@@ -257,6 +257,16 @@ function cancelConcept() {
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }));
 }
 
+/**
+ * A single-choice editor: the tap is the commit, and the sheet closes on it —
+ * there is no Done to press afterwards.
+ */
+function chooseDirection(direction: 'Long' | 'Short') {
+  const editor = openConcept('Direction');
+  fireEvent.click(editor.getByRole('button', { name: direction }));
+}
+
+/** Only the multi-part editor — Entry date & time — still has a Done. */
 function closeConcept() {
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Done' }));
 }
@@ -347,9 +357,7 @@ function chooseSymbol(symbol: string) {
 
 function fillIdentity() {
   chooseSymbol('xauusd');
-  const direction = openConcept('Direction');
-  fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
-  closeConcept();
+  chooseDirection('Long');
 }
 
 function type(label: string | RegExp, value: string, scope: HTMLElement = document.body) {
@@ -647,7 +655,7 @@ describe('Step 1 — read first, edit on demand', () => {
     // no datetime input sitting in the step itself.
     const trade = stepSection('trade');
     expect(within(trade).queryByLabelText('Symbol')).toBeNull();
-    expect(within(trade).queryByRole('radio', { name: 'Long' })).toBeNull();
+    expect(within(trade).queryByRole('button', { name: 'Long' })).toBeNull();
     expect(within(trade).queryByLabelText('Entry time')).toBeNull();
     expect(trade.querySelector('[data-entry-date-picker]')).toBeNull();
     expect(trade.querySelector('[data-entry-stamp-editor]')).toBeNull();
@@ -662,9 +670,7 @@ describe('Step 1 — read first, edit on demand', () => {
     chooseSymbol('xauusd');
     expect(conceptRow('symbol')).toHaveTextContent('XAUUSD');
 
-    const direction = openConcept('Direction');
-    fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
-    closeConcept();
+    chooseDirection('Short');
     expect(conceptRow('direction')).toHaveTextContent('Short');
     expect(conceptValue('direction')).toBe('short');
 
@@ -679,22 +685,26 @@ describe('Step 1 — read first, edit on demand', () => {
     expect(conceptRow('enteredAt')).not.toHaveTextContent('Time not recorded');
   });
 
-  it('keeps an answer already given when an editor is closed without Done', () => {
+  it('leaves an answer already given alone when an editor is dismissed', async () => {
     renderForm();
-    const direction = openConcept('Direction');
-    fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
-    // Escape is Close-and-keep, never Discard (UX Rules §5.2, §17.4).
+    chooseDirection('Short');
+    // Escape and X only leave: they neither take the answer back nor invent one.
+    openConcept('Direction');
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    return waitFor(() => {
-      expect(screen.queryByRole('dialog')).toBeNull();
-      expect(conceptValue('direction')).toBe('short');
-    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('direction')).toBe('short');
+    openConcept('Direction');
+    cancelConcept();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('direction')).toBe('short');
   });
 
-  it('returns focus to the row that opened the editor', async () => {
+  it('returns focus to the row that opened the editor, however it closes', async () => {
     renderForm();
     openConcept('Direction');
-    closeConcept();
+    cancelConcept();
+    await waitFor(() => expect(conceptRow('direction')).toHaveFocus());
+    chooseDirection('Long');
     await waitFor(() => expect(conceptRow('direction')).toHaveFocus());
   });
 
@@ -744,10 +754,11 @@ describe('Step 1 — read first, edit on demand', () => {
     type('Risk at entry', '100');
     // Open and close a Step 1 editor from Step 1 — nothing else moves.
     const account = openConcept('Trading Account');
-    expect(account.getByLabelText('Trading Account')).toHaveValue(
-      options.tradingAccounts[0]!.tradingAccountId,
+    expect(account.getByRole('button', { name: 'Main USD · USD' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
     );
-    closeConcept();
+    cancelConcept();
     goTo('result');
     expect(screen.getByLabelText('Final net P&L')).toHaveValue('400');
     expect(screen.getByText('+4.00R')).toBeInTheDocument();
@@ -1200,9 +1211,7 @@ describe('Step 1 — read first, edit on demand', () => {
       seedSavedSymbols();
       renderForm();
       chooseSymbol('XAUUSD');
-      const direction = openConcept('Direction');
-      fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
-      closeConcept();
+      chooseDirection('Long');
 
       const symbol = openConcept('Symbol');
       fireEvent.change(symbol.getByLabelText('Symbol'), { target: { value: 'us3' } });
@@ -1236,9 +1245,7 @@ describe('Step 1 — read first, edit on demand', () => {
     seedSavedSymbols(['NAS100']);
     renderForm();
     chooseSymbol('XAUUSD');
-    const direction = openConcept('Direction');
-    fireEvent.click(direction.getByRole('radio', { name: 'Long' }));
-    closeConcept();
+    chooseDirection('Long');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
 
@@ -1529,37 +1536,42 @@ describe('Step 1 — Long and Short carry a direction, never only a colour', () 
 
   it('tints a chosen Long green and a chosen Short red, leaving the other neutral', () => {
     renderForm();
-    const editor = openConcept('Direction');
-    const long = editor.getByRole('radio', { name: 'Long' });
-    const short = editor.getByRole('radio', { name: 'Short' });
-    const labelFor = (radio: HTMLElement) =>
-      document.querySelector(`label[for="${radio.getAttribute('id')}"]`)!;
+    const button = (name: 'Long' | 'Short') =>
+      within(screen.getByRole('dialog')).getByRole('button', { name });
 
     // NOTHING IS TINTED BEFORE AN ANSWER: the hue marks the selection, never
     // the mere existence of two directions.
-    expect(classesOf(labelFor(long))).not.toContain('positive');
-    expect(classesOf(labelFor(short))).not.toContain('negative');
+    openConcept('Direction');
+    expect(classesOf(button('Long'))).not.toContain('positive');
+    expect(classesOf(button('Short'))).not.toContain('negative');
+    cancelConcept();
 
-    fireEvent.click(long);
-    expect(classesOf(labelFor(long))).toContain('bg-positive/8');
-    expect(classesOf(labelFor(long))).toContain('border-positive/45');
-    expect(classesOf(labelFor(short))).not.toContain('negative');
+    chooseDirection('Long');
+    openConcept('Direction');
+    expect(classesOf(button('Long'))).toContain('bg-positive/8');
+    expect(classesOf(button('Long'))).toContain('border-positive/45');
+    expect(classesOf(button('Short'))).not.toContain('negative');
+    cancelConcept();
 
-    fireEvent.click(short);
-    expect(classesOf(labelFor(short))).toContain('bg-negative/8');
-    expect(classesOf(labelFor(short))).toContain('border-negative/45');
+    chooseDirection('Short');
+    openConcept('Direction');
+    expect(classesOf(button('Short'))).toContain('bg-negative/8');
+    expect(classesOf(button('Short'))).toContain('border-negative/45');
     // The previous answer gives its tint back with its selection.
-    expect(classesOf(labelFor(long))).not.toContain('positive');
+    expect(classesOf(button('Long'))).not.toContain('positive');
   });
 
   it('never lets colour be the only thing that says which way the trade went', () => {
     renderForm();
+    chooseDirection('Short');
     const editor = openConcept('Direction');
-    fireEvent.click(editor.getByRole('radio', { name: 'Short' }));
-    // In the editor: the word, the radio role, and the checked state.
-    expect(editor.getByRole('radio', { name: 'Short' })).toBeChecked();
-    expect(editor.getByRole('radio', { name: 'Long' })).not.toBeChecked();
-    closeConcept();
+    // In the editor: the word, the pressed state, and a check beside it.
+    expect(editor.getByRole('button', { name: 'Short' })).toHaveAttribute('aria-pressed', 'true');
+    expect(editor.getByRole('button', { name: 'Long' })).toHaveAttribute('aria-pressed', 'false');
+    const check = (name: string) => editor.getByRole('button', { name }).querySelector('svg')!;
+    expect(classesOf(check('Short'))).toContain('opacity-100');
+    expect(classesOf(check('Long'))).toContain('opacity-0');
+    cancelConcept();
     // On the row: the word again, and the stored value behind it.
     expect(conceptRow('direction')).toHaveTextContent('Short');
     expect(conceptValue('direction')).toBe('short');
@@ -1572,14 +1584,10 @@ describe('Step 1 — Long and Short carry a direction, never only a colour', () 
     expect(classesOf(value())).not.toContain('positive');
     expect(classesOf(value())).not.toContain('negative');
 
-    const editor = openConcept('Direction');
-    fireEvent.click(editor.getByRole('radio', { name: 'Long' }));
-    closeConcept();
+    chooseDirection('Long');
     expect(classesOf(value())).toContain('text-positive');
 
-    const again = openConcept('Direction');
-    fireEvent.click(again.getByRole('radio', { name: 'Short' }));
-    closeConcept();
+    chooseDirection('Short');
     expect(classesOf(value())).toContain('text-negative');
     expect(classesOf(value())).not.toContain('text-positive');
   });
@@ -1587,12 +1595,99 @@ describe('Step 1 — Long and Short carry a direction, never only a colour', () 
   it('sends the direction the trader chose, unchanged by any of this', async () => {
     renderForm();
     chooseSymbol('xauusd');
-    const direction = openConcept('Direction');
-    fireEvent.click(direction.getByRole('radio', { name: 'Short' }));
-    closeConcept();
+    chooseDirection('Short');
     save();
     await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
     expect(payload()).toMatchObject({ symbol: 'XAUUSD', direction: 'short' });
+  });
+});
+
+/*
+  ONE RULE FOR STEP 1's EDITORS. A single-choice editor commits on the choice
+  and closes; only the multi-part Entry date & time keeps a Done. Dismissing
+  any of them — X, Escape — changes nothing.
+*/
+describe('Step 1 — a single choice commits and closes', () => {
+  const secondAccount = {
+    tradingAccountId: '018f0000-0000-7000-8000-000000000002',
+    name: 'Test',
+    accountMode: 'live',
+    baseCurrency: 'THB',
+  } as const;
+  const twoAccounts: TradeCreateOptions = {
+    ...options,
+    tradingAccounts: [...options.tradingAccounts, secondAccount],
+  };
+
+  it('lists every account as its own answer, the current one selected, with no Done', () => {
+    // One account is the answer already; with two, none is chosen until tapped.
+    renderForm(twoAccounts);
+    expect(conceptValue('tradingAccountId')).toBe('');
+    fireEvent.click(openConcept('Trading Account').getByRole('button', { name: 'Main USD · USD' }));
+    const editor = openConcept('Trading Account');
+    // No dropdown inside the sheet: the accounts are the answers.
+    expect(editor.queryByRole('combobox')).toBeNull();
+    expect(editor.queryByRole('button', { name: 'Done' })).toBeNull();
+    expect(editor.getByRole('button', { name: 'Main USD · USD' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(editor.getByRole('button', { name: 'Test · THB' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('records the account tapped, closes, and says so on the row', async () => {
+    renderForm(twoAccounts);
+    const editor = openConcept('Trading Account');
+    fireEvent.click(editor.getByRole('button', { name: 'Test · THB' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('tradingAccountId')).toBe(secondAccount.tradingAccountId);
+    expect(conceptRow('tradingAccountId')).toHaveTextContent('Test · THB');
+    await waitFor(() => expect(conceptRow('tradingAccountId')).toHaveFocus());
+    // And reopening shows it as the current one.
+    expect(
+      openConcept('Trading Account').getByRole('button', { name: 'Test · THB' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the account when the sheet is only dismissed', async () => {
+    renderForm();
+    openConcept('Trading Account');
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    openConcept('Trading Account');
+    cancelConcept();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('tradingAccountId')).toBe(options.tradingAccounts[0]!.tradingAccountId);
+  });
+
+  it('sends the account the trader tapped', async () => {
+    renderForm(twoAccounts);
+    fireEvent.click(openConcept('Trading Account').getByRole('button', { name: 'Test · THB' }));
+    fillIdentity();
+    save();
+    await waitFor(() => expect(createCompletedTradeActionMock).toHaveBeenCalled());
+    expect(payload()).toMatchObject({ tradingAccountId: secondAccount.tradingAccountId });
+  });
+
+  it('records Long or Short on the tap, closes, and has no Done', async () => {
+    renderForm();
+    const editor = openConcept('Direction');
+    expect(editor.queryByRole('button', { name: 'Done' })).toBeNull();
+    // Buttons, not radios: arrowing between them must never commit an answer.
+    expect(editor.queryByRole('radio')).toBeNull();
+    fireEvent.click(editor.getByRole('button', { name: 'Long' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(conceptValue('direction')).toBe('long');
+    await waitFor(() => expect(conceptRow('direction')).toHaveFocus());
+  });
+
+  it('keeps Done only on the multi-part Entry date & time editor', () => {
+    renderForm();
+    const stamp = openConcept('Entry date & time');
+    expect(stamp.getByRole('button', { name: 'Done' })).toBeInTheDocument();
   });
 });
 

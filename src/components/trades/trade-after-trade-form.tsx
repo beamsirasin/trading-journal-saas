@@ -106,6 +106,7 @@ import {
   type ChoiceTone,
 } from './trade-at-entry-controls';
 import { AtEntryExitPlan } from './trade-at-entry-exit-plan';
+import { TradeChoiceList } from './trade-choice-list';
 import { datetimeLocalToIso, tradeMoneyInputValue } from './trade-form-values';
 import { formatR, formatTradeInstant, formatTradeMoney } from './trade-format';
 import type { RecordingSaveControls } from './trade-recording-form';
@@ -844,20 +845,15 @@ export function TradeAfterTradeForm({
   const formatMoney = (minor: string) => formatTradeMoney(minor, currency) ?? minor;
 
   /*
-    STEP 1's EDITORS, ALL FOUR THE SAME SHAPE. Done only closes: the answer was
-    already written to the draft as it was made, so there is no separate commit
-    and nothing to lose by leaving another way.
+    STEP 1's EDITORS, ONE RULE. A single-choice editor — Trading Account,
+    Symbol, Direction — commits on the choice and closes; a multi-part one —
+    Entry date & time — keeps Done. Either way the answer is written to the
+    draft as it is made, so closing by X, Escape or the backdrop changes
+    nothing that was not already chosen.
   */
   const closeEditorOn = (next: boolean) => {
     if (!next) setEditor(null);
   };
-  const editorDone = (
-    <div className="flex min-w-0 justify-end">
-      <Button type="button" size="lg" className="min-h-12" onClick={() => setEditor(null)}>
-        {a('trade.done')}
-      </Button>
-    </div>
-  );
   /*
     THE ENTRY TIMESTAMP, READ AS ITS TWO HALVES. One stored value still; these
     only say how it is shown and which row an error belongs beside. A date with
@@ -2122,9 +2118,13 @@ export function TradeAfterTradeForm({
         one can submit the Trade (UX Rules §17.4), and each a centered dialog on
         a desktop and a reachable bottom sheet on a phone — the geometry this
         codebase already accepted for nested Trade editors. Every change is
-        written to the draft as it is made, so Done, Escape, the backdrop and
-        the system back gesture all keep it; focus returns to the row that
+        written to the draft as it is made, so X, Escape, the backdrop and the
+        system back gesture never take one back; focus returns to the row that
         opened the editor.
+
+        THE ACCOUNTS, LISTED. A trader has a handful of accounts at most — the
+        plan limit is 15 — so every one is on screen as its own answer and one
+        tap is the whole choice. No search: there is nothing to search through.
       */}
       <TradeAdaptiveOverlay
         open={editor === 'tradingAccountId'}
@@ -2134,22 +2134,26 @@ export function TradeAfterTradeForm({
         closeLabel={a('trade.close')}
         size="focused"
         returnFocusRef={conceptRows.tradingAccountId}
-        footer={editorDone}
       >
-        <SelectField
-          id="after-account"
-          label={c('account.label')}
-          value={draft.tradingAccountId}
-          error={errorText('tradingAccountId')}
-          onChange={(tradingAccountId) => apply((current) => ({ ...current, tradingAccountId }))}
-          options={[
-            { value: '', label: c('account.choose') },
-            ...options.tradingAccounts.map((account) => ({
+        <div className="flex min-w-0 flex-col gap-3">
+          <TradeChoiceList
+            label={c('account.label')}
+            value={draft.tradingAccountId === '' ? null : draft.tradingAccountId}
+            error={errorText('tradingAccountId')}
+            errorId="after-account-error"
+            onChoose={(tradingAccountId) => {
+              apply((current) => ({ ...current, tradingAccountId }));
+              setEditor(null);
+            }}
+            options={options.tradingAccounts.map((account) => ({
               value: account.tradingAccountId,
               label: `${account.name} · ${account.baseCurrency}`,
-            })),
-          ]}
-        />
+            }))}
+          />
+          {errorText('tradingAccountId') === undefined ? null : (
+            <FieldError id="after-account-error">{errorText('tradingAccountId')}</FieldError>
+          )}
+        </div>
       </TradeAdaptiveOverlay>
 
       {/*
@@ -2208,20 +2212,27 @@ export function TradeAfterTradeForm({
         closeLabel={a('trade.close')}
         size="focused"
         returnFocusRef={conceptRows.direction}
-        footer={editorDone}
       >
-        <ChoiceGroup
-          idPrefix="after-direction"
-          legend={c('direction.label')}
-          hideLegend
-          value={draft.direction === '' ? null : draft.direction}
-          error={errorText('direction')}
-          onChange={(direction) => apply((current) => ({ ...current, direction }))}
-          options={[
-            { value: 'long', label: c('direction.long'), tone: 'positive' },
-            { value: 'short', label: c('direction.short'), tone: 'negative' },
-          ]}
-        />
+        <div className="flex min-w-0 flex-col gap-3">
+          <TradeChoiceList
+            label={c('direction.label')}
+            columns={2}
+            value={draft.direction === '' ? null : draft.direction}
+            error={errorText('direction')}
+            errorId="after-direction-error"
+            onChoose={(direction) => {
+              apply((current) => ({ ...current, direction }));
+              setEditor(null);
+            }}
+            options={[
+              { value: 'long', label: c('direction.long'), tone: 'positive' },
+              { value: 'short', label: c('direction.short'), tone: 'negative' },
+            ]}
+          />
+          {errorText('direction') === undefined ? null : (
+            <FieldError id="after-direction-error">{errorText('direction')}</FieldError>
+          )}
+        </div>
       </TradeAdaptiveOverlay>
 
       {/*
