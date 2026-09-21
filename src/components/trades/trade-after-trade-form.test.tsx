@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,22 +54,48 @@ vi.mock('@/server/actions/exit-plans', () => ({}));
   a fresh page asking the server, and nothing can pass by surviving in React
   state or in this browser's storage instead.
 */
-const serverLibrary = vi.hoisted(() => ({ symbols: [] as string[], failNextImport: false }));
+type Outcome = 'ok' | 'read_only' | 'throw' | 'hold' | 'hold_then_read_only';
+const serverLibrary = vi.hoisted(() => ({
+  symbols: [] as string[],
+  failNextImport: false,
+  /** What the next save/remove calls do, in order. Empty means 'ok'. */
+  script: [] as Outcome[],
+  /** Held calls, released by the test in whatever order it chooses. */
+  held: [] as Array<() => void>,
+  calls: 0,
+}));
+
+/** Run a write the way the scripted server says to. */
+async function scripted<T>(apply: () => T): Promise<T | { ok: false; error: { code: string } }> {
+  serverLibrary.calls += 1;
+  const outcome = serverLibrary.script.shift() ?? 'ok';
+  if (outcome === 'read_only') return { ok: false, error: { code: 'read_only_workspace' } };
+  if (outcome === 'throw') throw new Error('network: the request never reached the server');
+  if (outcome === 'hold' || outcome === 'hold_then_read_only') {
+    await new Promise<void>((resolve) => serverLibrary.held.push(resolve));
+  }
+  if (outcome === 'hold_then_read_only') {
+    return { ok: false, error: { code: 'read_only_workspace' } };
+  }
+  return apply();
+}
 const sameSymbol = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
 const importSavedSymbolsMock = vi.fn();
 
 vi.mock('@/server/actions/saved-symbols', () => ({
-  saveSymbolAction: async ({ symbol }: { symbol: string }) => {
-    const value = symbol.trim();
-    if (!serverLibrary.symbols.some((item) => sameSymbol(item, value))) {
-      serverLibrary.symbols = [value, ...serverLibrary.symbols];
-    }
-    return { ok: true, symbols: [...serverLibrary.symbols] };
-  },
-  removeSymbolAction: async ({ symbol }: { symbol: string }) => {
-    serverLibrary.symbols = serverLibrary.symbols.filter((item) => !sameSymbol(item, symbol));
-    return { ok: true, symbols: [...serverLibrary.symbols] };
-  },
+  saveSymbolAction: ({ symbol }: { symbol: string }) =>
+    scripted(() => {
+      const value = symbol.trim();
+      if (!serverLibrary.symbols.some((item) => sameSymbol(item, value))) {
+        serverLibrary.symbols = [value, ...serverLibrary.symbols];
+      }
+      return { ok: true, symbols: [...serverLibrary.symbols] };
+    }),
+  removeSymbolAction: ({ symbol }: { symbol: string }) =>
+    scripted(() => {
+      serverLibrary.symbols = serverLibrary.symbols.filter((item) => !sameSymbol(item, symbol));
+      return { ok: true, symbols: [...serverLibrary.symbols] };
+    }),
   importSavedSymbolsAction: async (input: { symbols: string[] }) => {
     importSavedSymbolsMock(input);
     if (serverLibrary.failNextImport) {
@@ -366,6 +392,9 @@ function emotions(phase: 'emotions' | 'postTradeEmotions'): HTMLElement {
 beforeEach(() => {
   serverLibrary.symbols = [];
   serverLibrary.failNextImport = false;
+  serverLibrary.script = [];
+  serverLibrary.held = [];
+  serverLibrary.calls = 0;
   importSavedSymbolsMock.mockReset();
   createCompletedTradeActionMock.mockReset();
   createCompletedTradeActionMock.mockResolvedValue({
@@ -921,6 +950,159 @@ describe('Step 1 — read first, edit on demand', () => {
       fireEvent.click(symbol.getByRole('option', { name: /^GER40/ }));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(conceptValue('symbol')).toBe('GER40');
+    });
+  });
+
+  /*
+    OPTIMISTIC, BUT NEVER FALSELY SUCCESSFUL. The picker shows a change at once
+    and writes it in the background. Each test here is a way the write can not
+    land — refused, lost on the network, overtaken by the next one, or cut off
+    by a reload — and each asserts the picker ends up showing what the server
+    actually holds rather than what it hoped for.
+  */
+  describe('when a Saved Symbol write does not land', () => {
+    const shown = () =>
+      screen
+        .queryAllByRole('option')
+        .map((option: HTMLElement) => option.getAttribute('data-symbol-option'));
+
+    /*
+      Let a released server answer be fully processed — promise continuation
+      and React state — before asserting. Polling with `waitFor` is wrong for
+      these: the state under test often already holds BEFORE the answer lands,
+      so a poll passes on the first try and the answer arrives afterwards to a
+      test that has already finished. That is how the adverse-ordering case
+      below first passed on code that was broken.
+    */
+    async function release() {
+      await act(async () => {
+        serverLibrary.held.shift()!();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+
+    function add(symbol: string) {
+      const search = within(screen.getByRole('dialog')).getByLabelText('Symbol');
+      fireEvent.change(search, { target: { value: symbol } });
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^Add/ }));
+    }
+
+    it('takes an add back when the workspace refuses it (read-only)', async () => {
+      seedSavedSymbols(['GER40']);
+      renderForm();
+      openConcept('Symbol');
+      serverLibrary.script = ['read_only'];
+      add('BTCUSD');
+      await waitFor(() => expect(shown()).toEqual(['GER40']));
+      expect(serverLibrary.symbols).toEqual(['GER40']);
+    });
+
+    it('takes an add back when the request never reaches the server', async () => {
+      seedSavedSymbols(['GER40']);
+      renderForm();
+      openConcept('Symbol');
+      serverLibrary.script = ['throw'];
+      add('BTCUSD');
+      await waitFor(() => expect(shown()).toEqual(['GER40']));
+    });
+
+    it('puts a removed symbol back, in its place, when the removal is refused', async () => {
+      seedSavedSymbols(['GER40', 'NAS100', 'US30.cash']);
+      renderForm();
+      const picker = openConcept('Symbol');
+      serverLibrary.script = ['read_only'];
+      fireEvent.click(picker.getByRole('button', { name: 'Remove NAS100 from saved symbols' }));
+      await waitFor(() => expect(shown()).toEqual(['GER40', 'NAS100', 'US30.cash']));
+    });
+
+    it('puts a removed symbol back when the removal never reaches the server', async () => {
+      seedSavedSymbols(['GER40', 'NAS100']);
+      renderForm();
+      const picker = openConcept('Symbol');
+      serverLibrary.script = ['throw'];
+      fireEvent.click(picker.getByRole('button', { name: 'Remove NAS100 from saved symbols' }));
+      await waitFor(() => expect(shown()).toEqual(['GER40', 'NAS100']));
+    });
+
+    /*
+      Two writes in flight. The first answer to arrive describes the library
+      BEFORE the second write, so adopting it wholesale would erase the second
+      one from the screen while its request is still on its way.
+    */
+    it('never lets an earlier answer erase a later change still in flight', async () => {
+      renderForm();
+      openConcept('Symbol');
+      serverLibrary.script = ['hold', 'hold'];
+      add('GER40');
+      add('BTCUSD');
+      expect(shown()).toEqual(['BTCUSD', 'GER40']);
+      await waitFor(() => expect(serverLibrary.held).toHaveLength(2));
+
+      await release();
+      // The server has answered the first; the second is still pending.
+      expect(serverLibrary.symbols).toEqual(['GER40']);
+      expect(shown()).toEqual(['BTCUSD', 'GER40']);
+
+      await release();
+      expect(serverLibrary.symbols).toEqual(['BTCUSD', 'GER40']);
+      expect(shown()).toEqual(['BTCUSD', 'GER40']);
+    });
+
+    it('rolls back only the write that failed, not one beside it', async () => {
+      renderForm();
+      openConcept('Symbol');
+      serverLibrary.script = ['hold', 'read_only'];
+      add('GER40');
+      add('BTCUSD'); // refused at once, while GER40 is still in flight
+      await waitFor(() => expect(shown()).toEqual(['GER40']));
+      await release();
+      expect(serverLibrary.symbols).toEqual(['GER40']);
+      expect(shown()).toEqual(['GER40']);
+    });
+
+    it('never erases a saved symbol when an EARLIER write fails after it', async () => {
+      renderForm();
+      openConcept('Symbol');
+      serverLibrary.script = ['hold_then_read_only', 'ok'];
+      add('GER40'); // will be refused, but only after…
+      add('BTCUSD'); // …this one has landed
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['BTCUSD']));
+      await release();
+      // GER40 goes; BTCUSD, which the server holds, must stay.
+      expect(shown()).toEqual(['BTCUSD']);
+    });
+
+    it('shows only what the server holds after a reload that cut a save off', async () => {
+      renderForm();
+      openConcept('Symbol');
+      serverLibrary.script = ['hold'];
+      add('GER40');
+      expect(shown()).toEqual(['GER40']);
+      // The page goes away before the server answers.
+      cleanup();
+      renderForm();
+      openConcept('Symbol');
+      expect(shown()).toEqual([]);
+      // And if the write does land late, the next page shows it — once.
+      await release();
+      expect(serverLibrary.symbols).toEqual(['GER40']);
+      cleanup();
+      renderForm();
+      openConcept('Symbol');
+      expect(shown()).toEqual(['GER40']);
+    });
+
+    it('sends one request per press, and a second press of the same add is not a second row', async () => {
+      renderForm();
+      openConcept('Symbol');
+      add('GER40');
+      await waitFor(() => expect(serverLibrary.symbols).toEqual(['GER40']));
+      expect(serverLibrary.calls).toBe(1);
+      // The same symbol again is refused before any request is made.
+      const search = within(screen.getByRole('dialog')).getByLabelText('Symbol');
+      fireEvent.change(search, { target: { value: 'ger40' } });
+      expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /^Add/ })).toBeNull();
+      expect(serverLibrary.calls).toBe(1);
     });
   });
 
