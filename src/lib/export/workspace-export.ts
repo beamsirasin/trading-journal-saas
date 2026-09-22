@@ -16,8 +16,13 @@ import { strToU8, zipSync } from 'fflate';
  * `post_trade_emotions_recorded_at` to `trades`, and `phase` to
  * `trade_emotions`, so a Post-Trade Emotion never exports as an Entry Emotion
  * and a selected Trader Outcome stays distinguishable from a derived one.
+ *
+ * v10 (Stage 6 After-Trade Context, migration 0028) adds `after_trade_note`
+ * and `after_trade_tradingview_url` to `trades` — distinct from the entry
+ * `notes` and before-entry `tradingview_url`. Additive: no column removed or
+ * reinterpreted.
  */
-export const WORKSPACE_EXPORT_SCHEMA_VERSION = 9 as const;
+export const WORKSPACE_EXPORT_SCHEMA_VERSION = 10 as const;
 export type WorkspaceExportSchemaVersion = typeof WORKSPACE_EXPORT_SCHEMA_VERSION;
 export type WorkspaceExportFormat = 'json' | 'csv';
 
@@ -235,6 +240,8 @@ export const WORKSPACE_EXPORT_REGISTRY = [
       column('reviewNotes', 'review_notes', 'user_text'),
       column('emotionsRecordedAt', 'emotions_recorded_at', 'timestamp'),
       column('postTradeEmotionsRecordedAt', 'post_trade_emotions_recorded_at', 'timestamp'),
+      column('afterTradeNote', 'after_trade_note', 'user_text'),
+      column('afterTradeTradingviewUrl', 'after_trade_tradingview_url', 'user_text'),
       // The internal private-storage key is deliberately never exported
       // (Founder review: "internal storage keys must not leak through
       // customer export unless explicitly required for portability and

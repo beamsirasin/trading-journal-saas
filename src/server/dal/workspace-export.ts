@@ -234,6 +234,8 @@ export async function readWorkspaceExportSource(
           reviewNotes: trades.reviewNotes,
           emotionsRecordedAt: trades.emotionsRecordedAt,
           postTradeEmotionsRecordedAt: trades.postTradeEmotionsRecordedAt,
+          afterTradeNote: trades.afterTradeNote,
+          afterTradeTradingviewUrl: trades.afterTradeTradingviewUrl,
           chartAttachmentStorageKey: trades.chartAttachmentStorageKey,
           chartAttachmentUploadedAt: trades.chartAttachmentUploadedAt,
           plannedEntry: trades.plannedEntry,

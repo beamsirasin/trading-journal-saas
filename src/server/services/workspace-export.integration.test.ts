@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import {
   createWorkspaceExportCsvZip,
   createWorkspaceExportEnvelope,
+  serializeWorkspaceExportCsvFiles,
   serializeWorkspaceExportJson,
 } from '@/lib/export/workspace-export';
 import { createFixedClock } from '@/lib/time';
@@ -540,7 +541,7 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
       workspaceId: seeded.workspace.id,
       source,
     });
-    expect(envelope.schemaVersion).toBe(9);
+    expect(envelope.schemaVersion).toBe(10);
     expect(envelope.data.emotion_types.find((row) => row.id === calm.id)).toMatchObject({
       key: 'calm',
       isSystem: true,
@@ -614,6 +615,68 @@ describe('workspace export completeness and security (real PostgreSQL)', () => {
     expect(Object.keys(envelope.data.trade_exits[0] ?? {})).not.toEqual(
       expect.arrayContaining(['mutationKey', 'legR']),
     );
+  });
+
+  it('exports Stage 6 After-Trade Context apart from the entry notes and link, in JSON and CSV (schema v10)', async () => {
+    const db = getTestDb();
+    const seeded = await seedHistoricalWorkspace(db);
+    // A live paid period, so the Record Closed save below is a writable one.
+    await db
+      .update(workspaceEntitlements)
+      .set({
+        currentPeriodStartedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        currentPeriodEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      })
+      .where(eq(workspaceEntitlements.workspaceId, seeded.workspace.id));
+    const { createCompletedTrade } = await import('./trade-completed');
+    const saved = await createCompletedTrade(seeded.workspace.id, seeded.owner.id, {
+      mutationKey: crypto.randomUUID(),
+      tradingAccountId: seeded.activeAccount.id,
+      recordingTiming: 'after_trade',
+      recordingContract: 'add_trade_v1',
+      symbol: 'XAUUSD',
+      direction: 'long',
+      finalPnlMinor: 1_000n,
+      notes: 'Entry note, before the trade.',
+      tradingviewUrl: 'https://www.tradingview.com/x/Entry0001/',
+      afterTradeNote: 'Exited on fear, "too early", again.',
+      afterTradeTradingviewUrl: 'https://www.tradingview.com/x/After0001/',
+    });
+    if (!saved.ok) throw new Error(`save failed: ${saved.code}`);
+
+    const source = await readWorkspaceExportSource(seeded.workspace.id, seeded.owner.id);
+    const envelope = createWorkspaceExportEnvelope({
+      exportedAt: NOW,
+      productVersion: '0.1.0',
+      workspaceId: seeded.workspace.id,
+      source,
+    });
+    expect(envelope.schemaVersion).toBe(10);
+    const exported = envelope.data.trades.find((row) => row.id === saved.tradeId);
+    expect(exported).toMatchObject({
+      notes: 'Entry note, before the trade.',
+      tradingviewUrl: 'https://www.tradingview.com/x/Entry0001/',
+      afterTradeNote: 'Exited on fear, "too early", again.',
+      afterTradeTradingviewUrl: 'https://www.tradingview.com/x/After0001/',
+    });
+    // Unanswered stays null on the Trade that never had any.
+    expect(envelope.data.trades.find((row) => row.id === seeded.trade.id)).toMatchObject({
+      afterTradeNote: null,
+      afterTradeTradingviewUrl: null,
+    });
+    const csv = Object.entries(serializeWorkspaceExportCsvFiles(envelope)).find(([name]) =>
+      name.startsWith('trades'),
+    )?.[1];
+    expect(csv).toBeDefined();
+    const header = csv!
+      .replace(/^\uFEFF/, '')
+      .split('\n')[0]!
+      .split(',');
+    expect(header).toEqual(
+      expect.arrayContaining(['after_trade_note', 'after_trade_tradingview_url']),
+    );
+    expect(csv).toContain('https://www.tradingview.com/x/After0001/');
+    expect(csv).toContain('"Exited on fear, ""too early"", again."');
   });
 
   it('excludes exact auth, provider, billing-internal and audit sentinels from JSON and ZIP', async () => {
@@ -765,7 +828,7 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     const clock = createFixedClock(NOW);
     const json = await prepareCurrentWorkspaceExport('json', { clock });
     const csv = await prepareCurrentWorkspaceExport('csv', { clock });
-    expect(JSON.parse(json.body as string).schemaVersion).toBe(9);
+    expect(JSON.parse(json.body as string).schemaVersion).toBe(10);
     expect(csv.body).toBeInstanceOf(Uint8Array);
     expect(json.filename).toBe('trading-journal-workspace-2026-08-09.json');
     expect(csv.filename).toBe('trading-journal-workspace-2026-08-09.zip');
@@ -792,11 +855,11 @@ describe('workspace export authorization and auditing (real PostgreSQL)', () => 
     expect(events).toEqual([
       {
         action: 'data.exported',
-        metadata: { format: 'json', scope: 'workspace', schemaVersion: 9 },
+        metadata: { format: 'json', scope: 'workspace', schemaVersion: 10 },
       },
       {
         action: 'data.exported',
-        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 9 },
+        metadata: { format: 'csv', scope: 'workspace', schemaVersion: 10 },
       },
     ]);
     expect(JSON.stringify(events)).not.toMatch(/พื้นที่ทำงาน|ทองคำ|@example/);
